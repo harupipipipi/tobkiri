@@ -275,7 +275,7 @@
     },
     {
       "id": "local.echo-input",
-      "sha256": "sha256:2bab2d45a07b89c630783f6cd251b4c0fe888c0825840437da8854c30e8cbfbc",
+      "sha256": "sha256:98587c350b23321a4b32474e8c41593646cc0349901d6143e95347aafdd257c2",
       "source": "file:../local.echo-input",
       "version": "0.1.0"
     },

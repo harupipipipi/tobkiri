@@ -35,6 +35,7 @@ tobkiri-wit = { path = "../tobkiri-wit" }
 [dev-dependencies]
 wat.workspace = true
 tempfile.workspace = true
+tobkiri-core.workspace = true
 
 [build-dependencies]
 sha2.workspace = true

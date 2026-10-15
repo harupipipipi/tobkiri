@@ -79,7 +79,13 @@
     }
   },
   "ports": {
-    "consumes": [],
+    "consumes": [
+      {
+        "optional": false,
+        "shape": "local.echo-chat.turn-flow",
+        "version": "1.0"
+      }
+    ],
     "provides": [
       {
         "optional": false,

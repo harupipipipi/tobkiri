@@ -1404,3 +1404,171 @@ fn pack_and_user_overlay_witnesses_reuse_their_resolved_ast_hash() {
         }
     }
 }
+
+#[test]
+fn dynamic_flow_consume_resolves_exact_implementation_not_port_binding() {
+    let mut implemented = flow(vec![]);
+    implemented.implements = Some(reference("workflow"));
+    let endpoint = pack(
+        "local.flow",
+        BTreeMap::from([(
+            "turn.json".into(),
+            serde_json::to_vec(&implemented).unwrap(),
+        )]),
+        vec![],
+        vec![],
+        vec![],
+        vec!["turn.json".into()],
+        vec![],
+    );
+    let consumer = pack(
+        "local.consumer",
+        BTreeMap::new(),
+        vec![],
+        vec![],
+        vec![port("query", false), port("workflow", false)],
+        vec![],
+        vec![],
+    );
+    // The Flow consume resolves the selected implementation while the Port
+    // consume keeps its provider binding; no Port provider exists for the
+    // Flow shape at all.
+    let packs = vec![contracts(), provider("local.provider"), endpoint, consumer];
+    let compiled = compile(&profile(&packs), &packs).unwrap();
+    assert!(!compiled.bindings.contains_key(&reference("workflow")));
+    assert_eq!(
+        compiled.bindings[&reference("query")],
+        vec![PackId::parse("local.provider").unwrap()]
+    );
+    assert_eq!(compiled.flows.len(), 1);
+    // Removing the selected implementation leaves the required consume
+    // unresolved; it never falls back to a Port provider.
+    let mut missing = profile(&packs);
+    missing.packs.retain(|pin| pin.id.as_str() != "local.flow");
+    missing
+        .pack_limits
+        .remove(&PackId::parse("local.flow").unwrap());
+    let without_endpoint: Vec<_> = packs
+        .iter()
+        .filter(|pack| pack.manifest.id.as_str() != "local.flow")
+        .cloned()
+        .collect();
+    has_error(compile(&missing, &without_endpoint), "required-flow");
+}
+
+#[test]
+fn dynamic_flow_consume_requires_exactly_one_selected_implementation() {
+    let mut implemented = flow(vec![]);
+    implemented.implements = Some(reference("workflow"));
+    let first = pack(
+        "local.flow",
+        BTreeMap::from([(
+            "turn.json".into(),
+            serde_json::to_vec(&implemented).unwrap(),
+        )]),
+        vec![],
+        vec![],
+        vec![],
+        vec!["turn.json".into()],
+        vec![],
+    );
+    let mut second_doc = implemented.clone();
+    second_doc.id = "other".into();
+    let second = pack(
+        "local.other",
+        BTreeMap::from([(
+            "other.json".into(),
+            serde_json::to_vec(&second_doc).unwrap(),
+        )]),
+        vec![],
+        vec![],
+        vec![],
+        vec!["other.json".into()],
+        vec![],
+    );
+    // Sharing an implements view stays valid for exact-key NativeInput
+    // routes when no Pack declares a dynamic consume of the view.
+    let packs = vec![contracts(), first.clone(), second.clone()];
+    assert_eq!(compile(&profile(&packs), &packs).unwrap().flows.len(), 2);
+    let optional_consumer = |optional: bool| {
+        pack(
+            "local.consumer",
+            BTreeMap::new(),
+            vec![],
+            vec![],
+            vec![port("workflow", optional)],
+            vec![],
+            vec![],
+        )
+    };
+    // Optional consumes accept zero or one exact implementation.
+    let packs = vec![contracts(), optional_consumer(true)];
+    compile(&profile(&packs), &packs).unwrap();
+    let packs = vec![contracts(), first.clone(), optional_consumer(true)];
+    compile(&profile(&packs), &packs).unwrap();
+    // Two exact implementations conflict for optional and required alike.
+    let packs = vec![
+        contracts(),
+        first.clone(),
+        second.clone(),
+        optional_consumer(true),
+    ];
+    has_error(compile(&profile(&packs), &packs), "flow-ambiguous");
+    let packs = vec![contracts(), first, second, optional_consumer(false)];
+    has_error(compile(&profile(&packs), &packs), "flow-ambiguous");
+}
+
+#[test]
+fn dynamic_flow_consume_never_widens_to_another_minor() {
+    let original = contracts();
+    let mut files = original.files.clone();
+    files.insert(
+        "wit/newer.wit".into(),
+        b"package local:contracts@1.1.0; interface workflow { run: func(); }".to_vec(),
+    );
+    let mut definitions = original.manifest.shapes.clone();
+    definitions.push(ShapeDefinition {
+        name: reference("workflow").name,
+        version: ShapeVersion::new(1, 1),
+        kind: ShapeKind::Flow,
+        wit: "wit/newer.wit".into(),
+    });
+    let contracts = pack(
+        "local.contracts",
+        files,
+        definitions,
+        vec![],
+        vec![],
+        vec![],
+        vec![],
+    );
+    let mut implemented = flow(vec![]);
+    implemented.implements = Some(reference("workflow"));
+    let endpoint = pack(
+        "local.flow",
+        BTreeMap::from([(
+            "turn.json".into(),
+            serde_json::to_vec(&implemented).unwrap(),
+        )]),
+        vec![],
+        vec![],
+        vec![],
+        vec!["turn.json".into()],
+        vec![],
+    );
+    let mut requested = port("workflow", false);
+    requested.version = ShapeVersion::new(1, 1);
+    let consumer = pack(
+        "local.consumer",
+        BTreeMap::new(),
+        vec![],
+        vec![],
+        vec![requested],
+        vec![],
+        vec![],
+    );
+    // The 1.1 consume is a known Flow view, yet the only selected endpoint
+    // implements exactly 1.0; runtime resolution never accepts the minor.
+    let packs = vec![contracts, endpoint, consumer];
+    has_error(compile(&profile(&packs), &packs), "required-flow");
+}

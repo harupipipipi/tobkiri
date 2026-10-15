@@ -2560,6 +2560,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "tobkiri-canon",
+ "tobkiri-core",
  "tobkiri-flow",
  "tobkiri-gate",
  "tobkiri-manifest",

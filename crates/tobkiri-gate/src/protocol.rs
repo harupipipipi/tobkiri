@@ -949,6 +949,24 @@ pub trait Gate: Send + Sync {
     ) -> Result<crate::AcknowledgedTerminal, GateError> {
         Err(GateError::Unavailable)
     }
+    /// Trusted Core cleanup-only observation of one exact sealed consumed
+    /// permit under a single coherent authority snapshot. This is not fresh
+    /// authorization, admission or a context/cancellation check. The caller
+    /// MUST already hold Core's live/generation/cause guards in the
+    /// established order; `inspect` runs at most once, only while a coherent
+    /// snapshot is held, and may take no locks, reenter Gate/Core, notify or
+    /// await. Borrowed snapshot fields never escape the call. An error
+    /// returned after `inspect` ran is teardown uncertainty: it cannot roll
+    /// back or reselect an already-made native cause selection, and the
+    /// result is not a physical-cleanup success proof. Release all guards
+    /// before waking tokens or performing cleanup.
+    fn with_cleanup_snapshot(
+        &self,
+        _permit: &crate::DispatchPermit,
+        _inspect: &mut dyn FnMut(CleanupSnapshot<'_>) -> Result<(), GateError>,
+    ) -> Result<(), GateError> {
+        Err(GateError::Unavailable)
+    }
     fn admission_status(&self, _profile: &ProfileId) -> Result<AdmissionStatus, GateError> {
         Err(GateError::Unavailable)
     }

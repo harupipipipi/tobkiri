@@ -4,15 +4,15 @@
 //! from guest allocations and carries no permission or dispatch authority.
 
 use crate::{
-    control::default_control_account, ControlKind, ControlReservation, CoreControl,
-    CoreControlError,
+    ControlKind, ControlReservation, CoreControl, CoreControlError,
+    control::default_control_account,
 };
 use std::{
     future::Future,
     pin::Pin,
     sync::{
-        atomic::{AtomicU8, Ordering},
         Arc,
+        atomic::{AtomicU8, Ordering},
     },
     task::{Context, Poll},
 };

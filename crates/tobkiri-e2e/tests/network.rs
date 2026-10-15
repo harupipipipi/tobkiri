@@ -145,10 +145,7 @@ async fn wasm_external_provider_streams_real_sse_through_flow_and_persistence() 
         deltas(&events),
         vec!["Hello", " ", "猫", " is", " streamed", "."]
     );
-    assert_eq!(
-        fixture.host.output_text()?.trim(),
-        "Hello 猫 is streamed."
-    );
+    assert_eq!(fixture.host.output_text()?.trim(), "Hello 猫 is streamed.");
     let requests = server.requests.lock().unwrap();
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0]["stream"], true);

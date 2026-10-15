@@ -1,6 +1,12 @@
 # Issue 1520 progress
 
 The goal remains active. This is a draft checkpoint for review.
+Draft source checkpoint `ec8a0688f4104052b0ccc29f0afc0fb4ea687f43` has been
+pushed. Later UI, callback and cancellation-cause/control fixes remain under
+implementation or partial validation. The latest recorded Devin snapshot passes
+callback reentry and the happy UI Flow/persistence path; oversized UI cleanup
+and six provider lifecycle cases still fail. Newer main A2/FS/census changes are
+outside those results and require their own recorded replay.
 The final migration gate remains red. Current Core Harness execution with the
 real 1B model now passes; complete migration, passing CI and native WebView
 acceptance are not claimed. Of 837 migration
@@ -51,10 +57,15 @@ without private credentials or workspace paths.
 | `snapshot-canon-all-current3-20261015.json` | All 32 canonical/vector/ownership tests passed, with no ignored tests. | Closes only the mapped global canonical mechanism; other modules remain unresolved. |
 | `snapshot-manifest-q19-resolver12-20261015.json` | All 37 Manifest tests passed, including aggregate directory/archive admission, independently bound error contracts and same-package dependency documents. | Applies to this admitted source; not a complete runtime acceptance result. |
 | `snapshot-wasm-q19-reached13-20261015.json` | All 51 Wasm library tests passed, including provider-vector bounds, real confined filesystem backend tests and payloadless cancel replies. | Filesystem guest-effect/Core picker integration and full child cleanup remain incomplete. |
-| `snapshot-core-lib-q19-reached14-20261015.json` | 57 of 59 Core library tests passed, including actual Native Input Flow dispatch, source projection and mediated context narrowing. The registration callback deadlock no longer occurs. | The static-denial fixture and UI handle-capacity cleanup case failed. Corrected fixtures and lifecycle changes require actual replay. |
+| `snapshot-core-lib-q19-reached14-20261015.json` | 57 of 59 Core library tests passed, including actual Native Input Flow dispatch, source projection and mediated context narrowing. The registration callback deadlock no longer occurs. | This earlier snapshot failed the static-denial fixture and UI handle-capacity cleanup case. The later 61-case Core replay is recorded below. |
 | `snapshot-core-input-static-runtime-negative23-20261015.json` | The corrected five-boundary negative passed: one real static rejection before runtime creation and four actual source-specific runtime denials with zero dispatch. | The whole Core library and subsequent authority changes need their own replay. |
 | `snapshot-core-factory-current41-20261015.json` | 60 of 61 Core tests passed, including the two real control-failure/publication regressions and all original Native Input authority cases. | UI handle-capacity/session-close still reports cleanup completion unknown. No all-Core pass is claimed. |
-| `snapshot-provider-29-q19-reached16-20261015.json` | 20 of 29 real Core provider tests passed, including actual Native Input, guest Flow entry and same-reference provider contract negatives. | Nine failures remain in one guest WAT fixture, callback/cancellation/expiry cleanup and early User denial audit. The old 22 Wasm tests remain intact. |
+| `snapshot-provider-29-q19-reached16-20261015.json` | 20 of 29 real Core provider tests passed, including actual Native Input, guest Flow entry and same-reference provider contract negatives. | This earlier snapshot had nine failures. The latest 30-case provider replay is recorded below; the old 22 Wasm tests remain intact. |
+| `snapshot-provider-current-30-45-20261015.json` | 23 of 30 actual Core provider tests passed, with source identity matched before/after and no capacity-guard stop. | This earlier run had seven failures. Callback reentry passes in the later standalone and 30-case replays below; no all-provider pass is claimed. |
+| `snapshot-devin-callback-reentry58-20261015.json` | The actual callback-reentry regression passed. | One focused case; later source changes need replay. |
+| `snapshot-wasm-core-typed-proxy60-20261015.json` | Both actual Wasm public-Core typed-proxy cases passed: provider/durable-audit success and denial without effective permission. | This target is not all-Wasm or full provider lifecycle acceptance. |
+| `snapshot-provider-devin-callback-api64-20261015.json` | 24 of 30 actual Core provider cases passed, including callback reentry. Source identity matched before/after, with no capacity-guard stop. | Six cancellation/cause-selection, expiry/revocation and owning-runtime cleanup cases still fail. This precedes the newer A2/FS/census changes. |
+| `snapshot-devin-profile-flow66-20261015.json` | All 28 Profile compiler cases passed, including three actual regressions for exact dynamic-Flow selection, no minor widening and exactly one selected implementation. | Compiler acceptance on this source; runtime/native acceptance remains separately measured. |
 | `snapshot-cli-portable-profile-review15-20261015.json` | All eight CLI Profile-input tests passed, including a real separate-process working-directory change and URL/UNC rejection. | Input normalization acceptance only; full CLI command and native acceptance remain open. |
 | `snapshot-flow-completion18-20261015.json` | All 32 Flow tests passed, including four actual interpreter completion/custody, abandoned close, failure and channel-loss regressions. | Does not establish the parent component's scoped child census or cancellation-cause ordering. |
 | `snapshot-canon-flow-incremental32-20261015.json` | All 70 Canon and Flow tests passed after bounded incremental stream collection replaced the bytes-as-element-capacity preallocation. | Includes new admission, growth, ownership, encoded-overhead and actual awaited-cleanup regressions; not a native UI proof. |
@@ -62,17 +73,33 @@ without private credentials or workspace paths.
 | `python-producer-sol-xhigh-20261015.json` | All 54 Python SDK tests passed, including 29 producer/composition checks; installed RECORD consistency and console launcher selection passed. | No component rebuild or Rust replay in this checkpoint. Archive verification remains honestly false when no archive was supplied. |
 | `python-official-shell-policy-build3-20261015.json` | Current pinned official-wheel producer built the 21,475,543-byte shell-policy outer component with exact ABI/WIT checks. | Source/build provenance is not current guest execution acceptance. |
 | `snapshot-python-current-parity6-nominal-20261015.json` | The actual 21,475,543-byte current Python component passed all 91 unchanged differential cases through Rust Core. | Classifier/tokenizer scope only; no other Python Pack, full DB-API or Harness acceptance is implied. |
-| `snapshot-e2e-deterministic-q19-flow21-20261015.json` | All four selected test targets compiled and executed with the actual budgeted HostIo fixture. | All ten tests failed: most reached `generate` and reported `limit-exceeded`; UI returned provider unavailable. These are unresolved, not successful Harness acceptance. |
-| `snapshot-llama-current-q19-22-20261015.json` | The current opt-in real-1B test executed with the declared localhost server and real encrypted Vault import. | It failed at `generate / limit-exceeded`; no current inference/persistence/cancellation acceptance is claimed. |
+| `snapshot-python-current-q19-factory49-20261015.json` | The latest recorded Python replay passed the same 91 classifier/tokenizer cases through the actual Rust host: one Rust test passed, with unchanged component/corpus identity, source identity matched before/after and no capacity-guard stop. | The portable runtime receipt carries this run's 412 source hashes. Later frozen Devin and A2/FS/census sources await Python replay. Other Python Pack, full DB-API and whole-Harness acceptance remain open. |
+| `snapshot-e2e-deterministic-q19-flow21-20261015.json` | All four selected test targets compiled and executed with the actual budgeted HostIo fixture. | This earlier run failed all ten tests: most reached `generate / limit-exceeded`; UI returned provider unavailable. The later incremental-collection and phase-diagnostic runs are recorded below. |
+| `snapshot-llama-current-q19-22-20261015.json` | The opt-in real-1B test executed with the declared localhost server and real encrypted Vault import. | This earlier run failed at `generate / limit-exceeded`; the later real-1B acceptance is recorded below. |
 | `snapshot-e2e-incremental-collection36-20261015.json` | All eight chat, exact Native Input and real local SSE-provider tests passed, including persistence/restart, partial fanout failure and cancellation. | Both UI tests still fail with provider unavailable. The current real-model replay is separate. |
 | `snapshot-llama-current-incremental38-20261015.json` | The actual current Gemma 3 1B test passed: Harness input → Flow → Wasm provider → authenticated localhost llama.cpp, 37 streamed deltas, persistence/next-turn read, cancellation without save, and server stop within three seconds. | This is Core Harness acceptance. Native Launcher/WebView, all provider lifecycle checks, CI and the remaining migration remain open. |
+| `snapshot-devin-ui-phase47-20261015.json` | Both actual UI tests ran and failed at `submit` with provider unavailable: zero passed, two failed. The oversized fixture completed both append calls and their success assertions before submit failed. Source identity matched before/after; no capacity guard stopped the run. | This earlier phase diagnostic is retained. The later UI replay below passes the happy path; oversized cleanup and native WebView acceptance remain open. |
+| `snapshot-devin-ui-flow-resolution67-20261015.json` | The actual scoped UI stream → Flow → verified persistence test passed. The two-case target finished with one pass and one failure, with source identity matched before/after. | The oversized transport case reports `stream cleanup completion unknown` instead of the expected bounded failure. Complete UI cleanup and native WebView acceptance are not established. |
+| `snapshot-native-provider-cli-verify50-20261015.json` and `snapshot-native-ui-cli-verify52-20261015.json` | Actual CLI `pack verify <staged Pack>` passed for both staged native-acceptance Packs and reported their pinned manifest hashes. | `<staged Pack>` replaces the private absolute path in the published command. This verifies Pack admission; native execution and WebView presentation remain unproved. |
+| `sdk-current-regenerated-pack-client61-20261015.json` | All 12 JavaScript SDK/regenerated Pack-client tests passed, with recorded source identity matched before/after. | This is separate from the 54 Python SDK/producer tests; it is not native UI acceptance. |
+| `frontend-core-host62-20261015.json` | All 21 focused Launcher frontend Core-host contract/isolation tests passed, with recorded source identity matched before/after. | Frontend contract evidence; actual native WebView presentation remains unproved. |
+| `snapshot-llama-after-devin-inputs69-20261015.json` | The real 1B Core Harness replay passed with 37 deltas, persisted/next-turn history, cancellation without save and server stop. All 51 declared live Pack inputs were included in the matching execution guards. | The portable current-1B receipt now records this frozen Devin snapshot before A2/FS/census changes. Other Packs, latest main, native WebView and full workspace/CI remain outside this replay. |
+| `committed-tooling-checkpoint42-20261015.json` and `committed-lint-checkpoint43-20261015.json` | On the clean `ec8a0688` draft checkpoint, `just tooling-test` passed 46 tests; `just lint` passed Ruff and mypy for 571 source files. Both recorded source identities matched before/after. | These legacy quality checks do not establish Rust workspace, provider lifecycle, CI or native UI acceptance. |
+| `rustfmt-after-devin-code48-20261015.log` | Root reports that the formatting check passed. The retained log is empty. | The empty log does not independently record the command, exit status or source manifest; it is not behavior acceptance. |
+
+Root preserved 26 files of the validated Devin checkpoint in private evidence
+before refreshing the joint A2/FS snapshot. The portable validation receipt
+records their relative paths and hashes. Each execution still applies to its
+own recorded source; these results do not certify the newer main A2/FS/census
+implementation or turn an in-progress joint run into a pass.
 
 The focused Launcher frontend contract/isolation run passed 21 tests. Current
 Ruff and mypy checks passed for 571 files. The native acceptance fixture now
 contains bounded iframe probes and a separate Dangerous storage request. Its
 real 101,309-byte component now builds offline with its isolated locked dependency
 graph; both fixture Packs were staged with actual manifest pins. CLI verification
-and actual WebView presentation remain unrun. The ordinary foundation workflow no longer downloads or builds the
+now passes for both staged Packs; actual native WebView presentation remains
+unrun. The ordinary foundation workflow no longer downloads or builds the
 optional private SQLite experiment; that job requires an explicit manual input.
 
 The Python artifact receipt is
@@ -86,8 +113,12 @@ establish guest execution acceptance.
 
 The [current Python runtime receipt](../../../crates/tobkiri-e2e/evidence/python-current-parity-20261015.json)
 records the actual successful 91-case command, unchanged corpus identity,
-component identity and runtime source hashes. The execution used verified Wasm
-in the Rust product host; it launched no native Python or compiler.
+component identity and runtime source hashes from receipt 49, finished at
+`2026-10-15T10:54:07.804126+00:00`. The execution used verified Wasm in the Rust
+product host; it launched no native Python or compiler. The earlier 91-case
+receipt remains historical evidence; the corpus and component bytes were not
+changed for this replay. Replay after the later frozen Devin and A2/FS/census
+changes remains pending; the 91-case pass is not acceptance of newer main.
 
 The portable [global canonical receipt](../../../crates/tobkiri-canon/evidence/global-contracts-canonical-20261015.json)
 records the frozen source, generator, corpus and Rust source identities. Both
@@ -98,7 +129,9 @@ marks only `core_runtime/global_contracts/canonical.py` as `core+vectors`.
 The [current 1B receipt](../../../crates/tobkiri-e2e/evidence/current-1b-20261015.json)
 records runtime and Pack identities, the actual 806,058,240-byte GGUF hash,
 37 streamed deltas, saved history, cancelled-turn exclusion and four successful
-secret dispatch/outcome pairs. It contains no credential or private model path.
+secret dispatch/outcome pairs from receipt 69. Its 51 Pack input hashes match the
+actual before/after execution guards. This frozen Devin-source replay predates
+A2/FS/census changes. It contains no credential or private model path.
 
 ## Historical evidence retained
 
@@ -150,10 +183,14 @@ browser deallocation on ACK.
 
 ## Work remaining for acceptance
 
-- Finish the remaining guest nominal-error fixture and stream/callback
-  lifecycle checks; replay all 91 Python cases after the new per-Pack contract binding.
-- Diagnose the intermittent DATA quota failure and preserve current
-  private/public/readonly, persistence, cancellation and crash checks.
+- Finish the six provider lifecycle failures and oversized UI cleanup failure,
+  including cancellation-cause ordering and unfinished cleanup custody. Preserve
+  the recorded callback and happy UI Flow/persistence passes while validating
+  later A2/FS/census changes. The 91-case Python replay passes only at receipt
+  49; retain its unchanged corpus/component and run the pending later replay.
+- Preserve the passing Store 121-case and bounded quota-repetition receipts;
+  continue current private/public/readonly, persistence, cancellation, contention
+  and crash checks when DATA or cleanup authority changes.
 - Exercise current User/Flow and exact Native Input routes, streamed progress,
   hostile ABI sizes, limits, cancellation and unfinished cleanup custody.
 - Run current CLI operations, Launcher/WebView isolation and lifecycle paths,

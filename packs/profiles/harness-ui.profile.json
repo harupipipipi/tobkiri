@@ -311,7 +311,7 @@
     },
     {
       "id": "local.terminal-input",
-      "sha256": "sha256:89732d772e423375e2959ab18314154309723a647c2c38d6159fc5a8e5070378",
+      "sha256": "sha256:cc7b8162bd0b0e8c1b451a1856ce4eed97837ba4e283dee3583206f467fb396c",
       "source": "file:../local.terminal-input",
       "version": "0.1.0"
     },
@@ -341,7 +341,7 @@
     },
     {
       "id": "local.harness-ui",
-      "sha256": "sha256:832e7e0c5b1d897fdb88920ecffcbaa17c6b98130c48bfaab6e461cabe208eb3",
+      "sha256": "sha256:927ac09e973c36a6fc33c55990be2aa2e1b4fa9e66eb2523eb1e640a8eae4da1",
       "source": "file:../local.harness-ui",
       "version": "0.1.0"
     }

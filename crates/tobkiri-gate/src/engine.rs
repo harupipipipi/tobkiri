@@ -1986,6 +1986,17 @@ fn terminal_matches_permit(reservation: &Reservation, permit: &DispatchPermit) -
 
 #[async_trait]
 impl Gate for GateEngine {
+    /// Object-safe delegation to the tested inherent cleanup snapshot. The
+    /// A1 validation (exact consumed permit binding, bounded scratch, single
+    /// coherent `inspect` invocation) is intentionally not duplicated here.
+    fn with_cleanup_snapshot(
+        &self,
+        permit: &DispatchPermit,
+        inspect: &mut dyn FnMut(CleanupSnapshot<'_>) -> Result<(), GateError>,
+    ) -> Result<(), GateError> {
+        GateEngine::with_cleanup_snapshot(self, permit, inspect)
+    }
+
     fn acknowledged_terminal(
         &self,
         permit: &DispatchPermit,

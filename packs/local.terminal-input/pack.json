@@ -79,7 +79,13 @@
     }
   },
   "ports": {
-    "consumes": [],
+    "consumes": [
+      {
+        "optional": false,
+        "shape": "local.harness-chat.turn-flow",
+        "version": "1.0"
+      }
+    ],
     "provides": [
       {
         "optional": false,

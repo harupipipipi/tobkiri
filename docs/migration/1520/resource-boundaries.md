@@ -196,3 +196,38 @@ through that transition and failure cleanup. An outer timeout retains the real
 cleanup task, source and occupied custody; it permits no replay or Drop-only
 success claim. Fixed-capacity builders remain valid. Raising Profile budgets or
 changing Pack pins is unnecessary to fix the bytes-versus-elements error.
+
+
+## Astra HIGH Q24: object-safe cleanup snapshot exposure (2026-10-15)
+
+The existing synchronous, sealed-permit `GateEngine::with_cleanup_snapshot` may be exposed through `Gate` with an object-safe signature and default `Unavailable`. `GateEngine` explicitly delegates to its tested inherent implementation; it does not duplicate validation or recursively call the trait method. This is trusted Core cleanup observation, with no guest export, fresh authorization or authority revival. Callers still hold the prescribed Core lifecycle, Wasm generation and independent cause-selection guards. The borrowed snapshot callback runs at most once while coherent and may not lock, reenter, notify or await. All guards are released before signalling. Errors before callback do not establish Manual. Errors after callback can leave a selected cause; they neither undo selection nor authorize reselection, and are not physical cleanup success evidence.
+
+## Astra HIGH Q25: dynamic Flow consumes resolution (2026-10-15)
+
+`ports.consumes` remains the component's structural declaration for dynamic Flow calls. Verified `ShapeKind::Port` retains ordinary Port-binding validation; verified `ShapeKind::Flow` resolves against selected, verified Flow implementations instead of requiring a Port provider. A required shape-based dynamic consume requires exactly one matching target; an optional consume allows zero or one, and multiple matches are a configuration conflict. NativeInput's exact Flow key remains independent and may share an implements view. Resolution grants no permissions: original declaration, Profile ceiling, explicit Pack limits, actual provider frame and a fresh FlowRun Gate still apply.
+
+The current execution factory uses exact `ShapeRef` equality for dynamic Flow target selection. Compiler checks must use that same frozen Profile revision and exact rule. The `(ShapeName, major)` map is only an index; another minor version cannot satisfy an exact requested view. No optional-flag workaround, Port fallback or implicit version widening is permitted. An absent optional target remains unavailable at execution.
+
+
+## Astra HIGH Q26: FS descriptor protection and registered-root picker (2026-10-15)
+
+A trusted Rust connection API may clone DataRoot's original pinned directory descriptor with `try_clone`; it must never reopen its diagnostic path. Failure or unsupported platforms make the FS backend unavailable instead of continuing without protection. The returned File is an actual capability for Core protection plumbing and must not become a guest resource or selectable root. Protected-root registration is distinct from usable-root registration, which must reject forbidden protected identities, descendants and aliases. Existing workspace-ancestor policy and each operation's protected-descendant restrictions remain applicable.
+
+Usable-root registration fixes a non-reused opaque ID, real descriptor identity and rights ceiling. It grants no authority. Access still requires that exact ID under the approved Profile declaration, ceiling and Pack limits. HostIo supplies an untrusted candidate ID: Core validates size, format, registration, validity and effective rights, then issues a single-use token bound to the actual request/revision/epoch. Host approval claims are ignored. Actual open/read perform the existing Gate and exact operation checks again. This slice supports previously registered roots; arbitrary new-directory native registration and approval UI remain unimplemented acceptance work.
+
+
+## Astra HIGH Q27: independent physical native-work census (2026-10-15)
+
+Physical completion must come from joining the actual task containing the work, independently of terminal/audit/reaper acknowledgement. A funded nonclone admission is registered before task start; reserved and unpublished slots remain part of the exact execution/generation census. Admission-to-Join ownership transfer has no cancellation/panic gap, and sealing prohibits new starts. A wrapper that detaches native/blocking work or merely sends a result cannot prove completion. Separate work is registered too, or its enclosing task awaits its actual termination.
+
+The independent monitor and its control/task capacity are admitted in advance. Slot metadata funding does not replace actual FD/buffer/Flow-body ownership. A census succeeds only when sealed and every slot has a real completion; unknown slots cannot be removed or refunded to manufacture emptiness. Receiver loss, panic or Join errors retain unknown for unconfirmed work. Abandoned waits retain the same monitor, Join owner, receiver and custody, with no replay. Close hooks avoid strong parent cycles and run after synchronous guards are released. Current Flow RunResult custody drops alone do not substitute for the adopted actual-Join proof; until the real engine Join seam is wired, VM-only closure stays unknown.
+
+
+## Astra HIGH Q28: census start and delayed first poll (2026-10-15)
+
+Slot registration and task publication under the same census mutex define the start linearization point. A task published before seal may first poll afterward; it is existing admitted work, not new admission. The census alone does not require another pre-poll cancellation check. Unpolled work remains in cleanup and retains its payload, budget and actual Join owner. Close notification is remembered so an early signal is not lost; existing cancellation, deadline and fresh Gate rules still apply. Delayed execution can produce bounded-wait unknown without losing custody or replaying work. Registration, publication and monitor transfer have no ownership gap. Synchronous body execution, reentrant callbacks and payload destruction never occur under the mutex; signalling, awaiting and failure payload disposal happen outside all synchronous guards. Physical work and its monitor do not await parent terminal/reaper completion.
+
+
+## Astra HIGH Q29: never-started payload completion (2026-10-15)
+
+A synchronously proven unpublished body is distinct from using Drop to assert that a running task stopped. NeverStarted may count toward physical cleanup only if the captured payload owns unstarted work and synchronously releasable resources, destruction completes normally outside every guard, and slot/control ownership remains until that confirmation. Ordinary unused FD/buffer RAII release can satisfy this closed trusted-adapter contract. Already-running I/O, transactions, other tasks or asynchronous cleanup responsibilities require an additional typed completion receipt or remain unknown. A generic future cannot be inspected for these properties, so unknown payloads must not receive unconditional NeverStarted success. Payload destruction panic remains unknown.

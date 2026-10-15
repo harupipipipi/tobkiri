@@ -207,6 +207,10 @@ def guest_manifest(name: str, target: Path, origin: str, model: str) -> dict[str
     write_json(directory/"config.json",config)
     manifest = base_manifest(name, {"kind": "wasm", "component": "component.wasm", "toolchain": "rust/1.94.0;wit-bindgen/0.62.0", "config":{"path":"config.json"}}, permissions)
     manifest["ports"]["provides"] = [port(fq + iface)]
+    # permissions.ports is effect authority only; a Pack that places dynamic
+    # port/Flow calls must also declare each consumed view in ports.consumes
+    # before the host admits the call.
+    manifest["ports"]["consumes"] = [port(value.rsplit("@", 1)[0]) for value in imports]
     if name.endswith("input"):
         # Author-selected physical entry, independent of provider routing.
         manifest["inputs"] = [{"exact_input_view":fq+"user-input@1.0","operation":"read"}]

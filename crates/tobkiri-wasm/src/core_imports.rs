@@ -1,8 +1,11 @@
 use anyhow::{Context, Result, bail};
 use std::sync::Arc;
-use tobkiri_canon::{CoreValue, ids::OpName};
-use tobkiri_gate::{CallCx, Outcome};
-use tobkiri_manifest::{ShapeDef, VerifiedPack};
+use tobkiri_canon::{
+    CoreValue,
+    ids::{OpName, ShapeRef},
+};
+use tobkiri_gate::{CallCx, ControlKind, Outcome};
+use tobkiri_manifest::{ShapeDef, VerifiedPack, WitFunction};
 use wasmtime::StoreContextMut;
 use wasmtime::component::{
     Component, Linker, Val,
@@ -10,7 +13,7 @@ use wasmtime::component::{
 };
 
 use crate::host::{PackHost, PackState, Shared, interface_name};
-use crate::{HandleKind, InvocationState};
+use crate::{HandleKind, InvocationState, ProviderFrame};
 
 pub(crate) fn link_core_and_ports(
     linker: &mut Linker<InvocationState<PackState>>,
@@ -92,9 +95,19 @@ pub(crate) fn link_core_and_ports(
                                             "typed guest call lacks actual provider activation",
                                         )?
                                         .clone();
+                                    let admitted = admit_argument_handles(
+                                        &host, &cx, params, &signature, &shape, &frame, &owners,
+                                    )
+                                    .await?;
                                     let values = host
                                         .invoke_values_owned(
-                                            &cx, &shape, &op, params, &signature, &owners, &frame,
+                                            &cx,
+                                            &shape,
+                                            &op,
+                                            admitted.as_deref().unwrap_or(params),
+                                            &signature,
+                                            &owners,
+                                            &frame,
                                         )
                                         .await?;
                                     if values.len() != results.len() {
@@ -743,6 +756,91 @@ async fn close_retired_handle(
     // A retired generation is no proof that its asynchronous Drop completed.
     // Keep the closed lease quarantined rather than advertising slot reuse.
     bail!("retired component cleanup completion unknown")
+}
+
+/// Imported port arguments carry the caller's scoped handles as opaque record
+/// IDs. A handle the caller already holds forwards unchanged; a caller-local
+/// ID opens its actual source lease once under this caller context and its
+/// live provider frame, preserving owner provenance so final argument
+/// transfer can resolve and alias it for the callee.
+async fn admit_argument_handles(
+    host: &PackHost,
+    cx: &CallCx,
+    params: &[Val],
+    signature: &WitFunction,
+    authority: &ShapeRef,
+    frame: &Arc<dyn ProviderFrame>,
+    owners: &crate::owned_values::ValueOwners,
+) -> Result<Option<Vec<Val>>> {
+    if !signature
+        .params
+        .iter()
+        .any(|(_, ty)| crate::dispatch::has_handle(ty))
+    {
+        return Ok(None);
+    }
+    const MAX: usize = 1024;
+    let _control = host
+        .shared
+        .control
+        .reserve(ControlKind::Frame, (MAX * 32) as u64)?;
+    let mut handles = Vec::new();
+    handles.try_reserve(MAX)?;
+    for ((_, ty), value) in signature.params.iter().zip(params) {
+        let probe =
+            crate::owned_values::rewrite_handles_owned(value, ty, owners, &mut |kind, id| {
+                if !handles.contains(&(kind, id)) {
+                    if handles.len() == MAX {
+                        bail!("argument handle count exceeded")
+                    }
+                    handles.push((kind, id));
+                }
+                Ok(id)
+            })?;
+        drop(probe);
+    }
+    if handles.is_empty() {
+        return Ok(None);
+    }
+    let mut mapped = Vec::new();
+    mapped.try_reserve(handles.len())?;
+    for (kind, id) in handles {
+        // Forwarding an already scoped core handle preserves its original
+        // source frame and one lease. A caller-local ID opens a new lease
+        // once; argument transfer then resolves and aliases it as usual.
+        let existing = {
+            host.shared
+                .handles
+                .lock()
+                .map_err(|_| anyhow::anyhow!("handle table poisoned"))?
+                .resolve(id, kind, cx)
+                .ok()
+        };
+        let mapped_id = if let Some(entry) = existing {
+            host.shared.gate.check_context(&entry.owner)?;
+            host.check_handle_generation(&entry)?;
+            id
+        } else {
+            host.register_guest_handle(kind, cx, id, cx, authority, None, frame)
+                .await?
+        };
+        mapped.push((kind, id, mapped_id));
+    }
+    signature
+        .params
+        .iter()
+        .zip(params)
+        .map(|((_, ty), value)| {
+            crate::owned_values::rewrite_handles_owned(value, ty, owners, &mut |kind, id| {
+                mapped
+                    .iter()
+                    .find(|entry| entry.0 == kind && entry.1 == id)
+                    .map(|entry| entry.2)
+                    .context("argument handle mapping missing")
+            })
+        })
+        .collect::<Result<Vec<_>>>()
+        .map(Some)
 }
 
 pub(crate) async fn invoke_callback(

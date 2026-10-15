@@ -39,6 +39,10 @@ export class PackPortClient {
   constructor(port) {
     this.#port = port;
     port.onmessage = ({ data }) => {
+      if (data?.type === "tobkiri-pack-closed") {
+        this.close();
+        return;
+      }
       const pending = this.#pending.get(data?.id);
       if (!pending) return;
       this.#pending.delete(data.id);
@@ -74,7 +78,7 @@ export class PackPortClient {
       const cancel = (message) => {
         if (!this.#pending.delete(id)) return;
         cleanup();
-        this.#port.postMessage({ type: "cancel", id });
+        try { this.#port.postMessage({ type: "cancel", id }); } catch {}
         reject(new Error(message));
       };
       const aborted = () => cancel("Port call cancelled");
@@ -83,7 +87,15 @@ export class PackPortClient {
       this.#pending.set(id, { resolve, reject, cleanup });
       signal?.addEventListener("abort", aborted, { once: true });
       try { this.#port.postMessage({ ...message, id }); }
-      catch (error) { this.#pending.delete(id); cleanup(); reject(error); }
+      catch (error) {
+        this.#pending.delete(id);
+        cleanup();
+        // A failed send did not consume a host sequence number. If user code
+        // reentered while cloning the message, close instead of reusing an ID.
+        if (this.#next === id + 1) this.#next = id;
+        else this.close();
+        reject(error);
+      }
     });
   }
   forget(stream) { this.#streams.delete(stream); }

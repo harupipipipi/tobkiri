@@ -965,7 +965,7 @@ impl AllocationBudget for DigestWork {
     }
 }
 
-fn has_handle(ty: &WitType) -> bool {
+pub(crate) fn has_handle(ty: &WitType) -> bool {
     match ty {
         WitType::StreamHandle | WitType::CallbackHandle => true,
         WitType::List(ty) | WitType::Option(ty) => has_handle(ty),

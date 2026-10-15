@@ -39,17 +39,19 @@ fn event_delta(frame: &CanonValue) -> Option<&str> {
 
 #[tokio::test]
 async fn pack_ui_scoped_stream_reaches_flow_and_verified_persistence() -> Result<()> {
-    let fixture = Fixture::new("harness-ui", None)?;
+    let fixture = Fixture::new("harness-ui", None).context("UI phase=fixture")?;
     *fixture.host.ui_enabled.lock().unwrap() = true;
-    let (_core, session) = fixture.start().await?;
+    let (_core, session) = fixture.start().await.context("UI phase=start")?;
     assert!(
         session.ui_attachments().is_err(),
         "unbound UI was published"
     );
     let generation = 7;
-    session.bind_ui_generation(generation)?;
+    session
+        .bind_ui_generation(generation)
+        .context("UI phase=bind-generation")?;
     assert!(session.bind_ui_generation(generation).is_err());
-    let attachments = session.ui_attachments()?;
+    let attachments = session.ui_attachments().context("UI phase=attachments")?;
     assert_eq!(attachments.len(), 1);
     let attachment = &attachments[0];
     assert_eq!(attachment.generation, Some(generation));
@@ -57,7 +59,8 @@ async fn pack_ui_scoped_stream_reaches_flow_and_verified_persistence() -> Result
     let token = &attachment.session;
     let args = canon(
         &serde_json::json!({"input":{"conversation":"e2e","text":"Through the actual UI input Pack"}}),
-    )?;
+    )
+    .context("UI phase=submit args")?;
     assert!(
         session
             .ui_invoke_received(
@@ -98,8 +101,9 @@ async fn pack_ui_scoped_stream_reaches_flow_and_verified_persistence() -> Result
             OpName::parse("submit")?,
             &args,
         )
-        .await?;
-    let handle = stream_handle(&opened_buffer)?;
+        .await
+        .context("UI phase=submit")?;
+    let handle = stream_handle(&opened_buffer).context("UI phase=submit handle")?;
     let foreign = UiSessionId::new("ui_foreign_test")?;
     assert!(
         session
@@ -117,13 +121,18 @@ async fn pack_ui_scoped_stream_reaches_flow_and_verified_persistence() -> Result
     );
     let mut events = Vec::new();
     let mut plan_digest = None;
+    let mut pulls = 0u64;
     loop {
+        pulls += 1;
         let buffer = tokio::time::timeout(
             std::time::Duration::from_secs(30),
             session.ui_stream_pull_buffer(token, handle, 8),
         )
-        .await??;
-        let batch = parse_output(&buffer)?;
+        .await
+        .with_context(|| format!("UI phase=stream-pull timeout pull={pulls}"))?
+        .with_context(|| format!("UI phase=stream-pull pull={pulls}"))?;
+        let batch = parse_output(&buffer)
+            .with_context(|| format!("UI phase=stream-pull parse pull={pulls}"))?;
         let frames = batch
             .as_array()
             .context("UI stream batch is not an array")?;
@@ -137,7 +146,8 @@ async fn pack_ui_scoped_stream_reaches_flow_and_verified_persistence() -> Result
                     .get("plan_digest")
                     .and_then(CanonValue::as_str)
                     .context("UI Flow plan digest missing")?,
-            )?;
+            )
+            .with_context(|| format!("UI phase=stream-pull plan-digest pull={pulls}"))?;
             if let Some(expected) = &plan_digest {
                 assert_eq!(&plan, expected);
             } else {
@@ -178,7 +188,8 @@ async fn pack_ui_scoped_stream_reaches_flow_and_verified_persistence() -> Result
             .is_err(),
         "completed UI stream handle was retained"
     );
-    let stored_args = canon(&serde_json::json!({"conversation":"e2e"}))?;
+    let stored_args =
+        canon(&serde_json::json!({"conversation":"e2e"})).context("UI phase=store-load args")?;
     let stored_buffer = session
         .ui_invoke_received(
             token,
@@ -189,8 +200,9 @@ async fn pack_ui_scoped_stream_reaches_flow_and_verified_persistence() -> Result
             OpName::parse("load")?,
             &stored_args,
         )
-        .await?;
-    let stored = parse_output(&stored_buffer)?;
+        .await
+        .context("UI phase=store-load")?;
+    let stored = parse_output(&stored_buffer).context("UI phase=store-load parse")?;
     assert_eq!(
         stored.get("kind").and_then(CanonValue::as_str),
         Some("value")
@@ -203,7 +215,7 @@ async fn pack_ui_scoped_stream_reaches_flow_and_verified_persistence() -> Result
             .map(<[_]>::len),
         Some(2),
     );
-    session.detach_ui(token).await?;
+    session.detach_ui(token).await.context("UI phase=detach")?;
     assert!(
         session
             .ui_invoke_received(
@@ -224,12 +236,14 @@ async fn pack_ui_scoped_stream_reaches_flow_and_verified_persistence() -> Result
 
 #[tokio::test]
 async fn oversized_real_flow_event_closes_the_received_ui_stream() -> Result<()> {
-    let fixture = Fixture::new("harness-ui", None)?;
+    let fixture = Fixture::new("harness-ui", None).context("UI phase=fixture")?;
     *fixture.host.ui_enabled.lock().unwrap() = true;
-    let (_core, session) = fixture.start().await?;
+    let (_core, session) = fixture.start().await.context("UI phase=start")?;
     let generation = 11;
-    session.bind_ui_generation(generation)?;
-    let attachments = session.ui_attachments()?;
+    session
+        .bind_ui_generation(generation)
+        .context("UI phase=bind-generation")?;
+    let attachments = session.ui_attachments().context("UI phase=attachments")?;
     let [attachment] = attachments.as_slice() else {
         anyhow::bail!("oversized UI fixture requires one actual attachment");
     };
@@ -246,7 +260,8 @@ async fn oversized_real_flow_event_closes_the_received_ui_stream() -> Result<()>
                 "prompt-tokens":null,
                 "completion-tokens":null,
             }],
-        }))?;
+        }))
+        .with_context(|| format!("UI phase=store-append args index={index}"))?;
         let saved = session
             .ui_invoke_received(
                 &attachment.session,
@@ -257,8 +272,10 @@ async fn oversized_real_flow_event_closes_the_received_ui_stream() -> Result<()>
                 OpName::parse("append")?,
                 &args,
             )
-            .await?;
-        let saved = parse_output(&saved)?;
+            .await
+            .with_context(|| format!("UI phase=store-append index={index}"))?;
+        let saved = parse_output(&saved)
+            .with_context(|| format!("UI phase=store-append parse index={index}"))?;
         // append returns result<_, error>: the public typed facade preserves
         // the payloadless success tag instead of treating it as no result.
         assert_eq!(
@@ -268,7 +285,8 @@ async fn oversized_real_flow_event_closes_the_received_ui_stream() -> Result<()>
     }
     let args = canon(&serde_json::json!({
         "input":{"conversation":"e2e","text":"Load the actual persisted context"}
-    }))?;
+    }))
+    .context("UI phase=submit args")?;
     let opened = session
         .ui_invoke_received(
             &attachment.session,
@@ -279,17 +297,22 @@ async fn oversized_real_flow_event_closes_the_received_ui_stream() -> Result<()>
             OpName::parse("submit")?,
             &args,
         )
-        .await?;
-    let handle = stream_handle(&opened)?;
+        .await
+        .context("UI phase=submit")?;
+    let handle = stream_handle(&opened).context("UI phase=submit handle")?;
+    let mut pulls = 0u64;
     let error = loop {
+        pulls += 1;
         match tokio::time::timeout(
             std::time::Duration::from_secs(30),
             session.ui_stream_pull_buffer(&attachment.session, handle, 1),
         )
-        .await?
+        .await
+        .with_context(|| format!("UI phase=stream-pull timeout pull={pulls}"))?
         {
             Ok(buffer) => {
-                let batch = parse_output(&buffer)?;
+                let batch = parse_output(&buffer)
+                    .with_context(|| format!("UI phase=stream-pull parse pull={pulls}"))?;
                 let frames = batch
                     .as_array()
                     .context("UI stream batch is not an array")?;
@@ -319,6 +342,9 @@ async fn oversized_real_flow_event_closes_the_received_ui_stream() -> Result<()>
         matches!(repeated, CoreError::Invalid(ref message) if message.contains("unknown UI stream handle")),
         "oversized stream retained its native handle: {repeated}"
     );
-    tokio::time::timeout(std::time::Duration::from_secs(30), session.close()).await??;
+    tokio::time::timeout(std::time::Duration::from_secs(30), session.close())
+        .await
+        .context("UI phase=close timeout")?
+        .context("UI phase=close")?;
     Ok(())
 }

@@ -95,9 +95,8 @@ async fn persisted_run_journal_contains_digests_and_no_guest_plaintext() {
         "sensitive".into(),
         CanonValue::Str("secret-plaintext-never-audit".into()),
     )]));
-    let expected_value_digest = Digest::hash(
-        &tobkiri_canon::encode(&literal, Variant::StrictV1).unwrap(),
-    );
+    let expected_value_digest =
+        Digest::hash(&tobkiri_canon::encode(&literal, Variant::StrictV1).unwrap());
     let source = Arc::new(Budget::new(64 * 1024));
     let source_budget: Arc<dyn AllocationBudget> = source.clone();
     let value = CoreValue::try_from_borrowed(&literal, &source_budget).unwrap();
@@ -128,10 +127,7 @@ async fn persisted_run_journal_contains_digests_and_no_guest_plaintext() {
 
     let encoding = Arc::new(Budget::new(64 * 1024));
     let encoding_budget: Arc<dyn AllocationBudget> = encoding.clone();
-    journal
-        .append(&cx, &event, &encoding_budget)
-        .await
-        .unwrap();
+    journal.append(&cx, &event, &encoding_budget).await.unwrap();
     assert!(encoding.peak.load(Ordering::SeqCst) > 0);
     assert_eq!(encoding.used(), 0);
     assert_eq!(source.used(), retained_bytes);

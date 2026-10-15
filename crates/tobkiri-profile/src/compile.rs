@@ -704,16 +704,11 @@ pub fn compile(
             bindings.insert(reference.clone(), chosen.clone());
         }
     }
+    let mut dynamic_flows = Vec::new();
     for pack in selected.values() {
         for port in &pack.manifest.ports.consumes {
             let reference = ShapeRef::new(port.shape.clone(), port.version);
             let definition = shape(&reference, &shapes);
-            let resolved = bindings
-                .iter()
-                .find(|(r, _)| {
-                    r.name == reference.name && r.version.major == reference.version.major
-                })
-                .map(|(_, p)| p.clone());
             if definition.is_none() {
                 errors.push(conflict(
                     "untyped-port",
@@ -721,6 +716,19 @@ pub fn compile(
                     vec![pack.manifest.id.to_string()],
                 ));
             }
+            // A consumed Flow shape declares a dynamic guest run-flow
+            // target, never a Port call. It is checked against selected
+            // Flow endpoints by exact implements identity below.
+            if definition.is_some_and(|def| def.kind == ShapeKind::Flow) {
+                dynamic_flows.push((pack.manifest.id.clone(), port.optional, reference));
+                continue;
+            }
+            let resolved = bindings
+                .iter()
+                .find(|(r, _)| {
+                    r.name == reference.name && r.version.major == reference.version.major
+                })
+                .map(|(_, p)| p.clone());
             if !port.optional && resolved.as_ref().is_none_or(Vec::is_empty) {
                 errors.push(conflict(
                     "required-port",
@@ -1031,6 +1039,28 @@ pub fn compile(
     }
     // NativeInput routes select exact Flow keys, so sharing an implements view
     // is valid. A shape-only subflow call still has to resolve uniquely above.
+    // Guest run-flow consumes are the dynamic counterpart: they resolve the
+    // exact implements identity the runtime guest Flow entry requires.
+    for (owner, optional, reference) in &dynamic_flows {
+        let targets = flows
+            .values()
+            .filter(|flow| flow.document.implements.as_ref() == Some(reference))
+            .count();
+        if targets == 0 && !optional {
+            errors.push(conflict(
+                "required-flow",
+                format!("{owner} requires {reference}"),
+                vec![owner.to_string()],
+            ));
+        }
+        if targets > 1 {
+            errors.push(conflict(
+                "flow-ambiguous",
+                format!("dynamic consume {reference} resolves {targets} selected Flow endpoints"),
+                vec![owner.to_string()],
+            ));
+        }
+    }
     for flow in flows.values() {
         if !shapes
             .get(&flow.document.trigger.input)
