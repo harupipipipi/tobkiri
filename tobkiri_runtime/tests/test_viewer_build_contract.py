@@ -16,7 +16,7 @@ TAURI_ROOT = ROOT / "tobkiri_launcher" / "src-tauri"
 TAURI_CONFIG = TAURI_ROOT / "tauri.conf.json"
 SHELL_TAURI_CONFIG = TAURI_ROOT / "tauri.shell.conf.json"
 SHELL_RUNTIME = TAURI_ROOT / "src" / "shell_runtime.rs"
-LAUNCHER_RUNTIME = TAURI_ROOT / "src" / "lib.rs"
+LAUNCHER_RUNTIME = TAURI_ROOT / "src" / "legacy.rs"
 RESOURCE_PREPARER = ROOT / ".github" / "scripts" / "prepare_tauri_resources.py"
 TOOLCHAIN_BINDER = ROOT / ".github" / "scripts" / "packaging_toolchain_identity.py"
 LOCKED_TEST_HELPER = ROOT / ".github" / "scripts" / "install_locked_python_test_dependencies.py"
@@ -246,6 +246,12 @@ def test_shell_runtime_is_presentation_only_and_cannot_inherit_launcher_authorit
     assert "context.config().identifier == shell_handoff::SHELL_BUNDLE_IDENTIFIER" in launcher_runtime
     assert "shell_runtime::run(context)" in launcher_runtime
     assert "run_launcher(context)" in launcher_runtime
+
+    launcher_root = (TAURI_ROOT / "src" / "lib.rs").read_text(encoding="utf-8")
+    assert (
+        '#[cfg(not(feature = "core-host"))]\ninclude!("legacy.rs");'
+        in launcher_root
+    )
 
 
 def test_installer_targets_are_selected_by_tauri_platform_overrides():

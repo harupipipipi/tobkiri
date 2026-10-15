@@ -189,7 +189,7 @@ mod tests {
     fn handover_commands_have_generated_permissions_only_on_the_main_panel() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let manifest = include_str!("../build.rs");
-        let handlers = include_str!("lib.rs");
+        let handlers = include_str!("legacy.rs");
         for command in ["handover_previous_development_host", "recover_development_host_handover"] {
             assert!(manifest.contains(&format!("\"{command}\"")));
             assert!(handlers.contains(&format!("development_host_handover::{command}")));
