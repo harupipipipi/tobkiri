@@ -57,7 +57,7 @@ GOOGLE_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
 
 ### OpenRouter
 
-Tobkiri Defaults の Settings では、OpenRouterを選び、APIの名前とAPIキーを保存する。
+Tobkiri Harness の Settings では、OpenRouterを選び、APIの名前とAPIキーを保存する。
 base URLは自動設定され、モデルはJSONカタログの一覧から選択できる。
 キーは承認後にCredential Brokerへ保存され、公開ステータスには含まれない。
 モデルを保存する際は、実際に登録したAPI接続へ紐付ける。
@@ -418,7 +418,7 @@ rumi プロバイダーの定義は全て `user_data/shared/ai_models/rumi/profi
 
 ## Named API connections and the bundled model catalog
 
-In Tobkiri Defaults, select a hosted provider, enter an API name and API key,
+In Tobkiri Harness, select a hosted provider, enter an API name and API key,
 and save through the existing Launcher approval flow. The endpoint and
 protocol come from the provider JSON. OpenRouter uses
 `https://openrouter.ai/api/v1`; Anthropic Messages uses

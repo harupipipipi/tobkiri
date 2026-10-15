@@ -83,9 +83,9 @@ export function DefaultsReview({
         </p>
       </div>
       {predecessor && <div role="status" className="rounded-lg border border-border p-4 text-sm text-text-main">
-        <p className="font-medium">Review the imported Defaults successor</p>
+        <p className="font-medium">Review the imported Harness successor</p>
         <p className="mt-2">Imported name: {predecessor.display_name}. Successor name: {setup.recommended_default_profile.name}.</p>
-        <p className="mt-2">This activation appends the displayed bundled Defaults as a new revision of “{predecessor.display_name}”. The imported definition remains in immutable history. Existing credentials and approvals are not carried into this activation.</p>
+        <p className="mt-2">This activation appends the displayed bundled Harness as a new revision of “{predecessor.display_name}”. The imported definition remains in immutable history. Existing credentials and approvals are not carried into this activation.</p>
         <p className="mt-2">Pack selections, operation bindings, and scopes are replaced with the displayed bundled composition.</p>
         <p className="mt-2">Imported base: {predecessor.base_pack_id}. Imported Shell: {predecessor.shell_provider_id} ({predecessor.shell_pack_id}).</p>
         <p className="mt-2">Imported Packs: {predecessor.pack_ids.join(', ') || 'None'}.</p>

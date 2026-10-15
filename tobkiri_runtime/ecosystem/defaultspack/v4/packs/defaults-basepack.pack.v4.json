@@ -3,7 +3,7 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "source_identity": "sha256:b9b89b074faccfa7404bd204bb2bd6a17dad8eba8d28a5b2bc7bd286114f86c6",
+    "source_identity": "sha256:e3e2299afe0f3371ff84f15fd1dac28881825c84bd0b647d33b3e2225dd3d7f2",
     "artifact_set_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
     "contract_catalog_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
@@ -16,7 +16,7 @@
   "operation_catalog": [],
   "pack": {
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
-    "display_name": "Tobkiri Defaults Base",
+    "display_name": "Tobkiri Harness Base",
     "id": "defaults-basepack",
     "kind": "base",
     "version": "4.0.0"
@@ -26,15 +26,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json",
-    "source_digest": "sha256:6ad7096abeb77f606c29c0c00d597f9eb5c60e22c23bf54006f940119c61ccd0",
+    "source_digest": "sha256:efb6484429f315fbbef2c3c29267bc77aaf044f81dc24066e2220fc6abbba229",
     "repository_commit": "working-tree",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:6f845e660e193af28f2045aa67297f8e64dc6a241daeee68d368480ca3224887",
+    "content_root_digest": "sha256:863143a4f7151c000c3d03e88239e9a20e7d37d667de4bccc24316b5f676066f",
     "generator": "defaultspack-v4-core",
     "generator_version": "2.0.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:72e5fe4e8f670a1618d79b16dfc9896b6e9f4276616d87632022b726ec01735a",
-    "input_inventory_digest": "sha256:ed6ec930bbd37b07114bb7db66c7b374e8ff1c7e7f1d4dc29d7beab64bc61b84",
+    "input_inventory_digest": "sha256:0e840a9b5f31397e4f2ff6d764dd12a20b7814f6a935e7a02d91b99abeb09d25",
     "normative": true,
     "evidence": [
       {
@@ -45,7 +45,7 @@
       {
         "path": "ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:6ad7096abeb77f606c29c0c00d597f9eb5c60e22c23bf54006f940119c61ccd0"
+        "digest": "sha256:efb6484429f315fbbef2c3c29267bc77aaf044f81dc24066e2220fc6abbba229"
       }
     ]
   },

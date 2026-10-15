@@ -71,7 +71,7 @@ export function describeRuntimeBadge(
     return {
       tone: "warning",
       label: "Profile reconfirmation required",
-      detail: "Review and activate the exact Defaults v4 transaction before using local operations.",
+      detail: "Review and activate the exact Harness v4 transaction before using local operations.",
       showOfflineBadge: false,
     };
   }
@@ -109,7 +109,7 @@ export function describeRuntimeBanner(
     return {
       tone: "warning",
       title: "Profile reconfirmation is required before runtime operations can resume.",
-      detail: "Open Setup to review the exact Defaults v4 transaction and activate it.",
+      detail: "Open Setup to review the exact Harness v4 transaction and activate it.",
     };
   }
   return {

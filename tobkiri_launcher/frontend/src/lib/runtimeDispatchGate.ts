@@ -16,7 +16,7 @@ export class RuntimeDispatchBlockedError extends Error {
     const reconfirmation = status === PROFILE_RECONFIRMATION_STATUS;
     super(reconfirmation
       ? `Profile reconfirmation is required before ${method} ${path} can run. `
-        + 'Review and activate the exact Defaults v4 transaction in Setup first.'
+        + 'Review and activate the exact Harness v4 transaction in Setup first.'
       : `Runtime dispatch is unavailable before the Host publishes a verified v4 session and map. `
         + `Current status: ${status}.`);
     this.name = 'RuntimeDispatchBlockedError';

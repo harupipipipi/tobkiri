@@ -67,7 +67,7 @@ export function DefaultsConsoleWindow() {
       {error && (
         <ErrorNotice
           className="rounded-none border-x-0 border-t-0 px-3 py-2 text-xs"
-          copyLabel="Defaults コンソールエラーをコピー"
+          copyLabel="Harness コンソールエラーをコピー"
           message={error}
         />
       )}

@@ -20,7 +20,7 @@
         "defaultspack",
         "tobkiri_conversation_orchestration_pack"
       ],
-      "display_name": "Tobkiri Defaults Base",
+      "display_name": "Tobkiri Harness Base",
       "pack_id": "defaults-basepack",
       "required_capabilities": [
         "commands",
@@ -1048,7 +1048,7 @@
     }
   ],
   "source_manifest_digests": {
-    "defaults-basepack": "sha256:c241124349dcc4116694f7de110673f19c119f0c20cc8b84dbada15c027270ab",
+    "defaults-basepack": "sha256:267443a7740a9afc381e41c655964b19283d6a5b65f7da94329861b78da16705",
     "defaultspack": "sha256:ab9c9b53b66d843d1acdffea092026a89a62d06b8c876975573da18737ee6633",
     "rumi_ai_gateway_pack": "sha256:13ca4bc0f80e84f5fe5eeffbf832cd044f624500df9e8698b37f1be2ea451ca9",
     "rumi_ai_modality_pack": "sha256:4f06d2fde6b857e98222567ca16e0384261b5870921b685d7dda5c96d24b36a2",

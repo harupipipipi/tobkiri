@@ -22,7 +22,7 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json",
-      "digest": "sha256:c241124349dcc4116694f7de110673f19c119f0c20cc8b84dbada15c027270ab"
+      "digest": "sha256:267443a7740a9afc381e41c655964b19283d6a5b65f7da94329861b78da16705"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/defaultspack.executables.v4.json",
@@ -1433,8 +1433,8 @@
   },
   "catalog": {
     "bundle_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
-    "bundle_digest": "sha256:9905c211f220f4427e2cf3a4224b67743e55d9fac563eacea98ed8eca906a123",
-    "catalog_revision": "sha256:edd0ae89de0526da003cce4da12e74127a9213b7f7cd41e6dcb524732eb457b9",
+    "bundle_digest": "sha256:2898688b7f79277e13a29a8bc74f9f298e55470b6231859a9392238c10622a82",
+    "catalog_revision": "sha256:1a167a0c126b029a950a8445c7512b3bc36f55baae433b3ca831d8aeb81044f3",
     "closure_digest": "sha256:565162c0e7c6878838f91b6c2ffe30b4c0b0180984c2b5e7218be8eec43c32f3"
   },
   "outputs": [
@@ -1444,8 +1444,8 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
-      "digest": "sha256:116a3525482b959cff24199f8a7996bf7d7362b2defb42d5d13850f28a5ab605"
+      "digest": "sha256:201e67b97c22bf99fa5ed463f3928d918a6dce9387ad3aa73965206a8d64d98d"
     }
   ],
-  "release_digest": "sha256:2c3083062b9d6ccf2aafc3569413333f62dc13062f17cba361ac23b25a7fc7ca"
+  "release_digest": "sha256:fb3fa3433bfe999aa09b06c0c5c5c22be6504331a82f4294c0fd11a358177cbe"
 }

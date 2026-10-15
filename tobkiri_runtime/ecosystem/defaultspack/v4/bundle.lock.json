@@ -4,7 +4,7 @@
     {
       "path": "packs/defaults-basepack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:c241124349dcc4116694f7de110673f19c119f0c20cc8b84dbada15c027270ab"
+      "digest": "sha256:267443a7740a9afc381e41c655964b19283d6a5b65f7da94329861b78da16705"
     },
     {
       "path": "packs/defaultspack.executables.v4.json",

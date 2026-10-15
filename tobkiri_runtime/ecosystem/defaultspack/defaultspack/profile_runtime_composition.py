@@ -342,7 +342,7 @@ class DefaultspackProfileRuntime:
         """Return Defaultspack's retired legacy setup response."""
 
         response: dict[str, Any] = {
-            "error": "Legacy setup-pack authority is retired; activate Defaults v4",
+            "error": "Legacy setup-pack authority is retired; activate Harness v4",
             "status_code": 410,
             "state": "legacy_setup_retired",
             "action": "install_defaults_profile",

@@ -80,7 +80,7 @@ export function PackVMAcceptanceOperation({
         <p className="text-sm leading-relaxed text-text-muted">
           This manually launches one signed QA-fixture isolation probe through the active QA
           Profile, Authority, Broker, and attested PackVM guest. It is never run automatically and
-          does not add filesystem, network, process, VSOCK, or key access to the Defaults Profile.
+          does not add filesystem, network, process, VSOCK, or key access to the Harness Profile.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">

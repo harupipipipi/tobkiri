@@ -115,7 +115,7 @@ test('the pre-fix frontend binding fixture reproduces the packaged GUI rejection
     structuredClone(preFixBindingFixture.binding);
   assert.throws(
     () => parseDefaultsSetupState(invalid),
-    /Defaults binding has unknown or missing fields/,
+    /Harness binding has unknown or missing fields/,
   );
 });
 
@@ -153,7 +153,7 @@ test('packaged setup parser rejects binding field drift and projection tampering
     .provider_authority_digest = `sha256:${'f'.repeat(64)}`;
   assert.throws(
     () => parseDefaultsSetupState(extra),
-    /Defaults binding has unknown or missing fields/,
+    /Harness binding has unknown or missing fields/,
   );
 
   const missing = state();
@@ -161,21 +161,21 @@ test('packaged setup parser rejects binding field drift and projection tampering
     .requested_scope_digest;
   assert.throws(
     () => parseDefaultsSetupState(missing),
-    /Defaults binding has unknown or missing fields/,
+    /Harness binding has unknown or missing fields/,
   );
 
   const invalidAuthority = state();
   invalidAuthority.recommended_default_profile.confirmation.bindings[0].authority_reference = 'authority-ref:test';
   assert.throws(
     () => parseDefaultsSetupState(invalidAuthority),
-    /Defaults binding authority reference is invalid/,
+    /Harness binding authority reference is invalid/,
   );
 
   const projection = state();
   projection.packs[0].display_name = 'Tampered Pack';
   assert.throws(
     () => parseDefaultsSetupState(projection),
-    /Defaults setup Pack projection does not match the Profile/,
+    /Harness setup Pack projection does not match the Profile/,
   );
 });
 
@@ -251,7 +251,7 @@ test('activation success requires the Host cold-restart handoff contract', () =>
   fixture.response.restart_required = false;
   assert.throws(
     () => parseDefaultsActivationResponse(fixture.response, fixture.confirmation),
-    /Unexpected Defaults restart contract/,
+    /Unexpected Harness restart contract/,
   );
 });
 
