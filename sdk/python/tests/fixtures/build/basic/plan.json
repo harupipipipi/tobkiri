@@ -1,0 +1,23 @@
+{
+  "format": "tobkiri.python-build/3",
+  "stub_wasi": true,
+  "wit": "wit/pack.wit",
+  "world": "python-pack",
+  "entrypoint": "app",
+  "sources": [
+    {
+      "source": "app.py",
+      "destination": "app.py",
+      "sha256": "dc21dc8c355d2ffc2dd4168abc9c7d499e0014e874dd1fb45cacf515290b21c8"
+    },
+    {
+      "source": "pack.wit",
+      "destination": "wit/pack.wit",
+      "sha256": "b3c2d591b43a6438a5ace13cb3caf9556b786e9b91d7bd23b31055efd3d1dc93"
+    }
+  ],
+  "allowed_imports": [],
+  "outer_exports": [
+    "ping"
+  ]
+}

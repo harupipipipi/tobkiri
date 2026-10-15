@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/resolved-plan.v1.schema.json",
+  "title": "Tobkiri ResolvedPlan v1 (frozen)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["plan_api_version", "profile_id", "profile_revision", "security_epoch", "base", "shell", "bindings", "plan_digest"],
+  "properties": {
+    "plan_api_version": {"const": "io.tobkiri.resolved-plan.v1"},
+    "profile_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+    "profile_revision": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "security_epoch": {"type": "integer", "minimum": 0},
+    "base": {"type": "object", "additionalProperties": false, "required": ["pack_id", "artifact_digest"], "properties": {"pack_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"}, "artifact_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "definition_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}}},
+    "shell": {"type": "object", "additionalProperties": false, "required": ["provider_id", "pack_id", "artifact_digest", "contract_id"], "properties": {"provider_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"}, "pack_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"}, "artifact_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "contract_id": {"const": "app.shell.v1"}, "definition_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}}},
+    "bindings": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["pack_id", "artifact_digest", "function_principal", "contract_id", "operation_id", "domain_kind"], "properties": {"pack_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"}, "artifact_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "function_principal": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/function-principal.v1.schema.json"}, "contract_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*\\.v[1-9][0-9]*$"}, "operation_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"}, "domain_kind": {"enum": ["wasm_component", "pack_vm", "dedicated_process", "remote"]}, "provider_authority_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "adapter_digests": {"type": "array", "items": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "uniqueItems": true}}}},
+    "plan_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

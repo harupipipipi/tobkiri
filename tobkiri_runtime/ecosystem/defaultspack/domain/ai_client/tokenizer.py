@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core_runtime.ai_input_tokenizer import (
+from ..ai_input.ai_input_tokenizer import (
     DEFAULT_TOKENIZER_ID,
     MISSING_TOKENIZER_WARNING,
     apply_tokenizer_to_ai_input_response,

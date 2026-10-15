@@ -1,0 +1,132 @@
+{
+ "provider_id": "deepseek",
+ "models": [
+  {
+   "model_id": "deepseek-flash",
+   "display_name": "DeepSeek V4.1 Flash",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 393216,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.15,
+    "output": 0.6,
+    "reasoning": 0.6,
+    "cache_read": 0.003
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek-v4-flash",
+   "display_name": "DeepSeek V4 Flash",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 393216,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.15,
+    "output": 0.6,
+    "reasoning": 0.6,
+    "cache_read": 0.003
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek-v4-flash-vision-exp",
+   "display_name": "DeepSeek V4 Flash Vision Exp",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 393216,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.15,
+    "output": 0.6,
+    "reasoning": 0.6,
+    "cache_read": 0.003
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek-v4-pro",
+   "display_name": "DeepSeek V4 Pro",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 393216,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.66,
+    "output": 1.98,
+    "reasoning": 1.98,
+    "cache_read": 0.022
+   },
+   "source": "models.dev"
+  }
+ ]
+}

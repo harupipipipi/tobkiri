@@ -1,0 +1,54 @@
+catalog_id: rumi.agent_services.capabilities
+version: rumi.catalog.v1
+description: Service-facing capability bundles for optional multi-agent workflows.
+local_first: true
+network_default: deny
+capabilities:
+  intake:
+    description: Capture goal, constraints, workspace, deliverable, risk, and approval posture.
+    requires: [chat_context, project_context]
+    provided_by: [defaultspack]
+    provided_by_projections: [tobkiri.profile-content.local-agent.v1]
+  planning:
+    description: Break work into trackable steps and assign role ownership.
+    requires: [planning_agent, todo_optional]
+    provided_by: [defaultspack, rumi_default_tools_pack]
+  deep_research:
+    description: Gather, evaluate, cite, and synthesize sources with uncertainty tracking.
+    requires: [local_file, memory, web_optional, browser_optional]
+    provided_by: [defaultspack, rumi_default_tools_pack]
+    provided_by_projections: [tobkiri.profile-content.local-agent.v1]
+  coding_workspace:
+    description: Inspect, edit, patch, test, diff, and report code changes in a local workspace.
+    requires: [local_file, terminal, git, approval]
+    provided_by: [defaultspack, rumi_default_tools_pack]
+    provided_by_projections: [tobkiri.profile-content.local-agent.v1]
+  browser_operator:
+    description: Operate an approved browser session for inspection, capture, and workflow completion.
+    requires: [browser_optional, computer_optional, approval]
+    provided_by: [rumi_default_tools_pack]
+  subagent_coordination:
+    description: Delegate bounded work packages and reconcile worker outputs.
+    requires: [subagent_optional, handoff_contract, transcript]
+    provided_by: [rumi_default_tools_pack]
+    provided_by_projections: [tobkiri.profile-content.agent-services.v1]
+  artifact_delivery:
+    description: Produce final markdown, docs, reports, patches, or structured artifacts.
+    requires: [artifact, local_file_optional, review]
+    provided_by: [defaultspack, rumi_default_tools_pack]
+    provided_by_projections: [tobkiri.profile-content.local-agent.v1]
+  safety_review:
+    description: Check scope, secrets, approvals, destructive actions, evidence, and test claims.
+    requires: [approval, diff_optional, source_cards_optional]
+    provided_by: [defaultspack]
+    provided_by_projections: [tobkiri.profile-content.agent-services.v1]
+guardrails:
+  no_embedded_secrets: true
+  vendor_neutral: true
+  approval_required_for:
+    - network_access
+    - file_write
+    - terminal_execution
+    - git_push
+    - browser_authenticated_actions
+    - destructive_actions

@@ -71,13 +71,6 @@ def create_skill_from_feedback(payload: dict[str, Any]) -> dict[str, Any]:
         )
     )
     get_extension_registry(force_reload=True)
-    try:
-        from domain.tool.registry import ToolRegistry
-
-        ToolRegistry._instance = None
-        ToolRegistry()
-    except Exception:
-        pass
     return {
         "skill_id": validated["id"],
         "manifest": validated,

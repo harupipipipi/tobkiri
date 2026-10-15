@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
+  "type": "object",
+  "additionalProperties": true,
+  "maxProperties": 128
+}

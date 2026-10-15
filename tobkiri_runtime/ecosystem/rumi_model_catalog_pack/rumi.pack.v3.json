@@ -1,0 +1,179 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "many",
+        "failure": "isolate",
+        "id": "rumi.resource.ai.model.catalog.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_model_catalog_pack",
+          "deprecated": false,
+          "introduced": "2.0.0",
+          "migration_id": "provider-catalog-v2",
+          "rollback_id": "provider-catalog-v2"
+        },
+        "provider_instance_id": "model-catalog.bundled",
+        "required_capabilities": [
+          "ai.model.catalog.read"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "public",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:14a9fb214d04dd4b511b512d0704408b2f6f30a2c78cec0586e70e845b0270c7",
+      "contract_id": "rumi.resource.ai.model.catalog.v1",
+      "id": "bundled-model-catalog",
+      "loader": "python",
+      "module": "ecosystem.rumi_model_catalog_pack.runtime.catalog",
+      "symbol": "create_model_catalog_operation"
+    }
+  ],
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.resource.ai.model.catalog.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Immutable verified provider and model descriptors without execution code.",
+        "display_name": "Rumi Model Catalog",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:69a919ad719694135d9ebc218efe53e7d1abf28e03530ed9ab34a7fc6d032081",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:5ce5790ac67808ae05541a0443235980eb69e724854e7bc93878edd4897efa16"
+          },
+          "catalog_revision": "sha256:23cd323554cef32f891827a9a6ddd9c75b7fd3c898d0b501c7e62b091a5001cd",
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "owner_surfaces": [
+            "provider_descriptors",
+            "model_descriptors"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "contains_credentials": false,
+            "declarative_only": false,
+            "execution_adapter_owner": false,
+            "imports_provider_code": false,
+            "live_inventory": {
+              "credential_forwarding": false,
+              "endpoint": "https://openrouter.ai/api/v1/models",
+              "fallback": "last_known_good_then_empty",
+              "provider": "openrouter",
+              "timeout_seconds_max": 5
+            }
+          }
+        },
+        "pack_id": "rumi_model_catalog_pack",
+        "pack_identity": "rumi:ecosystem/rumi_model_catalog_pack",
+        "provenance": {
+          "build_identity": "rumi_model_catalog_pack:2.0.0",
+          "content_hash": "sha256:78ff25b656f095d6539dd76c74f5bc40ec7e9203b4ea88b7cb252854dd571253",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "ai.model.catalog.read"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [
+          "catalog/providers+extensions/llm/providers"
+        ],
+        "version": "2.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_model_catalog_pack"
+    },
+    "rumi.model_catalog.boundary": {
+      "catalog_execution_versions_independent": true,
+      "provider_additions": false,
+      "provider_credentials": false,
+      "provider_execution_adapters": false
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_model_catalog_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:5ce5790ac67808ae05541a0443235980eb69e724854e7bc93878edd4897efa16"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.providers"
+    ],
+    "removal_wave": 10,
+    "rollback": "Restore the catalog resource directory to the pinned pre-Wave-5 owner revision.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Immutable verified provider and model descriptors without execution code.",
+    "display_name": "Rumi Model Catalog",
+    "id": "rumi.model_catalog",
+    "kind": "content",
+    "version": "2.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "ai.model.catalog.read"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_model_catalog_pack:2.0.0",
+    "content_hash": "sha256:78ff25b656f095d6539dd76c74f5bc40ec7e9203b4ea88b7cb252854dd571253",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [
+    {
+      "content_hash": "sha256:23cd323554cef32f891827a9a6ddd9c75b7fd3c898d0b501c7e62b091a5001cd",
+      "id": "catalog/providers+extensions/llm/providers",
+      "kind": "ai.model_catalog"
+    }
+  ],
+  "storage": [
+    {
+      "authoritative": true,
+      "export_import": false,
+      "namespace": "rumi.model_catalog.openrouter_inventory",
+      "retention": "latest last-known-good inventory until replacement or cache cleanup",
+      "schema_version": "1.0.0"
+    }
+  ]
+}

@@ -2,9 +2,27 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import type { ChatMessage } from "./api";
-import { isHumanOperatorCanvasPreview, toolPreviewsFromMessages } from "./toolPreviews";
+import { fileEditTimelineFromMessages, isHumanOperatorCanvasPreview, toolPreviewsFromMessages } from "./toolPreviews";
 
 const PNG_DATA_URL = "data:image/png;base64,iVBORw0KGgo=";
+
+function committedEditReceipt(overrides: Record<string, unknown> = {}) {
+  return {
+    schema_version: 1, receipt_id: "file-edit:test-a", file_id: "file-a",
+    status: "committed", operation: "patch", profile_id: "profile-a",
+    workspace_id: "workspace-a", root_id: "root-a", frame_id: null,
+    path: "src/a.ts", previous_path: null, occurred_at_ms: 1000,
+    sequence: 1, version: "sha256:test-a",
+    stats: { status: "available", lines_added: 2, lines_deleted: 1 },
+    ...overrides,
+  };
+}
+
+function contractTarget(url: string): string {
+  const marker = "/api/contracts/defaultspack/";
+  if (!url.includes(marker)) return url;
+  return decodeURIComponent(url.slice(url.indexOf(marker) + marker.length));
+}
 
 function assistantMessage(patch: Partial<ChatMessage>): ChatMessage {
   return {
@@ -131,7 +149,7 @@ test("tool previews prefer conversation workspace artifact paths", () => {
   assert.equal(previews[0]?.data.type, "image");
   if (previews[0]?.data.type === "image") {
     assert.equal(previews[0].data.path, "artifacts/charts/revenue.png");
-    assert.match(previews[0].data.url, /path=artifacts%2Fcharts%2Frevenue\.png/);
+    assert.match(contractTarget(previews[0].data.url), /path=artifacts%2Fcharts%2Frevenue\.png/);
   }
 });
 
@@ -273,4 +291,100 @@ test("human operator canvas previews are detected from local session routes", ()
 
   assert.equal(previews.length, 1);
   assert.equal(isHumanOperatorCanvasPreview(previews[0]), true);
+});
+
+test("edit timeline rejects failed output, array results and pending saved logs", () => {
+  const receipt = committedEditReceipt();
+  for (const wrapper of [
+    { output: { is_error: true } },
+    { result: [{ is_error: true }] },
+    { status: "pending" },
+  ]) {
+    const saved = assistantMessage({ tool_logs: [{
+      tool_name: "coding_file_write", file_edit_receipt: receipt, ...wrapper,
+    }] });
+    const streamed = assistantMessage({ events: [{
+      type: "tool_call_completed", tool_name: "coding_file_write",
+      file_edit_receipt: receipt, ...wrapper,
+    }] });
+    assert.deepEqual(fileEditTimelineFromMessages([saved]), [], JSON.stringify(wrapper));
+    assert.deepEqual(fileEditTimelineFromMessages([streamed]), [], JSON.stringify(wrapper));
+  }
+});
+
+test("edit timeline rejects failure and unfinished flags through nested envelopes", () => {
+  const rejected = [
+    ...["failed", "denied", "error", "cancelled", "pending", "running",
+      "started", "queued", "in_progress", "pending_approval", "awaiting_approval",
+      "waiting_for_approval"].map((status) => ({ status })),
+    { is_error: true }, { isError: true }, { ok: false }, { success: false },
+    { error: true }, { failed: true }, { denied: true }, { cancelled: true },
+    { canceled: true }, { approval_required: true }, { requires_approval: true },
+    { phase: "tool_call_started" }, { state: "running" }, { outcome: "denied" },
+    { status: "ok", phase: "pending_approval" },
+  ];
+  for (const flag of rejected) {
+    const nested = { data: [{ result: [{ output: [{ widget: flag }] }] }] };
+    for (const wrapper of [flag, nested]) {
+      const message = assistantMessage({
+        tool_logs: [{ tool_name: "coding_file_patch", file_edit_receipt: committedEditReceipt(), ...wrapper }],
+        events: [{ type: "tool_call_completed", tool_name: "coding_file_patch",
+          file_edit_receipt: committedEditReceipt(), ...wrapper }],
+      });
+      assert.deepEqual(fileEditTimelineFromMessages([message]), [], JSON.stringify(wrapper));
+    }
+  }
+});
+
+test("edit timeline never derives confirmation from read tools, raw diffs or nested receipts", () => {
+  const raw = {
+    path: "src/a.ts", diff: "@@ -1 +1 @@\n-old\n+new",
+    lines_added: 1, lines_deleted: 1, file_edit_receipt: committedEditReceipt(),
+  };
+  const message = assistantMessage({
+    tool_logs: ["read", "list_modules", "coding_file_patch"].map((tool_name) => ({
+      tool_name, arguments: raw, result: { status: "ok", ...raw },
+    })),
+    events: [
+      { type: "tool_call_completed", tool_name: "coding_file_patch", result: raw },
+      { type: "tool_call_started", file_edit_receipt: committedEditReceipt() },
+      { type: "tool_call", phase: "tool_result", file_edit_receipt: committedEditReceipt() },
+      { type: "tool_call_completed", file_edit_receipt: committedEditReceipt({ operation: "read" }) },
+      { type: "tool_call_completed", file_edit_receipt: committedEditReceipt({ operation: "list_modules" }) },
+      { type: "tool_call_completed", file_edit_receipt: committedEditReceipt({ status: "pending" }) },
+      { type: "tool_call_completed", file_edit_receipt: committedEditReceipt({ status: "failed" }) },
+    ],
+  });
+  assert.deepEqual(fileEditTimelineFromMessages([message]), []);
+});
+
+test("edit timeline deduplicates saved and streamed receipts while discarding conflicts", () => {
+  const receipt = committedEditReceipt();
+  const message = assistantMessage({
+    tool_logs: [{ tool_name: "coding_file_write", file_edit_receipt: receipt }],
+    events: [{ type: "tool_call_completed", file_edit_receipt: receipt }],
+  });
+  assert.equal(fileEditTimelineFromMessages([message], "profile-a").length, 1);
+  const contradiction = assistantMessage({ events: [{ type: "tool_result",
+    file_edit_receipt: committedEditReceipt({ version: "sha256:changed" }),
+  }] });
+  assert.deepEqual(fileEditTimelineFromMessages([message, contradiction]), []);
+  assert.deepEqual(fileEditTimelineFromMessages([contradiction, message]), []);
+});
+
+test("edit timeline filters profile after conflict rejection and preserves workspace frame identity", () => {
+  const receipt = committedEditReceipt();
+  const foreign = committedEditReceipt({ receipt_id: "file-edit:foreign", profile_id: "other" });
+  const otherWorkspace = committedEditReceipt({ receipt_id: "file-edit:workspace", workspace_id: "other-workspace", root_id: "other-root", frame_id: "frame-a" });
+  const otherFrame = committedEditReceipt({ receipt_id: "file-edit:frame", frame_id: "frame-b" });
+  const message = assistantMessage({ tool_logs: [receipt, foreign, otherWorkspace, otherFrame].map((file_edit_receipt) => ({ file_edit_receipt })) });
+  const entries = fileEditTimelineFromMessages([message], "profile-a");
+  assert.equal(entries.length, 3);
+  assert.ok(entries.some((entry) => entry.workspaceId === "other-workspace" && entry.rootId === "other-root" && entry.frameId === "frame-a"));
+  assert.ok(entries.some((entry) => entry.frameId === "frame-b"));
+  assert.equal(fileEditTimelineFromMessages([message]).length, 4);
+  const conflictingForeign = assistantMessage({ tool_logs: [{ file_edit_receipt:
+    committedEditReceipt({ profile_id: "other" }),
+  }] });
+  assert.equal(fileEditTimelineFromMessages([message, conflictingForeign], "profile-a").length, 2);
 });

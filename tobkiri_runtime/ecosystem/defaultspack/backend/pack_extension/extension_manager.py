@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import shutil
 import time
@@ -493,6 +494,39 @@ class ExtensionManager:
         ):
             return self._metadata_mismatch_response()
 
+        builtin_pack_ids, external_pack_ids = self._partition_request_pack_ids(
+            request.detected_pack_ids
+        )
+        if external_pack_ids and builtin_pack_ids:
+            request.error = (
+                "mixed builtin and external pack requests are not supported"
+            )
+            request.reviewed_at = self._now_ts()
+            self._write_request(request)
+            return {"error": request.error, "status_code": 400}
+
+        if external_pack_ids:
+            admitted_ids, denial = self._admit_external_request_packs(
+                request, external_pack_ids
+            )
+            if denial is not None:
+                return denial
+            request.status = "applied"
+            request.reviewed_at = self._now_ts()
+            request.applied_at = request.reviewed_at
+            request.decision_notes = decision_notes
+            request.applied_pack_ids = admitted_ids
+            request.backup_paths = {}
+            request.error = None
+            self._write_request(request)
+            self._audit.append({
+                "action": "approve_request",
+                "request_id": request_id,
+                "reviewer": reviewer,
+                "applied_pack_ids": request.applied_pack_ids,
+            })
+            return request.to_dict()
+
         try:
             from core_runtime.pack_applier import PackApplier
 
@@ -530,6 +564,177 @@ class ExtensionManager:
             "applied_pack_ids": request.applied_pack_ids,
         })
         return request.to_dict()
+
+    @staticmethod
+    def _is_request_builtin_pack_id(pack_id: str) -> bool:
+        """Return True for Pack IDs kept on the bundled apply path.
+
+        Bundled means a Pack ID present in the generated v4 catalog or one
+        of the fixed core/local identifiers.  Everything else is external
+        and must pass the Host signed admission transaction instead of the
+        unsigned PackApplier write path.
+        """
+        normalized = str(pack_id or "").strip()
+        if not normalized:
+            return False
+        try:
+            from core_runtime.pack_boundary import load_pack_catalog
+
+            if normalized in load_pack_catalog():
+                return True
+        except Exception:
+            return False
+        try:
+            from core_runtime.paths import CORE_PACK_ID_PREFIX, LOCAL_PACK_ID
+
+            return (
+                normalized.startswith(CORE_PACK_ID_PREFIX)
+                or normalized == LOCAL_PACK_ID
+            )
+        except Exception:
+            return False
+
+    def _partition_request_pack_ids(
+        self,
+        detected_pack_ids: List[str],
+    ) -> tuple[List[str], List[str]]:
+        """Split detected Pack IDs into builtin and external groups."""
+        builtin: List[str] = []
+        external: List[str] = []
+        for pack_id in detected_pack_ids:
+            if self._is_request_builtin_pack_id(pack_id):
+                builtin.append(pack_id)
+            else:
+                external.append(pack_id)
+        return builtin, external
+
+    def _deny_external_request(
+        self,
+        request: ExtensionRequest,
+        detail: str,
+    ) -> Dict[str, Any]:
+        """Persist a structured denial for one external Pack admission."""
+        request.error = detail
+        request.reviewed_at = self._now_ts()
+        self._write_request(request)
+        self._audit.append({
+            "action": "approve_request_denied",
+            "request_id": request.request_id,
+            "detail": detail,
+        })
+        return {
+            "error": "external pack admission denied",
+            "detail": detail,
+            "status_code": 403,
+        }
+
+    def _external_pack_sources(
+        self,
+        request: ExtensionRequest,
+        external_pack_ids: List[str],
+    ) -> tuple[Dict[str, Path], Optional[Dict[str, Any]]]:
+        """Resolve the staged source directory for each external Pack ID."""
+        staging_dir = self._staging_dir_for(request.staging_id)
+        if staging_dir is None or not staging_dir.is_dir():
+            return {}, self._deny_external_request(
+                request, "staging directory is unavailable"
+            )
+        try:
+            meta, _digest = self._load_staging_meta(request.staging_id)
+        except (FileNotFoundError, ValueError) as exc:
+            return {}, self._deny_external_request(request, str(exc))
+        payload_dir = staging_dir / "payload"
+        try:
+            from core_runtime.pack_boundary import finite_children
+
+            top_dirs = list(
+                finite_children(payload_dir, directories_only=True)
+            )
+        except Exception as exc:
+            return {}, self._deny_external_request(request, str(exc))
+        if len(top_dirs) != 1:
+            return {}, self._deny_external_request(
+                request,
+                "expected 1 top-level dir in payload, "
+                f"found {len(top_dirs)}",
+            )
+        top_dir = top_dirs[0]
+        sources: Dict[str, Path] = {}
+        if bool(meta.get("is_multi_pack")):
+            packs_dir = top_dir / "packs"
+            if not packs_dir.is_dir():
+                return {}, self._deny_external_request(
+                    request, "multi-pack staging has no packs/ directory"
+                )
+            for pack_id in external_pack_ids:
+                pack_src = packs_dir / pack_id
+                if not pack_src.is_dir():
+                    return {}, self._deny_external_request(
+                        request, f"staged Pack directory missing: {pack_id}"
+                    )
+                sources[pack_id] = pack_src
+            return sources, None
+        if len(external_pack_ids) != 1:
+            return {}, self._deny_external_request(
+                request,
+                "single-pack staging must contain exactly one external Pack",
+            )
+        sources[external_pack_ids[0]] = top_dir
+        return sources, None
+
+    def _admit_external_request_packs(
+        self,
+        request: ExtensionRequest,
+        external_pack_ids: List[str],
+    ) -> tuple[List[str], Optional[Dict[str, Any]]]:
+        """Admit each staged external Pack into the signed Host catalog.
+
+        Returns ``(admitted_pack_ids, None)`` on success or
+        ``([], denial_payload)`` for a structured denial.  Unsigned Packs,
+        missing signatures, and missing Host install records all fail closed
+        without mutating ``ecosystem/``.
+        """
+        trust_store_value = os.environ.get(
+            "RUMI_PACK_PUBLISHER_TRUST_STORE", ""
+        ).strip()
+        if not trust_store_value:
+            return [], self._deny_external_request(
+                request,
+                "external Packs require a configured publisher trust store",
+            )
+        sources, denial = self._external_pack_sources(
+            request, external_pack_ids
+        )
+        if denial is not None:
+            return [], denial
+        try:
+            from core_runtime.external_pack_catalog_v4 import (
+                admit_signed_external_pack,
+            )
+        except Exception as exc:
+            return [], self._deny_external_request(
+                request, f"Host Pack admission is unavailable: {exc}"
+            )
+        trust_store_path = Path(trust_store_value).expanduser()
+        admitted: List[str] = []
+        for pack_id in external_pack_ids:
+            try:
+                entry = admit_signed_external_pack(
+                    sources[pack_id],
+                    trust_store_path=trust_store_path,
+                )
+            except Exception as exc:
+                return [], self._deny_external_request(
+                    request, f"{pack_id}: {exc}"
+                )
+            admitted_id = str(entry.get("pack_id") or "")
+            if admitted_id != pack_id:
+                return [], self._deny_external_request(
+                    request,
+                    "admitted Pack identity does not match the request",
+                )
+            admitted.append(admitted_id)
+        return admitted, None
 
     def reject_request(
         self,

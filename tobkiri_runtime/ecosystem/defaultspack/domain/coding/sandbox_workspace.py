@@ -329,7 +329,8 @@ def _validate_workspace_resolution(resolution: Any, context: dict[str, Any]) -> 
     if getattr(resolution, "workspace_id", None) and not bool(getattr(resolution, "trusted", False)):
         raise ValueError("workspace must be trusted before sandbox coding can stage it")
     record = getattr(resolution, "record", None)
-    metadata = record.get("metadata") if isinstance(record, dict) and isinstance(record.get("metadata"), dict) else {}
+    raw_metadata = record.get("metadata") if isinstance(record, dict) else None
+    metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
     owner = str(metadata.get("owner_profile_id") or metadata.get("profile_id") or "").strip()
     profile_id = _profile_id(context)
     if owner and profile_id and owner != profile_id:

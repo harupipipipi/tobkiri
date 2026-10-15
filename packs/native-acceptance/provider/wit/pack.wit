@@ -1,0 +1,13 @@
+package local:native-acceptance-provider@1.0.0;
+
+interface review {
+  use tobkiri:core/types@1.0.0.{error};
+  ping: func() -> string;
+  open-global: func() -> result<string, error>;
+}
+
+world pack {
+  include tobkiri:core/pack-minimal@1.0.0;
+  import tobkiri:core/storage@1.0.0;
+  export review;
+}

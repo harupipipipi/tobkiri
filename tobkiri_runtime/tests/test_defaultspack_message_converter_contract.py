@@ -84,30 +84,26 @@ def test_convert_to_standard_tools_and_unknown_contract():
 
 
 def test_defaults_and_defaultspack_message_converter_match():
-    from domain.chat.message_converter import convert_to_standard as defaultspack_convert
-
-    sys.path.insert(0, str(DEFAULTS_ROOT))
-    import importlib.util
+    from domain.chat.message_converter import convert_to_standard
 
     defaults_file = DEFAULTS_ROOT / "domain" / "chat" / "message_converter.py"
-    spec = importlib.util.spec_from_file_location("defaults_converter_contract", defaults_file)
-    module = importlib.util.module_from_spec(spec)
-    assert spec and spec.loader
-    spec.loader.exec_module(module)
-
+    assert not defaults_file.exists()
     messages = [{"role": "user", "content": [{"type": "text", "text": "hello"}]}]
-    assert module.convert_to_standard(messages) == defaultspack_convert(messages)
+    assert convert_to_standard(messages) == [{"role": "user", "content": "hello"}]
+
+    from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
+
+    assert_profile_resolver_requires_authority_snapshot()
 
 
 def test_defaults_chat_send_legacy_converter_still_works():
-    import importlib.util
+    from domain.chat.message_converter import convert_to_standard
 
-    defaults_file = DEFAULTS_ROOT / "domain" / "chat" / "message_converter.py"
-    spec = importlib.util.spec_from_file_location("defaults_converter_send_contract", defaults_file)
-    module = importlib.util.module_from_spec(spec)
-    assert spec and spec.loader
-    spec.loader.exec_module(module)
-
-    assert module.convert_to_standard([{"role": "assistant", "content": [{"type": "text", "text": "ok"}]}]) == [
+    assert not (DEFAULTS_ROOT / "domain" / "chat" / "message_converter.py").exists()
+    assert convert_to_standard([{"role": "assistant", "content": [{"type": "text", "text": "ok"}]}]) == [
         {"role": "assistant", "content": "ok"}
     ]
+
+    from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
+
+    assert_profile_resolver_requires_authority_snapshot()

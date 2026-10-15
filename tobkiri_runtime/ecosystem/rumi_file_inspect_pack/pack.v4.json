@@ -1,0 +1,154 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:d7ba27daf8c9fbb27eb003839ce102d5f68871dec5f1b3cd6ae1fde44edbbc55",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:122d1cc3bb7544137f2262a05b8e49cfeea2d9e65cef4de0fe99a379eb4ba416",
+      "kind": "executable",
+      "path": "runtime/inspect.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.file.inspect.v1",
+      "operations": [
+        "rumi_file_inspect_pack.file-inspect",
+        "rumi_file_inspect_pack.file-inspect.for-media"
+      ],
+      "revision_digest": "sha256:120000de7f447efd8b7973c23cf293a22ec144fe49d8a1eb08c9aea73d30345b"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:120000de7f447efd8b7973c23cf293a22ec144fe49d8a1eb08c9aea73d30345b",
+      "id": "rumi_file_inspect_pack.file-inspect.media",
+      "implementation_digest": "sha256:122d1cc3bb7544137f2262a05b8e49cfeea2d9e65cef4de0fe99a379eb4ba416",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_file_inspect_pack.file-inspect.for-media"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:120000de7f447efd8b7973c23cf293a22ec144fe49d8a1eb08c9aea73d30345b",
+      "id": "rumi_file_inspect_pack.file-inspect.service",
+      "implementation_digest": "sha256:122d1cc3bb7544137f2262a05b8e49cfeea2d9e65cef4de0fe99a379eb4ba416",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_file_inspect_pack.file-inspect"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:8cbdde6fcd20008c509c3b834585ebe6c82ab2e1f706902dae0facbd44ca7f15",
+    "contract_catalog_digest": "sha256:77a1d724b0ac0d931e742d5142c91c6ae7caf3fb8d4741f0daf1708850cabd05",
+    "source_identity": "sha256:4506a671324808d7e74d200e6fab22952b5e9d53132854bd2651d9345ca36204"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.file.inspect.v1",
+      "rumi:ecosystem/rumi_file_inspect_pack",
+      "rumi_file_inspect_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.service.file.inspect.v1",
+      "effect_ceiling": [
+        "capability:file.inspect",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_file_inspect_pack.file-inspect",
+      "owner": "rumi_file_inspect_pack",
+      "provider_id": "rumi_file_inspect_pack.file-inspect.service",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.service.file.inspect.v1",
+      "effect_ceiling": [
+        "capability:file.inspect",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_file_inspect_pack.file-inspect.for-media",
+      "owner": "rumi_file_inspect_pack",
+      "provider_id": "rumi_file_inspect_pack.file-inspect.media",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:8cbdde6fcd20008c509c3b834585ebe6c82ab2e1f706902dae0facbd44ca7f15",
+    "display_name": "Rumi File Inspect",
+    "id": "rumi_file_inspect_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:4506a671324808d7e74d200e6fab22952b5e9d53132854bd2651d9345ca36204",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:4506a671324808d7e74d200e6fab22952b5e9d53132854bd2651d9345ca36204",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_file_inspect_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.service.file.inspect.v1",
+      "operations": [
+        "rumi_file_inspect_pack.file-inspect.for-media"
+      ],
+      "owner": "rumi_file_inspect_pack",
+      "provider_id": "rumi_file_inspect_pack.file-inspect.media"
+    },
+    {
+      "contract_reference": "tobkiri.service.file.inspect.v1",
+      "operations": [
+        "rumi_file_inspect_pack.file-inspect"
+      ],
+      "owner": "rumi_file_inspect_pack",
+      "provider_id": "rumi_file_inspect_pack.file-inspect.service"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "file.inspect",
+      "workspace.metadata.read"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.workspace.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

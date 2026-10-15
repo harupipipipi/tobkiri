@@ -1,0 +1,43 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "rumi_media_analysis_adapter_pack",
+  "source_identity": "sha256:8ef17a5aa288c35bbf56edce0d6c9b800b5cad25876fa0ea1fff7cce0ad05caf",
+  "variants": [
+    {
+      "variant_id": "rumi_media_analysis_adapter_pack.media-analysis.adapter.python",
+      "function_id": "rumi_media_analysis_adapter_pack.media-analysis.adapter",
+      "implementation_path": "runtime/adapter.py",
+      "implementation_digest": "sha256:70ca9c2696d710018be89a1f8fa406e1185698ec623fbd7860e0bb70fdcd0897",
+      "execution_kind": "pack_vm",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-pack-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "sandbox.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.media.analysis.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:db0d8f22944459d426e2aca1ec98180000b2f2b4cc435097ede4c09b4d32ed93",
+          "operation_id": "rumi_media_analysis_adapter_pack.media-analysis",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "read",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    }
+  ],
+  "materialization_catalog_digest": "sha256:5db1ff817779c12b3453d780fd76850a2de6536b3e73c39986e7bbc8adb4c692",
+  "catalog_digest": "sha256:1d249943211cef7d9f0c61774ece4d2bd0e30ea37ca48362e048428c196c395d"
+}

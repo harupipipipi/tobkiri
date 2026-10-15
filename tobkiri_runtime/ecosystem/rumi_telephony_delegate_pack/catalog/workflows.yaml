@@ -85,7 +85,7 @@ workflows:
     - pii_classes_configured
     - review_state_not_blocked
     handoffs:
-    - rumi_local_agent_pack
+    - rumi_meeting_intelligence_pack
     - rumi_operations_company_pack
     execution: declarative_only
   - id: escalation_takeover

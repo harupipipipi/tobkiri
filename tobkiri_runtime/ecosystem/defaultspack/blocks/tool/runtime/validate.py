@@ -9,10 +9,6 @@ input_data:
     - handler_code: str
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from blocks._common import ok, error
 
@@ -26,7 +22,6 @@ def run(input_data, context):
     if tool_def is None or not isinstance(tool_def, dict):
         return error("tool_def (dict) is required", "MISSING_PARAM")
 
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
     from domain.tool.runtime_creator import RuntimeToolCreator
 
     creator = RuntimeToolCreator()

@@ -1,0 +1,17 @@
+{
+  "format": "tobkiri.original-python-recipe/2",
+  "gaps": [
+    "BUILD-01 full source/dependency/tool/native-closure pins unverified",
+    "BUILD-02 stage hook unconnected and receipt not produced",
+    "prototype receipt reader parent-fd/no-follow admission and complete-source inventory pending"
+  ],
+  "native_python": {
+    "path": null,
+    "sha256": null
+  },
+  "sdk_pin": "sdk34-pins.json",
+  "sdk_reuse_approved": true,
+  "stage_verifier_sha256": null,
+  "status": "pending",
+  "system_native_closure_verified": false
+}

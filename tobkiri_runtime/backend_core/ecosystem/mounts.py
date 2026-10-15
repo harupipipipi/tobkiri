@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 # モジュール基準ベースディレクトリ
+_BASE_DIR: Optional[Path]
 try:
     from core_runtime.paths import BASE_DIR as _BASE_DIR
 except ImportError:
@@ -56,19 +57,48 @@ class MountManager:
     
     def __init__(
         self,
-        config_path: str = None,
-        base_dir: str = None
+        config_path: Optional[str] = None,
+        base_dir: Optional[str] = None
     ):
         """
         Args:
             config_path: マウント設定ファイルのパス
             base_dir: 相対パスの基準ディレクトリ（省略時はカレントディレクトリ）
         """
+        configured_user_data = (
+            os.environ.get("TOBKIRI_USER_DATA")
+            or os.environ.get("RUMI_USER_DATA")
+        )
+        if base_dir is not None:
+            resolved_base_dir = Path(base_dir)
+        elif configured_user_data:
+            # The default relative mounts are ``./user_data/...``.  Resolve
+            # them next to the configured user-data root so desktop workers
+            # never fall back to the read-only bundled app directory.
+            resolved_base_dir = Path(configured_user_data).parent
+        else:
+            resolved_base_dir = _BASE_DIR if _BASE_DIR is not None else Path.cwd()
+
         if config_path is None:
-            _bd = Path(base_dir) if base_dir else (_BASE_DIR if _BASE_DIR is not None else Path.cwd())
-            config_path = str(_bd / "user_data" / "mounts.json")
+            mounts_root = (
+                Path(configured_user_data)
+                if configured_user_data
+                else resolved_base_dir / "user_data"
+            )
+            config_path = str(mounts_root / "mounts.json")
         self.config_path = Path(config_path)
-        self.base_dir = Path(base_dir) if base_dir else (_BASE_DIR if _BASE_DIR is not None else Path.cwd())
+        self.base_dir = resolved_base_dir
+        if configured_user_data:
+            user_data_root = Path(configured_user_data)
+            self._default_mounts = {
+                "data.user": str(user_data_root),
+                "data.settings": str(user_data_root / "settings"),
+                "data.cache": str(user_data_root / "cache"),
+                "data.chats": str(user_data_root / "chats"),
+                "data.shared": str(user_data_root / "shared"),
+            }
+        else:
+            self._default_mounts = dict(DEFAULT_MOUNTS)
         self._mounts: Dict[str, str] = {}
         self._lock = threading.Lock()
         
@@ -88,7 +118,7 @@ class MountManager:
                     self._mounts = {}
             
             # デフォルト値で補完
-            for key, default_path in DEFAULT_MOUNTS.items():
+            for key, default_path in self._default_mounts.items():
                 if key not in self._mounts:
                     self._mounts[key] = default_path
     
@@ -265,7 +295,10 @@ def get_mount_path(mount_point: str, ensure_exists: bool = True) -> Path:
     return get_mount_manager().get_path(mount_point, ensure_exists)
 
 
-def initialize_mounts(config_path: str = None, base_dir: str = None):
+def initialize_mounts(
+    config_path: Optional[str] = None,
+    base_dir: Optional[str] = None,
+) -> None:
     """
     マウントシステムを初期化
     

@@ -1,0 +1,88 @@
+{
+  "id": "moonshotai",
+  "provider_id": "moonshotai",
+  "category": "providers",
+  "kind": "llm_provider",
+  "version": "1",
+  "status": "stable",
+  "display_name": "Moonshot AI",
+  "entrypoints": {
+    "adapter": "../ai_client/providers/openai_compatible_provider.py",
+    "models": "models.json"
+  },
+  "security": {
+    "credential_required": true
+  },
+  "provider_metadata": {
+    "display_name": "Moonshot AI",
+    "kind": "cloud",
+    "env_vars": [
+      "MOONSHOT_API_KEY"
+    ],
+    "base_url_envs": [
+      "MOONSHOT_BASE_URL"
+    ],
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_base_url": "https://api.moonshot.ai/v1",
+    "default_model": "kimi-k2-0711-preview",
+    "default_model_for": {
+      "chat": "kimi-k2-0711-preview",
+      "coding": "kimi-k2-0711-preview",
+      "agent": "kimi-k2-0711-preview",
+      "legacy": "moonshot-v1-8k"
+    },
+    "catalog_features": [
+      "chat",
+      "streaming",
+      "tool_calls",
+      "reasoning",
+      "openai_compatible"
+    ]
+  },
+  "provider_manifest": {
+    "id": "moonshotai",
+    "category": "llm_provider",
+    "version": "1",
+    "display_name": "Moonshot AI",
+    "enabled": true,
+    "priority": 65,
+    "adapter": "openai_compatible",
+    "api_key_env": "MOONSHOT_API_KEY",
+    "base_url_env": "MOONSHOT_BASE_URL",
+    "credential_required": true,
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_base_url": "https://api.moonshot.ai/v1",
+    "default_model": "kimi-k2-0711-preview",
+    "default_model_for": {
+      "chat": "kimi-k2-0711-preview",
+      "coding": "kimi-k2-0711-preview",
+      "agent": "kimi-k2-0711-preview",
+      "legacy": "moonshot-v1-8k"
+    },
+    "config": {
+      "api_compatibility": "openai",
+      "model_sync": "fixed_allowlist",
+      "official_model_ids_need_refresh": true
+    }
+  },
+  "aliases": {
+    "provider_ids": [
+      "moonshotai"
+    ]
+  },
+  "compatibility": {
+    "legacy_ids": [
+      "moonshotai"
+    ]
+  },
+  "source_pack_id": "rumi_model_catalog_pack",
+  "catalog_features": [
+    "chat",
+    "streaming",
+    "tool_calls",
+    "reasoning",
+    "openai_compatible"
+  ]
+}

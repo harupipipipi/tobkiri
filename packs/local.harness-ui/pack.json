@@ -1,0 +1,99 @@
+{
+  "files": [
+    {
+      "path": "ui/app.js",
+      "sha256": "sha256:db9fe6c939c2b70ecdc6a143b363e108d35e0fa86a78c05c49015bdd1566c172",
+      "size": 3959
+    },
+    {
+      "path": "ui/float.js",
+      "sha256": "sha256:385b6813a8582024df10dba4cbb363042d57234848723b2c8bc2a77616735890",
+      "size": 1570
+    },
+    {
+      "path": "ui/index.html",
+      "sha256": "sha256:7dbb79adde795466a11c040b2627c08251074f4d391f44b0b15189342ec4a31c",
+      "size": 931
+    },
+    {
+      "path": "ui/ports.js",
+      "sha256": "sha256:0950b3311192a2bf4cf6f4a6630844aa879e2bf77731b0399ef590959e5e5de6",
+      "size": 5277
+    },
+    {
+      "path": "ui/style.css",
+      "sha256": "sha256:367d846d0e1709dbfd7f66d536857f41669c7866ad025bc9b34a3fd1c3bc21ba",
+      "size": 839
+    }
+  ],
+  "flows": [],
+  "format": "tobkiri.pack/1",
+  "id": "local.harness-ui",
+  "overlays": [],
+  "permissions": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 16,
+      "max_wall_ms": 300000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": []
+    },
+    "ports": [
+      "local.harness-chat.user-input@1.0",
+      "local.harness-chat.conversation-store@1.0"
+    ],
+    "proc": [],
+    "pty": false,
+    "secrets": [],
+    "storage": {
+      "private": false,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  },
+  "ports": {
+    "consumes": [
+      {
+        "optional": false,
+        "shape": "local.harness-chat.user-input",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.harness-chat.conversation-store",
+        "version": "1.0"
+      }
+    ],
+    "provides": [],
+    "untyped": []
+  },
+  "publisher_key": null,
+  "runtime": {
+    "kind": "data"
+  },
+  "shapes": [],
+  "stores": [],
+  "ui": {
+    "entry": "ui/index.html",
+    "ports_used": [
+      "local.harness-chat.user-input@1.0",
+      "local.harness-chat.conversation-store@1.0"
+    ]
+  },
+  "version": "0.1.0"
+}

@@ -1,0 +1,74 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.company.coordinator.v1",
+      "rumi.action.job.adapter.v1",
+      "rumi.resource.company.runtime.v1"
+    ],
+    "requires": [
+      "rumi.action.company.state.v1",
+      "rumi.action.company.work.v1",
+      "rumi.resource.company.v1",
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_company_state_store_pack": ">=1.0.0,<2.0.0",
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Contract-only Company routing, work dispatch, and supervision.",
+  "display_name": "Rumi Company Coordinator",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:fb1641f287580670150445f2aa9440fd0576bd9ffccecdc6e215f594c957f2dc",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:65d92f11294a5e5f3d580b70b02f1234b754e4ef4590e4c5ef6a5ce0c552da3f"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:65d92f11294a5e5f3d580b70b02f1234b754e4ef4590e4c5ef6a5ce0c552da3f"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "company_coordination_process_state"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_company_coordinator_pack",
+  "pack_identity": "rumi:ecosystem/rumi_company_coordinator_pack",
+  "provenance": {
+    "build_identity": "rumi_company_coordinator_pack:1.0.0",
+    "content_hash": "sha256:4c388794d59a96b5d239cca29c5575ed2d8fff515ca6ace72d9a6f96d22889f4",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "company.coordinate",
+    "company.runtime.observe",
+    "company.state.manage",
+    "company.state.read",
+    "company.work",
+    "host.authority.consume",
+    "job.adapter.invoke"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

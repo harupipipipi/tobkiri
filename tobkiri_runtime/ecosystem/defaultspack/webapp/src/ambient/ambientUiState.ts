@@ -85,22 +85,22 @@ export const ambientCopyJa = {
   states: {
     setupNeeded: {
       badge: "許可が必要",
-      headline: "Rumiでの利用許可が必要です",
+      headline: "Tobkiriでの利用許可が必要です",
       body: "許可後にMacのマイク・カメラを確認します",
-      primary: "Rumiで許可",
+      primary: "Tobkiriで許可",
       tone: "blue",
     },
     rumiPermissionNeeded: {
       badge: "許可が必要",
-      headline: "Rumiでの利用許可が必要です",
-      body: "入力の入口をRumiに許可します",
-      primary: "Rumiで許可",
+      headline: "Tobkiriでの利用許可が必要です",
+      body: "入力の入口をTobkiriに許可します",
+      primary: "Tobkiriで許可",
       tone: "blue",
     },
     osPermissionNeeded: {
       badge: "Mac許可が必要",
       headline: "Macのマイク/カメラ許可が必要です",
-      body: "Rumi側の許可は済んでいます",
+      body: "Tobkiri側の許可は済んでいます",
       primary: "マイク・カメラを許可",
       tone: "blue",
     },

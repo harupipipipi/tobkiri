@@ -36,9 +36,13 @@ def _pack_root() -> Path:
 
 
 def _secrets_dir(pack_root: Path | None = None) -> Path:
-    override = os.environ.get("RUMI_DEFAULTSPACK_SECRETS_DIR", "").strip()
-    if override:
-        return Path(override)
+    if pack_root is None:
+        configured_override = os.getenv("RUMI_DEFAULTSPACK_SECRETS_DIR", "").strip()
+        if configured_override:
+            return Path(configured_override).expanduser()
+        configured_user_data = os.getenv("RUMI_USER_DATA", "").strip()
+        if configured_user_data:
+            return Path(configured_user_data).expanduser() / "secrets"
     return (pack_root or _pack_root()) / "user_data" / "secrets"
 
 
@@ -93,9 +97,6 @@ def _token_id_from_key(key: str, provider_id: str) -> str:
 
 
 def _read_secret_value(key: str, caller_id: str, *, pack_root: Path | None = None) -> str:
-    env_value = os.environ.get(key, "").strip()
-    if env_value:
-        return env_value
     if not key:
         return ""
     try:

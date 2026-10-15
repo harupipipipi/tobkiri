@@ -1,0 +1,110 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:2b0f4ba95fcc33b62ed667257e1d0f8c28c4c0841fd461379055977162083515",
+  "pack_id": "rumi_model_evals_pack",
+  "source_identity": "sha256:48a947d62f69a656709a55e268e7aa13c967b6cbca3e4e7fc50b7cafadecd3b4",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_model_evals_pack.ai-eval.catalog",
+      "implementation_digest": "sha256:73cee4d7024199cbcc312fedc7012ac3614528bcbce79522a29c59861c38df4a",
+      "implementation_path": "runtime/evaluator.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.ai.eval.catalog.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_model_evals_pack.ai-eval-catalog",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:72ae0b474b2d3921166730606e706f096b5c397b01abad568793ea9c7841f307",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_model_evals_pack.ai-eval.catalog.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_model_evals_pack.ai-eval.plan",
+      "implementation_digest": "sha256:73cee4d7024199cbcc312fedc7012ac3614528bcbce79522a29c59861c38df4a",
+      "implementation_path": "runtime/evaluator.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.ai.eval.plan.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_model_evals_pack.ai-eval-plan",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:b692a7eef9ce8398dcba539527e68351f2e31028a772aaa878dea46067edd2d8",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_model_evals_pack.ai-eval.plan.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_model_evals_pack.ai-eval.score",
+      "implementation_digest": "sha256:73cee4d7024199cbcc312fedc7012ac3614528bcbce79522a29c59861c38df4a",
+      "implementation_path": "runtime/evaluator.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.ai.eval.score.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_model_evals_pack.ai-eval-score",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:e0cd0d25f867b0f5cb5697f06d8cddcce98d42c1c97e6311ee571b1b29fe18e5",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_model_evals_pack.ai-eval.score.python"
+    }
+  ]
+}

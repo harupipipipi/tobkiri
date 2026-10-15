@@ -43,7 +43,7 @@
       "Connector, agent service, and release packs keep their own routing and policy authority."
     ]
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Scheduling contracts should remain optional and must not become implicit automation, delivery, or approval authority."
   },

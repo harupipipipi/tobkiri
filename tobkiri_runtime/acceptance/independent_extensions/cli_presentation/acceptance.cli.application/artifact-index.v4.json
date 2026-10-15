@@ -1,0 +1,62 @@
+{
+  "artifact_set_digest": "sha256:5853d43f670fb908178356c33c40d4eb9ec9f6fe9c9f02030a500963b53e4975",
+  "artifacts": [
+    {
+      "digest": "sha256:39f8346ea95aa3cf52bae393490018207084d0871bdb0cca6995bbf93b36269d",
+      "path": "authoring-source.v1.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:04844a761354c46c9a7e81448bf097e3380e6cb2b9628789891d27000abe9eb4",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:61b47ca127918127b5d51cb2360b5e159a04fca29a530420d66e9659294aea50",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:94108bcd85fee0d7ad20f91dd4b36785708355b341effca926007a66caa48a75",
+      "path": "frontend/__main__.py",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:36ba96bea5984695d559f60ff00836bd759e324331b4b69f9e90aeafe02c01c1",
+      "path": "frontend/cli_frontend/__init__.py",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:763b4a29b1590ecfefb3f214609e0151141a15d6e91790ddf3343fde60f147b9",
+      "path": "frontend/cli_frontend/commands.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:c579ae8dc069cb4477a1c88efd15eb773deabf96198dbf3589c75c2e89f17669",
+      "path": "frontend/cli_frontend/frontend.py",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:61ca5a636ec3b4ef6f8bc48adab74cabc8819aa0ef781be5175634ccd017c933",
+      "path": "frontend_contract_map.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:d0d6345f645768295d468fc4e2f44a1c51c7f9c48a8346fd51d2972f17601c29",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:d3fbc18af71f7e6285560faa8ef82e93172d07ac8f117549706521efa0c32aaf",
+      "path": "runtime/application.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:489fb2bdf1e7160f849f8351bbbf081860eb2e0f1f1a72a783a10af4fa8fabda"
+  },
+  "pack_id": "acceptance.cli.application",
+  "source_identity": "sha256:39f0a822af3680aeaaa30de3010f93d9f48145ffb8e37c49f9e930c4b920d0e3"
+}

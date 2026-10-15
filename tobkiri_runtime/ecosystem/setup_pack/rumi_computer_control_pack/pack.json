@@ -43,7 +43,7 @@
       "agent_service_topology"
     ]
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Optional high-sensitivity control playbook pack; defaultspack remains the grant, approval, audit, and routing authority.",
     "promotes": []

@@ -1,0 +1,5 @@
+**/component.wasm
+**/*.build.json
+**/wit/deps/
+**/guest-wit/
+node_modules/

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import fixtures from "./templateToolPolicyMerge.fixtures.json";
+import fixtures from "./templateToolPolicyMerge.fixtures.json" with { type: "json" };
 import type { TemplateAiInput, TemplateToolPolicy } from "./api";
 import {
   materializedTemplateToolPolicySettings,

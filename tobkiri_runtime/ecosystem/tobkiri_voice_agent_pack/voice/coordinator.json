@@ -1,0 +1,14 @@
+{
+  "schema": "io.tobkiri.voice-coordinator.staged.v1",
+  "model_source": "active_conversation",
+  "decision_model_source": "optional_independent_setting",
+  "prompt": "prompts/voice_coordinator.system.md",
+  "tools": [
+    {
+      "id": "subagent",
+      "mode": "primary_for_substantial_tasks",
+      "authority": "existing_tobkiri_tool_policy"
+    }
+  ],
+  "status": "staged_unwired"
+}

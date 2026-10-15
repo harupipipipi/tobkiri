@@ -1,0 +1,76 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:23b1d69693c0daff3fa6602673c576576096c6caa80f0bd5672986089e266f8e",
+  "pack_id": "rumi_slack_connector_pack",
+  "source_identity": "sha256:bdfff37abee7af7cad6c1a51a7d3fcf236b78d81efbb7e56169a0de7a0257e44",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_slack_connector_pack.connector-oauth.slack",
+      "implementation_digest": "sha256:b9e67d4e981adc16de2e398fe6f0c9fe3e6ce2568a9a57fffb3c4384afdc41c6",
+      "implementation_path": "runtime/adapter.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.connector.oauth.provider.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_slack_connector_pack.slack-oauth-provider",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:fd2fee7c6509a7b989307a14d4b792d24a0297a7de284ee77047cfb176d63448",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_slack_connector_pack.connector-oauth.slack.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_slack_connector_pack.connector.slack",
+      "implementation_digest": "sha256:b9e67d4e981adc16de2e398fe6f0c9fe3e6ce2568a9a57fffb3c4384afdc41c6",
+      "implementation_path": "runtime/adapter.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.connector.adapter.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_slack_connector_pack.slack-adapter",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:638ef8248d9e0ec02c0bf335732bff3457ea32daeb5249ace4b3e71d89095320",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_slack_connector_pack.connector.slack.python"
+    }
+  ]
+}

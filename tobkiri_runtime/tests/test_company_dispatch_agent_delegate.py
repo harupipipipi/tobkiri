@@ -16,7 +16,7 @@ sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 def _isolate_provider_capability_catalog(monkeypatch):
     monkeypatch.setattr(
         "domain.company.run_dispatcher.get_model_capabilities",
-        lambda _model: {"supports_tool_calling": True},
+        lambda _model, **kwargs: {"supports_tool_calling": True},
     )
 
 
@@ -81,7 +81,27 @@ def test_task_status_from_running_and_completed_delegate_results():
     )
 
 
-def test_task_prompt_frames_employee_delegation_from_president_chat():
+def test_agent_tool_prefilter_skips_capability_lookup_without_snapshot(
+    monkeypatch,
+):
+    from domain.company import run_dispatcher
+
+    monkeypatch.setattr(
+        run_dispatcher,
+        "get_model_capabilities",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("ownerless capability lookup")
+        ),
+    )
+
+    tools = run_dispatcher._agent_tools_for_dispatch(
+        {"model": "runtime/model", "allowed_tools": ["coding_file_read"]}
+    )
+
+    assert tools == ["coding_file_read"]
+
+
+def test_task_prompt_frames_subagent_delegation_from_main_agent():
     from domain.company.run_dispatcher import _task_prompt
 
     prompt = _task_prompt(
@@ -97,10 +117,10 @@ def test_task_prompt_frames_employee_delegation_from_president_chat():
         {"agent_id": "research_specialist", "display_name": "Research Specialist"},
     )
 
-    assert "president in the main Rumi chat" in prompt
-    assert "does not perform specialist work directly" in prompt
+    assert "Main Agent in Tobkiri" in prompt
+    assert "coordinates Subagents" in prompt
     assert "Parent chat id: chat-main-1" in prompt
-    assert "Original president request" in prompt
+    assert "Original Main Agent request" in prompt
     assert "Company Workspace UI" not in prompt
 
 
@@ -114,7 +134,7 @@ def test_dispatch_prunes_tools_for_non_tool_calling_agent_model(monkeypatch, tmp
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_RUNTIME_DB_PATH", str(tmp_path / "company_runtime.db"))
     monkeypatch.setattr(
         "domain.company.run_dispatcher.get_model_capabilities",
-        lambda _model: {"supports_tool_calling": False},
+        lambda _model, **kwargs: {"supports_tool_calling": False},
     )
     CompanyStore._instance = None
     CompanyRuntimeStore._instance = None
@@ -142,7 +162,11 @@ def test_dispatch_prunes_tools_for_non_tool_calling_agent_model(monkeypatch, tmp
         seen["tools"] = envelope.tools
         return {"status": "ok", "delegate": {"execution_id": "run_456", "status": "completed"}, "result": {"status": "completed"}}
 
-    result = CompanyRunDispatcher(runtime_store=runtime_store, dispatcher=fake_dispatch).dispatch_task(
+    result = CompanyRunDispatcher(
+        runtime_store=runtime_store,
+        dispatcher=fake_dispatch,
+        model_settings={},
+    ).dispatch_task(
         company["id"],
         task["task_id"],
     )
@@ -153,6 +177,9 @@ def test_dispatch_prunes_tools_for_non_tool_calling_agent_model(monkeypatch, tmp
 
 
 def test_dispatch_persists_unconfigured_agent_model_error(monkeypatch, tmp_path):
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import (
+        FrontendSettingsStore,
+    )
     from domain.agent_runtime.run_store import AgentRunStore
     from domain.company.run_dispatcher import CompanyRunDispatcher
     from domain.company.runtime_store import CompanyRuntimeStore
@@ -162,9 +189,12 @@ def test_dispatch_persists_unconfigured_agent_model_error(monkeypatch, tmp_path)
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_STORE_PATH", str(tmp_path / "companies"))
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_RUNTIME_DB_PATH", str(tmp_path / "company_runtime.db"))
     monkeypatch.setenv("RUMI_DEFAULTSPACK_AGENT_RUNTIME_DIR", str(tmp_path / "agent_runtime"))
-    monkeypatch.setattr("domain.agent.engine.get_model_capabilities", lambda _model: {})
+    monkeypatch.setattr(
+        "domain.agent.engine.get_model_capabilities",
+        lambda _model, **kwargs: {},
+    )
 
-    def fake_complete(_self, _request):
+    def fake_complete(_gateway, _request):
         raise RuntimeError(
             "stub: provider is not configured. "
             "Configure a real or local AI provider before sending a message."
@@ -196,7 +226,10 @@ def test_dispatch_persists_unconfigured_agent_model_error(monkeypatch, tmp_path)
         target_agent_ids=["stub_worker"],
     )
 
-    result = CompanyRunDispatcher(runtime_store=runtime_store).dispatch_task(company["id"], task["task_id"])
+    result = CompanyRunDispatcher(
+        runtime_store=runtime_store,
+        settings_owner=FrontendSettingsStore(tmp_path / "frontend_settings.json"),
+    ).dispatch_task(company["id"], task["task_id"])
 
     assert result["task"]["status"] == "blocked"
     assert result["run_links"][0]["status"] == "error"

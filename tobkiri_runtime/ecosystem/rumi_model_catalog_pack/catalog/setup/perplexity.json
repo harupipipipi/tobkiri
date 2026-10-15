@@ -1,0 +1,124 @@
+{
+ "provider_id": "perplexity",
+ "models": [
+  {
+   "model_id": "sonar",
+   "display_name": "Sonar",
+   "type": "chat",
+   "context_window": 128000,
+   "max_output_tokens": 4096,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1,
+    "output": 1
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "sonar-deep-research",
+   "display_name": "Perplexity Sonar Deep Research",
+   "type": "reasoning",
+   "context_window": 128000,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 2,
+    "output": 8,
+    "reasoning": 3
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "sonar-pro",
+   "display_name": "Sonar Pro",
+   "type": "chat",
+   "context_window": 200000,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 3,
+    "output": 15
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "sonar-reasoning-pro",
+   "display_name": "Sonar Reasoning Pro",
+   "type": "reasoning",
+   "context_window": 128000,
+   "max_output_tokens": 4096,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 2,
+    "output": 8
+   },
+   "source": "models.dev"
+  }
+ ]
+}

@@ -44,6 +44,30 @@ def test_search_models_filters_by_capabilities():
     assert result["filters_applied"]["requires"]["vision"] is True
 
 
+def test_search_models_pages_entire_catalog_and_finds_exact_id():
+    from domain.ai_client.model_search import search_models
+
+    profiles = [_profile(f"openrouter/acme/model-{index:03d}") for index in range(628)]
+    found = []
+    for offset in range(0, 628, 50):
+        page = search_models(
+            {"provider_id": "openrouter", "max_results": 50, "offset": offset},
+            profiles=profiles,
+        )
+        found.extend(item["profile_id"] for item in page["models"])
+        assert page["total"] == 628
+        assert page["has_more"] is (offset + 50 < 628)
+        assert page["filters_applied"]["offset"] == offset
+
+    assert len(found) == len(set(found)) == 628
+    assert set(found) == {profile["profile_id"] for profile in profiles}
+    exact = search_models(
+        {"query": "openrouter/acme/model-627", "max_results": 50},
+        profiles=profiles,
+    )
+    assert exact["models"][0]["profile_id"] == "openrouter/acme/model-627"
+
+
 def test_search_models_matches_multi_word_queries_across_model_separators():
     from domain.ai_client.model_search import search_models
 
@@ -63,6 +87,31 @@ def test_search_models_matches_multi_word_queries_across_model_separators():
     assert [item["profile_id"] for item in result["models"]] == ["gitlawb-opengateway/mimo-v2-omni"]
 
 
+def test_search_models_maps_legacy_hy3_free_terms_to_current_live_profiles():
+    from domain.ai_client.model_search import search_models
+
+    profiles = [
+        _profile(
+            "openrouter/tencent/hy3",
+            display_name="Tencent: Hy3",
+            provider_display_name="OpenRouter",
+        ),
+        _profile(
+            "openrouter/tencent/hy3-preview",
+            display_name="Tencent: Hy3 preview",
+            provider_display_name="OpenRouter",
+        ),
+    ]
+
+    result = search_models({"query": "hy3 free", "max_results": 5}, profiles=profiles)
+
+    assert [item["profile_id"] for item in result["models"]] == [
+        "openrouter/tencent/hy3",
+        "openrouter/tencent/hy3-preview",
+    ]
+    assert all(not item["profile_id"].endswith(":free") for item in result["models"])
+
+
 def test_recommend_model_reports_reason_codes():
     from domain.ai_client.model_search import recommend_model
 
@@ -73,3 +122,102 @@ def test_recommend_model_reports_reason_codes():
 
     assert result["selected_model"]["profile_id"] == "google/gemini"
     assert "requires_vision" in result["reason_codes"]
+
+
+def test_profile_catalog_unions_live_openrouter_chat_and_reasoning_models(monkeypatch):
+    from ecosystem.defaultspack.backend.ai_client import provider_catalog
+    from domain.ai_client import model_search
+    from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
+
+    saved_profile = _profile("openrouter/acme/saved", configured=True)
+    live_models = [
+        {
+            "model_id": "openrouter/acme/atlas-reasoner",
+            "provider_model_id": "acme/atlas-reasoner",
+            "provider_id": "openrouter",
+            "display_name": "Atlas Reasoner",
+            "type": "reasoning",
+            "capabilities": ["chat", "text_input", "text_output", "thinking"],
+            "context_length": 262144,
+            "available": True,
+            "metadata": {"inventory_source": "openrouter_models_api"},
+        },
+        {
+            "model_id": "openrouter/acme/vector",
+            "provider_model_id": "acme/vector",
+            "provider_id": "openrouter",
+            "display_name": "Atlas Vector",
+            "type": "embedding",
+            "capabilities": ["text_input"],
+            "available": True,
+        },
+    ]
+    monkeypatch.setattr(provider_catalog, "list_profile_catalog", lambda: [saved_profile])
+    monkeypatch.setattr(
+        provider_catalog,
+        "list_model_catalog",
+        lambda provider="": live_models if provider == "openrouter" else [],
+    )
+    monkeypatch.setattr(ModelRuntimeSettingsService, "get_settings", lambda self: {})
+    monkeypatch.setattr(
+        ModelRuntimeSettingsService,
+        "runtime_defined_profiles",
+        lambda self, settings: [],
+    )
+
+    profiles = model_search._profile_catalog()
+    result = model_search.search_models(
+        {
+            "provider_id": "openrouter",
+            "requires": {"thinking": True},
+            "max_results": 10,
+        },
+        profiles=profiles,
+    )
+
+    assert [item["profile_id"] for item in result["models"]] == [
+        "openrouter/acme/atlas-reasoner"
+    ]
+    assert result["models"][0]["model_id"] == "acme/atlas-reasoner"
+    assert {profile["profile_id"] for profile in profiles} == {
+        "openrouter/acme/saved",
+        "openrouter/acme/atlas-reasoner",
+    }
+    assert "openrouter/acme/vector" not in {
+        profile["profile_id"] for profile in profiles
+    }
+
+
+def test_captured_catalog_snapshot_reaches_picker_without_ambient_owner(monkeypatch):
+    from ecosystem.defaultspack.backend.ai_client import provider_catalog
+    from domain.ai_client import model_search
+
+    def reject_ambient(_provider):
+        raise AssertionError("captured search must use its declared catalog edge")
+
+    monkeypatch.setattr(provider_catalog, "_selected_catalog_fallback", reject_ambient)
+    catalog_models = [
+        {
+            "model_id": f"openrouter/fixture/model-{index:03d}",
+            "provider_model_id": f"fixture/model-{index:03d}",
+            "provider_id": "openrouter",
+            "display_name": f"Fixture Model {index:03d}",
+            "type": "chat",
+            "capabilities": ["chat", "text_input", "text_output"],
+            "available": True,
+        }
+        for index in range(125)
+    ]
+    profiles = model_search.get_profile_catalog(
+        settings={}, registry_profiles=[], catalog_models=catalog_models,
+    )
+    selected_ids = []
+    for offset, count in ((0, 50), (50, 50), (100, 25)):
+        result = model_search.search_models(
+            {"provider_id": "openrouter", "max_results": 50, "offset": offset},
+            profiles=profiles,
+        )
+        assert result["total"] == 125
+        assert len(result["models"]) == count
+        selected_ids.extend(item["profile_id"] for item in result["models"])
+    assert len(selected_ids) == len(set(selected_ids)) == 125

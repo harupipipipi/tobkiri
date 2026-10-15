@@ -358,6 +358,7 @@ def configure_logging(
         formatter = StructuredFormatter(fmt_type=fmt.lower())
 
         # ハンドラを作成
+        handler: logging.Handler
         if output == "stderr":
             handler = logging.StreamHandler(sys.stderr)
         else:

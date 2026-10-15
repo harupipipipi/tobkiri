@@ -23,6 +23,9 @@ def default_chat_dir() -> Path:
     override = os.environ.get("RUMI_DEFAULTSPACK_CHAT_STORE_PATH")
     if override:
         return Path(override).parent
+    user_data = os.environ.get("RUMI_USER_DATA")
+    if user_data:
+        return Path(user_data) / "defaultspack" / "shared" / "chat"
     return _pack_root() / "user_data" / "shared" / "chat"
 
 
@@ -136,6 +139,7 @@ def normalize_request(value: Any) -> dict[str, Any] | None:
 
 
 def _requests_from_payload(payload: Any) -> list[dict[str, Any]]:
+    raw_requests: Any
     if isinstance(payload, list):
         raw_requests = payload
     elif isinstance(payload, dict):

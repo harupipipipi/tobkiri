@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-handover-previous-development-host"
+description = "Enables the handover_previous_development_host command without any pre-configured scope."
+commands.allow = ["handover_previous_development_host"]
+
+[[permission]]
+identifier = "deny-handover-previous-development-host"
+description = "Denies the handover_previous_development_host command without any pre-configured scope."
+commands.deny = ["handover_previous_development_host"]

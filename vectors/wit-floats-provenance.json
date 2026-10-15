@@ -1,0 +1,16 @@
+{
+  "authority": "Rust std format!(\"{value:e}\") at declared width, final opus-float-policy",
+  "cases": 1023,
+  "golden_sha256_hex": "c2678b5725ea844e80d0e42190f003f9a1af269aa2b01f0446bf566fae5e822a",
+  "reproduce": "cargo run --manifest-path packs/Cargo.toml --locked -p tobkiri-guest-sdk --example float_vectors",
+  "source": "sdk/js/tests/float-golden.json",
+  "sources": {
+    "packs/guest-sdk/examples/float_vectors.rs": {
+      "sha256_hex": "0c1c74fdf97623e61a70312d4d8e496e52e0fa2b1624754fd902a5d7de9eb912"
+    },
+    "packs/guest-sdk/src/lib.rs": {
+      "sha256_hex": "59e3157aada128e75e44044bba96d653deaa14dd132ba466453af6aa2aa50af7"
+    }
+  },
+  "test_only": true
+}

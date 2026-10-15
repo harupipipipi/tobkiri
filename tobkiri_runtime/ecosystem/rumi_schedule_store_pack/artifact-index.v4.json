@@ -1,0 +1,42 @@
+{
+  "artifact_set_digest": "sha256:dbe0ed2b076aab0cbbee30d57c73aceb662fc597aac0a66145439a89cd52daa0",
+  "artifacts": [
+    {
+      "digest": "sha256:5672d985156898da3d84e4ffbf4561435f5b0cd5aab7d8f0d704a2ff8a7bf1bf",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:370aca11f174fa2dad0e80fdc176f1fa4f46a4eff4cc3aa6a6df88cce07bf31b",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:197edf707d351da0e1e38e5685a81bb40e543bcbd53da8976b842e686971c5c8",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:3cf05bf2b77e7fd521dbdf2c9e4db1822146b1f98fd5ec955a18008b95d6791a",
+      "path": "runtime/calendar.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:a1e561a8329234a52dcb00ea0b2008426cd8f8298595a84aab5203dc553d1ecc",
+      "path": "runtime/recurrence.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:79f98169d720e7fc890f91f4e93ac6115d35b38de56698bf2a3dca2f1437e95b",
+      "path": "runtime/store.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:b636d79b12dce0cc1c19bee95653894593eb05bc15e907c7ce0820a1d2bd133e"
+  },
+  "pack_id": "rumi_schedule_store_pack",
+  "source_identity": "sha256:21228675072a5d8ccd35f1042df1a5d434c990bb02801f719da3469495236c43"
+}

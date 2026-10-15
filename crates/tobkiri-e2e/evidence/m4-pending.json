@@ -1,0 +1,56 @@
+{
+  "acceptance_complete": false,
+  "artifacts": {
+    "local.pi-adapter": {
+      "component_bytes": 369996,
+      "component_sha256": "sha256:e26d1ed78ec2f0cda3ae313ba85971b5f455634113e3d5f64a9d7e8c17c1b85c",
+      "manifest_document_sha256": "sha256:e7065bb06b6c7b6a0369aa17d3a674abc8c26b2e6a926cf7a9d2333b58f6d240"
+    },
+    "local.pi-example-hello": {
+      "component_bytes": 13117545,
+      "component_sha256": "sha256:d927c43a6aa7d5d2af9a895bd818d8d66388b596605275c62d68173c303d6150",
+      "manifest_document_sha256": "sha256:394ce26b0cf82d62938b9377142f7871fc1c328a07d0b87021d999bce4502990"
+    },
+    "local.pi-example-protected-paths": {
+      "component_bytes": 12156679,
+      "component_sha256": "sha256:ffe77d6fd08a99e3c553feb6b44972db929fd091fb1c7ba6a16cd15ff4c45b56",
+      "manifest_document_sha256": "sha256:6933308255955f0c030066b0ef800c692c3512f9ecbccdc692d92462d7e62c12"
+    },
+    "local.shell-policy-python": {
+      "component_bytes": 18434345,
+      "component_sha256": "sha256:f52c3750b7e6b88982a42b0d744236a3f1eb515a63fed85e353397a01163c853",
+      "manifest_document_sha256": "sha256:a9585457e83059b41801d69c1abe80b8473f9b4a0e851091187683cd73ea1ae5"
+    }
+  },
+  "format": "tobkiri.pending-parity-evidence/1",
+  "inventory_status": "all 837 legacy rows remain todo",
+  "legacy_deletion_authorized": false,
+  "pi": {
+    "commit": "b06c1f2cf1dea6af8748ddeee18c23587d2cb7c6",
+    "components_built": true,
+    "error": "interface or world pi-extension does not exist when pack.wit is parsed in isolation",
+    "full_Harness_tool_loop_and_protected_fs_effect_parity": "pending",
+    "native_JS_diagnostics": "passed; does not establish wasm parity",
+    "original_sha256": {
+      "hello.ts": "0aa4e9800c2526914d4c1edb00b2cfa9bd9dd6da5218289994cccd5f5bfa4934",
+      "protected-paths.ts": "9ca66b1f3b1b9a61cc5ddc660f92cca2ea66c4264a1bdb6b00e0da5844399fe2"
+    },
+    "original_sources_unchanged": true,
+    "runtime_replay_exit_code": 101,
+    "runtime_replay_status": "failed while validating adapter WIT before example execution"
+  },
+  "python": {
+    "actual_exports": [
+      "exports",
+      "local:shell-policy-python/policy@1.0.0",
+      "tobkiri:core/lifecycle@1.0.0"
+    ],
+    "component_built": true,
+    "error": "compiler private exports interface is not a declared Pack port",
+    "frozen_cases": 91,
+    "full_mediator_and_SQL_DBAPI_parity": "pending",
+    "projection_diagnostic": "Deleting the compiler export section failed validation with unknown instance 7; this invalid candidate was never installed",
+    "replay_exit_code": 101,
+    "replay_status": "failed during ABI validation before case execution"
+  }
+}

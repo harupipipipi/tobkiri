@@ -130,6 +130,7 @@ steps:
       vision_bridge_result: "{{vision_bridge_result}}"
       tools: "{{permitted_tools.tools}}"
       route_model: "{{route_model}}"
+      params: "{{input.params}}"
     output: ai_request
 
   - id: call_ai

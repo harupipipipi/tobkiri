@@ -1,0 +1,7 @@
+{
+  "commit": "b06c1f2cf1dea6af8748ddeee18c23587d2cb7c6",
+  "path": "packages/coding-agent/examples/extensions/hello.ts",
+  "repository": "https://github.com/badlogic/pi-mono",
+  "sha256": "0aa4e9800c2526914d4c1edb00b2cfa9bd9dd6da5218289994cccd5f5bfa4934",
+  "stored_path": "upstream/hello.ts"
+}

@@ -1,0 +1,37 @@
+{
+  "text": "Read @github",
+  "frontendItems": [
+    {
+      "id": "github.search_code",
+      "label": "Search Code",
+      "ui": {
+        "group_id": "github",
+        "service_id": "github"
+      }
+    },
+    {
+      "id": "github.read_issue",
+      "label": "Read Issue",
+      "ui": {
+        "group_id": "github",
+        "service_id": "github"
+      }
+    }
+  ],
+  "request": {
+    "mode": "manual",
+    "include": [
+      {
+        "kind": "tool",
+        "id": "github.search_code"
+      },
+      {
+        "kind": "tool",
+        "id": "github.read_issue"
+      }
+    ],
+    "exclude": [],
+    "scope": "turn",
+    "must_use": true
+  }
+}

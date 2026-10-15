@@ -182,23 +182,35 @@ class TestDefaultspackAiOauth(unittest.TestCase):
         self.assertFalse(started["success"])
         self.assertEqual(started["error"], "oauth client config is not saved")
 
-    def test_cloudflare_oauth_start_uses_env_client_and_manifest_endpoint(self):
-        from domain.ai_client.oauth_store import provider_oauth_status, start_provider_oauth
+    def test_cloudflare_oauth_start_uses_saved_client_and_manifest_endpoint(self):
+        from domain.ai_client.oauth_store import (
+            provider_oauth_status,
+            save_provider_oauth_client_config,
+            start_provider_oauth,
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             pack_root = Path(tmpdir)
-            (pack_root / ".env").write_text(
-                "\n".join(
-                    [
-                        "RUMI_CLOUDFLARE_OAUTH_CLIENT_ID=cloudflare-client-id",
-                        "RUMI_CLOUDFLARE_OAUTH_CLIENT_SECRET=cloudflare-client-secret",
-                        "RUMI_CLOUDFLARE_OAUTH_SCOPES=account:read user:read",
-                        "RUMI_CLOUDFLARE_OAUTH_REDIRECT_URI=http://127.0.0.1:8766/api/ai/oauth/cloudflare/callback",
-                    ]
-                ),
-                encoding="utf-8",
-            )
-            with patch.dict(os.environ, {}, clear=True):
+            secrets_dir = pack_root / "user_data" / "secrets"
+            with patch.dict(
+                os.environ,
+                {"RUMI_DEFAULTSPACK_SECRETS_DIR": str(secrets_dir)},
+                clear=True,
+            ):
+                saved = save_provider_oauth_client_config(
+                    "cloudflare",
+                    json.dumps(
+                        {
+                            "client_id": "cloudflare-client-id",
+                            "client_secret": "cloudflare-client-secret",
+                            "scopes": ["account:read", "user:read"],
+                            "redirect_uris": [
+                                "http://127.0.0.1:8766/api/ai/oauth/cloudflare/callback"
+                            ],
+                        }
+                    ),
+                    pack_root=pack_root,
+                )
                 status = provider_oauth_status("cloudflare", pack_root=pack_root)
                 started = start_provider_oauth(
                     "cloudflare",
@@ -206,11 +218,12 @@ class TestDefaultspackAiOauth(unittest.TestCase):
                     pack_root=pack_root,
                 )
 
+        self.assertTrue(saved["success"], saved)
         self.assertTrue(status["supported"])
         self.assertTrue(status["backend_supported"])
         self.assertTrue(status["client_configured"])
-        self.assertEqual(status["client_source"], "env")
-        self.assertFalse(status["client_can_clear"])
+        self.assertEqual(status["client_source"], "secret_store")
+        self.assertTrue(status["client_can_clear"])
         self.assertTrue(status["connect_enabled"])
         self.assertEqual(status["connection_status"], "not_connected")
         self.assertTrue(started["success"], started)
@@ -224,49 +237,70 @@ class TestDefaultspackAiOauth(unittest.TestCase):
         self.assertNotIn("include_granted_scopes", params)
         self.assertNotIn("access_type", params)
 
-    def test_cloudflare_env_access_token_counts_as_connected(self):
-        from domain.ai_client.oauth_store import get_provider_access_token, provider_oauth_status
+    def test_cloudflare_saved_access_token_counts_as_connected(self):
+        from domain.ai_client.oauth_store import (
+            get_provider_access_token,
+            provider_oauth_status,
+            save_provider_oauth_connection,
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             pack_root = Path(tmpdir)
-            (pack_root / ".env").write_text(
-                "CLOUDFLARE_API_TOKEN=cloudflare-oauth-access\n",
-                encoding="utf-8",
-            )
-            with patch.dict(os.environ, {}, clear=True):
+            secrets_dir = pack_root / "user_data" / "secrets"
+            with patch.dict(
+                os.environ,
+                {"RUMI_DEFAULTSPACK_SECRETS_DIR": str(secrets_dir)},
+                clear=True,
+            ):
+                saved = save_provider_oauth_connection(
+                    "cloudflare",
+                    {
+                        "access_token": "cloudflare-oauth-access",
+                        "scope": "account:read",
+                    },
+                    pack_root=pack_root,
+                )
                 status = provider_oauth_status("cloudflare", pack_root=pack_root)
                 access_token = get_provider_access_token("cloudflare", pack_root=pack_root)
 
+        self.assertTrue(saved["success"], saved)
         self.assertTrue(status["supported"])
         self.assertTrue(status["connected"])
         self.assertEqual(status["connection_status"], "connected")
         self.assertEqual(status["capabilities"], ["cloudflare.account.read"])
         self.assertEqual(access_token, "cloudflare-oauth-access")
 
-    def test_cloudflare_env_access_token_can_request_pages_capabilities(self):
-        from domain.ai_client.oauth_store import provider_oauth_status
+    def test_cloudflare_saved_access_token_can_request_pages_capabilities(self):
+        from domain.ai_client.oauth_store import (
+            provider_oauth_status,
+            save_provider_oauth_connection,
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             pack_root = Path(tmpdir)
-            (pack_root / ".env").write_text(
-                "\n".join(
-                    [
-                        "CLOUDFLARE_API_TOKEN=cloudflare-oauth-access",
-                        "CLOUDFLARE_API_TOKEN_SCOPES=account:read pages:write",
-                        (
-                            "CLOUDFLARE_API_TOKEN_REQUESTED_CAPABILITIES="
-                            "cloudflare.account.read "
-                            "cloudflare.pages.project.write "
-                            "cloudflare.pages.deployment.write "
-                            "cloudflare.runner.deploy"
-                        ),
-                    ]
-                ),
-                encoding="utf-8",
-            )
-            with patch.dict(os.environ, {}, clear=True):
+            secrets_dir = pack_root / "user_data" / "secrets"
+            with patch.dict(
+                os.environ,
+                {"RUMI_DEFAULTSPACK_SECRETS_DIR": str(secrets_dir)},
+                clear=True,
+            ):
+                saved = save_provider_oauth_connection(
+                    "cloudflare",
+                    {
+                        "access_token": "cloudflare-oauth-access",
+                        "scope": "account:read pages:write",
+                        "requested_capabilities": [
+                            "cloudflare.account.read",
+                            "cloudflare.pages.project.write",
+                            "cloudflare.pages.deployment.write",
+                            "cloudflare.runner.deploy",
+                        ],
+                    },
+                    pack_root=pack_root,
+                )
                 status = provider_oauth_status("cloudflare", pack_root=pack_root)
 
+        self.assertTrue(saved["success"], saved)
         self.assertTrue(status["connected"])
         self.assertEqual(
             status["capabilities"],
@@ -285,7 +319,11 @@ class TestDefaultspackAiOauth(unittest.TestCase):
         self.assertNotIn("cloudflare-oauth-access", json.dumps(status, ensure_ascii=False))
 
     def test_cloudflare_oauth_finish_uses_cloudflare_token_and_userinfo_endpoints(self):
-        from domain.ai_client.oauth_store import finish_provider_oauth, start_provider_oauth
+        from domain.ai_client.oauth_store import (
+            finish_provider_oauth,
+            save_provider_oauth_client_config,
+            start_provider_oauth,
+        )
 
         captured: dict[str, str] = {}
 
@@ -309,17 +347,18 @@ class TestDefaultspackAiOauth(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             pack_root = Path(tmpdir)
             secrets_dir = pack_root / "user_data" / "secrets"
-            (pack_root / ".env").write_text(
-                "\n".join(
-                    [
-                        "RUMI_CLOUDFLARE_OAUTH_CLIENT_ID=cloudflare-client-id",
-                        "RUMI_CLOUDFLARE_OAUTH_CLIENT_SECRET=cloudflare-client-secret",
-                        "RUMI_CLOUDFLARE_OAUTH_SCOPES=account:read",
-                    ]
-                ),
-                encoding="utf-8",
-            )
             with patch.dict(os.environ, {"RUMI_DEFAULTSPACK_SECRETS_DIR": str(secrets_dir)}, clear=True):
+                saved = save_provider_oauth_client_config(
+                    "cloudflare",
+                    json.dumps(
+                        {
+                            "client_id": "cloudflare-client-id",
+                            "client_secret": "cloudflare-client-secret",
+                            "scopes": ["account:read"],
+                        }
+                    ),
+                    pack_root=pack_root,
+                )
                 started = start_provider_oauth(
                     "cloudflare",
                     request_headers={"Host": "127.0.0.1:8766"},
@@ -335,6 +374,7 @@ class TestDefaultspackAiOauth(unittest.TestCase):
                         pack_root=pack_root,
                     )
 
+        self.assertTrue(saved["success"], saved)
         self.assertTrue(result["success"], result)
         self.assertEqual(captured["post_url"], "https://dash.cloudflare.com/oauth2/token")
         self.assertEqual(captured["get_url"], "https://dash.cloudflare.com/oauth2/userinfo")
@@ -476,6 +516,57 @@ class TestDefaultspackAiOauth(unittest.TestCase):
         )
         self.assertEqual(imported["rejected_capabilities"], ["cloudflare.runner.deploy"])
         self.assertNotIn(raw_token, json.dumps(imported, ensure_ascii=False))
+
+    def test_connection_registry_reuses_and_invalidates_manifest_cache(self):
+        from core_runtime.connections.registry import ConnectionsRegistry
+        from domain.ai_client import oauth_store
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pack_root = Path(tmpdir)
+            providers_dir = pack_root / "config" / "settings_control_center" / "providers"
+            providers_dir.mkdir(parents=True)
+            manifest_path = providers_dir / "google.connection.json"
+            source_manifest = (
+                DEFAULTSPACK_ROOT
+                / "config"
+                / "settings_control_center"
+                / "providers"
+                / "google.connection.json"
+            )
+            manifest_path.write_text(
+                source_manifest.read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+
+            load_calls = 0
+            original_load_manifest_dir = ConnectionsRegistry.load_manifest_dir
+
+            def counted_load_manifest_dir(registry, root):
+                nonlocal load_calls
+                load_calls += 1
+                return original_load_manifest_dir(registry, root)
+
+            with patch.object(
+                ConnectionsRegistry,
+                "load_manifest_dir",
+                counted_load_manifest_dir,
+            ):
+                first = oauth_store._connection_registry(pack_root)
+                second = oauth_store._connection_registry(pack_root)
+                manifest_path.write_text(
+                    manifest_path.read_text(encoding="utf-8") + "\n",
+                    encoding="utf-8",
+                )
+                changed = oauth_store._connection_registry(pack_root)
+                manifest_path.unlink()
+                deleted = oauth_store._connection_registry(pack_root)
+
+        self.assertIs(first, second)
+        self.assertIsNot(first, changed)
+        self.assertIsNot(changed, deleted)
+        self.assertEqual(load_calls, 2)
+        with self.assertRaises(KeyError):
+            deleted.get("google")
 
     def test_connection_provider_manifest_extensibility_with_dummy_provider(self):
         from domain.ai_client.oauth_store import provider_oauth_statuses

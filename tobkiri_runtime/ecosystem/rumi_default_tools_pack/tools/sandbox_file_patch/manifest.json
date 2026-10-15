@@ -28,12 +28,13 @@
         "additionalProperties": false,
         "properties": {
           "workspace_id": {"type": "string"},
+          "sandbox_id": {"type": "string", "minLength": 1},
           "path": {"type": "string"},
           "old": {"type": "string"},
           "new": {"type": "string"},
           "include_paths": {"type": "array", "items": {"type": "string"}}
         },
-        "required": ["path", "old", "new"]
+        "required": ["sandbox_id", "path", "old", "new"]
       }
     },
     "execution": {"type": "rumi_function", "qualified_name": "defaultspack:sandbox_file_patch"}

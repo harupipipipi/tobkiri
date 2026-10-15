@@ -49,7 +49,7 @@ class KnowledgeManager:
         self._entries: Dict[str, KnowledgeEntry] = {}
         self._dir = Path(knowledge_dir) if knowledge_dir else None
 
-    def create(self, entry: KnowledgeEntry) -> KnowledgeEntry:
+    def create(self, entry: KnowledgeEntry) -> KnowledgeEntry | str:
         self._entries[entry.entry_id] = entry
         self._persist(entry)
         return entry
@@ -73,7 +73,7 @@ class KnowledgeManager:
     def delete(self, entry_id: str) -> bool:
         return self._entries.pop(entry_id, None) is not None
 
-    def retrieve_relevant(self, query: str) -> List[KnowledgeEntry]:
+    def _ranked_entries(self, query: str) -> List[KnowledgeEntry]:
         words = {word.lower() for word in query.split() if word}
 
         def score(entry: KnowledgeEntry) -> float:
@@ -84,6 +84,11 @@ class KnowledgeManager:
             return base + difflib.SequenceMatcher(None, query.lower(), haystack).ratio()
 
         return sorted(self._entries.values(), key=score, reverse=True)
+
+    def retrieve_relevant(
+        self, query: str
+    ) -> List[KnowledgeEntry] | List[Dict[str, Any]]:
+        return self._ranked_entries(query)
 
     def accumulate_error(self, error_pattern: str, solution: str, source: str) -> str:
         entry = KnowledgeEntry(
@@ -117,7 +122,7 @@ class KnowledgeStore(KnowledgeManager):
 
     def retrieve_relevant(self, query: str) -> List[Dict[str, Any]]:
         results = []
-        for entry in super().retrieve_relevant(query):
+        for entry in self._ranked_entries(query):
             payload = entry.to_dict()
             haystack = " ".join([entry.title, entry.content, " ".join(entry.tags)]).lower()
             payload["relevance_score"] = round(difflib.SequenceMatcher(None, query.lower(), haystack).ratio(), 6)
