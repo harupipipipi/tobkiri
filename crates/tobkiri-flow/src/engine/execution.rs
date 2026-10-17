@@ -367,12 +367,15 @@ impl RunState {
                             value
                         }
                         StepOutput::Stream(mut source) => {
+                            let mut cleanup = self.cleanup.stream();
                             let Some(route) = step.stream.as_ref() else {
                                 let error = StepError::new(
                                     "invalid",
                                     "provider stream requires an emit/collect route",
                                 );
-                                return Err(close_after_error(&mut source, error).await);
+                                return Err(
+                                    close_after_error(&mut source, &mut cleanup, error).await
+                                );
                             };
                             // Retain the actual batch owner through awaited
                             // cleanup if accepting an item or growing the
@@ -458,11 +461,12 @@ impl RunState {
                             }
                             .await;
                             if let Err(error) = execution {
-                                let error = close_after_error(&mut source, error).await;
+                                let error =
+                                    close_after_error(&mut source, &mut cleanup, error).await;
                                 drop(pending_batch);
                                 return Err(error);
                             }
-                            source.close().await?;
+                            cleanup.close(&mut source).await?;
                             drop(pending_batch);
                             let value = match collected {
                                 Some(collected) => collected.finish().map_err(allocation)?,
@@ -551,6 +555,7 @@ impl RunState {
                             .run_provided_flow(&cx.call, &cx.frame, &cx.node, resolved, input)
                             .await?
                     };
+                    let mut cleanup_receipt = self.cleanup.stream();
                     let execution = async {
                         let mut result = None;
                         loop {
@@ -600,8 +605,10 @@ impl RunState {
                         })?))
                     }
                     .await;
-                    let cleanup = stream.close().await;
+                    let cleanup = cleanup_receipt.close(&mut stream).await;
                     match (execution, cleanup) {
+                        (Err(error), _) if is_no_replay(&error) => Err(error),
+                        (_, Err(cleanup)) if is_no_replay(&cleanup) => Err(cleanup),
                         (Err(error), Err(cleanup)) => Err(StepError::new(
                             error.code,
                             format!(
@@ -921,9 +928,15 @@ fn allocation(error: AllocationError) -> StepError {
     )
 }
 
-async fn close_after_error(source: &mut CoreStream, error: StepError) -> StepError {
-    match source.close().await {
+async fn close_after_error(
+    source: &mut CoreStream,
+    cleanup: &mut StreamCleanup<'_>,
+    error: StepError,
+) -> StepError {
+    match cleanup.close(source).await {
         Ok(()) => error,
+        Err(_) if is_no_replay(&error) => error,
+        Err(cleanup) if is_no_replay(&cleanup) => cleanup,
         Err(cleanup) => StepError::new(
             error.code,
             format!(

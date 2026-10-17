@@ -54,12 +54,125 @@ pub struct RunHandle {
 /// Awaitable external result. Nested runs still signal terminal status through
 /// the same channel but deliberately do not create an unused byte buffer.
 pub struct RunResult {
-    receiver: oneshot::Receiver<Result<RunCompletion, StepError>>,
+    receiver: oneshot::Receiver<RunCompletionReceipt>,
 }
 
 pub(crate) enum RunCompletion {
     Buffer(CoreBuffer),
     Intermediate,
+}
+
+/// Sent only after the interpreter's actual execution-owned values are gone.
+/// An ordinary failed result is not evidence that stream cleanup failed.
+pub(crate) struct RunCompletionReceipt {
+    pub(crate) outcome: Result<RunCompletion, StepError>,
+    pub(crate) cleanup: Result<(), StepError>,
+}
+
+pub(crate) fn is_no_replay(error: &StepError) -> bool {
+    matches!(
+        error.code.as_str(),
+        "filesystem-commit-unknown" | "storage-sql-commit-unknown" | "storage-pending-data-move"
+    )
+}
+
+pub(crate) fn completion_result<T>(
+    outcome: Result<T, StepError>,
+    cleanup: Result<(), StepError>,
+) -> Result<T, StepError> {
+    match (outcome, cleanup) {
+        (Err(error), _) if is_no_replay(&error) => Err(error),
+        (_, Err(error)) => Err(error),
+        (outcome, Ok(())) => outcome,
+    }
+}
+
+// A single fixed-size slot in the existing preadmitted native task state. It
+// never retains a guest diagnostic, grows with the number of streams, or mints
+// native Store/Fs error authority from a string: these are existing facades.
+#[derive(Clone, Copy)]
+enum CleanupFailure {
+    Incomplete,
+    FilesystemCommitUnknown,
+    StorageCommitUnknown,
+    StoragePendingMove,
+}
+impl CleanupFailure {
+    fn from_error(error: &StepError) -> Self {
+        match error.code.as_str() {
+            "filesystem-commit-unknown" => Self::FilesystemCommitUnknown,
+            "storage-sql-commit-unknown" => Self::StorageCommitUnknown,
+            "storage-pending-data-move" => Self::StoragePendingMove,
+            _ => Self::Incomplete,
+        }
+    }
+    fn error(self) -> StepError {
+        match self {
+            Self::Incomplete => StepError::new("internal", "Flow cleanup completion is unknown"),
+            Self::FilesystemCommitUnknown => StepError::new(
+                "filesystem-commit-unknown",
+                "Filesystem mutation may have applied; do not replay",
+            ),
+            Self::StorageCommitUnknown => StepError::new(
+                "storage-sql-commit-unknown",
+                "Storage commit is unconfirmed; do not replay",
+            ),
+            Self::StoragePendingMove => StepError::new(
+                "storage-pending-data-move",
+                "Storage data move remains pending; do not replay",
+            ),
+        }
+    }
+}
+
+#[derive(Default)]
+struct CleanupReceipt(std::sync::Mutex<Option<CleanupFailure>>);
+impl CleanupReceipt {
+    fn record(&self, failure: CleanupFailure) {
+        let mut stored = self.0.lock().unwrap_or_else(|error| error.into_inner());
+        if stored.is_none() || matches!(*stored, Some(CleanupFailure::Incomplete)) {
+            *stored = Some(failure);
+        }
+    }
+    fn result(&self) -> Result<(), StepError> {
+        match self.0.lock() {
+            Ok(stored) => stored.map_or(Ok(()), |failure| Err(failure.error())),
+            Err(error) => Err(error
+                .into_inner()
+                .unwrap_or(CleanupFailure::Incomplete)
+                .error()),
+        }
+    }
+    fn stream(&self) -> StreamCleanup<'_> {
+        StreamCleanup {
+            receipt: self,
+            finished: false,
+        }
+    }
+}
+
+/// Created synchronously when the interpreter obtains a real source. Dropping
+/// its future before the exact close returns cannot certify physical cleanup.
+struct StreamCleanup<'a> {
+    receipt: &'a CleanupReceipt,
+    finished: bool,
+}
+impl StreamCleanup<'_> {
+    async fn close(&mut self, source: &mut CoreStream) -> Result<(), StepError> {
+        let result = source.close().await;
+        if let Err(error) = &result {
+            self.receipt.record(CleanupFailure::from_error(error));
+        }
+        self.finished = true;
+        result
+    }
+}
+impl Drop for StreamCleanup<'_> {
+    fn drop(&mut self) {
+        if !self.finished {
+            self.receipt.record(CleanupFailure::Incomplete);
+        }
+    }
 }
 
 /// Native-only fixed transport capacity for progress/status metadata and
@@ -123,7 +236,7 @@ impl AllocationBudget for NativeTransportBudget {
 }
 
 impl RunResult {
-    pub(crate) fn into_receiver(self) -> oneshot::Receiver<Result<RunCompletion, StepError>> {
+    pub(crate) fn into_receiver(self) -> oneshot::Receiver<RunCompletionReceipt> {
         self.receiver
     }
 }
@@ -138,12 +251,16 @@ impl Future for RunResult {
                 "internal",
                 "Flow completion channel closed",
             ))),
-            Poll::Ready(Ok(Err(error))) => Poll::Ready(Err(error)),
-            Poll::Ready(Ok(Ok(RunCompletion::Buffer(buffer)))) => Poll::Ready(Ok(buffer)),
-            Poll::Ready(Ok(Ok(RunCompletion::Intermediate))) => Poll::Ready(Err(StepError::new(
-                "invalid",
-                "an internal Flow completion has no external output buffer",
-            ))),
+            Poll::Ready(Ok(receipt)) => {
+                Poll::Ready(match completion_result(receipt.outcome, receipt.cleanup) {
+                    Err(error) => Err(error),
+                    Ok(RunCompletion::Buffer(buffer)) => Ok(buffer),
+                    Ok(RunCompletion::Intermediate) => Err(StepError::new(
+                        "invalid",
+                        "an internal Flow completion has no external output buffer",
+                    )),
+                })
+            }
         }
     }
 }
@@ -159,7 +276,7 @@ pub struct PreparedRun {
     flow: FlowSelection,
     environment: Environment,
     events: mpsc::Receiver<RunEvent>,
-    completion: oneshot::Sender<Result<RunCompletion, StepError>>,
+    completion: oneshot::Sender<RunCompletionReceipt>,
     result: RunResult,
     cancel: CancellationToken,
     final_output: bool,
@@ -257,6 +374,13 @@ impl PreparedRun {
                 // a FlowReturn allocation or lifecycle transition.
                 Ok::<_, StepError>((value, buffer, output_activation))
             }.await;
+            // ErrorPolicy may continue ordinary execution after a failed step,
+            // but cannot certify a successful Flow while real source cleanup
+            // is unknown. This check is synchronous and never clears a slot.
+            let outcome = match outcome {
+                Ok(value) => state.cleanup.result().map(|()| value),
+                Err(error) => Err(error),
+            };
             let terminal = match &outcome {
                 Ok((value, _, _)) => RunEventKind::Completed {
                     value: value.clone(),
@@ -271,6 +395,9 @@ impl PreparedRun {
             };
             // Record the final event even when the cancelled token is already set.
             let recorded = state.final_event(&flow_cx, terminal).await;
+            if let Err(error) = &recorded {
+                state.cleanup.record(CleanupFailure::from_error(error));
+            }
             let outcome = match outcome {
                 Ok((value, buffer, output_activation)) => {
                     let result = recorded.map(|()| buffer);
@@ -287,12 +414,13 @@ impl PreparedRun {
             // terminal event was selected. Release execution-owned values,
             // frames and native task/waiter custody before waking observers;
             // only the returned buffer or queued events transfer ownership.
+            let cleanup = state.cleanup.result();
             drop(environment);
             drop(flow_cx);
             drop(flow);
             drop(cx);
             drop(state);
-            let _ = completion.send(outcome);
+            let _ = completion.send(RunCompletionReceipt { outcome, cleanup });
         };
         std::panic::catch_unwind(AssertUnwindSafe(|| tokio::spawn(run)))
             .map_err(|_| StepError::new("unavailable", "Flow runtime is unavailable"))?;
@@ -544,6 +672,7 @@ impl FlowEngine {
                 sender,
             }),
             output_bytes: AtomicU64::new(0),
+            cleanup: CleanupReceipt::default(),
             limits,
             legacy_catalog: self.legacy_catalog.clone(),
             compiled: self.compiled.clone(),
@@ -580,6 +709,7 @@ struct RunState {
     _waiter_reservation: ControlReservation,
     bus: Mutex<EventBus>,
     output_bytes: AtomicU64,
+    cleanup: CleanupReceipt,
     limits: LoopLimits,
     legacy_catalog: BTreeMap<String, ControlHandle<ResolvedFlow>>,
     compiled: Option<Arc<CompiledProfile>>,

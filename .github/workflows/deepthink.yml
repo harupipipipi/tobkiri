@@ -113,6 +113,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           status=0
+          cargo test -p tobkiri-flow --locked || status=$?
           cargo test -p tobkiri-wasm --lib --locked core_imports::error_tests || status=$?
           cargo test -p tobkiri-wasm --lib --locked dispatch::tests || status=$?
           exit "$status"
@@ -181,6 +182,8 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           $taskStatus = 0
+          cargo test -p tobkiri-flow --locked
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
           cargo test -p tobkiri-wasm --lib --locked core_imports::error_tests
           if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
           cargo test -p tobkiri-wasm --lib --locked dispatch::tests

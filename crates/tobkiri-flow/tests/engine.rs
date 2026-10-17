@@ -1,3 +1,5 @@
+#[path = "engine/cleanup_receipts.rs"]
+mod cleanup_receipts;
 mod support;
 
 use std::{
@@ -299,11 +301,16 @@ struct Source {
     closed: Arc<AtomicUsize>,
     pending: bool,
     fail_close: bool,
+    pull_error: Option<&'static str>,
+    close_error: Option<&'static str>,
     close_gate: Option<Arc<StreamCloseGate>>,
 }
 #[async_trait]
 impl StreamSource for Source {
     async fn pull(&mut self, max: u32) -> Result<CoreValue, StepError> {
+        if let Some(code) = self.pull_error {
+            return Err(StepError::new(code, "fixture source failed"));
+        }
         if self.pending && self.position > 0 {
             std::future::pending::<()>().await;
         }
@@ -330,7 +337,9 @@ impl StreamSource for Source {
             gate.entered.notify_one();
             gate.release.notified().await;
         }
-        if self.fail_close {
+        if let Some(code) = self.close_error {
+            Err(StepError::new(code, "fixture real close failed"))
+        } else if self.fail_close {
             Err(StepError::new("internal", "fixture cleanup failed"))
         } else {
             Ok(())
@@ -355,6 +364,13 @@ impl PortInvoker for Fake {
         ));
         match op.as_str() {
             "fail" => Err(StepError::new("unavailable", "provider failed")),
+            "conflict" => Err(StepError::new("conflict", "provider refused")),
+            "cancelled" => Err(StepError::new("cancelled", "provider cancelled")),
+            "filesystem-commit-unknown"
+            | "storage-sql-commit-unknown"
+            | "storage-pending-data-move" => {
+                Err(StepError::new(op.as_str(), "fixture no-replay outcome"))
+            }
             "trap" => panic!("isolated guest simulation"),
             "increment" => {
                 if let Some(n) = args.as_i64() {
@@ -382,24 +398,38 @@ impl PortInvoker for Fake {
                 self.active.fetch_sub(1, Ordering::SeqCst);
                 Ok(StepOutput::Value(args))
             }
-            "stream" | "pending-stream" | "cleanup-fails" | "growth-stream" => {
-                Ok(StepOutput::Stream(CoreStream::new(Source {
-                    values: if op.as_str() == "growth-stream" {
-                        (0..9).map(|_| owned_json("0")).collect()
-                    } else {
-                        vec![
-                            owned_json("{\"kind\":\"delta\",\"text\":\"a\"}"),
-                            owned_json("{\"kind\":\"done\",\"text\":\"ab\"}"),
-                        ]
-                    },
-                    position: 0,
-                    cancelled: self.stream_cancelled.clone(),
-                    closed: self.stream_closed.clone(),
-                    pending: op.as_str() == "pending-stream",
-                    fail_close: op.as_str() == "cleanup-fails",
-                    close_gate: self.stream_close_gate.clone(),
-                })))
-            }
+            "stream"
+            | "pending-stream"
+            | "cleanup-fails"
+            | "growth-stream"
+            | "cleanup-unavailable"
+            | "cleanup-conflict"
+            | "cleanup-cancelled"
+            | "cleanup-sql-unknown"
+            | "cancelled-stream" => Ok(StepOutput::Stream(CoreStream::new(Source {
+                values: if op.as_str() == "growth-stream" {
+                    (0..9).map(|_| owned_json("0")).collect()
+                } else {
+                    vec![
+                        owned_json("{\"kind\":\"delta\",\"text\":\"a\"}"),
+                        owned_json("{\"kind\":\"done\",\"text\":\"ab\"}"),
+                    ]
+                },
+                position: 0,
+                cancelled: self.stream_cancelled.clone(),
+                closed: self.stream_closed.clone(),
+                pending: op.as_str() == "pending-stream",
+                fail_close: op.as_str() == "cleanup-fails",
+                pull_error: (op.as_str() == "cancelled-stream").then_some("cancelled"),
+                close_error: match op.as_str() {
+                    "cleanup-unavailable" => Some("unavailable"),
+                    "cleanup-conflict" => Some("conflict"),
+                    "cleanup-cancelled" => Some("cancelled"),
+                    "cleanup-sql-unknown" => Some("storage-sql-commit-unknown"),
+                    _ => None,
+                },
+                close_gate: self.stream_close_gate.clone(),
+            }))),
             _ => Ok(StepOutput::Value(args)),
         }
     }
@@ -938,7 +968,7 @@ async fn provider_trap_is_a_step_error_and_engine_runs_again() {
 }
 
 #[tokio::test]
-async fn cancellation_releases_pending_stream_and_records_reason() {
+async fn cancellation_records_reason_without_claiming_pending_stream_cleanup() {
     let fake = Arc::new(Fake::default());
     let mut generate = call("generate", "pending-stream", CanonValue::Null, None);
     generate.stream = Some(StreamRoute {
@@ -960,7 +990,8 @@ async fn cancellation_releases_pending_stream_and_records_reason() {
         }
     }
     let (result, events) = finish(Ok(run)).await;
-    assert_eq!(result.unwrap_err().code, "cancelled");
+    assert_eq!(result.unwrap_err().code, "internal");
+    assert_eq!(fake.stream_closed.load(Ordering::SeqCst), 0);
     assert!(fake.stream_cancelled.load(Ordering::SeqCst) > 0);
     assert!(
         events
@@ -970,7 +1001,7 @@ async fn cancellation_releases_pending_stream_and_records_reason() {
 }
 
 #[tokio::test]
-async fn cancelled_run_stream_close_retains_completion_after_abandoned_wait() {
+async fn cancelled_active_run_stream_preserves_unawaited_source_cleanup() {
     let fake = Arc::new(Fake::default());
     let journal = Arc::new(DelayedTerminalJournal::default());
     let cx = context();
@@ -1005,23 +1036,24 @@ async fn cancelled_run_stream_close_retains_completion_after_abandoned_wait() {
 
     let mut close = Box::pin(stream.close());
     assert!(futures::poll!(&mut close).is_pending());
-    drop(close);
     assert_eq!(control.usage().count(ControlKind::Task), 1);
     assert_eq!(journal.terminal_appends.load(Ordering::SeqCst), 0);
-
-    let mut close = Box::pin(stream.close());
-    assert!(futures::poll!(&mut close).is_pending());
     journal.release.notify_one();
-    tokio::time::timeout(Duration::from_secs(1), close)
+    let error = tokio::time::timeout(Duration::from_secs(1), close)
         .await
         .expect("same interpreter completed")
-        .unwrap();
+        .unwrap_err();
+    // The outer cancellation select dropped an active source. Its synchronous
+    // cancel request is not an awaited close receipt, even after task custody
+    // has really dropped. Preserve that independent cleanup uncertainty.
+    assert_eq!(error.code, "internal");
+    assert_eq!(fake.stream_closed.load(Ordering::SeqCst), 0);
     // The receipt must follow destruction of execution-owned frame and native
     // task/waiter custody, even while the closed stream observer remains alive.
     assert_eq!(control.usage().count(ControlKind::Task), 0);
     assert_eq!(control.usage().count(ControlKind::Waiter), 0);
     assert_eq!(control.usage().count(ControlKind::Frame), 0);
-    stream.close().await.unwrap();
+    assert_eq!(stream.close().await.unwrap_err(), error);
     assert_eq!(journal.terminal_appends.load(Ordering::SeqCst), 1);
     assert_eq!(fake.calls.lock().unwrap().len(), 1);
     assert!(fake.stream_cancelled.load(Ordering::SeqCst) > 0);
