@@ -67,16 +67,20 @@ jobs:
           cargo test -p tobkiri-wasm --lib --locked
           abi::staged_component_tests::real_staged_components_match_verified_wit_and_closed_core_abi
           -- --ignored --exact --nocapture
-      - name: Native store and supervised filesystem effects
-        run: |
-          cargo test -p tobkiri-store --lib --locked
-          cargo test -p tobkiri-wasm --lib --locked filesystem -- --nocapture
+      - name: Native store contracts
+        run: cargo test -p tobkiri-store --lib --locked
+      - name: Supervised filesystem effects
+        if: ${{ !cancelled() }}
+        run: cargo test -p tobkiri-wasm --lib --locked filesystem -- --nocapture
       - name: Bounded call trees, stream cleanup and native User entry
+        if: ${{ !cancelled() }}
         run: |
-          cargo test -p tobkiri-gate --lib --locked
-          cargo test -p tobkiri-flow --lib --locked stream::tests
-          cargo test -p tobkiri-core --lib --locked user_ports
-          cargo test -p tobkiri-cli --bin tobkiri --locked
+          status=0
+          cargo test -p tobkiri-gate --lib --locked || status=$?
+          cargo test -p tobkiri-flow --lib --locked stream::tests || status=$?
+          cargo test -p tobkiri-core --lib --locked user_ports || status=$?
+          cargo test -p tobkiri-cli --bin tobkiri --locked || status=$?
+          exit "$status"
 
   windows-storage:
     name: Native Windows storage and CLI input
@@ -96,4 +100,5 @@ jobs:
           cargo test -p tobkiri-store --locked --lib
           --test owner_windows --test windows_storage_names
       - name: CLI contracts and cancellable native input
+        if: ${{ !cancelled() }}
         run: cargo test -p tobkiri-cli --bin tobkiri --locked

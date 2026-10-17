@@ -1508,7 +1508,9 @@ mod cleanup_snapshot_tests {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(temp.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
         }
-        let root = DataRoot::open(temp.path().canonicalize().unwrap()).unwrap();
+        // Let DataRoot create its private child with the current user's owner
+        // descriptor; a runner's ordinary temp directory can have another owner.
+        let root = DataRoot::open(temp.path().canonicalize().unwrap().join("data")).unwrap();
         let profile = ProfileId::parse("prof_cleanup").unwrap();
         let approvals = Approvals::open(&root, &profile).unwrap();
         // Actual legacy Store reservation/dispatch/consume, rather than a mock
