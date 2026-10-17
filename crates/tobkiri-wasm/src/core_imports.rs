@@ -227,6 +227,31 @@ pub(crate) fn storage_failure_metadata(
     }
 }
 
+/// Preserve an existing CoreStream error facade, not native effect authority.
+/// Guest result decoding permits only the nine Core enum codes, so an arbitrary
+/// guest code/message cannot mint one of these internal StepError labels. Keep
+/// this separate from storage_failure_metadata, whose proof is a sealed native
+/// variant and is also used at effect/commit boundaries outside stream facades.
+fn facaded_no_replay_metadata(error: &anyhow::Error) -> Option<(&'static str, &'static str)> {
+    match error
+        .downcast_ref::<tobkiri_flow::StepError>()?
+        .code
+        .as_str()
+    {
+        "filesystem-commit-unknown" => Some((
+            "filesystem-commit-unknown",
+            "filesystem-commit-unknown: operation may have changed files; do not replay",
+        )),
+        "storage-sql-commit-unknown" => {
+            Some(("storage-sql-commit-unknown", STORAGE_COMMIT_UNKNOWN_MESSAGE))
+        }
+        "storage-pending-data-move" => {
+            Some(("storage-pending-data-move", STORAGE_PENDING_MOVE_MESSAGE))
+        }
+        _ => None,
+    }
+}
+
 /// Terminal/audit failure must not erase an already sealed no-replay result.
 /// Both results have already completed; this helper never retries an effect or
 /// manufactures an acknowledgement for a failed terminal delivery.
@@ -244,6 +269,16 @@ pub(crate) fn finish_effect_delivery<T>(
         {
             return result;
         }
+        // Preserve native sealed evidence before facade-only classification.
+        // This does not turn a StepError label into a native commit proof.
+        if storage_failure_metadata(&error).is_none()
+            && result
+                .as_ref()
+                .err()
+                .is_some_and(|error| facaded_no_replay_metadata(error).is_some())
+        {
+            return result;
+        }
         return Err(crate::filesystem::preserve_effect_error(cx, error));
     }
     result
@@ -258,7 +293,12 @@ fn error_result_or_trap(
 ) -> Result<Val> {
     match error_result(&error, owners) {
         Ok(value) => Ok(value),
-        Err(_) if storage_failure_metadata(&error).is_some() => Err(error),
+        Err(_)
+            if storage_failure_metadata(&error).is_some()
+                || facaded_no_replay_metadata(&error).is_some() =>
+        {
+            Err(error)
+        }
         Err(encoding) => Err(encoding),
     }
 }
@@ -269,8 +309,9 @@ pub(crate) fn error_result(
 ) -> Result<Val> {
     use wasmtime::component::{BudgetedBox, BudgetedString, BudgetedVec};
     let storage_failure = storage_failure_metadata(error);
+    let facaded_failure = facaded_no_replay_metadata(error);
     let network_failure = crate::network_diagnostics::failure_metadata(error);
-    let code = if storage_failure.is_some() {
+    let code = if storage_failure.is_some() || facaded_failure.is_some() {
         "internal"
     } else if network_failure.is_some() {
         "unavailable"
@@ -306,6 +347,7 @@ pub(crate) fn error_result(
         }
     };
     let message = storage_failure
+        .or(facaded_failure)
         .or(network_failure)
         .map_or("core operation failed", |(_, message)| message);
     let text = |value: &str| BudgetedString::copy_from(value, owners.component(), 0);
@@ -416,13 +458,20 @@ fn record_stream_cleanup(
     let result = result.map_err(|error| crate::filesystem::preserve_effect_error(cx, error));
     receipt.cleanup_done = result.is_ok();
     receipt.cleanup_error = result.err().map(|error| {
-        if matches!(
-            error.downcast_ref::<crate::filesystem::FsError>(),
-            Some(crate::filesystem::FsError::CommitUnknown)
-        ) {
-            crate::handles::HandleCleanupError::FilesystemCommitUnknown
-        } else {
-            crate::handles::HandleCleanupError::CompletionUnknown
+        use crate::handles::HandleCleanupError;
+        match storage_failure_metadata(&error).map(|metadata| metadata.0) {
+            Some("filesystem-commit-unknown") => {
+                return HandleCleanupError::FilesystemCommitUnknown;
+            }
+            Some("storage-sql-commit-unknown") => return HandleCleanupError::StorageCommitUnknown,
+            Some("storage-pending-data-move") => return HandleCleanupError::StoragePendingDataMove,
+            _ => (),
+        }
+        match facaded_no_replay_metadata(&error).map(|metadata| metadata.0) {
+            Some("filesystem-commit-unknown") => HandleCleanupError::FacadedFilesystemCommitUnknown,
+            Some("storage-sql-commit-unknown") => HandleCleanupError::FacadedStorageCommitUnknown,
+            Some("storage-pending-data-move") => HandleCleanupError::FacadedStoragePendingDataMove,
+            _ => HandleCleanupError::CompletionUnknown,
         }
     });
 }
@@ -437,6 +486,30 @@ fn stream_cleanup_result(receipt: &crate::handles::HandleCloseReceipt, cx: &Call
     let error = match receipt.cleanup_error {
         Some(crate::handles::HandleCleanupError::FilesystemCommitUnknown) => {
             crate::filesystem::FsError::CommitUnknown.into()
+        }
+        Some(crate::handles::HandleCleanupError::StorageCommitUnknown) => {
+            tobkiri_store::StoreError::CommitUnknown.into()
+        }
+        Some(crate::handles::HandleCleanupError::StoragePendingDataMove) => {
+            tobkiri_store::StoreError::PendingDataMove.into()
+        }
+        Some(crate::handles::HandleCleanupError::FacadedFilesystemCommitUnknown) => {
+            tobkiri_flow::StepError::new(
+                "filesystem-commit-unknown",
+                "filesystem-commit-unknown: operation may have changed files; do not replay",
+            )
+            .into()
+        }
+        Some(crate::handles::HandleCleanupError::FacadedStorageCommitUnknown) => {
+            tobkiri_flow::StepError::new(
+                "storage-sql-commit-unknown",
+                STORAGE_COMMIT_UNKNOWN_MESSAGE,
+            )
+            .into()
+        }
+        Some(crate::handles::HandleCleanupError::FacadedStoragePendingDataMove) => {
+            tobkiri_flow::StepError::new("storage-pending-data-move", STORAGE_PENDING_MOVE_MESSAGE)
+                .into()
         }
         Some(crate::handles::HandleCleanupError::CompletionUnknown) => {
             anyhow::anyhow!("stream cleanup completion unknown")
@@ -559,10 +632,11 @@ pub(crate) async fn pull_stream(
             // Release the provider on a malformed batch or trap, then record
             // exactly one final outcome for the original StreamOpen grant.
             let cleanup = release_stream_once(host, &entry).await;
-            finish_handle(
+            let delivered = finish_handle(
                 host,
                 &entry,
-                if let Some((code, _)) = storage_failure_metadata(error) {
+                if let Some((code, _)) = storage_failure_metadata(error)
+                    .or_else(|| facaded_no_replay_metadata(error)) {
                     Outcome::Failed { code: code.into() }
                 } else if std::time::Instant::now() >= entry.owner.deadline() {
                     cancellation_outcome(&entry, ExpiryReason::Deadline, false)
@@ -574,8 +648,12 @@ pub(crate) async fn pull_stream(
                     }
                 },
             )
-            .await?;
-            if cleanup.is_ok() {
+            .await;
+            let cleaned = cleanup.is_ok();
+            // Join both outcomes before returning either. A terminal write
+            // failure cannot hide a stronger cleanup/no-replay uncertainty.
+            finish_stream_cleanup(cleanup, delivered)?;
+            if cleaned {
                 host.shared
                     .handles
                     .lock()
@@ -639,12 +717,7 @@ pub(crate) async fn pull_guest_source(
                     .map_err(anyhow::Error::new)?,
             )
             .await?;
-        let [Val::Result(Ok(Some(value)))] = values.as_slice() else {
-            bail!("guest stream pull returned an error or invalid result")
-        };
-        let Val::List(values) = &**value else {
-            bail!("guest stream pull did not return a list")
-        };
+        let values = decode_guest_stream_events(version, values.as_slice())?;
         if values.len() > max as usize {
             bail!("guest stream exceeded its bounded batch")
         }
@@ -673,6 +746,92 @@ pub(crate) async fn pull_guest_source(
     .await;
     result.map_err(|error| crate::filesystem::preserve_effect_error(&entry.owner, error))
 }
+
+/// Only called for the exact Core stream-source export recorded during Pack
+/// admission, after verified WIT and the closed Core ABI have both passed.
+/// Arbitrary domain Result records never enter this decoder. A returned typed
+/// error is distinct from an export trap, malformed value or conversion error.
+fn decode_guest_stream_events<'a>(version: &str, results: &'a [Val]) -> Result<&'a [Val]> {
+    let invalid_result = || {
+        anyhow::Error::new(tobkiri_flow::StepError::new(
+            "internal",
+            "guest stream source returned an invalid result",
+        ))
+    };
+    if !matches!(version, "1.0.0" | "1.1.0") {
+        return Err(invalid_result());
+    }
+    match results {
+        [Val::Result(Ok(Some(value)))] => match &**value {
+            Val::List(events) => Ok(events.as_slice()),
+            _ => Err(invalid_result()),
+        },
+        [Val::Result(Err(Some(value)))] => {
+            let Val::Record(fields) = &**value else {
+                return Err(invalid_result());
+            };
+            let [(code_name, Val::Enum(code)), (message_name, Val::String(_))] = fields.as_slice()
+            else {
+                return Err(invalid_result());
+            };
+            if code_name.as_str() != "code" || message_name.as_str() != "message" {
+                return Err(invalid_result());
+            }
+            // Inspect only the validated enum. Do not clone/format the message.
+            Err(crate::dispatch::public_core_error_code(code.as_str())
+                .map(anyhow::Error::new)
+                .unwrap_or_else(invalid_result))
+        }
+        _ => Err(invalid_result()),
+    }
+}
+
+fn confirm_stream_cleanup(cleanup: Result<()>) -> Result<()> {
+    cleanup.map_err(|error| {
+        if storage_failure_metadata(&error).is_some()
+            || facaded_no_replay_metadata(&error).is_some()
+        {
+            error
+        } else {
+            tobkiri_flow::StepError::new("internal", "stream cleanup completion unknown").into()
+        }
+    })
+}
+
+fn finish_stream_cleanup(cleanup: Result<()>, delivery: Result<()>) -> Result<()> {
+    match (cleanup, delivery) {
+        (Err(error), _) if storage_failure_metadata(&error).is_some() => Err(error),
+        (_, Err(error)) if storage_failure_metadata(&error).is_some() => Err(error),
+        (Err(error), _) if facaded_no_replay_metadata(&error).is_some() => Err(error),
+        (_, Err(error)) if facaded_no_replay_metadata(&error).is_some() => Err(error),
+        (Err(error), _) => confirm_stream_cleanup(Err(error)),
+        (Ok(()), delivery) => delivery,
+    }
+}
+
+/// These StepErrors have already crossed the host's closed native/typed error
+/// facade. Preserve existing no-replay metadata; never derive it from a guest
+/// message or classify an unsuccessful cleanup as ordinary unavailability.
+pub(crate) fn stream_error_after_cleanup(
+    error: tobkiri_flow::StepError,
+    cleanup: Result<(), tobkiri_flow::StepError>,
+) -> tobkiri_flow::StepError {
+    let no_replay = |error: &tobkiri_flow::StepError| {
+        matches!(
+            error.code.as_str(),
+            "filesystem-commit-unknown"
+                | "storage-sql-commit-unknown"
+                | "storage-pending-data-move"
+        )
+    };
+    match cleanup {
+        Ok(()) => error,
+        Err(_) if no_replay(&error) => error,
+        Err(cleanup) if no_replay(&cleanup) => cleanup,
+        Err(_) => tobkiri_flow::StepError::new("internal", "stream cleanup completion unknown"),
+    }
+}
+
 async fn release_stream(host: &PackHost, entry: &crate::HandleEntry) -> Result<()> {
     let result = async {
         if let Some(source) = &entry.source {
@@ -1104,7 +1263,391 @@ mod error_tests {
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
     use tobkiri_canon::{AllocationBudget, AllocationError, AllocationRequest};
-    use wasmtime::component::{HostAllocationBudget, HostAllocationError, HostAllocationRequest};
+    use wasmtime::component::{
+        BudgetedBox, BudgetedString, BudgetedVec, HostAllocationBudget, HostAllocationError,
+        HostAllocationRequest,
+    };
+
+    fn source_error_value(code: &str, owners: &crate::AllocationOwners) -> Val {
+        let text = |value: &str| BudgetedString::copy_from(value, owners.component(), 0).unwrap();
+        let fields = BudgetedVec::from_iter(
+            [
+                (text("code"), Val::Enum(text(code))),
+                (
+                    text("message"),
+                    Val::String(text("PRIVATE GUEST BODY MUST NOT ESCAPE")),
+                ),
+            ]
+            .into_iter(),
+            owners.component(),
+            0,
+        )
+        .unwrap();
+        Val::Result(Err(Some(
+            BudgetedBox::new(Val::Record(fields), owners.component(), 0).unwrap(),
+        )))
+    }
+
+    fn packet_code(packet: &Val) -> &str {
+        let Val::Result(Err(Some(record))) = packet else {
+            panic!("a typed Core error packet is required")
+        };
+        let Val::Enum(code) = crate::effect_values::field(record, "code").unwrap() else {
+            panic!("a closed Core error enum is required")
+        };
+        code.as_str()
+    }
+
+    #[test]
+    fn guest_stream_source_preserves_closed_core_codes_and_masks_guest_messages() {
+        let meter = Arc::new(Meter(AtomicU64::new(0), 64 * 1024));
+        let owners = crate::AllocationOwners::from_budgets(meter.clone(), meter.clone());
+        for version in ["1.0.0", "1.1.0"] {
+            for code in [
+                "denied",
+                "approval-required",
+                "cancelled",
+                "not-found",
+                "invalid",
+                "limit-exceeded",
+                "conflict",
+                "unavailable",
+                "internal",
+            ] {
+                let value = source_error_value(code, &owners);
+                let error =
+                    decode_guest_stream_events(version, std::slice::from_ref(&value)).unwrap_err();
+                assert!(storage_failure_metadata(&error).is_none());
+                let error = crate::host::step_error(error);
+                assert_eq!(error.code, code);
+                assert!(!error.message.contains("PRIVATE"));
+                let packet = error_result(&error.into(), &owners).unwrap();
+                assert_eq!(packet_code(&packet), code);
+                let Val::Result(Err(Some(record))) = &packet else {
+                    unreachable!()
+                };
+                let message = crate::effect_values::text(
+                    crate::effect_values::field(record, "message").unwrap(),
+                )
+                .unwrap();
+                assert!(!message.contains("PRIVATE"));
+            }
+        }
+        assert_eq!(meter.0.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn guest_stream_source_rejects_wrong_version_unknown_code_and_malformed_results() {
+        let meter = Arc::new(Meter(AtomicU64::new(0), 64 * 1024));
+        let owners = crate::AllocationOwners::from_budgets(meter.clone(), meter.clone());
+        for (version, value) in [
+            ("1.0.1", source_error_value("unavailable", &owners)),
+            ("2.0.0", source_error_value("unavailable", &owners)),
+            ("1.0.0", source_error_value("guest-private-code", &owners)),
+            (
+                "1.0.0",
+                source_error_value("filesystem-commit-unknown", &owners),
+            ),
+            (
+                "1.0.0",
+                source_error_value("storage-sql-commit-unknown", &owners),
+            ),
+            (
+                "1.0.0",
+                source_error_value("storage-pending-data-move", &owners),
+            ),
+            ("1.0.0", Val::Result(Err(None))),
+            ("1.0.0", Val::Result(Ok(None))),
+            ("1.0.0", Val::Bool(false)),
+            (
+                "1.0.0",
+                Val::Result(Err(Some(
+                    BudgetedBox::new(Val::Bool(false), owners.component(), 0).unwrap(),
+                ))),
+            ),
+            (
+                "1.0.0",
+                Val::Result(Ok(Some(
+                    BudgetedBox::new(Val::U64(7), owners.component(), 0).unwrap(),
+                ))),
+            ),
+        ] {
+            let error =
+                decode_guest_stream_events(version, std::slice::from_ref(&value)).unwrap_err();
+            assert!(storage_failure_metadata(&error).is_none());
+            let error = crate::host::step_error(error);
+            assert_eq!(error.code, "internal");
+            assert!(!error.message.contains("PRIVATE"));
+            assert_eq!(
+                packet_code(&error_result(&error.into(), &owners).unwrap()),
+                "internal",
+            );
+        }
+        assert!(decode_guest_stream_events("1.0.0", &[]).is_err());
+        assert!(
+            decode_guest_stream_events("1.0.0", &[Val::Bool(false), Val::Bool(false)]).is_err()
+        );
+        assert_eq!(meter.0.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn guest_stream_source_requires_exact_error_fields_and_keeps_successful_eof() {
+        let meter = Arc::new(Meter(AtomicU64::new(0), 64 * 1024));
+        let owners = crate::AllocationOwners::from_budgets(meter.clone(), meter.clone());
+        let text = |value: &str| BudgetedString::copy_from(value, owners.component(), 0).unwrap();
+        for fields in [
+            vec![(text("code"), Val::Enum(text("unavailable")))],
+            vec![
+                (text("code"), Val::String(text("unavailable"))),
+                (text("message"), Val::String(text("PRIVATE"))),
+            ],
+            vec![
+                (text("message"), Val::String(text("PRIVATE"))),
+                (text("code"), Val::Enum(text("unavailable"))),
+            ],
+            vec![
+                (text("code"), Val::Enum(text("unavailable"))),
+                (text("message"), Val::Bool(false)),
+            ],
+            vec![
+                (text("code"), Val::Enum(text("unavailable"))),
+                (text("message"), Val::String(text("PRIVATE"))),
+                (text("extra"), Val::Bool(false)),
+            ],
+        ] {
+            let record = BudgetedVec::from_iter(fields.into_iter(), owners.component(), 0).unwrap();
+            let value = Val::Result(Err(Some(
+                BudgetedBox::new(Val::Record(record), owners.component(), 0).unwrap(),
+            )));
+            assert_eq!(
+                crate::host::step_error(
+                    decode_guest_stream_events("1.0.0", std::slice::from_ref(&value)).unwrap_err(),
+                )
+                .code,
+                "internal",
+            );
+        }
+        for version in ["1.0.0", "1.1.0"] {
+            let events = BudgetedVec::from_iter(std::iter::empty(), owners.component(), 0).unwrap();
+            let eof = Val::Result(Ok(Some(
+                BudgetedBox::new(Val::List(events), owners.component(), 0).unwrap(),
+            )));
+            assert!(
+                decode_guest_stream_events(version, std::slice::from_ref(&eof))
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        assert_eq!(meter.0.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn guest_stream_source_native_traps_and_conversion_faults_remain_internal() {
+        let meter = Arc::new(Meter(AtomicU64::new(0), 64 * 1024));
+        let owners = crate::AllocationOwners::from_budgets(meter.clone(), meter.clone());
+        for error in [
+            anyhow::Error::new(wasmtime::Trap::OutOfFuel),
+            anyhow::Error::new(HostAllocationError::Invalid),
+            anyhow::anyhow!("PRIVATE malformed result or native body"),
+        ] {
+            // export_call_owned returns these as Err before the typed-result
+            // decoder runs; normal host mapping must not gain a source code.
+            let error = crate::host::step_error(error);
+            assert_eq!(error.audit_code(), "internal");
+            assert_eq!(
+                packet_code(&error_result(&error.into(), &owners).unwrap()),
+                "internal",
+            );
+        }
+        assert_eq!(meter.0.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn guest_stream_source_cleanup_unknown_overrides_unavailable_without_guest_text() {
+        use tobkiri_flow::StepError;
+        let source = || StepError::new("unavailable", "provider reported unavailable");
+        let cleanup = || Err(StepError::new("unavailable", "PRIVATE cleanup body"));
+        assert_eq!(
+            stream_error_after_cleanup(source(), Ok(())).code,
+            "unavailable"
+        );
+        let unknown = stream_error_after_cleanup(source(), cleanup());
+        assert_eq!(unknown.code, "internal");
+        assert_eq!(unknown.message, "stream cleanup completion unknown");
+        let native =
+            confirm_stream_cleanup(Err(anyhow::anyhow!("PRIVATE cleanup body"))).unwrap_err();
+        assert_eq!(crate::host::step_error(native), unknown);
+        let native = finish_stream_cleanup(
+            Err(anyhow::anyhow!("PRIVATE incomplete cleanup")),
+            Err(tobkiri_gate::GateError::Denied("PRIVATE terminal failure".into()).into()),
+        )
+        .unwrap_err();
+        assert_eq!(crate::host::step_error(native), unknown);
+        for code in [
+            "filesystem-commit-unknown",
+            "storage-sql-commit-unknown",
+            "storage-pending-data-move",
+        ] {
+            let original = StepError::new(code, "fixed native no-replay metadata");
+            assert_eq!(
+                stream_error_after_cleanup(original.clone(), cleanup()),
+                original
+            );
+            assert_eq!(
+                stream_error_after_cleanup(source(), Err(original.clone())),
+                original,
+            );
+        }
+    }
+
+    #[test]
+    fn guest_stream_source_cleanup_cannot_replace_sealed_native_uncertainty() {
+        let cx = effect_context();
+        for error in [
+            anyhow::Error::new(crate::filesystem::FsError::CommitUnknown),
+            anyhow::Error::new(tobkiri_store::StoreError::CommitUnknown),
+            anyhow::Error::new(tobkiri_store::StoreError::PendingDataMove),
+        ] {
+            let expected = storage_failure_metadata(&error).unwrap().0;
+            let cleanup = confirm_stream_cleanup(Err(error)).unwrap_err();
+            assert_eq!(storage_failure_metadata(&cleanup).unwrap().0, expected);
+            let cleanup = finish_stream_cleanup(
+                Err(cleanup),
+                Err(anyhow::anyhow!("PRIVATE terminal write failure")),
+            )
+            .unwrap_err();
+            assert_eq!(storage_failure_metadata(&cleanup).unwrap().0, expected);
+            let result: Result<()> = finish_effect_delivery(
+                &cx,
+                Err(cleanup),
+                confirm_stream_cleanup(Err(anyhow::anyhow!("PRIVATE second cleanup failure"))),
+            );
+            assert_eq!(
+                storage_failure_metadata(&result.unwrap_err()).unwrap().0,
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn facaded_stream_source_no_replay_survives_cleanup_and_terminal_failure() {
+        let cx = effect_context();
+        let meter = Arc::new(Meter(AtomicU64::new(0), 64 * 1024));
+        let owners = crate::AllocationOwners::from_budgets(meter.clone(), meter.clone());
+        for code in [
+            "filesystem-commit-unknown",
+            "storage-sql-commit-unknown",
+            "storage-pending-data-move",
+        ] {
+            let original: anyhow::Error =
+                tobkiri_flow::StepError::new(code, "PRIVATE already-facaded CoreStream diagnostic")
+                    .into();
+            assert!(storage_failure_metadata(&original).is_none());
+            let fixed_message = facaded_no_replay_metadata(&original).unwrap().1;
+            let cleanup = finish_stream_cleanup(
+                Err(original),
+                Err(anyhow::anyhow!("ordinary cleanup delivery failed")),
+            )
+            .unwrap_err();
+            let result: Result<()> = finish_effect_delivery(
+                &cx,
+                Err(cleanup),
+                Err(tobkiri_gate::GateError::Persistence("PRIVATE terminal failure".into()).into()),
+            );
+            let error = result.unwrap_err();
+            assert!(storage_failure_metadata(&error).is_none());
+            assert_eq!(facaded_no_replay_metadata(&error).unwrap().0, code);
+            let packet = error_result(&error, &owners).unwrap();
+            assert_eq!(packet_code(&packet), "internal");
+            let Val::Result(Err(Some(record))) = &packet else {
+                unreachable!()
+            };
+            assert_eq!(
+                crate::effect_values::text(crate::effect_values::field(record, "message").unwrap())
+                    .unwrap(),
+                fixed_message,
+            );
+            drop(packet);
+            let small = Arc::new(Meter(AtomicU64::new(0), 96));
+            let denied = crate::AllocationOwners::from_budgets(small.clone(), small.clone());
+            let error = error_result_or_trap(error, &denied).unwrap_err();
+            assert!(storage_failure_metadata(&error).is_none());
+            assert_eq!(crate::host::step_error(error).code, code);
+            assert_eq!(small.0.load(Ordering::Acquire), 0);
+        }
+        // Neither a message nor an ordinary guest-representable Core enum code
+        // supplies a native or already-facaded no-replay classification.
+        for imitation in [
+            anyhow::anyhow!("storage-sql-commit-unknown"),
+            tobkiri_flow::StepError::new("internal", STORAGE_COMMIT_UNKNOWN_MESSAGE).into(),
+            tobkiri_flow::StepError::new("unavailable", STORAGE_PENDING_MOVE_MESSAGE).into(),
+        ] {
+            assert!(storage_failure_metadata(&imitation).is_none());
+            assert!(facaded_no_replay_metadata(&imitation).is_none());
+            let result: Result<()> = finish_effect_delivery(
+                &cx,
+                Err(imitation),
+                Err(anyhow::anyhow!("ordinary terminal failure")),
+            );
+            assert!(facaded_no_replay_metadata(&result.unwrap_err()).is_none());
+        }
+        assert_eq!(meter.0.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn facaded_stream_cleanup_no_replay_survives_receipt_without_native_proof() {
+        let cx = effect_context();
+        for code in [
+            "filesystem-commit-unknown",
+            "storage-sql-commit-unknown",
+            "storage-pending-data-move",
+        ] {
+            let mut receipt = crate::handles::HandleCloseReceipt::default();
+            receipt.cleanup_started = true;
+            record_stream_cleanup(
+                &mut receipt,
+                &cx,
+                Err(tobkiri_flow::StepError::new(code, "PRIVATE cleanup body").into()),
+            );
+            assert!(!receipt.cleanup_done);
+            // Repeated observation reuses the exact receipt, never reruns close.
+            for _ in 0..2 {
+                let cleanup = stream_cleanup_result(&receipt, &cx).unwrap_err();
+                assert!(storage_failure_metadata(&cleanup).is_none());
+                assert!(!cleanup.to_string().contains("PRIVATE"));
+                let cleanup = finish_stream_cleanup(
+                    Err(cleanup),
+                    Err(anyhow::anyhow!("ordinary terminal failure")),
+                )
+                .unwrap_err();
+                let result: Result<()> = finish_effect_delivery(
+                    &cx,
+                    Err(
+                        tobkiri_flow::StepError::new("unavailable", "ordinary source failure")
+                            .into(),
+                    ),
+                    Err(cleanup),
+                );
+                let error = result.unwrap_err();
+                assert!(storage_failure_metadata(&error).is_none());
+                assert_eq!(crate::host::step_error(error).code, code);
+            }
+            assert!(receipt.cleanup_started && !receipt.cleanup_done);
+        }
+        // Only an actual native sealed error can create a native receipt kind.
+        for native in [
+            anyhow::Error::new(crate::filesystem::FsError::CommitUnknown),
+            anyhow::Error::new(tobkiri_store::StoreError::CommitUnknown),
+            anyhow::Error::new(tobkiri_store::StoreError::PendingDataMove),
+        ] {
+            let expected = storage_failure_metadata(&native).unwrap().0;
+            let mut receipt = crate::handles::HandleCloseReceipt::default();
+            record_stream_cleanup(&mut receipt, &cx, Err(native));
+            let error = stream_cleanup_result(&receipt, &cx).unwrap_err();
+            assert_eq!(storage_failure_metadata(&error).unwrap().0, expected);
+            assert!(facaded_no_replay_metadata(&error).is_none());
+        }
+    }
 
     fn effect_context() -> CallCx {
         use std::time::{Duration, Instant};

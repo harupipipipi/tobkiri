@@ -43,6 +43,14 @@ cannot guarantee its final flush. The last confirmed prefix and pending claim
 remain authoritative and do not authorize an automatic replacement request.
 Frequent public heartbeat boundaries can increase the number of saves.
 
+Each progress save reads its head, exact claim, resolution blocker and current
+progress dimensions in one bounded typed join inside the same transaction.
+Chunk metadata remains a separate bounded read. All identity, sequence, digest,
+resolution and affected-row checks remain in place. For one changed chunk this
+reduces the existing-progress path from eleven Store calls to seven (the first
+save from ten to seven). These are source-derived call counts, not a guarantee
+that a complete model phase finishes within its unchanged deadline.
+
 Opaque chunks use canonical lowercase HEX TEXT through typed SQL. This avoids
 the existing Core BLOB integer-array conversion path without modifying its
 allocator, Gate or limits. Raw bytes remain the hash input. A 64 KiB raw chunk
@@ -98,6 +106,21 @@ Core audit retains the actual dispatch binding and security epoch. The guest
 API does not expose all binding/Profile introspection; unavailable provenance
 fields are explicitly null rather than copied from an unrelated current pin.
 
+## Stream errors and cleanup custody
+
+Only the exact admitted Core stream-source result may supply a closed public
+error code. Its diagnostic message is discarded. Traps, malformed results and
+conversion faults remain internal errors; a cleanup failure cannot turn into
+ordinary provider unavailability. Existing native and already-facaded no-replay
+metadata survive later delivery/cleanup failures without promoting a facaded
+code into native commit authority.
+
+After a failed pull or terminal EOF, Core owns cleanup, including any retained
+unknown receipt. The guest preserves the prefix, failure and pending claim and
+does not issue a second void cancel against a possibly consumed handle. This
+is no proof that physical cleanup completed. Local active, parse and progress
+save failures still cancel their open stream through the ordinary Core path.
+
 ## Existing KV Runs
 
 Legacy checkpoints and sidecars remain available for diagnostics. Public
@@ -135,4 +158,12 @@ component/WIT admission and actual User/Flow/Wasm execution prove different
 boundaries. A synthetic provider's success does not establish MiMo completion.
 The actual MiMo v5 Run's first phase completed and its next generation's
 terminal accounting was inspected, but its legacy Run has not been migrated
-or accepted as a completed workflow. Terminal-Bench remains pending acceptance.
+or accepted as a completed workflow. A later SQL-backed MiMo Run reached the
+unchanged 300-second deadline in its first phase. A restarted typed status kept
+its 2,025-byte prefix and generation ID. Ordinary User reconciliation and a
+second restarted status then confirmed 3,067 native tokens and exact USD
+`0.00059332` in that same SQL Run, with no new model POST. Provider metadata
+reported normal completion, but public content returned 404. No phase was
+accepted and no replacement request was automatically dispatched. This is
+retention/accounting evidence, not a completed MiMo workflow or validation of
+every later fix. Terminal-Bench remains pending acceptance.

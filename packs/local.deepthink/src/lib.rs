@@ -5,6 +5,7 @@ mod public_progress;
 mod repository_adapter;
 mod run_repository;
 mod runtime_repository;
+mod stream_pump;
 #[cfg(test)]
 mod tests;
 mod workflow;
@@ -120,6 +121,44 @@ struct Runtime {
     store: Option<Rc<storage::Store>>,
     ledger: Option<runtime_repository::RunSession>,
     projection_warning: Option<String>,
+}
+
+struct GenerationPump<'runtime, 'progress> {
+    runtime: &'runtime mut Runtime,
+    public: public_progress::PublicProgress<'progress>,
+    stream: StreamHandle,
+}
+
+impl stream_pump::Driver for GenerationPump<'_, '_> {
+    fn active(&mut self) -> Result<(), Failure> {
+        self.runtime.active()
+    }
+
+    fn pull(&mut self) -> Result<Vec<String>, Failure> {
+        flow::pull(self.stream, 64).map_err(failure)
+    }
+
+    fn accept_batch(&mut self, events: Vec<String>) -> Result<(), Failure> {
+        let runtime = &mut *self.runtime;
+        self.public
+            .accept_batch(events, |snapshot| runtime.persist_progress(snapshot))
+    }
+
+    fn fail(&mut self, error: Failure) -> Failure {
+        let runtime = &mut *self.runtime;
+        self.public
+            .fail(error, |snapshot| runtime.persist_progress(snapshot))
+    }
+
+    fn eof(&mut self) -> Result<(), Failure> {
+        let runtime = &mut *self.runtime;
+        self.public
+            .eof(|snapshot| runtime.persist_progress(snapshot))
+    }
+
+    fn cancel(&mut self) {
+        flow::cancel_stream(self.stream);
+    }
 }
 
 impl Runtime {
@@ -267,37 +306,16 @@ impl Ports for Runtime {
         self.persist_progress(&progress)?;
         let stream =
             flow::call_port_stream(port, "chat", &arguments.to_string()).map_err(failure)?;
-        let mut public = public_progress::PublicProgress::new(&mut progress);
-        let outcome = (|| {
-            loop {
-                if let Err(error) = self.active() {
-                    return Err(public.fail(error, |snapshot| self.persist_progress(snapshot)));
-                }
-                let events = match flow::pull(stream, 64) {
-                    Ok(events) => events,
-                    Err(error) => {
-                        return Err(
-                            public.fail(failure(error), |snapshot| self.persist_progress(snapshot))
-                        );
-                    }
-                };
-                if events.is_empty() {
-                    public.eof(|snapshot| self.persist_progress(snapshot))?;
-                    break;
-                }
-                // Only ordinary text is coalesced (64 records / 4KiB). Public
-                // identity, usage, completion and errors flush before proceeding.
-                public.accept_batch(events, |snapshot| self.persist_progress(snapshot))?;
-            }
-            Ok(Generated {
-                text: public.snapshot().public_text.clone(),
-                usage: public.snapshot().usage.clone(),
-            })
-        })();
-        if outcome.is_err() {
-            flow::cancel_stream(stream);
-        }
-        outcome
+        let mut pump = GenerationPump {
+            runtime: self,
+            public: public_progress::PublicProgress::new(&mut progress),
+            stream,
+        };
+        stream_pump::run(&mut pump)?;
+        Ok(Generated {
+            text: pump.public.snapshot().public_text.clone(),
+            usage: pump.public.snapshot().usage.clone(),
+        })
     }
 
     fn generation_progress(

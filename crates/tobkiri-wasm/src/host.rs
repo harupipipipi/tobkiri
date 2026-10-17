@@ -1762,13 +1762,9 @@ impl StreamSource for ComponentStream {
             Err(error) => {
                 self.cancel();
                 let cleanup = self.await_cleanup().await;
-                return match cleanup {
-                    Ok(()) => Err(error),
-                    Err(cleanup) => Err(StepError::new(
-                        error.code,
-                        format!("{}; cleanup: {}", error.message, cleanup.audit_code()),
-                    )),
-                };
+                return Err(crate::core_imports::stream_error_after_cleanup(
+                    error, cleanup,
+                ));
             }
         };
         if value.array().is_some_and(|array| array.is_empty()) {
@@ -1793,19 +1789,33 @@ impl StreamSource for ComponentStream {
             .gate
             .check_context(&self.cx)
             .map_err(|e| step_error(e.into()))?;
-        let (buffer, empty) = if let Some(source) = &self.entry.source {
-            let buffer = source.lock().await.pull_final(max).await?;
-            let empty = buffer.as_bytes() == b"[]";
-            (buffer, empty)
+        let result = if let Some(source) = &self.entry.source {
+            source.lock().await.pull_final(max).await.map(|buffer| {
+                let empty = buffer.as_bytes() == b"[]";
+                (buffer, empty)
+            })
         } else {
-            let (values, buffer) =
-                crate::core_imports::pull_guest_source(&self.host, &self.entry, max, true)
-                    .await
-                    .map_err(step_error)?;
-            (
-                buffer.ok_or_else(|| StepError::new("invalid", "producer final batch missing"))?,
-                values.array().is_some_and(|array| array.is_empty()),
-            )
+            crate::core_imports::pull_guest_source(&self.host, &self.entry, max, true)
+                .await
+                .map_err(step_error)
+                .and_then(|(values, buffer)| {
+                    Ok((
+                        buffer.ok_or_else(|| {
+                            StepError::new("invalid", "producer final batch missing")
+                        })?,
+                        values.array().is_some_and(|array| array.is_empty()),
+                    ))
+                })
+        };
+        let (buffer, empty) = match result {
+            Ok(output) => output,
+            Err(error) => {
+                self.cancel();
+                let cleanup = self.await_cleanup().await;
+                return Err(crate::core_imports::stream_error_after_cleanup(
+                    error, cleanup,
+                ));
+            }
         };
         if empty {
             crate::core_imports::finish_stream_eof(&self.host, &self.cx, self.handle, &self.entry)

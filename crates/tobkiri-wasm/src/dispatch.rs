@@ -1076,28 +1076,29 @@ fn public_provider_error(value: &CoreValue, nominal_core_error: bool) -> StepErr
         // Both frozen view/op bindings must resolve their OUTER result.err to
         // the committed Core type. Even then only closed codes cross the
         // facade: the guest's message is never copied or persisted here.
-        let fixed = match code.as_str() {
-            Some("denied") => Some(("denied", "provider denied the operation")),
-            Some("approval-required") => Some((
-                "approval-required",
-                "provider reported that approval is required",
-            )),
-            Some("cancelled") => Some(("cancelled", "provider reported cancellation")),
-            Some("not-found") => Some(("not-found", "provider reported a missing item")),
-            Some("invalid") => Some(("invalid", "provider reported invalid input")),
-            Some("limit-exceeded") => {
-                Some(("limit-exceeded", "provider reported a resource limit"))
-            }
-            Some("conflict") => Some(("conflict", "provider reported a conflict")),
-            Some("unavailable") => Some(("unavailable", "provider reported unavailable")),
-            Some("internal") => Some(("internal", "provider reported an internal error")),
-            _ => None,
-        };
-        if let Some((code, message)) = fixed {
-            return StepError::new(code, message);
+        if let Some(error) = code.as_str().and_then(public_core_error_code) {
+            return error;
         }
     }
     StepError::new("provider-error", "provider returned a typed error")
+}
+
+/// Call only after proving the exact nominal Core result binding. This maps
+/// closed codes to fixed text and never accepts a guest's diagnostic message.
+pub(crate) fn public_core_error_code(code: &str) -> Option<StepError> {
+    let message = match code {
+        "denied" => "provider denied the operation",
+        "approval-required" => "provider reported that approval is required",
+        "cancelled" => "provider reported cancellation",
+        "not-found" => "provider reported a missing item",
+        "invalid" => "provider reported invalid input",
+        "limit-exceeded" => "provider reported a resource limit",
+        "conflict" => "provider reported a conflict",
+        "unavailable" => "provider reported unavailable",
+        "internal" => "provider reported an internal error",
+        _ => return None,
+    };
+    Some(StepError::new(code, message))
 }
 
 #[cfg(test)]

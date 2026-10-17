@@ -14,13 +14,20 @@ use tobkiri_gate::{CallCx, DispatchPermit, GrantId, Outcome};
 pub(crate) enum HandleCleanupError {
     CompletionUnknown,
     FilesystemCommitUnknown,
+    StorageCommitUnknown,
+    StoragePendingDataMove,
+    // Already-facaded CoreStream metadata retains its classification but is
+    // never reconstructed as a sealed native effect/commit attestation.
+    FacadedFilesystemCommitUnknown,
+    FacadedStorageCommitUnknown,
+    FacadedStoragePendingDataMove,
 }
 
 #[derive(Default)]
 pub(crate) struct HandleCloseReceipt {
     pub(crate) cleanup_started: bool,
     pub(crate) cleanup_done: bool,
-    // A closed native classification survives delivery retries without
+    // A closed native or facaded classification survives delivery retries without
     // retaining diagnostics or turning an uncertain mutation into success.
     pub(crate) cleanup_error: Option<HandleCleanupError>,
     pub(crate) outcome: Option<Outcome>,

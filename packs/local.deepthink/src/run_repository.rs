@@ -390,6 +390,28 @@ const SELECT_BLOCKERS: &str = "SELECT c.attempt_id,r.disposition FROM dt_generat
 const SELECT_RESOLUTION: &str = "SELECT disposition,receipt_digest,byte_len,chunk_count,resolved_revision,progress_sequence,progress_digest FROM dt_generation_resolutions WHERE run_id=? AND attempt_id=?";
 const SELECT_PROGRESS: &str =
     "SELECT sequence,progress_digest FROM dt_progress_heads WHERE run_id=? AND attempt_id=?";
+// Every join uses a primary key from the existing schema. Read the scalar
+// preconditions together in the same transaction; do not aggregate away a
+// missing claim, incomplete progress record or an already frozen resolution.
+const SELECT_PROGRESS_PRECONDITIONS: &str = "SELECT h.run_request_digest AS run_request_digest,h.revision AS revision,h.snapshot_digest AS snapshot_digest,c.run_request_digest AS claim_run_request_digest,c.phase AS phase,c.generation_key AS generation_key,c.attempt_id AS attempt_id,c.request_digest AS request_digest,c.route_digest AS route_digest,c.claimed_revision AS claimed_revision,r.attempt_id AS resolved_attempt_id,p.sequence AS sequence,p.progress_digest AS progress_digest,d.progress_digest AS record_progress_digest,d.byte_len AS byte_len,d.chunk_count AS chunk_count FROM dt_run_heads h LEFT JOIN dt_generation_claims c ON c.run_id=h.run_id AND c.attempt_id=? LEFT JOIN dt_generation_resolutions r ON r.run_id=c.run_id AND r.attempt_id=c.attempt_id LEFT JOIN dt_progress_heads p ON p.run_id=c.run_id AND p.attempt_id=c.attempt_id LEFT JOIN dt_progress_records d ON d.run_id=p.run_id AND d.attempt_id=p.attempt_id AND d.sequence=p.sequence WHERE h.run_id=? LIMIT 2";
+const PROGRESS_PRECONDITION_COLUMNS: &[&str] = &[
+    "run_request_digest",
+    "revision",
+    "snapshot_digest",
+    "claim_run_request_digest",
+    "phase",
+    "generation_key",
+    "attempt_id",
+    "request_digest",
+    "route_digest",
+    "claimed_revision",
+    "resolved_attempt_id",
+    "sequence",
+    "progress_digest",
+    "record_progress_digest",
+    "byte_len",
+    "chunk_count",
+];
 
 pub struct RunRepository<D: SqlDatabase> {
     database: D,
@@ -654,26 +676,9 @@ impl<D: SqlDatabase> RunRepository<D> {
             digest: Digest::hash(bytes),
         };
         transaction(&mut self.database, |tx| {
-            require_head(tx, expected)?;
-            require_claim(tx, expected, claim)?;
-            let resolved = query(
-                tx,
-                "SELECT attempt_id FROM dt_generation_resolutions WHERE run_id=? AND attempt_id=?",
-                &[text(&claim.run_id), text(&claim.attempt_id)],
-                2,
-                &["attempt_id"],
-            )?;
-            if optional_one(&resolved)?.is_some() {
-                return Err(RepositoryError::Conflict);
-            }
-            let previous = read_progress_stamp(tx, &claim.run_id, &claim.attempt_id)?;
-            if previous
-                .as_ref()
-                .is_some_and(|old| old.sequence >= sequence)
-            {
-                return Err(RepositoryError::Conflict);
-            }
-            let old_chunks = progress_chunk_metadata(tx, claim, previous.as_ref())?;
+            let (previous, dimensions) =
+                progress_save_preconditions(tx, expected, claim, sequence)?;
+            let old_chunks = progress_chunk_metadata(tx, claim, dimensions)?;
             changed_one(tx.exec("INSERT INTO dt_progress_records(run_id,attempt_id,sequence,progress_digest,byte_len,chunk_count) VALUES (?,?,?,?,?,?)", &[text(&claim.run_id), text(&claim.attempt_id), SqlCell::Integer(sequence_sql), text(next.digest.as_str()), SqlCell::Integer(bytes.len() as i64), SqlCell::Integer(bytes.len().div_ceil(CHUNK_BYTES) as i64)])?)?;
             for (ordinal, chunk) in bytes.chunks(CHUNK_BYTES).enumerate() {
                 let digest = Digest::hash(chunk);
@@ -1040,15 +1045,92 @@ fn progress_dimensions<T: SqlTransaction>(
     record_dimensions(&row[1], &row[2])
 }
 
+/// One bounded scalar read replaces five separate reads, not their checks.
+/// Chunk metadata is still checked separately and every subsequent write keeps
+/// its old affected-row/CAS condition. No payload or immutable history scan is
+/// included in this query, and the caller keeps the same short transaction.
+fn progress_save_preconditions<T: SqlTransaction>(
+    tx: &mut T,
+    expected: &Head,
+    claim: &GenerationClaim,
+    sequence: u64,
+) -> Result<(Option<ProgressStamp>, (usize, usize))> {
+    let rows = query(
+        tx,
+        SELECT_PROGRESS_PRECONDITIONS,
+        &[text(&claim.attempt_id), text(&expected.run_id)],
+        2,
+        PROGRESS_PRECONDITION_COLUMNS,
+    )?;
+    let row = optional_one(&rows)?.ok_or(RepositoryError::Conflict)?;
+    let stored_head = Head {
+        run_id: expected.run_id.clone(),
+        run_request_digest: stored_digest(cell_text(&row[0])?)?,
+        revision: cell_int(&row[1])?,
+        snapshot_digest: stored_digest(cell_text(&row[2])?)?,
+    };
+    validate_head(&stored_head).map_err(|_| RepositoryError::Integrity)?;
+    if stored_head != *expected {
+        return Err(RepositoryError::Conflict);
+    }
+    // A LEFT JOIN's absent row is all NULL. A partially NULL claim must fail
+    // typed decoding rather than becoming permission to create progress.
+    if row[3..10].iter().all(|cell| matches!(cell, SqlCell::Null)) {
+        return Err(RepositoryError::Conflict);
+    }
+    let stored_claim = GenerationClaim {
+        run_id: expected.run_id.clone(),
+        run_request_digest: stored_digest(cell_text(&row[3])?)?,
+        phase: cell_text(&row[4])?.to_owned(),
+        generation_key: cell_text(&row[5])?.to_owned(),
+        attempt_id: cell_text(&row[6])?.to_owned(),
+        request_digest: stored_digest(cell_text(&row[7])?)?,
+        route_digest: stored_digest(cell_text(&row[8])?)?,
+    };
+    let claimed_revision = cell_int(&row[9])?;
+    validate_claim(&stored_claim).map_err(|_| RepositoryError::Integrity)?;
+    if stored_claim.attempt_id != claim.attempt_id || claimed_revision < 0 {
+        return Err(RepositoryError::Integrity);
+    }
+    if stored_claim != *claim || claimed_revision > expected.revision {
+        return Err(RepositoryError::Conflict);
+    }
+    match &row[10] {
+        SqlCell::Null => {}
+        SqlCell::Text(attempt_id) if attempt_id == &claim.attempt_id => {
+            return Err(RepositoryError::Conflict);
+        }
+        _ => return Err(RepositoryError::Integrity),
+    }
+    match (&row[11], &row[12]) {
+        (SqlCell::Null, SqlCell::Null) => {
+            if row[13..16]
+                .iter()
+                .any(|cell| !matches!(cell, SqlCell::Null))
+            {
+                return Err(RepositoryError::Integrity);
+            }
+            Ok((None, (0, 0)))
+        }
+        _ => {
+            let previous = stored_progress_stamp(&row[11], &row[12])?;
+            if previous.sequence >= sequence {
+                return Err(RepositoryError::Conflict);
+            }
+            if stored_digest(cell_text(&row[13])?)? != previous.digest {
+                return Err(RepositoryError::Integrity);
+            }
+            let dimensions = record_dimensions(&row[14], &row[15])?;
+            Ok((Some(previous), dimensions))
+        }
+    }
+}
+
 fn progress_chunk_metadata<T: SqlTransaction>(
     tx: &mut T,
     claim: &GenerationClaim,
-    previous: Option<&ProgressStamp>,
+    (len, count): (usize, usize),
 ) -> Result<Vec<(Digest, usize)>> {
-    let (len, count) = match previous {
-        Some(stamp) => progress_dimensions(tx, claim, stamp)?,
-        None => (0, 0),
-    };
     let rows = query(
         tx,
         "SELECT ordinal,chunk_digest,length(payload) AS byte_len FROM dt_progress_chunks WHERE run_id=? AND attempt_id=? ORDER BY ordinal",
@@ -1474,6 +1556,7 @@ mod tests {
         begins: usize,
         commits: usize,
         rollbacks: usize,
+        queries: Vec<(String, Vec<SqlCell>, u32)>,
         writes: Vec<(String, Vec<SqlCell>)>,
     }
     #[derive(Clone)]
@@ -1499,7 +1582,7 @@ mod tests {
         fn query(
             &mut self,
             sql: &str,
-            _: &[SqlCell],
+            params: &[SqlCell],
             max_rows: u32,
         ) -> std::result::Result<SqlRows, SqlError> {
             let mut trace = self.0.lock().unwrap();
@@ -1508,6 +1591,9 @@ mod tests {
             };
             assert!(sql.starts_with(prefix), "expected {prefix}, got {sql}");
             assert!(max_rows <= 256);
+            trace
+                .queries
+                .push((sql.to_owned(), params.to_vec(), max_rows));
             Ok(rows)
         }
         fn commit(self) -> std::result::Result<(), SqlError> {
@@ -1636,6 +1722,60 @@ mod tests {
                     ]]
                 })
                 .unwrap_or_default(),
+        )
+    }
+    fn progress_precondition_row(
+        head: &Head,
+        claim: &GenerationClaim,
+        previous: Option<(&ProgressStamp, usize)>,
+    ) -> Vec<SqlCell> {
+        let mut row = vec![
+            text(head.run_request_digest.as_str()),
+            SqlCell::Integer(head.revision),
+            text(head.snapshot_digest.as_str()),
+            text(claim.run_request_digest.as_str()),
+            text(&claim.phase),
+            text(&claim.generation_key),
+            text(&claim.attempt_id),
+            text(claim.request_digest.as_str()),
+            text(claim.route_digest.as_str()),
+            SqlCell::Integer(head.revision),
+            SqlCell::Null,
+        ];
+        row.extend(match previous {
+            Some((stamp, len)) => [
+                SqlCell::Integer(stamp.sequence as i64),
+                text(stamp.digest.as_str()),
+                text(stamp.digest.as_str()),
+                SqlCell::Integer(len as i64),
+                SqlCell::Integer(len.div_ceil(CHUNK_BYTES) as i64),
+            ],
+            None => std::array::from_fn(|_| SqlCell::Null),
+        });
+        row
+    }
+    fn progress_preconditions_query(values: Vec<Vec<SqlCell>>) -> Step {
+        q(
+            SELECT_PROGRESS_PRECONDITIONS,
+            PROGRESS_PRECONDITION_COLUMNS,
+            values,
+        )
+    }
+    fn chunk_metadata_query(bytes: &[u8]) -> Step {
+        q(
+            "SELECT ordinal,chunk_digest,length(payload)",
+            &["ordinal", "chunk_digest", "byte_len"],
+            bytes
+                .chunks(CHUNK_BYTES)
+                .enumerate()
+                .map(|(index, chunk)| {
+                    vec![
+                        SqlCell::Integer(index as i64),
+                        text(Digest::hash(chunk).as_str()),
+                        SqlCell::Integer((chunk.len() * 2) as i64),
+                    ]
+                })
+                .collect(),
         )
     }
     fn snapshot_writes(bytes: &[u8]) -> Vec<Step> {
@@ -2134,37 +2274,12 @@ mod tests {
             digest: Digest::hash(&old),
         };
         let (mut repo, trace) = fixture(vec![
-            head_query(&head()),
-            claim_query(&claim(), 3),
-            q(
-                "SELECT attempt_id FROM dt_generation_resolutions",
-                &["attempt_id"],
-                vec![],
-            ),
-            progress_query(Some(&stamp)),
-            q(
-                "SELECT progress_digest,byte_len,chunk_count FROM dt_progress_records",
-                &["progress_digest", "byte_len", "chunk_count"],
-                vec![vec![
-                    text(stamp.digest.as_str()),
-                    SqlCell::Integer(old.len() as i64),
-                    SqlCell::Integer(2),
-                ]],
-            ),
-            q(
-                "SELECT ordinal,chunk_digest,length(payload)",
-                &["ordinal", "chunk_digest", "byte_len"],
-                old.chunks(CHUNK_BYTES)
-                    .enumerate()
-                    .map(|(index, chunk)| {
-                        vec![
-                            SqlCell::Integer(index as i64),
-                            text(Digest::hash(chunk).as_str()),
-                            SqlCell::Integer((chunk.len() * 2) as i64),
-                        ]
-                    })
-                    .collect(),
-            ),
+            progress_preconditions_query(vec![progress_precondition_row(
+                &head(),
+                &claim(),
+                Some((&stamp, old.len())),
+            )]),
+            chunk_metadata_query(&old),
             write("INSERT INTO dt_progress_records"),
             write("UPDATE dt_progress_chunks"),
             write("UPDATE dt_progress_heads"),
@@ -2179,6 +2294,15 @@ mod tests {
         );
         let trace = trace.lock().unwrap();
         assert_eq!(trace.writes.len(), 3);
+        assert_eq!(trace.queries.len(), 2);
+        assert_eq!(
+            trace.queries[0].1,
+            [text(&claim().attempt_id), text(&head().run_id)]
+        );
+        assert_eq!(trace.queries[0].2, 2);
+        assert_eq!(trace.queries[1].2, 129);
+        assert_eq!(trace.begins, 1);
+        assert_eq!(trace.commits, 1);
         assert!(
             !trace
                 .writes
@@ -2195,23 +2319,16 @@ mod tests {
             sequence: 5,
             digest: Digest::hash(b"prefix"),
         };
+        let mut resolved = progress_precondition_row(&head(), &claim(), Some((&stamp, 6)));
+        resolved[10] = text(&claim().attempt_id);
         let (mut repo, trace) = fixture(vec![
-            head_query(&head()),
-            claim_query(&claim(), 3),
-            q(
-                "SELECT attempt_id FROM dt_generation_resolutions",
-                &["attempt_id"],
-                vec![vec![text(&claim().attempt_id)]],
-            ),
+            progress_preconditions_query(vec![resolved]),
             Step::Rollback(Ok(())),
-            head_query(&head()),
-            claim_query(&claim(), 3),
-            q(
-                "SELECT attempt_id FROM dt_generation_resolutions",
-                &["attempt_id"],
-                vec![],
-            ),
-            progress_query(Some(&stamp)),
+            progress_preconditions_query(vec![progress_precondition_row(
+                &head(),
+                &claim(),
+                Some((&stamp, 6)),
+            )]),
             Step::Rollback(Ok(())),
         ]);
         assert_eq!(
@@ -2224,6 +2341,355 @@ mod tests {
         );
         assert!(trace.lock().unwrap().writes.is_empty());
         finished(&trace);
+    }
+
+    #[test]
+    fn initial_progress_uses_two_bounded_queries_and_does_not_advance_run_head() {
+        let (mut repo, trace) = fixture(vec![
+            progress_preconditions_query(vec![progress_precondition_row(&head(), &claim(), None)]),
+            chunk_metadata_query(&[]),
+            write("INSERT INTO dt_progress_records"),
+            write("INSERT INTO dt_progress_chunks"),
+            write("INSERT INTO dt_progress_heads"),
+            Step::Commit(Ok(())),
+        ]);
+        let saved = repo
+            .save_progress(&head(), &claim(), 1, b"first-prefix")
+            .unwrap();
+        assert_eq!(saved.sequence, 1);
+        assert_eq!(saved.digest, Digest::hash(b"first-prefix"));
+        let trace = trace.lock().unwrap();
+        assert_eq!(trace.queries.len(), 2);
+        assert_eq!(
+            trace.queries[0].1,
+            [text(&claim().attempt_id), text(&head().run_id)]
+        );
+        assert_eq!(trace.queries[0].2, 2);
+        assert_eq!(
+            trace.queries[1].1,
+            [text(&claim().run_id), text(&claim().attempt_id)]
+        );
+        assert_eq!(trace.queries[1].2, 129);
+        assert_eq!(trace.writes.len(), 3);
+        assert!(trace.writes.iter().all(|(sql, _)| !sql.contains("dt_run_")));
+        assert_eq!((trace.begins, trace.commits, trace.rollbacks), (1, 1, 0));
+        assert!(trace.steps.is_empty());
+    }
+
+    #[test]
+    fn progress_scalar_join_requires_one_exact_typed_row() {
+        let row = progress_precondition_row(&head(), &claim(), None);
+        let mut malformed_columns = rows(PROGRESS_PRECONDITION_COLUMNS, vec![row.clone()]);
+        malformed_columns.columns.swap(0, 3);
+        let mut short_row = row.clone();
+        short_row.pop();
+        for (returned, error) in [
+            (
+                rows(PROGRESS_PRECONDITION_COLUMNS, vec![]),
+                RepositoryError::Conflict,
+            ),
+            (
+                rows(
+                    PROGRESS_PRECONDITION_COLUMNS,
+                    vec![row.clone(), row.clone()],
+                ),
+                RepositoryError::Integrity,
+            ),
+            (
+                rows(
+                    PROGRESS_PRECONDITION_COLUMNS,
+                    vec![row.clone(), row.clone(), row],
+                ),
+                RepositoryError::Integrity,
+            ),
+            (
+                rows(PROGRESS_PRECONDITION_COLUMNS, vec![short_row]),
+                RepositoryError::Integrity,
+            ),
+            (malformed_columns, RepositoryError::Integrity),
+        ] {
+            let (mut repo, trace) = fixture(vec![
+                Step::Query(SELECT_PROGRESS_PRECONDITIONS, returned),
+                Step::Rollback(Ok(())),
+            ]);
+            assert_eq!(
+                repo.save_progress(&head(), &claim(), 1, b"prefix"),
+                Err(error)
+            );
+            assert!(trace.lock().unwrap().writes.is_empty());
+            finished(&trace);
+        }
+    }
+
+    #[test]
+    fn progress_scalar_join_preserves_head_and_claim_identity_and_revision_guards() {
+        let base = progress_precondition_row(&head(), &claim(), None);
+        let mut cases = Vec::new();
+        // Valid but stale identities/revisions are conflicts, not new claims.
+        for (column, value) in [
+            (0, text(Digest::hash(b"other-run-request").as_str())),
+            (1, SqlCell::Integer(4)),
+            (2, text(Digest::hash(b"other-snapshot").as_str())),
+            (3, text(Digest::hash(b"other-claim-run-request").as_str())),
+            (4, text("other-phase")),
+            (5, text("other-generation")),
+            (7, text(Digest::hash(b"other-request").as_str())),
+            (8, text(Digest::hash(b"other-route").as_str())),
+            (9, SqlCell::Integer(4)),
+            (10, text(&claim().attempt_id)),
+        ] {
+            let mut row = base.clone();
+            row[column] = value;
+            cases.push((row, RepositoryError::Conflict));
+        }
+        let mut missing_claim = base.clone();
+        missing_claim[3..10].fill(SqlCell::Null);
+        cases.push((missing_claim, RepositoryError::Conflict));
+        for (column, value) in [
+            (0, text("not-a-digest")),
+            (1, SqlCell::Integer(-1)),
+            (1, text("3")),
+            (3, SqlCell::Null),
+            (4, text("")),
+            (5, text(&"x".repeat(MAX_ID_BYTES + 1))),
+            (6, text("another-attempt")),
+            (8, text("BAD")),
+            (9, SqlCell::Integer(-1)),
+            (9, text("3")),
+            (10, SqlCell::Integer(1)),
+            (10, text("another-attempt")),
+        ] {
+            let mut row = base.clone();
+            row[column] = value;
+            cases.push((row, RepositoryError::Integrity));
+        }
+        for (row, error) in cases {
+            let (mut repo, trace) = fixture(vec![
+                progress_preconditions_query(vec![row]),
+                Step::Rollback(Ok(())),
+            ]);
+            assert_eq!(
+                repo.save_progress(&head(), &claim(), 1, b"prefix"),
+                Err(error)
+            );
+            assert!(trace.lock().unwrap().writes.is_empty());
+            finished(&trace);
+        }
+    }
+
+    #[test]
+    fn progress_scalar_join_rejects_partial_progress_or_inconsistent_dimensions() {
+        let stamp = ProgressStamp {
+            sequence: 1,
+            digest: Digest::hash(b"old"),
+        };
+        let base = progress_precondition_row(&head(), &claim(), Some((&stamp, 3)));
+        for (column, value) in [
+            (11, SqlCell::Null),
+            (11, SqlCell::Integer(0)),
+            (11, SqlCell::Integer(-1)),
+            (11, text("1")),
+            (12, SqlCell::Null),
+            (12, text("not-a-digest")),
+            (13, SqlCell::Null),
+            (13, text(Digest::hash(b"different-record").as_str())),
+            (14, SqlCell::Null),
+            (14, SqlCell::Integer(0)),
+            (14, SqlCell::Integer(MAX_RECORD_BYTES as i64 + 1)),
+            (14, text("3")),
+            (15, SqlCell::Null),
+            (15, SqlCell::Integer(2)),
+        ] {
+            let mut row = base.clone();
+            row[column] = value;
+            let (mut repo, trace) = fixture(vec![
+                progress_preconditions_query(vec![row]),
+                Step::Rollback(Ok(())),
+            ]);
+            assert_eq!(
+                repo.save_progress(&head(), &claim(), 2, b"prefix"),
+                Err(RepositoryError::Integrity)
+            );
+            assert!(trace.lock().unwrap().writes.is_empty());
+            finished(&trace);
+        }
+        let mut orphan_record = progress_precondition_row(&head(), &claim(), None);
+        orphan_record[13] = text(stamp.digest.as_str());
+        let (mut repo, trace) = fixture(vec![
+            progress_preconditions_query(vec![orphan_record]),
+            Step::Rollback(Ok(())),
+        ]);
+        assert_eq!(
+            repo.save_progress(&head(), &claim(), 2, b"prefix"),
+            Err(RepositoryError::Integrity)
+        );
+        finished(&trace);
+    }
+
+    #[test]
+    fn progress_save_still_checks_separate_chunk_metadata_before_any_write() {
+        let stamp = ProgressStamp {
+            sequence: 1,
+            digest: Digest::hash(b"old"),
+        };
+        for metadata in [
+            vec![],
+            vec![vec![
+                SqlCell::Integer(1),
+                text(stamp.digest.as_str()),
+                SqlCell::Integer(6),
+            ]],
+            vec![vec![
+                SqlCell::Integer(0),
+                text(stamp.digest.as_str()),
+                SqlCell::Integer(5),
+            ]],
+            vec![vec![
+                SqlCell::Integer(0),
+                text(stamp.digest.as_str()),
+                SqlCell::Integer(4),
+            ]],
+            vec![vec![
+                SqlCell::Integer(0),
+                text("not-a-digest"),
+                SqlCell::Integer(6),
+            ]],
+        ] {
+            let (mut repo, trace) = fixture(vec![
+                progress_preconditions_query(vec![progress_precondition_row(
+                    &head(),
+                    &claim(),
+                    Some((&stamp, 3)),
+                )]),
+                q(
+                    "SELECT ordinal,chunk_digest,length(payload)",
+                    &["ordinal", "chunk_digest", "byte_len"],
+                    metadata,
+                ),
+                Step::Rollback(Ok(())),
+            ]);
+            assert_eq!(
+                repo.save_progress(&head(), &claim(), 2, b"prefix"),
+                Err(RepositoryError::Integrity)
+            );
+            assert!(trace.lock().unwrap().writes.is_empty());
+            assert_eq!(trace.lock().unwrap().queries.len(), 2);
+            finished(&trace);
+        }
+        // Missing progress head cannot hide orphan latest payload chunks.
+        let (mut repo, trace) = fixture(vec![
+            progress_preconditions_query(vec![progress_precondition_row(&head(), &claim(), None)]),
+            chunk_metadata_query(b"orphan"),
+            Step::Rollback(Ok(())),
+        ]);
+        assert_eq!(
+            repo.save_progress(&head(), &claim(), 1, b"prefix"),
+            Err(RepositoryError::Integrity)
+        );
+        finished(&trace);
+    }
+
+    #[test]
+    fn progress_save_keeps_exact_chunk_and_head_cas_and_does_not_retry_unknown_commit() {
+        let stamp = ProgressStamp {
+            sequence: 1,
+            digest: Digest::hash(b"old"),
+        };
+        for failed_write in 0..2 {
+            let mut steps = vec![
+                progress_preconditions_query(vec![progress_precondition_row(
+                    &head(),
+                    &claim(),
+                    Some((&stamp, 3)),
+                )]),
+                chunk_metadata_query(b"old"),
+                write("INSERT INTO dt_progress_records"),
+            ];
+            if failed_write == 0 {
+                steps.push(Step::Exec("UPDATE dt_progress_chunks", Ok(0)));
+            } else {
+                steps.push(write("UPDATE dt_progress_chunks"));
+                steps.push(Step::Exec("UPDATE dt_progress_heads", Ok(0)));
+            }
+            steps.push(Step::Rollback(Ok(())));
+            let (mut repo, trace) = fixture(steps);
+            assert_eq!(
+                repo.save_progress(&head(), &claim(), 2, b"new"),
+                Err(RepositoryError::Conflict)
+            );
+            let trace = trace.lock().unwrap();
+            assert_eq!(trace.writes[1].1[5], text(stamp.digest.as_str()));
+            assert_eq!(trace.writes[1].1[6], SqlCell::Integer(6));
+            if failed_write == 1 {
+                assert_eq!(trace.writes[2].1[4], SqlCell::Integer(1));
+                assert_eq!(trace.writes[2].1[5], text(stamp.digest.as_str()));
+            }
+            assert_eq!((trace.begins, trace.commits, trace.rollbacks), (1, 0, 1));
+            assert!(trace.steps.is_empty());
+        }
+        let (mut repo, trace) = fixture(vec![
+            progress_preconditions_query(vec![progress_precondition_row(
+                &head(),
+                &claim(),
+                Some((&stamp, 3)),
+            )]),
+            chunk_metadata_query(b"old"),
+            write("INSERT INTO dt_progress_records"),
+            write("UPDATE dt_progress_chunks"),
+            write("UPDATE dt_progress_heads"),
+            Step::Commit(Err(SqlError::commit_unknown())),
+        ]);
+        assert_eq!(
+            repo.save_progress(&head(), &claim(), 2, b"new"),
+            Err(RepositoryError::CommitUnknown)
+        );
+        let trace = trace.lock().unwrap();
+        assert_eq!((trace.begins, trace.commits, trace.rollbacks), (1, 1, 0));
+        assert_eq!(trace.queries.len(), 2);
+        assert!(trace.steps.is_empty());
+    }
+
+    #[test]
+    fn progress_save_surplus_chunk_deletion_retains_exact_affected_count_guard() {
+        let old = vec![b'a'; CHUNK_BYTES + 1];
+        let new = &old[..CHUNK_BYTES];
+        let stamp = ProgressStamp {
+            sequence: 1,
+            digest: Digest::hash(&old),
+        };
+        for deleted in [0, 1, 2] {
+            let mut steps = vec![
+                progress_preconditions_query(vec![progress_precondition_row(
+                    &head(),
+                    &claim(),
+                    Some((&stamp, old.len())),
+                )]),
+                chunk_metadata_query(&old),
+                write("INSERT INTO dt_progress_records"),
+                Step::Exec("DELETE FROM dt_progress_chunks", Ok(deleted)),
+            ];
+            if deleted == 1 {
+                steps.extend([write("UPDATE dt_progress_heads"), Step::Commit(Ok(()))]);
+            } else {
+                steps.push(Step::Rollback(Ok(())));
+            }
+            let (mut repo, trace) = fixture(steps);
+            let result = repo.save_progress(&head(), &claim(), 2, new);
+            if deleted == 1 {
+                assert_eq!(result.unwrap().digest, Digest::hash(new));
+            } else {
+                assert_eq!(result, Err(RepositoryError::Conflict));
+            }
+            let trace = trace.lock().unwrap();
+            assert_eq!(trace.writes[1].1[2], SqlCell::Integer(1));
+            assert!(
+                !trace
+                    .writes
+                    .iter()
+                    .any(|(sql, _)| sql.starts_with("UPDATE dt_progress_chunks"))
+            );
+            assert!(trace.steps.is_empty());
+        }
     }
 
     fn resolution_read_steps(head: &Head, resolution: &Resolution) -> Vec<Step> {

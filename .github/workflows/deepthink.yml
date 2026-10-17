@@ -109,6 +109,13 @@ jobs:
       - name: Supervised filesystem effects
         if: ${{ !cancelled() }}
         run: cargo test -p tobkiri-wasm --lib --locked filesystem -- --nocapture
+      - name: Typed stream failures and cleanup uncertainty
+        if: ${{ !cancelled() }}
+        run: |
+          status=0
+          cargo test -p tobkiri-wasm --lib --locked core_imports::error_tests || status=$?
+          cargo test -p tobkiri-wasm --lib --locked dispatch::tests || status=$?
+          exit "$status"
       - name: Prepaid byte-list ABI and allocation contracts
         if: ${{ !cancelled() }}
         run: |
@@ -170,6 +177,15 @@ jobs:
       - name: Native User port values and streams
         if: ${{ !cancelled() }}
         run: cargo test -p tobkiri-core --lib --locked user_ports
+      - name: Typed stream failures and cleanup uncertainty
+        if: ${{ !cancelled() }}
+        run: |
+          $taskStatus = 0
+          cargo test -p tobkiri-wasm --lib --locked core_imports::error_tests
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-wasm --lib --locked dispatch::tests
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          exit $taskStatus
       # These tests require the real platform allocation-owner backend.
       # Linux ext4 positives and actual tmpfs refusal run in the Linux job.
       - name: Native prepaid allocation ownership
