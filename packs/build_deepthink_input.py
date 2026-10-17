@@ -16,17 +16,24 @@ SOURCE = ROOT / "local.deepthink-input"
 PACK_ID = "local.deepthink-input"
 INPUT_VIEW = "local.deepthink.continuation-input@1.0"
 WORKFLOW_TYPE_VIEW = "local.deepthink.workflow@1.0"
+DIAGNOSTIC_VIEW = "local.deepthink.tool-diagnostics@1.0"
+GOAL_REVIEW_VIEW = "local.deepthink.goal-review-input@1.0"
+PUBLIC_VIEWS = (INPUT_VIEW, DIAGNOSTIC_VIEW, GOAL_REVIEW_VIEW)
+TYPE_VIEWS = (WORKFLOW_TYPE_VIEW, "local.deepthink.tool-receipt-reader@1.0",
+              "local.deepthink.goal-review-worker@1.0")
 FLOW_VIEWS = (
     "local.deepthink.control-flow@1.0",
     "local.deepthink.continuation-flow@1.0",
     "local.deepthink.regeneration-flow@1.0",
+    "local.deepthink.tool-diagnostics-flow@1.0",
+    "local.deepthink.goal-review-flow@1.0",
 )
 COMPONENT_HEADER = b"\0asm\r\0\1\0"
 
 
 def permissions() -> dict:
-    """Declare only the existing input view and three ordinary Flow targets."""
-    return build.permission_set(ports=[INPUT_VIEW, *FLOW_VIEWS])
+    """Declare public input views and ordinary Flow targets, never worker calls."""
+    return build.permission_set(ports=[*PUBLIC_VIEWS, *FLOW_VIEWS])
 
 
 def consumed_ports() -> list[dict]:
@@ -38,7 +45,7 @@ def consumed_ports() -> list[dict]:
     declaration does not grant permission to call its workflow operations.
     """
     return [build.port(view.rsplit("@", 1)[0])
-            for view in (*FLOW_VIEWS, WORKFLOW_TYPE_VIEW)]
+            for view in (*FLOW_VIEWS, *TYPE_VIEWS)]
 
 
 def stage(target_dir: Path, destination: Path | None = None,
@@ -69,7 +76,7 @@ def stage(target_dir: Path, destination: Path | None = None,
         "toolchain": "rust/1.94.0;wit-bindgen/0.62.0",
         "config": {"path": "config.json"},
     }, permissions())
-    manifest["ports"]["provides"] = [build.port(INPUT_VIEW.rsplit("@", 1)[0])]
+    manifest["ports"]["provides"] = [build.port(view.rsplit("@", 1)[0]) for view in PUBLIC_VIEWS]
     manifest["ports"]["consumes"] = consumed_ports()
     # No foreign shape is redeclared here. The selected DeepThink artifact is
     # the authoritative owner of continuation-input and its stream sidecar.

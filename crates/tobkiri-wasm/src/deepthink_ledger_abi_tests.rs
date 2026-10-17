@@ -33,19 +33,35 @@ pub(super) fn check_input_type_dependency_imports(
     pack: &VerifiedPack,
     shapes: &[tobkiri_manifest::ShapeDef],
 ) -> Result<()> {
-    const WORKFLOW: &str = "local:deepthink/workflow@1.0.0";
-    let reference = tobkiri_manifest::ShapeRef::parse("local.deepthink.workflow@1.0")?;
-    let owner = shapes
-        .iter()
-        .find(|shape| shape.reference == reference)
-        .context("selected worker's authoritative workflow shape is required")?;
-    assert_eq!(
-        pack.files
-            .get("wit/deps/deepthink.wit")
-            .context("adapter must bind the shared public WIT")?
-            .as_slice(),
-        owner.wit.as_bytes()
-    );
+    let mut owners = BTreeMap::new();
+    for (interface, view) in [
+        (
+            "local:deepthink/workflow@1.0.0",
+            "local.deepthink.workflow@1.0",
+        ),
+        (
+            "local:deepthink/tool-receipt-reader@1.0.0",
+            "local.deepthink.tool-receipt-reader@1.0",
+        ),
+        (
+            "local:deepthink/goal-review-worker@1.0.0",
+            "local.deepthink.goal-review-worker@1.0",
+        ),
+    ] {
+        let reference = tobkiri_manifest::ShapeRef::parse(view)?;
+        let owner = shapes
+            .iter()
+            .find(|shape| shape.reference == reference)
+            .context("selected worker's authoritative record-owner shape is required")?;
+        assert_eq!(
+            pack.files
+                .get("wit/deps/deepthink.wit")
+                .context("adapter must bind the shared public WIT")?
+                .as_slice(),
+            owner.wit.as_bytes()
+        );
+        owners.insert(interface, owner);
+    }
     let component_type = component.component_type();
     let mut interfaces = 0;
     let mut types = 0;
@@ -57,9 +73,9 @@ pub(super) fn check_input_type_dependency_imports(
         {
             continue;
         }
-        if name != WORKFLOW {
-            bail!("unexpected foreign input dependency interface: {name}")
-        }
+        let owner = owners
+            .get(name)
+            .with_context(|| format!("unexpected foreign input dependency interface: {name}"))?;
         interfaces += 1;
         let ComponentItem::ComponentInstance(instance) = item.ty else {
             bail!("workflow type dependency must be an interface")
@@ -86,7 +102,7 @@ pub(super) fn check_input_type_dependency_imports(
     println!(
         "input workflow dependency interfaces={interfaces} types={types} functions={functions}"
     );
-    assert_eq!(interfaces, 1, "one exact workflow record-owner dependency");
+    assert_eq!(interfaces, 3, "exact old and new record-owner dependencies");
     assert!(
         types > 0,
         "the dependency must contain actual record aliases"
@@ -140,16 +156,19 @@ async fn real_ledger_matches_verified_wit_and_storage_1_1_abi() -> Result<()> {
     // Core package versions, not just function names or a component file header.
     validate_abi(engine.engine(), &component, &pack, &shapes)?;
     let component_type = component.component_type();
-    for (required_interface, operations) in [
+    let required: [(&str, &[&str]); 4] = [
         (
             "local:deepthink/workflow@1.0.0",
-            ["status", "reconcile-generation", "regenerate-phase"],
+            &["status", "reconcile-generation", "regenerate-phase"],
         ),
         (
             "local:deepthink/input-context@1.0.0",
-            ["continuation", "regeneration", "control-result"],
+            &["continuation", "regeneration", "control-result"],
         ),
-    ] {
+        ("local:deepthink/tool-receipt-reader@1.0.0", &["page"]),
+        ("local:deepthink/goal-review-worker@1.0.0", &["review"]),
+    ];
+    for (required_interface, operations) in required {
         let exported = component_type
             .exports(engine.engine())
             .find(|(name, _)| *name == required_interface)
@@ -158,7 +177,7 @@ async fn real_ledger_matches_verified_wit_and_storage_1_1_abi() -> Result<()> {
         let ComponentItem::ComponentInstance(instance) = exported.ty else {
             bail!("ledger export must be a typed interface")
         };
-        for required_operation in operations {
+        for required_operation in operations.iter().copied() {
             assert!(
                 instance.exports(engine.engine()).any(|(name, item)| {
                     name == required_operation && matches!(item.ty, ComponentItem::ComponentFunc(_))
@@ -173,6 +192,17 @@ async fn real_ledger_matches_verified_wit_and_storage_1_1_abi() -> Result<()> {
             .any(|(name, _)| name == "local:deepthink/continuation-input@1.0.0"),
         "the worker no longer implements the public input provider"
     );
+    for public in [
+        "local:deepthink/tool-diagnostics@1.0.0",
+        "local:deepthink/goal-review-input@1.0.0",
+    ] {
+        assert!(
+            !component_type
+                .exports(engine.engine())
+                .any(|(name, _)| name == public),
+            "the worker must not provide a public input implementation"
+        );
+    }
     assert!(crate::validate_imports(engine.engine(), &component, &Default::default()).is_err());
     let mut missing_storage = inspection.allowed_imports().clone();
     assert!(missing_storage.remove("tobkiri:core/storage@1.1.0"));
@@ -237,6 +267,25 @@ async fn real_input_adapter_matches_owned_wit_and_closed_core_abi() -> Result<()
             .ports
             .contains("local.deepthink.workflow@1.0")
     );
+    for view in [
+        "local.deepthink.tool-receipt-reader@1.0",
+        "local.deepthink.goal-review-worker@1.0",
+    ] {
+        let reference = tobkiri_manifest::ShapeRef::parse(view)?;
+        assert!(
+            pack.manifest
+                .ports
+                .consumes
+                .iter()
+                .any(|p| p.shape == reference.name
+                    && p.version == reference.version
+                    && !p.optional)
+        );
+        assert!(
+            !pack.manifest.permissions.ports.contains(view),
+            "type dependency is not worker call authority"
+        );
+    }
     // Reproduce the original rejection with a normally built/verified negative
     // artifact. The runtime bytes and public WIT are unchanged; only the missing
     // dependency declaration differs, without adding any direct call authority.
@@ -270,6 +319,16 @@ async fn real_input_adapter_matches_owned_wit_and_closed_core_abi() -> Result<()
             &tobkiri_manifest::OpName::parse(operation)?,
         ));
     }
+    for (view, operation) in [
+        ("local.deepthink.tool-diagnostics@1.0", "page"),
+        ("local.deepthink.goal-review-input@1.0", "review"),
+    ] {
+        assert!(inspection.core_errors().has_core_error_result(
+            tobkiri_manifest::WitBindingDirection::Export,
+            &tobkiri_manifest::ShapeRef::parse(view)?,
+            &tobkiri_manifest::OpName::parse(operation)?
+        ));
+    }
     let RuntimeSpec::Wasm { component, .. } = &pack.manifest.runtime else {
         bail!("the input adapter must be an actual Wasm component")
     };
@@ -299,6 +358,25 @@ async fn real_input_adapter_matches_owned_wit_and_closed_core_abi() -> Result<()
         "pull",
         "cancel",
     ] {
+        assert!(
+            instance
+                .exports(engine.engine())
+                .any(|(name, item)| name == operation
+                    && matches!(item.ty, ComponentItem::ComponentFunc(_)))
+        );
+    }
+    for (interface, operation) in [
+        ("local:deepthink/tool-diagnostics@1.0.0", "page"),
+        ("local:deepthink/goal-review-input@1.0.0", "review"),
+    ] {
+        let item = component_type
+            .exports(engine.engine())
+            .find(|(name, _)| *name == interface)
+            .context("new public ordinary input interface missing")?
+            .1;
+        let ComponentItem::ComponentInstance(instance) = item.ty else {
+            bail!("public input must be an interface")
+        };
         assert!(
             instance
                 .exports(engine.engine())

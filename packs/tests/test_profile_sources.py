@@ -186,8 +186,15 @@ class ProfileSourceVariantTests(unittest.TestCase):
                     build.intersect_permissions(adapter["permissions"], document["ceiling"]),
                 )
                 for private in ("local.deepthink.input-context@1.0",
-                                "local.deepthink.control-flow@1.0"):
+                                "local.deepthink.control-flow@1.0",
+                                "local.deepthink.tool-receipt-reader@1.0",
+                                "local.deepthink.goal-review-worker@1.0",
+                                "local.deepthink.tool-diagnostics-flow@1.0",
+                                "local.deepthink.goal-review-flow@1.0"):
                     self.assertNotIn(private, document["user_permissions"]["ports"])
+                for name in ("tool-diagnostics", "goal-review-input"):
+                    self.assertIn("local.deepthink." + name + "@1.0", document["user_permissions"]["ports"])
+                    self.assertEqual(document["bindings"]["local.deepthink." + name + "@1"], "local.deepthink-input")
                 self.assertNotIn(
                     reader_view, document["user_permissions"]["ports"],
                 )

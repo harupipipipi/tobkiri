@@ -31,7 +31,9 @@ PROVIDER = "local.openrouter-mimo-provider"
 REGENERATION = DEEPTHINK + ".regeneration-flow@1.0"
 CONTROL = DEEPTHINK + ".control-flow@1.0"
 INPUT_CONTEXT = DEEPTHINK + ".input-context@1.0"
-ADDED_PORTS = {REGENERATION, reader.VIEW, CONTROL, INPUT_CONTEXT}
+ADDED_PORTS = {REGENERATION, reader.VIEW, CONTROL, INPUT_CONTEXT,
+               *build_deepthink.NEW_VIEWS}
+NEW_PUBLIC_VIEWS = {input_adapter.DIAGNOSTIC_VIEW, input_adapter.GOAL_REVIEW_VIEW}
 MAX_JSON = 4 * 1024 * 1024
 MAX_PACKS = 256
 COMPONENT_HEADER = b"\0asm\r\0\1\0"
@@ -252,6 +254,8 @@ def _validate_ledger(old: dict[str, Any], ledger: dict[str, Any],
             or manifest["ports"]["provides"] != [
                 build.port(DEEPTHINK + ".workflow"),
                 build.port(DEEPTHINK + ".input-context"),
+                build.port(DEEPTHINK + ".tool-receipt-reader"),
+                build.port(DEEPTHINK + ".goal-review-worker"),
             ]:
         raise ValueError("new recovery typed ports and Flow are not bound")
     owned = {(shape["name"], shape["version"], shape["kind"], shape["wit"])
@@ -261,10 +265,12 @@ def _validate_ledger(old: dict[str, Any], ledger: dict[str, Any],
         for name, kind in (("workflow", "port"), ("records", "data"),
                            ("continuation-input", "port"),
                            ("continuation-flow", "flow"), ("regeneration-flow", "flow"),
-                           ("control-flow", "flow"), ("input-context", "port"))
+                           ("control-flow", "flow"), ("input-context", "port"),
+                           *((name, "port") for name in build_deepthink.NEW_PORT_SHAPES),
+                           *((name, "flow") for name in build_deepthink.NEW_FLOW_SHAPES))
     } <= owned:
         raise ValueError("DeepThink input contracts lack their defining shape owner")
-    for name in ("continuation", "regeneration", "control"):
+    for name in ("continuation", "regeneration", "control", "tool-diagnostics", "goal-review"):
         path = f"flows/{name}.flow.json"
         if path not in manifest["flows"]:
             raise ValueError("new input and recovery Flows are not bound")
@@ -290,7 +296,7 @@ def _validate_input(inspected: dict[str, Any], ledger: dict[str, Any]) -> None:
             or any(manifest[key] for key in ("shapes", "stores", "flows", "overlays")) \
             or manifest["ports"]["untyped"] \
             or manifest["ports"]["provides"] != [
-                build.port(input_adapter.INPUT_VIEW.rsplit("@", 1)[0]),
+                *(build.port(view.rsplit("@", 1)[0]) for view in input_adapter.PUBLIC_VIEWS),
             ] \
             or manifest["ports"]["consumes"] != input_adapter.consumed_ports():
         raise ValueError("input adapter is not the standalone typed Flow bridge")
@@ -342,7 +348,7 @@ def extend_profile(baseline_profile: Path, ledger_archive: Path,
     # User invokes regenerate-phase on its already authorized continuation-input
     # port. The Pack owns the new Flow; User receives only the read-only reader.
     user = profile["user_permissions"]
-    user["ports"] = sorted(_ports(user) | {reader.VIEW})
+    user["ports"] = sorted(_ports(user) | {reader.VIEW} | NEW_PUBLIC_VIEWS)
     binding = reader.VIEW.rsplit("@", 1)[0] + "@1"
     if profile["bindings"].get(binding, reader.PACK_ID) != reader.PACK_ID:
         raise ValueError("reader binding belongs to a different Pack")
@@ -355,6 +361,15 @@ def extend_profile(baseline_profile: Path, ledger_archive: Path,
     if profile["bindings"].get(context_binding, DEEPTHINK) != DEEPTHINK:
         raise ValueError("input context binding belongs to a different Pack")
     profile["bindings"][context_binding] = DEEPTHINK
+    for view, provider in [
+        ("local.deepthink.tool-receipt-reader@1.0", DEEPTHINK),
+        ("local.deepthink.goal-review-worker@1.0", DEEPTHINK),
+        *((view, input_adapter.PACK_ID) for view in sorted(NEW_PUBLIC_VIEWS)),
+    ]:
+        binding = view.rsplit("@", 1)[0] + "@1"
+        if profile["bindings"].get(binding, provider) != provider:
+            raise ValueError("new ordinary operation binding belongs to a different Pack")
+        profile["bindings"][binding] = provider
     deepthink_limit = deepcopy(profile["pack_limits"][DEEPTHINK])
     deepthink_limit["ports"] = sorted(_ports(deepthink_limit) | ADDED_PORTS)
     profile["pack_limits"][DEEPTHINK] = build.intersect_permissions(
@@ -371,8 +386,14 @@ def extend_profile(baseline_profile: Path, ledger_archive: Path,
     )
     adapter_limit = adapter["manifest"]["permissions"]
     if input_adapter.PACK_ID in profile["pack_limits"]:
+        # Keep all old non-port restrictions; admit only new public/Flow views
+        # before applying the normal manifest/ceiling intersection.
+        previous_adapter_limit = deepcopy(profile["pack_limits"][input_adapter.PACK_ID])
+        previous_adapter_limit["ports"] = sorted(
+            _ports(previous_adapter_limit) | set(input_adapter.PUBLIC_VIEWS)
+            | set(input_adapter.FLOW_VIEWS))
         adapter_limit = build.intersect_permissions(
-            adapter_limit, profile["pack_limits"][input_adapter.PACK_ID],
+            adapter_limit, previous_adapter_limit,
         )
     profile["pack_limits"][input_adapter.PACK_ID] = build.intersect_permissions(
         adapter_limit, ceiling,

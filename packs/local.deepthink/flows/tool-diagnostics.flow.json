@@ -1,0 +1,18 @@
+{
+  "format": "tobkiri.flow/1",
+  "id": "tool-diagnostics",
+  "implements": "local.deepthink.tool-diagnostics-flow@1.0",
+  "trigger": {"input": "local.deepthink.tool-diagnostics@1.0"},
+  "loop_limits": "profile-default",
+  "on_error": {"default": "fail", "steps": {}},
+  "steps": [
+    {
+      "id": "page",
+      "call": {
+        "shape": "local.deepthink.tool-receipt-reader@1.0",
+        "op": "page",
+        "args": {"selection": "$input.selection", "offset": "$input.offset", "limit": "$input.limit"}
+      }
+    }
+  ]
+}

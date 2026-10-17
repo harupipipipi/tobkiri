@@ -74,6 +74,7 @@ jobs:
         run: |
           python3 -B -m unittest discover -s packs/tests -p test_build_profiles.py -v
           python3 -B -m unittest discover -s packs/tests -p test_deepthink_ui_assets.py -v
+          python3 -B -m unittest discover -s packs/tests -p test_new_deepthink_operations.py -v
           python3 -B packs/tests/test_profile_sources.py -v
       # The test reads packs/ relative to CARGO_MANIFEST_DIR, then builds and
       # verifies real .tpk bytes in memory. It never starts Core or calls an LLM.

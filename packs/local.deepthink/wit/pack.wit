@@ -6,4 +6,6 @@ world pack {
   export tobkiri:core/stream-source@1.0.0;
   export local:deepthink/workflow@1.0.0;
   export local:deepthink/input-context@1.0.0;
+  export local:deepthink/tool-receipt-reader@1.0.0;
+  export local:deepthink/goal-review-worker@1.0.0;
 }

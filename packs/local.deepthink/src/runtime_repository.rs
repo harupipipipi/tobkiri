@@ -85,6 +85,29 @@ impl RunSession {
         RunRepository::open(CoreDatabase(store)).map_err(repository_failure)
     }
 
+    /// New read-only operations inspect only existing authoritative snapshots.
+    /// No schema initialization, legacy KV fallback, progress merge or dispatch
+    /// capability can occur through this loader.
+    pub fn load_existing(
+        store: Rc<storage::Store>,
+        run_id: &str,
+    ) -> Result<Option<(Run, Head)>, Failure> {
+        let mut repository =
+            RunRepository::open_existing(CoreDatabase(store)).map_err(repository_failure)?;
+        let Some(snapshot) = repository.load(run_id).map_err(repository_failure)? else {
+            return Ok(None);
+        };
+        let run: Run = serde_json::from_slice(&snapshot.bytes)
+            .map_err(|_| invalid("SQL Run snapshot has an invalid schema"))?;
+        if run.id != snapshot.head.run_id
+            || run.request_digest != snapshot.head.run_request_digest.as_str()
+            || run.version != workflow::VERSION
+        {
+            return Err(invalid("SQL Run snapshot changed its original identity"));
+        }
+        Ok(Some((run, snapshot.head)))
+    }
+
     pub fn load(store: Rc<storage::Store>, run_id: &str) -> Result<Option<(Run, Head)>, Failure> {
         let mut repository = Self::repository(store)?;
         let Some(snapshot) = repository.load(run_id).map_err(repository_failure)? else {

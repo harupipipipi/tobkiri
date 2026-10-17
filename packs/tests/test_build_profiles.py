@@ -64,7 +64,8 @@ class BuildProfileTests(unittest.TestCase):
                      "wit/deps/generation-reader.wit", "wit/deps/deepthink.wit",
                      "wit/deps/harness-chat.wit", "wit/deps/harness-agent.wit",
                      "overlays/generate.overlay.json", "flows/continuation.flow.json",
-                     "flows/regeneration.flow.json", "flows/control.flow.json"]
+                     "flows/regeneration.flow.json", "flows/control.flow.json",
+                     "flows/tool-diagnostics.flow.json", "flows/goal-review.flow.json"]
         input_source = ["Cargo.toml", "build.rs", "src/lib.rs", "src/control_flow.rs",
                         "wit/pack.wit"]
         tools = ["Cargo.toml", "build.rs", "src/lib.rs", "wit/pack.wit",
@@ -232,15 +233,18 @@ class BuildProfileTests(unittest.TestCase):
         self.assertEqual(manifest["stores"], [])
         self.assertEqual(manifest["flows"], [])
         self.assertEqual(manifest["ports"]["provides"], [
-            build.port("local.deepthink.continuation-input"),
+            build.port(view.rsplit("@", 1)[0]) for view in build_deepthink_input.PUBLIC_VIEWS
         ])
         self.assertEqual(set(manifest["permissions"]["ports"]), {
-            build_deepthink_input.INPUT_VIEW, *build_deepthink_input.FLOW_VIEWS,
+            *build_deepthink_input.PUBLIC_VIEWS, *build_deepthink_input.FLOW_VIEWS,
         })
         self.assertEqual(manifest["ports"]["consumes"], build_deepthink_input.consumed_ports())
         self.assertIn(build.port("local.deepthink.workflow"), manifest["ports"]["consumes"])
         self.assertNotIn(build_deepthink_input.WORKFLOW_TYPE_VIEW,
                          manifest["permissions"]["ports"])
+        for view in build_deepthink_input.TYPE_VIEWS:
+            self.assertIn(build.port(view.rsplit("@", 1)[0]), manifest["ports"]["consumes"])
+            self.assertNotIn(view, manifest["permissions"]["ports"])
         for key in ("secrets", "fs", "proc", "host_io"):
             self.assertEqual(manifest["permissions"][key], [])
         self.assertFalse(any(manifest["permissions"]["storage"].values()))

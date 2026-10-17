@@ -49,3 +49,46 @@ interface records {
   use tobkiri:core/types@1.0.0.{json};
   record checkpoint { version: string, run-id: string, payload: json }
 }
+
+// New independent ordinary interfaces leave all published 1.0 members above
+// unchanged. Read-only selections never supply an outcome or dispatch permit.
+interface tool-receipt-reader {
+  use tobkiri:core/types@1.0.0.{error, json};
+  record selection {
+    run-id: string,
+    conversation: string,
+    expected-revision: string,
+    expected-snapshot-digest: string,
+  }
+  page: func(selection: selection, offset: u32, limit: u32) -> result<json, error>;
+}
+
+interface tool-diagnostics {
+  use tobkiri:core/types@1.0.0.{error, json};
+  use tool-receipt-reader.{selection};
+  page: func(selection: selection, offset: u32, limit: u32) -> result<json, error>;
+}
+
+interface tool-diagnostics-flow { run: func(); }
+
+interface goal-review-worker {
+  use tobkiri:core/types@1.0.0.{error, stream-handle};
+  use workflow.{chat-event};
+  record selection {
+    run-id: string,
+    conversation: string,
+    expected-revision: string,
+    expected-snapshot-digest: string,
+    candidate-digest: string,
+  }
+  review: func(selection: selection) -> result<stream-handle, error>;
+}
+
+interface goal-review-input {
+  use tobkiri:core/types@1.0.0.{error, json, stream-handle};
+  use goal-review-worker.{selection};
+  type flow-frame = json;
+  review: func(selection: selection) -> result<stream-handle, error>;
+}
+
+interface goal-review-flow { run: func(); }

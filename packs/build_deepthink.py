@@ -18,6 +18,11 @@ from build import (
 
 ROOT = Path(__file__).resolve().parent
 SOURCE = ROOT / "local.deepthink"
+NEW_PORT_SHAPES = ("tool-receipt-reader", "tool-diagnostics",
+                   "goal-review-worker", "goal-review-input")
+NEW_FLOW_SHAPES = ("tool-diagnostics-flow", "goal-review-flow")
+NEW_VIEWS = tuple("local.deepthink." + name + "@1.0"
+                  for name in (*NEW_PORT_SHAPES, *NEW_FLOW_SHAPES))
 
 
 def default_config() -> dict:
@@ -51,7 +56,8 @@ def stage(target_dir: Path, config: dict | None = None,
                      "wit/deps/generation-reader.wit",
                      "wit/deps/harness-chat.wit", "wit/deps/harness-agent.wit",
                      "overlays/generate.overlay.json", "flows/continuation.flow.json",
-                     "flows/regeneration.flow.json", "flows/control.flow.json"]:
+                     "flows/regeneration.flow.json", "flows/control.flow.json",
+                     "flows/tool-diagnostics.flow.json", "flows/goal-review.flow.json"]:
         destination_file = directory / relative
         destination_file.parent.mkdir(parents=True, exist_ok=True)
         source = SOURCE / relative
@@ -79,6 +85,13 @@ def stage(target_dir: Path, config: dict | None = None,
         write_json(directory / f"wit/{name}.shape.json", {
             "cardinality": "one", "streams": {}, "callbacks": {}, "conformance": None,
         })
+    for name in (*NEW_PORT_SHAPES, *NEW_FLOW_SHAPES):
+        streams = {"review": "chat-event"} if name == "goal-review-worker" else (
+            {"review": "flow-frame"} if name == "goal-review-input" else {})
+        write_json(directory / f"wit/{name}.shape.json", {
+            "cardinality": "one", "streams": streams,
+            "callbacks": {}, "conformance": None,
+        })
     views = ["local.harness-chat.llm-provider@1.0",
              "local.harness-chat.structured-llm-provider@1.0",
              "local.harness-agent.tool-provider@1.0",
@@ -88,13 +101,14 @@ def stage(target_dir: Path, config: dict | None = None,
              "local.deepthink.continuation-flow@1.0", "local.deepthink.continuation-input@1.0",
              "local.deepthink.regeneration-flow@1.0",
               "local.deepthink.control-flow@1.0", "local.deepthink.input-context@1.0",
-             "local.openrouter-generation-reader.generation-reader@1.0"]
+             "local.openrouter-generation-reader.generation-reader@1.0", *NEW_VIEWS]
     manifest = base_manifest("deepthink", {
         "kind": "wasm", "component": "component.wasm",
         "toolchain": "rust/1.94.0;wit-bindgen/0.62.0",
         "config": {"path": "config.json"},
     }, permission_set(ports=views, private=True))
-    manifest["ports"]["provides"] = [port("local.deepthink.workflow"), port("local.deepthink.input-context")]
+    manifest["ports"]["provides"] = [port("local.deepthink.workflow"), port("local.deepthink.input-context"),
+                                      port("local.deepthink.tool-receipt-reader"), port("local.deepthink.goal-review-worker")]
     manifest["ports"]["consumes"] = [
         port("local.harness-chat.llm-provider"),
         port("local.harness-chat.structured-llm-provider", optional=True),
@@ -108,15 +122,19 @@ def stage(target_dir: Path, config: dict | None = None,
         port("local.deepthink.input-context"),
         port("local.openrouter-generation-reader.generation-reader", optional=True),
         port("local.harness-chat.conversation-store"),
+        *(port(view.rsplit("@", 1)[0]) for view in NEW_VIEWS),
     ]
     manifest["shapes"] = [{"name": "local.deepthink." + name, "version": "1.0",
         "kind": kind, "wit": "wit/deps/deepthink.wit"}
         for name, kind in [("workflow", "port"), ("records", "data"),
                            ("continuation-input", "port"), ("continuation-flow", "flow"),
                             ("regeneration-flow", "flow"), ("control-flow", "flow"),
-                            ("input-context", "port")]]
+                            ("input-context", "port"),
+                            *((name, "port") for name in NEW_PORT_SHAPES),
+                            *((name, "flow") for name in NEW_FLOW_SHAPES)]]
     manifest["flows"] = ["flows/continuation.flow.json", "flows/regeneration.flow.json",
-                         "flows/control.flow.json"]
+                         "flows/control.flow.json", "flows/tool-diagnostics.flow.json",
+                         "flows/goal-review.flow.json"]
     manifest["overlays"] = ["overlays/generate.overlay.json"]
     manifest["stores"] = [{"name": "workflows", "tier": "private",
                            "data_shape": "local.deepthink.records@1.0"}]
@@ -127,6 +145,8 @@ def stage(target_dir: Path, config: dict | None = None,
              "wit/continuation-input.shape.json", "wit/continuation-flow.shape.json",
              "wit/regeneration-flow.shape.json", "wit/control-flow.shape.json", "wit/input-context.shape.json",
              "flows/continuation.flow.json", "flows/regeneration.flow.json", "flows/control.flow.json",
+             "flows/tool-diagnostics.flow.json", "flows/goal-review.flow.json",
+             *(f"wit/{name}.shape.json" for name in (*NEW_PORT_SHAPES, *NEW_FLOW_SHAPES)),
              "overlays/generate.overlay.json", "component.build.json"]
     sources = [*sorted((SOURCE / "src").glob("*.rs")), SOURCE / "build.rs",
                SOURCE / "Cargo.toml", ROOT / "Cargo.toml", ROOT / "Cargo.lock",

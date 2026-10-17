@@ -425,6 +425,13 @@ impl<D: SqlDatabase> RunRepository<D> {
         Ok(Self { database })
     }
 
+    /// Inspect an existing ledger without creating or repairing any object.
+    /// This does not mint a dispatch permit or adopt a legacy checkpoint.
+    pub fn open_existing(mut database: D) -> Result<Self> {
+        transaction(&mut database, |tx| check_schema(tx, false))?;
+        Ok(Self { database })
+    }
+
     pub fn validate_schema(&mut self) -> Result<()> {
         transaction(&mut self.database, |tx| check_schema(tx, false))
     }
@@ -2022,6 +2029,50 @@ mod tests {
         ));
         assert!(trace.lock().unwrap().writes.is_empty());
         finished(&trace);
+    }
+
+    #[test]
+    fn existing_only_open_never_creates_missing_or_partial_schema() {
+        let mut partial = schema_rows();
+        partial.rows.pop();
+        for present in [rows(&["type", "name", "tbl_name", "sql"], vec![]), partial] {
+            let trace = Arc::new(Mutex::new(Trace {
+                steps: vec![Step::Query(SELECT_SCHEMA, present), Step::Rollback(Ok(()))].into(),
+                ..Trace::default()
+            }));
+            assert!(matches!(
+                RunRepository::open_existing(FakeDatabase(trace.clone())),
+                Err(RepositoryError::Schema)
+            ));
+            assert!(trace.lock().unwrap().writes.is_empty());
+            assert_eq!(trace.lock().unwrap().commits, 0);
+            finished(&trace);
+        }
+    }
+
+    #[test]
+    fn existing_only_open_checks_marker_and_preserves_commit_uncertainty() {
+        for ack in [Ok(()), Err(SqlError::commit_unknown())] {
+            let unknown = ack.is_err();
+            let trace = Arc::new(Mutex::new(Trace {
+                steps: vec![
+                    Step::Query(SELECT_SCHEMA, schema_rows()),
+                    marker_query(),
+                    Step::Commit(ack),
+                ]
+                .into(),
+                ..Trace::default()
+            }));
+            let result = RunRepository::open_existing(FakeDatabase(trace.clone()));
+            if unknown {
+                assert!(matches!(result, Err(RepositoryError::CommitUnknown)));
+            } else {
+                assert!(result.is_ok());
+            }
+            assert!(trace.lock().unwrap().writes.is_empty());
+            assert_eq!(trace.lock().unwrap().queries.len(), 2);
+            finished(&trace);
+        }
     }
 
     #[test]

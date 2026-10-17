@@ -444,7 +444,7 @@ mod staged_component_tests {
         assert!(input.manifest.ports.untyped.is_empty());
         assert!(input.manifest.ui.is_none());
         let reference = tobkiri_manifest::ShapeRef::parse(INPUT_VIEW)?;
-        assert_eq!(input.manifest.ports.provides.len(), 1);
+        assert_eq!(input.manifest.ports.provides.len(), 3);
         assert_eq!(input.manifest.ports.provides[0].shape, reference.name);
         assert_eq!(input.manifest.ports.provides[0].version, reference.version);
         assert!(!input.manifest.ports.provides[0].optional);
@@ -452,9 +452,13 @@ mod staged_component_tests {
             "local.deepthink.control-flow@1.0".to_owned(),
             "local.deepthink.continuation-flow@1.0".to_owned(),
             "local.deepthink.regeneration-flow@1.0".to_owned(),
+            "local.deepthink.tool-diagnostics-flow@1.0".to_owned(),
+            "local.deepthink.goal-review-flow@1.0".to_owned(),
         ]);
         let mut consumed_views = flow_views.clone();
         consumed_views.insert("local.deepthink.workflow@1.0".to_owned());
+        consumed_views.insert("local.deepthink.tool-receipt-reader@1.0".to_owned());
+        consumed_views.insert("local.deepthink.goal-review-worker@1.0".to_owned());
         assert_eq!(
             input
                 .manifest
@@ -470,12 +474,23 @@ mod staged_component_tests {
         );
         let mut views = flow_views;
         views.insert(INPUT_VIEW.to_owned());
+        views.insert("local.deepthink.tool-diagnostics@1.0".to_owned());
+        views.insert("local.deepthink.goal-review-input@1.0".to_owned());
         let permissions = &input.manifest.permissions;
         assert_eq!(permissions.ports, views);
         assert!(
             !permissions.ports.contains("local.deepthink.workflow@1.0"),
             "a WIT type dependency is not direct workflow call authority"
         );
+        for view in [
+            "local.deepthink.tool-receipt-reader@1.0",
+            "local.deepthink.goal-review-worker@1.0",
+        ] {
+            assert!(
+                !permissions.ports.contains(view),
+                "record alias must not grant direct worker call authority"
+            );
+        }
         assert!(permissions.network.origins.is_empty());
         assert!(permissions.network.user_origins.is_none());
         assert!(permissions.secrets.is_empty());
@@ -746,6 +761,37 @@ mod staged_component_tests {
                     input_pins[0].sha256, input.hash,
                     "exact input adapter pin in {name}"
                 );
+                for (view, owner) in [
+                    ("local.deepthink.tool-diagnostics@1", INPUT_ID),
+                    ("local.deepthink.goal-review-input@1", INPUT_ID),
+                    ("local.deepthink.tool-receipt-reader@1", "local.deepthink"),
+                    ("local.deepthink.goal-review-worker@1", "local.deepthink"),
+                ] {
+                    assert_eq!(
+                        profile.bindings.get(view).map(|p| p.as_str()),
+                        Some(owner),
+                        "new whole-shape binding in {name}"
+                    );
+                }
+                let user = profile
+                    .user_permissions
+                    .as_ref()
+                    .context("explicit User policy required")?;
+                for view in [
+                    "local.deepthink.tool-diagnostics@1.0",
+                    "local.deepthink.goal-review-input@1.0",
+                ] {
+                    assert!(user.ports.contains(view), "new public operation in {name}");
+                }
+                for view in [
+                    "local.deepthink.tool-receipt-reader@1.0",
+                    "local.deepthink.goal-review-worker@1.0",
+                ] {
+                    assert!(
+                        !user.ports.contains(view),
+                        "User must not call worker directly in {name}"
+                    );
+                }
             }
             let reader_pins = profile
                 .packs

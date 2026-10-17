@@ -161,7 +161,18 @@ impl Ports for FakePorts {
         }
         let ctx = context(messages);
         self.contexts.push((phase.into(), ctx.clone()));
-        let mut result = fixture(phase);
+        let mut result = if workflow::goal_contract_gate::is_phase(phase) {
+            if phase == "goal_contract_revision:1" {
+                let mut contract = ctx["contract_candidate"].clone();
+                contract["success_criteria"][0]["measurement"] =
+                    json!("Fixture corrected measurement");
+                json!({"contract":contract,"changes":["Fixture semantic correction"]})
+            } else {
+                workflow::goal_contract_gate::tests::approved_review(&ctx)
+            }
+        } else {
+            fixture(phase)
+        };
         let mut calls = json!([]);
         if phase == "goal_intake" && self.two_requirements {
             result["requirements"].as_array_mut().unwrap().push(json!({"id":"r2","description":"検証式を示す","acceptance_criteria":["検証式がある"]}));
@@ -252,7 +263,7 @@ impl Ports for FakePorts {
         let envelope = json!({"summary":summary(),"tool_calls":calls,"result":result});
         // This deliberate provider violation must reach the real validator.
         if !(phase.starts_with("profile_check:") && self.tool_in_profile_check) {
-            phases::validate(&envelope, &phases::schema(phase)).unwrap();
+            phases::validate(&envelope, &workflow::phase_schema(phase)).unwrap();
         }
         Ok(Generated {
             text: envelope.to_string(),

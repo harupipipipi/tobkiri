@@ -6,6 +6,7 @@ mod control_flow;
 wit_bindgen::generate!({path:"wit",world:"pack",generate_all});
 
 use exports::local::deepthink::continuation_input::{self, Guest, RecoverySelection};
+use exports::local::deepthink::{goal_review_input, tool_diagnostics};
 use exports::tobkiri::core::lifecycle;
 use serde_json::{Value, json};
 use tobkiri::core::{
@@ -16,6 +17,8 @@ use tobkiri::core::{
 const CONTROL: &str = "local.deepthink.control-flow@1.0";
 const CONTINUATION: &str = "local.deepthink.continuation-flow@1.0";
 const REGENERATION: &str = "local.deepthink.regeneration-flow@1.0";
+const DIAGNOSTICS: &str = "local.deepthink.tool-diagnostics-flow@1.0";
+const GOAL_REVIEW: &str = "local.deepthink.goal-review-flow@1.0";
 
 struct Pack;
 
@@ -130,6 +133,45 @@ impl Guest for Pack {
 
     fn cancel(stream: StreamHandle) {
         flow::cancel_stream(stream);
+    }
+}
+
+impl tool_diagnostics::Guest for Pack {
+    fn page(
+        selection: tool_diagnostics::Selection,
+        offset: u32,
+        limit: u32,
+    ) -> Result<String, Error> {
+        if !(1..=16).contains(&limit) {
+            return Err(error(
+                ErrorCode::Invalid,
+                "tool receipt page limit must be 1..16",
+            ));
+        }
+        let stream = flow::run_flow(
+            DIAGNOSTICS,
+            &json!({"selection":{
+            "run-id":selection.run_id,"conversation":selection.conversation,
+            "expected-revision":selection.expected_revision,
+            "expected-snapshot-digest":selection.expected_snapshot_digest},
+            "offset":offset,"limit":limit})
+            .to_string(),
+        )?;
+        control_flow::drain(&mut ControlSource(stream), "tool-receipts")
+    }
+}
+
+impl goal_review_input::Guest for Pack {
+    fn review(selection: goal_review_input::Selection) -> Result<StreamHandle, Error> {
+        flow::run_flow(
+            GOAL_REVIEW,
+            &json!({"selection":{
+            "run-id":selection.run_id,"conversation":selection.conversation,
+            "expected-revision":selection.expected_revision,
+            "expected-snapshot-digest":selection.expected_snapshot_digest,
+            "candidate-digest":selection.candidate_digest}})
+            .to_string(),
+        )
     }
 }
 

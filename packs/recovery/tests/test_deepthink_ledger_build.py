@@ -80,7 +80,7 @@ class LedgerBuildTests(unittest.TestCase):
     def input_archive(self, edit=None, wit=None):
         def manifest_edit(manifest):
             manifest["ports"].update(
-                provides=[build.port("local.deepthink.continuation-input")],
+                provides=[build.port(view.rsplit("@", 1)[0]) for view in ledger.input_adapter.PUBLIC_VIEWS],
                 consumes=ledger.input_adapter.consumed_ports(),
             )
             if edit:
@@ -166,19 +166,23 @@ class LedgerBuildTests(unittest.TestCase):
     def ledger_archive(self, raw_config, old_manifest, edit=None):
         def manifest_edit(manifest):
             manifest["ports"]["provides"] = [build.port("local.deepthink.workflow"),
-                                              build.port("local.deepthink.input-context")]
+                                              build.port("local.deepthink.input-context"),
+                                              build.port("local.deepthink.tool-receipt-reader"),
+                                              build.port("local.deepthink.goal-review-worker")]
             manifest["ports"]["consumes"] = [
                 build.port(view.rsplit("@", 1)[0]) for view in sorted(ledger.ADDED_PORTS)
             ]
             manifest["flows"] = [f"flows/{name}.flow.json"
-                                 for name in ("continuation", "regeneration", "control")]
+                                 for name in ("continuation", "regeneration", "control", "tool-diagnostics", "goal-review")]
             manifest["shapes"] = [
                 {"name": ledger.DEEPTHINK + "." + name, "version": "1.0",
                  "kind": kind, "wit": "wit/deps/deepthink.wit"}
                 for name, kind in (("workflow", "port"), ("records", "data"),
                                    ("continuation-input", "port"), ("continuation-flow", "flow"),
                                    ("regeneration-flow", "flow"), ("control-flow", "flow"),
-                                   ("input-context", "port"))
+                                   ("input-context", "port"),
+                                   *((name, "port") for name in ledger.build_deepthink.NEW_PORT_SHAPES),
+                                   *((name, "flow") for name in ledger.build_deepthink.NEW_FLOW_SHAPES))
             ]
             if edit:
                 edit(manifest)
@@ -188,6 +192,8 @@ class LedgerBuildTests(unittest.TestCase):
             "flows/continuation.flow.json": build.canonical({
                 "implements": "local.deepthink.continuation-flow@1.0"}),
             "flows/control.flow.json": build.canonical({"implements": ledger.CONTROL}),
+            "flows/tool-diagnostics.flow.json": build.canonical({"implements": "local.deepthink.tool-diagnostics-flow@1.0"}),
+            "flows/goal-review.flow.json": build.canonical({"implements": "local.deepthink.goal-review-flow@1.0"}),
             "wit/deps/deepthink.wit": (ledger.PACKS / "shapes/deepthink.wit").read_bytes(),
             "wit/deps/generation-reader.wit": (
                 reader.SOURCE / "wit/deps/reader.wit"
@@ -243,13 +249,13 @@ class LedgerBuildTests(unittest.TestCase):
                          ledger.input_adapter.PACK_ID)
         self.assertEqual(profile["bindings"]["local.deepthink.input-context@1"], ledger.DEEPTHINK)
         self.assertEqual(set(profile["user_permissions"]["ports"]),
-                         set(original["user_permissions"]["ports"]) | {reader.VIEW})
+                         set(original["user_permissions"]["ports"]) | {reader.VIEW} | ledger.NEW_PUBLIC_VIEWS)
         permissions = profile["pack_limits"][ledger.input_adapter.PACK_ID]
         self.assertFalse(any(permissions["storage"].values()))
         self.assertEqual(permissions["secrets"], [])
         self.assertEqual(permissions["network"]["origins"], [])
         self.assertEqual(set(permissions["ports"]), {
-            ledger.input_adapter.INPUT_VIEW, *ledger.input_adapter.FLOW_VIEWS,
+            *ledger.input_adapter.PUBLIC_VIEWS, *ledger.input_adapter.FLOW_VIEWS,
         })
 
     def test_existing_reader_is_retained_once_with_restrictions_and_id_preserved(self):
@@ -263,6 +269,45 @@ class LedgerBuildTests(unittest.TestCase):
         receipt = json.loads((output.parent / "PREPARATION.json").read_bytes())
         self.assertFalse(receipt["old_reader_replaced"])
         self.assertTrue(receipt["existing_reader_bytes_retained"])
+
+    def test_existing_input_nonport_limits_are_kept_while_new_views_are_explicit(self):
+        baseline, original, _, _, new, reader_path = self.ready()
+        old_adapter, old_manifest = self.input_archive()
+        original["packs"].append(self.pin(old_adapter, old_manifest))
+        old_limits = deepcopy(old_manifest["permissions"])
+        old_limits["ports"] = [ledger.input_adapter.INPUT_VIEW,
+            "local.deepthink.control-flow@1.0", "local.deepthink.continuation-flow@1.0",
+            "local.deepthink.regeneration-flow@1.0"]
+        old_limits["loops"]["max_iterations"] = 1
+        original["pack_limits"][ledger.input_adapter.PACK_ID] = old_limits
+        original["bindings"]["local.deepthink.continuation-input@1"] = ledger.input_adapter.PACK_ID
+        build.write_json(baseline, original)
+        output = self.extend_profile(baseline, new, reader_path, self.root / "old-adapter")
+        profile = json.loads(output.read_bytes())
+        current = profile["pack_limits"][ledger.input_adapter.PACK_ID]
+        nonport_current = {key: deepcopy(value) for key, value in current.items() if key != "ports"}
+        nonport_original = {key: deepcopy(value) for key, value in old_limits.items() if key != "ports"}
+        # Manifest normalization writes the optional null; permission intersection
+        # omits it. Compare all non-port fields after that one canonical default.
+        for permissions in (nonport_current, nonport_original):
+            permissions["network"].setdefault("user_origins", None)
+        self.assertEqual(nonport_current, nonport_original)
+        self.assertEqual(set(current["ports"]), set(ledger.input_adapter.PUBLIC_VIEWS) | set(ledger.input_adapter.FLOW_VIEWS))
+        for view in ledger.NEW_PUBLIC_VIEWS:
+            self.assertIn(view, profile["user_permissions"]["ports"])
+        for view in ("local.deepthink.tool-receipt-reader@1.0", "local.deepthink.goal-review-worker@1.0"):
+            self.assertNotIn(view, profile["user_permissions"]["ports"])
+            self.assertNotIn(view, current["ports"])
+
+    def test_new_shape_binding_cannot_replace_an_unrelated_provider(self):
+        for view in ("local.deepthink.tool-diagnostics@1", "local.deepthink.goal-review-worker@1"):
+            baseline, original, _, _, new, reader_path = self.ready()
+            original["bindings"][view] = "local.unrelated"
+            build.write_json(baseline, original)
+            output = self.root / ("bad-new-binding-" + str(self.counter))
+            with self.assertRaisesRegex(ValueError, "binding belongs"):
+                self.extend_profile(baseline, new, reader_path, output)
+            self.assertFalse(output.exists())
 
     def test_config_semantically_equal_but_different_bytes_is_rejected(self):
         baseline, _, config, old, _, reader_path = self.ready()
@@ -461,6 +506,7 @@ class LedgerBuildTests(unittest.TestCase):
         self.assertEqual(provenance["sources"]["packs/recovery/build_deepthink_ledger.py"], reader.file_sha(Path(ledger.__file__)))
         self.assertEqual(result["ports"]["provides"], [
             build.port("local.deepthink.workflow"), build.port("local.deepthink.input-context"),
+            build.port("local.deepthink.tool-receipt-reader"), build.port("local.deepthink.goal-review-worker"),
         ])
 
     def test_stage_has_no_debug_fallback_or_invalid_component_acceptance(self):

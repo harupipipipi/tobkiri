@@ -136,6 +136,10 @@ def compose(manifests: dict[str, dict[str, Any]], *, ui: bool) -> dict[str, Any]
         "local.deepthink.workflow@1": "local.deepthink",
         "local.deepthink.continuation-input@1": "local.deepthink-input",
         "local.deepthink.input-context@1": "local.deepthink",
+        "local.deepthink.tool-receipt-reader@1": "local.deepthink",
+        "local.deepthink.goal-review-worker@1": "local.deepthink",
+        "local.deepthink.tool-diagnostics@1": "local.deepthink-input",
+        "local.deepthink.goal-review-input@1": "local.deepthink-input",
         "local.openrouter-generation-reader.generation-reader@1":
             "local.openrouter-generation-reader",
     })
@@ -148,7 +152,7 @@ def compose(manifests: dict[str, dict[str, Any]], *, ui: bool) -> dict[str, Any]
                    "local.deepthink.continuation-flow@1.0",
                    "local.deepthink.regeneration-flow@1.0",
                    "local.deepthink.control-flow@1.0", "local.deepthink.input-context@1.0",
-                   "local.openrouter-generation-reader.generation-reader@1.0"]
+                   "local.openrouter-generation-reader.generation-reader@1.0", *build_deepthink.NEW_VIEWS]
     profile["ceiling"]["ports"] = sorted(set(profile["ceiling"]["ports"] + extra_ports))
     profile["ceiling"]["secrets"] = [{"name": "api-key", "reveal": False, "optional": False}]
     profile["ceiling"]["loops"] = {"max_iterations": 512, "max_wall_ms": 3600000, "max_cost_units": 100000}
@@ -158,6 +162,7 @@ def compose(manifests: dict[str, dict[str, Any]], *, ui: bool) -> dict[str, Any]
         "local.harness-chat.user-input@1.0",
         "local.harness-chat.conversation-store@1.0",
         "local.deepthink.continuation-input@1.0",
+        "local.deepthink.tool-diagnostics@1.0", "local.deepthink.goal-review-input@1.0",
     ])
     if ui:
         profile["startup"]["ui"] = "local.deepthink-ui"

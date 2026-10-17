@@ -7,8 +7,19 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::phases;
 
+#[path = "goal_contract_gate.rs"]
+pub mod goal_contract_gate;
 #[path = "reconciliation.rs"]
 pub mod reconciliation;
+
+/// The additive semantic phases do not reinterpret any existing phase schema.
+pub fn phase_schema(phase: &str) -> Value {
+    if goal_contract_gate::is_phase(phase) {
+        goal_contract_gate::schema(phase)
+    } else {
+        phases::schema(phase)
+    }
+}
 
 pub const VERSION: &str = "deepthink.workflow.v5";
 pub const PROGRESS_VERSION: &str = "deepthink.generation-progress.v1";
@@ -428,6 +439,8 @@ pub struct Run {
     pub generation_resolutions: BTreeMap<String, reconciliation::Resolution>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub regeneration_authorizations: BTreeMap<String, reconciliation::RegenerationAuthorization>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contract_gate: Option<goal_contract_gate::ContractGate>,
     /// An explicit invocation's preparation marker, never durable authority.
     /// Runtime must still consume its nonserializable confirmed SQL claim.
     #[serde(skip)]
@@ -615,6 +628,7 @@ impl Run {
             last_generation: None,
             generation_resolutions: BTreeMap::new(),
             regeneration_authorizations: BTreeMap::new(),
+            contract_gate: None,
             regeneration_dispatch: None,
         })
     }
@@ -643,6 +657,33 @@ impl Run {
                 code: "needs-reconciliation".into(),
                 message: "An unconfirmed checkpoint or Core operation cannot be resumed automatically. Inspect its original receipt before continuing.".into(),
             });
+        }
+        if self.error.as_ref().is_some_and(|error| {
+            matches!(
+                error.code.as_str(),
+                "goal-contract-review-rejected" | "goal-contract-gate-exhausted"
+            )
+        }) {
+            return Err(Failure {
+                code: "goal-contract-gate-exhausted".into(),
+                message: "The bounded Goal assessment cannot be reset by ordinary continuation."
+                    .into(),
+            });
+        }
+        if let Some(phase) = self.pending.front() {
+            // A real answer has its own transition; it never rewinds review
+            // history through the old phase-entry snapshot.
+            let answering_gate = self.status == "needs_input"
+                && self
+                    .contract_gate
+                    .as_ref()
+                    .is_some_and(|gate| gate.state == "needs_input");
+            if !answering_gate {
+                self.require_goal_gate_for_phase(&phase.id)?;
+            }
+            if self.status == "quarantined" {
+                self.ensure_goal_generation_budget(&phase.id)?;
+            }
         }
         if self.status == "paused" {
             self.pause_receipt()?;
@@ -687,7 +728,7 @@ impl Run {
                         "failed_generation":point.key,"failure":self.error,
                         "completed_tool_receipts":self.tool_receipts,
                         "allow_additional_tools":allow_additional_tools,
-                        "phase_contract":phases::schema(&phase),
+                        "phase_contract":phase_schema(&phase),
                         "phase_execution_policy":phases::execution_policy(&phase),
                         "instruction":"Correct only the failed generation. Earlier tool effects are already complete and must not be repeated. Return the required phase contract using the retained evidence."
                     }));
@@ -886,6 +927,9 @@ impl Run {
                 "a nonempty answer requires a workflow waiting for user input",
             ));
         }
+        if self.answer_goal_gate(answer)? {
+            return Ok(());
+        }
         let point = self
             .waiting
             .take()
@@ -928,7 +972,10 @@ impl Run {
         self.waiting = self.entry.clone();
     }
 
-    fn phase_context(&self, phase: &Phase) -> Value {
+    fn phase_context(&self, phase: &Phase) -> Result<Value, Failure> {
+        if goal_contract_gate::is_phase(&phase.id) {
+            return self.goal_gate_context();
+        }
         let mut context = json!({"goal":self.goal,"model":self.model,
             "environment":self.settings.environment,"capability_gaps":self.settings.capability_gaps,
             "artifact_directory":"DeepThink private checkpoint store; not a physical workspace",
@@ -961,18 +1008,33 @@ impl Run {
             context["candidate"] = json!(self.candidate);
             context["candidate_state"] = self.candidate_state.clone();
         }
-        context
+        // Old context entries are retained as historical data, never allowed
+        // to replace the effective Goal in a newly captured request.
+        let mut goal = self.goal.clone();
+        if let Some(contract) = self.effective_goal_contract() {
+            goal["contract"] = contract.clone();
+            context["effective_goal_contract_digest"] = json!(digest(contract));
+            context["goal_contract_semantic_policy"] = json!(goal_contract_gate::POLICY);
+        }
+        context["goal"] = goal;
+        Ok(context)
     }
 
-    fn phase_messages(&self, phase: &Phase) -> Vec<Value> {
+    fn phase_messages(&self, phase: &Phase) -> Result<Vec<Value>, Failure> {
         let mut messages = vec![json!({"role":"system","content":format!(
             "You perform one explicit workflow phase. Return exactly one JSON object matching the schema, with nothing before or after it. The three top-level keys summary, tool_calls and result are mandatory inside that same object; always include tool_calls:[] even when no tools are needed. Never append a missing field after closing the object. summary contains concise decisions, assumptions and next actions, never private reasoning or chain-of-thought. All tool execution remains subject to the host's Gate, permissions and approvals. Never invent tools, skills, sources, files, completed checks or secret values. Do not request a user answer for mere notes, unused tools or confirmed settings. {}", phases::execution_policy(&phase.id))})];
         messages.extend(self.messages.clone());
-        messages.push(json!({"role":"user","content":format!("{}\n\nphase:{}\n\nschema:{}\n\ncontext:{}",phases::prompt(&phase.id),phase.id,phases::schema(&phase.id),self.phase_context(phase))}));
-        messages
+        let prompt = if goal_contract_gate::is_phase(&phase.id) {
+            goal_contract_gate::prompt(&phase.id)
+        } else {
+            phases::prompt(&phase.id)
+        };
+        messages.push(json!({"role":"user","content":format!("{}\n\nphase:{}\n\nschema:{}\n\ncontext:{}",prompt,phase.id,phase_schema(&phase.id),self.phase_context(phase)?)}));
+        Ok(messages)
     }
 
     fn generate_phase(&mut self, ports: &mut impl Ports, phase: &Phase) -> Result<Value, Failure> {
+        self.require_goal_gate_for_phase(&phase.id)?;
         self.ensure_generations_reconciled_for_dispatch(true)?;
         if self
             .tool_receipts
@@ -993,7 +1055,7 @@ impl Run {
         let mut messages = if let Some(saved) = self.phase_inputs.get(&phase_key) {
             saved.clone()
         } else {
-            let messages = self.phase_messages(phase);
+            let messages = self.phase_messages(phase)?;
             self.phase_inputs
                 .insert(phase_key.clone(), messages.clone());
             self.save(ports)?;
@@ -1015,7 +1077,7 @@ impl Run {
                 key: key.clone(),
             });
             let request_digest = digest(
-                &json!({"model":self.model,"messages":messages,"schema":phases::schema(&phase.id)}),
+                &json!({"model":self.model,"messages":messages,"schema":phase_schema(&phase.id)}),
             );
             let cached = self.generations.contains_key(&key);
             let generated = if let Some(cached) = self.generations.get(&key) {
@@ -1033,6 +1095,7 @@ impl Run {
                 }
                 recovered.generated
             } else {
+                self.ensure_goal_generation_budget(&phase.id)?;
                 // A pending generation remains durable even if the transport
                 // stops before it can return a usage receipt.
                 let attempt = format!("{}:{}", key, self.attempts.len());
@@ -1116,11 +1179,14 @@ impl Run {
                             message: "this declarative phase does not execute tools; return tool_calls=[] and its non-null phase result".into(),
                         });
                     }
-                    phases::validate(&value, &phases::schema(&phase.id)).map_err(|message| {
+                    phases::validate(&value, &phase_schema(&phase.id)).map_err(|message| {
                         Failure {
                             code: "invalid-phase-contract".into(),
                             message,
                         }
+                    })?;
+                    self.validate_goal_gate_result(&phase.id, &value["result"]).map_err(|error| Failure {
+                        code: "invalid-phase-contract".into(), message: error.message,
                     })?;
                     Ok(value)
                 });
@@ -1163,8 +1229,13 @@ impl Run {
                 if value["result"].is_null() {
                     return Err(invalid("completed phase has no result"));
                 }
-                self.context
-                    .insert("last_summary".into(), value["summary"].clone());
+                if goal_contract_gate::is_phase(&phase.id) {
+                    self.contract_gate.as_mut().unwrap().last_summary =
+                        Some(value["summary"].clone());
+                } else {
+                    self.context
+                        .insert("last_summary".into(), value["summary"].clone());
+                }
                 return Ok(value["result"].clone());
             }
             if !value["result"].is_null() || round == self.settings.max_tool_rounds {
@@ -1395,6 +1466,7 @@ impl Run {
             .front()
             .cloned()
             .ok_or_else(|| invalid("running workflow has no phase"))?;
+        self.require_goal_gate_for_phase(&phase.id)?;
         self.last_generation = None;
         if self.entry.is_none() {
             self.entry = Some(ResumePoint {
@@ -1415,7 +1487,16 @@ impl Run {
         });
         match outcome {
             Ok(value) => {
-                self.phases.push(json!({"phase":phase.id,"status":"completed","summary":self.context.get("last_summary"),"result":value}));
+                let summary = if goal_contract_gate::is_phase(&phase.id) {
+                    self.contract_gate
+                        .as_ref()
+                        .and_then(|gate| gate.last_summary.as_ref())
+                } else {
+                    self.context.get("last_summary")
+                };
+                self.phases.push(
+                    json!({"phase":phase.id,"status":"completed","summary":summary,"result":value}),
+                );
                 self.entry = None;
                 if suspend_after_phase && self.status == "running" {
                     // Commit the phase transition and paused state together.
@@ -1431,7 +1512,7 @@ impl Run {
                     return Err(error);
                 }
                 Ok(vec![
-                    json!({"version":VERSION,"run_id":self.id,"phase":phase.id,"status":"completed","summary":self.context.get("last_summary"),"usage":self.usage()}),
+                    json!({"version":VERSION,"run_id":self.id,"phase":phase.id,"status":"completed","summary":self.phases.last().and_then(|phase|phase.get("summary")),"usage":self.usage()}),
                 ])
             }
             Err(error) => {
@@ -1459,6 +1540,11 @@ impl Run {
         let value = self.generate_phase(ports, phase)?;
         let base = phase.id.split(':').next().unwrap();
         let mut questions = texts(&value, "clarifications");
+        if goal_contract_gate::is_phase(&phase.id) {
+            self.apply_goal_gate_result(&phase.id, &value)?;
+            self.pending.pop_front();
+            return Ok(value);
+        }
         match base {
             "goal_intake" => {
                 checked_ids(&value, "requirements")?;
@@ -1525,7 +1611,13 @@ impl Run {
                 if questions.is_empty() {
                     self.goal["status"] = json!("confirmed");
                     self.goal["clarifications"] = json!([]);
-                    self.push("preflight", json!({}));
+                    self.initialize_contract_gate(
+                        VecDeque::from([Phase {
+                            id: "preflight".into(),
+                            extra: json!({}),
+                        }]),
+                        None,
+                    )?;
                 }
             }
             "preflight" => {
@@ -1702,7 +1794,12 @@ impl Run {
             }
             "review" => {
                 self.review_rounds = phase.extra["review_round"].as_u64().unwrap() as u32;
-                let expected = checked_ids(&self.goal["contract"], "success_criteria")?;
+                let expected = checked_ids(
+                    self.effective_goal_contract().ok_or_else(|| {
+                        invalid("final review has no effective assessed Goal contract")
+                    })?,
+                    "success_criteria",
+                )?;
                 if review_approved(&value, &self.candidate_state, &expected) {
                     // Re-read owner proofs after all model/tool review activity.
                     for path in self.artifacts.clone().keys() {

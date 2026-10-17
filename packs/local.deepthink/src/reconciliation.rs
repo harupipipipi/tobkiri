@@ -532,6 +532,7 @@ impl Run {
     /// no durable permit; only a successful unique insertion and commit can.
     pub fn validate_generation_claim(&self, attempt: &AttemptContext) -> Result<(), Failure> {
         self.reconciliation_ready()?;
+        self.require_goal_gate_for_phase(&attempt.phase)?;
         if self.status != "running"
             || attempt.run_id != self.id
             || attempt.run_request_digest != self.request_digest
@@ -599,6 +600,10 @@ impl Run {
         resolution_digest: &str,
     ) -> Result<RegenerationAuthorization, Failure> {
         self.reconciliation_ready()?;
+        if let Some(phase) = self.pending.front() {
+            self.require_goal_gate_for_phase(&phase.id)?;
+            self.ensure_goal_generation_budget(&phase.id)?;
+        }
         let resolution = self
             .generation_resolutions
             .get(old_attempt_id)
@@ -687,7 +692,7 @@ impl Run {
                 .any(|key| key.starts_with(&phase_prefix));
             self.retry_contexts.insert(key,json!({"discarded_generation":resolution.attempt.generation_key,
                 "resolution_digest":resolution_digest,"completed_tool_receipts":self.tool_receipts,
-                "phase_contract":phases::schema(&resolution.attempt.phase),
+                "phase_contract":super::phase_schema(&resolution.attempt.phase),
                 "phase_execution_policy":phases::execution_policy(&resolution.attempt.phase),
                 "allow_additional_tools":additional,"instruction":"User explicitly discarded unavailable model content. Keep the original Goal and completed tool receipts. Never repeat their effects."}));
             authorization

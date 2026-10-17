@@ -5,16 +5,19 @@ mod phases;
 mod public_progress;
 mod repository_adapter;
 mod run_repository;
+mod run_selection;
 mod runtime_repository;
 mod stream_pump;
 #[cfg(test)]
 mod tests;
+mod tool_diagnostics;
 mod workflow;
 
 wit_bindgen::generate!({path:"wit",world:"pack",generate_all});
 
 use exports::local::deepthink::{
-    input_context as input_context_port,
+    goal_review_worker as goal_review_worker_port, input_context as input_context_port,
+    tool_receipt_reader as tool_receipt_reader_port,
     workflow::{Guest, Prompt, RecoverySelection},
 };
 use exports::tobkiri::core1_0_0::{lifecycle, stream_source};
@@ -61,7 +64,9 @@ fn guest_error(failure: Failure) -> Error {
         code: match failure.code.as_str() {
             "cancelled" => ErrorCode::Cancelled,
             "denied" | "blocked" => ErrorCode::Denied,
-            "conflict" | "needs-reconciliation" => ErrorCode::Conflict,
+            "conflict" | "needs-reconciliation" | "goal-contract-review-required" => {
+                ErrorCode::Conflict
+            }
             "core-internal" | "checkpoint-unconfirmed" => ErrorCode::Internal,
             "unavailable" => ErrorCode::Unavailable,
             "limit-exceeded" => ErrorCode::LimitExceeded,
@@ -468,6 +473,67 @@ fn selected_run(selection: &RecoverySelection) -> Result<(Run, run_repository::H
     Ok((run, head))
 }
 
+// Only new ordinary operations use this non-creating loader. Existing recovery
+// selection and legacy diagnostics keep their original admission semantics.
+fn load_selected_run(
+    selection: &run_selection::Selection,
+) -> Result<(Run, run_repository::Head), Error> {
+    selection.validate_request().map_err(guest_error)?;
+    let settings = STATE
+        .with_borrow(|state| state.settings.clone())
+        .ok_or_else(|| guest_error(invalid("DeepThink has not been initialized")))?;
+    let store = Rc::new(private_store().map_err(guest_error)?);
+    let (run, head) = runtime_repository::RunSession::load_existing(store, &selection.run_id)
+        .map_err(guest_error)?
+        .ok_or_else(|| guest_error(invalid("selected managed workflow was not found")))?;
+    selection
+        .validate(&run, &head, &settings)
+        .map_err(guest_error)?;
+    Ok((run, head))
+}
+
+impl tool_receipt_reader_port::Guest for Pack {
+    fn page(
+        selection: tool_receipt_reader_port::Selection,
+        offset: u32,
+        limit: u32,
+    ) -> Result<String, Error> {
+        // Bounds precede Store access; the query accepts no User-owned outcome.
+        if !(1..=tool_diagnostics::MAX_PAGE_ITEMS).contains(&limit) {
+            return Err(guest_error(invalid(
+                "tool receipt page limit must be 1..16",
+            )));
+        }
+        let selection = run_selection::Selection {
+            run_id: selection.run_id,
+            conversation: selection.conversation,
+            expected_revision: selection.expected_revision,
+            expected_snapshot_digest: selection.expected_snapshot_digest,
+        };
+        let (run, head) = load_selected_run(&selection)?;
+        tool_diagnostics::page(&run, &head, offset, limit).map_err(guest_error)
+    }
+}
+
+impl goal_review_worker_port::Guest for Pack {
+    fn review(selection: goal_review_worker_port::Selection) -> Result<StreamHandle, Error> {
+        let query = run_selection::Selection {
+            run_id: selection.run_id,
+            conversation: selection.conversation,
+            expected_revision: selection.expected_revision,
+            expected_snapshot_digest: selection.expected_snapshot_digest,
+        };
+        let (mut run, head) = load_selected_run(&query)?;
+        run.prepare_goal_contract_review(
+            &selection.candidate_digest,
+            &query.expected_revision,
+            &query.expected_snapshot_digest,
+        )
+        .map_err(guest_error)?;
+        register(run, Some(head))
+    }
+}
+
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RequestedObservation {
@@ -772,7 +838,8 @@ impl Guest for Pack {
             "capability_gaps":run.settings.capability_gaps,"error":run.error,"output":run.output(),
             "reconciliation":reconciliation,"model_attempts":run.attempts,
             "repository":repository,"generation_resolutions":run.generation_resolutions,
-            "regeneration_authorizations":run.regeneration_authorizations})
+            "regeneration_authorizations":run.regeneration_authorizations,
+            "contract_gate":run.contract_gate_status(),"effective_goal_contract":run.effective_goal_contract()})
             .to_string(),
         )
     }
@@ -845,7 +912,7 @@ fn generation_port_arguments(
         // Json must remain an object here. Core's typed codec serializes it
         // once for the receiving guest, just like the real-tool call port.
         arguments["response-format"] =
-            json!({"name":name,"schema":phases::schema(phase),"strict":true});
+            json!({"name":name,"schema":workflow::phase_schema(phase),"strict":true});
         (STRUCTURED_LLM, arguments)
     } else {
         (LLM, arguments)

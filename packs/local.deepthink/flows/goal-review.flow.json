@@ -1,0 +1,20 @@
+{
+  "format": "tobkiri.flow/1",
+  "id": "goal-review",
+  "implements": "local.deepthink.goal-review-flow@1.0",
+  "trigger": {"input": "local.deepthink.goal-review-input@1.0"},
+  "loop_limits": "profile-default",
+  "on_error": {"default": "fail", "steps": {}},
+  "steps": [
+    {
+      "id": "review",
+      "call": {
+        "shape": "local.deepthink.goal-review-worker@1.0",
+        "op": "review",
+        "args": {"selection": "$input.selection"}
+      },
+      "out": "turn",
+      "stream": {"emit": "local.harness-chat.assistant-output@1.0", "collect": "turn"}
+    }
+  ]
+}
