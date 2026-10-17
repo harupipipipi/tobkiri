@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
+      RUSTUP_TOOLCHAIN: '1.94.0'
       CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-target
       CARGO_BUILD_JOBS: '2'
       CARGO_INCREMENTAL: '0'
