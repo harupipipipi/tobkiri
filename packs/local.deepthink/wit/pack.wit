@@ -2,7 +2,7 @@ package local:deepthink-guest@1.0.0;
 
 world pack {
   include tobkiri:core/pack-minimal@1.0.0;
-  import tobkiri:core/storage@1.0.0;
+  import tobkiri:core/storage@1.1.0;
   export tobkiri:core/stream-source@1.0.0;
   export local:deepthink/workflow@1.0.0;
   export local:deepthink/continuation-input@1.0.0;

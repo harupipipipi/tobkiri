@@ -9,4 +9,5 @@ interface generation-reader {
     include-public-content: bool,
   }
   lookup: func(request: selection) -> result<json, error>;
+  lookup-requested: func(request: selection) -> result<json, error>;
 }

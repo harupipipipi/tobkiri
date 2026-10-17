@@ -1,5 +1,8 @@
 //! Validate signatures before linking effectful dynamic callbacks.
 #[cfg(test)]
+#[path = "deepthink_ledger_abi_tests.rs"]
+mod deepthink_ledger_tests;
+#[cfg(test)]
 #[path = "generation_reader_abi_tests.rs"]
 mod generation_reader_tests;
 

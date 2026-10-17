@@ -31,6 +31,15 @@ fn new_run(config: Settings) -> Run {
     )
     .unwrap()
 }
+
+fn runtime_head(run: &Run) -> crate::run_repository::Head {
+    crate::run_repository::Head {
+        run_id: run.id.clone(),
+        run_request_digest: crate::run_repository::Digest::parse(&run.request_digest).unwrap(),
+        revision: 0,
+        snapshot_digest: crate::run_repository::Digest::hash(&serde_json::to_vec(run).unwrap()),
+    }
+}
 fn fixture(phase: &str) -> Value {
     let all: Value = serde_json::from_str(include_str!("fixtures/phases.json")).unwrap();
     all[phase.split(':').next().unwrap()].clone()
@@ -52,6 +61,7 @@ fn context(messages: &[Value]) -> Value {
 
 #[derive(Default)]
 struct FakePorts {
+    claims: BTreeMap<String, AttemptContext>,
     calls: Vec<String>,
     effects: u32,
     saved: Option<Run>,
@@ -84,6 +94,19 @@ struct FakePorts {
     snapshots: Vec<Run>,
 }
 impl Ports for FakePorts {
+    fn claim_generation(&mut self, run: &Run, attempt: &AttemptContext) -> Result<(), Failure> {
+        run.validate_generation_claim(attempt)?;
+        let key = format!("{}:{}", attempt.run_id, attempt.generation_key);
+        if self.claims.contains_key(&key) {
+            return Err(Failure {
+                code: "conflict".into(),
+                message: "fixture duplicate durable claim".into(),
+            });
+        }
+        self.persist(run)?;
+        self.claims.insert(key, attempt.clone());
+        Ok(())
+    }
     fn active(&mut self) -> Result<(), Failure> {
         if self.cancelled {
             Err(Failure {
@@ -1119,6 +1142,7 @@ fn duplicate_active_registration_refuses_before_any_storage_write() {
         state.streams.insert(
             1,
             crate::Active {
+                head: runtime_head(&run),
                 run: run.clone(),
                 events: std::collections::VecDeque::new(),
                 announced: false,
@@ -1129,7 +1153,7 @@ fn duplicate_active_registration_refuses_before_any_storage_write() {
     });
     // Native pure tests have no Core storage implementation: reaching persist
     // would fail. The active guard must return before any Core import executes.
-    let error = crate::register(run).unwrap_err();
+    let error = crate::register(run, None).unwrap_err();
     assert!(matches!(error.code, crate::ErrorCode::Conflict));
     crate::STATE.with_borrow_mut(|state| *state = crate::State::default());
 }
@@ -1518,6 +1542,7 @@ fn paused_stream_is_an_explicit_boundary_with_no_candidate_delta_or_done() {
     run.candidate = "unapproved-private-candidate".into();
     let usage = run.usage();
     let mut active = crate::Active {
+        head: runtime_head(&run),
         run,
         events: Default::default(),
         announced: false,
@@ -1719,6 +1744,9 @@ mod actual_tool_engine {
         tool_results: Vec<(Value, Value)>,
     }
     impl Ports for RealPorts {
+        fn claim_generation(&mut self, run: &Run, attempt: &AttemptContext) -> Result<(), Failure> {
+            self.models.claim_generation(run, attempt)
+        }
         fn active(&mut self) -> Result<(), Failure> {
             self.models.active()
         }

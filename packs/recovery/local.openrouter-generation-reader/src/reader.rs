@@ -4,6 +4,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
+#[path = "catalog.rs"]
+pub mod catalog;
+
 pub const MAX_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 const MAX_METADATA_BYTES: usize = 64 * 1024;
 const MAX_CONTENT_BYTES: usize = 4 * 1024 * 1024;
@@ -53,12 +56,14 @@ fn identity_text(text: &str) -> bool {
 pub enum Endpoint {
     Metadata,
     PublicContent,
+    ModelCatalog,
 }
 impl Endpoint {
     pub fn maximum_bytes(self) -> usize {
         match self {
             Self::Metadata => MAX_METADATA_BYTES,
             Self::PublicContent => MAX_CONTENT_BYTES,
+            Self::ModelCatalog => MAX_METADATA_BYTES,
         }
     }
     fn url(self, id: &str) -> String {

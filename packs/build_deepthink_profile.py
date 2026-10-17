@@ -10,12 +10,14 @@ import copy
 import json
 from pathlib import Path
 import shutil
+import tempfile
 from typing import Any
 
 import build
 import build_deepthink
 import build_harness_tools
 import publish_presets
+from recovery import build_generation_reader
 
 ROOT = Path(__file__).resolve().parent
 MODEL = "xiaomi/mimo-v2.6-flash"
@@ -80,6 +82,37 @@ def workflow_harness_variant() -> dict[str, Any]:
     return build.bind_files(directory, manifest, paths)
 
 
+def stage_generation_reader(target_dir: Path,
+                            build_profile: str = "debug") -> dict[str, Any]:
+    """Stage the real Reader with its defining shape and ordinary authority.
+
+    The independent Reader helper requires a new destination. Complete that
+    stage first, then publish its bound files into this builder's generated
+    Pack directory. Repeated staging never falls back to a different artifact.
+    """
+    with tempfile.TemporaryDirectory(
+        prefix=".deepthink-reader-", dir=ROOT,
+    ) as temporary:
+        source = Path(temporary) / build_generation_reader.PACK_ID
+        manifest = build_generation_reader.stage(
+            target_dir, source, build_profile=build_profile,
+        )
+        contents = {}
+        for entry in manifest["files"]:
+            content = (source / entry["path"]).read_bytes()
+            if (len(content) != entry["size"]
+                    or build.sha256(content) != entry["sha256"]):
+                raise ValueError("staged Reader file differs from its bound manifest")
+            contents[entry["path"]] = content
+        destination = ROOT / build_generation_reader.PACK_ID
+        for relative, content in contents.items():
+            path = destination / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+        build.write_json(destination / "pack.json", manifest)
+    return manifest
+
+
 def compose(manifests: dict[str, dict[str, Any]], *, ui: bool) -> dict[str, Any]:
     """Use declared providers, overlay ordering and explicit per-Pack limits."""
     profile = build.profile("harness-chat", manifests,
@@ -91,7 +124,8 @@ def compose(manifests: dict[str, dict[str, Any]], *, ui: bool) -> dict[str, Any]
         pin["id"] = identities.get(pin["id"], pin["id"])
     profile["bindings"] = {key: identities.get(value, value)
                             for key, value in profile["bindings"].items()}
-    for name in ["harness-agent", "harness-tools", "deepthink"] + (["deepthink-ui"] if ui else []):
+    for name in ["harness-agent", "harness-tools", "deepthink",
+                 "openrouter-generation-reader"] + (["deepthink-ui"] if ui else []):
         profile["packs"].append({"id": "local." + name, "version": "0.1.0"})
     profile["id"] = "prof_deepthink_mimo_ui" if ui else "prof_deepthink_mimo"
     profile["name"] = "Tobkiri DeepThink · MiMo" + (" UI" if ui else "")
@@ -100,6 +134,8 @@ def compose(manifests: dict[str, dict[str, Any]], *, ui: bool) -> dict[str, Any]
         "local.harness-chat.structured-llm-provider@1": "local.openrouter-mimo-provider",
         "local.deepthink.workflow@1": "local.deepthink",
         "local.deepthink.continuation-input@1": "local.deepthink",
+        "local.openrouter-generation-reader.generation-reader@1":
+            "local.openrouter-generation-reader",
     })
     # Flow IDs are resolved by implements, never routed around Core.
     extra_ports = ["local.harness-agent.tool-provider@1.0",
@@ -107,7 +143,9 @@ def compose(manifests: dict[str, dict[str, Any]], *, ui: bool) -> dict[str, Any]
                    "local.harness-chat.generate@1.0",
                    "local.deepthink.workflow@1.0",
                    "local.deepthink.continuation-input@1.0",
-                   "local.deepthink.continuation-flow@1.0"]
+                   "local.deepthink.continuation-flow@1.0",
+                   "local.deepthink.regeneration-flow@1.0",
+                   "local.openrouter-generation-reader.generation-reader@1.0"]
     profile["ceiling"]["ports"] = sorted(set(profile["ceiling"]["ports"] + extra_ports))
     profile["ceiling"]["secrets"] = [{"name": "api-key", "reveal": False, "optional": False}]
     profile["ceiling"]["loops"] = {"max_iterations": 512, "max_wall_ms": 3600000, "max_cost_units": 100000}
@@ -133,6 +171,7 @@ def compose(manifests: dict[str, dict[str, Any]], *, ui: bool) -> dict[str, Any]
 def stage(target_dir: Path, build_profile: str = "debug") -> list[Path]:
     """Publish two portable Profiles without acquiring credentials or approval."""
     tools_manifest = build_harness_tools.stage(target_dir, build_profile=build_profile)
+    reader_manifest = stage_generation_reader(target_dir, build_profile=build_profile)
     provider = variant("openai-compat-provider", "openrouter-mimo-provider", {
         "base_url": ORIGIN + "/api/v1", "model": MODEL,
         "secret_name": "api-key", "timeout_ms": 300000, "provider_order": ["xiaomi"],
@@ -179,6 +218,7 @@ def stage(target_dir: Path, build_profile: str = "debug") -> list[Path]:
     manifests.update({"harness-chat": workflow_harness_variant(),
                       "deepthink": deepthink, "harness-tools": tools_manifest,
                       "openrouter-mimo-provider": provider, "mimo-prompt": prompt,
+                      "openrouter-generation-reader": reader_manifest,
                       "deepthink-ui": ui})
     source_overrides = {
         "local.harness-chat": ROOT / "deepthink-variants/local.harness-chat"

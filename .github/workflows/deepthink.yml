@@ -50,6 +50,9 @@ jobs:
         run: |
           cargo test --manifest-path packs/recovery/local.openrouter-generation-reader/Cargo.toml --locked --lib
           python3 -B -m unittest discover -s packs/recovery/tests -p test_generation_reader_build.py -v
+      - name: Incremental DeepThink ledger artifact contracts
+        if: ${{ !cancelled() }}
+        run: python3 -B -m unittest packs/recovery/tests/test_deepthink_ledger_build.py -v
       - name: Build independent generation reader component
         run: >-
           cargo build --manifest-path packs/recovery/local.openrouter-generation-reader/Cargo.toml
@@ -82,6 +85,13 @@ jobs:
           -- --ignored --exact --nocapture
       - name: Native store contracts
         run: cargo test -p tobkiri-store --lib --locked
+      - name: Native SQL transactions and durable Run repository
+        if: ${{ !cancelled() }}
+        run: |
+          status=0
+          cargo test -p tobkiri-store --locked --test run_ledger_transactions -- --test-threads=1 || status=$?
+          cargo test -p tobkiri-store --locked --test deepthink_run_repository native_ -- --test-threads=1 || status=$?
+          exit "$status"
       - name: Native Linux ext4 ownership, tmpfs refusal and quota integration
         if: ${{ !cancelled() }}
         run: |
@@ -145,6 +155,15 @@ jobs:
           cargo test -p tobkiri-store --locked --lib
           --test owner_windows --test windows_storage_names
           --test security --test terminal --test audit_performance -- --test-threads=1
+      - name: Native SQL transactions and durable Run repository
+        if: ${{ !cancelled() }}
+        run: |
+          $taskStatus = 0
+          cargo test -p tobkiri-store --locked --test run_ledger_transactions -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-store --locked --test deepthink_run_repository native_ -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          exit $taskStatus
       - name: CLI contracts and cancellable native input
         if: ${{ !cancelled() }}
         run: cargo test -p tobkiri-cli --bin tobkiri --locked

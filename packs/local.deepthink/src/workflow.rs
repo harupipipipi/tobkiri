@@ -7,6 +7,9 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::phases;
 
+#[path = "reconciliation.rs"]
+pub mod reconciliation;
+
 pub const VERSION: &str = "deepthink.workflow.v5";
 pub const PROGRESS_VERSION: &str = "deepthink.generation-progress.v1";
 
@@ -357,6 +360,10 @@ pub struct GenerationPoint {
 /// Effects are intentionally absent from the pure scheduler implementation.
 pub trait Ports {
     fn active(&mut self) -> Result<(), Failure>;
+    /// Atomically persist this exact pending snapshot and insert a unique claim.
+    /// Only a confirmed winning commit may return success. An existing matching
+    /// row or an unknown commit must never remint dispatch authority.
+    fn claim_generation(&mut self, run: &Run, attempt: &AttemptContext) -> Result<(), Failure>;
     fn generate(
         &mut self,
         model: &str,
@@ -417,6 +424,14 @@ pub struct Run {
     pub retry_contexts: BTreeMap<String, Value>,
     #[serde(default)]
     pub last_generation: Option<GenerationPoint>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub generation_resolutions: BTreeMap<String, reconciliation::Resolution>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub regeneration_authorizations: BTreeMap<String, reconciliation::RegenerationAuthorization>,
+    /// An explicit invocation's preparation marker, never durable authority.
+    /// Runtime must still consume its nonserializable confirmed SQL claim.
+    #[serde(skip)]
+    pub(crate) regeneration_dispatch: Option<String>,
 }
 
 pub fn digest(value: &Value) -> String {
@@ -598,6 +613,9 @@ impl Run {
             generation_epochs: BTreeMap::new(),
             retry_contexts: BTreeMap::new(),
             last_generation: None,
+            generation_resolutions: BTreeMap::new(),
+            regeneration_authorizations: BTreeMap::new(),
+            regeneration_dispatch: None,
         })
     }
 
@@ -684,7 +702,14 @@ impl Run {
     /// Pending legacy attempts and completed receipts without their exact public
     /// generation are both unresolved. No continuation may create a fresh POST.
     pub fn ensure_generations_reconciled(&self) -> Result<(), Failure> {
-        if self.attempts.iter().any(|(id, attempt)| {
+        self.ensure_generations_reconciled_for_dispatch(false)
+    }
+
+    fn ensure_generations_reconciled_for_dispatch(&self, explicit: bool) -> Result<(), Failure> {
+        for (id, attempt) in &self.attempts {
+            if self.reconciled_attempt(id, explicit)? {
+                continue;
+            }
             let key = attempt
                 .pointer("/context/generation_key")
                 .and_then(Value::as_str)
@@ -694,7 +719,7 @@ impl Run {
                     .get(key)
                     .or_else(|| self.rejected_generations.get(key))
             });
-            attempt["status"] != "completed"
+            if attempt["status"] != "completed"
                 || record.is_none()
                 || attempt
                     .pointer("/context/request_digest")
@@ -702,9 +727,10 @@ impl Run {
                     .is_some_and(|expected| {
                         record.is_none_or(|record| record.request_digest != expected)
                     })
-        }) {
-            return Err(Failure { code:"needs-reconciliation".into(), message:
-                "A model attempt has no durably finalized generation. Inspect its retained provider id, public partial and usage; reconcile it explicitly before continuing. No model request was automatically repeated.".into() });
+            {
+                return Err(Failure { code:"needs-reconciliation".into(), message:
+                    "A model attempt has no durably finalized generation. Inspect its retained provider id, public partial and usage; reconcile it explicitly before continuing. No model request was automatically repeated.".into() });
+            }
         }
         Ok(())
     }
@@ -718,6 +744,16 @@ impl Run {
             .attempts
             .get_mut(&progress.attempt.attempt_id)
             .ok_or_else(|| invalid("generation progress has no original attempt"))?;
+        if self
+            .generation_resolutions
+            .contains_key(&progress.attempt.attempt_id)
+        {
+            return Err(Failure {
+                code: "conflict".into(),
+                message: "Resolved generation evidence is frozen; a late sidecar was not merged."
+                    .into(),
+            });
+        }
         if progress.version != PROGRESS_VERSION
             || progress.attempt.run_id != self.id
             || progress.attempt.run_request_digest != self.request_digest
@@ -929,7 +965,7 @@ impl Run {
     }
 
     fn generate_phase(&mut self, ports: &mut impl Ports, phase: &Phase) -> Result<Value, Failure> {
-        self.ensure_generations_reconciled()?;
+        self.ensure_generations_reconciled_for_dispatch(true)?;
         if self
             .tool_receipts
             .values()
@@ -978,6 +1014,13 @@ impl Run {
                     ));
                 }
                 cached.generated.clone()
+            } else if let Some(recovered) = self.recovered_generation(&key)? {
+                if recovered.request_digest != request_digest {
+                    return Err(invalid(
+                        "recovered generation request changed during resume",
+                    ));
+                }
+                recovered.generated
             } else {
                 // A pending generation remains durable even if the transport
                 // stops before it can return a usage receipt.
@@ -995,7 +1038,14 @@ impl Run {
                     attempt.clone(),
                     json!({"phase":phase.id,"status":"pending","usage":null,"context":context}),
                 );
-                self.save(ports)?;
+                self.validate_generation_claim(&context)?;
+                // The pending snapshot and unique claim are one repository
+                // transaction. No standalone save/readback may permit a POST.
+                self.regeneration_dispatch = None;
+                ports.claim_generation(self, &context).map_err(|_| Failure {
+                    code: "checkpoint-unconfirmed".into(),
+                    message: "Generation dispatch claim was not confirmed; inspect the durable claim before any continuation. No model request was sent by this invocation.".into(),
+                })?;
                 let outcome = ports.generate(&self.model, &messages, &phase.id, &context);
                 if let Err(error) = &outcome
                     && error.code == "checkpoint-unconfirmed"
@@ -1178,6 +1228,16 @@ impl Run {
         request_digest: &str,
         usage: &Value,
     ) -> Result<(), Failure> {
+        if let Some(recovered) = self.recovered_generation(key)? {
+            if recovered.request_digest != request_digest || recovered.generated.usage != *usage {
+                return Err(invalid(
+                    "recovered generation accounting or request changed",
+                ));
+            }
+            // The immutable original attempt is preserved, including its old
+            // pending status and partial receipt. Resolution supplies accounting.
+            return Ok(());
+        }
         let attempt = self
             .attempts
             .values_mut()
@@ -1675,35 +1735,91 @@ impl Run {
         let mut known = !self.attempts.is_empty();
         let mut token_unknown = 0usize;
         let mut pending_attempts = 0usize;
-        for attempt in self.attempts.values() {
-            let usage = &attempt["usage"];
-            if attempt["status"] != "completed" {
+        let mut incomplete_content = 0usize;
+        let mut invalid_resolutions = 0usize;
+        let mut overflow = BTreeSet::new();
+        for (id, attempt) in &self.attempts {
+            let resolution = self.generation_resolutions.get(id).filter(|resolution| {
+                let valid = self.validate_resolution(id, resolution).is_ok();
+                if !valid {
+                    invalid_resolutions += 1;
+                }
+                valid
+            });
+            let invalid_resolution =
+                self.generation_resolutions.contains_key(id) && resolution.is_none();
+            let eligible = resolution.is_some() || attempt["status"] == "completed";
+            let usage = resolution.map_or(&attempt["usage"], |resolution| &resolution.accounting);
+            if !eligible || invalid_resolution {
                 pending_attempts += 1;
                 known = false;
             }
-            if attempt["status"] != "completed"
-                || usage["input_tokens"].as_u64().is_none()
-                || usage["output_tokens"].as_u64().is_none()
+            if !eligible
+                || invalid_resolution
+                || reconciliation::counter(&usage["input_tokens"]).is_none()
+                || reconciliation::counter(&usage["output_tokens"]).is_none()
             {
                 token_unknown += 1;
             }
+            let original_key = attempt
+                .pointer("/context/generation_key")
+                .and_then(Value::as_str)
+                .or_else(|| id.rsplit_once(':').map(|(key, _)| key));
+            let original_content = original_key.is_some_and(|key| {
+                self.generations.contains_key(key) || self.rejected_generations.contains_key(key)
+            });
+            if resolution.is_some_and(|resolution| {
+                resolution.disposition
+                    == reconciliation::ContentDisposition::TerminalContentUnavailable
+            }) || (resolution.is_none() && !original_content)
+            {
+                incomplete_content += 1;
+            }
             if let Some(values) = usage.as_object() {
                 for (key, value) in values {
-                    if let Some(value) = value.as_u64() {
-                        *totals.entry(key.clone()).or_default() += value;
+                    if !matches!(
+                        key.as_str(),
+                        "input_tokens"
+                            | "output_tokens"
+                            | "total_tokens"
+                            | "cached_input_tokens"
+                            | "reasoning_tokens"
+                    ) {
+                        continue;
+                    }
+                    if let Some(value) = reconciliation::counter(value) {
+                        if overflow.contains(key) {
+                            continue;
+                        }
+                        if let Some(total) =
+                            totals.get(key).copied().unwrap_or(0).checked_add(value)
+                        {
+                            totals.insert(key.clone(), total);
+                        } else {
+                            totals.remove(key);
+                            overflow.insert(key.clone());
+                        }
                     }
                 }
             }
-            if let Some(cost) = usage["cost_usd"].as_str() {
+            if let Some(cost) = usage["cost_usd"]
+                .as_str()
+                .filter(|cost| reconciliation::decimal_valid(cost))
+            {
                 costs.push(cost.to_string());
             } else {
                 known = false;
             }
         }
         let total = if known { sum_decimals(&costs) } else { None };
-        json!({"tokens":totals,"tokens_complete":!self.attempts.is_empty()&&token_unknown==0,
+        let totals = totals
+            .into_iter()
+            .map(|(key, value)| (key, reconciliation::counter_value(value)))
+            .collect::<BTreeMap<_, _>>();
+        json!({"tokens":totals,"tokens_complete":!self.attempts.is_empty()&&token_unknown==0&&overflow.is_empty()&&invalid_resolutions==0,
             "tokens_unconfirmed_attempts":token_unknown,"pending_attempts":pending_attempts,
-            "cost_known":known&&total.is_some(),"cost_usd":total,"cost_receipts_usd":costs,"attempts":self.attempts.len()})
+            "content_incomplete_attempts":incomplete_content,"invalid_resolution_attempts":invalid_resolutions,
+            "tokens_overflow_fields":overflow,"cost_known":known&&total.is_some(),"cost_usd":total,"cost_receipts_usd":costs,"attempts":self.attempts.len()})
     }
 
     /// Only approved candidates can become an answer; stopped candidates stay private.
@@ -1741,39 +1857,74 @@ impl Run {
 }
 
 fn sum_decimals(values: &[String]) -> Option<String> {
-    let mut total = 0u128;
+    if values
+        .iter()
+        .any(|value| !reconciliation::decimal_valid(value))
+    {
+        return None;
+    }
+    let scale = values
+        .iter()
+        .map(|value| {
+            value
+                .split_once('.')
+                .map_or(0, |(_, fraction)| fraction.len())
+        })
+        .max()
+        .unwrap_or(0);
+    let mut total = vec![0_u8];
     for value in values {
-        let mut parts = value.split('.');
-        let whole = parts.next()?;
-        let fraction = parts.next().unwrap_or("");
-        if parts.next().is_some()
-            || whole.is_empty()
-            || fraction.len() > 18
-            || !whole
-                .bytes()
-                .chain(fraction.bytes())
-                .all(|byte| byte.is_ascii_digit())
-        {
+        if !reconciliation::decimal_valid(value) {
             return None;
         }
-        let scale = 10u128.pow(18 - fraction.len() as u32);
-        let amount = whole
-            .parse::<u128>()
-            .ok()?
-            .checked_mul(10u128.pow(18))?
-            .checked_add(if fraction.is_empty() {
-                0
-            } else {
-                fraction.parse::<u128>().ok()?.checked_mul(scale)?
-            })?;
-        total = total.checked_add(amount)?;
+        let fraction = value
+            .split_once('.')
+            .map_or(0, |(_, fraction)| fraction.len());
+        let mut digits = vec![0_u8; scale.checked_sub(fraction)?];
+        digits.extend(
+            value
+                .bytes()
+                .rev()
+                .filter(|byte| *byte != b'.')
+                .map(|byte| byte - b'0'),
+        );
+        let width = total.len().max(digits.len());
+        if width > 512 {
+            return None;
+        }
+        total.resize(width, 0);
+        let mut carry = 0;
+        for (index, item) in total.iter_mut().enumerate() {
+            let next = *item + digits.get(index).copied().unwrap_or(0) + carry;
+            *item = next % 10;
+            carry = next / 10;
+        }
+        if carry != 0 {
+            total.push(carry);
+        }
+        if total.len() > 512 {
+            return None;
+        }
     }
-    let mut result = format!("{}.{:018}", total / 10u128.pow(18), total % 10u128.pow(18));
-    while result.ends_with('0') {
-        result.pop();
+    while total.len() > 1 && total.last() == Some(&0) {
+        total.pop();
     }
-    if result.ends_with('.') {
-        result.pop();
+    while total.len() <= scale {
+        total.push(0);
+    }
+    let mut result = total
+        .into_iter()
+        .rev()
+        .map(|digit| char::from(b'0' + digit))
+        .collect::<String>();
+    if scale != 0 {
+        result.insert(result.len() - scale, '.');
+        while result.ends_with('0') {
+            result.pop();
+        }
+        if result.ends_with('.') {
+            result.pop();
+        }
     }
     Some(result)
 }

@@ -1,6 +1,10 @@
 //! DeepThink is an ordinary Wasm Pack: Flow, typed ports, Gate and private store.
 
 mod phases;
+mod public_progress;
+mod repository_adapter;
+mod run_repository;
+mod runtime_repository;
 #[cfg(test)]
 mod tests;
 mod workflow;
@@ -9,15 +13,20 @@ wit_bindgen::generate!({path:"wit",world:"pack",generate_all});
 
 use exports::local::deepthink::{
     continuation_input,
-    workflow::{Guest, Prompt},
+    workflow::{Guest, Prompt, RecoverySelection},
 };
-use exports::tobkiri::core::{lifecycle, stream_source};
+use exports::tobkiri::core1_0_0::{lifecycle, stream_source};
 use serde_json::{Value, json};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
-use tobkiri::core::{
-    flow, storage,
+use std::rc::Rc;
+use tobkiri::core1_0_0::{
+    flow,
     types::{Error, ErrorCode, StreamHandle},
+};
+use tobkiri::core1_1_0::{
+    storage,
+    types::{Error as StorageError, ErrorCode as StorageErrorCode},
 };
 use workflow::{
     AttemptContext, Failure, Generated, GenerationProgress, Ports, Run, Settings, VERSION, invalid,
@@ -29,6 +38,7 @@ const TOOLS: &str = "local.harness-agent.tool-provider@1.0";
 
 struct Active {
     run: Run,
+    head: run_repository::Head,
     events: VecDeque<String>,
     announced: bool,
     terminal_sent: bool,
@@ -77,35 +87,55 @@ fn failure(error: Error) -> Failure {
     }
 }
 
+fn storage_error(error: StorageError) -> Error {
+    // Storage 1.1 and the public Flow ports are nominally distinct WIT types.
+    Error {
+        code: match error.code {
+            StorageErrorCode::Denied => ErrorCode::Denied,
+            StorageErrorCode::ApprovalRequired => ErrorCode::ApprovalRequired,
+            StorageErrorCode::Cancelled => ErrorCode::Cancelled,
+            StorageErrorCode::NotFound => ErrorCode::NotFound,
+            StorageErrorCode::Invalid => ErrorCode::Invalid,
+            StorageErrorCode::LimitExceeded => ErrorCode::LimitExceeded,
+            StorageErrorCode::Conflict => ErrorCode::Conflict,
+            StorageErrorCode::Unavailable => ErrorCode::Unavailable,
+            StorageErrorCode::Internal => ErrorCode::Internal,
+        },
+        message: error.message,
+    }
+}
+
+fn storage_failure(error: StorageError) -> Failure {
+    failure(storage_error(error))
+}
+
 fn private_store() -> Result<storage::Store, Failure> {
-    storage::open("workflows").map_err(failure)
+    storage::open("workflows").map_err(storage_failure)
 }
 
 #[derive(Default)]
 struct Runtime {
     // Runtime lives only for the current synchronous phase/export. The handle
     // never enters STATE or Active, and every KV call retains its own Gate check.
-    store: Option<storage::Store>,
+    store: Option<Rc<storage::Store>>,
+    ledger: Option<runtime_repository::RunSession>,
+    projection_warning: Option<String>,
 }
 
 impl Runtime {
-    fn private_store(&mut self) -> Result<&storage::Store, Failure> {
+    fn private_store(&mut self) -> Result<&Rc<storage::Store>, Failure> {
         if self.store.is_none() {
-            self.store = Some(private_store()?);
+            self.store = Some(Rc::new(private_store()?));
         }
         Ok(self.store.as_ref().expect("store was opened above"))
     }
 
     fn persist_progress(&mut self, progress: &GenerationProgress) -> Result<(), Failure> {
-        let bytes = serde_json::to_vec(progress)
-            .map_err(|_| invalid("generation progress cannot be serialized"))?;
-        // The attempt intent was already committed before this request. A failed or
-        // unknown write never permits another POST; the older intent stays blocking.
-        let result = (|| {
-            self.private_store()?
-                .kv_put(&progress.attempt.storage_key(), &bytes)
-                .map_err(failure)
-        })();
+        let result = self
+            .ledger
+            .as_mut()
+            .ok_or_else(|| invalid("generation requires an authoritative Run ledger"))?
+            .save_progress(progress);
         result.map_err(|error: Failure| Failure {
             code: "checkpoint-unconfirmed".into(),
             message: format!(
@@ -119,63 +149,57 @@ impl Runtime {
         &mut self,
         attempt: &AttemptContext,
     ) -> Result<Option<GenerationProgress>, Failure> {
+        if let Some(ledger) = self.ledger.as_mut() {
+            return ledger.read_progress(attempt);
+        }
+        // Only legacy diagnostic reads use preserved KV sidecars. Managed Runs
+        // never fall back to KV after a missing/failed SQL progress read.
         self.private_store()?
             .kv_get(&attempt.storage_key())
-            .map_err(failure)?
+            .map_err(storage_failure)?
             .map(|bytes| {
                 serde_json::from_slice(&bytes)
                     .map_err(|_| invalid("saved generation progress is invalid"))
             })
             .transpose()
     }
+
+    fn managed(head: &run_repository::Head) -> Result<Self, Failure> {
+        let store = Rc::new(private_store()?);
+        let ledger = runtime_repository::RunSession::resume(Rc::clone(&store), head)?;
+        Ok(Self {
+            store: Some(store),
+            ledger: Some(ledger),
+            projection_warning: None,
+        })
+    }
+
+    fn fresh(run: &Run) -> Result<Self, Failure> {
+        let store = Rc::new(private_store()?);
+        let ledger = runtime_repository::RunSession::create(Rc::clone(&store), run)?;
+        Ok(Self {
+            store: Some(store),
+            ledger: Some(ledger),
+            projection_warning: None,
+        })
+    }
+
+    fn head(&self) -> Result<run_repository::Head, Failure> {
+        self.ledger
+            .as_ref()
+            .map(|ledger| ledger.head().clone())
+            .ok_or_else(|| invalid("workflow has no authoritative Run head"))
+    }
 }
 
-// Keep the valid public prefix even if a later event in the same provider batch
-// fails stricter local validation. Only small evidence fields are cloned per
-// event: accept() never replaces/truncates public text on a failed event.
+// Existing eager batch regressions use the production acceptance/rollback path.
+#[cfg(test)]
 fn record_public_batch(
     progress: &mut GenerationProgress,
     events: Vec<String>,
     persist: impl FnOnce(&GenerationProgress) -> Result<(), Failure>,
 ) -> Result<(), Failure> {
-    let before = (
-        progress.public_text.len(),
-        progress.completed,
-        progress.usage.clone(),
-        progress.metadata.clone(),
-    );
-    let outcome = (|| {
-        for event in events {
-            let event: Value = serde_json::from_str(&event)
-                .map_err(|_| invalid("provider returned an invalid stream event"))?;
-            let accepted_length = progress.public_text.len();
-            let completed = progress.completed;
-            let usage = progress.usage.clone();
-            let metadata = progress.metadata.clone();
-            if let Err(error) = progress.accept(&event) {
-                progress.public_text.truncate(accepted_length);
-                progress.completed = completed;
-                progress.usage = usage;
-                progress.metadata = metadata;
-                return Err(error);
-            }
-        }
-        Ok(())
-    })();
-    if before
-        != (
-            progress.public_text.len(),
-            progress.completed,
-            progress.usage.clone(),
-            progress.metadata.clone(),
-        )
-    {
-        progress.next_snapshot()?;
-        // A failed save supersedes the event error: its unknown commit must not
-        // be retried or followed by an outer checkpoint write.
-        persist(progress)?;
-    }
-    outcome
+    public_progress::record_eager_batch(progress, events, persist)
 }
 
 fn merge_saved_progress(run: &mut Run) -> Result<(), Failure> {
@@ -183,6 +207,12 @@ fn merge_saved_progress(run: &mut Run) -> Result<(), Failure> {
         .attempts
         .values()
         .filter(|attempt| attempt["status"] != "completed")
+        .filter(|attempt| {
+            attempt
+                .pointer("/context/attempt_id")
+                .and_then(Value::as_str)
+                .is_none_or(|id| !run.generation_resolutions.contains_key(id))
+        })
         .filter_map(|attempt| attempt.get("context"))
         .map(|context| {
             serde_json::from_value::<AttemptContext>(context.clone())
@@ -218,6 +248,10 @@ impl Ports for Runtime {
         attempt: &AttemptContext,
     ) -> Result<Generated, Failure> {
         self.active()?;
+        self.ledger
+            .as_mut()
+            .ok_or_else(|| invalid("generation has no authoritative Run ledger"))?
+            .consume_dispatch(attempt)?;
         // Zero is the typed provider's explicit provider-default convention.
         // The provider omits max_tokens instead of imposing an arbitrary cap.
         let structured = STATE.with_borrow(|state| {
@@ -228,31 +262,36 @@ impl Ports for Runtime {
         });
         let (port, arguments) = generation_port_arguments(model, messages, phase, structured);
         let mut progress = GenerationProgress::new(attempt.clone());
+        progress.next_snapshot()?;
         // Sidecar admission must succeed before a paid model call can begin.
         self.persist_progress(&progress)?;
         let stream =
             flow::call_port_stream(port, "chat", &arguments.to_string()).map_err(failure)?;
+        let mut public = public_progress::PublicProgress::new(&mut progress);
         let outcome = (|| {
             loop {
-                self.active()?;
-                let events = flow::pull(stream, 64).map_err(failure)?;
+                if let Err(error) = self.active() {
+                    return Err(public.fail(error, |snapshot| self.persist_progress(snapshot)));
+                }
+                let events = match flow::pull(stream, 64) {
+                    Ok(events) => events,
+                    Err(error) => {
+                        return Err(
+                            public.fail(failure(error), |snapshot| self.persist_progress(snapshot))
+                        );
+                    }
+                };
                 if events.is_empty() {
+                    public.eof(|snapshot| self.persist_progress(snapshot))?;
                     break;
                 }
-                // Persist accepted evidence before another blocking pull or a
-                // later batch error. Private-only heartbeats cause no write.
-                record_public_batch(&mut progress, events, |snapshot| {
-                    self.persist_progress(snapshot)
-                })?;
-            }
-            if !progress.completed {
-                return Err(invalid(
-                    "provider stream ended before successful completion",
-                ));
+                // Only ordinary text is coalesced (64 records / 4KiB). Public
+                // identity, usage, completion and errors flush before proceeding.
+                public.accept_batch(events, |snapshot| self.persist_progress(snapshot))?;
             }
             Ok(Generated {
-                text: progress.public_text.clone(),
-                usage: progress.usage.clone(),
+                text: public.snapshot().public_text.clone(),
+                usage: public.snapshot().usage.clone(),
             })
         })();
         if outcome.is_err() {
@@ -266,6 +305,14 @@ impl Ports for Runtime {
         attempt: &AttemptContext,
     ) -> Result<Option<GenerationProgress>, Failure> {
         self.read_progress(attempt)
+    }
+
+    fn claim_generation(&mut self, run: &Run, attempt: &AttemptContext) -> Result<(), Failure> {
+        self.active()?;
+        self.ledger
+            .as_mut()
+            .ok_or_else(|| invalid("generation has no authoritative Run ledger"))?
+            .claim_generation(run, attempt)
     }
 
     fn tool(&mut self, call: &Value) -> Result<Value, Failure> {
@@ -302,26 +349,26 @@ impl Ports for Runtime {
     }
 
     fn persist(&mut self, run: &Run) -> Result<(), Failure> {
+        self.ledger
+            .as_mut()
+            .ok_or_else(|| invalid("legacy workflow requires verified migration before writes"))?
+            .persist(run)?;
+        // Readable KV projections do not replace the confirmed SQL authority.
+        // A failed projection is surfaced separately and cannot uncommit a Run.
+        if let Err(error) = self.project(run) {
+            self.projection_warning = Some(error.message);
+        }
+        Ok(())
+    }
+}
+
+impl Runtime {
+    fn project(&mut self, run: &Run) -> Result<(), Failure> {
         let store = self.private_store()?;
-        let checkpoint = serde_json::to_vec(run)
-            .map_err(|_| invalid("workflow checkpoint cannot be serialized"))?;
-        // This single atomic KV value is authoritative on resume. The following
-        // readable artifacts are projections, never partially restored state.
-        store
-            .kv_put(&format!("{}/checkpoint", run.id), &checkpoint)
-            .map_err(failure)?;
-        store
-            .kv_put(
-                &format!("{}/goal.json", run.id),
-                run.goal.to_string().as_bytes(),
-            )
-            .map_err(failure)?;
-        store
-            .kv_put(
-                &format!("{}/goal.md", run.id),
-                run.goal_markdown().as_bytes(),
-            )
-            .map_err(failure)?;
+        let mut projections = vec![
+            ("goal.json", run.goal.to_string()),
+            ("goal.md", run.goal_markdown()),
+        ];
         if !run.candidate.is_empty() {
             let name = if run.status == "completed" {
                 "answer.md"
@@ -330,9 +377,16 @@ impl Ports for Runtime {
             } else {
                 "draft.md"
             };
-            store
-                .kv_put(&format!("{}/{name}", run.id), run.candidate.as_bytes())
-                .map_err(failure)?;
+            projections.push((name, run.candidate.clone()));
+        }
+        for (name, content) in projections {
+            if content.len() > 1024 * 1024 {
+                return Err(invalid(
+                    "Readable KV projection exceeds its bound; authoritative SQL Run remains retained",
+                ));
+            }
+            store.kv_put(&format!("{}/{name}",run.id),content.as_bytes())
+                .map_err(|_|invalid("Readable KV projection was not confirmed; authoritative SQL Run remains retained"))?;
         }
         Ok(())
     }
@@ -358,21 +412,189 @@ impl lifecycle::Guest for Pack {
     }
 }
 
-fn load_run(run_id: &str) -> Result<Run, Error> {
+fn head_value(head: &run_repository::Head) -> Value {
+    json!({"format":"deepthink.run-ledger.v1","run_id":head.run_id,
+        "revision":head.revision.to_string(),"snapshot_digest":head.snapshot_digest.as_str(),
+        "run_request_digest":head.run_request_digest.as_str()})
+}
+
+fn selection_value(selection: &RecoverySelection) -> Value {
+    json!({"run-id":selection.run_id,"conversation":selection.conversation,
+        "attempt-id":selection.attempt_id,"expected-revision":selection.expected_revision,
+        "expected-snapshot-digest":selection.expected_snapshot_digest})
+}
+
+fn selected_run(selection: &RecoverySelection) -> Result<(Run, run_repository::Head), Error> {
+    let (run, head) = managed_run(load_run(&selection.run_id)?)?;
+    let revision = selection
+        .expected_revision
+        .parse::<i64>()
+        .map_err(|_| guest_error(invalid("invalid expected Run revision")))?;
+    let expected_digest = run_repository::Digest::parse(&selection.expected_snapshot_digest)
+        .map_err(runtime_repository::repository_failure)
+        .map_err(guest_error)?;
+    if revision < 0
+        || revision.to_string() != selection.expected_revision
+        || revision != head.revision
+        || expected_digest != head.snapshot_digest
+        || selection.conversation != run.conversation
+    {
+        return Err(guest_error(Failure {
+            code: "conflict".into(),
+            message: "Recovery selection changed its saved Run head or conversation.".into(),
+        }));
+    }
+    let settings = STATE
+        .with_borrow(|state| state.settings.clone())
+        .ok_or_else(|| guest_error(invalid("DeepThink has not been initialized")))?;
+    if workflow::digest(&json!(settings)) != workflow::digest(&json!(run.settings)) {
+        return Err(guest_error(invalid(
+            "Recovery changed its exact captured configuration",
+        )));
+    }
+    Ok((run, head))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RequestedObservation {
+    version: String,
+    requested_model: String,
+    model_mapping: workflow::reconciliation::ModelMapping,
+    observation: workflow::reconciliation::ReaderObservation,
+}
+
+fn reconcile_generation(selection: RecoverySelection) -> Result<String, Error> {
+    use workflow::reconciliation as recovery;
+    let (mut run, head) = selected_run(&selection)?;
+    if let Some(resolution) = run.generation_resolutions.get(&selection.attempt_id) {
+        run.validate_resolution(&selection.attempt_id, resolution)
+            .map_err(guest_error)?;
+        return Ok(json!({"run_id":run.id,"repository":head_value(&head),
+            "resolution":resolution,"usage":run.usage(),"existing_immutable_receipt":true})
+        .to_string());
+    }
+    let attempt = run
+        .attempts
+        .get(&selection.attempt_id)
+        .ok_or_else(|| guest_error(invalid("original model attempt was not found")))?;
+    let generation = attempt
+        .pointer("/progress/metadata/generation_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            guest_error(invalid(
+                "the pending attempt has no retained provider generation id",
+            ))
+        })?;
+    let provider = attempt
+        .pointer("/progress/metadata/provider")
+        .and_then(Value::as_str);
+    let arguments = json!({"request":{"generation-id":generation,"expected-model":run.model,
+        "expected-provider":provider,"include-public-content":true}});
+    // The User supplies only an attempt/head selection, never terminal/cost JSON.
+    // The configured ordinary reader verifies its catalog and fixed GETs through
+    // its own current Gate, Network and opaque Secret authority.
+    let raw = flow::call_port(
+        recovery::READER_PORT,
+        "lookup-requested",
+        &arguments.to_string(),
+    )?;
+    let outer: Value = serde_json::from_str(&raw)
+        .map_err(|_| guest_error(invalid("reader result is not valid JSON")))?;
+    let value = match outer {
+        Value::String(text) => serde_json::from_str(&text)
+            .map_err(|_| guest_error(invalid("reader JSON result is invalid")))?,
+        value => value,
+    };
+    let observed: RequestedObservation = serde_json::from_value(value).map_err(|_| {
+        guest_error(invalid(
+            "requested generation observation has an invalid closed schema",
+        ))
+    })?;
+    if observed.version != "tobkiri.requested-generation-observation.v1"
+        || observed.requested_model != run.model
+    {
+        return Err(guest_error(invalid(
+            "reader changed the original requested model",
+        )));
+    }
+    let canonical_model = observed
+        .observation
+        .metadata
+        .model
+        .clone()
+        .ok_or_else(|| guest_error(invalid("reader did not confirm the observed model")))?;
+    let provenance = recovery::ObservationProvenance {
+        version: recovery::PROVENANCE_VERSION.into(),
+        reader_pack: "local.openrouter-generation-reader".into(),
+        reader_contract: recovery::READER_PORT.into(),
+        reader_pack_hash: None,
+        reader_binding_digest: None,
+        profile_revision: None,
+        requested_model: run.model.clone(),
+        canonical_model,
+        observation_digest: workflow::digest(&json!(observed.observation)),
+        model_mapping: Some(observed.model_mapping),
+    };
+    let resolution = run
+        .reconcile_generation(&selection.attempt_id, observed.observation, provenance)
+        .map_err(guest_error)?;
+    // A changed head or progress stamp during those GETs is rejected by the
+    // repository; a lookup never holds a SQL transaction or dispatch permit.
+    let mut runtime = Runtime::managed(&head).map_err(guest_error)?;
+    runtime.persist(&run).map_err(guest_error)?;
+    let updated = runtime.head().map_err(guest_error)?;
+    Ok(
+        json!({"run_id":run.id,"repository":head_value(&updated),"resolution":resolution,
+        "usage":run.usage(),"existing_immutable_receipt":false,
+        "projection_warning":runtime.projection_warning})
+        .to_string(),
+    )
+}
+
+struct LoadedRun {
+    run: Run,
+    head: Option<run_repository::Head>,
+}
+
+fn load_optional_run(run_id: &str) -> Result<Option<LoadedRun>, Error> {
     if run_id.len() != 64 || !run_id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(guest_error(invalid("invalid run reference")));
     }
-    let bytes = private_store()
-        .map_err(guest_error)?
-        .kv_get(&format!("{run_id}/checkpoint"))?
-        .ok_or_else(|| guest_error(invalid("workflow was not found")))?;
+    let store = Rc::new(private_store().map_err(guest_error)?);
+    if let Some((run, head)) =
+        runtime_repository::RunSession::load(Rc::clone(&store), run_id).map_err(guest_error)?
+    {
+        return Ok(Some(LoadedRun {
+            run,
+            head: Some(head),
+        }));
+    }
+    let Some(bytes) = store
+        .kv_get(&format!("{run_id}/checkpoint"))
+        .map_err(storage_error)?
+    else {
+        return Ok(None);
+    };
     let mut run = serde_json::from_slice(&bytes)
         .map_err(|_| guest_error(invalid("checkpoint is invalid")))?;
     merge_saved_progress(&mut run).map_err(guest_error)?;
-    Ok(run)
+    Ok(Some(LoadedRun { run, head: None }))
 }
 
-fn register(mut run: Run) -> Result<StreamHandle, Error> {
+fn load_run(run_id: &str) -> Result<LoadedRun, Error> {
+    load_optional_run(run_id)?.ok_or_else(|| guest_error(invalid("workflow was not found")))
+}
+
+fn managed_run(loaded: LoadedRun) -> Result<(Run, run_repository::Head), Error> {
+    let head = loaded.head.ok_or_else(||guest_error(Failure {
+        code:"needs-reconciliation".into(),
+        message:"This legacy checkpoint is preserved. Migration requires verified retirement of its old execution; a User flag or a Profile epoch change cannot supply that proof.".into(),
+    }))?;
+    Ok((loaded.run, head))
+}
+
+fn register(mut run: Run, previous: Option<run_repository::Head>) -> Result<StreamHandle, Error> {
     // Refuse before writing a continuation checkpoint. An existing stream may
     // still own the paused snapshot until its final empty pull closes it.
     STATE.with_borrow(|state| {
@@ -389,7 +611,28 @@ fn register(mut run: Run) -> Result<StreamHandle, Error> {
         }
         Ok(())
     })?;
-    Runtime::default().persist(&run).map_err(guest_error)?;
+    if run.status == "running" {
+        run.error = None;
+    }
+    let mut runtime = if let Some(previous) = previous {
+        let mut runtime = Runtime::managed(&previous).map_err(guest_error)?;
+        runtime.persist(&run).map_err(guest_error)?;
+        runtime
+    } else {
+        let mut runtime = Runtime::fresh(&run).map_err(guest_error)?;
+        if let Err(error) = runtime.project(&run) {
+            runtime.projection_warning = Some(error.message);
+        }
+        runtime
+    };
+    let head = runtime.head().map_err(guest_error)?;
+    let mut initial_events = VecDeque::new();
+    if let Some(message) = runtime.projection_warning.take() {
+        initial_events.push_back(event(
+            "progress",
+            Some(json!({"kind":"storage-projection-warning","message":message}).to_string()),
+        ));
+    }
     STATE.with_borrow_mut(|state| {
         if state.streams.len() >= 64 {
             return Err(guest_error(invalid("too many active workflow streams")));
@@ -412,7 +655,8 @@ fn register(mut run: Run) -> Result<StreamHandle, Error> {
             id,
             Active {
                 run,
-                events: VecDeque::new(),
+                head,
+                events: initial_events,
                 announced: false,
                 terminal_sent: false,
                 failure: None,
@@ -446,17 +690,18 @@ impl Guest for Pack {
         let store = private_store().map_err(guest_error)?;
         if !explicit_resume {
             let previous = expected.previous_v4_storage_id();
-            if let Some(bytes) = store.kv_get(&format!("{previous}/checkpoint"))? {
+            if let Some(bytes) = store
+                .kv_get(&format!("{previous}/checkpoint"))
+                .map_err(storage_error)?
+            {
                 let previous: Run = serde_json::from_slice(&bytes)
                     .map_err(|_| guest_error(invalid("prior v4 checkpoint is invalid")))?;
                 return Err(guest_error(expected.previous_v4_conflict(&previous)));
             }
         }
-        let stored = store.kv_get(&format!("{identifier}/checkpoint"))?;
-        let run = if let Some(bytes) = stored {
-            let mut run: Run = serde_json::from_slice(&bytes)
-                .map_err(|_| guest_error(invalid("stored checkpoint is invalid")))?;
-            merge_saved_progress(&mut run).map_err(guest_error)?;
+        let stored = load_optional_run(&identifier)?;
+        let (run, head) = if let Some(loaded) = stored {
+            let (mut run, head) = managed_run(loaded)?;
             if explicit_resume {
                 run.resume_pinned(&expected.conversation, &expected.model, &expected.settings)
                     .map_err(guest_error)?;
@@ -469,14 +714,14 @@ impl Guest for Pack {
                 }
                 run.resume(&expected).map_err(guest_error)?;
             }
-            run
+            (run, Some(head))
         } else {
             if identifier != expected.id {
                 return Err(guest_error(invalid("resume run was not found")));
             }
-            expected
+            (expected, None)
         };
-        register(run)
+        register(run, head)
     }
 
     fn continue_run(
@@ -484,7 +729,7 @@ impl Guest for Pack {
         conversation: String,
         answers: Option<String>,
     ) -> Result<StreamHandle, Error> {
-        let mut run = load_run(&run_id)?;
+        let (mut run, head) = managed_run(load_run(&run_id)?)?;
         let settings = STATE
             .with_borrow(|state| state.settings.clone())
             .ok_or_else(|| guest_error(invalid("DeepThink has not been initialized")))?;
@@ -495,14 +740,16 @@ impl Guest for Pack {
             run.resume_pinned(&conversation, &run.model.clone(), &settings)
                 .map_err(guest_error)?;
         }
-        register(run)
+        register(run, Some(head))
     }
 
     fn status(run_id: String) -> Result<String, Error> {
         if run_id.len() != 64 || !run_id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return Err(guest_error(invalid("invalid run reference")));
         }
-        let run = load_run(&run_id)?;
+        let loaded = load_run(&run_id)?;
+        let repository = loaded.head.as_ref().map(head_value);
+        let run = loaded.run;
         let reconciliation = run.ensure_generations_reconciled().err();
         // The candidate is only exposed on this explicitly authorized diagnostic
         // port; the assistant stream never emits a rejected candidate as output.
@@ -510,19 +757,39 @@ impl Guest for Pack {
             json!({"version":run.version,"run_id":run.id,"status":if reconciliation.is_some(){"needs_reconciliation"}else{&run.status},"goal":run.goal,
             "phases":run.phases,"usage":run.usage(),"artifacts":run.artifacts,
             "capability_gaps":run.settings.capability_gaps,"error":run.error,"output":run.output(),
-            "reconciliation":reconciliation,"model_attempts":run.attempts})
+            "reconciliation":reconciliation,"model_attempts":run.attempts,
+            "repository":repository,"generation_resolutions":run.generation_resolutions,
+            "regeneration_authorizations":run.regeneration_authorizations})
             .to_string(),
         )
+    }
+
+    fn reconcile_generation(selection: RecoverySelection) -> Result<String, Error> {
+        reconcile_generation(selection)
+    }
+
+    fn regenerate_phase(
+        selection: RecoverySelection,
+        resolution_digest: String,
+    ) -> Result<StreamHandle, Error> {
+        let (mut run, head) = selected_run(&selection)?;
+        run.prepare_regeneration(&selection.attempt_id, &resolution_digest)
+            .map_err(guest_error)?;
+        register(run, Some(head))
     }
 }
 
 impl continuation_input::Guest for Pack {
+    fn status(run_id: String) -> Result<String, Error> {
+        <Pack as Guest>::status(run_id)
+    }
+
     fn submit(
         run_id: String,
         conversation: String,
         answers: Option<String>,
     ) -> Result<StreamHandle, Error> {
-        let run = load_run(&run_id)?;
+        let (run, _) = managed_run(load_run(&run_id)?)?;
         if run.conversation != conversation {
             return Err(guest_error(invalid("continuation conversation changed")));
         }
@@ -532,6 +799,24 @@ impl continuation_input::Guest for Pack {
         flow::run_flow("local.deepthink.continuation-flow@1.0",&json!({
             "run-id":run_id,"conversation":conversation,"answers":answers,"history-text":history,
         }).to_string())
+    }
+
+    fn reconcile_generation(
+        selection: continuation_input::RecoverySelection,
+    ) -> Result<String, Error> {
+        reconcile_generation(selection)
+    }
+
+    fn regenerate_phase(
+        selection: continuation_input::RecoverySelection,
+        resolution_digest: String,
+    ) -> Result<StreamHandle, Error> {
+        let (run, _) = selected_run(&selection)?;
+        let history = run.conversation_input(None).map_err(guest_error)?;
+        let input = json!({"selection":selection_value(&selection),
+            "resolution-digest":resolution_digest,"conversation":selection.conversation,
+            "history-text":history});
+        flow::run_flow("local.deepthink.regeneration-flow@1.0", &input.to_string())
     }
 
     fn pull(stream: StreamHandle, max: u32) -> Result<Vec<continuation_input::ChatEvent>, Error> {
@@ -629,8 +914,18 @@ impl Active {
                 self.announced = true;
                 return Ok(vec![event("progress",Some(json!({"version":VERSION,"run_id":self.run.id,"phase":self.run.pending.front().map(|phase|phase.id.as_str()),"status":"running"}).to_string()))]);
             }
-            let mut runtime = Runtime::default();
-            match self.run.advance_segment(&mut runtime) {
+            let mut runtime = Runtime::managed(&self.head)?;
+            let outcome = self.run.advance_segment(&mut runtime);
+            self.head = runtime.head()?;
+            if let Some(message) = runtime.projection_warning.take() {
+                self.events.push_back(event(
+                    "progress",
+                    Some(
+                        json!({"kind":"storage-projection-warning","message":message}).to_string(),
+                    ),
+                ));
+            }
+            match outcome {
                 Ok(events) => {
                     self.announced = false;
                     for value in events {

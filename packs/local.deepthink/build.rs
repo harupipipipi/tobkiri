@@ -6,9 +6,17 @@ fn main() {
     std::fs::create_dir_all(&deps).unwrap();
     for (source, target) in [
         ("../../crates/tobkiri-wit/wit/core/core.wit", "core.wit"),
+        (
+            "../../crates/tobkiri-wit/wit/core-v1-1/core.wit",
+            "core-v1-1.wit",
+        ),
         ("../shapes/harness-chat.wit", "harness-chat.wit"),
         ("../shapes/harness-agent.wit", "harness-agent.wit"),
         ("../shapes/deepthink.wit", "deepthink.wit"),
+        (
+            "../recovery/local.openrouter-generation-reader/wit/deps/reader.wit",
+            "generation-reader.wit",
+        ),
     ] {
         let source = root.join(source);
         std::fs::copy(&source, deps.join(target)).unwrap();

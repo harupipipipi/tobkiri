@@ -71,21 +71,31 @@ fn fetch(
     }
     // get returns an opaque ref bound to this Pack's own principal. The Core
     // independently authorizes the GET and insertion into its header.
-    let secret = secrets::get("api-key").map_err(safe_import_error)?;
+    let secret = if endpoint == reader::Endpoint::ModelCatalog {
+        None
+    } else {
+        Some(secrets::get("api-key").map_err(safe_import_error)?)
+    };
+    let secret_headers = if secret.is_some() {
+        vec![network::HeaderFromSecret {
+            name: "authorization".into(),
+            prefix: "Bearer ".into(),
+            index: 0,
+        }]
+    } else {
+        vec![]
+    };
+    let secret_refs = secret.iter().collect::<Vec<_>>();
     let response = network::fetch(
         &network::Request {
             method: "GET".into(),
             url: url.into(),
             headers: vec![("accept".into(), "application/json".into())],
-            secret_headers: vec![network::HeaderFromSecret {
-                name: "authorization".into(),
-                prefix: "Bearer ".into(),
-                index: 0,
-            }],
+            secret_headers,
             body: None,
             timeout_ms: Some(timeout_ms),
         },
-        &[&secret],
+        &secret_refs,
     )
     .map_err(safe_import_error)?;
     let status = response.status();
@@ -131,6 +141,49 @@ fn fetch(
 }
 
 impl Guest for Pack {
+    fn lookup_requested(request: Selection) -> Result<String, Error> {
+        let selection = reader::Selection::new(
+            request.generation_id,
+            request.expected_model,
+            request.expected_provider,
+            request.include_public_content,
+        )
+        .map_err(|_| error(ErrorCode::Invalid, "Invalid generation lookup selection"))?;
+        let timeout = SETTINGS
+            .with_borrow(|settings| settings.as_ref().map(|s| s.timeout_ms))
+            .ok_or_else(|| error(ErrorCode::Invalid, "Generation reader is not initialized"))?;
+        let observation = reader::catalog::lookup_requested_with(&selection, |endpoint, url| {
+            fetch(endpoint, url, timeout)
+        })
+        .map_err(|failure| match failure {
+            reader::catalog::CatalogError::Core(source) => source,
+            reader::catalog::CatalogError::InvalidModel => {
+                error(ErrorCode::Invalid, "Invalid requested model catalog path")
+            }
+            reader::catalog::CatalogError::Unavailable => error(
+                ErrorCode::Unavailable,
+                "Requested model catalog is unavailable",
+            ),
+            reader::catalog::CatalogError::InvalidResponse => error(
+                ErrorCode::Invalid,
+                "Requested model catalog has no verified exact mapping",
+            ),
+        })?;
+        let output = serde_json::to_string(&observation).map_err(|_| {
+            error(
+                ErrorCode::Internal,
+                "Requested generation observation cannot be encoded",
+            )
+        })?;
+        if output.len() > reader::MAX_OUTPUT_BYTES {
+            return Err(error(
+                ErrorCode::LimitExceeded,
+                "Requested generation observation exceeds its output bound",
+            ));
+        }
+        Ok(output)
+    }
+
     fn lookup(request: Selection) -> Result<String, Error> {
         let selection = reader::Selection::new(
             request.generation_id,

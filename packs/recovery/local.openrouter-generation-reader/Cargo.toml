@@ -16,6 +16,7 @@ crate-type = ["cdylib", "rlib"]
 wit-bindgen = "=0.62.0"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = { version = "=1.0.154", features = ["raw_value"] }
+sha2 = "=0.10.9"
 
 [profile.dev]
 debug = 0

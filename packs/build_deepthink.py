@@ -47,9 +47,11 @@ def stage(target_dir: Path, config: dict | None = None,
     artifact = component_artifact(target_dir, "tobkiri_pack_deepthink.wasm", build_profile)
     directory.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(artifact, directory / "component.wasm")
-    for relative in ["wit/pack.wit", "wit/deps/core.wit", "wit/deps/deepthink.wit",
+    for relative in ["wit/pack.wit", "wit/deps/core.wit", "wit/deps/core-v1-1.wit", "wit/deps/deepthink.wit",
+                     "wit/deps/generation-reader.wit",
                      "wit/deps/harness-chat.wit", "wit/deps/harness-agent.wit",
-                     "overlays/generate.overlay.json", "flows/continuation.flow.json"]:
+                     "overlays/generate.overlay.json", "flows/continuation.flow.json",
+                     "flows/regeneration.flow.json"]:
         destination_file = directory / relative
         destination_file.parent.mkdir(parents=True, exist_ok=True)
         source = SOURCE / relative
@@ -57,17 +59,20 @@ def stage(target_dir: Path, config: dict | None = None,
             shutil.copyfile(source, destination_file)
     write_json(directory / "config.json", default_config() if config is None else config)
     write_json(directory / "wit/workflow.shape.json", {
-        "cardinality": "one", "streams": {"run": "chat-event", "continue-run": "chat-event"},
+        "cardinality": "one", "streams": {"run": "chat-event", "continue-run": "chat-event", "regenerate-phase": "chat-event"},
         "callbacks": {}, "conformance": None,
     })
     write_json(directory / "wit/records.shape.json", {
         "cardinality": "one", "streams": {}, "callbacks": {}, "conformance": None,
     })
     write_json(directory / "wit/continuation-input.shape.json", {
-        "cardinality": "one", "streams": {"submit": "flow-frame"},
+        "cardinality": "one", "streams": {"submit": "flow-frame", "regenerate-phase": "flow-frame"},
         "callbacks": {}, "conformance": None,
     })
     write_json(directory / "wit/continuation-flow.shape.json", {
+        "cardinality": "one", "streams": {}, "callbacks": {}, "conformance": None,
+    })
+    write_json(directory / "wit/regeneration-flow.shape.json", {
         "cardinality": "one", "streams": {}, "callbacks": {}, "conformance": None,
     })
     views = ["local.harness-chat.llm-provider@1.0",
@@ -76,7 +81,9 @@ def stage(target_dir: Path, config: dict | None = None,
              "local.harness-chat.assistant-output@1.0",
              "local.harness-chat.generate@1.0", "local.deepthink.workflow@1.0",
              "local.harness-chat.conversation-store@1.0",
-             "local.deepthink.continuation-flow@1.0", "local.deepthink.continuation-input@1.0"]
+             "local.deepthink.continuation-flow@1.0", "local.deepthink.continuation-input@1.0",
+             "local.deepthink.regeneration-flow@1.0",
+             "local.openrouter-generation-reader.generation-reader@1.0"]
     manifest = base_manifest("deepthink", {
         "kind": "wasm", "component": "component.wasm",
         "toolchain": "rust/1.94.0;wit-bindgen/0.62.0",
@@ -91,26 +98,33 @@ def stage(target_dir: Path, config: dict | None = None,
         port("local.deepthink.workflow"),
         port("local.deepthink.continuation-input"),
         port("local.deepthink.continuation-flow"),
+        port("local.deepthink.regeneration-flow"),
+        port("local.openrouter-generation-reader.generation-reader", optional=True),
         port("local.harness-chat.conversation-store"),
     ]
     manifest["shapes"] = [{"name": "local.deepthink." + name, "version": "1.0",
         "kind": kind, "wit": "wit/deps/deepthink.wit"}
         for name, kind in [("workflow", "port"), ("records", "data"),
-                           ("continuation-input", "port"), ("continuation-flow", "flow")]]
-    manifest["flows"] = ["flows/continuation.flow.json"]
+                           ("continuation-input", "port"), ("continuation-flow", "flow"),
+                           ("regeneration-flow", "flow")]]
+    manifest["flows"] = ["flows/continuation.flow.json", "flows/regeneration.flow.json"]
     manifest["overlays"] = ["overlays/generate.overlay.json"]
     manifest["stores"] = [{"name": "workflows", "tier": "private",
                            "data_shape": "local.deepthink.records@1.0"}]
-    paths = ["component.wasm", "config.json", "wit/pack.wit", "wit/deps/core.wit",
+    paths = ["component.wasm", "config.json", "wit/pack.wit", "wit/deps/core.wit", "wit/deps/core-v1-1.wit",
+             "wit/deps/generation-reader.wit",
              "wit/deps/deepthink.wit", "wit/workflow.shape.json", "wit/records.shape.json",
              "wit/deps/harness-chat.wit", "wit/deps/harness-agent.wit",
              "wit/continuation-input.shape.json", "wit/continuation-flow.shape.json",
-             "flows/continuation.flow.json", "overlays/generate.overlay.json", "component.build.json"]
+             "wit/regeneration-flow.shape.json", "flows/continuation.flow.json", "flows/regeneration.flow.json",
+             "overlays/generate.overlay.json", "component.build.json"]
     sources = [*sorted((SOURCE / "src").glob("*.rs")), SOURCE / "build.rs",
                SOURCE / "Cargo.toml", ROOT / "Cargo.toml", ROOT / "Cargo.lock",
                SOURCE / "wit/pack.wit", ROOT / "shapes/deepthink.wit",
                ROOT / "shapes/harness-chat.wit", ROOT / "shapes/harness-agent.wit",
-               ROOT.parent / "crates/tobkiri-wit/wit/core/core.wit"]
+               ROOT / "recovery/local.openrouter-generation-reader/wit/deps/reader.wit",
+               ROOT.parent / "crates/tobkiri-wit/wit/core/core.wit",
+               ROOT.parent / "crates/tobkiri-wit/wit/core-v1-1/core.wit"]
     write_json(directory / "component.build.json", {
         "format": "tobkiri.component-build/1", "language": "rust",
         "tools": {"rust": "1.94.0", "wit-bindgen": "0.62.0"},

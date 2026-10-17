@@ -118,6 +118,14 @@ class ProfileSourceVariantTests(unittest.TestCase):
             )
             for name in names
         }
+        # Staging-only bytes: even a correct component header is not ABI proof.
+        target = self.root / "target"
+        component = (target / "wasm32-wasip2/release"
+                     / "tobkiri_pack_openrouter_generation_reader.wasm")
+        component.parent.mkdir(parents=True)
+        component.write_bytes(b"\0asm\r\0\1\0public staging fixture; not compiled Wasm")
+        reader = deepthink.stage_generation_reader(target, build_profile="release")
+        manifests["openrouter-generation-reader"] = reader
         variant = deepthink.workflow_harness_variant()
         manifests["harness-chat"] = variant
         for ui in [False, True]:
@@ -133,6 +141,38 @@ class ProfileSourceVariantTests(unittest.TestCase):
                 self.assertIn(
                     "local.deepthink.workflow@1.0", document["ceiling"]["ports"]
                 )
+                reader_id = "local.openrouter-generation-reader"
+                reader_view = reader_id + ".generation-reader@1.0"
+                pins = [pin for pin in document["packs"] if pin["id"] == reader_id]
+                self.assertEqual(len(pins), 1)
+                self.assertEqual(
+                    pins[0]["sha256"], build.sha256(build.canonical(reader)),
+                )
+                self.assertEqual(
+                    document["bindings"][reader_id + ".generation-reader@1"],
+                    reader_id,
+                )
+                self.assertEqual(
+                    reader["shapes"][0]["name"], reader_view.rsplit("@", 1)[0],
+                )
+                self.assertEqual(
+                    reader["ports"]["provides"],
+                    [build.port(reader_view.rsplit("@", 1)[0])],
+                )
+                self.assertEqual(
+                    document["pack_limits"][reader_id],
+                    build.intersect_permissions(
+                        reader["permissions"], document["ceiling"],
+                    ),
+                )
+                self.assertNotIn(
+                    reader_view, document["user_permissions"]["ports"],
+                )
+                self.assertFalse(
+                    document["pack_limits"][reader_id]["storage"]["private"],
+                )
+                self.assertEqual(document["pack_limits"][reader_id]["fs"], [])
+                self.assertEqual(document["pack_limits"][reader_id]["proc"], [])
 
 
 if __name__ == "__main__":

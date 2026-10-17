@@ -39,21 +39,30 @@ class BuildProfileTests(unittest.TestCase):
             "baseline": "tobkiri_pack_mock_llm.wasm",
             "deepthink": "tobkiri_pack_deepthink.wasm",
             "tools": "tobkiri_pack_harness_tools.wasm",
+            "reader": "tobkiri_pack_openrouter_generation_reader.wasm",
         }
         for profile in ["debug", "release"]:
             for filename in self.names.values():
+                content = f"NOT-WASM: public {profile} fixture {filename}".encode()
+                if filename == self.names["reader"]:
+                    # The staging header check is exercised, not Core ABI admission.
+                    content = b"\0asm\r\0\1\0" + content
                 self.write(self.target / "wasm32-wasip2" / profile / filename,
-                           f"NOT-WASM: public {profile} fixture {filename}".encode())
-        common = ["Cargo.toml", "Cargo.lock", "guest-sdk/src/lib.rs",
+                           content)
+        common = ["Cargo.toml", "Cargo.lock", "build.py", "guest-sdk/src/lib.rs",
                   "build_harness_tools.py", "shapes/harness-chat.wit",
                   "shapes/harness-agent.wit", "shapes/harness-tools.wit",
-                  "shapes/deepthink.wit"]
+                  "shapes/deepthink.wit",
+                  "recovery/build_generation_reader.py",
+                  "recovery/local.openrouter-generation-reader/wit/deps/reader.wit"]
         baseline = ["Cargo.toml", "build.rs", "src/lib.rs", "wit/pack.wit",
                     "wit/deps/core.wit", "wit/deps/shape.wit"]
         deepthink = ["Cargo.toml", "build.rs", "src/lib.rs", "wit/pack.wit",
-                     "wit/deps/core.wit", "wit/deps/deepthink.wit",
+                     "wit/deps/core.wit", "wit/deps/core-v1-1.wit",
+                     "wit/deps/generation-reader.wit", "wit/deps/deepthink.wit",
                      "wit/deps/harness-chat.wit", "wit/deps/harness-agent.wit",
-                     "overlays/generate.overlay.json", "flows/continuation.flow.json"]
+                     "overlays/generate.overlay.json", "flows/continuation.flow.json",
+                     "flows/regeneration.flow.json"]
         tools = ["Cargo.toml", "build.rs", "src/lib.rs", "wit/pack.wit",
                  "wit/artifacts.wit", "wit/deps/core.wit", "wit/deps/harness-agent.wit"]
         for relative in common:
@@ -62,6 +71,10 @@ class BuildProfileTests(unittest.TestCase):
                             ("harness-tools", tools)]:
             for relative in paths:
                 self.write(self.root / ("local." + name) / relative, b"public source fixture")
+        reader_source = self.root / "recovery/local.openrouter-generation-reader"
+        for relative in ["Cargo.toml", "Cargo.lock", "build.rs", "src/lib.rs",
+                         "wit/pack.wit", "wit/deps/reader.wit"]:
+            self.write(reader_source / relative, b"public Reader source fixture")
         for version in ["core", "core-v1-1"]:
             self.write(self.repo / "crates/tobkiri-wit/wit" / version / "core.wit",
                        b"public WIT fixture; not ABI acceptance")
@@ -73,6 +86,11 @@ class BuildProfileTests(unittest.TestCase):
             (build_harness_tools, "REPO", self.repo),
             (build_harness_tools, "__file__", str(self.root / "build_harness_tools.py")),
             (build_deepthink_profile, "ROOT", self.root),
+            (build_deepthink_profile.build_generation_reader, "SOURCE", reader_source),
+            (build_deepthink_profile.build_generation_reader, "PACKS", self.root),
+            (build_deepthink_profile.build_generation_reader, "REPO", self.repo),
+            (build_deepthink_profile.build_generation_reader, "__file__",
+             str(self.root / "recovery/build_generation_reader.py")),
         ]:
             override = patch.object(module, name, value)
             override.start()
@@ -91,6 +109,9 @@ class BuildProfileTests(unittest.TestCase):
                 self.target, **kwargs)),
             ("tools", "local.harness-tools", lambda **kwargs: build_harness_tools.stage(
                 self.target, **kwargs)),
+            ("reader", "local.openrouter-generation-reader",
+             lambda **kwargs: build_deepthink_profile.stage_generation_reader(
+                 self.target, **kwargs)),
         ]
 
     def test_default_debug_and_explicit_release_select_distinct_unchanged_paths(self):
@@ -145,10 +166,12 @@ class BuildProfileTests(unittest.TestCase):
                     stage(build_profile="release")
                 self.assertEqual(before, {path: path.read_bytes() for path in output.rglob("*") if path.is_file()})
 
-    def test_profile_stage_propagates_release_to_both_nested_components(self):
+    def test_profile_stage_propagates_release_to_all_nested_components(self):
         manifest = {"id": "local.fixture", "permissions": {"ports": []},
                     "ports": {"consumes": []}, "ui": {"ports_used": []}}
         with patch.object(build_harness_tools, "stage", return_value=copy.deepcopy(manifest)) as tools, \
+                patch.object(build_deepthink_profile, "stage_generation_reader",
+                             return_value=copy.deepcopy(manifest)) as reader, \
                 patch.object(build_deepthink_profile, "variant", side_effect=lambda *a, **k: copy.deepcopy(manifest)), \
                 patch.object(build_deepthink_profile.publish_presets, "publish"), \
                 patch.object(build, "write_json"), \
@@ -156,6 +179,7 @@ class BuildProfileTests(unittest.TestCase):
             with self.assertRaises(StopBeforeStaging):
                 build_deepthink_profile.stage(self.target, build_profile="release")
             tools.assert_called_once_with(self.target, build_profile="release")
+            reader.assert_called_once_with(self.target, build_profile="release")
             self.assertEqual(workflow.call_args.kwargs["build_profile"], "release")
 
     def test_only_release_cargo_invocations_receive_release_flag(self):
