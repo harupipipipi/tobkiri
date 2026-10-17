@@ -46,6 +46,9 @@ function progress(value) {
   if (typeof value.status === "string") {
     runStatus = value.phase && value.status === "completed" ? "running" : value.status;
   }
+  if (["needs-reconciliation", "checkpoint-unconfirmed", "core-internal"].includes(value.error?.code)) {
+    runStatus = "needs_reconciliation";
+  }
   phase.textContent = `${value.phase ?? "DeepThink"} · ${value.status ?? "実行中"}`;
   nextAction.textContent = value.summary?.next_action ?? "";
   if (value.summary && value.phase) {
@@ -100,19 +103,39 @@ async function submit(input, continuation = false) {
     if (cancelled) throw new Error("停止しました。下書きを残しています。");
     stop.disabled = false;
     let completed = false;
+    let pausedSegment = false;
+    let sawAnswer = false;
     while (active && !completed) {
       const events = await stream.pull(8);
       if (!events.length) throw new Error("会話の完了を確認できませんでした。下書きを残しています。");
       for (const event of events) {
-        const frame = event.kind;
+        const frame = typeof event.kind === "object" ? event.kind : event;
         if (frame?.kind === "failed") throw new Error("会話を完了できませんでした。下書きを残しています。");
         if (frame?.kind === "cancelled") throw new Error("停止しました。下書きを残しています。");
         if (frame?.kind === "completed") completed = true;
-        if (frame?.kind === "emitted" && frame.shape === "local.harness-chat.assistant-output@1.0") {
-          const value = frame.value;
-          if (value.kind === "delta") assistant.body.textContent += value.text ?? "";
-          if (value.kind === "done") assistant.state.textContent = "保存を確認中";
+        const value = frame?.kind === "emitted" && frame.shape === "local.harness-chat.assistant-output@1.0"
+          ? frame.value
+          : typeof event.kind === "string" ? event : undefined;
+        if (value) {
+          if (value.kind === "delta") {
+            sawAnswer = true;
+            assistant.body.textContent += value.text ?? "";
+          }
+          if (value.kind === "done") {
+            sawAnswer = true;
+            assistant.state.textContent = "保存を確認中";
+          }
           if (value.kind === "progress") progress(parseEventText(value.text));
+          if (value.kind === "paused") {
+            const receipt = parseEventText(value.text);
+            if (pausedSegment || sawAnswer || receipt.version !== "deepthink.workflow.v5" || receipt.status !== "paused" || receipt.approved !== false || receipt.conversation !== conversation || receipt.run_id !== runId || !Number.isSafeInteger(receipt.completed_phases) || receipt.completed_phases < 1 || typeof receipt.next_phase !== "string" || !receipt.next_phase.trim() || receipt.usage?.pending_attempts !== 0) {
+              runStatus = "needs_reconciliation";
+              rememberRun();
+              throw new Error("工程の安全な中断を確認できませんでした。再送せず実行参照を保持してください。");
+            }
+            pausedSegment = true;
+            progress(receipt);
+          }
           if (value.kind === "usage") {
             workflow.hidden = false;
             usage.textContent = formatUsage(parseEventText(value.text), value["prompt-tokens"], value["completion-tokens"]);
@@ -123,6 +146,19 @@ async function submit(input, continuation = false) {
     if (cancelled) throw new Error("停止しました。下書きを残しています。");
     if (!completed) throw new Error("会話の完了を確認できませんでした。下書きを残しています。");
     const persisted = await client.call(storeShape, "load", { conversation });
+    if (pausedSegment) {
+      if (sawAnswer || runStatus !== "paused" || JSON.stringify(persisted.messages) !== JSON.stringify(previous.messages)) {
+        runStatus = "needs_reconciliation";
+        rememberRun();
+        throw new Error("中断した工程が回答として保存されていないことを確認できませんでした。");
+      }
+      user.state.textContent = "依頼はチェックポイントに保持されています";
+      assistant.state.textContent = "工程を保存して一時停止中";
+      text.value = "";
+      nextAction.textContent = "「再開」で次の工程を実行します。最終回答はレビュー合格後に表示されます。";
+      status.textContent = "1工程を保存しました。続けるには「再開」を押してください。";
+      return;
+    }
     const tail = persisted.messages.slice(-2);
     if (persisted.messages.length < previous.messages.length + 2 || tail[0]?.role !== "user" || (!continuation && tail[0]?.content !== input) || tail[1]?.role !== "assistant" || tail[1]?.content !== assistant.body.textContent) {
       throw new Error("会話の保存を確認できませんでした。下書きを残しています。");
@@ -143,7 +179,7 @@ async function submit(input, continuation = false) {
     busy = false;
     stop.disabled = true;
     send.disabled = false;
-    resume.disabled = !runId || runStatus === "completed" || runStatus === "needs_input";
+    resume.disabled = !runId || runStatus === "completed" || runStatus === "needs_input" || runStatus === "needs_reconciliation";
   }
 }
 form.addEventListener("submit", async (event) => {
@@ -170,6 +206,6 @@ stop.addEventListener("click", async () => {
 connectPackUi().then((connection) => {
   client = connection;
   send.disabled = false;
-  resume.disabled = !runId || runStatus === "completed" || runStatus === "needs_input";
+  resume.disabled = !runId || runStatus === "completed" || runStatus === "needs_input" || runStatus === "needs_reconciliation";
   status.textContent = "準備できました";
 });

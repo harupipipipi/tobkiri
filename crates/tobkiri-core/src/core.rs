@@ -334,6 +334,12 @@ impl Core {
         self.profiles.load(id)
     }
 
+    /// Read the revision head and security epoch from one storage snapshot.
+    /// This trusted facade inspection starts no Session or guest invocation.
+    pub fn profile_head_snapshot(&self, id: &ProfileId) -> Result<(Digest, u64), CoreError> {
+        Ok(self.profiles.root.profile_head_snapshot(id)?)
+    }
+
     /// Create a fresh Profile from a structural definition, with no inherited
     /// authority or data even if the definition contains a previous identity.
     pub async fn create_profile(&self, bytes: &[u8], name: String) -> Result<ProfileId, CoreError> {

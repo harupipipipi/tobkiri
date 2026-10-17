@@ -34,7 +34,7 @@ fn published_bytes(bytes: &[u8], path: &Path) -> Result<Vec<u8>> {
     canonical_json(&document)
 }
 
-fn resolve_sources<'a>(
+pub(super) fn resolve_sources<'a>(
     sources: impl Iterator<Item = &'a mut String>,
     definition: &Path,
 ) -> Result<()> {

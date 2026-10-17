@@ -11,18 +11,18 @@
     "model": "xiaomi/mimo-v2.6-flash",
     "output_token_limit": "provider_default",
     "prompt_pack_hashes": {
-      "local.deepthink-preset-chatgpt-agent-deep-research-service": "sha256:540253999774eb71dda6605ac4067fc48885514c98b6d9a82de3ba530e5e8794",
-      "local.deepthink-preset-claude-code-service": "sha256:0afa5dc230e690b90a8019835946303476659c7493d6528fe005a5262279fe93",
-      "local.deepthink-preset-cline-pair-programmer-service": "sha256:c18d06fee9e3683958720580d34839af2507eb795a5d9c20a9496ee28f462140",
-      "local.deepthink-preset-gemini-cli-service": "sha256:6eccb2113d1bab24f3c19e4978b69f08a0529314fab6e2fe0fa30d2160e76f82",
-      "local.deepthink-preset-genspark-report-service": "sha256:37208698df5573a5250952556ccb156b38063261c491aa08b79b9e1c21b71708",
-      "local.deepthink-preset-manus-project-service": "sha256:8440ec21ff28b5231344052eb30d8c9ce33b48144a11439a131e54e3ca75d485",
-      "local.deepthink-preset-openclaw-hermes-local-service": "sha256:d6ceab50464096fe6e2422691dacedb26def9374143c9975bfd508b7a6d1a6f7",
-      "local.mimo-prompt": "sha256:104c2110fdbfcf818cb4221c5e458edab4832cb6eb04e48c7d91a7acfc3c1582"
+      "local.deepthink-preset-chatgpt-agent-deep-research-service": "sha256:577b144f5224275c27b5eed41752e9bc362a8b55f9e162f85c4ae4a5979075ae",
+      "local.deepthink-preset-claude-code-service": "sha256:622a11a24c6e9115efdac66839c388830329478f38164646df7ba7ed4835caee",
+      "local.deepthink-preset-cline-pair-programmer-service": "sha256:dd63f53643ec8a3d385ccd1514290f4eb4156cd65519816d3caa7bf9e58d0978",
+      "local.deepthink-preset-gemini-cli-service": "sha256:821442232ff1e2570ecebf6feee71988d436c2aae58cfa6075e2272013728e66",
+      "local.deepthink-preset-genspark-report-service": "sha256:e1a035ccbdd28eea5e8743e79d6051145cd856af2bb97f0cf38e2c0662683944",
+      "local.deepthink-preset-manus-project-service": "sha256:9a613138c1d9216b55c5eb4d6cef157e530cf039636504a4e9685b138d6e249c",
+      "local.deepthink-preset-openclaw-hermes-local-service": "sha256:6579eab9dee2d7c71ca3acd5d03f0e1f4a3844c5211bea52344cd864c498acfe",
+      "local.mimo-prompt": "sha256:344890427d3223ae9168ee367d940e263cbc2313ca4766420f67a378b1f6fa1a"
     },
     "provider": "OpenRouter",
-    "provider_pack_hash": "sha256:97f912349e249b452d531aeaf0ab49ddcae2a1cf11283ea2f0b6d84b7528200f",
-    "tool_pack_hash": "sha256:0545d2240002a1a1b5539e3c9422b888b83ab953751062fc89ef6e74d1825c59"
+    "provider_pack_hash": "sha256:20f4b449c26ed691222c18756f6c0d1d6d5f0a4f3337c54d9e87b8fea450038c",
+    "tool_pack_hash": "sha256:6450aaec62a831bd0148aff8d8ebdfb6c8e19f17cc241b0d2ec48a2913ab49e4"
   },
   "max_contract_retries": 2,
   "max_review_rounds": 2,

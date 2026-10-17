@@ -1269,6 +1269,395 @@ fn partially_effectful_failed_generation_is_not_automatically_regenerated() {
     assert_eq!(run.status, "quarantined");
 }
 
+#[test]
+fn completed_phase_and_pause_are_one_checkpoint_then_only_explicit_continuation_advances() {
+    let config = settings();
+    let mut run = new_run(config.clone());
+    let mut ports = FakePorts::default();
+    let events = run.advance_segment(&mut ports).unwrap();
+    assert_eq!(events[0]["phase"], "goal_intake");
+    assert_eq!(run.status, "paused");
+    assert!(run.entry.is_none());
+    assert!(run.output().is_empty());
+    assert_eq!(ports.calls, ["goal_intake"]);
+    assert!(
+        ports
+            .snapshots
+            .iter()
+            .filter(|snapshot| !snapshot.phases.is_empty())
+            .all(|snapshot| snapshot.status == "paused")
+    );
+    let receipt = run.pause_receipt().unwrap();
+    assert_eq!(receipt["approved"], false);
+    assert_eq!(receipt["next_phase"], "goal_contract");
+    assert_eq!(receipt["usage"]["pending_attempts"], 0);
+    assert!(receipt.get("output").is_none());
+    assert!(run.advance_segment(&mut ports).unwrap().is_empty());
+    assert_eq!(ports.calls.len(), 1);
+    let bytes = serde_json::to_vec(ports.saved.as_ref().unwrap()).unwrap();
+    let mut restored: Run = serde_json::from_slice(&bytes).unwrap();
+    restored
+        .resume_pinned("fixture-conversation", "fixture-model", &config)
+        .unwrap();
+    assert_eq!(restored.usage(), run.usage());
+    restored.advance_segment(&mut ports).unwrap();
+    assert_eq!(restored.status, "paused");
+    assert_eq!(ports.calls, ["goal_intake", "goal_contract"]);
+    assert_eq!(restored.phases.len(), 2);
+    assert_eq!(restored.usage()["tokens"]["input_tokens"], 20);
+    assert_eq!(restored.usage()["cost_usd"], "0.000002");
+}
+
+#[test]
+fn separate_user_segments_keep_every_phase_criteria_review_and_exact_usage() {
+    let config = tool_settings();
+    let mut baseline = new_run(config.clone());
+    let mut baseline_ports = FakePorts {
+        tool_mode: true,
+        ..Default::default()
+    };
+    complete(&mut baseline, &mut baseline_ports);
+    let mut run = new_run(config.clone());
+    let mut ports = FakePorts {
+        tool_mode: true,
+        ..Default::default()
+    };
+    let mut pauses = 0;
+    for _ in 0..60 {
+        if run.status == "completed" {
+            break;
+        }
+        if run.status == "paused" {
+            pauses += 1;
+            let bytes = serde_json::to_vec(ports.saved.as_ref().unwrap()).unwrap();
+            run = serde_json::from_slice(&bytes).unwrap();
+            let usage = run.usage();
+            run.resume_pinned("fixture-conversation", "fixture-model", &config)
+                .unwrap();
+            assert_eq!(run.usage(), usage);
+        }
+        run.advance_segment(&mut ports).unwrap();
+    }
+    assert_eq!(run.status, "completed");
+    assert_eq!(run.phases, baseline.phases);
+    assert_eq!(run.output(), baseline.output());
+    assert_eq!(run.usage(), baseline.usage());
+    assert_eq!(ports.calls, baseline_ports.calls);
+    assert_eq!(ports.effects, 1);
+    assert_eq!(run.review_rounds, 1);
+    assert_eq!(pauses, run.phases.len() - 1);
+    assert!(run.pause_receipt().is_err());
+}
+
+#[test]
+fn a_schema_retry_spends_no_completed_phase_until_a_valid_result_is_saved() {
+    let mut config = settings();
+    config.max_contract_retries = 1;
+    let mut run = new_run(config);
+    let mut ports = FakePorts {
+        invalid_public_output_once: Some("{".into()),
+        ..Default::default()
+    };
+    let retry = run.advance_segment(&mut ports).unwrap();
+    assert_eq!(retry[0]["status"], "retrying");
+    assert_eq!(run.status, "running");
+    assert!(run.phases.is_empty());
+    assert!(run.pause_receipt().is_err());
+    run.advance_segment(&mut ports).unwrap();
+    assert_eq!(run.status, "paused");
+    assert_eq!(run.phases.len(), 1);
+    assert_eq!(ports.calls, ["goal_intake", "goal_intake"]);
+    assert_eq!(run.rejected_generations.len(), 1);
+    assert_eq!(run.usage()["attempts"], 2);
+    assert_eq!(run.usage()["cost_usd"], "0.000002");
+}
+
+#[test]
+fn pending_model_attempt_never_becomes_paused_or_a_fresh_segment_request() {
+    let config = settings();
+    let mut run = new_run(config.clone());
+    let mut ports = FakePorts {
+        progress_failure: true,
+        ..Default::default()
+    };
+    run.advance_segment(&mut ports).unwrap_err();
+    assert_eq!(run.status, "quarantined");
+    assert_eq!(run.usage()["cost_known"], false);
+    assert!(run.pause_receipt().is_err());
+    assert_eq!(
+        run.resume_pinned("fixture-conversation", "fixture-model", &config)
+            .unwrap_err()
+            .code,
+        "needs-reconciliation"
+    );
+    assert!(run.advance_segment(&mut ports).unwrap().is_empty());
+    assert_eq!(ports.calls, ["goal_intake"]);
+    assert_eq!(run.attempts.len(), 1);
+    assert!(run.generations.is_empty());
+}
+
+#[test]
+fn an_unconfirmed_boundary_write_publishes_no_pause_and_makes_no_replacement_write() {
+    let config = settings();
+    let mut run = new_run(config.clone());
+    let mut ports = FakePorts {
+        fail_persist_at: Some(5),
+        ..Default::default()
+    };
+    let error = run.advance_segment(&mut ports).unwrap_err();
+    assert_eq!(error.code, "checkpoint-unconfirmed");
+    assert_eq!(run.status, "quarantined");
+    assert!(run.pause_receipt().is_err());
+    assert!(run.output().is_empty());
+    assert_eq!(ports.persist_calls, 5);
+    assert_eq!(ports.calls, ["goal_intake"]);
+    assert_eq!(run.usage()["attempts"], 1);
+    assert_eq!(
+        run.resume_pinned("fixture-conversation", "fixture-model", &config)
+            .unwrap_err()
+            .code,
+        "needs-reconciliation"
+    );
+    assert_eq!(ports.persist_calls, 5);
+}
+
+#[test]
+fn uncertain_receipts_or_changed_binding_cannot_resume_a_paused_checkpoint() {
+    let config = settings();
+    let mut run = new_run(config.clone());
+    run.advance_segment(&mut FakePorts::default()).unwrap();
+    for code in ["checkpoint-unconfirmed", "core-internal"] {
+        let mut uncertain = run.clone();
+        uncertain.error = Some(Failure {
+            code: code.into(),
+            message: "uncertain operation".into(),
+        });
+        assert!(uncertain.pause_receipt().is_err());
+        assert_eq!(
+            uncertain
+                .resume_pinned("fixture-conversation", "fixture-model", &config)
+                .unwrap_err()
+                .code,
+            "needs-reconciliation"
+        );
+    }
+    for status in ["pending", "completed"] {
+        let mut uncertain = run.clone();
+        uncertain.tool_receipts.insert(
+            "unknown-tool".into(),
+            workflow::ToolReceipt {
+                request_digest: "0".repeat(64),
+                status: status.into(),
+                outcome: None,
+            },
+        );
+        assert!(uncertain.pause_receipt().is_err());
+        assert!(
+            uncertain
+                .resume_pinned("fixture-conversation", "fixture-model", &config)
+                .is_err()
+        );
+        assert_eq!(uncertain.status, "paused");
+    }
+    let mut changed = config.clone();
+    changed.environment["provider_revision"] = json!("different");
+    assert!(
+        run.resume_pinned("fixture-conversation", "fixture-model", &changed)
+            .is_err()
+    );
+    assert!(
+        run.resume_pinned("another", "fixture-model", &config)
+            .is_err()
+    );
+    assert_eq!(run.status, "paused");
+}
+
+#[test]
+fn needs_input_and_review_rejection_keep_their_own_terminal_meanings() {
+    let config = settings();
+    let mut ambiguous = new_run(config.clone());
+    let mut ports = FakePorts {
+        terms: true,
+        ambiguous: true,
+        ..Default::default()
+    };
+    ambiguous.advance_segment(&mut ports).unwrap();
+    ambiguous
+        .resume_pinned("fixture-conversation", "fixture-model", &config)
+        .unwrap();
+    ambiguous.advance_segment(&mut ports).unwrap();
+    assert_eq!(ambiguous.status, "needs_input");
+    assert!(ambiguous.pause_receipt().is_err());
+    assert!(!ambiguous.output().is_empty());
+    let mut rejected = new_run(config.clone());
+    let mut ports = FakePorts {
+        reject: true,
+        ..Default::default()
+    };
+    for _ in 0..60 {
+        if rejected.status == "paused" {
+            rejected
+                .resume_pinned("fixture-conversation", "fixture-model", &config)
+                .unwrap();
+        }
+        if rejected.advance_segment(&mut ports).is_err() {
+            break;
+        }
+    }
+    assert_eq!(rejected.status, "quarantined");
+    assert_eq!(rejected.error.as_ref().unwrap().code, "review-rejected");
+    assert_eq!(rejected.review_rounds, 2);
+    assert!(rejected.output().is_empty());
+    assert!(rejected.pause_receipt().is_err());
+}
+
+#[test]
+fn paused_stream_is_an_explicit_boundary_with_no_candidate_delta_or_done() {
+    let mut run = new_run(settings());
+    run.advance_segment(&mut FakePorts::default()).unwrap();
+    run.candidate = "unapproved-private-candidate".into();
+    let usage = run.usage();
+    let mut active = crate::Active {
+        run,
+        events: Default::default(),
+        announced: false,
+        terminal_sent: false,
+        failure: None,
+    };
+    let events = active.next(64).unwrap();
+    let values = events
+        .iter()
+        .map(|event| serde_json::from_str::<Value>(event).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        values
+            .iter()
+            .map(|event| event["kind"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["usage", "progress", "paused"]
+    );
+    assert!(
+        events
+            .iter()
+            .all(|event| !event.contains("unapproved-private-candidate"))
+    );
+    let receipt: Value = serde_json::from_str(values[2]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(receipt["usage"], usage);
+    assert_eq!(receipt["approved"], false);
+    assert!(active.next(64).unwrap().is_empty());
+}
+
+#[test]
+fn a_new_version_cannot_sidestep_the_same_input_pending_v4_run() {
+    let expected = new_run(settings());
+    let mut previous = expected.clone();
+    previous.version = "deepthink.workflow.v4".into();
+    previous.id = expected.previous_v4_storage_id();
+    previous.request_digest = previous.id.clone();
+    previous.attempts.insert(
+        "goal_intake@0:0#0:0".into(),
+        json!({"phase":"goal_intake","status":"pending","usage":null}),
+    );
+    let saved = serde_json::to_vec(&previous).unwrap();
+    assert_ne!(expected.id, previous.id);
+    assert_eq!(
+        expected.previous_v4_conflict(&previous).code,
+        "needs-reconciliation"
+    );
+    assert_eq!(serde_json::to_vec(&previous).unwrap(), saved);
+    assert_eq!(
+        previous
+            .resume_pinned("fixture-conversation", "fixture-model", &expected.settings)
+            .unwrap_err()
+            .code,
+        "needs-reconciliation"
+    );
+    assert_eq!(serde_json::to_vec(&previous).unwrap(), saved);
+    previous.attempts.clear();
+    let saved = serde_json::to_vec(&previous).unwrap();
+    assert_eq!(expected.previous_v4_conflict(&previous).code, "conflict");
+    assert!(
+        previous
+            .resume_pinned("fixture-conversation", "fixture-model", &expected.settings)
+            .is_err()
+    );
+    assert_eq!(serde_json::to_vec(&previous).unwrap(), saved);
+}
+
+#[test]
+fn final_conversation_input_is_the_original_task_after_multiple_paused_continuations() {
+    let config = settings();
+    let mut run = new_run(config.clone());
+    let original = run.messages.last().unwrap()["content"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let mut ports = FakePorts::default();
+    let mut continuations = 0;
+    for _ in 0..60 {
+        if run.status == "completed" {
+            break;
+        }
+        if run.status == "paused" {
+            continuations += 1;
+            assert_eq!(run.conversation_input(None).unwrap(), original);
+            let bytes = serde_json::to_vec(ports.saved.as_ref().unwrap()).unwrap();
+            run = serde_json::from_slice(&bytes).unwrap();
+            run.resume_pinned("fixture-conversation", "fixture-model", &config)
+                .unwrap();
+        }
+        run.advance_segment(&mut ports).unwrap();
+    }
+    assert_eq!(run.status, "completed");
+    assert!(continuations >= 2);
+    assert_eq!(run.conversation_input(None).unwrap(), original);
+    assert!(
+        !run.conversation_input(None)
+            .unwrap()
+            .contains("[DeepThink 再開")
+    );
+}
+
+#[test]
+fn accepted_clarifications_remain_with_the_original_task_in_the_final_user_turn() {
+    let config = settings();
+    let mut run = new_run(config.clone());
+    let original = run.messages.last().unwrap()["content"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let mut ports = FakePorts {
+        pause_preflight: true,
+        ..Default::default()
+    };
+    for _ in 0..10 {
+        if run.status == "needs_input" {
+            break;
+        }
+        if run.status == "paused" {
+            run.resume_pinned("fixture-conversation", "fixture-model", &config)
+                .unwrap();
+        }
+        run.advance_segment(&mut ports).unwrap();
+    }
+    assert_eq!(run.status, "needs_input");
+    let expected = format!("{original}\n\n確認事項への回答:\n技術者向け");
+    assert_eq!(
+        run.conversation_input(Some("技術者向け")).unwrap(),
+        expected
+    );
+    run.answer("fixture-conversation", "技術者向け", &config)
+        .unwrap();
+    assert_eq!(run.conversation_input(None).unwrap(), expected);
+    run.advance_segment(&mut ports).unwrap();
+    assert_eq!(run.status, "paused");
+    assert_eq!(run.conversation_input(None).unwrap(), expected);
+    assert!(run.conversation_input(Some("unsolicited answer")).is_err());
+    let mut tampered = run.clone();
+    tampered.messages.last_mut().unwrap()["content"] = json!("different answer");
+    assert!(tampered.conversation_input(None).is_err());
+}
+
 mod actual_tool_engine {
     use super::*;
     use std::collections::BTreeMap;
@@ -1379,6 +1768,65 @@ mod actual_tool_engine {
             }
             Ok(result["result"].clone())
         }
+    }
+
+    #[test]
+    fn explicit_phase_segments_keep_real_tool_effects_once_with_original_receipts() {
+        let mut config = settings();
+        config.tools = [
+            "artifact.write",
+            "artifact.stat",
+            "artifact.read",
+            "calculator",
+        ]
+        .iter()
+        .map(|name| Tool {
+            name: (*name).into(),
+            description: "actual harness-tools engine operation".into(),
+            parameters: json!({"type":"object"}),
+        })
+        .collect();
+        let mut run = new_run(config.clone());
+        let mut ports = RealPorts {
+            models: FakePorts {
+                tool_mode: true,
+                ..Default::default()
+            },
+            store: Memory::default(),
+            tool_results: vec![],
+        };
+        for _ in 0..60 {
+            if run.status == "completed" {
+                break;
+            }
+            if run.status == "paused" {
+                let bytes = serde_json::to_vec(ports.models.saved.as_ref().unwrap()).unwrap();
+                let usage = run.usage();
+                run = serde_json::from_slice(&bytes).unwrap();
+                run.resume_pinned("fixture-conversation", "fixture-model", &config)
+                    .unwrap();
+                assert_eq!(run.usage(), usage);
+            }
+            run.advance_segment(&mut ports).unwrap();
+        }
+        assert_eq!(run.status, "completed");
+        assert_eq!(ports.store.mutations, 1);
+        assert_eq!(ports.store.receipts.len(), 1);
+        assert_eq!(ports.tool_results.len(), 4);
+        assert_eq!(ports.tool_results[2].1["result"]["content"], "323");
+        assert_eq!(ports.tool_results[3].1["result"]["value"], 323);
+        assert_eq!(run.tool_receipts.len(), 4);
+        assert!(
+            run.tool_receipts
+                .values()
+                .all(|receipt| receipt.status == "completed")
+        );
+        assert_eq!(run.usage()["attempts"], ports.models.calls.len());
+        assert_eq!(
+            run.usage()["tokens"]["input_tokens"],
+            ports.models.calls.len() * 10
+        );
+        assert_eq!(run.review_rounds, 1);
     }
 
     #[test]

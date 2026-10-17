@@ -23,10 +23,16 @@ compliance. `structured_provider=true` requires that binding and never silently
 falls back to a less restrictive provider operation. Existing plain chat Prompts
 and the ordinary `llm-provider` interface remain compatible.
 
-Protocol `deepthink.workflow.v4` records typed capability gaps. Only a blocking
+Protocol `deepthink.workflow.v5` records typed capability gaps. Only a blocking
 gap tied to an actual Goal requirement pauses for input; optional limitations
-retain their real fallback plan. Old v2/v3 checkpoints remain retained and cannot
-be silently upgraded or mixed with this schema/configuration.
+retain their real fallback plan. Old v2/v3/v4 checkpoints remain retained and
+cannot be silently upgraded or mixed with this schema/configuration. Before
+starting a new v5 run, the Pack checks the exact v4 storage identity for the same
+conversation, model, messages and captured settings. A matching old checkpoint
+blocks the new start, even though the version produces a different new run ID.
+An unresolved old request still requires reconciliation; a completed old cache
+is not imported. Starting an intentionally separate request requires an explicit
+new conversation. Old run references remain diagnostic, never an implicit POST.
 Malformed or schema-invalid public responses have at most two automatic retries
 by default (`max_contract_retries`: 0..3). Every rejection and actual usage receipt
 remains durable, including across restart. Semantic errors, review rejection,
@@ -49,8 +55,8 @@ answer is accepted only in `needs_input`: it reevaluates that paused phase and
 its downstream dependents, retaining earlier Goal definitions, phase records,
 usage and old cache generations. Changed model/config/permissions are rejected.
 The continuation input always starts the Pack-owned continuation Flow, which
-streams the workflow and appends a meaningful answer or resume marker to the
-conversation. The UI does not call an execution method outside Flow.
+streams the workflow and appends the original task and approved final answer
+when the run completes. The UI does not call an execution method outside Flow.
 The native CLI can submit the same input through the ordinary User port:
 
 ```powershell
@@ -60,7 +66,18 @@ tobkiri --data-root 'C:\Tobkiri\host-data' profile invoke --profile PROFILE_ID `
 ```
 
 `resume.json` contains `{"run-id":"RUN_ID","conversation":"CONVERSATION_ID","answers":null}`.
-Use the original run's conversation ID. The command uses the existing User
+Use the original run's conversation ID. A v5 invocation completes at most one
+workflow phase, then saves `status: paused` in the same atomic checkpoint as that
+phase transition. It emits a separate `paused` chat event and usage receipt,
+with `approved: false` and the next phase reference. It emits no answer delta or
+`done`, and the conversation store does not append an empty or unapproved turn.
+The UI shows the saved phase and waits for an explicit click on Resume. A normal
+repeated start is not a substitute for continuation of a paused run.
+When the final answer is appended, the user turn comes from the saved original
+task, with accepted clarification answers retained. Resume markers are not saved
+as replacement user requests; paused segments append no conversation messages.
+
+The command uses the existing User
 permissions and Gate, streams output until its real source finishes, and does
 not repeat an invocation after an output or cleanup failure. Preserve its run
 reference and inspect the saved state before retrying an uncertain effect.
@@ -68,7 +85,7 @@ Unresolved non-idempotent tool outcomes require reconciliation; they are never
 automatically replayed. Missing provider cost receipts remain explicitly unknown.
 The default review schedule is two reviews, configurable from one to five.
 
-Before a model request, v4 atomically saves an attempt bound to the exact run,
+Before a model request, v5 atomically saves an attempt bound to the exact run,
 phase, request digest and captured model/provider configuration. While consuming
 the response it saves versioned progress values in the same private Core store.
 These contain only the provider generation ID, actual public model/provider
@@ -100,12 +117,21 @@ replacement write. This version does not implement external provider generation
 lookup or interrupted SSE reattachment: retain the run and inspect its receipt;
 do not assume cancellation ended billing or repeat an unknown request.
 
-The current MiMo Profile gives the whole User request a 300-second deadline,
-shared by all phases and their persistence. Repeated pulls do not renew it.
+The current MiMo Profile gives each User request its original 300-second deadline,
+shared by that segment's phase, tool rounds, contract retries and persistence.
+Repeated pulls do not renew it. Only a later, explicit User continuation starts
+a fresh ordinary request. It reuses the same saved run/model/settings, earlier
+phases and receipts, and cannot continue a pending model/tool operation or an
+unconfirmed checkpoint. Every production, criterion check and independent review
+still runs; segmentation skips no work and usage is cumulative without double
+counting. `needs_input` and final review rejection keep their distinct meanings.
+If a single phase exceeds the original deadline, its pending model attempt stays
+reconciliation-only; it is never relabeled as a successful paused segment.
+
 Checkpoint and progress values are currently single KV records; Core limits a
 KV value to one MiB, while the public stream parser can accept up to four MiB.
 Large responses or accumulated phase inputs can therefore fail persistence.
-Chunked storage and a pause at a completed phase boundary are not implemented.
+Chunked storage is not implemented.
 No output-token cap is added to disguise these storage or liveness limits.
 
 Tool calls are explicit JSON plans executed against the selected real tool

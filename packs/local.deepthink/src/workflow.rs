@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::phases;
 
-pub const VERSION: &str = "deepthink.workflow.v4";
+pub const VERSION: &str = "deepthink.workflow.v5";
 pub const PROGRESS_VERSION: &str = "deepthink.generation-progress.v1";
 
 fn default_contract_retries() -> u32 {
@@ -446,6 +446,10 @@ fn texts(value: &Value, key: &str) -> Vec<String> {
         .collect()
 }
 
+fn clarification_message(answer: &str) -> Value {
+    json!({"role":"user","content":format!("回答（既存Goalの未確認事項に対する補足）: {answer}")})
+}
+
 fn checked_ids(value: &Value, key: &str) -> Result<BTreeSet<String>, Failure> {
     let items = value[key]
         .as_array()
@@ -499,6 +503,36 @@ pub fn review_approved(review: &Value, candidate: &Value, expected: &BTreeSet<St
 }
 
 impl Run {
+    /// Detect a matching v4 checkpoint before deriving a fresh v5 run. A version
+    /// change must not turn an unresolved paid request into a new implicit POST.
+    pub fn previous_v4_storage_id(&self) -> String {
+        digest(
+            &json!({"version":"deepthink.workflow.v4","conversation":self.conversation,
+            "model":self.model,"messages":self.messages,"settings":self.settings}),
+        )
+    }
+
+    pub fn previous_v4_conflict(&self, previous: &Self) -> Failure {
+        let expected = self.previous_v4_storage_id();
+        if previous.version != "deepthink.workflow.v4"
+            || previous.id != expected
+            || previous.request_digest != expected
+            || previous.conversation != self.conversation
+            || previous.model != self.model
+            || previous.messages != self.messages
+            || digest(&json!(previous.settings)) != digest(&json!(self.settings))
+        {
+            return invalid("the prior workflow checkpoint does not match its exact request");
+        }
+        if let Err(error) = previous.ensure_generations_reconciled() {
+            return error;
+        }
+        Failure {
+            code: "conflict".into(),
+            message: "A v4 workflow already owns this exact input. It was not migrated or repeated. Inspect the original run; an intentionally new request requires a new conversation.".into(),
+        }
+    }
+
     fn save(&self, ports: &mut impl Ports) -> Result<(), Failure> {
         ports.persist(self).map_err(|error| Failure {
             code: "checkpoint-unconfirmed".into(),
@@ -580,6 +614,21 @@ impl Run {
             .any(|receipt| receipt.status != "completed")
         {
             return Err(Failure {code:"conflict".into(),message:"A tool outcome is unresolved; reconcile it before resuming. No tool was automatically replayed.".into()});
+        }
+        if self.error.as_ref().is_some_and(|error| {
+            matches!(
+                error.code.as_str(),
+                "checkpoint-unconfirmed" | "core-internal"
+            )
+        }) {
+            return Err(Failure {
+                code: "needs-reconciliation".into(),
+                message: "An unconfirmed checkpoint or Core operation cannot be resumed automatically. Inspect its original receipt before continuing.".into(),
+            });
+        }
+        if self.status == "paused" {
+            self.pause_receipt()?;
+            self.status = "running".into();
         }
         if self.status == "quarantined"
             && self
@@ -738,8 +787,49 @@ impl Run {
         self.resume(&expected)
     }
 
-    /// Answer only the unresolved phase. Prior generations, costs, Goal terms,
-    /// completed phases and real-tool receipts remain durable and unchanged.
+    /// Preserve the original user task in the eventual conversation turn. A
+    /// proposed clarification is saved only if the continuation Flow succeeds.
+    pub fn conversation_input(&self, proposed_answer: Option<&str>) -> Result<String, Failure> {
+        let initial_length = self
+            .messages
+            .len()
+            .checked_sub(self.answers.len())
+            .ok_or_else(|| invalid("clarification history has no original request"))?;
+        if self.messages[initial_length..]
+            .iter()
+            .zip(&self.answers)
+            .any(|(message, answer)| *message != clarification_message(answer))
+        {
+            return Err(invalid(
+                "saved clarification messages do not match accepted answers",
+            ));
+        }
+        let mut text = self.messages[..initial_length]
+            .iter()
+            .rev()
+            .find(|message| message["role"] == "user")
+            .and_then(|message| message["content"].as_str())
+            .ok_or_else(|| invalid("the workflow has no original user task"))?
+            .to_owned();
+        let mut append_answer = |answer: &str| {
+            text.push_str("\n\n確認事項への回答:\n");
+            text.push_str(answer);
+        };
+        for answer in &self.answers {
+            append_answer(answer);
+        }
+        if let Some(answer) = proposed_answer {
+            if self.status != "needs_input" || answer.trim().is_empty() {
+                return Err(invalid(
+                    "a proposed answer requires an unresolved user question",
+                ));
+            }
+            append_answer(answer);
+        }
+        Ok(text)
+    }
+
+    /// Apply an explicit answer without rewriting the original request or costs.
     pub fn answer(
         &mut self,
         conversation: &str,
@@ -772,7 +862,7 @@ impl Run {
         self.candidate = point.candidate;
         self.candidate_state = point.candidate_state;
         self.answers.push(answer.to_string());
-        self.messages.push(json!({"role":"user","content":format!("回答（既存Goalの未確認事項に対する補足）: {answer}")}));
+        self.messages.push(clarification_message(answer));
         *self.phase_epochs.entry(current).or_default() += 1;
         self.entry = None;
         self.error = None;
@@ -1171,6 +1261,61 @@ impl Run {
 
     /// Perform at most one domain phase and persist every completed transition.
     pub fn advance(&mut self, ports: &mut impl Ports) -> Result<Vec<Value>, Failure> {
+        self.advance_with_boundary(ports, false)
+    }
+
+    /// The public stream invocation has a fixed budget of one completed phase.
+    /// Contract retries do not spend that budget; they never renew its deadline.
+    pub fn advance_segment(&mut self, ports: &mut impl Ports) -> Result<Vec<Value>, Failure> {
+        self.advance_with_boundary(ports, true)
+    }
+
+    /// A segment boundary is a transport suspension, never an approved answer.
+    pub fn pause_receipt(&self) -> Result<Value, Failure> {
+        if self.version != VERSION || self.status != "paused" {
+            return Err(invalid("the workflow is not a supported paused segment"));
+        }
+        self.ensure_phase_boundary()?;
+        if self.entry.is_some()
+            || self
+                .phases
+                .last()
+                .is_none_or(|phase| phase["status"] != "completed")
+        {
+            return Err(invalid(
+                "a paused workflow has no completed phase checkpoint",
+            ));
+        }
+        Ok(
+            json!({"version":VERSION,"run_id":self.id,"conversation":self.conversation,
+            "status":"paused","approved":false,"next_phase":self.pending.front().map(|phase|phase.id.as_str()),
+            "completed_phases":self.phases.len(),"usage":self.usage()}),
+        )
+    }
+
+    fn ensure_phase_boundary(&self) -> Result<(), Failure> {
+        self.ensure_generations_reconciled()?;
+        if self.error.is_some()
+            || self.waiting.is_some()
+            || self.pending.is_empty()
+            || self
+                .tool_receipts
+                .values()
+                .any(|receipt| receipt.status != "completed" || receipt.outcome.is_none())
+        {
+            return Err(Failure {
+                code: "needs-reconciliation".into(),
+                message: "Only a settled completed phase can be suspended or continued. Uncertain model, tool or checkpoint work was retained and not repeated.".into(),
+            });
+        }
+        Ok(())
+    }
+
+    fn advance_with_boundary(
+        &mut self,
+        ports: &mut impl Ports,
+        suspend_after_phase: bool,
+    ) -> Result<Vec<Value>, Failure> {
         if self.status != "running" {
             return Ok(vec![]);
         }
@@ -1191,11 +1336,29 @@ impl Run {
             });
             self.save(ports)?;
         }
-        match self.advance_inner(ports, &phase) {
+        let outcome = self.advance_inner(ports, &phase).and_then(|value| {
+            if suspend_after_phase && self.status == "running" {
+                self.ensure_phase_boundary()?;
+            }
+            Ok(value)
+        });
+        match outcome {
             Ok(value) => {
                 self.phases.push(json!({"phase":phase.id,"status":"completed","summary":self.context.get("last_summary"),"result":value}));
                 self.entry = None;
-                self.save(ports)?;
+                if suspend_after_phase && self.status == "running" {
+                    // Commit the phase transition and paused state together.
+                    // There is no second pause write or in-flight context reset.
+                    self.status = "paused".into();
+                }
+                if let Err(error) = self.save(ports) {
+                    self.status = "quarantined".into();
+                    self.goal["status"] = json!("quarantined");
+                    self.error = Some(error.clone());
+                    // Do not publish a pause/completion whose final checkpoint
+                    // was not acknowledged, and never issue a replacement write.
+                    return Err(error);
+                }
                 Ok(vec![
                     json!({"version":VERSION,"run_id":self.id,"phase":phase.id,"status":"completed","summary":self.context.get("last_summary"),"usage":self.usage()}),
                 ])

@@ -57,11 +57,11 @@ def inventory() -> list[dict[str, Any]]:
     ]
 
 
-def stage(target_dir: Path) -> dict[str, Any]:
+def stage(target_dir: Path, build_profile: str = "debug") -> dict[str, Any]:
     """Hash actual component bytes; do not invent build or execution receipts."""
     directory = ROOT / "local.harness-tools"
-    component = (target_dir / "wasm32-wasip2/debug" /
-                 "tobkiri_pack_harness_tools.wasm")
+    component = build.component_artifact(target_dir, "tobkiri_pack_harness_tools.wasm",
+                                         build_profile)
     shutil.copyfile(component, directory / "component.wasm")
     # Keep the exact typed-SQL Core package as separate nominal WIT evidence.
     # storage@1.0 remains a different ABI and is never reinterpreted as 1.1.
@@ -95,6 +95,7 @@ def stage(target_dir: Path) -> dict[str, Any]:
     build.write_json(directory / "component.build.json", {
         "format": "tobkiri.component-build/1", "language": "rust",
         "tools": {"rust": "1.94.0", "wit-bindgen": "0.62.0"},
+        "build_profile": build_profile,
         "artifact_sha256": build.sha256(component.read_bytes()),
         "artifact_bytes": component.stat().st_size,
         "sources": {p.relative_to(REPO).as_posix(): build.sha256(p.read_bytes())
@@ -107,8 +108,14 @@ def stage(target_dir: Path) -> dict[str, Any]:
     ])
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Stage exactly the explicitly selected prebuilt Cargo profile."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target-dir", type=Path, required=True)
+    parser.add_argument("--build-profile", choices=("debug", "release"), default="debug")
     arguments = parser.parse_args()
-    stage(arguments.target_dir)
+    stage(arguments.target_dir, build_profile=arguments.build_profile)
+
+
+if __name__ == "__main__":
+    main()

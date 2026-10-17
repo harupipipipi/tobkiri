@@ -13,6 +13,8 @@ use tobkiri_core::{
     ids::{InputSourceId, OpName, PackId, ProfileId, ShapeRef},
 };
 
+#[path = "profile_apply.rs"]
+mod profile_apply;
 #[path = "profile_input.rs"]
 mod profile_input;
 #[path = "secret_input.rs"]
@@ -24,6 +26,19 @@ pub async fn run(args: Args) -> Result<()> {
     if let Command::Pack { command } = args.command {
         return pack(command).await;
     }
+    // Reject malformed/foreign structural identities before opening DATA or
+    // constructing a trusted prompt. This reads no authority from the file.
+    let prepared_apply = match &args.command {
+        Command::Profile {
+            command:
+                ProfileCommand::Apply {
+                    profile,
+                    definition,
+                    ..
+                },
+        } => Some(profile_apply::load(profile, definition)?),
+        _ => None,
+    };
     let mut config = CoreConfig::default();
     if let Some(root) = args.data_root {
         #[cfg(debug_assertions)]
@@ -38,7 +53,7 @@ pub async fn run(args: Args) -> Result<()> {
     }
     let core = Core::open(config, Arc::new(TerminalHost::new(args.non_interactive)?))?;
     match args.command {
-        Command::Profile { command } => profile(&core, command).await,
+        Command::Profile { command } => profile(&core, command, prepared_apply).await,
         Command::Approve { profile } => {
             core.approve_profile(&ProfileId::parse(&profile)?).await?;
             Ok(())
@@ -62,7 +77,11 @@ pub async fn run(args: Args) -> Result<()> {
     }
 }
 
-async fn profile(core: &Core, command: ProfileCommand) -> Result<()> {
+async fn profile(
+    core: &Core,
+    command: ProfileCommand,
+    prepared_apply: Option<profile_apply::Definition>,
+) -> Result<()> {
     match command {
         ProfileCommand::Invoke {
             profile,
@@ -77,6 +96,24 @@ async fn profile(core: &Core, command: ProfileCommand) -> Result<()> {
                 .create_profile(&profile_input::definition(&definition)?, name)
                 .await?;
             println!("{id}");
+        }
+        ProfileCommand::Apply {
+            profile,
+            expected_head,
+            ..
+        } => {
+            let receipt = profile_apply::apply(
+                core,
+                &profile,
+                &expected_head,
+                prepared_apply.context("Profile apply definition was not prepared")?,
+            )
+            .await?;
+            let bytes = canonical_json(&receipt)?;
+            let stdout = std::io::stdout();
+            let mut output = stdout.lock();
+            output.write_all(&bytes)?;
+            output.write_all(b"\n")?;
         }
         ProfileCommand::Run {
             profile,

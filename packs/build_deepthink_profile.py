@@ -27,16 +27,27 @@ def read_manifest(name: str) -> dict[str, Any]:
 
 
 def variant(source: str, name: str, config: dict[str, Any] | None = None,
-            network: bool = False) -> dict[str, Any]:
+            network: bool = False,
+            asset_overrides: dict[str, Path] | None = None) -> dict[str, Any]:
     """Copy hash-bound files, alter explicit settings, and rebind every digest."""
     original = read_manifest(source)
     directory = ROOT / ("local." + name)
-    directory.mkdir(exist_ok=True)
     paths = [entry["path"] for entry in original["files"]]
+    overrides = asset_overrides or {}
+    unknown = set(overrides) - set(paths)
+    if unknown:
+        raise ValueError("asset override is not declared by the source Pack: "
+                         + ", ".join(sorted(unknown)))
+    for relative, selected in overrides.items():
+        if not Path(selected).is_file():
+            raise FileNotFoundError("asset override source is missing: " + str(selected))
+    directory.mkdir(exist_ok=True)
     for relative in paths:
         target = directory / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(ROOT / ("local." + source) / relative, target)
+        selected = Path(overrides.get(relative, ROOT / ("local." + source) / relative))
+        if selected.resolve() != target.resolve():
+            shutil.copyfile(selected, target)
     manifest = copy.deepcopy(original)
     manifest["id"] = "local." + name
     if config is not None:
@@ -119,9 +130,9 @@ def compose(manifests: dict[str, dict[str, Any]], *, ui: bool) -> dict[str, Any]
     return profile
 
 
-def stage(target_dir: Path) -> list[Path]:
+def stage(target_dir: Path, build_profile: str = "debug") -> list[Path]:
     """Publish two portable Profiles without acquiring credentials or approval."""
-    tools_manifest = build_harness_tools.stage(target_dir)
+    tools_manifest = build_harness_tools.stage(target_dir, build_profile=build_profile)
     provider = variant("openai-compat-provider", "openrouter-mimo-provider", {
         "base_url": ORIGIN + "/api/v1", "model": MODEL,
         "secret_name": "api-key", "timeout_ms": 300000, "provider_order": ["xiaomi"],
@@ -131,7 +142,9 @@ def stage(target_dir: Path) -> list[Path]:
         "model": MODEL, "system_prompt": "Follow the active Profile, use declared tools, and report verified outcomes accurately.",
         "max_tokens": 0,
     })
-    ui = variant("harness-ui", "deepthink-ui")
+    ui = variant("harness-ui", "deepthink-ui", asset_overrides={
+        "ui/app.js": ROOT / "local.deepthink-ui/ui/app.js",
+    })
     view = "local.deepthink.continuation-input@1.0"
     ui["permissions"]["ports"].append(view)
     ui["ports"]["consumes"].append(build.port(view.rsplit("@", 1)[0]))
@@ -157,7 +170,7 @@ def stage(target_dir: Path) -> list[Path]:
         "prompt_pack_hashes": {item["id"]: build.sha256(build.canonical(item))
                                for item in [prompt] + [item[3] for item in preset_variants]},
     })
-    deepthink = build_deepthink.stage(target_dir, config=config)
+    deepthink = build_deepthink.stage(target_dir, config=config, build_profile=build_profile)
     deepthink["permissions"]["loops"] = {"max_iterations": 512, "max_wall_ms": 3600000, "max_cost_units": 100000}
     build.write_json(ROOT / "local.deepthink/pack.json", deepthink)
     names = ["harness-chat", "terminal-input", "harness-conversation-store",
@@ -210,9 +223,15 @@ def stage(target_dir: Path) -> list[Path]:
     return destinations
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Stage the workflow using the explicit profile for both nested components."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target-dir", type=Path, required=True)
+    parser.add_argument("--build-profile", choices=("debug", "release"), default="debug")
     arguments = parser.parse_args()
-    for profile_path in stage(arguments.target_dir):
+    for profile_path in stage(arguments.target_dir, build_profile=arguments.build_profile):
         print(profile_path)
+
+
+if __name__ == "__main__":
+    main()

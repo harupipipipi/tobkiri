@@ -2,13 +2,13 @@
   "files": [
     {
       "path": "component.build.json",
-      "sha256": "sha256:d70d2c0cc9fc991794af0f4614cb38d797268ed5ebf3b9fd959dd9423f7d3752",
-      "size": 1667
+      "sha256": "sha256:4f26435d0f11286121a6ec24be0cfa8054a3bf404fe7a1ecb9ee10c70335b32b",
+      "size": 1696
     },
     {
       "path": "component.wasm",
-      "sha256": "sha256:59132e7616ef33411a20e30c526401332d4d19d93bad9599448de1c43759951c",
-      "size": 282386
+      "sha256": "sha256:9b568b560e56576c3f890c1902711babc52222a0c83e91a3f6cee16d5343a71c",
+      "size": 82114
     },
     {
       "path": "config.json",

@@ -291,31 +291,31 @@
     },
     {
       "id": "local.terminal-input",
-      "sha256": "sha256:8dfbf6736ad1ee34d5b6dbcc703a4d6f5734773db7e9ed64c64da318afbccfd4",
+      "sha256": "sha256:e56ee691205e7bb8a6ce10f43db4181a3ffeb2119963977ef73a4e958a4e1b89",
       "source": "file:../local.terminal-input",
       "version": "0.1.0"
     },
     {
       "id": "local.harness-conversation-store",
-      "sha256": "sha256:2041c5bf0c6b6958e5bba245db700ecfc372d48b762d179fde4d76405d0a11af",
+      "sha256": "sha256:0efb9754fcc07a58912ad42ea57213345645406030322fddbd9d0a6207695088",
       "source": "file:../local.harness-conversation-store",
       "version": "0.1.0"
     },
     {
       "id": "local.harness-prompt",
-      "sha256": "sha256:210a4e46a331251df37867487a8c4f141ded6e649775e41b4e5a35603c5c785a",
+      "sha256": "sha256:7af478f796d0361a219aa4ce4537c5bcf2ce3a8ac82891a23896e6a870c76fe1",
       "source": "file:../local.harness-prompt",
       "version": "0.1.0"
     },
     {
       "id": "local.openai-compat-provider",
-      "sha256": "sha256:3ac427098d35da2882cb5d92de22c7abaa904e43fe22db089d2deda71e00458e",
+      "sha256": "sha256:1ab7e4a96dd4d5777383407573ba409b204aad34f6e7623545ea52092267f06f",
       "source": "file:../local.openai-compat-provider",
       "version": "0.1.0"
     },
     {
       "id": "local.terminal-output",
-      "sha256": "sha256:a77507791909d4613ef76c60cdcf9dc577e5d3d6b6dfdf9f2bc86bb7175b050f",
+      "sha256": "sha256:fc5ecba333a011538b9fa1091d462f0df94cf6384b4df550ed8464219f683f9c",
       "source": "file:../local.terminal-output",
       "version": "0.1.0"
     }

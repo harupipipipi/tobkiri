@@ -48,6 +48,17 @@ pub enum ProfileCommand {
         /// Definition file; relative Pack sources resolve beside this file.
         definition: PathBuf,
     },
+    /// Apply a structural definition to the same existing Profile with head CAS.
+    Apply {
+        #[arg(long)]
+        profile: tobkiri_core::ids::ProfileId,
+        /// Profile or published definition; local Pack sources resolve beside it.
+        #[arg(long)]
+        definition: PathBuf,
+        /// Exact current sha256: digest; stale heads require an explicit reload.
+        #[arg(long)]
+        expected_head: tobkiri_core::Digest,
+    },
     /// Start actual input Packs and route every input through the single Flow.
     Run {
         #[arg(long)]
@@ -189,6 +200,49 @@ mod tests {
         assert!(
             Args::try_parse_from(["tobkiri", "--yes", "approve", "--profile", "prof_one"]).is_err()
         );
+    }
+    #[test]
+    fn profile_apply_requires_target_definition_and_valid_expected_head() {
+        let head = tobkiri_core::Digest::hash(b"expected head").to_string();
+        let base = [
+            "tobkiri",
+            "profile",
+            "apply",
+            "--profile",
+            "prof_existing",
+            "--definition",
+            "profile.json",
+            "--expected-head",
+            head.as_str(),
+        ];
+        let args = Args::try_parse_from(base).unwrap();
+        assert!(matches!(args.command, Command::Profile {
+            command: ProfileCommand::Apply { profile, expected_head, .. }
+        } if profile.as_str() == "prof_existing" && expected_head.as_str() == head));
+        for omitted in ["--profile", "--definition", "--expected-head"] {
+            let mut missing = Vec::new();
+            let mut skip_value = false;
+            for item in base {
+                if skip_value {
+                    skip_value = false;
+                    continue;
+                }
+                if item == omitted {
+                    skip_value = true;
+                } else {
+                    missing.push(item);
+                }
+            }
+            assert!(Args::try_parse_from(missing).is_err(), "{omitted}");
+        }
+        for malformed in ["", "sha256:00", "SHA256:abcd", "not-a-digest"] {
+            let mut invalid = base;
+            invalid[8] = malformed;
+            assert!(Args::try_parse_from(invalid).is_err());
+        }
+        let mut foreign = base;
+        foreign[4] = "invalid profile id";
+        assert!(Args::try_parse_from(foreign).is_err());
     }
     #[test]
     fn secrets_require_exactly_one_source_and_never_a_value_argument() {

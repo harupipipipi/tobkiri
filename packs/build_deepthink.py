@@ -11,7 +11,9 @@ from pathlib import Path
 import shutil
 import subprocess
 
-from build import base_manifest, bind_files, permission_set, port, sha256, write_json
+from build import (
+    base_manifest, bind_files, component_artifact, permission_set, port, sha256, write_json,
+)
 
 
 ROOT = Path(__file__).resolve().parent
@@ -39,13 +41,11 @@ def default_config() -> dict:
 
 
 def stage(target_dir: Path, config: dict | None = None,
-          destination: Path | None = None) -> dict:
+          destination: Path | None = None, build_profile: str = "debug") -> dict:
     """Stage a compiled component and bind its WIT/config/overlay provenance."""
     directory = destination or SOURCE
+    artifact = component_artifact(target_dir, "tobkiri_pack_deepthink.wasm", build_profile)
     directory.mkdir(parents=True, exist_ok=True)
-    artifact = Path(target_dir) / "wasm32-wasip2/debug/tobkiri_pack_deepthink.wasm"
-    if not artifact.is_file():
-        raise FileNotFoundError("DeepThink must be compiled before staging: " + str(artifact))
     shutil.copyfile(artifact, directory / "component.wasm")
     for relative in ["wit/pack.wit", "wit/deps/core.wit", "wit/deps/deepthink.wit",
                      "wit/deps/harness-chat.wit", "wit/deps/harness-agent.wit",
@@ -114,6 +114,7 @@ def stage(target_dir: Path, config: dict | None = None,
     write_json(directory / "component.build.json", {
         "format": "tobkiri.component-build/1", "language": "rust",
         "tools": {"rust": "1.94.0", "wit-bindgen": "0.62.0"},
+        "build_profile": build_profile,
         "artifact_sha256": sha256(artifact.read_bytes()),
         "artifact_bytes": artifact.stat().st_size,
         "sources": {source.relative_to(ROOT.parent).as_posix(): sha256(source.read_bytes())
@@ -128,13 +129,17 @@ def main() -> None:
     parser.add_argument("--target-dir", type=Path, required=True)
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--config", type=Path)
+    parser.add_argument("--build-profile", choices=("debug", "release"), default="debug")
     args = parser.parse_args()
     if not args.skip_build:
-        subprocess.run(["cargo", "build", "--manifest-path", str(ROOT / "Cargo.toml"),
-                        "--target", "wasm32-wasip2", "-p", "tobkiri-pack-deepthink",
-                        "--target-dir", str(args.target_dir)], check=True)
+        command = ["cargo", "build", "--manifest-path", str(ROOT / "Cargo.toml"),
+                   "--target", "wasm32-wasip2", "-p", "tobkiri-pack-deepthink",
+                   "--target-dir", str(args.target_dir)]
+        if args.build_profile == "release":
+            command.append("--release")
+        subprocess.run(command, check=True)
     config = json.loads(args.config.read_text(encoding="utf-8")) if args.config else None
-    stage(args.target_dir, config)
+    stage(args.target_dir, config, build_profile=args.build_profile)
 
 
 if __name__ == "__main__":

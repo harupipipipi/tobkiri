@@ -68,6 +68,17 @@ def sha256(data: bytes) -> str:
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
 
+def component_artifact(target_dir: Path, filename: str,
+                       build_profile: str = "debug") -> Path:
+    """Select one explicit Cargo artifact; never fall back to another profile."""
+    if build_profile not in {"debug", "release"}:
+        raise ValueError("build_profile must be debug or release")
+    artifact = Path(target_dir) / "wasm32-wasip2" / build_profile / filename
+    if not artifact.is_file():
+        raise FileNotFoundError("component must be compiled before staging: " + str(artifact))
+    return artifact
+
+
 def permission_set(*, ports: list[str] | None = None, network: list[str] | None = None,
                    private: bool = False, host_io: list[str] | None = None,
                    secrets: bool = False) -> dict[str, Any]:
@@ -207,10 +218,12 @@ def agent_shape_pack() -> dict[str, Any]:
     return bind_files(directory,manifest,paths)
 
 
-def guest_manifest(name: str, target: Path, origin: str, model: str) -> dict[str, Any]:
+def guest_manifest(name: str, target: Path, origin: str, model: str,
+                   build_profile: str = "debug") -> dict[str, Any]:
     """Create a guest Pack from the selected workspace's real wasm component."""
     directory = ROOT / ("local." + name)
-    artifact = target / "wasm32-wasip2/debug" / ("tobkiri_pack_" + name.replace("-", "_") + ".wasm")
+    artifact = component_artifact(target, "tobkiri_pack_" + name.replace("-", "_") + ".wasm",
+                                  build_profile)
     shutil.copyfile(artifact, directory / "component.wasm")
     shape = "echo-chat" if name.startswith("echo-") else "harness-chat"
     iface = "llm-provider" if name in ("openai-compat-provider", "mock-llm", "echo-llm") else "conversation-store" if "store" in name else "prompt-builder" if "prompt" in name else "assistant-output" if name.endswith("output") else "user-input"
@@ -259,6 +272,7 @@ def guest_manifest(name: str, target: Path, origin: str, model: str) -> dict[str
     source_paths = [directory/"src/lib.rs", directory/"build.rs", directory/"Cargo.toml", ROOT/"Cargo.toml", ROOT/"Cargo.lock", *sorted((ROOT/"guest-sdk/src").glob("*.rs")), directory/"wit/pack.wit", REPO/"crates/tobkiri-wit/wit/core/core.wit", ROOT/"shapes"/(shape+".wit")]
     if name == "pi-adapter": source_paths.append(directory/"guest-wit/pack.wit")
     write_json(directory / "component.build.json", {"format":"tobkiri.component-build/1","language":"rust","tools":{"rust":"1.94.0","wit-bindgen":"0.62.0"},
+              "build_profile":build_profile,
               "artifact_sha256":sha256((directory/"component.wasm").read_bytes()),"artifact_bytes":(directory/"component.wasm").stat().st_size,
               "sources":{source.relative_to(REPO).as_posix():sha256(source.read_bytes()) for source in source_paths},"production_enabled":False})
     paths.append("component.build.json")
@@ -326,6 +340,7 @@ def main() -> None:
     parser.add_argument("--origin", default="http://127.0.0.1:18080")
     parser.add_argument("--model", default="gemma3-1b-local")
     parser.add_argument("--target-dir", type=Path, default=REPO.parent/".work/cargo-target")
+    parser.add_argument("--build-profile", choices=("debug", "release"), default="debug")
     args = parser.parse_args()
     parsed = urlsplit(args.origin)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.path or parsed.query or parsed.fragment or parsed.username:
@@ -334,11 +349,15 @@ def main() -> None:
         raise SystemExit("Pack build requires the agreed 5 GiB free-space floor")
     if not args.skip_build and not args.profiles_only:
         environment = {**os.environ,"CARGO_TARGET_DIR":str(args.target_dir.absolute()),"CARGO_BUILD_JOBS":"2","CARGO_INCREMENTAL":"0"}
-        subprocess.run(["cargo","build","--manifest-path",str(ROOT/"Cargo.toml"),"--locked","--target","wasm32-wasip2","--workspace"],env=environment,check=True)
+        command = ["cargo","build","--manifest-path",str(ROOT/"Cargo.toml"),"--locked","--target","wasm32-wasip2","--workspace"]
+        if args.build_profile == "release":
+            command.append("--release")
+        subprocess.run(command,env=environment,check=True)
     if args.profiles_only:
         packs = {name:json.loads((ROOT/("local."+name)/"pack.json").read_text()) for name in [*GUESTS,"harness-chat","echo-chat","harness-ui","harness-agent"]}
     else:
-        packs = {name:guest_manifest(name,args.target_dir,args.origin,args.model) for name in GUESTS}
+        packs = {name:guest_manifest(name,args.target_dir,args.origin,args.model,
+                                    build_profile=args.build_profile) for name in GUESTS}
         for name in ("harness-chat","echo-chat"): packs[name]=shape_pack(name)
         packs["harness-ui"]=ui_pack()
         packs["harness-agent"]=agent_shape_pack()

@@ -457,31 +457,31 @@
     },
     {
       "id": "local.terminal-input",
-      "sha256": "sha256:8dfbf6736ad1ee34d5b6dbcc703a4d6f5734773db7e9ed64c64da318afbccfd4",
+      "sha256": "sha256:e56ee691205e7bb8a6ce10f43db4181a3ffeb2119963977ef73a4e958a4e1b89",
       "source": "file:../../local.terminal-input",
       "version": "0.1.0"
     },
     {
       "id": "local.harness-conversation-store",
-      "sha256": "sha256:2041c5bf0c6b6958e5bba245db700ecfc372d48b762d179fde4d76405d0a11af",
+      "sha256": "sha256:0efb9754fcc07a58912ad42ea57213345645406030322fddbd9d0a6207695088",
       "source": "file:../../local.harness-conversation-store",
       "version": "0.1.0"
     },
     {
       "id": "local.deepthink-preset-manus-project-service",
-      "sha256": "sha256:8440ec21ff28b5231344052eb30d8c9ce33b48144a11439a131e54e3ca75d485",
+      "sha256": "sha256:9a613138c1d9216b55c5eb4d6cef157e530cf039636504a4e9685b138d6e249c",
       "source": "file:../../local.deepthink-preset-manus-project-service",
       "version": "0.1.0"
     },
     {
       "id": "local.openrouter-mimo-provider",
-      "sha256": "sha256:97f912349e249b452d531aeaf0ab49ddcae2a1cf11283ea2f0b6d84b7528200f",
+      "sha256": "sha256:20f4b449c26ed691222c18756f6c0d1d6d5f0a4f3337c54d9e87b8fea450038c",
       "source": "file:../../local.openrouter-mimo-provider",
       "version": "0.1.0"
     },
     {
       "id": "local.terminal-output",
-      "sha256": "sha256:a77507791909d4613ef76c60cdcf9dc577e5d3d6b6dfdf9f2bc86bb7175b050f",
+      "sha256": "sha256:fc5ecba333a011538b9fa1091d462f0df94cf6384b4df550ed8464219f683f9c",
       "source": "file:../../local.terminal-output",
       "version": "0.1.0"
     },
@@ -493,19 +493,19 @@
     },
     {
       "id": "local.harness-tools",
-      "sha256": "sha256:0545d2240002a1a1b5539e3c9422b888b83ab953751062fc89ef6e74d1825c59",
+      "sha256": "sha256:6450aaec62a831bd0148aff8d8ebdfb6c8e19f17cc241b0d2ec48a2913ab49e4",
       "source": "file:../../local.harness-tools",
       "version": "0.1.0"
     },
     {
       "id": "local.deepthink",
-      "sha256": "sha256:ed7915ccfd7ad28193073cbac425dc388af5492fc37a82bf175a3f004bb5380c",
+      "sha256": "sha256:ea787521eeb91a2569956e83c21fae79c38376b29a0e3d7e935d7f2c6e010a31",
       "source": "file:../../local.deepthink",
       "version": "0.1.0"
     },
     {
       "id": "local.deepthink-ui",
-      "sha256": "sha256:5616be50b3b107ab485ce0610a573de64598bf2c57c924e7c6dc1ffc0263fe66",
+      "sha256": "sha256:68893d7ae6e45baa831b6d3e8020df35c23483b2f4276fe38e18b21c5154a348",
       "source": "file:../../local.deepthink-ui",
       "version": "0.1.0"
     }

@@ -7,8 +7,8 @@
     },
     {
       "path": "ui/app.js",
-      "sha256": "sha256:6dd601e918888f0e1d3f12a859abb85d8ef746add9203f0d55bace62704c43cd",
-      "size": 7873
+      "sha256": "sha256:4d441a3a9e288750e443324f92b82b941bba9b9bb55975273aeb1b4840802d38",
+      "size": 10056
     },
     {
       "path": "ui/float.js",

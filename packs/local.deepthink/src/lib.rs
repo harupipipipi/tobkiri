@@ -443,9 +443,16 @@ impl Guest for Pack {
         if identifier.len() != 64 || !identifier.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return Err(guest_error(invalid("invalid run reference")));
         }
-        let stored = private_store()
-            .map_err(guest_error)?
-            .kv_get(&format!("{identifier}/checkpoint"))?;
+        let store = private_store().map_err(guest_error)?;
+        if !explicit_resume {
+            let previous = expected.previous_v4_storage_id();
+            if let Some(bytes) = store.kv_get(&format!("{previous}/checkpoint"))? {
+                let previous: Run = serde_json::from_slice(&bytes)
+                    .map_err(|_| guest_error(invalid("prior v4 checkpoint is invalid")))?;
+                return Err(guest_error(expected.previous_v4_conflict(&previous)));
+            }
+        }
+        let stored = store.kv_get(&format!("{identifier}/checkpoint"))?;
         let run = if let Some(bytes) = stored {
             let mut run: Run = serde_json::from_slice(&bytes)
                 .map_err(|_| guest_error(invalid("stored checkpoint is invalid")))?;
@@ -454,6 +461,12 @@ impl Guest for Pack {
                 run.resume_pinned(&expected.conversation, &expected.model, &expected.settings)
                     .map_err(guest_error)?;
             } else {
+                if run.status == "paused" {
+                    return Err(guest_error(Failure {
+                        code: "conflict".into(),
+                        message: "This request has a saved phase boundary. Use its run reference through continuation-input to continue; it was not automatically restarted.".into(),
+                    }));
+                }
                 run.resume(&expected).map_err(guest_error)?;
             }
             run
@@ -513,16 +526,9 @@ impl continuation_input::Guest for Pack {
         if run.conversation != conversation {
             return Err(guest_error(invalid("continuation conversation changed")));
         }
-        let history = answers.clone().unwrap_or_else(|| {
-            let request = run
-                .messages
-                .iter()
-                .rev()
-                .find(|message| message["role"] == "user")
-                .and_then(|message| message["content"].as_str())
-                .unwrap_or("元のGoal");
-            format!("[DeepThink 再開 {run_id}] {request}")
-        });
+        let history = run
+            .conversation_input(answers.as_deref())
+            .map_err(guest_error)?;
         flow::run_flow("local.deepthink.continuation-flow@1.0",&json!({
             "run-id":run_id,"conversation":conversation,"answers":answers,"history-text":history,
         }).to_string())
@@ -624,7 +630,7 @@ impl Active {
                 return Ok(vec![event("progress",Some(json!({"version":VERSION,"run_id":self.run.id,"phase":self.run.pending.front().map(|phase|phase.id.as_str()),"status":"running"}).to_string()))]);
             }
             let mut runtime = Runtime::default();
-            match self.run.advance(&mut runtime) {
+            match self.run.advance_segment(&mut runtime) {
                 Ok(events) => {
                     self.announced = false;
                     for value in events {
@@ -637,6 +643,16 @@ impl Active {
                     self.events.push_back(event("progress",Some(json!({"version":VERSION,"run_id":self.run.id,"status":"quarantined","error":error,"output":""}).to_string())));
                 }
             }
+        } else if self.run.status == "paused" {
+            let receipt = self.run.pause_receipt()?;
+            self.terminal_sent = true;
+            let usage = self.run.usage();
+            self.events.push_back(json!({"kind":"usage","text":usage.to_string(),
+                "prompt-tokens":usage.pointer("/tokens/input_tokens"),"completion-tokens":usage.pointer("/tokens/output_tokens")}).to_string());
+            self.events
+                .push_back(event("progress", Some(receipt.to_string())));
+            self.events
+                .push_back(event("paused", Some(receipt.to_string())));
         } else if self.run.status == "quarantined" {
             return Err(self
                 .run

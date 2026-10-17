@@ -44,21 +44,26 @@ jobs:
         run: >-
           cargo test --manifest-path packs/Cargo.toml
           -p tobkiri-guest-sdk -p tobkiri-pack-harness-tools
-          -p tobkiri-pack-deepthink -p tobkiri-pack-openai-compat-provider --locked --lib
-      - name: UI usage accounting and syntax
-        run: |
-          node --test packs/tests/test_ui_accounting.mjs
-          node --check packs/local.harness-ui/ui/app.js
+          -p tobkiri-pack-deepthink -p tobkiri-pack-openai-compat-provider
+          -p tobkiri-pack-harness-conversation-store --locked --lib
       - name: Build real Wasm Pack components
         run: >-
           cargo build --manifest-path packs/Cargo.toml --workspace
-          --target wasm32-wasip2 --locked
+          --release --target wasm32-wasip2 --locked
       - name: Stage baseline Packs and Profiles
-        run: python3 -B packs/build.py --skip-build --target-dir "$CARGO_TARGET_DIR"
+        run: python3 -B packs/build.py --skip-build --build-profile release --target-dir "$CARGO_TARGET_DIR"
       - name: Stage DeepThink and preset Profiles
-        run: python3 -B packs/build_deepthink_profile.py --target-dir "$CARGO_TARGET_DIR"
+        run: python3 -B packs/build_deepthink_profile.py --build-profile release --target-dir "$CARGO_TARGET_DIR"
+      - name: Staged UI usage, continuation and syntax
+        run: |
+          node --test packs/tests/test_ui_accounting.mjs packs/tests/test_ui_continuation.mjs
+          node --check packs/local.harness-ui/ui/app.js
+          node --check packs/local.deepthink-ui/ui/app.js
       - name: Explicit Profile variant sources and authority
-        run: python3 -B packs/tests/test_profile_sources.py -v
+        run: |
+          python3 -B -m unittest discover -s packs/tests -p test_build_profiles.py -v
+          python3 -B -m unittest discover -s packs/tests -p test_deepthink_ui_assets.py -v
+          python3 -B packs/tests/test_profile_sources.py -v
       # The test reads packs/ relative to CARGO_MANIFEST_DIR, then builds and
       # verifies real .tpk bytes in memory. It never starts Core or calls an LLM.
       # Existing full-workspace/migration-completion CI remains independent.
@@ -108,7 +113,7 @@ jobs:
         run: >-
           cargo test -p tobkiri-store --locked --lib
           --test owner_windows --test windows_storage_names
-          --test security --test terminal -- --test-threads=1
+          --test security --test terminal --test audit_performance -- --test-threads=1
       - name: CLI contracts and cancellable native input
         if: ${{ !cancelled() }}
         run: cargo test -p tobkiri-cli --bin tobkiri --locked
