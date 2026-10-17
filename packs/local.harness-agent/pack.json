@@ -44,7 +44,8 @@
     "mediator": false,
     "native": false,
     "network": {
-      "origins": []
+      "origins": [],
+      "user_origins": null
     },
     "ports": [],
     "proc": [],

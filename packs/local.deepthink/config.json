@@ -1,0 +1,216 @@
+{
+  "capability_gaps": [
+    "Physical filesystem, shell, PTY, 3D editing and Computer use are not implemented by this Profile.",
+    "No skill catalog or Profile additional workflow checks were supplied."
+  ],
+  "environment": {
+    "api_base": "https://openrouter.ai/api/v1",
+    "approval_policy": "core_gate",
+    "artifact_scope": "logical tool-owned private storage; no physical workspace",
+    "execution_mode": "verified_wasm",
+    "model": "xiaomi/mimo-v2.6-flash",
+    "output_token_limit": "provider_default",
+    "prompt_pack_hashes": {
+      "local.deepthink-preset-chatgpt-agent-deep-research-service": "sha256:3c736a73ffb0bae17596e062793c23df5af06d516505e1187899b7a223f16f10",
+      "local.deepthink-preset-claude-code-service": "sha256:59cd65eb142008e89a3706016c8a4bcafdcacbf1efc33374242e124198c2ffa6",
+      "local.deepthink-preset-cline-pair-programmer-service": "sha256:784c8f9e20c0ef7717cc03dea1469f31bf07c9f72d4d5c16b0e89f04672e21af",
+      "local.deepthink-preset-gemini-cli-service": "sha256:377792c02e0d9f7e4beb2d0e141d28deb684758b41ca9aa043121949163e30b5",
+      "local.deepthink-preset-genspark-report-service": "sha256:393fbfe4f6870e6ae0f6e8fcafb6081b5f7b7b4b6ef66cec5729486dc4ccba33",
+      "local.deepthink-preset-manus-project-service": "sha256:719ed563cb76f314fd1e5920d32281a8825c07f0c09e7eca709a4ec162c0f665",
+      "local.deepthink-preset-openclaw-hermes-local-service": "sha256:0807f977856371ce2dbe3cf2edc66b4a88d2f5e38c4dce3ce17e4043614fccda",
+      "local.mimo-prompt": "sha256:60d67a3b51bbb3560d371f502b7da35552a2368eb868909820b8f902223be807"
+    },
+    "provider": "OpenRouter",
+    "provider_pack_hash": "sha256:d96e93fb73cdcdfc83670ae429075df2eac473c93f4df866e63e4b1dc7f6682d",
+    "tool_pack_hash": "sha256:0247aafb3c88d24cb34551a0eb62a0430f07f6a402f61d51ad443efbc045cbbb"
+  },
+  "max_review_rounds": 2,
+  "max_tool_rounds": 3,
+  "profile_checks": [],
+  "skills": [],
+  "tools": [
+    {
+      "description": "Save UTF-8 text in this Pack's private Core store. Requires a stable outer call id; repeating that id returns its receipt.",
+      "name": "artifact.write",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "description": "At most 262144 UTF-8 bytes.",
+            "maxLength": 262144,
+            "type": "string"
+          },
+          "path": {
+            "description": "Logical relative artifact path, at most 240 UTF-8 bytes; not a host file path.",
+            "maxLength": 240,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Read a stored text artifact, byte size and SHA-256.",
+      "name": "artifact.read",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "description": "Logical relative artifact path, at most 240 UTF-8 bytes; not a host file path.",
+            "maxLength": 240,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Verify artifact existence, byte size and SHA-256.",
+      "name": "artifact.stat",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "description": "Logical relative artifact path, at most 240 UTF-8 bytes; not a host file path.",
+            "maxLength": 240,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List artifact metadata with bounded pagination.",
+      "name": "artifact.list",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "maxLength": 240,
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "prefix": {
+            "maxLength": 240,
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Mark a logical artifact deleted. Requires a stable outer call id. Prior content and immutable receipts remain for safe continuation.",
+      "name": "artifact.delete",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "description": "Logical relative artifact path, at most 240 UTF-8 bytes; not a host file path.",
+            "maxLength": 240,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Checked StrictV1 safe integer arithmetic, left to right. Inputs and results must be within +/-9007199254740991. Division must be exact. No expression or code evaluation.",
+      "name": "calculator",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "operands": {
+            "items": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "maxItems": 64,
+            "minItems": 2,
+            "type": "array"
+          },
+          "operation": {
+            "enum": [
+              "add",
+              "subtract",
+              "multiply",
+              "divide"
+            ]
+          }
+        },
+        "required": [
+          "operation",
+          "operands"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Check JSON syntax and report type or error position.",
+      "name": "json.validate",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "maxLength": 262144,
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Read the Core clock as Unix milliseconds.",
+      "name": "clock.now",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Read 1..256 bytes from the Core random source as hex.",
+      "name": "random.bytes",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "length": {
+            "maximum": 256,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "length"
+        ],
+        "type": "object"
+      }
+    }
+  ]
+}

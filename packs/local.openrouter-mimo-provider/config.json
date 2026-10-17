@@ -1,0 +1,9 @@
+{
+  "base_url": "https://openrouter.ai/api/v1",
+  "model": "xiaomi/mimo-v2.6-flash",
+  "provider_order": [
+    "xiaomi"
+  ],
+  "secret_name": "api-key",
+  "timeout_ms": 300000
+}

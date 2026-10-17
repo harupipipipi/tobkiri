@@ -11,6 +11,13 @@
   <main>
     <header><h1>Tobkiri Harness</h1><p id="status" role="status">ホストへの接続を待っています</p></header>
     <section id="messages" aria-label="会話" aria-live="polite"></section>
+    <aside id="workflow" aria-live="polite" hidden>
+      <p id="phase"></p><p id="usage">使用量の確定待ち</p>
+      <p id="run-reference"></p><p id="next-action"></p>
+      <details><summary>工程ごとの判断の要約</summary><ol id="phase-log"></ol></details>
+      <button id="resume" type="button" disabled>チェックポイントから再開</button>
+      <button id="new-request" type="button">新しい依頼</button>
+    </aside>
     <form id="composer"><label for="text">メッセージ</label><textarea id="text" rows="3" required></textarea>
       <div><button id="send" type="submit" disabled>送信</button><button id="stop" type="button" disabled>停止</button></div>
     </form>

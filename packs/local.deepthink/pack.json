@@ -1,0 +1,223 @@
+{
+  "files": [
+    {
+      "path": "component.build.json",
+      "sha256": "sha256:8e37edb224238184fbd689ff49e31f9cee45420ba1102753b8398bb556d818fd",
+      "size": 1775
+    },
+    {
+      "path": "component.wasm",
+      "sha256": "sha256:70c882aab05df6e20e7f8b36b9954e11146d1c003687ba0277f11dee02239a99",
+      "size": 1953717
+    },
+    {
+      "path": "config.json",
+      "sha256": "sha256:89b4be49bd1d8cfcf7e84381c5ee377aec4600bd67cc1fbab440b4b15b3cde90",
+      "size": 6889
+    },
+    {
+      "path": "flows/continuation.flow.json",
+      "sha256": "sha256:5f2dfc735260ac68eae69f6c2131c796c13131eaf6e9552d02a54dca71a399be",
+      "size": 977
+    },
+    {
+      "path": "overlays/generate.overlay.json",
+      "sha256": "sha256:998181e8a673b868126157f1b09959a32ab20f9a7c42922792216ff428ba600e",
+      "size": 548
+    },
+    {
+      "path": "wit/continuation-flow.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/continuation-input.shape.json",
+      "sha256": "sha256:a3de3bba17dd35763b60f6b31201d3cfdf870e54cbd361679c7198a65ec947de",
+      "size": 116
+    },
+    {
+      "path": "wit/deps/core.wit",
+      "sha256": "sha256:f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "size": 5732
+    },
+    {
+      "path": "wit/deps/deepthink.wit",
+      "sha256": "sha256:6a3abb0d7c3c09008ff061b5e321404e130d17c688d7ac6df837b1dc2a9bcbd9",
+      "size": 1204
+    },
+    {
+      "path": "wit/deps/harness-agent.wit",
+      "sha256": "sha256:4f521cccf31d8c1ee2f777b3d2000a56137119a04011a156304f1442cf592e26",
+      "size": 384
+    },
+    {
+      "path": "wit/deps/harness-chat.wit",
+      "sha256": "sha256:f674b3ebac6e1c90cab218203d2ee810c5abf8097adeed1ff0481600426d0f9c",
+      "size": 1900
+    },
+    {
+      "path": "wit/pack.wit",
+      "sha256": "sha256:9e42e1a2e4d0bb0f9fb9fc54ab02efcb2e2e087884023bc1ba95ed8dc6050fdd",
+      "size": 268
+    },
+    {
+      "path": "wit/records.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/workflow.shape.json",
+      "sha256": "sha256:56caa29005ceddf9cce35cd0e7a6edf2daf058c7502959c75eab5d59e73747af",
+      "size": 147
+    }
+  ],
+  "flows": [
+    "flows/continuation.flow.json"
+  ],
+  "format": "tobkiri.pack/1",
+  "id": "local.deepthink",
+  "overlays": [
+    "overlays/generate.overlay.json"
+  ],
+  "permissions": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 512,
+      "max_wall_ms": 3600000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": [],
+      "user_origins": null
+    },
+    "ports": [
+      "local.deepthink.continuation-flow@1.0",
+      "local.deepthink.continuation-input@1.0",
+      "local.deepthink.workflow@1.0",
+      "local.harness-agent.tool-provider@1.0",
+      "local.harness-chat.assistant-output@1.0",
+      "local.harness-chat.conversation-store@1.0",
+      "local.harness-chat.generate@1.0",
+      "local.harness-chat.llm-provider@1.0"
+    ],
+    "proc": [],
+    "pty": false,
+    "secrets": [],
+    "storage": {
+      "private": true,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  },
+  "ports": {
+    "consumes": [
+      {
+        "optional": false,
+        "shape": "local.harness-chat.llm-provider",
+        "version": "1.0"
+      },
+      {
+        "optional": true,
+        "shape": "local.harness-agent.tool-provider",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.harness-chat.assistant-output",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.workflow",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.continuation-input",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.continuation-flow",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.harness-chat.conversation-store",
+        "version": "1.0"
+      }
+    ],
+    "provides": [
+      {
+        "optional": false,
+        "shape": "local.deepthink.workflow",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.continuation-input",
+        "version": "1.0"
+      }
+    ],
+    "untyped": []
+  },
+  "publisher_key": null,
+  "runtime": {
+    "component": "component.wasm",
+    "config": {
+      "path": "config.json",
+      "shape": null
+    },
+    "kind": "wasm",
+    "toolchain": "rust/1.94.0;wit-bindgen/0.62.0"
+  },
+  "shapes": [
+    {
+      "kind": "port",
+      "name": "local.deepthink.workflow",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "data",
+      "name": "local.deepthink.records",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "port",
+      "name": "local.deepthink.continuation-input",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "flow",
+      "name": "local.deepthink.continuation-flow",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    }
+  ],
+  "stores": [
+    {
+      "data_shape": "local.deepthink.records@1.0",
+      "name": "workflows",
+      "seed": null,
+      "tier": "private"
+    }
+  ],
+  "ui": null,
+  "version": "0.1.0"
+}

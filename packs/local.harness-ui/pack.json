@@ -1,9 +1,14 @@
 {
   "files": [
     {
+      "path": "ui/accounting.mjs",
+      "sha256": "sha256:a97da780bdb06b7466f7b5f68ba816ccdbd5008e6e625874bfd135e89ce9f5fe",
+      "size": 1125
+    },
+    {
       "path": "ui/app.js",
-      "sha256": "sha256:db9fe6c939c2b70ecdc6a143b363e108d35e0fa86a78c05c49015bdd1566c172",
-      "size": 3959
+      "sha256": "sha256:6dd601e918888f0e1d3f12a859abb85d8ef746add9203f0d55bace62704c43cd",
+      "size": 7873
     },
     {
       "path": "ui/float.js",
@@ -12,8 +17,8 @@
     },
     {
       "path": "ui/index.html",
-      "sha256": "sha256:7dbb79adde795466a11c040b2627c08251074f4d391f44b0b15189342ec4a31c",
-      "size": 931
+      "sha256": "sha256:d6fbfda214c5cc658bec1379ef0a30c92bf7c053c24e6ceca0ead95e9a153f86",
+      "size": 1384
     },
     {
       "path": "ui/ports.js",
@@ -22,8 +27,8 @@
     },
     {
       "path": "ui/style.css",
-      "sha256": "sha256:367d846d0e1709dbfd7f66d536857f41669c7866ad025bc9b34a3fd1c3bc21ba",
-      "size": 839
+      "sha256": "sha256:b5ca7e74b3390fc8e913159f7054a0258de23149fa993dfa81cf0c7fd1dd4745",
+      "size": 1345
     }
   ],
   "flows": [],
@@ -44,11 +49,12 @@
     "mediator": false,
     "native": false,
     "network": {
-      "origins": []
+      "origins": [],
+      "user_origins": null
     },
     "ports": [
-      "local.harness-chat.user-input@1.0",
-      "local.harness-chat.conversation-store@1.0"
+      "local.harness-chat.conversation-store@1.0",
+      "local.harness-chat.user-input@1.0"
     ],
     "proc": [],
     "pty": false,

@@ -2,13 +2,13 @@
   "files": [
     {
       "path": "component.build.json",
-      "sha256": "sha256:6ff89d1fade37cb52d08b41d97e36a47a82d88a163cb96d7f6e19d79f727731c",
-      "size": 1411
+      "sha256": "sha256:91779a2c8783e82d4ee36aa5f3064f56f6b3b76d452938d13ca981f785a48599",
+      "size": 1639
     },
     {
       "path": "component.wasm",
-      "sha256": "sha256:d0174f2843d85f40d099aca7c93670ba21f912181b3a0eebb5325a6f804b5d34",
-      "size": 374904
+      "sha256": "sha256:a779672728e1cf180322df73a61ed32ae737bcb924483a96b799b5ffce8d4a01",
+      "size": 370551
     },
     {
       "path": "config.json",
@@ -49,7 +49,8 @@
     "mediator": false,
     "native": false,
     "network": {
-      "origins": []
+      "origins": [],
+      "user_origins": null
     },
     "ports": [],
     "proc": [],
@@ -83,7 +84,8 @@
   "runtime": {
     "component": "component.wasm",
     "config": {
-      "path": "config.json"
+      "path": "config.json",
+      "shape": null
     },
     "kind": "wasm",
     "toolchain": "rust/1.94.0;wit-bindgen/0.62.0"

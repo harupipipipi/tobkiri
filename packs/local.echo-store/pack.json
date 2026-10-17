@@ -2,13 +2,13 @@
   "files": [
     {
       "path": "component.build.json",
-      "sha256": "sha256:7fcb0fedc6e214bf6ae52d75104220077920f53c7d9bb132e8c44d95164113de",
-      "size": 1416
+      "sha256": "sha256:8f4470f7a06e0b4d0c22b1e6217ba86fe74762d177ed6dbf2997b1f06e26010b",
+      "size": 1644
     },
     {
       "path": "component.wasm",
-      "sha256": "sha256:bf42f1073562720cf74bb5b53443bc84aa950d25caad08a6a6e2c6d5dfee00f0",
-      "size": 339347
+      "sha256": "sha256:732196f7a8d18608591994db76dadc57619fff169634a50dccda7611a26dbdf8",
+      "size": 337845
     },
     {
       "path": "config.json",
@@ -49,7 +49,8 @@
     "mediator": false,
     "native": false,
     "network": {
-      "origins": []
+      "origins": [],
+      "user_origins": null
     },
     "ports": [],
     "proc": [],
@@ -83,7 +84,8 @@
   "runtime": {
     "component": "component.wasm",
     "config": {
-      "path": "config.json"
+      "path": "config.json",
+      "shape": null
     },
     "kind": "wasm",
     "toolchain": "rust/1.94.0;wit-bindgen/0.62.0"
@@ -93,6 +95,7 @@
     {
       "data_shape": "local.echo-chat.messages@1.0",
       "name": "conversations",
+      "seed": null,
       "tier": "private"
     }
   ],

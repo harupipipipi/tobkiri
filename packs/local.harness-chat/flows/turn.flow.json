@@ -44,6 +44,7 @@
         "shape": "local.harness-chat.llm-provider@1.0"
       },
       "id": "generate",
+      "out": "turn",
       "overlay": "open",
       "role": "local.harness-chat.generate@1.0",
       "stream": {

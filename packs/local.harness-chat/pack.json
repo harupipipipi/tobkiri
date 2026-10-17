@@ -2,8 +2,8 @@
   "files": [
     {
       "path": "flows/turn.flow.json",
-      "sha256": "sha256:2a4fe7bb1b3c3895a365f591a4a54f48e473d26386e626810c2d582fbcbd3f82",
-      "size": 1583
+      "sha256": "sha256:add27c94069b90fd4af6af356eaa4c2e5aae1604d000bed735a9d9c8108d2089",
+      "size": 1604
     },
     {
       "path": "wit/assemble-prompt.shape.json",
@@ -91,14 +91,15 @@
     "mediator": false,
     "native": false,
     "network": {
-      "origins": []
+      "origins": [],
+      "user_origins": null
     },
     "ports": [
-      "local.harness-chat.user-input@1.0",
+      "local.harness-chat.assistant-output@1.0",
       "local.harness-chat.conversation-store@1.0",
-      "local.harness-chat.prompt-builder@1.0",
       "local.harness-chat.llm-provider@1.0",
-      "local.harness-chat.assistant-output@1.0"
+      "local.harness-chat.prompt-builder@1.0",
+      "local.harness-chat.user-input@1.0"
     ],
     "proc": [],
     "pty": false,

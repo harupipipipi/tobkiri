@@ -28,8 +28,33 @@ LIMITS = {"fuel_per_call": 2000000000, "memory_mib": 128, "wall_ms": 300000,
 
 def write_json(path: Path, value: Any) -> None:
     """Write readable JSON while preserving the StrictV1 value domain."""
+    if isinstance(value, dict) and value.get("format") == "tobkiri.pack/1":
+        normalize_manifest(value)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, ensure_ascii=False, allow_nan=False, sort_keys=True, indent=2) + "\n")
+    path.write_text(json.dumps(value, ensure_ascii=False, allow_nan=False, sort_keys=True, indent=2) + "\n",
+                    encoding="utf-8", newline="\n")
+
+
+def normalize_manifest(manifest: dict[str, Any]) -> None:
+    """Match Rust PackManifest serialization before pinning or archiving.
+
+    Rust materializes Option fields as null and PermissionSet collections as
+    sorted sets. Omitting those fields produced different pins in CLI .tpk files.
+    """
+    permissions = manifest["permissions"]
+    permissions["network"].setdefault("user_origins", None)
+    permissions["network"]["origins"] = sorted(set(permissions["network"]["origins"]))
+    for field in ("ports", "proc", "host_io"):
+        permissions[field] = sorted(set(permissions[field]))
+    runtime = manifest["runtime"]
+    if runtime["kind"] in ("wasm", "native"):
+        runtime.setdefault("config", None)
+        if runtime["config"] is not None:
+            runtime["config"].setdefault("shape", None)
+    for store in manifest["stores"]:
+        store.setdefault("seed", None)
+    if manifest.get("inputs") == []:
+        del manifest["inputs"]
 
 
 def canonical(value: Any) -> bytes:
@@ -137,7 +162,7 @@ def chat_flow(shape: str) -> dict[str, Any]:
                  "call": {"shape": ref("conversation-store"), "op": "load", "args": {"conversation": "$input.conversation"}}, "out": "ctx"},
                 {"id": "prompt", "role": ref("assemble-prompt"), "overlay": "open",
                  "call": {"shape": ref("prompt-builder"), "op": "build", "args": {"ctx": "$ctx", "input": "$input"}}, "out": "prompt"},
-                {"id": "generate", "role": ref("generate"), "overlay": "open",
+                {"id": "generate", "role": ref("generate"), "overlay": "open", "out": "turn",
                  "call": {"shape": ref("llm-provider"), "op": "chat", "args": {"prompt": "$prompt"}},
                  "stream": {"emit": ref("assistant-output"), "collect": "turn"}},
                 {"id": "save", "call": {"shape": ref("conversation-store"), "op": "append",
@@ -283,7 +308,7 @@ def ui_pack() -> dict[str, Any]:
     manifest=base_manifest("harness-ui",{"kind":"data"},permissions)
     manifest["ports"]["consumes"]=[port("local.harness-chat.user-input"),port("local.harness-chat.conversation-store")]
     manifest["ui"]={"entry":"ui/index.html","ports_used":["local.harness-chat.user-input@1.0","local.harness-chat.conversation-store@1.0"]}
-    return bind_files(directory,manifest,["ui/index.html","ui/app.js","ui/style.css","ui/ports.js","ui/float.js"])
+    return bind_files(directory,manifest,["ui/index.html","ui/app.js","ui/accounting.mjs","ui/style.css","ui/ports.js","ui/float.js"])
 
 
 def main() -> None:

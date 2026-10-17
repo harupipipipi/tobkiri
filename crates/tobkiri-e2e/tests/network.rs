@@ -100,6 +100,7 @@ impl Server {
                         serde_json::json!({"choices":[{"delta":{"content":delta}}]})
                     ));
                 }
+                sse.push_str(&format!("data: {}\n\n",serde_json::json!({"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]})));
                 sse.push_str(&format!("data: {}\n\n",serde_json::json!({"choices":[],"usage":{"prompt_tokens":prompt_tokens,"completion_tokens":6}})));
                 sse.push_str("data: [DONE]\n\n");
                 // Deliberately split UTF-8 and SSE frame boundaries in HTTP chunks.

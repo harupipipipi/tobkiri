@@ -1,0 +1,66 @@
+name: DeepThink Pack contracts
+
+on:
+  pull_request:
+    branches: [soon]
+  push:
+    branches: [soon]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deepthink:
+    name: Guest, UI and staged Pack contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-target
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          targets: wasm32-wasip2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install preset staging dependency
+        run: python3 -m pip install --disable-pip-version-check PyYAML==6.0.3
+      - name: Guest SDK, tool engine and DeepThink unit tests
+        run: >-
+          cargo test --manifest-path packs/Cargo.toml
+          -p tobkiri-guest-sdk -p tobkiri-pack-harness-tools
+          -p tobkiri-pack-deepthink --locked --lib
+      - name: UI usage accounting and syntax
+        run: |
+          node --test packs/tests/test_ui_accounting.mjs
+          node --check packs/local.harness-ui/ui/app.js
+      - name: Build real Wasm Pack components
+        run: >-
+          cargo build --manifest-path packs/Cargo.toml --workspace
+          --target wasm32-wasip2 --locked
+      - name: Stage baseline Packs and Profiles
+        run: python3 -B packs/build.py --skip-build --target-dir "$CARGO_TARGET_DIR"
+      - name: Stage DeepThink and preset Profiles
+        run: python3 -B packs/build_deepthink_profile.py --target-dir "$CARGO_TARGET_DIR"
+      # The test reads packs/ relative to CARGO_MANIFEST_DIR, then builds and
+      # verifies real .tpk bytes in memory. It never starts Core or calls an LLM.
+      # Existing full-workspace/migration-completion CI remains independent.
+      - name: Verify Pack archives, component ABI and Profile pins
+        run: >-
+          cargo test -p tobkiri-wasm --lib --locked
+          abi::staged_component_tests::real_staged_components_match_verified_wit_and_closed_core_abi
+          -- --ignored --exact --nocapture

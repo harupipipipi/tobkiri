@@ -267,37 +267,37 @@
   "packs": [
     {
       "id": "local.echo-chat",
-      "sha256": "sha256:b4aee2147e14dea9d4379f9a63a3610d65608322de48074836485c171d050851",
+      "sha256": "sha256:c1c50f7b9f0883db54aa5cbe6ad9aa3134759e41f63153d7d2a2a9beda761700",
       "source": "file:../local.echo-chat",
       "version": "0.1.0"
     },
     {
       "id": "local.echo-input",
-      "sha256": "sha256:98587c350b23321a4b32474e8c41593646cc0349901d6143e95347aafdd257c2",
+      "sha256": "sha256:bb1a65610d4fdafbfbe71c042be54fd31bfc33cb8e22193e53001eec79eca336",
       "source": "file:../local.echo-input",
       "version": "0.1.0"
     },
     {
       "id": "local.echo-store",
-      "sha256": "sha256:82af93acfaee2c3707a100bbc989e22edd946f48ed40d79619c1569f79b7ab6e",
+      "sha256": "sha256:f07ac933fb654eb283abc9f20e390237b5865963d3b3d9c633d100751c4250e5",
       "source": "file:../local.echo-store",
       "version": "0.1.0"
     },
     {
       "id": "local.echo-prompt",
-      "sha256": "sha256:a764d1b4f11af550633ca315fdf1441d2c34eef33da01813e3ce1e1b380c2aed",
+      "sha256": "sha256:2a2ee1b9b7027e23f237e46461c44a86193732ddc23d35ebeb28780cb158e237",
       "source": "file:../local.echo-prompt",
       "version": "0.1.0"
     },
     {
       "id": "local.echo-llm",
-      "sha256": "sha256:47c287a4a4433a5c894525285c028577b83cc5efccd867373b7a3de24c1423b4",
+      "sha256": "sha256:d17389907c45b691fbe781aa992320eee10ac5224696f3889e729908a881f4d6",
       "source": "file:../local.echo-llm",
       "version": "0.1.0"
     },
     {
       "id": "local.echo-output",
-      "sha256": "sha256:0a327a723655ca17a0d0d9b4bce28ccdc00d5bfb33af68f55a5196c24a3db9a0",
+      "sha256": "sha256:89d3866415826f10599dbe9521cea2da8c5802f7ad2a4fe6fbd5c77fa487e2d3",
       "source": "file:../local.echo-output",
       "version": "0.1.0"
     }

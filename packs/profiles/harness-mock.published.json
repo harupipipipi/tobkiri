@@ -267,37 +267,37 @@
   "packs": [
     {
       "id": "local.harness-chat",
-      "sha256": "sha256:3dd79eed6d76c0f13c6c35a525d53b2ece30768d8ba46f1e8a261b816b08f1b0",
+      "sha256": "sha256:86e3eccdd73a1f2e35572cccdf8d615a8e905b7ded6c9cf6574b6bb53f0d4946",
       "source": "file:../local.harness-chat",
       "version": "0.1.0"
     },
     {
       "id": "local.terminal-input",
-      "sha256": "sha256:cc7b8162bd0b0e8c1b451a1856ce4eed97837ba4e283dee3583206f467fb396c",
+      "sha256": "sha256:f13a6adafa6b0b8e5f02f45765fe03b4d0c9c0e398e5975ce1cf6044f67f386e",
       "source": "file:../local.terminal-input",
       "version": "0.1.0"
     },
     {
       "id": "local.harness-conversation-store",
-      "sha256": "sha256:a4486159086bf0d76b23dc33f7a1f1ec754157f3eb6995ccd223ffd6d1b65a77",
+      "sha256": "sha256:2f25ec3698f7e8c70a51474135d013b92147c52f18bbd48471c4321d9587a4a7",
       "source": "file:../local.harness-conversation-store",
       "version": "0.1.0"
     },
     {
       "id": "local.harness-prompt",
-      "sha256": "sha256:ea6ea87da8391ed292ce354160d7b91bd4bfa6031cd2bf28b1016a8a876050ea",
+      "sha256": "sha256:eedd4b82fb0c38d6514c7e9cb82f22a4e5bf46f8bb184d0abedafce22d1ef659",
       "source": "file:../local.harness-prompt",
       "version": "0.1.0"
     },
     {
       "id": "local.mock-llm",
-      "sha256": "sha256:8f0c8d4642e2cd91c861d2b301df1ce4d94affc811db8d3a197628a5af7e7f75",
+      "sha256": "sha256:f8cc79ad2a5d87c593089e844c34e0e20c2cb9c4bef9df960b37ee0dc8ded8ef",
       "source": "file:../local.mock-llm",
       "version": "0.1.0"
     },
     {
       "id": "local.terminal-output",
-      "sha256": "sha256:e8e3e044f6c6efc1f8eb6c59502adbf93cd22e28b46f13200ccb617773992749",
+      "sha256": "sha256:d3557753eb7ac88e8833ad87b7d04dac3b9a006bc354ea4d9619d3dbb9747f91",
       "source": "file:../local.terminal-output",
       "version": "0.1.0"
     }

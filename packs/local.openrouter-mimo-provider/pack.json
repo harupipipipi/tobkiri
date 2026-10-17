@@ -1,0 +1,105 @@
+{
+  "files": [
+    {
+      "path": "component.build.json",
+      "sha256": "sha256:5e5ce86b5fbeda6fdcc58e1a2039fe6536be48dd40833672d70d0861b30db052",
+      "size": 1695
+    },
+    {
+      "path": "component.wasm",
+      "sha256": "sha256:cd9a0bd3a302aec4f43dc3ab90b48cb550a26fdbb0efdbc1f0837b5e37f860ba",
+      "size": 732762
+    },
+    {
+      "path": "config.json",
+      "sha256": "sha256:ea3b129f27ad144d9ca2c9158df84fcc9a21db466fe879bacd33b403dfcd4ba5",
+      "size": 178
+    },
+    {
+      "path": "wit/deps/core.wit",
+      "sha256": "sha256:f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "size": 5732
+    },
+    {
+      "path": "wit/deps/shape.wit",
+      "sha256": "sha256:f674b3ebac6e1c90cab218203d2ee810c5abf8097adeed1ff0481600426d0f9c",
+      "size": 1900
+    },
+    {
+      "path": "wit/pack.wit",
+      "sha256": "sha256:ba728e7c3a06f41c4429fa6dcddfb9cf9f2c8d0844088d863bffa0bf719f5b71",
+      "size": 268
+    }
+  ],
+  "flows": [],
+  "format": "tobkiri.pack/1",
+  "id": "local.openrouter-mimo-provider",
+  "overlays": [],
+  "permissions": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 16,
+      "max_wall_ms": 300000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": [
+        "https://openrouter.ai"
+      ],
+      "user_origins": null
+    },
+    "ports": [],
+    "proc": [],
+    "pty": false,
+    "secrets": [
+      {
+        "name": "api-key",
+        "optional": false,
+        "reveal": false
+      }
+    ],
+    "storage": {
+      "private": false,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  },
+  "ports": {
+    "consumes": [],
+    "provides": [
+      {
+        "optional": false,
+        "shape": "local.harness-chat.llm-provider",
+        "version": "1.0"
+      }
+    ],
+    "untyped": []
+  },
+  "publisher_key": null,
+  "runtime": {
+    "component": "component.wasm",
+    "config": {
+      "path": "config.json",
+      "shape": null
+    },
+    "kind": "wasm",
+    "toolchain": "rust/1.94.0;wit-bindgen/0.62.0"
+  },
+  "shapes": [],
+  "stores": [],
+  "ui": null,
+  "version": "0.1.0"
+}

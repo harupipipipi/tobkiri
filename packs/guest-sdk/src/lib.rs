@@ -1,6 +1,8 @@
 //! Pure guest helpers shared by independently identified Packs.
 
 pub mod sse;
+pub mod openai;
+pub mod accounting;
 
 /// Convert a finite WIT f64 to the exact StrictV1 string representation.
 pub fn canon_f64(value: f64) -> Result<String, &'static str> {

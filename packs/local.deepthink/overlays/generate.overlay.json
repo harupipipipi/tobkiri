@@ -1,0 +1,18 @@
+{
+  "format": "tobkiri.overlay/1",
+  "id": "deepthink-generate",
+  "target": {"role": "local.harness-chat.generate@1.0"},
+  "order": {"before": [], "after": []},
+  "body": [
+    {
+      "id": "workflow",
+      "call": {
+        "shape": "local.deepthink.workflow@1.0",
+        "op": "run",
+        "args": {"prompt": "$input.prompt", "conversation": "$ctx.conversation", "resume": null}
+      },
+      "stream": {"emit": "local.harness-chat.assistant-output@1.0", "collect": "result"}
+    },
+    {"id": "result", "return": {"ok": "$result"}}
+  ]
+}

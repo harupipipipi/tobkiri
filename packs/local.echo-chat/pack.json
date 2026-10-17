@@ -2,8 +2,8 @@
   "files": [
     {
       "path": "flows/turn.flow.json",
-      "sha256": "sha256:ada55c4933d4d267f13b7ebba4f91b49a1c41eb803d540a54f30cebfb3b19486",
-      "size": 1553
+      "sha256": "sha256:3ee3e2a9afc22086a6b53ca45d67d5714d083f045129e0524827364c4c3c2ed6",
+      "size": 1574
     },
     {
       "path": "wit/assemble-prompt.shape.json",
@@ -86,14 +86,15 @@
     "mediator": false,
     "native": false,
     "network": {
-      "origins": []
+      "origins": [],
+      "user_origins": null
     },
     "ports": [
-      "local.echo-chat.user-input@1.0",
+      "local.echo-chat.assistant-output@1.0",
       "local.echo-chat.conversation-store@1.0",
-      "local.echo-chat.prompt-builder@1.0",
       "local.echo-chat.llm-provider@1.0",
-      "local.echo-chat.assistant-output@1.0"
+      "local.echo-chat.prompt-builder@1.0",
+      "local.echo-chat.user-input@1.0"
     ],
     "proc": [],
     "pty": false,

@@ -1,0 +1,97 @@
+{
+  "files": [
+    {
+      "path": "component.build.json",
+      "sha256": "sha256:5106dc3945bc64fa943c1b33426287bb0f150f705aba5670164f47c2a893812e",
+      "size": 1663
+    },
+    {
+      "path": "component.wasm",
+      "sha256": "sha256:99b223275db4b72d95f9bfc90175950eab4bfa58e61f0c43f4a3c27c63a91ce3",
+      "size": 337189
+    },
+    {
+      "path": "config.json",
+      "sha256": "sha256:7dfbabd2f88e59dcfdd906a17886ba4692a418c01041e0c9b399c728b84d3d02",
+      "size": 425
+    },
+    {
+      "path": "wit/deps/core.wit",
+      "sha256": "sha256:f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "size": 5732
+    },
+    {
+      "path": "wit/deps/shape.wit",
+      "sha256": "sha256:f674b3ebac6e1c90cab218203d2ee810c5abf8097adeed1ff0481600426d0f9c",
+      "size": 1900
+    },
+    {
+      "path": "wit/pack.wit",
+      "sha256": "sha256:66129c8ea0fb5cc61588b3c5a192ade5cb15358a3b17e5fe13a7dfff6ea66811",
+      "size": 145
+    }
+  ],
+  "flows": [],
+  "format": "tobkiri.pack/1",
+  "id": "local.deepthink-preset-genspark-report-service",
+  "overlays": [],
+  "permissions": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 16,
+      "max_wall_ms": 300000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": [],
+      "user_origins": null
+    },
+    "ports": [],
+    "proc": [],
+    "pty": false,
+    "secrets": [],
+    "storage": {
+      "private": false,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  },
+  "ports": {
+    "consumes": [],
+    "provides": [
+      {
+        "optional": false,
+        "shape": "local.harness-chat.prompt-builder",
+        "version": "1.0"
+      }
+    ],
+    "untyped": []
+  },
+  "publisher_key": null,
+  "runtime": {
+    "component": "component.wasm",
+    "config": {
+      "path": "config.json",
+      "shape": null
+    },
+    "kind": "wasm",
+    "toolchain": "rust/1.94.0;wit-bindgen/0.62.0"
+  },
+  "shapes": [],
+  "stores": [],
+  "ui": null,
+  "version": "0.1.0"
+}

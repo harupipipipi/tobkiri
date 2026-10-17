@@ -44,6 +44,7 @@
         "shape": "local.echo-chat.llm-provider@1.0"
       },
       "id": "generate",
+      "out": "turn",
       "overlay": "open",
       "role": "local.echo-chat.generate@1.0",
       "stream": {

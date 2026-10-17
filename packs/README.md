@@ -1,5 +1,8 @@
 # Tobkiri guest Packs
 
+See [DeepThink development Packs](DEEPTHINK.md) for the resumable Goal workflow,
+OpenRouter MiMo Profiles, new artifact tools and current platform limitations.
+
 Unsigned development Packs use `local.*`. The Rust guest workspace is separate
 from the host workspace, targets `wasm32-wasip2`, and pins wit-bindgen 0.62.0
 (published 2026-09-10; 0.63.0 was too new under the reviewed dependency rule).

@@ -1,0 +1,245 @@
+{
+  "answer_plan": {
+    "clarifications": [],
+    "integration_plan": "計算と検証を統合する",
+    "reference_search_required": false,
+    "research_required": false,
+    "sections": [
+      {
+        "acceptance_criteria": [
+          "323"
+        ],
+        "id": "calculation",
+        "objective": "結果を導く",
+        "title": "計算"
+      },
+      {
+        "acceptance_criteria": [
+          "一致"
+        ],
+        "id": "verification",
+        "objective": "別の式で検証",
+        "title": "検証"
+      }
+    ]
+  },
+  "capability_assessment": {
+    "blockers": [],
+    "capabilities": [
+      {
+        "available": true,
+        "limitations": "なし",
+        "method": "整数演算",
+        "requirement": "r1"
+      }
+    ],
+    "clarifications": []
+  },
+  "evidence": {
+    "assumptions": [],
+    "clarifications": [],
+    "facts": [
+      "17×19=323"
+    ],
+    "ready": true,
+    "sources": []
+  },
+  "goal_contract": {
+    "assumptions": [],
+    "clarifications": [],
+    "confirmed": true,
+    "constraints": [],
+    "deliverables": [
+      {
+        "format": "Markdown",
+        "id": "d1",
+        "title": "計算の説明"
+      }
+    ],
+    "objective": "17×19の計算結果と検証を説明する",
+    "success_criteria": [
+      {
+        "criterion": "答えは323",
+        "id": "c1",
+        "measurement": "整数乗算で再計算",
+        "requirement_id": "r1",
+        "target": "323"
+      }
+    ]
+  },
+  "goal_intake": {
+    "assumptions": [],
+    "clarifications": [],
+    "constraints": [],
+    "deliverables": [
+      {
+        "format": "Markdown",
+        "id": "d1",
+        "title": "計算の説明"
+      }
+    ],
+    "objective": "17×19の計算結果と検証を説明する",
+    "production_kind": "text",
+    "quality_terms": [],
+    "requirements": [
+      {
+        "acceptance_criteria": [
+          "計算結果が323である"
+        ],
+        "description": "正しい計算結果を示す",
+        "id": "r1"
+      }
+    ]
+  },
+  "integration": {
+    "acceptance_results": [
+      {
+        "criterion": "答えは323",
+        "criterion_id": "c1",
+        "evidence": "17×(20−1)=323",
+        "passed": true
+      }
+    ],
+    "artifact_paths": [],
+    "content": "17×19は323です。17×(20−1)=340−17=323です。",
+    "open_issues": []
+  },
+  "means_selection": {
+    "clarifications": [],
+    "gaps": [],
+    "selected_skills": [],
+    "selected_tools": [],
+    "workflow": [
+      "計算して検証する"
+    ]
+  },
+  "preflight": {
+    "blockers": [],
+    "checks": [
+      {
+        "evidence": "入力がある",
+        "passed": true,
+        "requirement": "r1"
+      }
+    ],
+    "clarifications": []
+  },
+  "profile_check": {
+    "clarifications": [],
+    "findings": [
+      "条件に適合"
+    ],
+    "passed": true
+  },
+  "quality_terms": {
+    "assumptions": [],
+    "clarifications": [],
+    "definition": "式を1行で示す",
+    "metrics": [
+      {
+        "measurement": "式を数える",
+        "name": "式",
+        "target": "1行"
+      }
+    ],
+    "resolved": true,
+    "term": "分かりやすい"
+  },
+  "reference_plan": {
+    "assumptions": [],
+    "clarifications": [],
+    "comparison_criteria": {
+      "dimensions": "dimensionsを根拠で比較",
+      "materials": "materialsを根拠で比較",
+      "rights": "rightsを根拠で比較",
+      "shape": "shapeを根拠で比較",
+      "source_url": "source_urlを根拠で比較",
+      "viewpoints": "viewpointsを根拠で比較"
+    },
+    "editing_environment": "実編集環境を確認",
+    "queries": [
+      "形状の原資料"
+    ],
+    "selection_method": "対象と照合",
+    "validation_environment": "寸法と複数視点で検証"
+  },
+  "reference_search": {
+    "assumptions": [],
+    "clarifications": [],
+    "comparison": [
+      "各視点で照合"
+    ],
+    "references": [
+      {
+        "dimensions": "提供資料の寸法",
+        "evidence": "資料に明記",
+        "id": "reference1",
+        "materials": [
+          "木"
+        ],
+        "rights": {
+          "basis": "ユーザー提供の利用条件",
+          "status": "confirmed"
+        },
+        "shape": "提供資料の形状",
+        "source_url": "https://example.com/reference",
+        "title": "提供参照",
+        "viewpoints": [
+          "正面",
+          "側面"
+        ]
+      }
+    ],
+    "selected_reference_ids": [
+      "reference1"
+    ]
+  },
+  "review": {
+    "acceptance_results": [
+      {
+        "criterion": "答えは323",
+        "criterion_id": "c1",
+        "evidence": "17×(20−1)=323",
+        "passed": true
+      }
+    ],
+    "approved": true,
+    "blocking_issues": [],
+    "feedback": "要件に適合"
+  },
+  "revision": {
+    "artifact_paths": [],
+    "changes": [
+      "検証を補強"
+    ],
+    "content": "修正した答えは323です。",
+    "open_issues": []
+  },
+  "section": {
+    "artifact_paths": [],
+    "content": "s1: 323",
+    "evidence_ids": [],
+    "open_issues": [],
+    "section_id": "s1",
+    "title": "s1",
+    "verification": [
+      "再計算済み"
+    ]
+  },
+  "work_environment": {
+    "checks": [
+      {
+        "capability": "計算",
+        "evidence": "入力された整数を計算可能",
+        "status": "available"
+      }
+    ],
+    "clarifications": [],
+    "editing_environment": "テキスト",
+    "limitations": [],
+    "ready": true,
+    "setup_actions": [],
+    "validation_environment": "独立した算術検証",
+    "workspace_plan": "提供された作業場所を使う"
+  }
+}

@@ -277,3 +277,181 @@ fn from_type(ty: &WitType) -> AbiType {
         W::StreamHandle | W::CallbackHandle => A::Record(vec![("id".into(), A::Primitive("u64"))]),
     }
 }
+
+#[cfg(test)]
+mod staged_component_tests {
+    use super::*;
+    use std::path::Path;
+    use tobkiri_manifest::{
+        RuntimeSpec, build_tpk, inspect_pack_wit, load_shapes, parse_manifest, verify_tpk,
+    };
+
+    fn staged_pack(directory: &Path) -> Result<VerifiedPack> {
+        let manifest = parse_manifest(&std::fs::read(directory.join("pack.json"))?)?;
+        let mut files = BTreeMap::new();
+        for entry in &manifest.files {
+            files.insert(
+                entry.path.clone(),
+                std::fs::read(directory.join(&entry.path))?,
+            );
+        }
+        let archive = build_tpk(&manifest, &files, None)?;
+        Ok(verify_tpk(&archive, &BTreeMap::new())?)
+    }
+
+    /// Admission-only proof for the real built components. This never creates
+    /// a DataRoot, grants permission, substitutes HostIo or executes a guest.
+    #[tokio::test]
+    #[ignore = "requires packs/build.py and build_deepthink_profile.py staging"]
+    async fn real_staged_components_match_verified_wit_and_closed_core_abi() -> Result<()> {
+        let pack_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs");
+        let names = [
+            "harness-chat",
+            "echo-chat",
+            "harness-agent",
+            "harness-ui",
+            "openai-compat-provider",
+            "mock-llm",
+            "harness-conversation-store",
+            "harness-prompt",
+            "terminal-input",
+            "terminal-output",
+            "echo-llm",
+            "echo-store",
+            "echo-prompt",
+            "echo-input",
+            "echo-output",
+            "pi-adapter",
+            "harness-tools",
+            "deepthink",
+            "openrouter-mimo-provider",
+            "mimo-prompt",
+            "deepthink-ui",
+        ];
+        let mut packs = names
+            .iter()
+            .map(|name| {
+                staged_pack(&pack_root.join(format!("local.{name}")))
+                    .with_context(|| format!("verify staged local.{name}"))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let mut profiles = Vec::new();
+        for name in [
+            "harness-live",
+            "harness-mock",
+            "harness-ui",
+            "echo",
+            "deepthink-mimo",
+            "deepthink-mimo-ui",
+        ] {
+            let profile = tobkiri_profile::parse_profile(&std::fs::read(
+                pack_root.join(format!("profiles/{name}.profile.json")),
+            )?)?;
+            profiles.push((name.to_owned(), profile));
+        }
+        for (directory, suffix, published) in [
+            ("presets", ".published.json", true),
+            ("deepthink-presets", ".profile.json", false),
+        ] {
+            let mut paths = std::fs::read_dir(pack_root.join("profiles").join(directory))?
+                .map(|entry| entry.map(|entry| entry.path()))
+                .collect::<std::io::Result<Vec<_>>>()?;
+            paths.retain(|path| path.to_string_lossy().ends_with(suffix));
+            paths.sort();
+            assert_eq!(paths.len(), 7, "seven staged {directory} Profiles");
+            for (index, path) in paths.iter().enumerate() {
+                let label = format!(
+                    "{directory}/{}",
+                    path.file_name().unwrap().to_string_lossy()
+                );
+                let bytes = std::fs::read(path)?;
+                let profile = if published {
+                    tobkiri_profile::parse_published(&bytes)?.to_profile(
+                        tobkiri_canon::ids::ProfileId::parse(&format!(
+                            "prof_staged_preset_{index}"
+                        ))?,
+                        &label,
+                    )
+                } else {
+                    tobkiri_profile::parse_profile(&bytes)?
+                };
+                profiles.push((label, profile));
+            }
+        }
+        assert_eq!(profiles.len(), 20);
+        for (_, profile) in &profiles {
+            for pin in &profile.packs {
+                if !packs.iter().any(|pack| pack.manifest.id == pin.id) {
+                    packs.push(staged_pack(&pack_root.join(pin.id.as_str()))?);
+                }
+            }
+        }
+        assert_eq!(packs.len(), 35);
+        let mut views = BTreeMap::new();
+        for pack in &packs {
+            for shape in load_shapes(&pack.manifest, &pack.files)? {
+                let reference = shape.reference.clone();
+                if views.insert(reference, shape).is_some() {
+                    bail!("duplicate authoritative shape in staged fixtures")
+                }
+            }
+        }
+        let engine = crate::WasmEngine::new()?;
+        let shapes = views.values().cloned().collect::<Vec<_>>();
+        let mut components = BTreeMap::<tobkiri_canon::Digest, Component>::new();
+        let mut wasm_count = 0;
+        for pack in &packs {
+            let RuntimeSpec::Wasm { component, .. } = &pack.manifest.runtime else {
+                continue;
+            };
+            let inspection = inspect_pack_wit(pack, &views)
+                .with_context(|| format!("inspect {}", pack.manifest.id))?;
+            let bytes = &pack.files[component];
+            let digest = tobkiri_canon::Digest::hash(bytes);
+            let component = if let Some(component) = components.get(&digest) {
+                component.clone()
+            } else {
+                let component = Component::new(engine.engine(), bytes)?;
+                components.insert(digest, component.clone());
+                component
+            };
+            crate::validate_imports(engine.engine(), &component, inspection.allowed_imports())
+                .with_context(|| format!("imports {}", pack.manifest.id))?;
+            validate_abi(engine.engine(), &component, pack, &shapes)
+                .with_context(|| format!("ABI {}", pack.manifest.id))?;
+            assert!(
+                crate::validate_imports(engine.engine(), &component, &Default::default()).is_err()
+            );
+            println!("verified component ABI {} {}", pack.manifest.id, pack.hash);
+            wasm_count += 1;
+        }
+        assert_eq!(wasm_count, 30);
+        for (name, profile) in profiles {
+            let selected = profile
+                .packs
+                .iter()
+                .map(|pin| {
+                    packs
+                        .iter()
+                        .find(|pack| pack.manifest.id == pin.id && pack.hash == pin.sha256)
+                        .cloned()
+                        .with_context(|| format!("verified Profile pin {}", pin.id))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let compiled = tobkiri_profile::compile(&profile, &selected)
+                .map_err(|conflicts| anyhow::anyhow!("Profile {name}: {conflicts:?}"))?;
+            println!(
+                "verified Profile {name}: {} Packs, {} Flows, {} views, {} overlay orders, {}",
+                selected.len(),
+                compiled.flows.len(),
+                compiled.views.len(),
+                profile.overlay_order.len(),
+                compiled.plan_digest,
+            );
+            let mut tampered = profile.clone();
+            tampered.packs[0].sha256 = tobkiri_canon::Digest::hash(b"wrong-artifact").into();
+            assert!(tobkiri_profile::compile(&tampered, &selected).is_err());
+        }
+        Ok(())
+    }
+}
