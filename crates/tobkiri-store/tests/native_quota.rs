@@ -2,7 +2,10 @@
 //! All database operations use the real GateEngine, fresh grants, and the
 //! public native Store APIs. This trusted fixture's bounded value producer is
 //! not a substitute for production guest-frame authentication.
-#![cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#![cfg(any(
+    all(target_os = "macos", target_arch = "aarch64"),
+    all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")
+))]
 
 use async_trait::async_trait;
 use std::{

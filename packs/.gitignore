@@ -2,4 +2,9 @@
 **/*.build.json
 **/wit/deps/
 **/guest-wit/
+
+# This authored shape belongs to the independent reader workspace.
+!/recovery/local.openrouter-generation-reader/wit/deps/
+/recovery/local.openrouter-generation-reader/wit/deps/*
+!/recovery/local.openrouter-generation-reader/wit/deps/reader.wit
 node_modules/

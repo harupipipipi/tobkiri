@@ -46,6 +46,14 @@ jobs:
           -p tobkiri-guest-sdk -p tobkiri-pack-harness-tools
           -p tobkiri-pack-deepthink -p tobkiri-pack-openai-compat-provider
           -p tobkiri-pack-harness-conversation-store --locked --lib
+      - name: Independent read-only generation reader tests
+        run: |
+          cargo test --manifest-path packs/recovery/local.openrouter-generation-reader/Cargo.toml --locked --lib
+          python3 -B -m unittest discover -s packs/recovery/tests -p test_generation_reader_build.py -v
+      - name: Build independent generation reader component
+        run: >-
+          cargo build --manifest-path packs/recovery/local.openrouter-generation-reader/Cargo.toml
+          --locked --release --target wasm32-wasip2
       - name: Build real Wasm Pack components
         run: >-
           cargo build --manifest-path packs/Cargo.toml --workspace
@@ -74,6 +82,20 @@ jobs:
           -- --ignored --exact --nocapture
       - name: Native store contracts
         run: cargo test -p tobkiri-store --lib --locked
+      - name: Native Linux ext4 ownership, tmpfs refusal and quota integration
+        if: ${{ !cancelled() }}
+        run: |
+          status=0
+          cargo test -p tobkiri-store --locked --test owner_linux -- --nocapture --test-threads=1 || status=$?
+          cargo test -p tobkiri-store --locked --test owner --test native_quota --test owner_unavailable -- --nocapture --test-threads=1 || status=$?
+          exit "$status"
+      - name: Independent reader WIT and actual component ABI admission
+        if: ${{ !cancelled() }}
+        env:
+          TOBKIRI_TEST_GENERATION_READER_STAGE: ${{ runner.temp }}/generation-reader
+        run: |
+          python3 -B packs/recovery/build_generation_reader.py stage --target-dir "$CARGO_TARGET_DIR" --build-profile release --destination "$TOBKIRI_TEST_GENERATION_READER_STAGE"
+          cargo test -p tobkiri-wasm --lib --locked abi::generation_reader_tests::real_reader_matches_verified_wit_and_closed_core_abi -- --ignored --exact --nocapture
       - name: Supervised filesystem effects
         if: ${{ !cancelled() }}
         run: cargo test -p tobkiri-wasm --lib --locked filesystem -- --nocapture
@@ -129,8 +151,8 @@ jobs:
       - name: Native User port values and streams
         if: ${{ !cancelled() }}
         run: cargo test -p tobkiri-core --lib --locked user_ports
-      # These tests require the real allocation-owner backend. Unsupported
-      # Linux owner refusal is exercised by the Core User-entry test above.
+      # These tests require the real platform allocation-owner backend.
+      # Linux ext4 positives and actual tmpfs refusal run in the Linux job.
       - name: Native prepaid allocation ownership
         if: ${{ !cancelled() }}
         run: cargo test -p tobkiri-wasm --lib --locked allocation

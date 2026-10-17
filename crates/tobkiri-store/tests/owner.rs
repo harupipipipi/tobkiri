@@ -1,4 +1,7 @@
-#![cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#![cfg(any(
+    all(target_os = "macos", target_arch = "aarch64"),
+    all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")
+))]
 use std::{os::unix::fs::PermissionsExt, process::Command};
 use tobkiri_canon::ids::{PackId, ProfileId};
 use tobkiri_store::{DataRoot, StoreError};

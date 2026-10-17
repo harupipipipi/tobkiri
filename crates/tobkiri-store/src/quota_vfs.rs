@@ -1658,7 +1658,10 @@ mod tests {
         }
     }
 
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(any(
+        all(target_os = "macos", target_arch = "aarch64"),
+        all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")
+    ))]
     #[test]
     fn child_owner_custody_probe() {
         let Some(path) = std::env::var_os("TOBKIRI_QUOTA_OWNER_CUSTODY_ROOT") else {
@@ -1676,7 +1679,10 @@ mod tests {
             assert!(acquired.is_ok());
         }
     }
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(any(
+        all(target_os = "macos", target_arch = "aarch64"),
+        all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")
+    ))]
     #[test]
     fn unknown_close_keeps_actual_owner_os_lock_and_core_slot() {
         use tobkiri_gate::{ControlKind, CoreControl};

@@ -622,10 +622,15 @@ async fn actual_user_port_cannot_bypass_missing_user_policy() {
     assert!(session.user_streams.snapshot().unwrap().is_empty());
     session.close().await.unwrap();
 }
-// The production Windows broker and verified Mac ARM64 owner combination admit
-// this native positive route. Windows CI executes its full assertions; Mac has
-// not been exercised in this run. Linux tests the explicit proof refusal below.
-#[cfg(any(windows, all(target_os = "macos", target_arch = "aarch64")))]
+// Native positives require the production Windows broker, the verified Mac
+// ARM64 combination, or Linux x86_64 GNU on a real admitted local ext4 root.
+// Linux CI must record native filesystem facts and execute these assertions;
+// unsupported Linux tuples retain the explicit proof refusal below.
+#[cfg(any(
+    windows,
+    all(target_os = "macos", target_arch = "aarch64"),
+    all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")
+))]
 #[tokio::test]
 async fn actual_user_value_and_stream_follow_the_same_gate_without_ui() {
     let (_fixture, session) = user_fixture(true).await;
@@ -686,7 +691,10 @@ async fn actual_user_value_and_stream_follow_the_same_gate_without_ui() {
     session.close().await.unwrap();
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(
+    target_os = "linux",
+    not(all(target_arch = "x86_64", target_env = "gnu"))
+))]
 #[tokio::test]
 async fn actual_user_entry_refuses_unavailable_linux_owner_proof_without_publishing_output() {
     fn refused<T>(result: Result<T, CoreError>) {
@@ -716,7 +724,8 @@ async fn actual_user_entry_refuses_unavailable_linux_owner_proof_without_publish
             .contains(&shape.to_string())
     );
     // Check the exact production platform guard independently of dispatch:
-    // Linux is not an admitted allocation-owner OS/filesystem combination.
+    // This Linux target tuple has no admitted allocation-owner proof. On the
+    // supported tuple, real non-ext4 refusal is covered by owner_linux tests.
     assert!(matches!(fixture.root.user_owner_lease(&fixture.profile.id),
         Err(tobkiri_store::StoreError::Unavailable(message))
         if message == "allocation owner OS/filesystem proof unavailable"));

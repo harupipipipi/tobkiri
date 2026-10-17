@@ -241,6 +241,13 @@ impl DataRoot {
 #[path = "owner_windows.rs"]
 mod windows;
 
+#[cfg(any(
+    test,
+    all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")
+))]
+#[path = "owner_linux.rs"]
+mod linux;
+
 /// Flush an already-held Windows allocation root without reopening a competing
 /// write handle. `false` means this process has no such native owner handle.
 #[cfg(windows)]
@@ -284,8 +291,8 @@ mod unix {
         }
         Ok(())
     }
-    /// Restrict the broker to the APFS/Darwin combination under verification.
-    /// Other combinations remain unavailable pending their platform proofs.
+    /// Admit only the platform/filesystem combinations with native proof.
+    /// Other combinations remain unavailable, including unknown Linux mounts.
     fn supported_filesystem(file: &File) -> Result<(), StoreError> {
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         {
@@ -311,7 +318,14 @@ mod unix {
             }
             Ok(())
         }
-        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+        {
+            super::linux::validate(file)
+        }
+        #[cfg(not(any(
+            all(target_os = "macos", target_arch = "aarch64"),
+            all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")
+        )))]
         {
             let _ = file;
             Err(StoreError::Unavailable(

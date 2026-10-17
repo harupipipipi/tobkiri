@@ -1,4 +1,8 @@
 //! Validate signatures before linking effectful dynamic callbacks.
+#[cfg(test)]
+#[path = "generation_reader_abi_tests.rs"]
+mod generation_reader_tests;
+
 use anyhow::{Context, Result, bail};
 use std::collections::BTreeMap;
 use tobkiri_manifest::{ShapeDef, VerifiedPack, WitFunction, WitType};
