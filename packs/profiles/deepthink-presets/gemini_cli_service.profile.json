@@ -453,31 +453,31 @@
     },
     {
       "id": "local.terminal-input",
-      "sha256": "sha256:f13a6adafa6b0b8e5f02f45765fe03b4d0c9c0e398e5975ce1cf6044f67f386e",
+      "sha256": "sha256:d41c86f7df8855867725bc7531f9a2770b858eb7110c4351a2fc4a3cbe4abcd6",
       "source": "file:../../local.terminal-input",
       "version": "0.1.0"
     },
     {
       "id": "local.harness-conversation-store",
-      "sha256": "sha256:2f25ec3698f7e8c70a51474135d013b92147c52f18bbd48471c4321d9587a4a7",
+      "sha256": "sha256:b610aa4dfcc8142f056b2fe81ce934b8cafabc27ed96423d76cbe7363dd26041",
       "source": "file:../../local.harness-conversation-store",
       "version": "0.1.0"
     },
     {
       "id": "local.deepthink-preset-gemini-cli-service",
-      "sha256": "sha256:377792c02e0d9f7e4beb2d0e141d28deb684758b41ca9aa043121949163e30b5",
+      "sha256": "sha256:b73720d2397dd7abedbfcfdd2f3da10b5c098fbe1f6588e6a252f9474cf0a511",
       "source": "file:../../local.deepthink-preset-gemini-cli-service",
       "version": "0.1.0"
     },
     {
       "id": "local.openrouter-mimo-provider",
-      "sha256": "sha256:d96e93fb73cdcdfc83670ae429075df2eac473c93f4df866e63e4b1dc7f6682d",
+      "sha256": "sha256:d687dbe0d6d9ca6df42afbcf2bf159683fcc930ed8c4d45fbaf460b7e57999f9",
       "source": "file:../../local.openrouter-mimo-provider",
       "version": "0.1.0"
     },
     {
       "id": "local.terminal-output",
-      "sha256": "sha256:d3557753eb7ac88e8833ad87b7d04dac3b9a006bc354ea4d9619d3dbb9747f91",
+      "sha256": "sha256:4a94cb6ad9f72946733f9fb2300b92fa3fab707e20efbd2aa06f3a12a488f601",
       "source": "file:../../local.terminal-output",
       "version": "0.1.0"
     },
@@ -495,7 +495,7 @@
     },
     {
       "id": "local.deepthink",
-      "sha256": "sha256:8b887245c8e5b9df4caec452a999e27a1d23f90f692a3d4524834e0e54903983",
+      "sha256": "sha256:b694f9e29b18c32721fb533977e0dff377b324644e327537cca2b7c3ea774172",
       "source": "file:../../local.deepthink",
       "version": "0.1.0"
     },

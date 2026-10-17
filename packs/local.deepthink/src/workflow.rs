@@ -147,6 +147,8 @@ pub struct Run {
     pub pending: VecDeque<Phase>,
     pub phases: Vec<Value>,
     pub generations: BTreeMap<String, CachedGeneration>,
+    #[serde(default)]
+    pub rejected_generations: BTreeMap<String, CachedGeneration>,
     pub phase_inputs: BTreeMap<String, Vec<Value>>,
     pub attempts: BTreeMap<String, Value>,
     pub tool_receipts: BTreeMap<String, ToolReceipt>,
@@ -290,6 +292,7 @@ impl Run {
             }]),
             phases: vec![],
             generations: BTreeMap::new(),
+            rejected_generations: BTreeMap::new(),
             phase_inputs: BTreeMap::new(),
             attempts: BTreeMap::new(),
             tool_receipts: BTreeMap::new(),
@@ -330,7 +333,9 @@ impl Run {
                 .is_some_and(|error| error.code != "review-rejected")
         {
             if let Some(point) = self.last_generation.clone() {
-                if self.generations.contains_key(&point.key) {
+                if self.generations.contains_key(&point.key)
+                    || self.rejected_generations.contains_key(&point.key)
+                {
                     let prefix = format!("{}:", point.base_key);
                     if self.tool_receipts.iter().any(|(key, receipt)| {
                         key.starts_with(&prefix) && receipt.status == "completed"
@@ -480,7 +485,7 @@ impl Run {
 
     fn phase_messages(&self, phase: &Phase) -> Vec<Value> {
         let mut messages = vec![json!({"role":"system","content":
-            "You perform one explicit workflow phase. Return only JSON matching the schema. summary contains concise decisions, assumptions and next actions, never private reasoning or chain-of-thought. All tool execution remains subject to the host's Gate, permissions and approvals. Never invent tools, skills, sources, files, completed checks or secret values. Use tool_calls only for actual selected tools; set result=null while requesting tools. Otherwise tool_calls=[] and result is the phase result. Do not request a user answer for mere notes, unused tools or confirmed settings."})];
+            "You perform one explicit workflow phase. Return only JSON matching the schema. The three top-level keys summary, tool_calls and result are mandatory; always include tool_calls:[] even when no tools are needed. summary contains concise decisions, assumptions and next actions, never private reasoning or chain-of-thought. All tool execution remains subject to the host's Gate, permissions and approvals. Never invent tools, skills, sources, files, completed checks or secret values. Use tool_calls only for actual selected tools; set result=null while requesting tools. Otherwise tool_calls=[] and result is the phase result. Do not request a user answer for mere notes, unused tools or confirmed settings."})];
         messages.extend(self.messages.clone());
         messages.push(json!({"role":"user","content":format!("{}\n\nphase:{}\n\nschema:{}\n\ncontext:{}",phases::prompt(&phase.id),phase.id,phases::schema(&phase.id),self.phase_context(phase))}));
         messages
@@ -527,6 +532,7 @@ impl Run {
             let request_digest = digest(
                 &json!({"model":self.model,"messages":messages,"schema":phases::schema(&phase.id)}),
             );
+            let cached = self.generations.contains_key(&key);
             let generated = if let Some(cached) = self.generations.get(&key) {
                 if cached.request_digest != request_digest {
                     return Err(invalid(
@@ -549,10 +555,38 @@ impl Run {
                     json!({"phase":phase.id,"status":"completed","usage":generated.usage}),
                 );
                 ports.persist(self)?;
-                let value: Value = serde_json::from_str(&generated.text)
-                    .map_err(|_| invalid("generation returned malformed JSON"))?;
-                phases::validate(&value, &phases::schema(&phase.id))
-                    .map_err(|message| invalid(&message))?;
+                generated
+            };
+            let validated = serde_json::from_str::<Value>(&generated.text)
+                .map_err(|_| invalid("generation returned malformed JSON"))
+                .and_then(|value| {
+                    phases::validate(&value, &phases::schema(&phase.id))
+                        .map_err(|message| invalid(&message))?;
+                    Ok(value)
+                });
+            let value = match validated {
+                Ok(value) => value,
+                Err(error) => {
+                    // Public completion text and its actual receipt survive a
+                    // failed contract. Rejected output is never a cache hit.
+                    self.generations.remove(&key);
+                    self.rejected_generations.insert(
+                        key,
+                        CachedGeneration {
+                            request_digest,
+                            generated,
+                        },
+                    );
+                    // This is a complete recovery checkpoint even if the host
+                    // stops before advance() can persist its outer error path.
+                    self.status = "quarantined".into();
+                    self.goal["status"] = json!("quarantined");
+                    self.error = Some(error.clone());
+                    ports.persist(self)?;
+                    return Err(error);
+                }
+            };
+            if !cached {
                 self.generations.insert(
                     key.clone(),
                     CachedGeneration {
@@ -561,12 +595,7 @@ impl Run {
                     },
                 );
                 ports.persist(self)?;
-                generated
-            };
-            let value: Value = serde_json::from_str(&generated.text)
-                .map_err(|_| invalid("invalid cached JSON"))?;
-            phases::validate(&value, &phases::schema(&phase.id))
-                .map_err(|message| invalid(&message))?;
+            }
             let calls = value["tool_calls"].as_array().unwrap();
             if calls.is_empty() {
                 if value["result"].is_null() {

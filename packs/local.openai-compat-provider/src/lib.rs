@@ -13,7 +13,7 @@ use tobkiri::core::{
     types::{Error, ErrorCode, StreamHandle},
 };
 use tobkiri_guest_sdk::{
-    openai::{ChatStream, request_body},
+    openai::{ChatStream, request_body_with_json_mode},
     sse::Decoder,
 };
 
@@ -26,6 +26,8 @@ struct Settings {
     timeout_ms: u32,
     #[serde(default)]
     provider_order: Option<Vec<String>>,
+    #[serde(default)]
+    json_mode: bool,
 }
 
 struct ActiveStream {
@@ -119,11 +121,12 @@ impl Provider for Pack {
                 .into_iter()
                 .map(|message| serde_json::json!({"role":message.role,"content":message.content}))
                 .collect::<Vec<_>>();
-            let body = request_body(
+            let body = request_body_with_json_mode(
                 &config.model,
                 messages,
                 prompt.max_tokens,
                 config.provider_order.as_deref(),
+                config.json_mode,
             )
             .to_string()
             .into_bytes();

@@ -24,6 +24,22 @@ pub fn request_body(
     value
 }
 
+/// Opt into valid JSON output for a Profile whose entire protocol is JSON.
+/// Text-oriented Profiles retain the unmodified provider request.
+pub fn request_body_with_json_mode(
+    model: &str,
+    messages: Vec<Value>,
+    max_tokens: u32,
+    provider_order: Option<&[String]>,
+    json_mode: bool,
+) -> Value {
+    let mut value = request_body(model, messages, max_tokens, provider_order);
+    if json_mode {
+        value["response_format"] = json!({"type": "json_object"});
+    }
+    value
+}
+
 /// Validate completion evidence and normalize only public stream information.
 #[derive(Default)]
 pub struct ChatStream {
@@ -164,6 +180,20 @@ fn decimal_string(value: &str) -> Result<String, &'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn json_mode_is_explicit_and_keeps_provider_default_output_budget() {
+        let messages = vec![json!({"role":"user","content":"Return JSON."})];
+        let text = request_body("model", messages.clone(), 0, None);
+        assert_eq!(
+            request_body_with_json_mode("model", messages.clone(), 0, None, false),
+            text
+        );
+        let structured = request_body_with_json_mode("model", messages, 0, None, true);
+        assert_eq!(structured["response_format"], json!({"type":"json_object"}));
+        assert!(structured.get("max_tokens").is_none());
+        assert!(text.get("response_format").is_none());
+    }
 
     #[test]
     fn provider_default_has_no_completion_cap_or_unsupported_parallel_flag() {

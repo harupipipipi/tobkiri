@@ -67,6 +67,8 @@ struct FakePorts {
     two_requirements: bool,
     bad_generation_seen: bool,
     partial_tool_error: bool,
+    invalid_public_output_once: Option<String>,
+    first_rejection_snapshot: Option<Run>,
 }
 impl Ports for FakePorts {
     fn active(&mut self) -> Result<(), Failure> {
@@ -86,6 +88,16 @@ impl Ports for FakePorts {
         phase: &str,
     ) -> Result<Generated, Failure> {
         self.calls.push(phase.into());
+        if phase == "goal_intake"
+            && !self.bad_generation_seen
+            && let Some(text) = self.invalid_public_output_once.clone()
+        {
+            self.bad_generation_seen = true;
+            return Ok(Generated {
+                text,
+                usage: json!({"input_tokens":10,"output_tokens":5,"cost_usd":"0.000001"}),
+            });
+        }
         let ctx = context(messages);
         self.contexts.push((phase.into(), ctx.clone()));
         let mut result = fixture(phase);
@@ -186,6 +198,9 @@ impl Ports for FakePorts {
         Ok(json!({"path":path,"kind":"tool-owned-storage-artifact","digest":"sha256:fixture"}))
     }
     fn persist(&mut self, run: &Run) -> Result<(), Failure> {
+        if self.first_rejection_snapshot.is_none() && !run.rejected_generations.is_empty() {
+            self.first_rejection_snapshot = Some(run.clone());
+        }
         self.saved = Some(run.clone());
         Ok(())
     }
@@ -311,6 +326,152 @@ fn review_requires_exact_unique_full_goal_criterion_coverage() {
     assert!(!workflow::review_approved(&review, &candidate, &expected));
     review["approved"] = json!("true");
     assert!(!workflow::review_approved(&review, &candidate, &expected));
+}
+
+#[test]
+fn malformed_and_schema_invalid_public_generations_are_durable_and_not_cached() {
+    for public_output in [r#"{"summary":"#, "{}"] {
+        let mut run = new_run(settings());
+        let mut ports = FakePorts {
+            invalid_public_output_once: Some(public_output.into()),
+            ..Default::default()
+        };
+        assert!(run.advance(&mut ports).is_err());
+        assert_eq!(run.status, "quarantined");
+        assert!(run.generations.is_empty());
+        assert_eq!(run.rejected_generations.len(), 1);
+        let rejected = &run.rejected_generations["goal_intake@0:0#0"];
+        assert_eq!(rejected.generated.text, public_output);
+        assert_eq!(rejected.generated.usage["input_tokens"], 10);
+        assert_eq!(rejected.generated.usage["cost_usd"], "0.000001");
+        assert_eq!(rejected.request_digest.len(), 64);
+        assert_eq!(run.usage()["attempts"], 1);
+        assert_eq!(run.usage()["tokens_complete"], true);
+        assert_eq!(run.usage()["cost_usd"], "0.000001");
+        assert_eq!(run.output(), "");
+        let saved = serde_json::to_vec(ports.saved.as_ref().unwrap()).unwrap();
+        let restored: Run = serde_json::from_slice(&saved).unwrap();
+        assert_eq!(
+            restored.rejected_generations["goal_intake@0:0#0"]
+                .generated
+                .text,
+            public_output
+        );
+        assert!(restored.generations.is_empty());
+    }
+
+    // Checkpoints created before rejection records existed remain readable.
+    let mut legacy = serde_json::to_value(new_run(settings())).unwrap();
+    legacy
+        .as_object_mut()
+        .unwrap()
+        .remove("rejected_generations");
+    let restored: Run = serde_json::from_value(legacy).unwrap();
+    assert!(restored.rejected_generations.is_empty());
+}
+
+#[test]
+fn first_rejection_checkpoint_is_already_quarantined_and_resumes_without_overwrite() {
+    let expected = new_run(settings());
+    let mut run = expected.clone();
+    let mut ports = FakePorts {
+        invalid_public_output_once: Some(r#"{"summary":"#.into()),
+        ..Default::default()
+    };
+    assert!(run.advance(&mut ports).is_err());
+
+    // This exact snapshot precedes advance()'s outer error-path persistence.
+    // A process stopped in that interval must not reuse the rejection's key.
+    let checkpoint = ports.first_rejection_snapshot.as_ref().unwrap();
+    assert_eq!(checkpoint.status, "quarantined");
+    assert_eq!(checkpoint.goal["status"], "quarantined");
+    assert_eq!(checkpoint.error.as_ref().unwrap().code, "invalid");
+    assert!(checkpoint.entry.is_some());
+    assert_eq!(checkpoint.attempts.len(), 1);
+    assert!(checkpoint.generations.is_empty());
+    let original_rejection =
+        serde_json::to_value(&checkpoint.rejected_generations["goal_intake@0:0#0"]).unwrap();
+    let bytes = serde_json::to_vec(checkpoint).unwrap();
+    let mut restored: Run = serde_json::from_slice(&bytes).unwrap();
+    restored.resume(&expected).unwrap();
+    assert_eq!(restored.status, "running");
+    assert_eq!(restored.generation_epochs["goal_intake@0:0"], 1);
+    complete(&mut restored, &mut ports);
+
+    assert_eq!(restored.status, "completed");
+    assert_eq!(
+        serde_json::to_value(&restored.rejected_generations["goal_intake@0:0#0"]).unwrap(),
+        original_rejection
+    );
+    assert_eq!(restored.rejected_generations.len(), 1);
+    assert!(restored.generations.contains_key("goal_intake@0:0#1"));
+    assert!(!restored.generations.contains_key("goal_intake@0:0#0"));
+    assert_eq!(
+        ports
+            .calls
+            .iter()
+            .filter(|phase| *phase == "goal_intake")
+            .count(),
+        2
+    );
+    assert_eq!(restored.usage()["attempts"], ports.calls.len());
+    assert_eq!(
+        restored.usage()["tokens"]["input_tokens"],
+        ports.calls.len() * 10
+    );
+}
+
+#[test]
+fn same_phase_resume_regenerates_rejected_outputs_and_keeps_prior_rejections_and_costs() {
+    for public_output in [r#"{"summary":"#, "{}"] {
+        let expected = new_run(settings());
+        let mut run = expected.clone();
+        let mut ports = FakePorts {
+            invalid_public_output_once: Some(public_output.into()),
+            ..Default::default()
+        };
+        assert!(run.advance(&mut ports).is_err());
+        let saved = serde_json::to_vec(ports.saved.as_ref().unwrap()).unwrap();
+        let mut restored: Run = serde_json::from_slice(&saved).unwrap();
+        restored.resume(&expected).unwrap();
+        assert_eq!(restored.generation_epochs["goal_intake@0:0"], 1);
+
+        // A second rejected response gets a separate durable reference, rather
+        // than replacing the first rejection or reusing it as a generation.
+        ports.bad_generation_seen = false;
+        assert!(restored.advance(&mut ports).is_err());
+        assert_eq!(restored.rejected_generations.len(), 2);
+        assert!(restored.generations.is_empty());
+        assert_eq!(restored.usage()["attempts"], 2);
+        restored.resume(&expected).unwrap();
+        assert_eq!(restored.generation_epochs["goal_intake@0:0"], 2);
+        complete(&mut restored, &mut ports);
+
+        assert_eq!(restored.status, "completed");
+        assert_eq!(
+            ports
+                .calls
+                .iter()
+                .filter(|phase| *phase == "goal_intake")
+                .count(),
+            3
+        );
+        for key in ["goal_intake@0:0#0", "goal_intake@0:0#1"] {
+            assert_eq!(
+                restored.rejected_generations[key].generated.text,
+                public_output
+            );
+            assert!(!restored.generations.contains_key(key));
+        }
+        assert!(restored.generations.contains_key("goal_intake@0:0#2"));
+        assert_eq!(restored.usage()["attempts"], ports.calls.len());
+        assert_eq!(
+            restored.usage()["tokens"]["input_tokens"],
+            ports.calls.len() * 10
+        );
+        assert_eq!(restored.usage()["tokens_complete"], true);
+        assert_eq!(restored.usage()["cost_known"], true);
+    }
 }
 
 #[test]

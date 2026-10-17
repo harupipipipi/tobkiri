@@ -1,5 +1,6 @@
 {
   "base_url": "https://openrouter.ai/api/v1",
+  "json_mode": true,
   "model": "xiaomi/mimo-v2.6-flash",
   "provider_order": [
     "xiaomi"

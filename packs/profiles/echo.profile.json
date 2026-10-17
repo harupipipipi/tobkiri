@@ -275,31 +275,31 @@
     },
     {
       "id": "local.echo-input",
-      "sha256": "sha256:bb1a65610d4fdafbfbe71c042be54fd31bfc33cb8e22193e53001eec79eca336",
+      "sha256": "sha256:7739abaf1200e9a728eaf671acdb51f44df38a542293bb33e35399be42b2b50a",
       "source": "file:../local.echo-input",
       "version": "0.1.0"
     },
     {
       "id": "local.echo-store",
-      "sha256": "sha256:f07ac933fb654eb283abc9f20e390237b5865963d3b3d9c633d100751c4250e5",
+      "sha256": "sha256:dbf360796f1a77f9e4c681089ef0a3babad97b652c52f4e105e75d97e3454b76",
       "source": "file:../local.echo-store",
       "version": "0.1.0"
     },
     {
       "id": "local.echo-prompt",
-      "sha256": "sha256:2a2ee1b9b7027e23f237e46461c44a86193732ddc23d35ebeb28780cb158e237",
+      "sha256": "sha256:99565785527aa9531c7b90787e700f9939c48ffe932ede12859b830f8f0de57f",
       "source": "file:../local.echo-prompt",
       "version": "0.1.0"
     },
     {
       "id": "local.echo-llm",
-      "sha256": "sha256:d17389907c45b691fbe781aa992320eee10ac5224696f3889e729908a881f4d6",
+      "sha256": "sha256:4d2ecc8d8fe58be01b6f5f71150e1ed0383cc2078d8d4d70a7fb236ab2843cf4",
       "source": "file:../local.echo-llm",
       "version": "0.1.0"
     },
     {
       "id": "local.echo-output",
-      "sha256": "sha256:89d3866415826f10599dbe9521cea2da8c5802f7ad2a4fe6fbd5c77fa487e2d3",
+      "sha256": "sha256:82c497dcc834485e3c8a7c8d1cd28ff459a21d4553fd77b0c8d35791dcea6e44",
       "source": "file:../local.echo-output",
       "version": "0.1.0"
     }

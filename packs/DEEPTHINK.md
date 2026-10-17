@@ -25,6 +25,12 @@ can be retried without discarding earlier work. A tool with an unknown outcome
 is not automatically replayed; the workflow requires reconciliation. Review
 limits still apply when resuming.
 
+Malformed JSON and schema-invalid public responses are preserved separately from
+the successful generation cache, together with their request digest and usage.
+The rejection, error and quarantined state share one atomic checkpoint. Recovery
+after a crash at that save point creates a new generation and retains the old
+rejected response and billing receipt.
+
 ## OpenRouter and usage
 
 Build the existing components and then compose the DeepThink Profiles:
@@ -47,6 +53,11 @@ The new provider uses `https://openrouter.ai/api/v1` and
 `api-key`; configure it through Core's secret API after creating and approving
 the Profile on a supported host. Credentials are not part of Pack config or
 published Profiles.
+
+The MiMo DeepThink provider explicitly enables JSON mode because every workflow
+phase exchanges a JSON envelope. This requests valid JSON from the provider;
+the workflow still validates the phase schema and semantic acceptance criteria.
+Other provider Profiles retain their ordinary text format.
 
 `max_tokens: 0` means omit the output token parameter from the provider request.
 Positive explicit limits are preserved. A successful stream requires an
@@ -77,10 +88,10 @@ Computer use and 3D editing software are not migrated by these Packs.
 
 ## Verification and current platform limits
 
-The Windows verification run passed 221 host pure tests and 35 guest tests
-(SDK 10, tools 7, DeepThink 18). A separate explicitly selected Rust test verified
+The Windows verification run passed 221 host pure tests and 39 guest tests
+(SDK 11, tools 7, DeepThink 21). A separate explicitly selected Rust test verified
 30 staged Wasm components against production WIT/import/ABI checks, compiled
-20 Profiles and rejected 20 modified pins. That is 257 Rust test cases in total;
+20 Profiles and rejected 20 modified pins. That is 261 Rust test cases in total;
 the component and Profile subchecks are not added again. All 35 `.tpk` archives
 passed CLI build/verify and source/archive manifest hash comparison. Three UI
 usage-formatting tests and five isolated SQLite SQL fixtures also passed.

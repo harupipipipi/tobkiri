@@ -102,6 +102,7 @@ def stage(target_dir: Path) -> list[Path]:
     provider = variant("openai-compat-provider", "openrouter-mimo-provider", {
         "base_url": ORIGIN + "/api/v1", "model": MODEL,
         "secret_name": "api-key", "timeout_ms": 300000, "provider_order": ["xiaomi"],
+        "json_mode": True,
     }, network=True)
     prompt = variant("harness-prompt", "mimo-prompt", {
         "model": MODEL, "system_prompt": "Follow the active Profile, use declared tools, and report verified outcomes accurately.",

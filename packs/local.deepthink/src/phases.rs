@@ -115,7 +115,7 @@ pub fn schema(phase: &str) -> Value {
 pub fn prompt(phase: &str) -> &'static str {
     match phase.split(':').next().unwrap_or(phase) {
         "goal_intake" => {
-            "ユーザー要求を目的・要件r1等・成果物・制約に分解する。高品質/完全/リアル等をquality_termsへ列挙し、まだ一括定義しない。独立に具体化可能な部分を先に整理し、不可欠な未知だけ少数clarificationsへ。用途、寸法、権利を捏造せず仮定と質問を区別する。3Dならproduction_kind=3d。"
+            "ユーザー要求を目的・要件r1等・成果物・制約に分解する。quality_termsにはユーザーが実際に要求した未定義の品質語だけを原文の語で列挙し、まだ一括定義しない。この指示内の例やユーザーが不要と明示した品質語を追加しない。具体的な数値・形式・合格条件だけで確定している課題はquality_terms=[]。独立に具体化可能な部分を先に整理し、不可欠な未知だけ少数clarificationsへ。用途、寸法、権利を捏造せず仮定と質問を区別する。3Dならproduction_kind=3d。"
         }
         "quality_terms" => {
             "current_quality_termの1項目だけ、定義・測定手順・合格閾値を明示。他の用語をまとめない。重要な閾値を勝手に確定せず仮定を記録し、不可欠な回答が必要ならresolved=falseと少数質問。"
