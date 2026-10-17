@@ -539,7 +539,24 @@ async fn expiry_and_completion_race_has_one_immutable_winner_across_connections(
 #[tokio::test]
 async fn live_future_expiry_is_preserved_and_watermark_does_not_swallow_later_delivery() {
     let f = Fixture::new();
-    let (first, expiry, _) = f.consumed().await;
+    let saved_consumed = |id: &GrantId| {
+        let body: Vec<u8> = f
+            .raw()
+            .query_row(
+                "SELECT body FROM reservations WHERE id=?1 AND state='consumed'",
+                [id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        serde_json::from_slice::<Reservation>(&body).unwrap()
+    };
+    let (first, original_expiry, _) = f.consumed().await;
+    // Consumption durably narrows the grant's deadline. Boundary checks must
+    // use that saved expiry, not the earlier pre-consumption grant timestamp.
+    let first_saved = saved_consumed(&first);
+    assert_eq!(first_saved.original_expires_unix_ms, Some(original_expiry));
+    let expiry = first_saved.expires_unix_ms;
+    assert!(expiry <= original_expiry);
     assert_eq!(
         f.gate.recover_profile_at(&f.profile, expiry - 1).unwrap(),
         0
@@ -565,6 +582,47 @@ async fn live_future_expiry_is_preserved_and_watermark_does_not_swallow_later_de
     );
     assert_eq!(f.gate.flush_outbox(&f.profile).await.unwrap(), 1);
     assert_eq!(f.outcome_count(), 2);
+
+    // Independently exercise the exact saved expiry without changing either
+    // completed decision or the preceding watermark/delivery assertions.
+    let (third, original_expiry, _) = f.consumed().await;
+    let third_saved = saved_consumed(&third);
+    assert_eq!(third_saved.original_expires_unix_ms, Some(original_expiry));
+    let expiry = third_saved.expires_unix_ms;
+    assert!(expiry <= original_expiry);
+    assert_eq!(
+        f.gate.recover_profile_at(&f.profile, expiry - 1).unwrap(),
+        0
+    );
+    assert!(f.approvals.terminal_delivery(&third).unwrap().is_none());
+    assert_eq!(f.gate.recover_profile_at(&f.profile, expiry).unwrap(), 1);
+    let retained = f.approvals.terminal_delivery(&third).unwrap().unwrap();
+    assert_eq!(
+        retained.decision.disposition,
+        TerminalDisposition::ExpiredCleanupUnknown
+    );
+    assert_eq!(
+        retained.decision.outcome,
+        Outcome::Failed {
+            code: "deadline-failure-unknown".into()
+        }
+    );
+    assert!(!retained.acknowledged);
+    assert_eq!(f.gate.recover_profile_at(&f.profile, expiry).unwrap(), 0);
+    assert!(matches!(
+        f.approvals.finish_terminal(&third, &Outcome::Succeeded),
+        Err(GateError::Denied(_))
+    ));
+    assert_eq!(f.gate.flush_outbox(&f.profile).await.unwrap(), 1);
+    let delivered = f.approvals.terminal_delivery(&third).unwrap().unwrap();
+    assert!(delivered.acknowledged);
+    assert_eq!(
+        serde_json::to_vec(&delivered.decision).unwrap(),
+        serde_json::to_vec(&retained.decision).unwrap()
+    );
+    assert_eq!(f.gate.flush_outbox(&f.profile).await.unwrap(), 0);
+    assert_eq!(f.outcome_count(), 3);
+    f.audit.verify().unwrap();
 }
 #[tokio::test]
 async fn sink_dedup_rejects_conflicting_payload_and_mixed_old_new_chain_survives_reopen() {
