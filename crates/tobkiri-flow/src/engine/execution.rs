@@ -75,15 +75,32 @@ impl RunState {
                                     .and_then(|id| flow.document.on_error.steps.get(id))
                                     .unwrap_or(&flow.document.on_error.default)
                                     == &ErrorAction::Continue;
-                            self.event(
-                                &step_cx,
-                                RunEventKind::StepFailed {
-                                    step: id.into(),
-                                    error: error.clone(),
-                                    continued,
-                                },
-                            )
-                            .await?;
+                            let mut observed_error =
+                                interruption::ObservedError::new(&self.cleanup, &step_cx.call);
+                            observed_error.record(&error);
+                            let recorded = self
+                                .event(
+                                    &step_cx,
+                                    RunEventKind::StepFailed {
+                                        step: id.into(),
+                                        error: error.clone(),
+                                        continued,
+                                    },
+                                )
+                                .await;
+                            observed_error.complete();
+                            drop(observed_error);
+                            if let Err(recording) = recorded {
+                                // Cancellation may invalidate this journal
+                                // operation while the same execution future
+                                // is finishing cleanup. It cannot erase an
+                                // already observed no-replay outcome.
+                                return Err(if is_no_replay(&error) {
+                                    error
+                                } else {
+                                    recording
+                                });
+                            }
                             if !continued {
                                 return Err(error);
                             }
@@ -367,7 +384,7 @@ impl RunState {
                             value
                         }
                         StepOutput::Stream(mut source) => {
-                            let mut cleanup = self.cleanup.stream();
+                            let mut cleanup = self.cleanup.stream(&cx.call);
                             let Some(route) = step.stream.as_ref() else {
                                 let error = StepError::new(
                                     "invalid",
@@ -555,7 +572,7 @@ impl RunState {
                             .run_provided_flow(&cx.call, &cx.frame, &cx.node, resolved, input)
                             .await?
                     };
-                    let mut cleanup_receipt = self.cleanup.stream();
+                    let mut cleanup_receipt = self.cleanup.stream(&cx.call);
                     let execution = async {
                         let mut result = None;
                         loop {
@@ -605,6 +622,9 @@ impl RunState {
                         })?))
                     }
                     .await;
+                    if let Err(error) = &execution {
+                        cleanup_receipt.observe_error(error);
+                    }
                     let cleanup = cleanup_receipt.close(&mut stream).await;
                     match (execution, cleanup) {
                         (Err(error), _) if is_no_replay(&error) => Err(error),
@@ -933,6 +953,7 @@ async fn close_after_error(
     cleanup: &mut StreamCleanup<'_>,
     error: StepError,
 ) -> StepError {
+    cleanup.observe_error(&error);
     match cleanup.close(source).await {
         Ok(()) => error,
         Err(_) if is_no_replay(&error) => error,

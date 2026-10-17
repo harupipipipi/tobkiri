@@ -1028,7 +1028,7 @@ async fn cancelled_active_run_stream_preserves_unawaited_source_cleanup() {
 
     let mut stream = run.into_stream();
     stream.cancel();
-    tokio::time::timeout(Duration::from_secs(1), journal.entered.notified())
+    tokio::time::timeout(Duration::from_secs(5), journal.entered.notified())
         .await
         .expect("cancelled interpreter reached its actual terminal journal");
     assert_eq!(control.usage().count(ControlKind::Task), 1);
@@ -1043,9 +1043,10 @@ async fn cancelled_active_run_stream_preserves_unawaited_source_cleanup() {
         .await
         .expect("same interpreter completed")
         .unwrap_err();
-    // The outer cancellation select dropped an active source. Its synchronous
-    // cancel request is not an awaited close receipt, even after task custody
-    // has really dropped. Preserve that independent cleanup uncertainty.
+    // The same execute future retained this non-cooperating source through the
+    // two-second cleanup grace, then dropped it. Its synchronous cancel is not
+    // an awaited close receipt, even after task custody has really dropped.
+    // Preserve that independent cleanup uncertainty.
     assert_eq!(error.code, "internal");
     assert_eq!(fake.stream_closed.load(Ordering::SeqCst), 0);
     // The receipt must follow destruction of execution-owned frame and native

@@ -1,4 +1,5 @@
 mod execution;
+mod interruption;
 
 use std::{
     collections::BTreeMap,
@@ -143,9 +144,10 @@ impl CleanupReceipt {
                 .error()),
         }
     }
-    fn stream(&self) -> StreamCleanup<'_> {
+    fn stream<'a>(&'a self, context: &'a CallCx) -> StreamCleanup<'a> {
         StreamCleanup {
             receipt: self,
+            observed_error: interruption::ObservedError::new(self, context),
             finished: false,
         }
     }
@@ -155,15 +157,21 @@ impl CleanupReceipt {
 /// its future before the exact close returns cannot certify physical cleanup.
 struct StreamCleanup<'a> {
     receipt: &'a CleanupReceipt,
+    observed_error: interruption::ObservedError<'a>,
     finished: bool,
 }
 impl StreamCleanup<'_> {
+    fn observe_error(&mut self, error: &StepError) {
+        self.observed_error.record(error);
+    }
+
     async fn close(&mut self, source: &mut CoreStream) -> Result<(), StepError> {
         let result = source.close().await;
         if let Err(error) = &result {
             self.receipt.record(CleanupFailure::from_error(error));
         }
         self.finished = true;
+        self.observed_error.complete();
         result
     }
 }
@@ -171,6 +179,8 @@ impl Drop for StreamCleanup<'_> {
     fn drop(&mut self) {
         if !self.finished {
             self.receipt.record(CleanupFailure::Incomplete);
+            // The shared observed-error guard is dropped next. If this same
+            // context stopped, it preserves a stronger observed facade.
         }
     }
 }
@@ -321,18 +331,18 @@ impl PreparedRun {
                 // Only an externally returned run serializes there; a nested
                 // Flow keeps its CoreValue intermediate and avoids an unused
                 // CoreBuffer allocation.
-                let control = tokio::select! {
-                    _ = flow_cx.cancel().cancelled() => Err(StepError::new("cancelled", "run cancelled by its input source")),
-                    _ = tokio::time::sleep_until(flow_cx.deadline().into()) => Err(StepError::new("cancelled", "original run deadline expired")),
-                    result = execute => result,
-                }?;
+                let control =
+                    interruption::execute_with_cleanup(&flow_cx, &state.cleanup, execute).await?;
                 let value = control.value();
-                let origin = control.origin().cloned().unwrap_or_else(|| CompletionOrigin {
-                    frame: flow_cx.frame.clone(),
-                    call: cx.clone(),
-                    code: CodeLocation::Flow,
-                    step_address: None,
-                });
+                let origin = control
+                    .origin()
+                    .cloned()
+                    .unwrap_or_else(|| CompletionOrigin {
+                        frame: flow_cx.frame.clone(),
+                        call: cx.clone(),
+                        code: CodeLocation::Flow,
+                        step_address: None,
+                    });
                 let return_code = origin.code;
                 let return_step = match origin.step_address {
                     Some(address) => Some(
@@ -373,12 +383,17 @@ impl PreparedRun {
                 // the terminal event; retaining FlowEntry would not authorize
                 // a FlowReturn allocation or lifecycle transition.
                 Ok::<_, StepError>((value, buffer, output_activation))
-            }.await;
+            }
+            .await;
             // ErrorPolicy may continue ordinary execution after a failed step,
             // but cannot certify a successful Flow while real source cleanup
             // is unknown. This check is synchronous and never clears a slot.
             let outcome = match outcome {
-                Ok(value) => state.cleanup.result().map(|()| value),
+                Ok(value) => state
+                    .cleanup
+                    .result()
+                    .and_then(|()| state.check(&cx))
+                    .map(|()| value),
                 Err(error) => Err(error),
             };
             let terminal = match &outcome {
