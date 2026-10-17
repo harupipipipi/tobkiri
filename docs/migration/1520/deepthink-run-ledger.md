@@ -5,6 +5,40 @@ model, original messages and provider/tool pins. New Runs use a separate
 `deepthink.run-ledger.v1` SQL repository in the Pack's existing private
 `workflows` store. Atomic KV replacement is no longer its Run authority.
 
+## Issue 1520 integration boundary
+
+[Issue 1520](https://github.com/harupipipipi/tobkiri/issues/1520) is the
+architecture authority. Integrate against `codex/issue-1520-rust-core` and
+recheck its current WIT, storage, Flow and host lifecycle contracts before
+adopting later upstream changes. PR 1521's `62866f6` is this work's original
+input; it does not certify compatibility with an unpublished or later tree.
+
+DeepThink, its model adapters, tools, recovery and public decision summaries
+remain ordinary Pack features. Pack-defined WIT and Profile bindings connect
+them through the same Core Gate and Flow engine. Generic stream lifecycle
+corrections stay in Core without knowledge of a DeepThink Pack or phase.
+Defaults remains one replaceable Profile. CLI and Launcher remain thin hosts;
+no Python runtime, localhost HTTP route or privileged Defaults shortcut is
+introduced. Python preparation/test utilities are not installed runtime paths.
+
+Preserve existing Setup, approval, settings and conversation UI contracts when
+connecting the Pack to the migrating host. Reconcile overlapping Core lifecycle
+changes separately; keep Pack artifacts and generic Core corrections reviewable
+as distinct commits. Source alignment, component ABI admission, host tests and
+complete MiMo execution are separate acceptance conditions.
+
+There is still an R4.3 gap: `continuation-input.status` and
+`reconcile-generation` currently enter gated Wasm exports directly, whereas
+submit/regeneration start Pack Flows. Issue 1520 declares no diagnostic-query
+exception. Routing these inputs through ordinary Pack control Flows is required
+before claiming complete alignment. Domain-specific Run/history preparation
+before submit/regeneration must also move into ordinary Flow worker steps.
+A synchronous Flow that calls back into the
+same still-exporting Pack hits the current instance re-entry guard; removing
+that guard is not a recovery shortcut. An input adapter must supply the complete
+continuation-input shape, because Profile bindings select a whole shape rather
+than individual operations.
+
 ## Saving and dispatching
 
 The repository uses the ordinary `storage@1.1.0` transaction resource. A Run

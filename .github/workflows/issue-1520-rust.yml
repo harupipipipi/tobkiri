@@ -67,7 +67,6 @@ jobs:
       CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-target
       CARGO_BUILD_JOBS: '2'
       CARGO_INCREMENTAL: '0'
-      TOBKIRI_SQL_PRODUCER_DIR: ${{ runner.temp }}/sqlite-core
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.94.0
@@ -98,6 +97,8 @@ jobs:
           mkdir "$RUNNER_TEMP/sdk34"
           tar -xzf "$tobkiri_sdk_archive" -C "$RUNNER_TEMP/sdk34"
       - name: Produce the exact private SQL module before host builds
+        env:
+          TOBKIRI_SQL_PRODUCER_DIR: ${{ runner.temp }}/sqlite-core
         run: >-
           python3 -B tools/wasm-sqlite/build-linux.py
           --archive "$RUNNER_TEMP/sdk34.tar.gz"
@@ -105,6 +106,8 @@ jobs:
           --out "$TOBKIRI_SQL_PRODUCER_DIR"
           --disk-floor-bytes 5905580032
       - name: Verify optional private SQLite experiment provenance
+        env:
+          TOBKIRI_SQL_PRODUCER_DIR: ${{ runner.temp }}/sqlite-core
         run: cargo check -p tobkiri-wasm --features private-sqlite-experiment --locked
 
   migration-completion:
