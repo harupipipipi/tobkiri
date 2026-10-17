@@ -7,7 +7,11 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::phases;
 
-pub const VERSION: &str = "deepthink.workflow.v2";
+pub const VERSION: &str = "deepthink.workflow.v3";
+
+fn default_contract_retries() -> u32 {
+    2
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -39,6 +43,10 @@ pub struct ProfileCheck {
 pub struct Settings {
     pub max_review_rounds: u32,
     pub max_tool_rounds: u32,
+    #[serde(default = "default_contract_retries")]
+    pub max_contract_retries: u32,
+    #[serde(default)]
+    pub structured_provider: bool,
     pub tools: Vec<Tool>,
     pub skills: Vec<Skill>,
     pub profile_checks: Vec<ProfileCheck>,
@@ -48,8 +56,13 @@ pub struct Settings {
 
 impl Settings {
     pub fn validate(&self) -> Result<(), Failure> {
-        if !(1..=5).contains(&self.max_review_rounds) || !(1..=8).contains(&self.max_tool_rounds) {
-            return Err(invalid("review rounds must be 1..5 and tool rounds 1..8"));
+        if !(1..=5).contains(&self.max_review_rounds)
+            || !(1..=8).contains(&self.max_tool_rounds)
+            || self.max_contract_retries > 3
+        {
+            return Err(invalid(
+                "review rounds must be 1..5, tool rounds 1..8 and contract retries 0..3",
+            ));
         }
         unique(self.tools.iter().map(|item| item.name.as_str()))?;
         unique(self.skills.iter().map(|item| item.name.as_str()))?;
@@ -149,6 +162,8 @@ pub struct Run {
     pub generations: BTreeMap<String, CachedGeneration>,
     #[serde(default)]
     pub rejected_generations: BTreeMap<String, CachedGeneration>,
+    #[serde(default)]
+    pub contract_retries: BTreeMap<String, u32>,
     pub phase_inputs: BTreeMap<String, Vec<Value>>,
     pub attempts: BTreeMap<String, Value>,
     pub tool_receipts: BTreeMap<String, ToolReceipt>,
@@ -293,6 +308,7 @@ impl Run {
             phases: vec![],
             generations: BTreeMap::new(),
             rejected_generations: BTreeMap::new(),
+            contract_retries: BTreeMap::new(),
             phase_inputs: BTreeMap::new(),
             attempts: BTreeMap::new(),
             tool_receipts: BTreeMap::new(),
@@ -350,9 +366,15 @@ impl Run {
                         .checked_add(1)
                         .ok_or_else(|| invalid("generation retry references are exhausted"))?;
                     self.generation_epochs.insert(point.base_key.clone(), next);
+                    let phase_prefix = format!("{}:", point.base_key.rsplit_once(':').unwrap().0);
+                    let allow_additional_tools =
+                        !self.tool_receipts.iter().any(|(key, receipt)| {
+                            key.starts_with(&phase_prefix) && receipt.status == "completed"
+                        });
                     self.retry_contexts.insert(format!("{}#{next}",point.base_key),json!({
                         "failed_generation":point.key,"failure":self.error,
                         "completed_tool_receipts":self.tool_receipts,
+                        "allow_additional_tools":allow_additional_tools,
                         "instruction":"Correct only the failed generation. Earlier tool effects are already complete and must not be repeated. Return the required phase contract using the retained evidence."
                     }));
                 }
@@ -485,7 +507,7 @@ impl Run {
 
     fn phase_messages(&self, phase: &Phase) -> Vec<Value> {
         let mut messages = vec![json!({"role":"system","content":
-            "You perform one explicit workflow phase. Return only JSON matching the schema. The three top-level keys summary, tool_calls and result are mandatory; always include tool_calls:[] even when no tools are needed. summary contains concise decisions, assumptions and next actions, never private reasoning or chain-of-thought. All tool execution remains subject to the host's Gate, permissions and approvals. Never invent tools, skills, sources, files, completed checks or secret values. Use tool_calls only for actual selected tools; set result=null while requesting tools. Otherwise tool_calls=[] and result is the phase result. Do not request a user answer for mere notes, unused tools or confirmed settings."})];
+            "You perform one explicit workflow phase. Return exactly one JSON object matching the schema, with nothing before or after it. The three top-level keys summary, tool_calls and result are mandatory inside that same object; always include tool_calls:[] even when no tools are needed. Never append a missing field after closing the object. summary contains concise decisions, assumptions and next actions, never private reasoning or chain-of-thought. All tool execution remains subject to the host's Gate, permissions and approvals. Never invent tools, skills, sources, files, completed checks or secret values. Use tool_calls only for actual selected tools; set result=null while requesting tools. Otherwise tool_calls=[] and result is the phase result. Do not request a user answer for mere notes, unused tools or confirmed settings."})];
         messages.extend(self.messages.clone());
         messages.push(json!({"role":"user","content":format!("{}\n\nphase:{}\n\nschema:{}\n\ncontext:{}",phases::prompt(&phase.id),phase.id,phases::schema(&phase.id),self.phase_context(phase))}));
         messages
@@ -597,6 +619,14 @@ impl Run {
                 ports.persist(self)?;
             }
             let calls = value["tool_calls"].as_array().unwrap();
+            if !calls.is_empty()
+                && self
+                    .retry_contexts
+                    .get(&key)
+                    .is_some_and(|retry| retry["allow_additional_tools"] == false)
+            {
+                return Err(Failure{code:"conflict".into(),message:"This correction follows completed tool effects. Additional tool requests require reconciliation; retained effects were not repeated.".into()});
+            }
             if calls.is_empty() {
                 if value["result"].is_null() {
                     return Err(invalid("completed phase has no result"));
@@ -702,6 +732,47 @@ impl Run {
         Ok(())
     }
 
+    fn retry_rejected_contract(
+        &mut self,
+        ports: &mut impl Ports,
+        phase: &Phase,
+        error: &Failure,
+    ) -> Result<Option<Value>, Failure> {
+        let Some(point) = self.last_generation.clone() else {
+            return Ok(None);
+        };
+        if error.code != "invalid" || !self.rejected_generations.contains_key(&point.key) {
+            return Ok(None);
+        }
+        let count = self
+            .contract_retries
+            .get(&point.base_key)
+            .copied()
+            .unwrap_or(0);
+        if count >= self.settings.max_contract_retries {
+            return Ok(None);
+        }
+        // An earlier tool round in this phase may already have committed an
+        // effect. Such phases require explicit reconciliation/resume instead.
+        let phase_prefix = format!("{}:", point.base_key.rsplit_once(':').unwrap().0);
+        if self
+            .tool_receipts
+            .iter()
+            .any(|(key, receipt)| key.starts_with(&phase_prefix) || receipt.status != "completed")
+        {
+            return Ok(None);
+        }
+        let expected = self.clone();
+        self.resume(&expected)?;
+        self.contract_retries.insert(point.base_key, count + 1);
+        ports.persist(self)?;
+        Ok(Some(json!({
+            "version":VERSION,"run_id":self.id,"phase":phase.id,"status":"retrying",
+            "reason":"invalid_phase_contract","retry":count+1,
+            "maximum_retries":self.settings.max_contract_retries,"usage":self.usage()
+        })))
+    }
+
     /// Perform at most one domain phase and persist every completed transition.
     pub fn advance(&mut self, ports: &mut impl Ports) -> Result<Vec<Value>, Failure> {
         if self.status != "running" {
@@ -737,6 +808,9 @@ impl Run {
                 self.status = "quarantined".into();
                 self.goal["status"] = json!("quarantined");
                 self.error = Some(error.clone());
+                if let Some(progress) = self.retry_rejected_contract(ports, &phase, &error)? {
+                    return Ok(vec![progress]);
+                }
                 ports.persist(self)?;
                 Err(error)
             }
@@ -896,7 +970,25 @@ impl Run {
                     }
                 }
                 self.context.insert("selection".into(), value.clone());
-                questions.extend(texts(&value, "gaps"));
+                let required = checked_ids(&self.goal, "requirements")?;
+                for gap in value["gaps"].as_array().unwrap() {
+                    let ids = texts(gap, "requirement_ids");
+                    unique(ids.iter().map(String::as_str))?;
+                    if ids.iter().any(|id| !required.contains(id))
+                        || (gap["blocking"] == true && ids.is_empty())
+                    {
+                        return Err(invalid(
+                            "a capability gap must identify actual Goal requirements",
+                        ));
+                    }
+                    if gap["blocking"] == true {
+                        questions.push(format!(
+                            "{} {}",
+                            gap["description"].as_str().unwrap(),
+                            gap["resolution"].as_str().unwrap()
+                        ));
+                    }
+                }
             }
             "work_environment" | "evidence" => {
                 if value["ready"] != true {

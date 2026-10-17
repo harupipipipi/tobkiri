@@ -22,6 +22,7 @@ use tobkiri::core::{
 use workflow::{Failure, Generated, Ports, Run, Settings, VERSION, invalid};
 
 const LLM: &str = "local.harness-chat.llm-provider@1.0";
+const STRUCTURED_LLM: &str = "local.harness-chat.structured-llm-provider@1.0";
 const TOOLS: &str = "local.harness-agent.tool-provider@1.0";
 
 struct Active {
@@ -92,14 +93,20 @@ impl Ports for Runtime {
         &mut self,
         model: &str,
         messages: &[Value],
-        _phase: &str,
+        phase: &str,
     ) -> Result<Generated, Failure> {
         self.active()?;
         // Zero is the typed provider's explicit provider-default convention.
         // The provider omits max_tokens instead of imposing an arbitrary cap.
-        let arguments =
-            json!({"prompt":{"model":model,"messages":messages,"max-tokens":0}}).to_string();
-        let stream = flow::call_port_stream(LLM, "chat", &arguments).map_err(failure)?;
+        let structured = STATE.with_borrow(|state| {
+            state
+                .settings
+                .as_ref()
+                .is_some_and(|settings| settings.structured_provider)
+        });
+        let (port, arguments) = generation_port_arguments(model, messages, phase, structured);
+        let stream =
+            flow::call_port_stream(port, "chat", &arguments.to_string()).map_err(failure)?;
         let outcome = (|| {
             let mut text = String::new();
             let mut completed = false;
@@ -492,6 +499,25 @@ fn tool_port_arguments(call: &Value) -> Value {
     // Core's typed Json codec serializes this object for the guest exactly
     // once. Supplying a JSON string here would double-encode the tool call.
     json!({"call": call})
+}
+
+fn generation_port_arguments(
+    model: &str,
+    messages: &[Value],
+    phase: &str,
+    structured: bool,
+) -> (&'static str, Value) {
+    let mut arguments = json!({"prompt":{"model":model,"messages":messages,"max-tokens":0}});
+    if structured {
+        let name = format!("deepthink_{}", &workflow::digest(&json!(phase))[..24]);
+        // Json must remain an object here. Core's typed codec serializes it
+        // once for the receiving guest, just like the real-tool call port.
+        arguments["response-format"] =
+            json!({"name":name,"schema":phases::schema(phase),"strict":true});
+        (STRUCTURED_LLM, arguments)
+    } else {
+        (LLM, arguments)
+    }
 }
 
 fn event(kind: &str, text: Option<String>) -> String {

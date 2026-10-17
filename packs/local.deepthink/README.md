@@ -16,6 +16,23 @@ all candidates quarantined and produce no assistant answer.
 Every model result is strict JSON with a concise decision summary. Private
 reasoning is neither requested nor emitted. No phase imposes an output-token
 limit. A typed zero token setting means the provider must omit its wire limit.
+The optional `local.harness-chat.structured-llm-provider` port carries the actual
+phase schema as typed JSON. It asks the provider for `json_schema` with `strict`
+but always validates locally: a successful HTTP response is not proof of schema
+compliance. `structured_provider=true` requires that binding and never silently
+falls back to a less restrictive provider operation. Existing plain chat Prompts
+and the ordinary `llm-provider` interface remain compatible.
+
+Protocol `deepthink.workflow.v3` records typed capability gaps. Only a blocking
+gap tied to an actual Goal requirement pauses for input; optional limitations
+retain their real fallback plan. Old v2 checkpoints remain retained and cannot
+be silently upgraded or mixed with this schema/configuration.
+Malformed or schema-invalid public responses have at most two automatic retries
+by default (`max_contract_retries`: 0..3). Every rejection and actual usage receipt
+remains durable, including across restart. Semantic errors, review rejection,
+unresolved tool effects and any phase that already executed a tool are not
+automatically retried. Explicit correction after a tool effect must return its
+final contract without further tool requests; attempted effect replay is refused.
 
 Each completed model generation, usage receipt and phase transition is persisted
 in this Pack's private Core store. `goal.json`, `goal.md`, drafts, quarantined
@@ -32,6 +49,19 @@ usage and old cache generations. Changed model/config/permissions are rejected.
 The continuation input always starts the Pack-owned continuation Flow, which
 streams the workflow and appends a meaningful answer or resume marker to the
 conversation. The UI does not call an execution method outside Flow.
+The native CLI can submit the same input through the ordinary User port:
+
+```sh
+tobkiri --data-root ./host-data profile invoke --profile PROFILE_ID \
+  --shape local.deepthink.continuation-input@1.0 --op submit \
+  --args-file ./resume.json
+```
+
+`resume.json` contains `{"run-id":"RUN_ID","conversation":"CONVERSATION_ID","answers":null}`.
+Use the original run's conversation ID. The command uses the existing User
+permissions and Gate, streams output until its real source finishes, and does
+not repeat an invocation after an output or cleanup failure. Preserve its run
+reference and inspect the saved state before retrying an uncertain effect.
 Unresolved non-idempotent tool outcomes require reconciliation; they are never
 automatically replayed. Missing provider cost receipts remain explicitly unknown.
 The default review schedule is two reviews, configurable from one to five.
@@ -47,5 +77,6 @@ is reported as completed.
 Builds/staging use `packs/build_deepthink.py`. Development scripts may use Python;
 the runtime artifact is a Rust-built Wasm component with hash-bound WIT, config,
 overlay and build provenance. Production activation still requires the Profile's
-verification, conflict checks and approval; this README makes no migration parity
-or successful Windows Core execution claim.
+verification, conflict checks and approval. Core startup and checkpoint persistence
+alone do not establish successful model completion, tool execution or migration
+parity. Native acceptance must record those results separately.

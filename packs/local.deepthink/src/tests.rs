@@ -9,6 +9,8 @@ fn settings() -> Settings {
     Settings {
         max_review_rounds: 2,
         max_tool_rounds: 3,
+        max_contract_retries: 0,
+        structured_provider: false,
         tools: vec![],
         skills: vec![],
         profile_checks: vec![],
@@ -69,6 +71,10 @@ struct FakePorts {
     partial_tool_error: bool,
     invalid_public_output_once: Option<String>,
     first_rejection_snapshot: Option<Run>,
+    invalid_public_output_count: usize,
+    invalid_after_tool_once: bool,
+    selection_gap: Option<Value>,
+    repeat_tool_after_rejection: bool,
 }
 impl Ports for FakePorts {
     fn active(&mut self) -> Result<(), Failure> {
@@ -89,10 +95,11 @@ impl Ports for FakePorts {
     ) -> Result<Generated, Failure> {
         self.calls.push(phase.into());
         if phase == "goal_intake"
-            && !self.bad_generation_seen
+            && (!self.bad_generation_seen || self.invalid_public_output_count > 0)
             && let Some(text) = self.invalid_public_output_once.clone()
         {
             self.bad_generation_seen = true;
+            self.invalid_public_output_count = self.invalid_public_output_count.saturating_sub(1);
             return Ok(Generated {
                 text,
                 usage: json!({"input_tokens":10,"output_tokens":5,"cost_usd":"0.000001"}),
@@ -118,6 +125,11 @@ impl Ports for FakePorts {
         if phase == "means_selection" && self.bad_selection_once && !self.bad_generation_seen {
             self.bad_generation_seen = true;
             result["selected_tools"] = json!(["not-provided"]);
+        }
+        if phase == "means_selection"
+            && let Some(gap) = &self.selection_gap
+        {
+            result["gaps"] = json!([gap]);
         }
         if phase.starts_with("profile_check:") && self.tool_in_profile_check {
             calls = json!([{"id":"not-permitted","name":"artifact.write","arguments":{"path":"unexpected.md","content":"x"}}]);
@@ -147,10 +159,11 @@ impl Ports for FakePorts {
         if phase.starts_with("section:") {
             result["section_id"] = ctx["current_section"]["id"].clone();
             if self.tool_mode && phase == "section:calculation" {
-                if !messages.last().unwrap()["content"]
-                    .as_str()
-                    .unwrap()
-                    .starts_with("Verified real tool results:")
+                if !messages.iter().any(|message| {
+                    message["content"]
+                        .as_str()
+                        .is_some_and(|text| text.starts_with("Verified real tool results:"))
+                }) || (self.repeat_tool_after_rejection && self.bad_generation_seen)
                 {
                     calls = json!([{"id":"write-one","name":"artifact.write","arguments":{"path":"answer.md","content":"323"}}]);
                     if self.partial_tool_error {
@@ -160,6 +173,12 @@ impl Ports for FakePorts {
                             .push(json!({"id":"unknown","name":"not-selected","arguments":{}}));
                     }
                     result = Value::Null;
+                } else if self.invalid_after_tool_once && !self.bad_generation_seen {
+                    self.bad_generation_seen = true;
+                    return Ok(Generated {
+                        text: "{".into(),
+                        usage: json!({"input_tokens":10,"output_tokens":5,"cost_usd":"0.000001"}),
+                    });
                 } else if self.fail_after_tool && !self.failed_once {
                     self.failed_once = true;
                     return Err(Failure {
@@ -326,6 +345,183 @@ fn review_requires_exact_unique_full_goal_criterion_coverage() {
     assert!(!workflow::review_approved(&review, &candidate, &expected));
     review["approved"] = json!("true");
     assert!(!workflow::review_approved(&review, &candidate, &expected));
+}
+
+#[test]
+fn bounded_contract_retries_survive_restart_and_keep_all_rejections_and_costs() {
+    let mut config = settings();
+    config.max_contract_retries = 2;
+    let mut run = new_run(config);
+    let mut ports = FakePorts {
+        invalid_public_output_once: Some("{".into()),
+        invalid_public_output_count: 2,
+        ..Default::default()
+    };
+    let progress = run.advance(&mut ports).unwrap();
+    assert_eq!(progress[0]["status"], "retrying");
+    assert_eq!(run.status, "running");
+    assert_eq!(run.contract_retries["goal_intake@0:0"], 1);
+    let saved = serde_json::to_vec(ports.saved.as_ref().unwrap()).unwrap();
+    let mut restored: Run = serde_json::from_slice(&saved).unwrap();
+    let progress = restored.advance(&mut ports).unwrap();
+    assert_eq!(progress[0]["retry"], 2);
+    complete(&mut restored, &mut ports);
+    assert_eq!(restored.status, "completed");
+    assert_eq!(restored.rejected_generations.len(), 2);
+    assert_eq!(restored.contract_retries["goal_intake@0:0"], 2);
+    assert!(restored.generations.contains_key("goal_intake@0:0#2"));
+    assert_eq!(restored.usage()["attempts"], ports.calls.len());
+    assert_eq!(
+        restored.usage()["tokens"]["input_tokens"],
+        ports.calls.len() * 10
+    );
+    assert_eq!(restored.usage()["cost_known"], true);
+    assert_eq!(ports.effects, 0);
+}
+
+#[test]
+fn automatic_contract_retry_limit_quarantines_without_fabricating_success() {
+    let mut config = settings();
+    config.max_contract_retries = 2;
+    let mut run = new_run(config);
+    let mut ports = FakePorts {
+        invalid_public_output_once: Some("{}".into()),
+        invalid_public_output_count: 3,
+        ..Default::default()
+    };
+    assert_eq!(run.advance(&mut ports).unwrap()[0]["retry"], 1);
+    assert_eq!(run.advance(&mut ports).unwrap()[0]["retry"], 2);
+    assert!(run.advance(&mut ports).is_err());
+    assert_eq!(run.status, "quarantined");
+    assert_eq!(run.output(), "");
+    assert_eq!(run.rejected_generations.len(), 3);
+    assert_eq!(run.usage()["attempts"], 3);
+    assert_eq!(ports.calls.len(), 3);
+    assert!(run.advance(&mut ports).unwrap().is_empty());
+    assert_eq!(ports.calls.len(), 3);
+
+    let mut config = settings();
+    config.max_contract_retries = 2;
+    let mut run = new_run(config);
+    let mut ports = FakePorts {
+        bad_selection_once: true,
+        ..Default::default()
+    };
+    while run.status == "running" {
+        let _ = run.advance(&mut ports);
+    }
+    assert_eq!(run.status, "quarantined");
+    assert!(run.contract_retries.is_empty());
+    assert_eq!(
+        ports
+            .calls
+            .iter()
+            .filter(|p| p.as_str() == "means_selection")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn invalid_generation_after_tool_effect_needs_explicit_resume_without_effect_replay() {
+    let mut config = tool_settings();
+    config.max_contract_retries = 2;
+    let expected = new_run(config.clone());
+    let mut run = expected.clone();
+    let mut ports = FakePorts {
+        tool_mode: true,
+        invalid_after_tool_once: true,
+        ..Default::default()
+    };
+    while run.status == "running" {
+        let _ = run.advance(&mut ports);
+    }
+    assert_eq!(run.status, "quarantined");
+    assert_eq!(ports.effects, 1);
+    assert!(run.contract_retries.is_empty());
+    assert!(
+        run.rejected_generations
+            .contains_key("section:calculation@0:1#0")
+    );
+    run.resume(&expected).unwrap();
+    complete(&mut run, &mut ports);
+    assert_eq!(run.status, "completed");
+    assert_eq!(ports.effects, 1);
+    assert_eq!(run.usage()["attempts"], ports.calls.len());
+
+    let mut run = expected.clone();
+    let mut ports = FakePorts {
+        tool_mode: true,
+        invalid_after_tool_once: true,
+        repeat_tool_after_rejection: true,
+        ..Default::default()
+    };
+    while run.status == "running" {
+        let _ = run.advance(&mut ports);
+    }
+    run.resume(&expected).unwrap();
+    while run.status == "running" {
+        let _ = run.advance(&mut ports);
+    }
+    assert_eq!(run.status, "quarantined");
+    assert_eq!(run.error.as_ref().unwrap().code, "conflict");
+    assert_eq!(ports.effects, 1);
+}
+
+#[test]
+fn typed_optional_gaps_proceed_and_real_required_gaps_preserve_user_input_gate() {
+    for blocking in [false, true] {
+        let mut run = new_run(settings());
+        let mut ports = FakePorts {
+            selection_gap: Some(json!({
+                "requirement_ids":["r1"],"blocking":blocking,
+                "description":"専用計算ツールは未提供",
+                "resolution":if blocking {"必要な専用検証手段を提供してください"} else {"この整数計算は手計算で検算する"}
+            })),
+            ..Default::default()
+        };
+        complete(&mut run, &mut ports);
+        assert_eq!(
+            run.status,
+            if blocking { "needs_input" } else { "completed" }
+        );
+        assert_eq!(run.context["selection"]["gaps"][0]["blocking"], blocking);
+        if blocking {
+            assert!(run.output().contains("必要な専用検証手段"));
+        }
+    }
+    let mut run = new_run(settings());
+    let mut ports = FakePorts {
+        selection_gap: Some(json!({
+            "requirement_ids":["invented"],"blocking":true,
+            "description":"未知の要件","resolution":"推測で範囲を追加しない"
+        })),
+        ..Default::default()
+    };
+    while run.status == "running" {
+        let _ = run.advance(&mut ports);
+    }
+    assert_eq!(run.status, "quarantined");
+    assert!(run.error.as_ref().unwrap().message.contains("actual Goal"));
+    assert_eq!(ports.effects, 0);
+}
+
+#[test]
+fn protocol_version_and_retry_bounds_do_not_silently_upgrade_old_checkpoints() {
+    let expected = new_run(settings());
+    let mut old = expected.clone();
+    old.version = "deepthink.workflow.v2".into();
+    assert!(old.resume(&expected).is_err());
+    let mut config = settings();
+    config.max_contract_retries = 4;
+    assert!(config.validate().is_err());
+    let mut document = serde_json::to_value(settings()).unwrap();
+    document
+        .as_object_mut()
+        .unwrap()
+        .remove("max_contract_retries");
+    let compatible: Settings = serde_json::from_value(document).unwrap();
+    assert_eq!(compatible.max_contract_retries, 2);
 }
 
 #[test]
@@ -593,6 +789,26 @@ fn workflow_bounds_are_explicit_and_phase_contracts_reject_invalid_json_types() 
     assert!(config.validate().is_ok());
     let envelope = json!({"summary":summary(),"tool_calls":[],"result":{"approved":"true","feedback":"ok","blocking_issues":[],"acceptance_results":[]}});
     assert!(phases::validate(&envelope, &phases::schema("review:1")).is_err());
+}
+
+#[test]
+fn structured_generation_port_carries_actual_schema_as_json_and_never_falls_back_implicitly() {
+    let messages = vec![json!({"role":"user","content":"課題"})];
+    let (port, arguments) =
+        crate::generation_port_arguments("fixture-model", &messages, "goal_intake", true);
+    assert_eq!(port, "local.harness-chat.structured-llm-provider@1.0");
+    assert_eq!(arguments["prompt"]["max-tokens"], 0);
+    assert_eq!(
+        arguments["response-format"]["schema"],
+        phases::schema("goal_intake")
+    );
+    assert!(arguments["response-format"]["schema"].is_object());
+    assert_eq!(arguments["response-format"]["strict"], true);
+    assert!(arguments["response-format"]["name"].as_str().unwrap().len() < 64);
+    let (port, arguments) =
+        crate::generation_port_arguments("fixture-model", &messages, "goal_intake", false);
+    assert_eq!(port, "local.harness-chat.llm-provider@1.0");
+    assert!(arguments.get("response-format").is_none());
 }
 
 #[test]

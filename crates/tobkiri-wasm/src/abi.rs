@@ -344,10 +344,9 @@ mod staged_component_tests {
             "deepthink-mimo",
             "deepthink-mimo-ui",
         ] {
-            let profile = tobkiri_profile::parse_profile(&std::fs::read(
-                pack_root.join(format!("profiles/{name}.profile.json")),
-            )?)?;
-            profiles.push((name.to_owned(), profile));
+            let path = pack_root.join(format!("profiles/{name}.profile.json"));
+            let profile = tobkiri_profile::parse_profile(&std::fs::read(&path)?)?;
+            profiles.push((name.to_owned(), profile, path));
         }
         for (directory, suffix, published) in [
             ("presets", ".published.json", true),
@@ -375,24 +374,46 @@ mod staged_component_tests {
                 } else {
                     tobkiri_profile::parse_profile(&bytes)?
                 };
-                profiles.push((label, profile));
+                profiles.push((label, profile, path.clone()));
             }
         }
         assert_eq!(profiles.len(), 20);
-        for (_, profile) in &profiles {
+        for (_, profile, path) in &profiles {
             for pin in &profile.packs {
-                if !packs.iter().any(|pack| pack.manifest.id == pin.id) {
-                    packs.push(staged_pack(&pack_root.join(pin.id.as_str()))?);
+                if !packs
+                    .iter()
+                    .any(|pack| pack.manifest.id == pin.id && pack.hash == pin.sha256)
+                {
+                    let locator = pin
+                        .source
+                        .strip_prefix("file:")
+                        .context("staged Profile must select a local source")?;
+                    let directory = path
+                        .parent()
+                        .context("staged Profile source directory is absent")?
+                        .join(locator);
+                    let pack = staged_pack(&directory)?;
+                    if pack.manifest.id != pin.id || pack.hash != pin.sha256 {
+                        bail!("staged Profile source differs from its exact pin")
+                    }
+                    packs.push(pack);
                 }
             }
         }
-        assert_eq!(packs.len(), 35);
+        assert_eq!(packs.len(), 36);
         let mut views = BTreeMap::new();
         for pack in &packs {
             for shape in load_shapes(&pack.manifest, &pack.files)? {
                 let reference = shape.reference.clone();
-                if views.insert(reference, shape).is_some() {
-                    bail!("duplicate authoritative shape in staged fixtures")
+                // Alternative artifacts can retain the same defining Pack ID
+                // and identical WIT. Each Profile still selects one exact hash;
+                // conflicting definitions must never be merged for ABI checks.
+                if let Some(previous) = views.get(&reference) {
+                    if previous != &shape {
+                        bail!("conflicting authoritative shape in staged fixtures")
+                    }
+                } else {
+                    views.insert(reference, shape);
                 }
             }
         }
@@ -426,7 +447,7 @@ mod staged_component_tests {
             wasm_count += 1;
         }
         assert_eq!(wasm_count, 30);
-        for (name, profile) in profiles {
+        for (name, profile, _) in profiles {
             let selected = profile
                 .packs
                 .iter()

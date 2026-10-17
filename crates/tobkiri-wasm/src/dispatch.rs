@@ -329,135 +329,154 @@ impl PackHost {
         final_output: Option<FinalOutputKind>,
         typed: bool,
     ) -> Result<DispatchOutput> {
-        self.shared.gate.check_context(cx)?;
-        let (view, op) = match admission.effect() {
-            EffectRequest::PortCall { shape, op } => (shape.clone(), op.clone()),
-            _ => bail!("physical port admission effect mismatch"),
-        };
-        let (pack, provided, provider_function) =
-            self.resolve_for_admission(cx, &view, &op, admission.requires_dynamic_consumes())?;
-        let caller_function = self
-            .shared
-            .views
-            .get(&view)
-            .and_then(|shape| shape.functions.get(&op))
-            .context("operation outside the exact frozen caller view")?;
-        let target = FrozenPortTarget {
-            pack: pack.manifest.id.clone(),
-            hash: pack.hash.clone(),
-            provided: provided.reference.clone(),
-        };
-        if admission.target() != &target {
-            bail!("admission does not select this frozen provider")
-        }
-        let digest = admission.args_digest().clone();
-        let bridge = self
-            .shared
-            .provider_entry
-            .get()
-            .context("Core provider-entry bridge not installed")?
-            .clone();
-        let request = ProviderRequest {
-            control: self,
-            caller: cx,
-            view: &view,
-            op: &op,
-            target: &target,
-            args_digest: &digest,
-            origin,
-        };
-        bridge
-            .validate_prepare(&request)
-            .map_err(anyhow::Error::new)?;
-        // The original unconsumed Grant reaches exactly one final claim and
-        // atomic dispatch cost. Provider entry cannot mint another PortCall.
-        let dispatch = self
-            .shared
-            .gate
-            .claim_port(cx, admission, &view, &op, &digest, &target)
-            .await?;
-        let mut terminal =
-            ConsumedPortTerminal::new(dispatch.into_permit(), self.shared.gate.clone());
-        if let Err(error) = terminal.watch(cx) {
-            terminal
-                .finish(Outcome::Failed {
-                    code: "lease-supervision".into(),
-                })
+        let result = async {
+            self.shared.gate.check_context(cx)?;
+            let (view, op) = match admission.effect() {
+                EffectRequest::PortCall { shape, op } => (shape.clone(), op.clone()),
+                _ => bail!("physical port admission effect mismatch"),
+            };
+            let (pack, provided, provider_function) =
+                self.resolve_for_admission(cx, &view, &op, admission.requires_dynamic_consumes())?;
+            let caller_function = self
+                .shared
+                .views
+                .get(&view)
+                .and_then(|shape| shape.functions.get(&op))
+                .context("operation outside the exact frozen caller view")?;
+            let target = FrozenPortTarget {
+                pack: pack.manifest.id.clone(),
+                hash: pack.hash.clone(),
+                provided: provided.reference.clone(),
+            };
+            if admission.target() != &target {
+                bail!("admission does not select this frozen provider")
+            }
+            let digest = admission.args_digest().clone();
+            let bridge = self
+                .shared
+                .provider_entry
+                .get()
+                .context("Core provider-entry bridge not installed")?
+                .clone();
+            let request = ProviderRequest {
+                control: self,
+                caller: cx,
+                view: &view,
+                op: &op,
+                target: &target,
+                args_digest: &digest,
+                origin,
+            };
+            bridge
+                .validate_prepare(&request)
+                .map_err(anyhow::Error::new)?;
+            // The original unconsumed Grant reaches exactly one final claim and
+            // atomic dispatch cost. Provider entry cannot mint another PortCall.
+            let dispatch = self
+                .shared
+                .gate
+                .claim_port(cx, admission, &view, &op, &digest, &target)
                 .await?;
-            return Err(error.into());
-        }
-        let frame = match bridge.enter_provider(&request, terminal.permit(), &args) {
-            Ok(frame) => frame,
-            Err(error) => {
+            let mut terminal =
+                ConsumedPortTerminal::new(dispatch.into_permit(), self.shared.gate.clone());
+            if let Err(error) = terminal.watch(cx) {
                 terminal
                     .finish(Outcome::Failed {
-                        code: "provider-entry".into(),
+                        code: "lease-supervision".into(),
                     })
                     .await?;
-                return Err(anyhow::Error::new(error));
+                return Err(error.into());
             }
-        };
-        // Only a successfully authenticated actual origin selects whether the
-        // caller is Core's canonical view or an executing guest's import WIT.
-        let nominal_core_error = self.nominal_core_error(cx, &view, &target, &op, origin);
-        if let Err(error) = terminal.bind_execution_deadline(cx, frame.context()).await {
-            let receipt = terminal
-                .finish(Outcome::Failed {
-                    code: "lease-narrowing".into(),
-                })
-                .await?;
-            frame
-                .terminal_acknowledged(&receipt)
-                .map_err(anyhow::Error::new)?;
-            return Err(error.into());
-        }
-        let result = self
-            .invoke_owned_frame(
-                cx,
-                &frame,
-                &target,
-                &provided.reference,
-                &op,
-                caller_function,
-                &provider_function,
-                &args,
-                &digest,
-                final_output,
-                typed,
-                nominal_core_error,
-            )
+            let frame = match bridge.enter_provider(&request, terminal.permit(), &args) {
+                Ok(frame) => frame,
+                Err(error) => {
+                    terminal
+                        .finish(Outcome::Failed {
+                            code: "provider-entry".into(),
+                        })
+                        .await?;
+                    return Err(anyhow::Error::new(error));
+                }
+            };
+            // Only a successfully authenticated actual origin selects whether the
+            // caller is Core's canonical view or an executing guest's import WIT.
+            let nominal_core_error = self.nominal_core_error(cx, &view, &target, &op, origin);
+            if let Err(error) = terminal.bind_execution_deadline(cx, frame.context()).await {
+                let receipt = terminal
+                    .finish(Outcome::Failed {
+                        code: "lease-narrowing".into(),
+                    })
+                    .await?;
+                frame
+                    .terminal_acknowledged(&receipt)
+                    .map_err(anyhow::Error::new)?;
+                return Err(error.into());
+            }
+            let result = self
+                .invoke_owned_frame(
+                    cx,
+                    &frame,
+                    &target,
+                    &provided.reference,
+                    &op,
+                    caller_function,
+                    &provider_function,
+                    &args,
+                    &digest,
+                    final_output,
+                    typed,
+                    nominal_core_error,
+                )
+                .await;
+            let outcome = match &result {
+                Ok(DispatchOutput::Typed { error: true, .. }) => Outcome::Failed {
+                    code: "provider-error".into(),
+                },
+                Ok(_) => Outcome::Succeeded,
+                Err(error) if crate::core_imports::storage_failure_metadata(error).is_some() => {
+                    Outcome::Failed {
+                        code: crate::core_imports::storage_failure_metadata(error)
+                            .expect("matched closed native failure")
+                            .0
+                            .into(),
+                    }
+                }
+                Err(_) if std::time::Instant::now() >= frame.context().deadline() => {
+                    Outcome::Failed {
+                        code: "deadline-failure-unknown".into(),
+                    }
+                }
+                Err(_) if frame.context().cancel().is_cancelled() => Outcome::Cancelled,
+                Err(error) => Outcome::Failed {
+                    code: step_error(anyhow::anyhow!(error.to_string()))
+                        .audit_code()
+                        .into(),
+                },
+            };
+            // Do not borrow a result containing CoreStream across the terminal
+            // await: the stream is Send and remains owned here, not Sync.
+            let successful_output = result
+                .as_ref()
+                .is_ok_and(|value| !matches!(value, DispatchOutput::Typed { error: true, .. }));
+            let delivery = async {
+                let receipt = terminal.finish(outcome).await?;
+                frame
+                    .terminal_acknowledged(&receipt)
+                    .map_err(anyhow::Error::new)?;
+                if successful_output && receipt.outcome() != &Outcome::Succeeded {
+                    return Err(StepError::new(
+                        "limit-exceeded",
+                        "provider terminal did not acknowledge success",
+                    )
+                    .into());
+                }
+                Ok(())
+            }
             .await;
-        let outcome = match &result {
-            Ok(DispatchOutput::Typed { error: true, .. }) => Outcome::Failed {
-                code: "provider-error".into(),
-            },
-            Ok(_) => Outcome::Succeeded,
-            Err(_) if std::time::Instant::now() >= frame.context().deadline() => Outcome::Failed {
-                code: "deadline-failure-unknown".into(),
-            },
-            Err(_) if frame.context().cancel().is_cancelled() => Outcome::Cancelled,
-            Err(error) => Outcome::Failed {
-                code: step_error(anyhow::anyhow!(error.to_string()))
-                    .audit_code()
-                    .into(),
-            },
-        };
-        let receipt = terminal.finish(outcome).await?;
-        frame
-            .terminal_acknowledged(&receipt)
-            .map_err(anyhow::Error::new)?;
-        if result
-            .as_ref()
-            .is_ok_and(|value| !matches!(value, DispatchOutput::Typed { error: true, .. }))
-            && receipt.outcome() != &Outcome::Succeeded
-        {
-            return Err(StepError::new(
-                "limit-exceeded",
-                "provider terminal did not acknowledge success",
-            )
-            .into());
+            crate::core_imports::finish_effect_delivery(cx, result, delivery)
         }
-        result
+        .await;
+        result.map_err(|error| crate::filesystem::preserve_effect_error(cx, error))
     }
 
     fn nominal_core_error(
@@ -532,101 +551,127 @@ impl PackHost {
         nominal_core_error: bool,
     ) -> Result<DispatchOutput> {
         let cx = frame.context();
-        let owners = self.allocation_owners_for_frame(
-            cx,
-            frame
-                .allocation_scope(AllocationReason::RuntimeValue)
-                .map_err(anyhow::Error::new)?,
-        )?;
-        if args.digest_guest(owners.graph())? != *digest {
-            bail!("admitted arguments differ from actual immutable value")
-        }
-        let object = args.object().context("port args must be an object")?;
-        if object.len() != caller.params.len() || caller.params.len() != provider.params.len() {
-            bail!("port argument fields do not match the signature")
-        }
-        let mut params = BudgetedVecBuilder::new(provider.params.len(), owners.component(), 0)?;
-        for ((name, from), (provider_name, to)) in caller.params.iter().zip(&provider.params) {
-            if name != provider_name {
-                bail!("port parameter names require an adapter")
-            }
-            let source = object.get(name).context("port parameter missing")?;
-            let typed = core_to_val(&source, from, &owners)?;
-            let value = project_val_owned(&typed, from, to, &owners)?;
-            params.push(self.transfer_argument_handles(&value, to, recipient, cx, &owners)?)?;
-        }
-        let params = params.finish()?;
-        let (results, generation) = self
-            .export_call_owned(
-                &target.pack,
+        let result = async {
+            let owners = self.allocation_owners_for_frame(
                 cx,
-                &interface_name(provided),
-                op.as_str(),
-                params.as_slice(),
-                None,
-                &owners,
-                frame.clone(),
                 frame
                     .allocation_scope(AllocationReason::RuntimeValue)
                     .map_err(anyhow::Error::new)?,
-            )
-            .await?;
-        let results = match (&provider.result, results.as_slice()) {
-            (Some(ty), [value]) if has_handle(ty) => BudgetedVec::from_iter(
-                [self
-                    .transfer_result_handles(
-                        value, ty, cx, recipient, provided, generation, frame, &owners,
-                    )
-                    .await?]
-                .into_iter(),
-                owners.component(),
-                0,
-            )?,
-            _ => results,
-        };
-        if typed {
-            let mut projected = BudgetedVecBuilder::new(results.len(), owners.component(), 0)?;
-            let value = match (&provider.result, &caller.result, results.as_slice()) {
-                (None, None, []) => CoreValue::null(owners.graph())?,
-                (Some(from), Some(to), [value]) => {
-                    let value = project_val_owned(value, from, to, &owners)?;
-                    let graph = val_to_core(&value, to, &owners)?;
-                    projected.push(value)?;
-                    graph
+            )?;
+            if args.digest_guest(owners.graph())? != *digest {
+                bail!("admitted arguments differ from actual immutable value")
+            }
+            let object = args.object().context("port args must be an object")?;
+            if object.len() != caller.params.len() || caller.params.len() != provider.params.len() {
+                bail!("port argument fields do not match the signature")
+            }
+            let mut params = BudgetedVecBuilder::new(provider.params.len(), owners.component(), 0)?;
+            for ((name, from), (provider_name, to)) in caller.params.iter().zip(&provider.params) {
+                if name != provider_name {
+                    bail!("port parameter names require an adapter")
                 }
-                _ => bail!("typed proxy result arity/signature mismatch"),
-            };
-            let values = projected.finish()?;
-            let error = matches!(values.first(), Some(Val::Result(Err(_))));
-            let encoded = value.encode_guest(owners.graph())?;
-            if encoded.len() as u64 > cx.limits().output_bytes {
-                return Err(tobkiri_gate::GateError::Limit(
-                    "component output budget exceeded".into(),
+                let source = object.get(name).context("port parameter missing")?;
+                let typed = core_to_val(&source, from, &owners)?;
+                let value = project_val_owned(&typed, from, to, &owners)?;
+                params.push(self.transfer_argument_handles(&value, to, recipient, cx, &owners)?)?;
+            }
+            let params = params.finish()?;
+            let (results, generation) = self
+                .export_call_owned(
+                    &target.pack,
+                    cx,
+                    &interface_name(provided),
+                    op.as_str(),
+                    params.as_slice(),
+                    None,
+                    &owners,
+                    frame.clone(),
+                    frame
+                        .allocation_scope(AllocationReason::RuntimeValue)
+                        .map_err(anyhow::Error::new)?,
                 )
-                .into());
+                .await?;
+            let results = match (&provider.result, results.as_slice()) {
+                (Some(ty), [value]) if has_handle(ty) => BudgetedVec::from_iter(
+                    [self
+                        .transfer_result_handles(
+                            value, ty, cx, recipient, provided, generation, frame, &owners,
+                        )
+                        .await?]
+                    .into_iter(),
+                    owners.component(),
+                    0,
+                )?,
+                _ => results,
+            };
+            if typed {
+                let mut projected = BudgetedVecBuilder::new(results.len(), owners.component(), 0)?;
+                let value = match (&provider.result, &caller.result, results.as_slice()) {
+                    (None, None, []) => CoreValue::null(owners.graph())?,
+                    (Some(from), Some(to), [value]) => {
+                        let value = project_val_owned(value, from, to, &owners)?;
+                        let graph = val_to_core(&value, to, &owners)?;
+                        projected.push(value)?;
+                        graph
+                    }
+                    _ => bail!("typed proxy result arity/signature mismatch"),
+                };
+                let values = projected.finish()?;
+                let error = matches!(values.first(), Some(Val::Result(Err(_))));
+                let encoded = value.encode_guest(owners.graph())?;
+                if encoded.len() as u64 > cx.limits().output_bytes {
+                    return Err(tobkiri_gate::GateError::Limit(
+                        "component output budget exceeded".into(),
+                    )
+                    .into());
+                }
+                frame
+                    .output_ready(&value, owners.graph())
+                    .map_err(anyhow::Error::new)?;
+                return Ok(DispatchOutput::Typed { values, error });
+            }
+            let value = decode_result(&results, caller, provider, &owners, nominal_core_error)?;
+            let returns_stream = self
+                .shared
+                .views
+                .get(provided)
+                .is_some_and(|shape| shape.streams.contains_key(op.as_str()));
+            if returns_stream {
+                let id = value
+                    .get_key("id")
+                    .context("stream facade result has no handle")?;
+                let id = match id.inspect() {
+                    tobkiri_canon::CoreRef::Int(id) => u64::try_from(id)?,
+                    tobkiri_canon::CoreRef::Str(id) => id.parse()?,
+                    _ => bail!("stream facade ID is not an integer"),
+                };
+                let mut stream = self.component_stream(recipient, id)?;
+                frame.stream_ready().map_err(anyhow::Error::new)?;
+                if let Some(kind) = final_output {
+                    let output = self.allocation_owners_for_frame(
+                        cx,
+                        frame
+                            .allocation_scope(AllocationReason::OutputBuffer)
+                            .map_err(anyhow::Error::new)?,
+                    )?;
+                    match crate::output::encode_stream(kind, output.graph()) {
+                        Ok(envelope) => {
+                            return Ok(DispatchOutput::Final(FinalPortOutput::Stream {
+                                envelope,
+                                stream,
+                            }));
+                        }
+                        Err(error) => {
+                            stream.close().await.map_err(anyhow::Error::new)?;
+                            return Err(error.into());
+                        }
+                    }
+                }
+                return Ok(DispatchOutput::Stream(stream));
             }
             frame
                 .output_ready(&value, owners.graph())
                 .map_err(anyhow::Error::new)?;
-            return Ok(DispatchOutput::Typed { values, error });
-        }
-        let value = decode_result(&results, caller, provider, &owners, nominal_core_error)?;
-        let returns_stream = self
-            .shared
-            .views
-            .get(provided)
-            .is_some_and(|shape| shape.streams.contains_key(op.as_str()));
-        if returns_stream {
-            let id = value
-                .get_key("id")
-                .context("stream facade result has no handle")?;
-            let id = match id.inspect() {
-                tobkiri_canon::CoreRef::Int(id) => u64::try_from(id)?,
-                tobkiri_canon::CoreRef::Str(id) => id.parse()?,
-                _ => bail!("stream facade ID is not an integer"),
-            };
-            let mut stream = self.component_stream(recipient, id)?;
-            frame.stream_ready().map_err(anyhow::Error::new)?;
             if let Some(kind) = final_output {
                 let output = self.allocation_owners_for_frame(
                     cx,
@@ -634,51 +679,29 @@ impl PackHost {
                         .allocation_scope(AllocationReason::OutputBuffer)
                         .map_err(anyhow::Error::new)?,
                 )?;
-                match crate::output::encode_stream(kind, output.graph()) {
-                    Ok(envelope) => {
-                        return Ok(DispatchOutput::Final(FinalPortOutput::Stream {
-                            envelope,
-                            stream,
-                        }));
-                    }
-                    Err(error) => {
-                        stream.close().await.map_err(anyhow::Error::new)?;
-                        return Err(error.into());
-                    }
+                let encoded = crate::output::encode_value(&value, kind, output.graph())?;
+                if encoded.len() as u64 > cx.limits().output_bytes {
+                    return Err(tobkiri_gate::GateError::Limit(
+                        "component output budget exceeded".into(),
+                    )
+                    .into());
                 }
+                Ok(DispatchOutput::Final(FinalPortOutput::Value(encoded)))
+            } else {
+                // Size validation uses a funded temporary buffer; the returned
+                // graph retains its producer owner after the buffer is destroyed.
+                let encoded = value.encode_guest(owners.graph())?;
+                if encoded.len() as u64 > cx.limits().output_bytes {
+                    return Err(tobkiri_gate::GateError::Limit(
+                        "component output budget exceeded".into(),
+                    )
+                    .into());
+                }
+                Ok(DispatchOutput::Value(value))
             }
-            return Ok(DispatchOutput::Stream(stream));
         }
-        frame
-            .output_ready(&value, owners.graph())
-            .map_err(anyhow::Error::new)?;
-        if let Some(kind) = final_output {
-            let output = self.allocation_owners_for_frame(
-                cx,
-                frame
-                    .allocation_scope(AllocationReason::OutputBuffer)
-                    .map_err(anyhow::Error::new)?,
-            )?;
-            let encoded = crate::output::encode_value(&value, kind, output.graph())?;
-            if encoded.len() as u64 > cx.limits().output_bytes {
-                return Err(tobkiri_gate::GateError::Limit(
-                    "component output budget exceeded".into(),
-                )
-                .into());
-            }
-            Ok(DispatchOutput::Final(FinalPortOutput::Value(encoded)))
-        } else {
-            // Size validation uses a funded temporary buffer; the returned
-            // graph retains its producer owner after the buffer is destroyed.
-            let encoded = value.encode_guest(owners.graph())?;
-            if encoded.len() as u64 > cx.limits().output_bytes {
-                return Err(tobkiri_gate::GateError::Limit(
-                    "component output budget exceeded".into(),
-                )
-                .into());
-            }
-            Ok(DispatchOutput::Value(value))
-        }
+        .await;
+        preserve_dispatch_result(cx, result)
     }
 
     pub(crate) async fn read_native_input_owned(
@@ -686,195 +709,215 @@ impl PackHost {
         cx: &CallCx,
         entry: &CompiledInputEntry,
     ) -> Result<(CoreValue, SourceReadReceipt)> {
-        self.shared.gate.check_context(cx)?;
-        if !matches!(cx.principal(), Principal::Input { .. })
-            || cx.revision() != Some(entry.profile_revision())
-        {
-            bail!("native Input entry context mismatch")
-        }
-        let (pack, provided, _) =
-            self.resolve_for_admission(cx, entry.exact_input_view(), entry.operation(), true)?;
-        if &pack.manifest.id != entry.source_pack()
-            || &pack.hash != entry.source_hash()
-            || self
+        let result = async {
+            self.shared.gate.check_context(cx)?;
+            if !matches!(cx.principal(), Principal::Input { .. })
+                || cx.revision() != Some(entry.profile_revision())
+            {
+                bail!("native Input entry context mismatch")
+            }
+            let (pack, provided, _) =
+                self.resolve_for_admission(cx, entry.exact_input_view(), entry.operation(), true)?;
+            if &pack.manifest.id != entry.source_pack()
+                || &pack.hash != entry.source_hash()
+                || self
+                    .shared
+                    .views
+                    .get(entry.exact_input_view())
+                    .and_then(|view| view.functions.get(entry.operation()))
+                    != Some(entry.function())
+            {
+                bail!("native Input entry differs from frozen source signature")
+            }
+            let target = FrozenPortTarget {
+                pack: pack.manifest.id.clone(),
+                hash: pack.hash.clone(),
+                provided: provided.reference,
+            };
+            let bridge = self
                 .shared
-                .views
-                .get(entry.exact_input_view())
-                .and_then(|view| view.functions.get(entry.operation()))
-                != Some(entry.function())
-        {
-            bail!("native Input entry differs from frozen source signature")
-        }
-        let target = FrozenPortTarget {
-            pack: pack.manifest.id.clone(),
-            hash: pack.hash.clone(),
-            provided: provided.reference,
-        };
-        let bridge = self
-            .shared
-            .provider_entry
-            .get()
-            .context("Core provider-entry bridge not installed")?
-            .clone();
-        let preparation = bridge
-            .prepare_native_input(self, cx, entry, &target)
-            .map_err(anyhow::Error::new)?;
-        let owners = self.allocation_owners_for_frame(
-            cx,
-            preparation.argument_scope().map_err(anyhow::Error::new)?,
-        )?;
-        // The compiler fixed only explicit empty-record arguments. Preserve
-        // their exact parameter names/arity; never synthesize caller defaults.
-        let args = CoreValue::try_from_borrowed(entry.arguments(), owners.graph())?;
-        let args_digest = args.digest_guest(owners.graph())?;
-        let admission = self
-            .shared
-            .gate
-            .admit_port(
+                .provider_entry
+                .get()
+                .context("Core provider-entry bridge not installed")?
+                .clone();
+            let preparation = bridge
+                .prepare_native_input(self, cx, entry, &target)
+                .map_err(anyhow::Error::new)?;
+            let owners = self.allocation_owners_for_frame(
                 cx,
-                entry.exact_input_view().clone(),
-                entry.operation().clone(),
-                args_digest.clone(),
-                target.clone(),
-            )
-            .await?;
-        let request = ProviderRequest {
-            control: self,
-            caller: cx,
-            view: entry.exact_input_view(),
-            op: entry.operation(),
-            target: &target,
-            args_digest: &args_digest,
-            origin: ProviderOrigin::NativeInput {
-                entry,
-                preparation: &preparation,
-            },
-        };
-        bridge
-            .validate_prepare(&request)
-            .map_err(anyhow::Error::new)?;
-        let dispatch = self
-            .shared
-            .gate
-            .claim_port(
-                cx,
-                admission,
-                entry.exact_input_view(),
-                entry.operation(),
-                &args_digest,
-                &target,
-            )
-            .await?;
-        let mut terminal =
-            ConsumedPortTerminal::new(dispatch.into_permit(), self.shared.gate.clone());
-        if let Err(error) = terminal.watch(cx) {
-            terminal
-                .finish(Outcome::Failed {
-                    code: "lease-supervision".into(),
-                })
+                preparation.argument_scope().map_err(anyhow::Error::new)?,
+            )?;
+            // The compiler fixed only explicit empty-record arguments. Preserve
+            // their exact parameter names/arity; never synthesize caller defaults.
+            let args = CoreValue::try_from_borrowed(entry.arguments(), owners.graph())?;
+            let args_digest = args.digest_guest(owners.graph())?;
+            let admission = self
+                .shared
+                .gate
+                .admit_port(
+                    cx,
+                    entry.exact_input_view().clone(),
+                    entry.operation().clone(),
+                    args_digest.clone(),
+                    target.clone(),
+                )
                 .await?;
-            return Err(error.into());
-        }
-        let frame = match bridge.enter_provider(&request, terminal.permit(), &args) {
-            Ok(frame) => frame,
-            Err(error) => {
+            let request = ProviderRequest {
+                control: self,
+                caller: cx,
+                view: entry.exact_input_view(),
+                op: entry.operation(),
+                target: &target,
+                args_digest: &args_digest,
+                origin: ProviderOrigin::NativeInput {
+                    entry,
+                    preparation: &preparation,
+                },
+            };
+            bridge
+                .validate_prepare(&request)
+                .map_err(anyhow::Error::new)?;
+            let dispatch = self
+                .shared
+                .gate
+                .claim_port(
+                    cx,
+                    admission,
+                    entry.exact_input_view(),
+                    entry.operation(),
+                    &args_digest,
+                    &target,
+                )
+                .await?;
+            let mut terminal =
+                ConsumedPortTerminal::new(dispatch.into_permit(), self.shared.gate.clone());
+            if let Err(error) = terminal.watch(cx) {
                 terminal
                     .finish(Outcome::Failed {
-                        code: "provider-entry".into(),
+                        code: "lease-supervision".into(),
                     })
                     .await?;
-                return Err(anyhow::Error::new(error));
+                return Err(error.into());
             }
-        };
-        if let Err(error) = terminal.bind_execution_deadline(cx, frame.context()).await {
-            let receipt = terminal
-                .finish(Outcome::Failed {
-                    code: "lease-narrowing".into(),
-                })
-                .await?;
-            frame
-                .terminal_acknowledged(&receipt)
-                .map_err(anyhow::Error::new)?;
-            return Err(error.into());
-        }
-        let provider = self
-            .shared
-            .views
-            .get(&target.provided)
-            .and_then(|view| view.functions.get(entry.operation()))
-            .context("native Input provider signature missing")?;
-        let result = self
-            .invoke_owned_frame(
-                cx,
-                &frame,
-                &target,
-                &target.provided,
-                entry.operation(),
-                entry.function(),
-                provider,
-                &args,
-                &args_digest,
-                None,
-                false,
-                self.nominal_core_error(
-                    cx,
-                    entry.exact_input_view(),
-                    &target,
-                    entry.operation(),
-                    request.origin,
-                ),
-            )
-            .await;
-        match result {
-            Ok(DispatchOutput::Value(value)) => {
-                let terminal_receipt = terminal.finish(Outcome::Succeeded).await?;
-                frame
-                    .terminal_acknowledged(&terminal_receipt)
-                    .map_err(anyhow::Error::new)?;
-                if terminal_receipt.outcome() != &Outcome::Succeeded {
-                    return Err(StepError::new(
-                        "limit-exceeded",
-                        "physical Input read has no acknowledged success",
-                    )
-                    .into());
+            let frame = match bridge.enter_provider(&request, terminal.permit(), &args) {
+                Ok(frame) => frame,
+                Err(error) => {
+                    terminal
+                        .finish(Outcome::Failed {
+                            code: "provider-entry".into(),
+                        })
+                        .await?;
+                    return Err(anyhow::Error::new(error));
                 }
-                let source_receipt = frame
-                    .take_source_read_receipt()
-                    .map_err(anyhow::Error::new)?;
-                Ok((value, source_receipt))
-            }
-            Ok(DispatchOutput::Final(_) | DispatchOutput::Typed { .. }) => {
-                unreachable!("physical source read is intermediate")
-            }
-            Ok(DispatchOutput::Stream(mut stream)) => {
-                let cleanup = stream.close().await;
+            };
+            if let Err(error) = terminal.bind_execution_deadline(cx, frame.context()).await {
                 let receipt = terminal
                     .finish(Outcome::Failed {
-                        code: "source-input-stream".into(),
+                        code: "lease-narrowing".into(),
                     })
                     .await?;
                 frame
                     .terminal_acknowledged(&receipt)
                     .map_err(anyhow::Error::new)?;
-                cleanup.map_err(anyhow::Error::new)?;
-                Err(StepError::new(
+                return Err(error.into());
+            }
+            let provider = self
+                .shared
+                .views
+                .get(&target.provided)
+                .and_then(|view| view.functions.get(entry.operation()))
+                .context("native Input provider signature missing")?;
+            let result = self
+                .invoke_owned_frame(
+                    cx,
+                    &frame,
+                    &target,
+                    &target.provided,
+                    entry.operation(),
+                    entry.function(),
+                    provider,
+                    &args,
+                    &args_digest,
+                    None,
+                    false,
+                    self.nominal_core_error(
+                        cx,
+                        entry.exact_input_view(),
+                        &target,
+                        entry.operation(),
+                        request.origin,
+                    ),
+                )
+                .await;
+            match result {
+                Ok(DispatchOutput::Value(value)) => {
+                    let terminal_receipt = terminal.finish(Outcome::Succeeded).await?;
+                    frame
+                        .terminal_acknowledged(&terminal_receipt)
+                        .map_err(anyhow::Error::new)?;
+                    if terminal_receipt.outcome() != &Outcome::Succeeded {
+                        return Err(StepError::new(
+                            "limit-exceeded",
+                            "physical Input read has no acknowledged success",
+                        )
+                        .into());
+                    }
+                    let source_receipt = frame
+                        .take_source_read_receipt()
+                        .map_err(anyhow::Error::new)?;
+                    Ok((value, source_receipt))
+                }
+                Ok(DispatchOutput::Final(_) | DispatchOutput::Typed { .. }) => {
+                    unreachable!("physical source read is intermediate")
+                }
+                Ok(DispatchOutput::Stream(mut stream)) => {
+                    let cleanup = stream.close().await;
+                    let receipt = terminal
+                        .finish(Outcome::Failed {
+                            code: "source-input-stream".into(),
+                        })
+                        .await?;
+                    frame
+                        .terminal_acknowledged(&receipt)
+                        .map_err(anyhow::Error::new)?;
+                    cleanup.map_err(anyhow::Error::new)?;
+                    Err(StepError::new(
                     "unavailable",
                     "Native Input stream receipt delivery requires the live source-ingress bridge",
                 )
                 .into())
-            }
-            Err(error) => {
-                let receipt = terminal
-                    .finish(Outcome::Failed {
-                        code: "source-read".into(),
-                    })
-                    .await?;
-                frame
-                    .terminal_acknowledged(&receipt)
-                    .map_err(anyhow::Error::new)?;
-                Err(error)
+                }
+                Err(error) => {
+                    let delivery = async {
+                        let code = crate::core_imports::storage_failure_metadata(&error)
+                            .map_or("source-read", |(code, _)| code);
+                        let receipt = terminal
+                            .finish(Outcome::Failed { code: code.into() })
+                            .await?;
+                        frame
+                            .terminal_acknowledged(&receipt)
+                            .map_err(anyhow::Error::new)?;
+                        Ok(())
+                    }
+                    .await;
+                    crate::core_imports::finish_effect_delivery(cx, Err(error), delivery)
+                }
             }
         }
+        .await;
+        result.map_err(|error| crate::filesystem::preserve_effect_error(cx, error))
+    }
+}
+
+fn preserve_dispatch_result(cx: &CallCx, result: Result<DispatchOutput>) -> Result<DispatchOutput> {
+    match result {
+        // A typed provider error is unsuccessful delivery too. Its guest
+        // payload cannot erase native evidence that files may have changed.
+        Ok(DispatchOutput::Typed { error: true, .. }) if cx.filesystem_mutation_possible() => {
+            Err(crate::filesystem::FsError::CommitUnknown.into())
+        }
+        Err(error) => Err(crate::filesystem::preserve_effect_error(cx, error)),
+        result => result,
     }
 }
 
@@ -1118,6 +1161,71 @@ mod tests {
             params: vec![],
             result,
         }
+    }
+
+    fn effect_context() -> CallCx {
+        use std::time::{Duration, Instant};
+        use tobkiri_canon::ids::{PackHash, PackId, ProfileId, RequestId};
+        use tobkiri_gate::{CoreCancellation, ResourceLimits};
+        CallCx::root(
+            ProfileId::parse("profile-dispatch-effect").unwrap(),
+            Principal::Pack {
+                pack: PackId::parse("local.dispatch-effect").unwrap(),
+                hash: PackHash::new(Digest::hash(b"dispatch-effect-test")),
+            },
+            RequestId::parse("dispatch-effect-request").unwrap(),
+            CoreCancellation::new(),
+            Instant::now() + Duration::from_secs(30),
+            ResourceLimits::default(),
+        )
+    }
+
+    #[test]
+    fn typed_provider_failure_after_mutation_cannot_erase_native_no_replay_evidence() {
+        let cx = effect_context();
+        let (meter, owners) = owners();
+        let typed = || DispatchOutput::Typed {
+            values: BudgetedVec::from_iter(std::iter::empty(), owners.component(), 0).unwrap(),
+            error: true,
+        };
+        assert!(matches!(
+            preserve_dispatch_result(&cx, Ok(typed()))
+                .unwrap_or_else(|_| panic!("read-only typed result")),
+            DispatchOutput::Typed { error: true, .. }
+        ));
+        cx.note_filesystem_mutation();
+        let error = preserve_dispatch_result(&cx, Ok(typed()))
+            .err()
+            .expect("typed failure is not success");
+        assert!(matches!(
+            error.downcast_ref::<crate::filesystem::FsError>(),
+            Some(crate::filesystem::FsError::CommitUnknown)
+        ));
+        assert_eq!(meter.0.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn result_decode_failure_after_mutation_keeps_the_closed_native_error() {
+        let cx = effect_context();
+        let (meter, owners) = owners();
+        let ty = signature(Some(WitType::Result {
+            ok: None,
+            err: None,
+        }));
+        let decode_error = decode_result(&[Val::Result(Err(None))], &ty, &ty, &owners, false)
+            .err()
+            .expect("provider error must not decode as a value");
+        cx.note_filesystem_mutation();
+        let error = preserve_dispatch_result(&cx, Err(decode_error))
+            .err()
+            .expect("decode failure remains unsuccessful");
+        assert_eq!(
+            crate::core_imports::storage_failure_metadata(&error)
+                .unwrap()
+                .0,
+            "filesystem-commit-unknown"
+        );
+        assert_eq!(meter.0.load(Ordering::Acquire), 0);
     }
 
     #[test]

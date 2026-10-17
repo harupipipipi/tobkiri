@@ -26,6 +26,9 @@ use tobkiri_store::{
 use wasmtime::component::{LinkerInstance, Resource, ResourceAny, ResourceType, Val};
 use wasmtime::{AsContextMut, StoreContextMut};
 
+#[path = "filesystem_effects.rs"]
+mod filesystem_effects;
+
 struct HostSecret {
     name: String,
     _secret: SecretRef,
@@ -173,7 +176,6 @@ impl HostStore {
         }
     }
 }
-struct UnavailableDirectory;
 struct UnavailableProcess;
 struct UnavailableTerminal;
 /// Same-package aliases share this exact Rust identity. Different package
@@ -223,7 +225,7 @@ pub(crate) fn link_resource(
         ("secrets" | "network", "secret") => link!(HostSecret),
         ("network", "response") => link!(HostResponse),
         ("storage", "store") => link!(HostStore),
-        ("fs" | "proc" | "pty", "dir") => link!(UnavailableDirectory),
+        ("fs" | "proc" | "pty", "dir") => link!(crate::filesystem::FsDirectory),
         ("proc", "process") => link!(UnavailableProcess),
         ("pty", "terminal") => link!(UnavailableTerminal),
         ("storage", "sql-transaction") if version == "1.1.0" => link!(Arc<NativeSqlTransaction>),
@@ -684,7 +686,10 @@ pub(crate) async fn invoke(
             "guest audit payload adapter is not yet connected to bounded values",
         )
         .into()),
-        "fs" | "proc" | "pty" | "approvals" => Err(StepError::new(
+        "fs" => {
+            filesystem_effects::invoke(store, &host, &cx, version, operation, params, &owners).await
+        }
+        "proc" | "pty" | "approvals" => Err(StepError::new(
             "unavailable",
             "generic effect backend unavailable for this operation",
         )

@@ -646,13 +646,16 @@ impl Session {
             .cloned()
             .collect();
         let mut failure = None;
+        if let Err(error) = self.close_user_streams().await {
+            super::user_ports::record_failure(&mut failure, error);
+        }
         for frame in frames {
             if let Err(error) = self.detach_ui(&frame).await {
-                failure.get_or_insert(error);
+                super::user_ports::record_failure(&mut failure, error);
             }
         }
         if let Err(error) = self.admission.close().await {
-            failure.get_or_insert(error);
+            super::user_ports::record_failure(&mut failure, error);
         }
         match failure {
             Some(error) => Err(error),

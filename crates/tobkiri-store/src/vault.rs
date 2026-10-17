@@ -16,7 +16,6 @@ pub trait VaultKeyProvider: Send + Sync {
 }
 /// OS keychain provider. Linux CLI falls back to a private Profile key file.
 pub struct DefaultKeyProvider {
-    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     root: DataRoot,
 }
 impl DefaultKeyProvider {
@@ -26,7 +25,7 @@ impl DefaultKeyProvider {
 }
 impl VaultKeyProvider for DefaultKeyProvider {
     fn key(&self, profile: &ProfileId) -> Result<[u8; 32], StoreError> {
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         let _lock = self.root.profile_lock(profile, ".vault-key.lock")?;
         let result = (|| {
             let entry = keyring::Entry::new("Tobkiri", profile.as_str())
@@ -167,12 +166,12 @@ impl Vault {
         if value.len() > 64 * 1024 {
             return Err(StoreError::Quota);
         }
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         let _lock = self.root.profile_lock(&self.profile, ".vault.lock")?;
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         let mut values =
             self.decode_file(_lock.directory.read("secrets.vault", 4 * 1024 * 1024 + 48))?;
-        #[cfg(not(unix))]
+        #[cfg(not(any(unix, windows)))]
         let mut values = self.load()?;
         values.insert(name.into(), SecretBytes(value.to_vec()));
         let plaintext = secret_wire(&values)?;
@@ -196,11 +195,11 @@ impl Vault {
         file.extend_from_slice(MAGIC);
         file.extend_from_slice(&nonce);
         file.extend_from_slice(&encrypted);
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         {
             _lock.directory.write_atomic("secrets.vault", &file)
         }
-        #[cfg(not(unix))]
+        #[cfg(not(any(unix, windows)))]
         {
             self.root
                 .write_profile_file_atomic(&self.profile, "secrets.vault", &file)
@@ -292,5 +291,102 @@ impl Vault {
         let mut secret = values.remove(name).ok_or(StoreError::NotFound)?;
         // An explicitly approved reveal transfers custody to the trusted caller.
         Ok(std::mem::take(&mut secret.0))
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+
+    struct FixtureKeys(u8);
+    impl VaultKeyProvider for FixtureKeys {
+        fn key(&self, _: &ProfileId) -> Result<[u8; 32], StoreError> {
+            Ok([self.0; 32])
+        }
+    }
+    fn fixture() -> (tempfile::TempDir, DataRoot, ProfileId) {
+        let temporary = tempfile::Builder::new()
+            .prefix(".windows-vault-")
+            .tempdir_in(std::env::current_dir().unwrap())
+            .unwrap();
+        let root = DataRoot::open(temporary.path().join("data")).unwrap();
+        let profile = ProfileId::parse("prof_windows_vault").unwrap();
+        (temporary, root, profile)
+    }
+
+    #[test]
+    fn concurrent_encrypted_updates_keep_every_value_under_native_profile_lock() {
+        let (_temporary, root, profile) = fixture();
+        let pack = tobkiri_canon::ids::PackId::parse("local.vault-test").unwrap();
+        let _owner = root.owner_lease(&profile, &pack).unwrap();
+        let vault = Arc::new(Vault::open(&root, &profile, Arc::new(FixtureKeys(17))).unwrap());
+        let barrier = Arc::new(std::sync::Barrier::new(8));
+        let threads = (0..8)
+            .map(|index| {
+                let vault = vault.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    vault
+                        .set(
+                            &format!("fixture-{index}"),
+                            format!("fixture-secret-{index}").as_bytes(),
+                        )
+                        .unwrap();
+                })
+            })
+            .collect::<Vec<_>>();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+        let reopened = Vault::open(&root, &profile, Arc::new(FixtureKeys(17))).unwrap();
+        let values = reopened.load().unwrap();
+        assert_eq!(values.len(), 8);
+        for index in 0..8 {
+            assert_eq!(
+                values[&format!("fixture-{index}")].0,
+                format!("fixture-secret-{index}").as_bytes()
+            );
+        }
+        let ciphertext = root
+            .read_profile_file(&profile, "secrets.vault", 8192)
+            .unwrap();
+        assert!(
+            !ciphertext
+                .windows(b"fixture-secret-".len())
+                .any(|part| part == b"fixture-secret-")
+        );
+        assert!(ciphertext.starts_with(MAGIC));
+    }
+
+    #[test]
+    fn ciphertext_rejects_wrong_key_profile_and_tampering() {
+        let (_temporary, root, profile) = fixture();
+        let vault = Vault::open(&root, &profile, Arc::new(FixtureKeys(19))).unwrap();
+        vault
+            .set("FixtureUpperLogicalKey", b"public-test-fixture")
+            .unwrap();
+        assert!(matches!(
+            Vault::open(&root, &profile, Arc::new(FixtureKeys(20))),
+            Err(StoreError::Denied(_))
+        ));
+        let other = ProfileId::parse("prof_other_vault").unwrap();
+        let mut bytes = root
+            .read_profile_file(&profile, "secrets.vault", 8192)
+            .unwrap();
+        root.write_profile_file_atomic(&other, "secrets.vault", &bytes)
+            .unwrap();
+        assert!(matches!(
+            Vault::open(&root, &other, Arc::new(FixtureKeys(19))),
+            Err(StoreError::Denied(_))
+        ));
+        let last = bytes.len() - 1;
+        bytes[last] ^= 1;
+        root.write_profile_file_atomic(&profile, "secrets.vault", &bytes)
+            .unwrap();
+        assert!(matches!(
+            Vault::open(&root, &profile, Arc::new(FixtureKeys(19))),
+            Err(StoreError::Denied(_))
+        ));
     }
 }

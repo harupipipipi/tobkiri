@@ -2,13 +2,15 @@
 //! extents are admitted under a short physical-directory quota lock.
 use crate::{StoreDiskPolicy, StoreError};
 use rusqlite::ffi::*;
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
+#[cfg(all(test, unix))]
 use std::os::unix::fs::MetadataExt;
 use std::{
     cell::Cell,
     collections::BTreeMap,
     ffi::{CStr, CString, c_char, c_int, c_void},
     fs::File,
-    os::fd::{AsRawFd, FromRawFd},
     panic::{AssertUnwindSafe, catch_unwind},
     ptr,
     sync::{
@@ -24,6 +26,45 @@ type GroupKey = (DirectoryKey, String);
 struct DirectoryLock {
     file: File,
     process: Mutex<()>,
+    quarantined: AtomicBool,
+    #[cfg(test)]
+    fail_unlock: AtomicBool,
+}
+/// A short native lock is settled before success is published. On an unknown
+/// unlock the existing lock and its bounded registry slot remain live, and all
+/// groups in this physical directory stop accepting work.
+struct DirectoryUnlock<'a> {
+    lock: &'a Arc<DirectoryLock>,
+    previous: usize,
+    finished: bool,
+}
+impl DirectoryUnlock<'_> {
+    fn finish(&mut self) -> Result<(), c_int> {
+        if self.finished {
+            return Ok(());
+        }
+        self.finished = true;
+        ACTIVE_DIRECTORY.with(|active| active.set(self.previous));
+        #[cfg(test)]
+        let injected = self.lock.fail_unlock.load(Ordering::Acquire);
+        #[cfg(not(test))]
+        let injected = false;
+        if injected || crate::quota_fs::unlock(&self.lock.file).is_err() {
+            if !self.lock.quarantined.swap(true, Ordering::AcqRel) {
+                // Cloning an already admitted Arc allocates no new recovery
+                // record. Never close/release an uncertain physical lock.
+                std::mem::forget(self.lock.clone());
+            }
+            return Err(SQLITE_IOERR_UNLOCK);
+        }
+        Ok(())
+    }
+}
+impl Drop for DirectoryUnlock<'_> {
+    fn drop(&mut self) {
+        // Panic cleanup follows the same quarantine/retention rule.
+        let _ = self.finish();
+    }
 }
 /// The issuing process ends this lease explicitly. Closing only its descriptor
 /// can leave flock held by a transient fork/exec copy of the open description.
@@ -50,7 +91,7 @@ impl Lease {
         let Some(file) = self.file.as_ref() else {
             return SQLITE_IOERR_UNLOCK;
         };
-        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_UN) } != 0 {
+        if crate::quota_fs::unlock(file).is_err() {
             return SQLITE_IOERR_UNLOCK;
         }
         self.held = false;
@@ -190,7 +231,7 @@ impl QuotaDomain {
         self.quarantined.store(true, Ordering::Release);
     }
     pub(crate) fn is_quarantined(&self) -> bool {
-        self.quarantined.load(Ordering::Acquire)
+        self.quarantined.load(Ordering::Acquire) || self.lock.quarantined.load(Ordering::Acquire)
     }
     pub(crate) fn acquire(
         directory: Arc<File>,
@@ -198,8 +239,9 @@ impl QuotaDomain {
         policy: StoreDiskPolicy,
     ) -> Result<Arc<Self>, StoreError> {
         crate::secure::name(leaf)?;
-        let metadata = directory.metadata()?;
-        let directory_key = (metadata.dev(), metadata.ino());
+        #[cfg(windows)]
+        crate::secure::windows::validate_storage_component(leaf)?;
+        let directory_key = crate::quota_fs::identity(&directory)?;
         let group_key = (directory_key, leaf.to_owned());
         let mut registry = registry()
             .lock()
@@ -242,19 +284,12 @@ impl QuotaDomain {
         {
             Some(lock) => lock,
             None => {
-                let fd = unsafe {
-                    libc::openat(
-                        directory.as_raw_fd(),
-                        c".".as_ptr(),
-                        libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-                    )
-                };
-                if fd < 0 {
-                    return Err(std::io::Error::last_os_error().into());
-                }
                 let lock = Arc::new(DirectoryLock {
-                    file: unsafe { File::from_raw_fd(fd) },
+                    file: crate::quota_fs::directory_lock(&directory)?,
                     process: Mutex::new(()),
+                    quarantined: AtomicBool::new(false),
+                    #[cfg(test)]
+                    fail_unlock: AtomicBool::new(false),
                 });
                 registry
                     .directories
@@ -298,7 +333,7 @@ impl QuotaDomain {
         Ok(domain)
     }
     fn locked<T>(&self, operation: impl FnOnce() -> Result<T, c_int>) -> Result<T, c_int> {
-        if self.process != std::process::id() || self.quarantined.load(Ordering::Acquire) {
+        if self.process != std::process::id() || self.is_quarantined() {
             return Err(SQLITE_IOERR);
         }
         let identity = Arc::as_ptr(&self.lock) as usize;
@@ -316,8 +351,13 @@ impl QuotaDomain {
                 SQLITE_IOERR
             }
         })?;
-        if unsafe { libc::flock(self.lock.file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-            return if std::io::Error::last_os_error().kind() == std::io::ErrorKind::WouldBlock {
+        // Another group can have quarantined this directory between the first
+        // check and acquisition of the process mutex.
+        if self.is_quarantined() {
+            return Err(SQLITE_IOERR);
+        }
+        if let Err(error) = crate::quota_fs::lock(&self.lock.file, true) {
+            return if error.kind() == std::io::ErrorKind::WouldBlock {
                 #[cfg(test)]
                 self.note_busy(BusySite::DirectoryFlock, SQLITE_BUSY, 0);
                 Err(SQLITE_BUSY)
@@ -326,47 +366,18 @@ impl QuotaDomain {
                 Err(SQLITE_IOERR_LOCK)
             };
         }
-        struct Unlock<'a> {
-            lock: &'a DirectoryLock,
-            previous: usize,
-        }
-        impl Drop for Unlock<'_> {
-            fn drop(&mut self) {
-                ACTIVE_DIRECTORY.with(|active| active.set(self.previous));
-                unsafe {
-                    libc::flock(self.lock.file.as_raw_fd(), libc::LOCK_UN);
-                }
-            }
-        }
         let previous = ACTIVE_DIRECTORY.with(|active| active.replace(identity));
-        let _unlock = Unlock {
+        let mut unlock = DirectoryUnlock {
             lock: &self.lock,
             previous,
+            finished: false,
         };
-        operation()
+        let result = operation();
+        unlock.finish()?;
+        result
     }
-    fn stat(&self, kind: usize) -> Result<Option<libc::stat>, c_int> {
-        let mut stat = std::mem::MaybeUninit::uninit();
-        if unsafe {
-            libc::fstatat(
-                self.directory.as_raw_fd(),
-                self.names[kind].as_ptr(),
-                stat.as_mut_ptr(),
-                libc::AT_SYMLINK_NOFOLLOW,
-            )
-        } != 0
-        {
-            return if std::io::Error::last_os_error().kind() == std::io::ErrorKind::NotFound {
-                Ok(None)
-            } else {
-                Err(SQLITE_IOERR_FSTAT)
-            };
-        }
-        let stat = unsafe { stat.assume_init() };
-        if stat.st_mode & libc::S_IFMT != libc::S_IFREG || stat.st_nlink != 1 || stat.st_size < 0 {
-            return Err(SQLITE_CANTOPEN);
-        }
-        Ok(Some(stat))
+    fn stat(&self, kind: usize) -> Result<Option<crate::quota_fs::Stat>, c_int> {
+        crate::quota_fs::stat(&self.directory, &self.names[kind])
     }
     fn snapshot(&self) -> Result<[u64; 4], c_int> {
         let mut extents = [0; 4];
@@ -395,28 +406,9 @@ impl QuotaDomain {
         Ok(())
     }
     fn lease(&self, kind: usize, exclusive: bool) -> Result<Lease, c_int> {
-        let fd = unsafe {
-            libc::openat(
-                self.directory.as_raw_fd(),
-                self.leases[kind].as_ptr(),
-                libc::O_RDWR | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-                0o600,
-            )
-        };
-        if fd < 0 {
-            return Err(SQLITE_CANTOPEN);
-        }
-        let file = unsafe { File::from_raw_fd(fd) };
-        let metadata = file.metadata().map_err(|_| SQLITE_IOERR_FSTAT)?;
-        if !metadata.is_file() || metadata.nlink() != 1 || metadata.len() != 0 {
-            return Err(SQLITE_CANTOPEN);
-        }
-        let mode = if exclusive {
-            libc::LOCK_EX
-        } else {
-            libc::LOCK_SH
-        };
-        if unsafe { libc::flock(fd, mode | libc::LOCK_NB) } != 0 {
+        let file = crate::quota_fs::open_lease(&self.directory, &self.leases[kind])
+            .map_err(|_| SQLITE_CANTOPEN)?;
+        if crate::quota_fs::lock(&file, exclusive).is_err() {
             #[cfg(test)]
             self.note_busy(
                 BusySite::OpenLease,
@@ -440,7 +432,7 @@ impl QuotaDomain {
         self.locked(|| {
             let before = self.snapshot()?;
             let _exclusive = self.lease(kind, true)?;
-            let result = unsafe { libc::unlinkat(self.directory.as_raw_fd(), name.as_ptr(), 0) };
+            let result = crate::quota_fs::unlink(&self.directory, name);
             match self.stat(kind) {
                 Ok(None) => Ok(result),
                 Ok(Some(stat)) if result != 0 && stat.st_size as u64 == before[kind] => Ok(result),
@@ -570,8 +562,8 @@ struct FileIdentity {
     device: u64,
     inode: u64,
 }
-impl From<libc::stat> for FileIdentity {
-    fn from(stat: libc::stat) -> Self {
+impl From<crate::quota_fs::Stat> for FileIdentity {
+    fn from(stat: crate::quota_fs::Stat) -> Self {
         Self {
             device: stat.st_dev as u64,
             inode: stat.st_ino as u64,
@@ -1204,6 +1196,86 @@ pub(crate) unsafe fn install(parent: *mut sqlite3_vfs) -> Result<(), String> {
 }
 
 #[cfg(test)]
+mod directory_lock_tests {
+    use super::*;
+
+    #[test]
+    fn unknown_unlock_retains_lock_and_rejects_every_group() {
+        const FIXTURE: &str = "TOBKIRI_QUOTA_UNLOCK_FIXTURE";
+        const MODE: &str = "TOBKIRI_QUOTA_UNLOCK_MODE";
+        if let Some(path) = std::env::var_os(FIXTURE) {
+            let root = crate::DataRoot::open(path).unwrap();
+            let directory = root.directory_capability();
+            let policy = StoreDiskPolicy::new(64 * 1024, 64 * 1024, 128 * 1024).unwrap();
+            let first = QuotaDomain::acquire(directory.clone(), "first.sqlite", policy).unwrap();
+            let sibling = QuotaDomain::acquire(directory.clone(), "second.sqlite", policy).unwrap();
+            let observer = crate::quota_fs::directory_lock(&directory).unwrap();
+            let retained = Arc::downgrade(&first.lock);
+            first.lock.fail_unlock.store(true, Ordering::Release);
+            if std::env::var(MODE).unwrap() == "panic" {
+                assert!(
+                    catch_unwind(AssertUnwindSafe(|| {
+                        let _ = first.locked::<()>(|| panic!("injected operation panic"));
+                    }))
+                    .is_err()
+                );
+            } else {
+                let ran = Cell::new(false);
+                assert_eq!(
+                    first.locked(|| {
+                        ran.set(true);
+                        Ok(73)
+                    }),
+                    Err(SQLITE_IOERR_UNLOCK)
+                );
+                assert!(ran.get());
+            }
+            assert!(first.is_quarantined() && sibling.is_quarantined());
+            let ran = Cell::new(false);
+            assert_eq!(
+                sibling.locked(|| {
+                    ran.set(true);
+                    Ok(())
+                }),
+                Err(SQLITE_IOERR)
+            );
+            assert!(!ran.get());
+            assert!(QuotaDomain::acquire(directory.clone(), "later.sqlite", policy).is_err());
+            drop(sibling);
+            drop(first);
+            assert!(retained.upgrade().is_some());
+            assert_eq!(
+                crate::quota_fs::lock(&observer, true).unwrap_err().kind(),
+                std::io::ErrorKind::WouldBlock
+            );
+            // The child exits with unknown custody retained. Only OS process
+            // destruction may end that lock; the parent then checks release.
+            return;
+        }
+        let temporary = tempfile::Builder::new()
+            .prefix(".quota-unlock-")
+            .tempdir_in(std::env::current_dir().unwrap())
+            .unwrap();
+        for mode in ["success", "panic"] {
+            let path = temporary.path().join(mode);
+            let child = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "quota_vfs::directory_lock_tests::unknown_unlock_retains_lock_and_rejects_every_group", "--nocapture"])
+                .env(FIXTURE, &path).env(MODE, mode).output().unwrap();
+            assert!(
+                child.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&child.stdout),
+                String::from_utf8_lossy(&child.stderr)
+            );
+            let root = crate::DataRoot::open(path).unwrap();
+            let lock = crate::quota_fs::directory_lock(&root.directory_capability()).unwrap();
+            crate::quota_fs::lock(&lock, true).unwrap();
+            crate::quota_fs::unlock(&lock).unwrap();
+        }
+    }
+}
+
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::{

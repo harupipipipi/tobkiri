@@ -47,5 +47,5 @@ pub use journal::AuditRunJournal;
 pub use session::{
     NativeInput, NativeInputCompletion, NativeInputEvent, NativeInputRouteResult,
     NativeInputRouteStatus, NativeInputRunHandle, NativeInputStatus, Session, UI_STREAM_MAX_BATCH,
-    UiAttachment, UiCallResult,
+    UiAttachment, UiCallResult, UserPortOutput, UserStreamHandle,
 };

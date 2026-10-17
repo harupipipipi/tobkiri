@@ -33,6 +33,9 @@ use tobkiri_gate::{
     FsOperation, Gate, GateError, Grant,
 };
 
+#[path = "filesystem_runtime.rs"]
+pub(crate) mod runtime;
+
 const MAX_ROOTS: usize = 64;
 const MAX_PROTECTED: usize = 64;
 const MAX_TOKENS: usize = 64;
@@ -657,6 +660,8 @@ impl PreparedFsCall {
             cx,
             gate,
             budget,
+            #[cfg(test)]
+            panic_before_io: false,
             _reservation: reservation,
         })
     }
@@ -690,11 +695,22 @@ pub struct FsWork {
     cx: CallCx,
     gate: Arc<dyn Gate>,
     budget: Arc<dyn AllocationBudget>,
+    #[cfg(test)]
+    panic_before_io: bool,
     // Last: all actual inputs, permit/cx metadata, FDs and outputs in the
     // enclosing completion are destroyed before native control is released.
     _reservation: ControlReservation,
 }
 impl FsWork {
+    pub(crate) fn is_mutation(&self) -> bool {
+        matches!(
+            self.prepared.call,
+            OwnedCall::Write { .. }
+                | OwnedCall::Rename { .. }
+                | OwnedCall::Remove { .. }
+                | OwnedCall::Mkdir { .. }
+        )
+    }
     pub fn permit(&self) -> &DispatchPermit {
         &self.permit
     }
@@ -703,8 +719,15 @@ impl FsWork {
     }
     pub fn execute(self) -> FsCompletion {
         let mut disposition = FsDisposition::Clean;
-        let result = (|| {
+        // Keep `self` outside the unwinding scope. A native panic must return
+        // an uncertain completion retaining the actual permit, FDs and input
+        // until the existing supervisor has delivered its terminal record.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             self.check_active()?;
+            #[cfg(test)]
+            if self.panic_before_io {
+                panic!("injected filesystem worker panic");
+            }
             let _namespace = namespace_lock()?;
             self.check_active()?;
             let state = self
@@ -727,7 +750,14 @@ impl FsWork {
                 &|| self.check_active(),
                 &mut disposition,
             )
-        })();
+        }));
+        let result = match result {
+            Ok(result) => result,
+            Err(_) => {
+                disposition = FsDisposition::PartialUnknown;
+                Err(FsError::CommitUnknown)
+            }
+        };
         let result = match result {
             Err(_) if disposition != FsDisposition::Clean => Err(FsError::CommitUnknown),
             result => result,
@@ -749,6 +779,16 @@ impl FsWork {
             return Err(FsError::Denied("filesystem permit scope mismatch"));
         }
         Ok(())
+    }
+}
+
+/// Preserve physical-effect replay evidence through guest cancellation, traps,
+/// output conversion and terminal persistence failures in the enclosing tree.
+pub(crate) fn preserve_effect_error(cx: &CallCx, error: anyhow::Error) -> anyhow::Error {
+    if cx.filesystem_mutation_possible() {
+        FsError::CommitUnknown.into()
+    } else {
+        error
     }
 }
 

@@ -57,6 +57,7 @@ pub(crate) struct Shared {
     pub(crate) flow_runner: OnceLock<Weak<dyn FlowRunner>>,
     pub(crate) provider_entry: OnceLock<Arc<dyn crate::ProviderEntryBridge>>,
     pub(crate) control: tobkiri_gate::CoreControl,
+    pub(crate) filesystem: OnceLock<crate::filesystem::FsRegistry>,
     _catalog_control: tobkiri_gate::ControlReservation,
 }
 
@@ -131,6 +132,24 @@ fn pack_wit_size(pack: &VerifiedPack) -> Result<(usize, usize)> {
 }
 
 impl PackHost {
+    /// Install Core's trusted descriptor registry. Guest paths cannot create a
+    /// registry or picker token. Protect the actual pinned authority directory
+    /// before this registry can service any component filesystem operation.
+    #[cfg(unix)]
+    pub fn install_filesystem_registry(
+        &self,
+        registry: crate::filesystem::FsRegistry,
+    ) -> Result<()> {
+        if self.shared.filesystem.get().is_some() {
+            bail!("filesystem registry is already installed")
+        }
+        registry.protect_root(self.shared.root.directory_capability().try_clone()?)?;
+        self.shared
+            .filesystem
+            .set(registry)
+            .map_err(|_| anyhow::anyhow!("filesystem registry is already installed"))
+    }
+
     /// Reserve actual factory/frame/control storage before its first owned
     /// allocation. Core supplies its private on-stack verifier for one real
     /// consumed entry; metadata or an owner descriptor cannot sponsor storage.
@@ -448,6 +467,7 @@ impl PackHost {
             flow_runner: OnceLock::new(),
             provider_entry: OnceLock::new(),
             control: init_cx.control().clone(),
+            filesystem: OnceLock::new(),
             _catalog_control: catalog_control,
         });
         let mut pack_core_errors = BTreeMap::new();
@@ -932,6 +952,33 @@ impl PackHost {
         frame: Arc<dyn crate::ProviderFrame>,
         physical_scope: tobkiri_gate::AllocationFrameScope,
     ) -> Result<(wasmtime::component::BudgetedVec<Val>, u64)> {
+        self.export_call_owned_inner(
+            id,
+            cx,
+            interface,
+            op,
+            args,
+            expected_generation,
+            owners,
+            frame,
+            physical_scope,
+        )
+        .await
+        .map_err(|error| crate::filesystem::preserve_effect_error(cx, error))
+    }
+    #[allow(clippy::too_many_arguments)]
+    async fn export_call_owned_inner(
+        &self,
+        id: &PackId,
+        cx: &CallCx,
+        interface: &str,
+        op: &str,
+        args: &[Val],
+        expected_generation: Option<u64>,
+        owners: &crate::owned_values::ValueOwners,
+        frame: Arc<dyn crate::ProviderFrame>,
+        physical_scope: tobkiri_gate::AllocationFrameScope,
+    ) -> Result<(wasmtime::component::BudgetedVec<Val>, u64)> {
         let pack = self
             .shared
             .verified
@@ -1014,6 +1061,19 @@ impl PackHost {
         result.map(|values| (values, generation))
     }
     pub(crate) async fn export_call_scoped(
+        &self,
+        id: &PackId,
+        cx: &CallCx,
+        interface: &str,
+        op: &str,
+        args: &[Val],
+        expected_generation: Option<u64>,
+    ) -> Result<(Vec<Val>, u64)> {
+        self.export_call_scoped_inner(id, cx, interface, op, args, expected_generation)
+            .await
+            .map_err(|error| crate::filesystem::preserve_effect_error(cx, error))
+    }
+    async fn export_call_scoped_inner(
         &self,
         id: &PackId,
         cx: &CallCx,
@@ -1205,6 +1265,10 @@ impl PackInstance {
                 grant_id,
                 if result.is_ok() {
                     Outcome::Succeeded
+                } else if cx.filesystem_mutation_possible() {
+                    Outcome::Failed {
+                        code: "filesystem-commit-unknown".into(),
+                    }
                 } else if cx.cancel().is_cancelled() {
                     Outcome::Cancelled
                 } else {

@@ -34,7 +34,7 @@ impl Approvals {
             &DataRoot::profile_relative(profile, "approvals.sqlite")?,
         )
     }
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     pub(crate) fn open_pinned(root: &DataRoot, profile: &ProfileId) -> Result<Self, StoreError> {
         Self::open_database(root, profile, std::path::Path::new("approvals.sqlite"))
     }

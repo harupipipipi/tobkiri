@@ -2388,6 +2388,8 @@ dependencies = [
  "tobkiri-core",
  "tokio",
  "tokio-util",
+ "windows-sys 0.61.2",
+ "zeroize",
 ]
 
 [[package]]
@@ -2540,6 +2542,7 @@ dependencies = [
  "tobkiri-canon",
  "tobkiri-gate",
  "tokio",
+ "windows-sys 0.61.2",
  "zeroize",
 ]
 

@@ -48,6 +48,27 @@ def variant(source: str, name: str, config: dict[str, Any] | None = None,
     return build.bind_files(directory, manifest, paths)
 
 
+def workflow_harness_variant() -> dict[str, Any]:
+    """Declare the overlaid call in its actual Flow principal's authority.
+
+    Overlay code ownership does not replace the base Flow's CallCx principal.
+    Keep the defining Pack identity and its authoritative WIT unchanged, while
+    pinning this explicit permission/dependency variant only in DeepThink.
+    """
+    original = read_manifest("harness-chat")
+    directory = ROOT / "deepthink-variants/local.harness-chat"
+    paths = [entry["path"] for entry in original["files"]]
+    for relative in paths:
+        target = directory / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / "local.harness-chat" / relative, target)
+    manifest = copy.deepcopy(original)
+    manifest["permissions"]["ports"].append("local.deepthink.workflow@1.0")
+    manifest["ports"]["consumes"].append(build.port("local.deepthink.workflow"))
+    manifest["files"] = []
+    return build.bind_files(directory, manifest, paths)
+
+
 def compose(manifests: dict[str, dict[str, Any]], *, ui: bool) -> dict[str, Any]:
     """Use declared providers, overlay ordering and explicit per-Pack limits."""
     profile = build.profile("harness-chat", manifests,
@@ -65,11 +86,13 @@ def compose(manifests: dict[str, dict[str, Any]], *, ui: bool) -> dict[str, Any]
     profile["name"] = "Tobkiri DeepThink · MiMo" + (" UI" if ui else "")
     profile["bindings"].update({
         "local.harness-agent.tool-provider@1": "local.harness-tools",
+        "local.harness-chat.structured-llm-provider@1": "local.openrouter-mimo-provider",
         "local.deepthink.workflow@1": "local.deepthink",
         "local.deepthink.continuation-input@1": "local.deepthink",
     })
     # Flow IDs are resolved by implements, never routed around Core.
     extra_ports = ["local.harness-agent.tool-provider@1.0",
+                   "local.harness-chat.structured-llm-provider@1.0",
                    "local.harness-chat.generate@1.0",
                    "local.deepthink.workflow@1.0",
                    "local.deepthink.continuation-input@1.0",
@@ -140,15 +163,19 @@ def stage(target_dir: Path) -> list[Path]:
     names = ["harness-chat", "terminal-input", "harness-conversation-store",
              "harness-prompt", "openai-compat-provider", "terminal-output", "harness-agent"]
     manifests = {name: read_manifest(name) for name in names}
-    manifests.update({"deepthink": deepthink, "harness-tools": tools_manifest,
+    manifests.update({"harness-chat": workflow_harness_variant(),
+                      "deepthink": deepthink, "harness-tools": tools_manifest,
                       "openrouter-mimo-provider": provider, "mimo-prompt": prompt,
                       "deepthink-ui": ui})
+    source_overrides = {
+        "local.harness-chat": ROOT / "deepthink-variants/local.harness-chat"
+    }
     destinations = []
     for has_ui in [False, True]:
         document = compose(manifests, ui=has_ui)
         name = "deepthink-mimo-ui" if has_ui else "deepthink-mimo"
         destination = ROOT / "profiles" / (name + ".profile.json")
-        build.portable_sources(document, destination)
+        build.portable_sources(document, destination, source_overrides)
         build.write_json(destination, document)
         published = {key: value for key, value in document.items() if key not in {"id", "name"}}
         published["format"] = "tobkiri.published-profile/1"
@@ -168,7 +195,7 @@ def stage(target_dir: Path) -> list[Path]:
             if pin["id"] == "local.mimo-prompt":
                 pin.update({"id": "local." + name, "sha256": build.sha256(build.canonical(prompt_manifest))})
         destination = ROOT / "profiles/deepthink-presets" / source.name.replace(".published.json", ".profile.json")
-        build.portable_sources(document, destination)
+        build.portable_sources(document, destination, source_overrides)
         build.write_json(destination, document)
         published = {key: value for key, value in document.items() if key not in {"id", "name"}}
         published["format"] = "tobkiri.published-profile/1"

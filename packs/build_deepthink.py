@@ -23,6 +23,8 @@ def default_config() -> dict:
     return {
         "max_review_rounds": 2,
         "max_tool_rounds": 3,
+        "max_contract_retries": 2,
+        "structured_provider": True,
         "tools": [], "skills": [], "profile_checks": [],
         "environment": {
             "execution_mode": "verified_wasm", "approval_policy": "core_gate",
@@ -69,6 +71,7 @@ def stage(target_dir: Path, config: dict | None = None,
         "cardinality": "one", "streams": {}, "callbacks": {}, "conformance": None,
     })
     views = ["local.harness-chat.llm-provider@1.0",
+             "local.harness-chat.structured-llm-provider@1.0",
              "local.harness-agent.tool-provider@1.0",
              "local.harness-chat.assistant-output@1.0",
              "local.harness-chat.generate@1.0", "local.deepthink.workflow@1.0",
@@ -82,6 +85,7 @@ def stage(target_dir: Path, config: dict | None = None,
     manifest["ports"]["provides"] = [port("local.deepthink.workflow"), port("local.deepthink.continuation-input")]
     manifest["ports"]["consumes"] = [
         port("local.harness-chat.llm-provider"),
+        port("local.harness-chat.structured-llm-provider", optional=True),
         port("local.harness-agent.tool-provider", optional=True),
         port("local.harness-chat.assistant-output"),
         port("local.deepthink.workflow"),

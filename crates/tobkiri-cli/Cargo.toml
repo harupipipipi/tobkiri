@@ -20,7 +20,11 @@ clap.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+zeroize.workspace = true
 tobkiri-core.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_IO", "Win32_System_Pipes", "Win32_System_Threading"] }
 
 [dev-dependencies]
 tempfile.workspace = true

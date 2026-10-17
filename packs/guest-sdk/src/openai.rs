@@ -40,6 +40,34 @@ pub fn request_body_with_json_mode(
     value
 }
 
+/// Carry an explicit phase schema without trusting provider-side enforcement.
+/// Callers must still validate every public completion against this contract.
+pub fn request_body_with_schema(
+    model: &str,
+    messages: Vec<Value>,
+    max_tokens: u32,
+    provider_order: Option<&[String]>,
+    name: &str,
+    schema: Value,
+    strict: bool,
+) -> Result<Value, &'static str> {
+    if name.is_empty()
+        || name.len() > 64
+        || !name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte))
+        || !schema.is_object()
+        || schema.get("type").and_then(Value::as_str) != Some("object")
+    {
+        return Err("structured generation requires a portable name and object schema");
+    }
+    let mut value = request_body(model, messages, max_tokens, provider_order);
+    value["response_format"] = json!({"type":"json_schema", "json_schema":{
+        "name":name,"schema":schema,"strict":strict
+    }});
+    Ok(value)
+}
+
 /// Validate completion evidence and normalize only public stream information.
 #[derive(Default)]
 pub struct ChatStream {
@@ -180,6 +208,44 @@ fn decimal_string(value: &str) -> Result<String, &'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_schema_is_transported_exactly_without_claiming_provider_enforcement() {
+        let schema = json!({"type":"object","properties":{"tool_calls":{"type":"array"}},"required":["tool_calls"],"additionalProperties":false});
+        let request =
+            request_body_with_schema("m", vec![], 0, None, "phase_1", schema.clone(), true)
+                .unwrap();
+        assert_eq!(request["response_format"]["type"], "json_schema");
+        assert_eq!(request["response_format"]["json_schema"]["schema"], schema);
+        assert_eq!(request["response_format"]["json_schema"]["strict"], true);
+        assert!(request.get("max_tokens").is_none());
+        assert!(
+            request_body_with_schema(
+                "m",
+                vec![],
+                0,
+                None,
+                "bad name",
+                json!({"type":"object"}),
+                true
+            )
+            .is_err()
+        );
+        assert!(
+            request_body_with_schema("m", vec![], 0, None, "valid", json!({"type":"array"}), true)
+                .is_err()
+        );
+        // HTTP 200 / finish=stop can still carry a malformed/schema-invalid
+        // public answer. The domain validator, not this request, gates success.
+        let mut stream = ChatStream::default();
+        assert!(
+            stream
+                .accept(r#"{"choices":[{"delta":{"content":"not JSON"},"finish_reason":"stop"}]}"#)
+                .is_ok()
+        );
+        assert!(stream.accept("[DONE]").is_ok());
+        assert!(stream.is_done());
+    }
 
     #[test]
     fn json_mode_is_explicit_and_keeps_provider_default_output_budget() {

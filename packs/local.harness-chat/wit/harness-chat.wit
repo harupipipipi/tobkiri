@@ -33,6 +33,12 @@ interface llm-provider {
   use tobkiri:core/types@1.0.0.{error, stream-handle};
   chat: func(prompt: prompt) -> result<stream-handle, error>;
 }
+interface structured-llm-provider {
+  use messages.{prompt, chat-event};
+  use tobkiri:core/types@1.0.0.{error, json, stream-handle};
+  record response-format { name: string, schema: json, strict: bool }
+  chat: func(prompt: prompt, response-format: response-format) -> result<stream-handle, error>;
+}
 interface assistant-output {
   use messages.{chat-event};
   use tobkiri:core/types@1.0.0.{error};

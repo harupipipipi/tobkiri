@@ -177,13 +177,14 @@ def shape_pack(shape: str) -> dict[str, Any]:
     names = {"messages": "data", "user-input": "port", "conversation-store": "port",
              "prompt-builder": "port", "llm-provider": "port", "assistant-output": "port",
              "command-provider":"port", "turn-flow": "flow", "load-context": "role", "assemble-prompt": "role", "generate": "role"}
+    if shape == "harness-chat": names["structured-llm-provider"] = "port"
     if shape == "echo-chat": names.pop("command-provider")
     paths = stage_shape(directory, shape)
-    ports = ["local." + shape + "." + name + "@1.0" for name, kind in names.items() if kind == "port" and name != "command-provider"]
+    ports = ["local." + shape + "." + name + "@1.0" for name, kind in names.items() if kind == "port" and name not in ("command-provider", "structured-llm-provider")]
     manifest = base_manifest(shape, {"kind": "data"}, permission_set(ports=ports))
     for name, kind in names.items():
         manifest["shapes"].append({"name": "local." + shape + "." + name, "version": "1.0", "kind": kind, "wit": "wit/" + shape + ".wit"})
-        sidecar = {"cardinality": "one", "streams": {"chat": "chat-event"} if name == "llm-provider" else {"submit":"flow-frame"} if name == "user-input" else {},
+        sidecar = {"cardinality": "one", "streams": {"chat": "chat-event"} if name in ("llm-provider", "structured-llm-provider") else {"submit":"flow-frame"} if name == "user-input" else {},
                    "callbacks": {}, "conformance": None}
         write_json(directory / "wit" / (name + ".shape.json"), sidecar)
         paths.append("wit/" + name + ".shape.json")
@@ -232,6 +233,8 @@ def guest_manifest(name: str, target: Path, origin: str, model: str) -> dict[str
     write_json(directory/"config.json",config)
     manifest = base_manifest(name, {"kind": "wasm", "component": "component.wasm", "toolchain": "rust/1.94.0;wit-bindgen/0.62.0", "config":{"path":"config.json"}}, permissions)
     manifest["ports"]["provides"] = [port(fq + iface)]
+    if name == "openai-compat-provider":
+        manifest["ports"]["provides"].append(port("local.harness-chat.structured-llm-provider"))
     # permissions.ports is effect authority only; a Pack that places dynamic
     # port/Flow calls must also declare each consumed view in ports.consumes
     # before the host admits the call.
@@ -290,10 +293,14 @@ def explicit_limits(document: dict[str, Any], packs: dict[str, dict[str, Any]]) 
     document["pack_limits"] = limits
 
 
-def portable_sources(document: dict[str, Any], destination: Path) -> None:
+def portable_sources(
+    document: dict[str, Any],
+    destination: Path,
+    source_overrides: dict[str, Path] | None = None,
+) -> None:
     """Publish local locators relative to the input Profile file's directory."""
     for pin in document["packs"]:
-        source = ROOT / pin["id"]
+        source = (source_overrides or {}).get(pin["id"], ROOT / pin["id"])
         if not source.is_dir():
             raise ValueError("published Pack directory is missing: " + pin["id"])
         pin["source"] = "file:" + Path(os.path.relpath(source, destination.parent)).as_posix()

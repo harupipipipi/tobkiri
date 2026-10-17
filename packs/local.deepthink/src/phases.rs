@@ -59,7 +59,9 @@ pub fn schema(phase: &str) -> Value {
             "blockers":strings(),"clarifications":strings()})
         }
         "means_selection" => {
-            json!({"selected_tools":strings(),"selected_skills":strings(),"workflow":array(nonempty(),1),"gaps":strings(),"clarifications":strings()})
+            json!({"selected_tools":strings(),"selected_skills":strings(),"workflow":array(nonempty(),1),
+                "gaps":array(object(json!({"requirement_ids":strings(),"blocking":{"type":"boolean"},
+                    "description":nonempty(),"resolution":nonempty()})),0),"clarifications":strings()})
         }
         "work_environment" => {
             json!({"workspace_plan":nonempty(),"editing_environment":nonempty(),"validation_environment":nonempty(),
@@ -133,7 +135,7 @@ pub fn prompt(phase: &str) -> &'static str {
             "実tool_inventory/skill_inventory/environmentだけで能力を評価。無いfs/shell/3D/画像/Computer useをあると主張しない。必須能力欠落はblockers。不要toolはblockerでも質問でもない。このphaseは能力評価だけで制作・最終review済みと書かない。"
         }
         "means_selection" => {
-            "実inventoryから必要なtool.nameとskill.nameだけ選び、workflowを定義。skillは実際の提供contentを読み適用条件を満たす場合のみ使う。不要なら空配列。必須の不足だけgaps、注記を質問にしない。"
+            "実inventoryから必要なtool.nameとskill.nameだけ選び、workflowを定義。skillは実際の提供contentを読み適用条件を満たす場合のみ使う。不要なら空配列。gapsの各項目には実Goalのrequirement_ids、blocking、description、resolutionを明記。必須要件が満たせずユーザー対応なしに続行不能な場合だけblocking=true。任意ツールや補助能力が無いだけならblocking=falseとし、resolutionに利用可能な代替手順を記録する。存在しない要件idを追加せず、解決済み設定や任意の不足をclarificationsに書かない。"
         }
         "work_environment" => {
             "最大限の能力を発揮する実作業場所・編集・検証・再現環境を確認。選定した実toolだけ実行可能。計画をavailable/readyと偽装しない。storage artifactを物理workspace fileと呼ばない。必要環境が欠ければready=falseと説明。"

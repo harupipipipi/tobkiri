@@ -82,6 +82,43 @@ impl TrustedPrompt for Prompt {
     }
 }
 
+/// New identities use one portable storage spelling. Lowercase ULID base32 is
+/// lossless: it keeps all 128 bits and the 26-character encoding. Existing IDs
+/// and imported documents are never normalized or rebound by this formatter.
+fn fresh_profile_id(value: ulid::Ulid) -> Result<ProfileId, CoreError> {
+    Ok(ProfileId::new(format!(
+        "prof_{}",
+        value.to_string().to_ascii_lowercase()
+    ))?)
+}
+
+#[cfg(test)]
+mod fresh_profile_id_tests {
+    use super::*;
+
+    #[test]
+    fn new_profile_id_encoding_preserves_all_bits_and_storage_case_identity() {
+        for bits in [
+            0,
+            1,
+            u128::MAX,
+            1 << 127,
+            0x0123_4567_89ab_cdef_fedc_ba98_7654_3210,
+        ] {
+            let original = ulid::Ulid::from(bits);
+            let id = fresh_profile_id(original).unwrap();
+            let encoded = id.as_str().strip_prefix("prof_").unwrap();
+            assert_eq!(encoded.len(), 26);
+            assert!(
+                encoded
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+            );
+            assert_eq!(ulid::Ulid::from_string(encoded).unwrap(), original);
+        }
+    }
+}
+
 impl Core {
     /// Open the in-process Core with no listener and no provider-specific route.
     pub fn open(config: CoreConfig, host: Arc<dyn HostIo>) -> Result<Self, CoreError> {
@@ -300,7 +337,7 @@ impl Core {
     /// Create a fresh Profile from a structural definition, with no inherited
     /// authority or data even if the definition contains a previous identity.
     pub async fn create_profile(&self, bytes: &[u8], name: String) -> Result<ProfileId, CoreError> {
-        let id = ProfileId::new(format!("prof_{}", ulid::Ulid::new()))?;
+        let id = fresh_profile_id(ulid::Ulid::new())?;
         let mut profile = match tobkiri_profile::parse_profile(bytes) {
             Ok(mut profile) => {
                 profile.id = id.clone();
@@ -439,7 +476,7 @@ impl Core {
         narrowing: Option<PermissionSet>,
     ) -> Result<ProfileId, CoreError> {
         let document = published(bytes)?;
-        let id = ProfileId::new(format!("prof_{}", ulid::Ulid::new()))?;
+        let id = fresh_profile_id(ulid::Ulid::new())?;
         let mut profile = document.to_profile(id.clone(), name);
         if let Some(ceiling) = narrowing {
             if !ceiling.is_subset_of(&profile.ceiling) {

@@ -1,17 +1,23 @@
 use crate::StoreError;
 #[cfg(unix)]
+use std::io::{Read, Write};
+#[cfg(unix)]
 use std::{
     ffi::CString,
     os::fd::{AsRawFd, FromRawFd},
 };
 use std::{
     fs::File,
-    io::{Read, Write},
     path::{Component, Path, PathBuf},
     sync::Arc,
 };
 use tobkiri_canon::{Digest, ids::ProfileId};
 use tobkiri_gate::ApprovalStore;
+#[cfg(windows)]
+#[path = "secure_windows.rs"]
+pub(crate) mod windows;
+#[cfg(windows)]
+use windows::{open_dir, open_file};
 
 /// Reject traversal, absolute paths, NULs and platform separator ambiguities.
 pub fn validate_relative(path: &Path) -> Result<Vec<String>, StoreError> {
@@ -25,6 +31,8 @@ pub fn validate_relative(path: &Path) -> Result<Vec<String>, StoreError> {
                 if s.is_empty() || s.contains(['\\', '\0']) || s == "." || s == ".." {
                     return Err(StoreError::Invalid("unsafe path component".into()));
                 }
+                #[cfg(windows)]
+                windows::validate_storage_component(s)?;
                 parts.push(s.into())
             }
             _ => {
@@ -57,10 +65,10 @@ pub(crate) fn name(s: &str) -> Result<(), StoreError> {
 #[derive(Clone)]
 pub struct DataRoot {
     path: PathBuf,
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     directory: Arc<File>,
 }
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 pub(crate) struct ProfileLock {
     pub(crate) directory: DataRoot,
     _lock: File,
@@ -108,7 +116,14 @@ impl DataRoot {
                 directory: Arc::new(dir),
             })
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            Ok(Self {
+                path: path.to_owned(),
+                directory: Arc::new(windows::open_root(path)?),
+            })
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = path;
             Err(StoreError::Unavailable(
@@ -134,15 +149,28 @@ impl DataRoot {
             }
             Ok((metadata.dev(), metadata.ino()))
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            windows::private_directory(&self.directory)?;
+            let (volume, id) = windows::file_identity(&self.directory)?;
+            if id[8..].iter().any(|byte| *byte != 0) {
+                return Err(StoreError::Unavailable(
+                    "root registry requires a 64-bit NTFS inode".into(),
+                ));
+            }
+            Ok((volume, u64::from_le_bytes(id[..8].try_into().unwrap())))
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             Err(StoreError::Unavailable(
                 "physical root identity unsupported".into(),
             ))
         }
     }
-    #[cfg(unix)]
-    pub(crate) fn directory_capability(&self) -> Arc<File> {
+    /// Trusted host integration only: clone the pinned directory handle.
+    /// Its path is diagnostic; callers must keep effects handle-relative.
+    #[cfg(any(unix, windows))]
+    pub fn directory_capability(&self) -> Arc<File> {
         self.directory.clone()
     }
     /// Inventory only descriptor-bound Profile directories; never follow a symlink.
@@ -198,7 +226,26 @@ impl DataRoot {
             profiles.sort();
             Ok(profiles)
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            let directory = match open_dir(&self.directory, "profiles", false) {
+                Ok(directory) => directory,
+                Err(StoreError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+                    return Ok(Vec::new());
+                }
+                Err(error) => return Err(error),
+            };
+            let mut profiles = Vec::new();
+            for value in windows::list_names(&directory)? {
+                let profile =
+                    ProfileId::parse(&value).map_err(|e| StoreError::Invalid(e.to_string()))?;
+                let _pinned = open_dir(&directory, &value, false)?;
+                profiles.push(profile);
+            }
+            profiles.sort();
+            Ok(profiles)
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             Err(StoreError::Unavailable(
                 "descriptor-bound Profile inventory unavailable".into(),
@@ -207,6 +254,8 @@ impl DataRoot {
     }
     pub fn profile_relative(profile: &ProfileId, file: &str) -> Result<PathBuf, StoreError> {
         name(profile.as_str())?;
+        #[cfg(windows)]
+        windows::validate_storage_component(profile.as_str())?;
         validate_relative(Path::new(file))?;
         Ok(PathBuf::from("profiles").join(profile.as_str()).join(file))
     }
@@ -252,6 +301,32 @@ impl DataRoot {
             _lock: lock,
         })
     }
+    #[cfg(windows)]
+    pub(crate) fn profile_lock(
+        &self,
+        profile: &ProfileId,
+        file: &str,
+    ) -> Result<ProfileLock, StoreError> {
+        if !matches!(file, ".revision.lock" | ".vault.lock" | ".vault-key.lock") {
+            return Err(StoreError::Invalid("unknown Profile lock domain".into()));
+        }
+        name(profile.as_str())?;
+        windows::validate_storage_component(profile.as_str())?;
+        let profiles = open_dir(&self.directory, "profiles", true)?;
+        let directory = open_dir(&profiles, profile.as_str(), true)?;
+        // One mutex for all Profile lock domains, just as Unix locks the
+        // Profile directory itself. No-delete sharing pins the sentinel from
+        // open through LockFileEx completion and the complete transaction.
+        let lock = open_file(&directory, ".profile.lock", true, false)?;
+        windows::lock_exclusive(&lock)?;
+        Ok(ProfileLock {
+            directory: DataRoot {
+                path: self.path.join("profiles").join(profile.as_str()),
+                directory: Arc::new(directory),
+            },
+            _lock: lock,
+        })
+    }
     /// Cross-process compare-and-swap commit of a compiled Profile revision.
     pub fn compare_and_swap_profile_head(
         &self,
@@ -259,7 +334,7 @@ impl DataRoot {
         expected: Option<&Digest>,
         new: &Digest,
     ) -> Result<(), StoreError> {
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         {
             let lock = self.profile_lock(profile, ".revision.lock")?;
             let current = match lock.directory.read("head", 256) {
@@ -284,7 +359,7 @@ impl DataRoot {
                 .write_atomic("head", new.as_str().as_bytes())?;
             Ok(())
         }
-        #[cfg(not(unix))]
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = (profile, expected, new);
             Err(StoreError::Unavailable(
@@ -294,21 +369,21 @@ impl DataRoot {
     }
     /// Snapshot immutable head and security epoch under the same process-shared lock.
     pub fn profile_head_snapshot(&self, profile: &ProfileId) -> Result<(Digest, u64), StoreError> {
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         let lock = self.profile_lock(profile, ".revision.lock")?;
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         let raw = lock.directory.read("head", 256)?;
-        #[cfg(not(unix))]
+        #[cfg(not(any(unix, windows)))]
         let raw = self.read_profile_file(profile, "head", 256)?;
         let head = Digest::parse(
             std::str::from_utf8(&raw)
                 .map_err(|_| StoreError::Invalid("invalid Profile head".into()))?,
         )
         .map_err(|e| StoreError::Canon(e.to_string()))?;
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         let epoch =
             crate::Approvals::open_pinned(&lock.directory, profile)?.security_epoch(profile)?;
-        #[cfg(not(unix))]
+        #[cfg(not(any(unix, windows)))]
         let epoch = crate::Approvals::open(self, profile)?.security_epoch(profile)?;
         Ok((head, epoch))
     }
@@ -328,7 +403,12 @@ impl DataRoot {
             }
             Ok(bytes)
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            let (directory, leaf) = self.parent(path.as_ref(), false)?;
+            windows::read(&directory, &leaf, max)
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = (path, max);
             Err(StoreError::Unavailable(
@@ -377,7 +457,18 @@ impl DataRoot {
             }
             Ok(Some(stat.st_size as u64))
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            let (directory, leaf) = match self.parent(path.as_ref(), false) {
+                Ok(parent) => parent,
+                Err(StoreError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+                    return Ok(None);
+                }
+                Err(error) => return Err(error),
+            };
+            windows::file_len(&directory, &leaf)
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = path;
             Err(StoreError::Unavailable(
@@ -396,7 +487,7 @@ impl DataRoot {
         disk_policy: crate::StoreDiskPolicy,
         custody: Arc<crate::data_custody::DataCustody>,
     ) -> Result<crate::data_custody::DataConnection, StoreError> {
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         {
             let (dir, last) = self.parent(path, create)?;
             // The quota VFS performs the first create/open and nofollow inode
@@ -422,7 +513,7 @@ impl DataRoot {
                 custody,
             })
         }
-        #[cfg(not(unix))]
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = (path, create, disk_policy, custody);
             Err(StoreError::Unavailable(
@@ -490,7 +581,27 @@ impl DataRoot {
             }
             Ok(Some((stat.st_dev as u64, stat.st_ino as u64)))
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            let (directory, leaf) = match self.parent(path, false) {
+                Ok(parent) => parent,
+                Err(StoreError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+                    return Ok(None);
+                }
+                Err(error) => return Err(error),
+            };
+            windows::path_identity(&directory, &leaf)?
+                .map(|(volume, id)| {
+                    if id[8..].iter().any(|byte| *byte != 0) {
+                        return Err(StoreError::Unavailable(
+                            "move registry requires a 64-bit NTFS inode".into(),
+                        ));
+                    }
+                    Ok((volume, u64::from_le_bytes(id[..8].try_into().unwrap())))
+                })
+                .transpose()
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = path;
             Err(StoreError::Unavailable(
@@ -505,13 +616,13 @@ impl DataRoot {
         path: &Path,
         disk_policy: crate::StoreDiskPolicy,
     ) -> Result<(), StoreError> {
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         {
             let (directory, leaf) = self.parent(path, false)?;
             crate::quota_vfs::QuotaDomain::acquire(Arc::new(directory), &leaf, disk_policy)?;
             Ok(())
         }
-        #[cfg(not(unix))]
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = (path, disk_policy);
             Err(StoreError::Unavailable(
@@ -545,7 +656,12 @@ impl DataRoot {
             dir.sync_all()?;
             Ok(())
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            let (directory, leaf) = self.parent(path.as_ref(), true)?;
+            windows::write_atomic(&directory, &leaf, bytes)
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = (path, bytes);
             Err(StoreError::Unavailable(
@@ -595,7 +711,13 @@ impl DataRoot {
             b.sync_all()?;
             Ok(())
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            let (from, source_leaf) = self.parent(source.as_ref(), false)?;
+            let (to, target_leaf) = self.parent(target.as_ref(), true)?;
+            windows::rename_no_replace(&from, &source_leaf, &to, &target_leaf)
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = (source, target);
             Err(StoreError::Unavailable(
@@ -603,7 +725,7 @@ impl DataRoot {
             ))
         }
     }
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     pub(crate) fn parent(&self, path: &Path, create: bool) -> Result<(File, String), StoreError> {
         let mut parts = validate_relative(path)?;
         let last = parts.pop().unwrap();
@@ -668,7 +790,34 @@ impl DataRoot {
             )?;
             Ok((conn, guard))
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            let (directory, leaf) = self.parent(path, create)?;
+            // Metadata-only Windows handles do not drop another SQLite
+            // handle's byte locks. Check the exact private single-link object
+            // without denying the already-open connection's write sharing.
+            let exists = windows::file_len(&directory, &leaf)?.is_some();
+            if !create && !exists {
+                return Err(std::io::Error::from(std::io::ErrorKind::NotFound).into());
+            }
+            let (virtual_path, guard) = crate::vfs::register(directory, &leaf)?;
+            let mut flags = rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
+                | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX
+                | rusqlite::OpenFlags::from_bits_retain(0x01000000);
+            if create {
+                flags |= rusqlite::OpenFlags::SQLITE_OPEN_CREATE;
+            }
+            let connection = rusqlite::Connection::open_with_flags(virtual_path, flags)?;
+            connection.busy_timeout(std::time::Duration::from_secs(2))?;
+            if create {
+                connection.execute_batch("PRAGMA journal_mode=DELETE;")?;
+            }
+            connection.execute_batch(
+                "PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON; PRAGMA temp_store=MEMORY;",
+            )?;
+            Ok((connection, guard))
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = (path, create);
             Err(StoreError::Unavailable(
@@ -777,7 +926,19 @@ impl Cas {
             }
             Ok(digest)
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            let (directory, leaf) = self.root.parent(&path, true)?;
+            windows::publish_new(&directory, &leaf, bytes)?;
+            let existing = self.get(&digest, bytes.len())?;
+            if existing != bytes {
+                return Err(StoreError::Conflict(
+                    "CAS digest collision or tampering".into(),
+                ));
+            }
+            Ok(digest)
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = path;
             Err(StoreError::Unavailable("nofollow CAS unavailable".into()))

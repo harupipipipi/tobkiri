@@ -1,8 +1,9 @@
 //! Physical authority domains and permanent allocation-owner locks.
 //!
-//! `flock` follows an open file description: cloning a lease retains the same
-//! lock, and closing an unrelated open descriptor does not release it. We never
-//! use a mutable slot pathname or explicitly unlock the directory inode. The final strong lease drop is
+//! Unix `flock` and the Windows directory sharing exclusion follow a retained
+//! native file object: cloning a lease retains the same lock, and closing an
+//! unrelated open descriptor does not release it. We never use a mutable slot
+//! pathname or explicitly unlock the directory inode. The final strong lease drop is
 //! the cleanup boundary; it must occur only after all charged storage is gone.
 use crate::{DataRoot, StoreError};
 use std::{cmp::Ordering, fmt, sync::Arc};
@@ -15,21 +16,27 @@ use tobkiri_gate::{AllocationOwnerLease, CapacityOwner};
 #[derive(Clone)]
 pub struct DataRootIdentity {
     device: u64,
+    #[cfg(not(windows))]
     inode: u64,
-    #[cfg(unix)]
+    #[cfg(windows)]
+    file_id: [u8; 16],
+    #[cfg(any(unix, windows))]
     directory: Arc<std::fs::File>,
 }
 impl fmt::Debug for DataRootIdentity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DataRootIdentity")
-            .field("device", &self.device)
-            .field("inode", &self.inode)
-            .finish()
+        let mut value = f.debug_struct("DataRootIdentity");
+        value.field("device", &self.device);
+        #[cfg(not(windows))]
+        value.field("inode", &self.inode);
+        #[cfg(windows)]
+        value.field("file_id", &self.file_id);
+        value.finish()
     }
 }
 impl PartialEq for DataRootIdentity {
     fn eq(&self, other: &Self) -> bool {
-        (self.device, self.inode) == (other.device, other.inode)
+        self.cmp(other) == Ordering::Equal
     }
 }
 impl Eq for DataRootIdentity {}
@@ -40,7 +47,14 @@ impl PartialOrd for DataRootIdentity {
 }
 impl Ord for DataRootIdentity {
     fn cmp(&self, other: &Self) -> Ordering {
-        (self.device, self.inode).cmp(&(other.device, other.inode))
+        #[cfg(not(windows))]
+        {
+            (self.device, self.inode).cmp(&(other.device, other.inode))
+        }
+        #[cfg(windows)]
+        {
+            (self.device, self.file_id).cmp(&(other.device, other.file_id))
+        }
     }
 }
 
@@ -51,6 +65,8 @@ struct HeldOwner {
     process: u32,
     #[cfg(unix)]
     _root_lock: Arc<unix::HeldRoot>,
+    #[cfg(windows)]
+    _root_lock: Arc<windows::HeldRoot>,
 }
 /// Strong proof of a real exclusive OS lock, with no public constructor. Retain
 /// it through allocations, outputs, asynchronous I/O and unknown cleanup.
@@ -107,7 +123,11 @@ impl DataRoot {
         {
             unix::validate_root(&self.identity()?)
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            windows::validate_root(&self.identity()?)
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             Err(StoreError::Unavailable(
                 "native storage root proof unsupported".into(),
@@ -132,7 +152,18 @@ impl DataRoot {
                 directory,
             })
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            let directory = self.directory_capability();
+            let (device, file_id) = crate::secure::windows::file_identity(&directory)?;
+            crate::secure::windows::private_directory(&directory)?;
+            Ok(DataRootIdentity {
+                device,
+                file_id,
+                directory,
+            })
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             Err(StoreError::Unavailable(
                 "physical root identity unsupported".into(),
@@ -157,7 +188,17 @@ impl DataRoot {
                 },
             )
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            windows::acquire(
+                self.identity()?,
+                CapacityOwner::Pack {
+                    profile: profile.clone(),
+                    pack: pack.clone(),
+                },
+            )
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = (profile, pack);
             Err(StoreError::Unavailable(
@@ -177,7 +218,16 @@ impl DataRoot {
                 },
             )
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            windows::acquire(
+                self.identity()?,
+                CapacityOwner::User {
+                    profile: profile.clone(),
+                },
+            )
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = profile;
             Err(StoreError::Unavailable(
@@ -185,6 +235,17 @@ impl DataRoot {
             ))
         }
     }
+}
+
+#[cfg(windows)]
+#[path = "owner_windows.rs"]
+mod windows;
+
+/// Flush an already-held Windows allocation root without reopening a competing
+/// write handle. `false` means this process has no such native owner handle.
+#[cfg(windows)]
+pub(crate) fn flush_windows_owner_directory(file: &std::fs::File) -> Result<bool, StoreError> {
+    windows::flush_directory(file)
 }
 
 #[cfg(unix)]

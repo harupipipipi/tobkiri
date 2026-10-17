@@ -15,6 +15,10 @@ use tobkiri_core::{
 
 #[path = "profile_input.rs"]
 mod profile_input;
+#[path = "secret_input.rs"]
+mod secret_input;
+#[path = "user_invoke.rs"]
+mod user_invoke;
 
 pub async fn run(args: Args) -> Result<()> {
     if let Command::Pack { command } = args.command {
@@ -45,14 +49,12 @@ pub async fn run(args: Args) -> Result<()> {
                     profile,
                     name,
                     from_file,
+                    from_env,
                 },
         } => {
-            let mut bytes = bounded_read(&from_file, 64 * 1024)?;
-            let result = core
-                .set_secret(&ProfileId::parse(&profile)?, &name, &bytes)
-                .await;
-            bytes.fill(0);
-            result?;
+            let profile_id = ProfileId::parse(&profile)?;
+            let bytes = secret_input::load(from_file.as_deref(), from_env.as_deref())?;
+            core.set_secret(&profile_id, &name, &bytes).await?;
             println!("Secret stored for Profile {profile}.");
             Ok(())
         }
@@ -62,6 +64,14 @@ pub async fn run(args: Args) -> Result<()> {
 
 async fn profile(core: &Core, command: ProfileCommand) -> Result<()> {
     match command {
+        ProfileCommand::Invoke {
+            profile,
+            shape,
+            op,
+            args_file,
+        } => {
+            user_invoke::run(core, &profile, &shape, &op, &args_file).await?;
+        }
         ProfileCommand::Create { name, definition } => {
             let id = core
                 .create_profile(&profile_input::definition(&definition)?, name)
@@ -444,8 +454,28 @@ fn complete_with_cleanup<T>(
         (Err(error), Ok(())) => Err(error),
         (Ok(_), Err(cleanup)) => Err(anyhow::Error::new(cleanup).context("Session cleanup failed")),
         (Err(error), Err(cleanup)) => {
-            Err(error.context(format!("Session cleanup also failed: {cleanup}")))
+            if filesystem_unknown(&cleanup)
+                && !error.chain().any(|error| {
+                    error
+                        .downcast_ref::<tobkiri_core::CoreError>()
+                        .is_some_and(filesystem_unknown)
+                })
+            {
+                Err(anyhow::Error::new(cleanup)
+                    .context(format!("User operation also failed: {error}")))
+            } else {
+                Err(error.context(format!("Session cleanup also failed: {cleanup}")))
+            }
         }
+    }
+}
+fn filesystem_unknown(error: &tobkiri_core::CoreError) -> bool {
+    match error {
+        tobkiri_core::CoreError::Step(error) => error.code == "filesystem-commit-unknown",
+        tobkiri_core::CoreError::Cleanup { original, cleanup } => {
+            filesystem_unknown(original) || filesystem_unknown(cleanup)
+        }
+        _ => false,
     }
 }
 #[cfg(test)]
@@ -475,5 +505,24 @@ mod tests {
         let text = format!("{error:#}");
         assert!(text.contains("original operation failed"));
         assert!(text.contains("fixture cleanup failed"));
+    }
+    #[test]
+    fn typed_unknown_cleanup_takes_priority_over_a_plain_transport_failure() {
+        let result = complete_with_cleanup::<()>(
+            Err(anyhow::anyhow!("fixture stdout failed")),
+            Err(tobkiri_core::CoreError::Step(tobkiri_core::StepError::new(
+                "filesystem-commit-unknown",
+                "fixture uncertain effect",
+            ))),
+        );
+        let error = result.unwrap_err();
+        assert!(
+            error
+                .downcast_ref::<tobkiri_core::CoreError>()
+                .is_some_and(filesystem_unknown)
+        );
+        let text = format!("{error:#}");
+        assert!(text.contains("fixture stdout failed"));
+        assert!(text.contains("filesystem-commit-unknown"));
     }
 }

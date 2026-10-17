@@ -89,6 +89,9 @@ pub enum FinalOutputKind {
     CanonicalValue,
     /// Return the closed UI value/stream envelope using this Core candidate.
     UiInvokeValue { stream_handle: u64 },
+    /// A trusted native User call, with a Session-reserved stream candidate.
+    /// This is an output encoding only, not a UI attachment or authority.
+    UserInvokeValue { stream_handle: u64 },
 }
 
 /// Result of a final-consumer port dispatch. A stream is returned together

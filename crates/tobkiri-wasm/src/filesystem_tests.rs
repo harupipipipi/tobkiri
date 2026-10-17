@@ -1,6 +1,6 @@
 //! Real descriptor/temporary-directory tests. Authority-path tests use the
-//! production GateEngine and durable Store Approvals; only the trusted approval
-//! UI is a deterministic test implementation. The one low-level append fault
+//! production GateEngine and durable Store Approvals; the trusted approval
+//! UI and an explicit audit-failure switch are test implementations. The low-level append fault
 //! test injects a native cancellation checkpoint and makes no authority claim.
 
 #![cfg(unix)]
@@ -11,15 +11,16 @@ use std::{
     fs,
     os::unix::fs::symlink,
     path::{Path, PathBuf},
-    sync::atomic::{AtomicUsize, Ordering as AtomicOrdering},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering},
 };
 use tobkiri_canon::{
     AllocationRequest,
     ids::{PackHash, PackId, ProfileId, RequestId},
 };
 use tobkiri_gate::{
-    ApprovalAnswer, ApprovalPrompt, ApprovalStore, CoreCancellation, FsPermission, GateEngine,
-    MediatorChain, PackPolicy, PermissionSet, Principal, ResourceLimits, TrustedPrompt,
+    ApprovalAnswer, ApprovalPrompt, ApprovalStore, AuditEvent, AuditSink, CoreCancellation,
+    FsPermission, GateEngine, MediatorChain, PackPolicy, PermissionSet, Principal, ResourceLimits,
+    TrustedPrompt,
 };
 use tobkiri_store::{Approvals, AuditLog, AuditQuota, DataRoot};
 
@@ -28,6 +29,29 @@ struct Approve;
 impl TrustedPrompt for Approve {
     async fn prompt_approval(&self, _: ApprovalPrompt) -> ApprovalAnswer {
         ApprovalAnswer::Approve
+    }
+}
+
+struct TestAudit {
+    inner: AuditLog,
+    reject: AtomicBool,
+}
+impl AuditSink for TestAudit {
+    fn append(&self, event: AuditEvent) -> std::result::Result<(), GateError> {
+        if self.reject.load(Ordering::Acquire) {
+            return Err(GateError::Persistence("injected audit failure".into()));
+        }
+        self.inner.append(event)
+    }
+    fn append_idempotent(
+        &self,
+        id: &Digest,
+        event: AuditEvent,
+    ) -> std::result::Result<(), GateError> {
+        if self.reject.load(Ordering::Acquire) {
+            return Err(GateError::Persistence("injected audit failure".into()));
+        }
+        self.inner.append_idempotent(id, event)
     }
 }
 
@@ -52,6 +76,7 @@ struct Fixture {
     workspace: PathBuf,
     control: CoreControl,
     approvals: Arc<Approvals>,
+    audit: Arc<TestAudit>,
     gate: Arc<GateEngine>,
     registry: FsRegistry,
     root: FsRootIdentity,
@@ -77,10 +102,13 @@ impl Fixture {
             .unwrap();
         let profile = ProfileId::parse("prof_filesystem").unwrap();
         let approvals = Arc::new(Approvals::open(&data, &profile).unwrap());
-        let audit = Arc::new(AuditLog::open(&data, &profile, AuditQuota::default()).unwrap());
+        let audit = Arc::new(TestAudit {
+            inner: AuditLog::open(&data, &profile, AuditQuota::default()).unwrap(),
+            reject: AtomicBool::new(false),
+        });
         let gate = Arc::new(GateEngine::new_with_control(
             approvals.clone(),
-            audit,
+            audit.clone(),
             Arc::new(Approve),
             MediatorChain::default(),
             control.clone(),
@@ -145,6 +173,7 @@ impl Fixture {
             workspace,
             control,
             approvals,
+            audit,
             gate,
             registry,
             root,
@@ -228,6 +257,244 @@ fn read_bytes(completion: &mut FsCompletion) -> CoreBuffer {
         FsOutput::Bytes(bytes) => bytes,
         _ => panic!("expected filesystem bytes"),
     }
+}
+
+#[tokio::test]
+async fn supervised_write_records_success_only_after_output_conversion() {
+    let fixture = Fixture::new(rw()).await;
+    let directory = fixture.open(rw()).await;
+    let work = fixture
+        .work(
+            &directory,
+            FsCall::Write {
+                path: "supervised",
+                data: fixture.bytes(b"one committed write"),
+                append: false,
+            },
+        )
+        .await;
+    let id = work.permit().id().clone();
+    let delivery = work.dispatch().await.unwrap();
+    assert!(fixture.approvals.terminal_delivery(&id).unwrap().is_none());
+    let result = delivery.convert(|output| {
+        assert!(matches!(output, FsOutput::Unit));
+        Ok(())
+    });
+    delivery.finish(result).await.unwrap();
+    let terminal = fixture.approvals.terminal_delivery(&id).unwrap().unwrap();
+    assert!(matches!(
+        terminal.decision.outcome,
+        tobkiri_gate::Outcome::Succeeded
+    ));
+    assert_eq!(
+        fs::read(fixture.workspace.join("supervised")).unwrap(),
+        b"one committed write"
+    );
+}
+
+#[tokio::test]
+async fn supervised_mutation_conversion_failure_is_durable_unknown() {
+    let fixture = Fixture::new(rw()).await;
+    let directory = fixture.open(rw()).await;
+    let work = fixture
+        .work(
+            &directory,
+            FsCall::Write {
+                path: "conversion-failure",
+                data: fixture.bytes(b"still committed"),
+                append: false,
+            },
+        )
+        .await;
+    let id = work.permit().id().clone();
+    let delivery = work.dispatch().await.unwrap();
+    let result = delivery.convert::<()>(|_| Err(AllocationError::Limit.into()));
+    let error = delivery.finish(result).await.unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<FsError>(),
+        Some(FsError::CommitUnknown)
+    ));
+    let terminal = fixture.approvals.terminal_delivery(&id).unwrap().unwrap();
+    assert!(
+        matches!(terminal.decision.outcome, tobkiri_gate::Outcome::Failed { code }
+        if code == "filesystem-commit-unknown")
+    );
+    assert_eq!(
+        fs::read(fixture.workspace.join("conversion-failure")).unwrap(),
+        b"still committed"
+    );
+}
+
+#[tokio::test]
+async fn supervised_committed_write_with_audit_failure_never_delivers_success() {
+    let fixture = Fixture::new(rw()).await;
+    let directory = fixture.open(rw()).await;
+    let work = fixture
+        .work(
+            &directory,
+            FsCall::Write {
+                path: "audit-failure",
+                data: fixture.bytes(b"committed once"),
+                append: true,
+            },
+        )
+        .await;
+    let id = work.permit().id().clone();
+    let delivery = work.dispatch().await.unwrap();
+    fixture.audit.reject.store(true, Ordering::Release);
+    let result = delivery.convert(|_| Ok(()));
+    let error = delivery.finish(result).await.unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<FsError>(),
+        Some(FsError::CommitUnknown)
+    ));
+    let terminal = fixture.approvals.terminal_delivery(&id).unwrap().unwrap();
+    assert!(!terminal.acknowledged);
+    assert_eq!(
+        fs::read(fixture.workspace.join("audit-failure")).unwrap(),
+        b"committed once"
+    );
+}
+
+#[tokio::test]
+async fn supervised_mutation_evidence_outlives_successful_import_delivery() {
+    let fixture = Fixture::new(rw()).await;
+    let directory = fixture.open(rw()).await;
+    let work = fixture
+        .work(
+            &directory,
+            FsCall::Read {
+                path: "missing",
+                offset: 0,
+                len: 1,
+            },
+        )
+        .await;
+    let delivery = work.dispatch().await.unwrap();
+    let result = delivery.convert(|_| Ok(()));
+    let error = delivery.finish(result).await.unwrap_err();
+    assert!(!matches!(
+        error.downcast_ref::<FsError>(),
+        Some(FsError::CommitUnknown)
+    ));
+    assert!(!fixture.cx.filesystem_mutation_possible());
+    let work = fixture
+        .work(
+            &directory,
+            FsCall::Write {
+                path: "later-trap",
+                data: fixture.bytes(b"one write"),
+                append: false,
+            },
+        )
+        .await;
+    let delivery = work.dispatch().await.unwrap();
+    let result = delivery.convert(|_| Ok(()));
+    delivery.finish(result).await.unwrap();
+    let later_export_error = preserve_effect_error(&fixture.cx, anyhow::anyhow!("guest trap"));
+    assert!(matches!(
+        later_export_error.downcast_ref::<FsError>(),
+        Some(FsError::CommitUnknown)
+    ));
+    assert_eq!(
+        fs::read(fixture.workspace.join("later-trap")).unwrap(),
+        b"one write"
+    );
+}
+
+#[tokio::test]
+async fn supervised_worker_panic_preserves_actual_custody_until_terminal_delivery() {
+    let fixture = Fixture::new(rw()).await;
+    let directory = fixture.open(rw()).await;
+    let mut work = fixture
+        .work(
+            &directory,
+            FsCall::Write {
+                path: "panic-before-io",
+                data: fixture.repeated(b'p', CHUNK),
+                append: false,
+            },
+        )
+        .await;
+    let id = work.permit().id().clone();
+    work.panic_before_io = true;
+    let delivery = work.dispatch().await.unwrap();
+    assert!(fixture.owner.live.load(Ordering::Acquire) >= CHUNK as u64);
+    assert!(fixture.approvals.terminal_delivery(&id).unwrap().is_none());
+    let result = delivery.convert::<()>(|_| panic!("uncertain work has no value to encode"));
+    let error = delivery.finish(result).await.unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<FsError>(),
+        Some(FsError::CommitUnknown)
+    ));
+    assert!(!fixture.workspace.join("panic-before-io").exists());
+    let terminal = fixture.approvals.terminal_delivery(&id).unwrap().unwrap();
+    assert!(
+        matches!(terminal.decision.outcome, tobkiri_gate::Outcome::Failed { code }
+        if code == "filesystem-commit-unknown")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn supervised_abandoned_wait_retains_real_worker_and_records_unknown_after_completion() {
+    let fixture = Fixture::new(rw()).await;
+    let directory = fixture.open(rw()).await;
+    let work = fixture
+        .work(
+            &directory,
+            FsCall::Write {
+                path: "abandoned",
+                data: fixture.repeated(b'z', CHUNK),
+                append: false,
+            },
+        )
+        .await;
+    let id = work.permit().id().clone();
+    // Hold the actual OS namespace gate so the blocking worker cannot finish.
+    let held_namespace = namespace_lock().unwrap();
+    let before = fixture
+        .control
+        .usage()
+        .count(tobkiri_gate::ControlKind::Task);
+    let waiter = tokio::spawn(async move { work.dispatch().await });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while fixture
+            .control
+            .usage()
+            .count(tobkiri_gate::ControlKind::Task)
+            <= before
+        {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    waiter.abort();
+    assert!(matches!(waiter.await, Err(error) if error.is_cancelled()));
+    assert!(fixture.owner.live.load(Ordering::Acquire) >= CHUNK as u64);
+    assert!(fixture.approvals.terminal_delivery(&id).unwrap().is_none());
+    drop(held_namespace);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if fixture.approvals.terminal_delivery(&id).unwrap().is_some()
+                && fixture.owner.live.load(Ordering::Acquire) == 0
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let terminal = fixture.approvals.terminal_delivery(&id).unwrap().unwrap();
+    assert!(
+        matches!(terminal.decision.outcome, tobkiri_gate::Outcome::Failed { code }
+        if code == "filesystem-commit-unknown")
+    );
+    assert_eq!(
+        fs::read(fixture.workspace.join("abandoned")).unwrap(),
+        vec![b'z'; CHUNK]
+    );
 }
 
 #[tokio::test]

@@ -2,7 +2,7 @@
   "files": [
     {
       "path": "component.build.json",
-      "sha256": "sha256:c6d591f8240364c2d7cbc159f192aaee42d7b6e20504c777a686c9f74bdd90a2",
+      "sha256": "sha256:ad049eba5c9f0aa0ce4c98c3d65123e73c71b65b5146795dd144617a5c41318e",
       "size": 1663
     },
     {
@@ -22,8 +22,8 @@
     },
     {
       "path": "wit/deps/shape.wit",
-      "sha256": "sha256:f674b3ebac6e1c90cab218203d2ee810c5abf8097adeed1ff0481600426d0f9c",
-      "size": 1900
+      "sha256": "sha256:773dab1acafb9e85414e67572fa0b913a0476d41987880db34881c27f2420a82",
+      "size": 2202
     },
     {
       "path": "wit/pack.wit",

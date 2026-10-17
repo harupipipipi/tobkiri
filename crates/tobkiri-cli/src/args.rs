@@ -61,6 +61,18 @@ pub enum ProfileCommand {
         #[arg(long)]
         once: bool,
     },
+    /// Invoke one declared typed User port, draining its producer-owned stream.
+    Invoke {
+        #[arg(long)]
+        profile: String,
+        #[arg(long)]
+        shape: String,
+        #[arg(long)]
+        op: String,
+        /// Bounded StrictV1 object arguments. Never reads metadata from stdin.
+        #[arg(long)]
+        args_file: PathBuf,
+    },
     /// Publish the explicit Profile structural fields only.
     Export {
         #[arg(long)]
@@ -147,14 +159,25 @@ pub enum PackCommand {
 }
 #[derive(Subcommand)]
 pub enum SecretCommand {
-    /// Store exact file bytes in the per-Profile encrypted vault; never echo them.
+    /// Store exact secret bytes in the per-Profile encrypted vault; never echo them.
     Set {
         #[arg(long)]
         profile: String,
         #[arg(long)]
         name: String,
-        #[arg(long)]
-        from_file: PathBuf,
+        #[arg(
+            long,
+            required_unless_present = "from_env",
+            conflicts_with = "from_env"
+        )]
+        from_file: Option<PathBuf>,
+        /// Name of a process environment variable; its value is never an argument.
+        #[arg(
+            long,
+            required_unless_present = "from_file",
+            conflicts_with = "from_file"
+        )]
+        from_env: Option<String>,
     },
 }
 
@@ -166,6 +189,35 @@ mod tests {
         assert!(
             Args::try_parse_from(["tobkiri", "--yes", "approve", "--profile", "prof_one"]).is_err()
         );
+    }
+    #[test]
+    fn secrets_require_exactly_one_source_and_never_a_value_argument() {
+        let base = [
+            "tobkiri",
+            "secrets",
+            "set",
+            "--profile",
+            "prof_one",
+            "--name",
+            "api-key",
+        ];
+        assert!(Args::try_parse_from(base).is_err());
+        for source in [
+            ["--from-env", "TOBKIRI_TEST_KEY"],
+            ["--from-file", "key.bin"],
+        ] {
+            assert!(Args::try_parse_from(base.into_iter().chain(source)).is_ok());
+        }
+        assert!(
+            Args::try_parse_from(base.into_iter().chain([
+                "--from-file",
+                "key.bin",
+                "--from-env",
+                "TOBKIRI_TEST_KEY",
+            ]))
+            .is_err()
+        );
+        assert!(Args::try_parse_from(base.into_iter().chain(["--value", "secret"])).is_err());
     }
     #[test]
     fn runtime_selection_is_generic() {
@@ -188,6 +240,43 @@ mod tests {
                 command: ProfileCommand::Run { once: true, .. }
             }
         ));
+    }
+    #[test]
+    fn native_user_invocation_requires_explicit_typed_file_arguments() {
+        let args = Args::try_parse_from([
+            "tobkiri",
+            "profile",
+            "invoke",
+            "--profile",
+            "prof_one",
+            "--shape",
+            "local.fixture.input@1.0",
+            "--op",
+            "stream",
+            "--args-file",
+            "request.json",
+        ])
+        .unwrap();
+        assert!(matches!(
+            args.command,
+            Command::Profile {
+                command: ProfileCommand::Invoke { .. }
+            }
+        ));
+        assert!(
+            Args::try_parse_from([
+                "tobkiri",
+                "profile",
+                "invoke",
+                "--profile",
+                "prof_one",
+                "--shape",
+                "local.fixture.input@1.0",
+                "--op",
+                "stream"
+            ])
+            .is_err()
+        );
     }
     #[test]
     fn host_config_map_cannot_override_hash_bound_pack_defaults() {

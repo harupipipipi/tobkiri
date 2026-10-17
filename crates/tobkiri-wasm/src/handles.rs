@@ -10,11 +10,19 @@ use tobkiri_canon::ids::ShapeRef;
 use tobkiri_flow::CoreStream;
 use tobkiri_gate::{CallCx, DispatchPermit, GrantId, Outcome};
 
+#[derive(Clone, Copy)]
+pub(crate) enum HandleCleanupError {
+    CompletionUnknown,
+    FilesystemCommitUnknown,
+}
+
 #[derive(Default)]
 pub(crate) struct HandleCloseReceipt {
     pub(crate) cleanup_started: bool,
     pub(crate) cleanup_done: bool,
-    pub(crate) cleanup_error: Option<&'static str>,
+    // A closed native classification survives delivery retries without
+    // retaining diagnostics or turning an uncertain mutation into success.
+    pub(crate) cleanup_error: Option<HandleCleanupError>,
     pub(crate) outcome: Option<Outcome>,
     // Deadline settlement is a separate immutable terminal family. It must
     // survive a failed audit delivery and retry the same durable CAS winner.

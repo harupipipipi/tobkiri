@@ -14,22 +14,30 @@ use tobkiri_core::{ApprovalAnswer, ApprovalPrompt, HostError, HostIo, TrustedPro
 pub struct TerminalHost {
     non_interactive: bool,
     input: tokio::sync::OnceCell<Input>,
-    turn: tokio::sync::Mutex<()>,
+    turn: Arc<tokio::sync::Mutex<()>>,
 }
 impl TerminalHost {
     pub fn new(non_interactive: bool) -> Result<Self, HostError> {
         Ok(Self {
             non_interactive,
             input: tokio::sync::OnceCell::new(),
-            turn: tokio::sync::Mutex::new(()),
+            turn: Arc::new(tokio::sync::Mutex::new(())),
         })
     }
-    async fn read_line(&self) -> Result<String, HostError> {
-        self.input
+    async fn read_line(&self, turn: tokio::sync::OwnedMutexGuard<()>) -> Result<String, HostError> {
+        let input = self
+            .input
             .get_or_try_init(|| async { Input::new() })
-            .await?
-            .line()
-            .await
+            .await?;
+        #[cfg(windows)]
+        {
+            input.line(Some(turn)).await
+        }
+        #[cfg(not(windows))]
+        {
+            let _turn = turn;
+            input.line().await
+        }
     }
     fn trusted_tty(&self) -> bool {
         !self.non_interactive && std::io::stdin().is_terminal() && std::io::stderr().is_terminal()
@@ -44,7 +52,7 @@ impl TrustedPrompt for TerminalHost {
         }
         // A guest terminal read cannot consume the trusted approval response,
         // and guest output cannot interleave counterfeit review lines.
-        let _turn = self.turn.lock().await;
+        let turn = self.turn.clone().lock_owned().await;
         let rendered = match render_approval(&prompt) {
             Ok(rendered) => rendered,
             Err(_) => return ApprovalAnswer::Unavailable,
@@ -58,7 +66,7 @@ impl TrustedPrompt for TerminalHost {
         if written.is_err() {
             return ApprovalAnswer::Unavailable;
         }
-        match self.read_line().await {
+        match self.read_line(turn).await {
             Ok(answer) if answer.trim() == "approve" => ApprovalAnswer::Approve,
             Ok(_) => ApprovalAnswer::Deny,
             Err(_) => ApprovalAnswer::Unavailable,
@@ -125,14 +133,14 @@ impl HostIo for TerminalHost {
         }
     }
     async fn terminal_read_line(&self, prompt: &str) -> Result<String, HostError> {
-        let _turn = self.turn.lock().await;
+        let turn = self.turn.clone().lock_owned().await;
         {
             let mut out = std::io::stdout().lock();
             out.write_all(prompt.as_bytes())
                 .and_then(|_| out.flush())
                 .map_err(|error| HostError(error.to_string()))?;
         }
-        self.read_line().await
+        self.read_line(turn).await
     }
     fn terminal_write(&self, text: &str) {
         let mut out = std::io::stdout().lock();
@@ -164,18 +172,26 @@ impl HostIo for TerminalHost {
         max_bytes: usize,
         budget: Arc<dyn AllocationBudget>,
     ) -> Result<CoreBuffer, HostError> {
-        let _turn = self.turn.lock().await;
+        let turn = self.turn.clone().lock_owned().await;
         {
             let mut out = std::io::stdout().lock();
             write_text(&mut out, prompt)
                 .and_then(|_| out.flush())
                 .map_err(io_error)?;
         }
-        self.input
+        let input = self
+            .input
             .get_or_try_init(|| async { Input::new() })
-            .await?
-            .line_budgeted(max_bytes, &budget)
-            .await
+            .await?;
+        #[cfg(windows)]
+        {
+            input.line_budgeted(max_bytes, &budget, Some(turn)).await
+        }
+        #[cfg(not(windows))]
+        {
+            let _turn = turn;
+            input.line_budgeted(max_bytes, &budget).await
+        }
     }
     fn terminal_write_budgeted(&self, text: &CoreBuffer) -> Result<(), HostError> {
         let _turn = self
@@ -416,31 +432,23 @@ impl Drop for Input {
     }
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+#[path = "terminal_windows.rs"]
+mod windows;
+#[cfg(windows)]
+use windows::Input;
+
+#[cfg(not(any(unix, windows)))]
 struct Input;
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 impl Input {
     fn new() -> Result<Self, HostError> {
         Ok(Self)
     }
     async fn line(&self) -> Result<String, HostError> {
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        std::thread::spawn(move || {
-            let mut line = String::new();
-            let result = std::io::stdin()
-                .read_line(&mut line)
-                .map_err(|e| HostError(e.to_string()))
-                .and_then(|size| {
-                    if size == 0 {
-                        Err(HostError("end of input".into()))
-                    } else {
-                        Ok(line.trim_end_matches(['\r', '\n']).to_owned())
-                    }
-                });
-            let _ = tx.send(result);
-        });
-        rx.await
-            .map_err(|_| HostError("terminal read thread failed".into()))?
+        Err(HostError(
+            "cancellable terminal input is unavailable on this platform".into(),
+        ))
     }
     async fn line_budgeted(
         &self,

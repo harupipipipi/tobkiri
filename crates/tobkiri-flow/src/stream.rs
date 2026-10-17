@@ -43,12 +43,20 @@ pub trait StreamSource: Send {
 }
 
 /// An owned stream; dropping it always cancels the provider source.
-pub struct CoreStream(Box<dyn StreamSource>);
+pub struct CoreStream {
+    source: Box<dyn StreamSource>,
+    // A started close is never replayed: a cancelled close future cannot prove
+    // that its provider effect did not run. Preserve its exact first receipt.
+    cleanup: Option<Result<(), StepError>>,
+}
 
 impl CoreStream {
     /// Wrap a provider's source after it has crossed the gated dispatch boundary.
     pub fn new(source: impl StreamSource + 'static) -> Self {
-        Self(Box::new(source))
+        Self {
+            source: Box::new(source),
+            cleanup: None,
+        }
     }
 
     /// Pull a bounded batch from the provider.
@@ -59,7 +67,8 @@ impl CoreStream {
                 "stream pull size must be positive",
             ));
         }
-        let values = self.0.pull(max).await?;
+        self.check_open()?;
+        let values = self.source.pull(max).await?;
         let length = match values.inspect() {
             CoreRef::Arr(values) => values.len(),
             _ => {
@@ -91,7 +100,8 @@ impl CoreStream {
                 "stream pull size must be positive",
             ));
         }
-        match self.0.pull_final(max).await {
+        self.check_open()?;
+        match self.source.pull_final(max).await {
             Ok(buffer) => Ok(buffer),
             // RunStream retains the exact uncommitted batch so the caller can
             // retry after bounded native transport capacity is available.
@@ -102,14 +112,18 @@ impl CoreStream {
 
     /// Read the producer's terminal metadata without decoding its buffer.
     pub fn terminal_outcome(&self) -> Option<StreamTerminal> {
-        self.0.terminal_outcome()
+        self.source.terminal_outcome()
     }
 
     async fn close_after_error(&mut self, error: StepError) -> StepError {
         match self.close().await {
             Ok(()) => error,
             Err(cleanup) => StepError::new(
-                error.code,
+                if cleanup.code == "filesystem-commit-unknown" {
+                    cleanup.code.clone()
+                } else {
+                    error.code
+                },
                 format!(
                     "{}; stream cleanup failed: {}",
                     error.message,
@@ -122,22 +136,39 @@ impl CoreStream {
     /// Await source cleanup, including any grant outcome or audit failure.
     pub async fn close(&mut self) -> Result<(), StepError> {
         use futures::FutureExt;
-        std::panic::AssertUnwindSafe(self.0.close())
+        if let Some(result) = &self.cleanup {
+            return result.clone();
+        }
+        self.cleanup = Some(Err(StepError::new(
+            "unavailable",
+            "stream cleanup completion is unknown",
+        )));
+        let result = std::panic::AssertUnwindSafe(self.source.close())
             .catch_unwind()
             .await
-            .map_err(|_| StepError::new("trap", "stream cleanup trapped"))?
+            .unwrap_or_else(|_| Err(StepError::new("trap", "stream cleanup trapped")));
+        self.cleanup = Some(result.clone());
+        result
+    }
+
+    fn check_open(&self) -> Result<(), StepError> {
+        match &self.cleanup {
+            None => Ok(()),
+            Some(Ok(())) => Err(StepError::new("invalid", "stream is closed")),
+            Some(Err(error)) => Err(error.clone()),
+        }
     }
 
     /// Explicitly stop an outstanding source.
     pub fn cancel(&mut self) {
-        self.0.cancel();
+        self.source.cancel();
     }
 }
 
 impl Drop for CoreStream {
     fn drop(&mut self) {
         // A provider trap while releasing its handle cannot unwind through Core.
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.0.cancel()));
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.source.cancel()));
     }
 }
 
@@ -192,6 +223,36 @@ mod tests {
         fn cancel(&mut self) {}
     }
     struct RetryFinal(Arc<AtomicUsize>, Arc<AtomicUsize>);
+    struct CloseOnce {
+        calls: Arc<AtomicUsize>,
+        drops: Arc<AtomicUsize>,
+        entered: Arc<tokio::sync::Notify>,
+        wait: bool,
+        error: Option<StepError>,
+    }
+    impl Drop for CloseOnce {
+        fn drop(&mut self) {
+            self.drops.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    #[async_trait]
+    impl StreamSource for CloseOnce {
+        async fn pull(&mut self, _: u32) -> Result<CoreValue, StepError> {
+            Err(StepError::new("invalid", "fixture pull failed"))
+        }
+        async fn pull_final(&mut self, _: u32) -> Result<CoreBuffer, StepError> {
+            Err(StepError::new("invalid", "fixture pull failed"))
+        }
+        fn cancel(&mut self) {}
+        async fn close(&mut self) -> Result<(), StepError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            self.entered.notify_one();
+            if self.wait {
+                std::future::pending::<()>().await;
+            }
+            self.error.clone().map_or(Ok(()), Err)
+        }
+    }
     #[async_trait]
     impl StreamSource for RetryFinal {
         async fn pull(&mut self, _max: u32) -> Result<CoreValue, StepError> {
@@ -254,5 +315,58 @@ mod tests {
         assert_eq!(cancelled.load(Ordering::SeqCst), 0);
         assert_eq!(stream.pull_final(1).await.unwrap().as_bytes(), b"[]");
         assert_eq!(pulls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn first_close_receipt_prevents_cleanup_replay_after_pull_error() {
+        for code in ["unavailable", "filesystem-commit-unknown"] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let drops = Arc::new(AtomicUsize::new(0));
+            let mut stream = CoreStream::new(CloseOnce {
+                calls: calls.clone(),
+                drops: drops.clone(),
+                entered: Arc::default(),
+                wait: false,
+                error: Some(StepError::new(code, "fixture cleanup failed")),
+            });
+            let error = stream.pull_final(1).await.unwrap_err();
+            if code == "filesystem-commit-unknown" {
+                assert_eq!(error.code, code);
+            }
+            assert_eq!(stream.close().await.unwrap_err().code, code);
+            assert!(stream.pull_final(1).await.is_err());
+            assert_eq!(stream.close().await.unwrap_err().code, code);
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            assert_eq!(drops.load(Ordering::SeqCst), 0);
+            drop(stream);
+            assert_eq!(drops.load(Ordering::SeqCst), 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn abandoned_close_keeps_actual_source_and_never_replays_native_cleanup() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let drops = Arc::new(AtomicUsize::new(0));
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let mut stream = CoreStream::new(CloseOnce {
+            calls: calls.clone(),
+            drops: drops.clone(),
+            entered: entered.clone(),
+            wait: true,
+            error: None,
+        });
+        {
+            let mut close = Box::pin(stream.close());
+            tokio::select! {
+                _ = entered.notified() => (),
+                result = &mut close => panic!("fixture close unexpectedly finished: {result:?}"),
+            }
+        }
+        assert_eq!(stream.close().await.unwrap_err().code, "unavailable");
+        assert!(stream.pull_final(1).await.is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(drops.load(Ordering::SeqCst), 0);
+        drop(stream);
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
     }
 }

@@ -298,6 +298,8 @@ pub(crate) mod provider_entry;
 #[path = "session_tests.rs"]
 mod tests;
 mod ui;
+mod user_ports;
+pub use user_ports::{UserPortOutput, UserStreamHandle};
 
 /// A Core-minted invocation token paired with the trusted host's rendered frame.
 #[derive(Clone, Debug)]
@@ -354,6 +356,7 @@ pub struct SessionState {
     shutdown: CancellationToken,
     materials: Mutex<BTreeMap<(PackId, PackHash), UiMaterial>>,
     streams: Mutex<BTreeMap<u64, Arc<UiStreamEntry>>>,
+    user_streams: Arc<user_ports::Registry>,
     next_stream: AtomicU64,
     runtime: tokio::runtime::Handle,
     admission: crate::admission::Barrier,
@@ -664,6 +667,7 @@ impl Session {
             shutdown,
             materials: Mutex::new(BTreeMap::new()),
             streams: Mutex::new(BTreeMap::new()),
+            user_streams: Arc::new(user_ports::Registry::default()),
             next_stream: AtomicU64::new(1),
             runtime: tokio::runtime::Handle::current(),
         });
@@ -753,80 +757,7 @@ impl Session {
         operation: OpName,
         args: &CanonValue,
     ) -> Result<tobkiri_canon::CoreBuffer, CoreError> {
-        self.ensure_started().await?;
-        self.check_snapshot()?;
-        let user_document = self.user_document.as_ref().ok_or_else(|| {
-            CoreError::Invalid("User document approval is unavailable for this Session".into())
-        })?;
-        let deadline = deadline_after(self.compiled.profile.ceiling.wasm.wall_ms)?;
-        let budget = BudgetContext::new(self.compiled.profile.ceiling.loops.clone(), deadline)
-            .map_err(|error| CoreError::Invalid(error.to_string()))?;
-        let cx = CallCx::try_root_with_control(
-            self.compiled.profile.id.clone(),
-            Principal::User,
-            RequestId::new(format!("req_{}", ulid::Ulid::new()))?,
-            self.shutdown.child_with_control(self.gate.control())?,
-            deadline,
-            self.compiled.profile.ceiling.wasm.clone(),
-            self.gate.control().clone(),
-        )?
-        .with_security_epoch(self.epoch)
-        .with_revision(self.compiled.plan_digest.clone())
-        .with_budget(budget)?;
-        let factory = self.execution_factory.as_ref().ok_or_else(|| {
-            CoreError::Invalid("prepared User invocation is unavailable for this Session".into())
-        })?;
-        let prepared = factory
-            .prepare_user_invocation(&cx, &shape, &operation, user_document)
-            .await?;
-        let invocation = FlowUserInvocation {
-            invocation: prepared.invocation(),
-            view: &shape,
-            op: &operation,
-            target: prepared.target(),
-        };
-        let preparation = prepared.preparation();
-        let argument_scope = preparation.argument_scope().map_err(CoreError::from)?;
-        let value_budget = self
-            .invoker
-            .allocation_budget_for_frame(&cx, argument_scope)
-            .map_err(CoreError::from)?;
-        let owned_args = CoreValue::try_from_borrowed(args, &value_budget).map_err(|error| {
-            CoreError::Step(StepError::new(
-                "limit-exceeded",
-                format!("User arguments could not be materialized: {error}"),
-            ))
-        })?;
-        let arguments_digest = owned_args.digest_guest(&value_budget).map_err(|error| {
-            CoreError::Step(StepError::new(
-                "limit-exceeded",
-                format!("User arguments could not be verified: {error}"),
-            ))
-        })?;
-        match self
-            .invoker
-            .call_user_final(
-                &cx,
-                &invocation,
-                &preparation,
-                &arguments_digest,
-                owned_args,
-                FinalOutputKind::CanonicalValue,
-            )
-            .await
-            .map_err(CoreError::from)?
-        {
-            FinalPortOutput::Value(buffer) => Ok(buffer),
-            FinalPortOutput::Stream { mut stream, .. } => {
-                let cleanup = stream.close().await;
-                match cleanup {
-                    Ok(()) => Err(CoreError::Invalid(
-                        "value-only port invocation returned a stream".into(),
-                    )),
-                    Err(error) => Err(CoreError::Step(error)),
-                }
-            }
-        }
+        self.call_user_value(shape, operation, args).await
     }
 
     /// The digest used by every run in this Session.
@@ -1791,6 +1722,7 @@ impl Drop for SessionState {
         if let Some(factory) = &self.execution_factory {
             factory.close();
         }
+        user_ports::drop_registry(self.user_streams.clone(), &self.runtime);
         let entries = self
             .streams
             .get_mut()

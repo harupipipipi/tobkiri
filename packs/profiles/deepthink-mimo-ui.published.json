@@ -7,6 +7,7 @@
     "local.harness-chat.conversation-store@1": "local.harness-conversation-store",
     "local.harness-chat.llm-provider@1": "local.openrouter-mimo-provider",
     "local.harness-chat.prompt-builder@1": "local.mimo-prompt",
+    "local.harness-chat.structured-llm-provider@1": "local.openrouter-mimo-provider",
     "local.harness-chat.user-input@1": "local.terminal-input"
   },
   "ceiling": {
@@ -41,6 +42,7 @@
       "local.harness-chat.generate@1.0",
       "local.harness-chat.llm-provider@1.0",
       "local.harness-chat.prompt-builder@1.0",
+      "local.harness-chat.structured-llm-provider@1.0",
       "local.harness-chat.turn-flow@1.0",
       "local.harness-chat.user-input@1.0"
     ],
@@ -102,7 +104,8 @@
         "local.harness-chat.assistant-output@1.0",
         "local.harness-chat.conversation-store@1.0",
         "local.harness-chat.generate@1.0",
-        "local.harness-chat.llm-provider@1.0"
+        "local.harness-chat.llm-provider@1.0",
+        "local.harness-chat.structured-llm-provider@1.0"
       ],
       "proc": [],
       "pty": false,
@@ -207,6 +210,7 @@
         "origins": []
       },
       "ports": [
+        "local.deepthink.workflow@1.0",
         "local.harness-chat.assistant-output@1.0",
         "local.harness-chat.conversation-store@1.0",
         "local.harness-chat.llm-provider@1.0",
@@ -445,37 +449,37 @@
   "packs": [
     {
       "id": "local.harness-chat",
-      "sha256": "sha256:86e3eccdd73a1f2e35572cccdf8d615a8e905b7ded6c9cf6574b6bb53f0d4946",
-      "source": "file:../local.harness-chat",
+      "sha256": "sha256:14b593f6e8c67101e8edf33f9e6290c1bda5b0761d8dd92641146bb1d4daa84e",
+      "source": "file:../deepthink-variants/local.harness-chat",
       "version": "0.1.0"
     },
     {
       "id": "local.terminal-input",
-      "sha256": "sha256:d41c86f7df8855867725bc7531f9a2770b858eb7110c4351a2fc4a3cbe4abcd6",
+      "sha256": "sha256:4d84413f9fdf3a10723a66d15f7ae1d09e8a582da069f75143421c8836594b0f",
       "source": "file:../local.terminal-input",
       "version": "0.1.0"
     },
     {
       "id": "local.harness-conversation-store",
-      "sha256": "sha256:b610aa4dfcc8142f056b2fe81ce934b8cafabc27ed96423d76cbe7363dd26041",
+      "sha256": "sha256:3549ea0086788c5300cb00c020b83fe02ba8107019f8b84de974a8d09912f66e",
       "source": "file:../local.harness-conversation-store",
       "version": "0.1.0"
     },
     {
       "id": "local.mimo-prompt",
-      "sha256": "sha256:29a9739c3d05246ae4db5c0b3c812a38f86220fa4223f77b17e90ae1ff2f06bf",
+      "sha256": "sha256:6d24bed9380081b77837ce2d00c2dc7bf010c238bf8e8918205f8ea56d4ce290",
       "source": "file:../local.mimo-prompt",
       "version": "0.1.0"
     },
     {
       "id": "local.openrouter-mimo-provider",
-      "sha256": "sha256:d687dbe0d6d9ca6df42afbcf2bf159683fcc930ed8c4d45fbaf460b7e57999f9",
+      "sha256": "sha256:c83c49963c8a460da7f939eeaa45fe0b3f6ff6f08bee5042018fe8a100ea62e1",
       "source": "file:../local.openrouter-mimo-provider",
       "version": "0.1.0"
     },
     {
       "id": "local.terminal-output",
-      "sha256": "sha256:4a94cb6ad9f72946733f9fb2300b92fa3fab707e20efbd2aa06f3a12a488f601",
+      "sha256": "sha256:8dc9e0bc501c29bc8052ed4d9f24159f36189f3aa4e456aa1ad4b678f3989b58",
       "source": "file:../local.terminal-output",
       "version": "0.1.0"
     },
@@ -493,7 +497,7 @@
     },
     {
       "id": "local.deepthink",
-      "sha256": "sha256:b694f9e29b18c32721fb533977e0dff377b324644e327537cca2b7c3ea774172",
+      "sha256": "sha256:fc83fbcdf467a1eacd9ca98d7bec60c5af22e62630eef28d2e50253c31911f72",
       "source": "file:../local.deepthink",
       "version": "0.1.0"
     },

@@ -2,7 +2,7 @@
   "files": [
     {
       "path": "component.build.json",
-      "sha256": "sha256:1bacfc6e9319c64db0c106cbb95e38f71239fde13ded96076d4117945104cf49",
+      "sha256": "sha256:22b005a8d9d33cab0a69b45279a8a0861ac97f3076f69950deffa53da7a757d2",
       "size": 1769
     },
     {
@@ -27,8 +27,8 @@
     },
     {
       "path": "wit/deps/harness-chat.wit",
-      "sha256": "sha256:f674b3ebac6e1c90cab218203d2ee810c5abf8097adeed1ff0481600426d0f9c",
-      "size": 1900
+      "sha256": "sha256:773dab1acafb9e85414e67572fa0b913a0476d41987880db34881c27f2420a82",
+      "size": 2202
     },
     {
       "path": "wit/pack.wit",

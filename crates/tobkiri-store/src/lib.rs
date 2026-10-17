@@ -6,7 +6,9 @@ mod data_custody;
 mod data_moves;
 mod disk_policy;
 mod owner;
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
+mod quota_fs;
+#[cfg(any(unix, windows))]
 mod quota_vfs;
 mod secure;
 mod sql;
@@ -14,7 +16,10 @@ mod tiered;
 mod vault;
 #[cfg(unix)]
 mod vfs;
-#[cfg(not(unix))]
+#[cfg(windows)]
+#[path = "vfs_windows.rs"]
+mod vfs;
+#[cfg(not(any(unix, windows)))]
 #[path = "vfs_unavailable.rs"]
 mod vfs;
 pub use approvals::*;

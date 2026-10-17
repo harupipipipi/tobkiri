@@ -11,7 +11,7 @@ pub(crate) fn encode_value(
 ) -> Result<CoreBuffer, AllocationError> {
     match kind {
         FinalOutputKind::CanonicalValue => value.encode_guest(budget),
-        FinalOutputKind::UiInvokeValue { .. } => {
+        FinalOutputKind::UiInvokeValue { .. } | FinalOutputKind::UserInvokeValue { .. } => {
             let tag = CoreValue::string("value", budget)?;
             let envelope = CoreValue::object_shared(
                 [Ok(("kind", tag)), Ok(("value", value.clone()))].into_iter(),
@@ -26,12 +26,14 @@ pub(crate) fn encode_stream(
     kind: FinalOutputKind,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<CoreBuffer, AllocationError> {
-    let FinalOutputKind::UiInvokeValue { stream_handle } = kind else {
-        return Err(AllocationError::Invalid);
+    let stream_handle = match kind {
+        FinalOutputKind::UiInvokeValue { stream_handle }
+        | FinalOutputKind::UserInvokeValue { stream_handle } => stream_handle,
+        FinalOutputKind::CanonicalValue => return Err(AllocationError::Invalid),
     };
     // The Session reserves the unpublished candidate. StrictV1's exact integer
     // range is also the UI's lossless numeric range; do not round or retag it.
-    if stream_handle > MAX_SAFE_INTEGER {
+    if stream_handle == 0 || stream_handle > MAX_SAFE_INTEGER {
         return Err(AllocationError::Invalid);
     }
     let tag = CoreValue::string("stream", budget)?;
@@ -130,6 +132,45 @@ mod tests {
             .is_err()
         );
         assert_eq!(value.as_str(), Some("unchanged"));
+        assert_eq!(destination.live.load(Ordering::Acquire), 0);
+    }
+    #[test]
+    fn native_user_envelopes_share_producer_ownership_without_ui_identity() {
+        let (_, source) = budget(1024 * 1024);
+        let (destination, output) = budget(1024 * 1024);
+        let value = CoreValue::string("native", &source).unwrap();
+        let encoded = encode_value(
+            &value,
+            FinalOutputKind::UserInvokeValue { stream_handle: 23 },
+            &output,
+        )
+        .unwrap();
+        assert_eq!(encoded.as_bytes(), br#"{"kind":"value","value":"native"}"#);
+        let stream = encode_stream(
+            FinalOutputKind::UserInvokeValue { stream_handle: 23 },
+            &output,
+        )
+        .unwrap();
+        assert_eq!(stream.as_bytes(), br#"{"handle":23,"kind":"stream"}"#);
+        assert!(
+            encode_stream(
+                FinalOutputKind::UserInvokeValue { stream_handle: 0 },
+                &output
+            )
+            .is_err()
+        );
+        assert!(
+            encode_stream(
+                FinalOutputKind::UserInvokeValue {
+                    stream_handle: MAX_SAFE_INTEGER + 1
+                },
+                &output
+            )
+            .is_err()
+        );
+        drop(value);
+        assert!(destination.live.load(Ordering::Acquire) > 0);
+        drop((encoded, stream));
         assert_eq!(destination.live.load(Ordering::Acquire), 0);
     }
 }

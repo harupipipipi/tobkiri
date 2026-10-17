@@ -88,9 +88,20 @@ pub struct CallCx {
     depth: u16,
     executing_pairs: std::sync::Arc<Vec<(PackId, PackHash)>>,
     budget: Option<std::sync::Arc<BudgetContext>>,
+    // Sticky evidence shared by the complete admitted call tree. A successful
+    // import does not prove delivery of the eventual export/stream result.
+    native_effects: std::sync::Arc<NativeEffectProgress>,
     control: CoreControl,
     _control_reservation: std::sync::Arc<ControlReservation>,
     extra_control_reservations: std::sync::Arc<Vec<std::sync::Arc<ControlReservation>>>,
+}
+
+#[derive(Debug)]
+struct NativeEffectProgress {
+    filesystem_mutation: std::sync::atomic::AtomicBool,
+    // Descendants retain the allocation's actual funding after their root
+    // context is dropped; this object grants no authority to perform effects.
+    _funding: std::sync::Arc<ControlReservation>,
 }
 impl CallCx {
     /// Legacy constructor backed by the process-wide bounded compatibility
@@ -134,7 +145,11 @@ impl CallCx {
             ));
         }
         let bytes = root_control_bytes(&profile, &principal, &request)?;
-        let reservation = control.reserve(ControlKind::Context, bytes)?;
+        let reservation = std::sync::Arc::new(control.reserve(ControlKind::Context, bytes)?);
+        let native_effects = std::sync::Arc::new(NativeEffectProgress {
+            filesystem_mutation: std::sync::atomic::AtomicBool::new(false),
+            _funding: reservation.clone(),
+        });
         Ok(Self {
             profile: std::sync::Arc::new(profile),
             principal: std::sync::Arc::new(principal),
@@ -149,8 +164,9 @@ impl CallCx {
             depth: 0,
             executing_pairs: std::sync::Arc::new(Vec::new()),
             budget: None,
+            native_effects,
             control,
-            _control_reservation: std::sync::Arc::new(reservation),
+            _control_reservation: reservation,
             extra_control_reservations: std::sync::Arc::new(Vec::new()),
         })
     }
@@ -159,6 +175,22 @@ impl CallCx {
     /// and scheduling metadata.
     pub fn control(&self) -> &CoreControl {
         &self.control
+    }
+    /// Trusted native host only: record a consumed filesystem mutation just
+    /// before dispatch. This cannot authorize work and can never be cleared.
+    /// Ancestors and descendants must preserve uncertain delivery after this
+    /// point, even if an individual import previously returned successfully.
+    pub fn note_filesystem_mutation(&self) {
+        self.native_effects
+            .filesystem_mutation
+            .store(true, std::sync::atomic::Ordering::Release);
+    }
+    /// Whether this admitted call tree may have changed physical files.
+    /// This is conservative replay evidence, not a success or commit receipt.
+    pub fn filesystem_mutation_possible(&self) -> bool {
+        self.native_effects
+            .filesystem_mutation
+            .load(std::sync::atomic::Ordering::Acquire)
     }
     /// Dynamic copies only; the enclosing context/control block and any owned
     /// destination inputs must be reserved separately before construction.
@@ -457,6 +489,7 @@ impl CallCx {
             depth: self.depth + 1,
             executing_pairs: self.executing_pairs.clone(),
             budget: self.budget.clone(),
+            native_effects: self.native_effects.clone(),
             control: self.control.clone(),
             _control_reservation: std::sync::Arc::new(reservation),
             extra_control_reservations: self.extra_control_reservations.clone(),
@@ -667,6 +700,8 @@ fn root_control_bytes(
         )
         .and_then(|bytes| bytes.checked_add(request.clone_storage_bytes()))
         .and_then(|bytes| bytes.checked_add(std::mem::size_of::<CallCx>()))
+        .and_then(|bytes| bytes.checked_add(std::mem::size_of::<NativeEffectProgress>()))
+        .and_then(|bytes| bytes.checked_add(2 * std::mem::size_of::<usize>()))
         .ok_or_else(|| GateError::Limit("context size overflow".into()))?;
     u64::try_from(dynamic).map_err(|_| GateError::Limit("context size overflow".into()))
 }
@@ -747,6 +782,23 @@ mod tests {
                 ..Default::default()
             },
         )
+    }
+
+    #[test]
+    fn native_mutation_evidence_survives_children_and_isolated_roots_stay_clean() {
+        let parent = root();
+        let sibling = parent.try_child(Principal::User).unwrap();
+        let child = parent.try_child(Principal::User).unwrap();
+        let independent = root();
+        assert!(!parent.filesystem_mutation_possible());
+        child.note_filesystem_mutation();
+        assert!(parent.filesystem_mutation_possible());
+        assert!(sibling.filesystem_mutation_possible());
+        assert!(!independent.filesystem_mutation_possible());
+        drop(parent);
+        let descendant = child.try_child(Principal::User).unwrap();
+        drop(child);
+        assert!(descendant.filesystem_mutation_possible());
     }
     #[test]
     fn call_context_clones_share_one_admitted_record_and_account() {

@@ -1,4 +1,4 @@
-#![cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+#![cfg(not(any(windows, all(target_os = "macos", target_arch = "aarch64"))))]
 #[test]
 fn unproven_allocation_owner_platform_is_unavailable() {
     let dir = tempfile::tempdir().unwrap();

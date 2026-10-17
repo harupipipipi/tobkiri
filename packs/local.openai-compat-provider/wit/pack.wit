@@ -5,5 +5,6 @@ world pack {
   import tobkiri:core/network@1.0.0;
   import tobkiri:core/secrets@1.0.0;
   export local:harness-chat/llm-provider@1.0.0;
+  export local:harness-chat/structured-llm-provider@1.0.0;
   export tobkiri:core/stream-source@1.0.0;
 }

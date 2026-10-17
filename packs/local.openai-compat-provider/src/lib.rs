@@ -3,6 +3,9 @@
 wit_bindgen::generate!({ path: "wit", world: "pack",generate_all });
 
 use exports::local::harness_chat::llm_provider::{Guest as Provider, Prompt};
+use exports::local::harness_chat::structured_llm_provider::{
+    Guest as StructuredProvider, ResponseFormat,
+};
 use exports::tobkiri::core::{lifecycle, stream_source};
 use std::{
     cell::RefCell,
@@ -13,7 +16,7 @@ use tobkiri::core::{
     types::{Error, ErrorCode, StreamHandle},
 };
 use tobkiri_guest_sdk::{
-    openai::{ChatStream, request_body_with_json_mode},
+    openai::{ChatStream, request_body_with_json_mode, request_body_with_schema},
     sse::Decoder,
 };
 
@@ -99,92 +102,119 @@ impl lifecycle::Guest for Pack {
 
 impl Provider for Pack {
     fn chat(prompt: Prompt) -> Result<StreamHandle, Error> {
-        if flow::is_cancelled() {
-            return Err(error(ErrorCode::Cancelled, "run cancelled"));
+        start_chat(prompt, None)
+    }
+}
+
+impl StructuredProvider for Pack {
+    fn chat(prompt: Prompt, response_format: ResponseFormat) -> Result<StreamHandle, Error> {
+        start_chat(prompt, Some(response_format))
+    }
+}
+
+fn start_chat(
+    prompt: Prompt,
+    response_format: Option<ResponseFormat>,
+) -> Result<StreamHandle, Error> {
+    if flow::is_cancelled() {
+        return Err(error(ErrorCode::Cancelled, "run cancelled"));
+    }
+    STATE.with_borrow_mut(|state| {
+        if state.streams.len() >= 64 {
+            return Err(error(ErrorCode::LimitExceeded, "too many active streams"));
         }
-        STATE.with_borrow_mut(|state| {
-            if state.streams.len() >= 64 {
-                return Err(error(ErrorCode::LimitExceeded, "too many active streams"));
-            }
-            let config = state
-                .settings
-                .as_ref()
-                .ok_or_else(|| error(ErrorCode::Invalid, "provider has not been initialized"))?;
-            if !prompt.model.is_empty() && prompt.model != config.model {
-                return Err(error(
-                    ErrorCode::Invalid,
-                    "model does not match the approved provider settings",
-                ));
-            }
-            let messages = prompt
-                .messages
-                .into_iter()
-                .map(|message| serde_json::json!({"role":message.role,"content":message.content}))
-                .collect::<Vec<_>>();
-            let body = request_body_with_json_mode(
+        let config = state
+            .settings
+            .as_ref()
+            .ok_or_else(|| error(ErrorCode::Invalid, "provider has not been initialized"))?;
+        if !prompt.model.is_empty() && prompt.model != config.model {
+            return Err(error(
+                ErrorCode::Invalid,
+                "model does not match the approved provider settings",
+            ));
+        }
+        let messages = prompt
+            .messages
+            .into_iter()
+            .map(|message| serde_json::json!({"role":message.role,"content":message.content}))
+            .collect::<Vec<_>>();
+        let request_body = if let Some(format) = response_format {
+            let schema = serde_json::from_str(&format.schema)
+                .map_err(|_| error(ErrorCode::Invalid, "structured response schema is not JSON"))?;
+            request_body_with_schema(
+                &config.model,
+                messages,
+                prompt.max_tokens,
+                config.provider_order.as_deref(),
+                &format.name,
+                schema,
+                format.strict,
+            )
+            .map_err(|message| error(ErrorCode::Invalid, message))?
+        } else {
+            request_body_with_json_mode(
                 &config.model,
                 messages,
                 prompt.max_tokens,
                 config.provider_order.as_deref(),
                 config.json_mode,
             )
-            .to_string()
-            .into_bytes();
-            let secret = match &config.secret_name {
-                Some(name) => Some(secrets::get(name)?),
-                None => None,
-            };
-            let secret_headers = if secret.is_some() {
-                vec![network::HeaderFromSecret {
-                    name: "authorization".into(),
-                    prefix: "Bearer ".into(),
-                    index: 0,
-                }]
-            } else {
-                vec![]
-            };
-            let request = network::Request {
-                method: "POST".into(),
-                url: format!("{}/chat/completions", config.base_url),
-                headers: vec![
-                    ("content-type".into(), "application/json".into()),
-                    ("accept".into(), "text/event-stream".into()),
-                ],
-                secret_headers,
-                body: Some(body),
-                timeout_ms: Some(config.timeout_ms),
-            };
-            let borrowed: Vec<&secrets::Secret> = secret.iter().collect();
-            let response = network::fetch(&request, &borrowed)?;
-            if !(200..300).contains(&response.status()) {
-                return Err(error(
-                    ErrorCode::Unavailable,
-                    "provider rejected the request",
-                ));
-            }
-            let is_sse = response.headers().iter().any(|(name, value)| {
-                name.eq_ignore_ascii_case("content-type") && value.starts_with("text/event-stream")
-            });
-            if !is_sse {
-                return Err(error(ErrorCode::Invalid, "provider response is not SSE"));
-            }
-            state.next_id = state
-                .next_id
-                .checked_add(1)
-                .ok_or_else(|| error(ErrorCode::LimitExceeded, "stream handle exhaustion"))?;
-            let id = state.next_id;
-            state.streams.insert(
-                id,
-                ActiveStream {
-                    response,
-                    decoder: Decoder::default(),
-                    chat: ChatStream::default(),
-                    pending: VecDeque::new(),
-                },
-            );
-            Ok(StreamHandle { id })
-        })
-    }
+        };
+        let body = request_body.to_string().into_bytes();
+        let secret = match &config.secret_name {
+            Some(name) => Some(secrets::get(name)?),
+            None => None,
+        };
+        let secret_headers = if secret.is_some() {
+            vec![network::HeaderFromSecret {
+                name: "authorization".into(),
+                prefix: "Bearer ".into(),
+                index: 0,
+            }]
+        } else {
+            vec![]
+        };
+        let request = network::Request {
+            method: "POST".into(),
+            url: format!("{}/chat/completions", config.base_url),
+            headers: vec![
+                ("content-type".into(), "application/json".into()),
+                ("accept".into(), "text/event-stream".into()),
+            ],
+            secret_headers,
+            body: Some(body),
+            timeout_ms: Some(config.timeout_ms),
+        };
+        let borrowed: Vec<&secrets::Secret> = secret.iter().collect();
+        let response = network::fetch(&request, &borrowed)?;
+        if !(200..300).contains(&response.status()) {
+            return Err(error(
+                ErrorCode::Unavailable,
+                "provider rejected the request",
+            ));
+        }
+        let is_sse = response.headers().iter().any(|(name, value)| {
+            name.eq_ignore_ascii_case("content-type") && value.starts_with("text/event-stream")
+        });
+        if !is_sse {
+            return Err(error(ErrorCode::Invalid, "provider response is not SSE"));
+        }
+        state.next_id = state
+            .next_id
+            .checked_add(1)
+            .ok_or_else(|| error(ErrorCode::LimitExceeded, "stream handle exhaustion"))?;
+        let id = state.next_id;
+        state.streams.insert(
+            id,
+            ActiveStream {
+                response,
+                decoder: Decoder::default(),
+                chat: ChatStream::default(),
+                pending: VecDeque::new(),
+            },
+        );
+        Ok(StreamHandle { id })
+    })
 }
 
 impl stream_source::Guest for Pack {

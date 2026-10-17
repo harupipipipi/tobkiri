@@ -2,18 +2,18 @@
   "files": [
     {
       "path": "component.build.json",
-      "sha256": "sha256:f830325c2edc1d42a3a0ff24124c5c8c315f45d138f5649ecc21e732c007a32b",
+      "sha256": "sha256:a14fde2856baebdcd568bac2b7f42fb088dd6b3005fb904cbac58ea1b843223b",
       "size": 1775
     },
     {
       "path": "component.wasm",
-      "sha256": "sha256:d2503c2d6ac5a746511cf0d769025d76b3192f980ee798b18db1ea7576d590f1",
-      "size": 1983178
+      "sha256": "sha256:7616afe2750810d87c37ea4aef59ea5b35d4e0630c80660565368c9312d229ee",
+      "size": 2012213
     },
     {
       "path": "config.json",
-      "sha256": "sha256:d5a1d2c1f0ea1a5788fbe7a35d4df009b9819547840e71638da6e3ae2a40c4a3",
-      "size": 6889
+      "sha256": "sha256:8dbb701600c4eede3638889371192ce2b4356422661b64cda3651b07f2fc8ab2",
+      "size": 6949
     },
     {
       "path": "flows/continuation.flow.json",
@@ -52,8 +52,8 @@
     },
     {
       "path": "wit/deps/harness-chat.wit",
-      "sha256": "sha256:f674b3ebac6e1c90cab218203d2ee810c5abf8097adeed1ff0481600426d0f9c",
-      "size": 1900
+      "sha256": "sha256:773dab1acafb9e85414e67572fa0b913a0476d41987880db34881c27f2420a82",
+      "size": 2202
     },
     {
       "path": "wit/pack.wit",
@@ -104,7 +104,8 @@
       "local.harness-chat.assistant-output@1.0",
       "local.harness-chat.conversation-store@1.0",
       "local.harness-chat.generate@1.0",
-      "local.harness-chat.llm-provider@1.0"
+      "local.harness-chat.llm-provider@1.0",
+      "local.harness-chat.structured-llm-provider@1.0"
     ],
     "proc": [],
     "pty": false,
@@ -127,6 +128,11 @@
       {
         "optional": false,
         "shape": "local.harness-chat.llm-provider",
+        "version": "1.0"
+      },
+      {
+        "optional": true,
+        "shape": "local.harness-chat.structured-llm-provider",
         "version": "1.0"
       },
       {
