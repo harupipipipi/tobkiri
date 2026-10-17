@@ -84,6 +84,11 @@ pub enum ProfileCommand {
         #[arg(long)]
         args_file: PathBuf,
     },
+    /// Hold one Session and accept sequential bounded JSON-lines User requests.
+    Session {
+        #[arg(long)]
+        profile: String,
+    },
     /// Publish the explicit Profile structural fields only.
     Export {
         #[arg(long)]
@@ -328,6 +333,29 @@ mod tests {
                 "local.fixture.input@1.0",
                 "--op",
                 "stream"
+            ])
+            .is_err()
+        );
+    }
+    #[test]
+    fn native_user_session_requires_one_explicit_profile_without_bulk_flags() {
+        let args = Args::try_parse_from(["tobkiri", "profile", "session", "--profile", "prof_one"])
+            .unwrap();
+        assert!(matches!(
+            args.command,
+            Command::Profile {
+                command: ProfileCommand::Session { .. }
+            }
+        ));
+        assert!(Args::try_parse_from(["tobkiri", "profile", "session"]).is_err());
+        assert!(
+            Args::try_parse_from([
+                "tobkiri",
+                "profile",
+                "session",
+                "--profile",
+                "prof_one",
+                "--yes"
             ])
             .is_err()
         );

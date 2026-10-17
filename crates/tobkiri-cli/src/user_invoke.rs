@@ -28,7 +28,7 @@ pub(super) async fn run(
     super::complete_with_cleanup(outcome, session.close().await)
 }
 
-async fn invoke(
+pub(super) async fn invoke(
     session: &Session,
     shape: ShapeRef,
     operation: OpName,

@@ -17,6 +17,8 @@ use tobkiri_core::{
 mod profile_apply;
 #[path = "profile_input.rs"]
 mod profile_input;
+#[path = "profile_session.rs"]
+mod profile_session;
 #[path = "secret_input.rs"]
 mod secret_input;
 #[path = "user_invoke.rs"]
@@ -51,9 +53,10 @@ pub async fn run(args: Args) -> Result<()> {
             bail!("data-root override is available only in debug/test builds");
         }
     }
-    let core = Core::open(config, Arc::new(TerminalHost::new(args.non_interactive)?))?;
+    let host = Arc::new(TerminalHost::new(args.non_interactive)?);
+    let core = Core::open(config, host.clone())?;
     match args.command {
-        Command::Profile { command } => profile(&core, command, prepared_apply).await,
+        Command::Profile { command } => profile(&core, &host, command, prepared_apply).await,
         Command::Approve { profile } => {
             core.approve_profile(&ProfileId::parse(&profile)?).await?;
             Ok(())
@@ -79,10 +82,14 @@ pub async fn run(args: Args) -> Result<()> {
 
 async fn profile(
     core: &Core,
+    host: &TerminalHost,
     command: ProfileCommand,
     prepared_apply: Option<profile_apply::Definition>,
 ) -> Result<()> {
     match command {
+        ProfileCommand::Session { profile } => {
+            profile_session::run(core, host, &profile).await?;
+        }
         ProfileCommand::Invoke {
             profile,
             shape,

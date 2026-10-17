@@ -42,6 +42,34 @@ impl TerminalHost {
     fn trusted_tty(&self) -> bool {
         !self.non_interactive && std::io::stdin().is_terminal() && std::io::stderr().is_terminal()
     }
+    /// Native User command metadata shares the physical reader and terminal
+    /// turn with trusted approval. It never reads ahead into an approval line.
+    pub(crate) async fn session_request_line(
+        &self,
+        maximum: usize,
+        cancel: tokio_util::sync::CancellationToken,
+    ) -> Result<Option<Vec<u8>>, HostError> {
+        if maximum == 0 || maximum > 64 * 1024 || cancel.is_cancelled() {
+            return Err(HostError("invalid or cancelled session input bound".into()));
+        }
+        let turn = tokio::select! {
+            held = self.turn.clone().lock_owned() => held,
+            _ = cancel.cancelled() => return Err(HostError("session input cancelled".into())),
+        };
+        let input = self
+            .input
+            .get_or_try_init(|| async { Input::new() })
+            .await?;
+        #[cfg(windows)]
+        {
+            input.metadata_line(maximum, Some(turn), cancel).await
+        }
+        #[cfg(not(windows))]
+        {
+            let _turn = turn;
+            input.metadata_line(maximum, cancel).await
+        }
+    }
 }
 
 #[async_trait]
@@ -347,6 +375,61 @@ impl Input {
             }
         }
     }
+    async fn metadata_line(
+        &self,
+        maximum: usize,
+        cancel: tokio_util::sync::CancellationToken,
+    ) -> Result<Option<Vec<u8>>, HostError> {
+        use std::os::fd::AsRawFd;
+        let mut buffer = self.buffer.lock().await;
+        if !buffer.is_empty() {
+            return Err(HostError("terminal metadata has an incomplete line".into()));
+        }
+        let capacity = maximum
+            .checked_add(1)
+            .ok_or_else(|| HostError("session metadata bound overflow".into()))?;
+        buffer
+            .try_reserve_exact(capacity)
+            .map_err(|_| HostError("session metadata allocation failed".into()))?;
+        loop {
+            let mut readiness = tokio::select! {
+                _ = cancel.cancelled() => return Err(HostError("session input cancelled".into())),
+                ready = self.fd.readable() => ready.map_err(io_error)?,
+            };
+            let read = readiness.try_io(|fd| {
+                let mut byte = 0u8;
+                let count = unsafe {
+                    libc::read(fd.get_ref().as_raw_fd(), (&mut byte as *mut u8).cast(), 1)
+                };
+                if count < 0 {
+                    Err(std::io::Error::last_os_error())
+                } else {
+                    Ok((count, byte))
+                }
+            });
+            match read {
+                Ok(Ok((0, _))) if buffer.is_empty() => return Ok(None),
+                Ok(Ok((0, _))) => {
+                    return Err(HostError("session request ended before newline".into()));
+                }
+                Ok(Ok((_, b'\n'))) => {
+                    if buffer.last() == Some(&b'\r') {
+                        buffer.pop();
+                    }
+                    return Ok(Some(std::mem::take(&mut *buffer)));
+                }
+                Ok(Ok((_, byte))) => {
+                    if buffer.len() >= maximum && !(buffer.len() == maximum && byte == b'\r') {
+                        return Err(HostError("session request exceeds its input bound".into()));
+                    }
+                    buffer.push(byte);
+                }
+                Ok(Err(error)) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Ok(Err(error)) => return Err(io_error(error)),
+                Err(_) => continue,
+            }
+        }
+    }
     async fn line_budgeted(
         &self,
         maximum: usize,
@@ -448,6 +531,15 @@ impl Input {
     async fn line(&self) -> Result<String, HostError> {
         Err(HostError(
             "cancellable terminal input is unavailable on this platform".into(),
+        ))
+    }
+    async fn metadata_line(
+        &self,
+        _: usize,
+        _: tokio_util::sync::CancellationToken,
+    ) -> Result<Option<Vec<u8>>, HostError> {
+        Err(HostError(
+            "cancellable session input is unavailable on this platform".into(),
         ))
     }
     async fn line_budgeted(
@@ -585,6 +677,62 @@ mod tests {
     async fn noninteractive_terminal_cannot_approve() {
         let host = TerminalHost::new(true).unwrap();
         assert!(!host.trusted_tty());
+    }
+    #[tokio::test]
+    async fn session_command_cannot_compete_with_a_trusted_review_read() {
+        let host = TerminalHost::new(true).unwrap();
+        let _review = host.turn.lock().await;
+        assert!(
+            tokio::time::timeout(
+                std::time::Duration::from_millis(20),
+                host.session_request_line(32, tokio_util::sync::CancellationToken::new())
+            )
+            .await
+            .is_err()
+        );
+        assert!(host.input.get().is_none());
+    }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn session_metadata_is_bounded_without_reading_the_next_approval() {
+        let (input, writer) = pipe_input(b"cmd\r\napprove\n");
+        assert_eq!(
+            input
+                .metadata_line(3, tokio_util::sync::CancellationToken::new())
+                .await
+                .unwrap(),
+            Some(b"cmd".to_vec())
+        );
+        assert_eq!(input.line().await.unwrap(), "approve");
+        drop(writer);
+        assert!(
+            input
+                .metadata_line(3, tokio_util::sync::CancellationToken::new())
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn session_metadata_rejects_overflow_and_unterminated_eof() {
+        let (overflow, _writer) = pipe_input(b"long\napprove\n");
+        assert!(
+            overflow
+                .metadata_line(2, tokio_util::sync::CancellationToken::new())
+                .await
+                .is_err()
+        );
+        let (partial, writer) = pipe_input(b"{}");
+        drop(writer);
+        assert!(
+            partial
+                .metadata_line(32, tokio_util::sync::CancellationToken::new())
+                .await
+                .unwrap_err()
+                .0
+                .contains("before newline")
+        );
     }
     #[cfg(unix)]
     #[tokio::test]

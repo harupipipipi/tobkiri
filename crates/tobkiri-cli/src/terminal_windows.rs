@@ -97,12 +97,56 @@ impl Input {
         })
     }
     pub(super) async fn line(&self, turn: Option<Turn>) -> Result<String, HostError> {
-        match self
-            .read(Producer::Metadata(Vec::new()), METADATA_LIMIT, turn)
-            .await?
-        {
+        let line = self
+            .read(Producer::Metadata(Vec::new()), METADATA_LIMIT, turn, None)
+            .await?;
+        if line.eof && line.producer.len() == 0 {
+            return Err(HostError("end of input".into()));
+        }
+        match line.producer {
             Producer::Metadata(bytes) => String::from_utf8(bytes)
                 .map_err(|_| HostError("terminal input is not UTF-8".into())),
+            Producer::Guest(_) => unreachable!(),
+        }
+    }
+    pub(super) async fn metadata_line(
+        &self,
+        maximum: usize,
+        turn: Option<Turn>,
+        cancel: tokio_util::sync::CancellationToken,
+    ) -> Result<Option<Vec<u8>>, HostError> {
+        if maximum == 0 || cancel.is_cancelled() {
+            return Err(HostError(
+                "invalid or cancelled session metadata bound".into(),
+            ));
+        }
+        let capacity = maximum
+            .checked_add(CHUNK)
+            .ok_or_else(|| HostError("session metadata bound overflow".into()))?;
+        let mut bytes = Vec::new();
+        bytes
+            .try_reserve_exact(capacity)
+            .map_err(|_| HostError("session metadata allocation failed".into()))?;
+        let line = self
+            .read(
+                Producer::Metadata(bytes),
+                maximum,
+                turn,
+                Some(cancel.clone()),
+            )
+            .await?;
+        if cancel.is_cancelled() {
+            return Err(HostError("session input cancelled".into()));
+        }
+        if line.eof {
+            return if line.producer.len() == 0 {
+                Ok(None)
+            } else {
+                Err(HostError("session request ended before newline".into()))
+            };
+        }
+        match line.producer {
+            Producer::Metadata(bytes) => Ok(Some(bytes)),
             Producer::Guest(_) => unreachable!(),
         }
     }
@@ -118,14 +162,18 @@ impl Input {
         let capacity = maximum
             .checked_add(CHUNK)
             .ok_or_else(|| HostError("terminal input limit overflow".into()))?;
-        match self
+        let line = self
             .read(
                 Producer::Guest(CoreBuffer::builder(budget, capacity)),
                 maximum,
                 turn,
+                None,
             )
-            .await?
-        {
+            .await?;
+        if line.eof && line.producer.len() == 0 {
+            return Err(HostError("end of input".into()));
+        }
+        match line.producer {
             Producer::Guest(builder) => {
                 let value = builder.finish().map_err(allocation_error)?;
                 value.as_str().map_err(allocation_error)?;
@@ -139,8 +187,14 @@ impl Input {
         producer: Producer,
         maximum: usize,
         turn: Option<Turn>,
-    ) -> Result<Producer, HostError> {
+        cancel: Option<tokio_util::sync::CancellationToken>,
+    ) -> Result<ProducedLine, HostError> {
         let serial = self.serial.clone().lock_owned().await;
+        if cancel.as_ref().is_some_and(|cancel| cancel.is_cancelled()) {
+            return Err(HostError(
+                "session input cancelled before native read".into(),
+            ));
+        }
         if self.shared.quarantined.load(Ordering::Acquire) {
             return Err(HostError("Windows input has an incomplete line; start a fresh CLI session before further input or approval".into()));
         }
@@ -191,9 +245,20 @@ impl Input {
             return Err(io_error(error));
         }
         let mut cancelled = CancelOnDrop { work, armed: true };
-        let result = receive
-            .await
-            .map_err(|_| HostError("Windows terminal read worker failed".into()))?;
+        let mut receive = receive;
+        let delivered = if let Some(cancel) = cancel {
+            tokio::select! {
+                result = &mut receive => result,
+                _ = cancel.cancelled() => {
+                    cancelled.request();
+                    receive.await
+                }
+            }
+        } else {
+            receive.await
+        };
+        let result =
+            delivered.map_err(|_| HostError("Windows terminal read worker failed".into()))?;
         cancelled.armed = false;
         result
     }
@@ -242,11 +307,16 @@ struct CancelOnDrop {
     work: Arc<Work>,
     armed: bool,
 }
+impl CancelOnDrop {
+    fn request(&self) {
+        self.work.cancelled.store(true, Ordering::Release);
+        unsafe { SetEvent(self.work.cancel.as_raw_handle()) };
+    }
+}
 impl Drop for CancelOnDrop {
     fn drop(&mut self) {
         if self.armed {
-            self.work.cancelled.store(true, Ordering::Release);
-            unsafe { SetEvent(self.work.cancel.as_raw_handle()) };
+            self.request();
         }
     }
 }
@@ -289,6 +359,10 @@ fn supervise(work: Arc<Work>) {
 enum Producer {
     Metadata(Vec<u8>),
     Guest(CoreBufferBuilder),
+}
+struct ProducedLine {
+    producer: Producer,
+    eof: bool,
 }
 impl Producer {
     fn len(&self) -> usize {
@@ -349,10 +423,11 @@ fn produce(
     work: &Work,
     mut producer: Producer,
     maximum: usize,
-) -> Result<Producer, HostError> {
+) -> Result<ProducedLine, HostError> {
     let mut decoder = Decoder::default();
     let mut issued = false;
     let mut boundary = false;
+    let mut ended_at_eof = false;
     let result = (|| {
         loop {
             if work.cancelled.load(Ordering::Acquire) {
@@ -417,9 +492,7 @@ fn produce(
                 Ok(written)
             }).map_err(|error| failure.map(io_error).unwrap_or(error))?;
             if boundary {
-                if eof && producer.len() == 0 {
-                    return Err(HostError("end of input".into()));
-                }
+                ended_at_eof = eof;
                 return Ok(());
             }
         }
@@ -427,7 +500,10 @@ fn produce(
     if issued && !boundary {
         input.quarantined.store(true, Ordering::Release);
     }
-    result.map(|()| producer)
+    result.map(|()| ProducedLine {
+        producer,
+        eof: ended_at_eof,
+    })
 }
 
 #[cfg(test)]
@@ -630,6 +706,87 @@ mod tests {
         assert!(invalid.line_budgeted(1, &funding, None).await.is_err());
         // Invalid complete UTF-8 cannot cross the explicit newline boundary.
         assert_eq!(invalid.line(None).await.unwrap(), "approve");
+    }
+    #[tokio::test]
+    async fn windows_session_metadata_preserves_approval_line_and_typed_idle_eof() {
+        let (input, writer) = pipe(b"cmd\r\napprove\n");
+        assert_eq!(
+            input
+                .metadata_line(3, None, tokio_util::sync::CancellationToken::new())
+                .await
+                .unwrap(),
+            Some(b"cmd".to_vec())
+        );
+        assert_eq!(input.line(None).await.unwrap(), "approve");
+        drop(writer);
+        assert!(
+            input
+                .metadata_line(3, None, tokio_util::sync::CancellationToken::new())
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+    #[tokio::test]
+    async fn windows_session_metadata_rejects_overflow_and_unterminated_eof() {
+        let (overflow, _writer) = pipe(b"long\napprove\n");
+        assert!(
+            overflow
+                .metadata_line(2, None, tokio_util::sync::CancellationToken::new())
+                .await
+                .is_err()
+        );
+        assert!(
+            overflow
+                .line(None)
+                .await
+                .unwrap_err()
+                .0
+                .contains("fresh CLI")
+        );
+        let (partial, writer) = pipe(b"{}");
+        drop(writer);
+        assert!(
+            partial
+                .metadata_line(32, None, tokio_util::sync::CancellationToken::new())
+                .await
+                .unwrap_err()
+                .0
+                .contains("before newline")
+        );
+    }
+    #[tokio::test]
+    async fn windows_session_input_cancel_awaits_exact_worker_and_holds_review_turn() {
+        let (input, _writer) = pipe(b"");
+        input
+            .shared
+            .hooks
+            .after
+            .enabled
+            .store(true, Ordering::SeqCst);
+        let turn = Arc::new(tokio::sync::Mutex::new(()));
+        let held = turn.clone().lock_owned().await;
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let worker_cancel = cancel.clone();
+        let owned = input.clone();
+        let request =
+            tokio::spawn(async move { owned.metadata_line(32, Some(held), worker_cancel).await });
+        until(|| input.shared.hooks.reads.load(Ordering::SeqCst) != 0).await;
+        let work = input.last_work.lock().unwrap().as_ref().unwrap().clone();
+        let native = thread(&work);
+        cancel.cancel();
+        until(|| input.shared.hooks.after.reached.load(Ordering::SeqCst)).await;
+        assert!(!request.is_finished());
+        assert!(turn.try_lock().is_err());
+        assert_eq!(
+            unsafe { WaitForSingleObject(native.as_raw_handle(), 0) },
+            WAIT_TIMEOUT
+        );
+        input.shared.hooks.after.open();
+        assert!(request.await.unwrap().is_err());
+        until(|| unsafe { WaitForSingleObject(native.as_raw_handle(), 0) } == WAIT_OBJECT_0).await;
+        assert!(turn.try_lock().is_ok());
+        assert!(input.line(None).await.unwrap_err().0.contains("fresh CLI"));
     }
     #[tokio::test]
     async fn windows_overflow_quarantines_before_remaining_text_can_be_approval() {
