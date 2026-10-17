@@ -1353,7 +1353,7 @@ async fn expiry_sweeps_unconsumed_grants_and_attestation_nonces_are_bounded() {
             .unwrap()
             .as_millis() as u64
     };
-    let expiry = now() + 20;
+    let expiry = now() + 60_000;
     assert!(
         f.approvals
             .claim_attestation(&f.profile, "phone", "nonce", expiry)
@@ -1364,7 +1364,23 @@ async fn expiry_sweeps_unconsumed_grants_and_attestation_nonces_are_bounded() {
             .claim_attestation(&f.profile, "phone", "nonce", expiry)
             .unwrap()
     );
-    tokio::time::sleep(Duration::from_millis(30)).await;
+    // Expire only this disposable fixture row after checking the live duplicate.
+    // Durable commits can take longer than 20ms on CI; the production expiry
+    // check must not be weakened to accommodate that scheduling difference.
+    let mut db = rusqlite::Connection::open(
+        f.root
+            .path()
+            .join(format!("profiles/{}/approvals.sqlite", f.profile)),
+    )
+    .unwrap();
+    assert_eq!(
+        db.execute(
+            "UPDATE attestation_nonces SET expires=0 WHERE device='phone' AND nonce='nonce'",
+            [],
+        )
+        .unwrap(),
+        1
+    );
     assert!(
         f.approvals
             .claim_attestation(&f.profile, "phone", "nonce", now() + 60_000)
@@ -1375,12 +1391,6 @@ async fn expiry_sweeps_unconsumed_grants_and_attestation_nonces_are_bounded() {
             .claim_attestation(&f.profile, "phone", "expired", now() - 1)
             .is_err()
     );
-    let mut db = rusqlite::Connection::open(
-        f.root
-            .path()
-            .join(format!("profiles/{}/approvals.sqlite", f.profile)),
-    )
-    .unwrap();
     let tx = db.transaction().unwrap();
     {
         let mut stmt = tx
