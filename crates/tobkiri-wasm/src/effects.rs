@@ -360,6 +360,12 @@ fn effect_outcome<T>(result: &Result<T>, cx: &CallCx) -> Outcome {
         }
     } else if cx.cancel().is_cancelled() {
         Outcome::Cancelled
+    } else if let Some((code, _)) = result
+        .as_ref()
+        .err()
+        .and_then(crate::network_diagnostics::failure_metadata)
+    {
+        Outcome::Failed { code: code.into() }
     } else {
         Outcome::Failed {
             code: "host-effect".into(),
@@ -1369,6 +1375,24 @@ mod delivery_tests {
     }
     fn id() -> GrantId {
         serde_json::from_str("\"test-delivery-grant\"").unwrap()
+    }
+
+    #[tokio::test]
+    async fn native_network_failure_keeps_closed_audit_kind_and_cancellation_priority() {
+        let cx = context();
+        let error = crate::network_diagnostics::tests::native_body_timeout().await;
+        let result: Result<()> = Err(error);
+        assert!(
+            matches!(effect_outcome(&result, &cx), Outcome::Failed { code } if code == "network-timeout")
+        );
+        cx.cancel().cancel();
+        assert_eq!(effect_outcome(&result, &cx), Outcome::Cancelled);
+        let result: Result<()> = Err(result
+            .unwrap_err()
+            .context(tobkiri_store::StoreError::CommitUnknown));
+        assert!(
+            matches!(effect_outcome(&result, &cx), Outcome::Failed { code } if code == "storage-sql-commit-unknown")
+        );
     }
 
     #[tokio::test]

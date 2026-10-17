@@ -86,6 +86,15 @@ jobs:
           cargo test -p tobkiri-wasm --lib --locked network::tests::coalesce_ || status=$?
           cargo test -p tobkiri-wasm --test byte_list_abi --locked || status=$?
           exit "$status"
+      - name: Closed transport and finite-fuel diagnostics
+        if: ${{ !cancelled() }}
+        run: |
+          status=0
+          cargo test -p tobkiri-wasm --lib --locked entry_diagnostics || status=$?
+          cargo test -p tobkiri-wasm --lib --locked network_diagnostics || status=$?
+          cargo test -p tobkiri-wasm --lib --locked native_network_ || status=$?
+          cargo test -p tobkiri-wasm --test entry_fuel_diagnostics --locked || status=$?
+          exit "$status"
       - name: Bounded call trees, stream cleanup and native User entry
         if: ${{ !cancelled() }}
         run: |
@@ -128,3 +137,16 @@ jobs:
       - name: Prepaid byte-list ABI
         if: ${{ !cancelled() }}
         run: cargo test -p tobkiri-wasm --test byte_list_abi --locked
+      - name: Closed transport and finite-fuel diagnostics
+        if: ${{ !cancelled() }}
+        run: |
+          $taskStatus = 0
+          cargo test -p tobkiri-wasm --lib --locked entry_diagnostics
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-wasm --lib --locked network_diagnostics
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-wasm --lib --locked native_network_
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-wasm --test entry_fuel_diagnostics --locked
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          exit $taskStatus

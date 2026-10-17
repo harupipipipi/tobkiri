@@ -269,8 +269,11 @@ pub(crate) fn error_result(
 ) -> Result<Val> {
     use wasmtime::component::{BudgetedBox, BudgetedString, BudgetedVec};
     let storage_failure = storage_failure_metadata(error);
+    let network_failure = crate::network_diagnostics::failure_metadata(error);
     let code = if storage_failure.is_some() {
         "internal"
+    } else if network_failure.is_some() {
+        "unavailable"
     } else if let Some(error) = error.downcast_ref::<crate::filesystem::FsError>() {
         use crate::filesystem::FsError;
         match error {
@@ -302,7 +305,9 @@ pub(crate) fn error_result(
                 .unwrap_or("unavailable"),
         }
     };
-    let message = storage_failure.map_or("core operation failed", |(_, message)| message);
+    let message = storage_failure
+        .or(network_failure)
+        .map_or("core operation failed", |(_, message)| message);
     let text = |value: &str| BudgetedString::copy_from(value, owners.component(), 0);
     let fields = BudgetedVec::from_iter(
         [
@@ -1423,6 +1428,40 @@ mod error_tests {
                 .is_none()
         );
         assert!(!trapped.to_string().contains("storage-pending-data-move"));
+        assert_eq!(meter.0.load(Ordering::Acquire), 0);
+    }
+
+    #[tokio::test]
+    async fn native_network_error_packet_preserves_only_closed_metadata_and_owned_storage() {
+        let meter = Arc::new(Meter(AtomicU64::new(0), 64 * 1024));
+        let owners = crate::AllocationOwners::from_budgets(meter.clone(), meter.clone());
+        let error = crate::network_diagnostics::tests::native_body_timeout().await;
+        let value = error_result(&error, &owners).unwrap();
+        let Val::Result(Err(Some(record))) = &value else {
+            panic!("expected typed native failure");
+        };
+        assert!(
+            matches!(crate::effect_values::field(record, "code").unwrap(), Val::Enum(code) if code.as_str() == "unavailable")
+        );
+        let message =
+            crate::effect_values::text(crate::effect_values::field(record, "message").unwrap())
+                .unwrap();
+        assert_eq!(message, "network-timeout: native transport timed out");
+        assert!(!message.contains("PRIVATE"));
+        assert!(!message.contains("http"));
+        drop(value);
+        assert_eq!(meter.0.load(Ordering::Acquire), 0);
+        let sealed = error.context(tobkiri_store::StoreError::CommitUnknown);
+        let value = error_result(&sealed, &owners).unwrap();
+        let Val::Result(Err(Some(record))) = &value else {
+            panic!("expected immutable storage uncertainty");
+        };
+        assert_eq!(
+            crate::effect_values::text(crate::effect_values::field(record, "message").unwrap())
+                .unwrap(),
+            STORAGE_COMMIT_UNKNOWN_MESSAGE
+        );
+        drop(value);
         assert_eq!(meter.0.load(Ordering::Acquire), 0);
     }
 }

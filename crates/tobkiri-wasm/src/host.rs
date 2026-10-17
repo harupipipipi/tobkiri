@@ -1074,10 +1074,16 @@ impl PackHost {
         if let Some((store, _)) = instance.live.as_mut() {
             store.data_mut().data.frame = Some(frame);
         }
-        let result = instance
-            .call_owned(&cx, interface, op, args, owners)
-            .await
-            .map_err(|error| entry_phase_error(error, "export", &cx, owners));
+        let result = instance.call_owned(&cx, interface, op, args, owners).await;
+        let result = result.map_err(|error| {
+            // The failed call's Store is still owned here. This observation
+            // neither refuels it nor calls a guest; failure to observe is None.
+            let fuel_remaining = instance
+                .live
+                .as_ref()
+                .and_then(|(store, _)| crate::entry_diagnostics::remaining_fuel(&error, store));
+            crate::entry_diagnostics::annotate(error, "export", &cx, owners, fuel_remaining)
+        });
         if let Some((store, _)) = instance.live.as_mut() {
             store.data_mut().data.frame.take();
         }
@@ -1404,40 +1410,7 @@ fn entry_phase_error(
     cx: &CallCx,
     owners: &crate::owned_values::ValueOwners,
 ) -> anyhow::Error {
-    use wasmtime::component::HostAllocationError;
-    let allocation = error
-        .chain()
-        .find_map(|cause| cause.downcast_ref::<HostAllocationError>());
-    let kind = match allocation {
-        Some(HostAllocationError::Unavailable) => "allocation-unavailable",
-        Some(HostAllocationError::Limit) => "allocation-limit",
-        Some(HostAllocationError::Overflow) => "allocation-overflow",
-        Some(HostAllocationError::Depth) => "allocation-depth",
-        Some(HostAllocationError::Allocator) => "allocator-failure",
-        Some(HostAllocationError::Invalid) => "invalid-allocation",
-        None => "execution-error",
-    };
-    let now = std::time::Instant::now();
-    let abi_stage = error
-        .downcast_ref::<wasmtime::component::CanonicalCallStage>()
-        .or_else(|| {
-            error
-                .chain()
-                .find_map(|cause| cause.downcast_ref::<wasmtime::component::CanonicalCallStage>())
-        })
-        .map_or("unknown", |stage| stage.as_str());
-    let active = cx
-        .check_active()
-        .err()
-        .map_or("active", |error| error.code());
-    let wall_remaining_ms = cx.deadline().saturating_duration_since(now).as_millis();
-    let loop_remaining_ms = cx
-        .budget()
-        .map(|budget| budget.deadline().saturating_duration_since(now).as_millis());
-    error.context(format!(
-        "component phase={phase} abi_stage={abi_stage} failure={kind} context={active} wall_remaining_ms={wall_remaining_ms} loop_remaining_ms={loop_remaining_ms:?} declared_wall_ms={} owner_failure={}",
-        cx.limits().wall_ms, owners.allocation_failure_code(),
-    ))
+    crate::entry_diagnostics::annotate(error, phase, cx, owners, None)
 }
 pub(crate) fn step_error(error: anyhow::Error) -> StepError {
     if let Some((code, message)) = crate::core_imports::storage_failure_metadata(&error) {
