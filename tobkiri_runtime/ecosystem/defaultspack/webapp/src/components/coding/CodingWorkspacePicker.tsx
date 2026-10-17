@@ -21,7 +21,9 @@ export function CodingWorkspacePicker({
   onCreate?: () => void;
   onRefresh?: () => void;
 }) {
-  const selected = workspaces.find((workspace) => workspace.workspace_id === selectedWorkspaceId) ?? workspaces[0] ?? null;
+  const selected = selectedWorkspaceId
+    ? workspaces.find((workspace) => workspace.workspace_id === selectedWorkspaceId) ?? null
+    : workspaces[0] ?? null;
   const interactionDisabled = disabled || busy;
   const TrustIcon = selected?.trusted ? ShieldCheck : ShieldQuestion;
 
@@ -50,7 +52,7 @@ export function CodingWorkspacePicker({
               {workspace.label || workspace.workspace_id}
             </option>
           ))}
-          {workspaces.length === 0 && <option value="">workspace を選択</option>}
+          {!selected && <option value="">workspace を選択</option>}
         </select>
         <ChevronDown size={12} className="rumi-workspace-picker-chevron pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500" aria-hidden="true" />
       </div>

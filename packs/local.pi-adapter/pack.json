@@ -1,0 +1,137 @@
+{
+  "files": [
+    {
+      "path": "component.build.json",
+      "sha256": "sha256:8653c9c5c8189cb5205fa96cb27692fd8ed4b4d41bed13d75a9548a0089a4dc5",
+      "size": 1799
+    },
+    {
+      "path": "component.wasm",
+      "sha256": "sha256:6975a872292059dbdc19844ed86876311eb5acab619c1931dfd071c2ea069859",
+      "size": 106635
+    },
+    {
+      "path": "config.json",
+      "sha256": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "size": 3
+    },
+    {
+      "path": "wit/deps/core.wit",
+      "sha256": "sha256:f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "size": 5732
+    },
+    {
+      "path": "wit/deps/harness-agent.wit",
+      "sha256": "sha256:4f521cccf31d8c1ee2f777b3d2000a56137119a04011a156304f1442cf592e26",
+      "size": 384
+    },
+    {
+      "path": "wit/deps/harness-chat.wit",
+      "sha256": "sha256:773dab1acafb9e85414e67572fa0b913a0476d41987880db34881c27f2420a82",
+      "size": 2202
+    },
+    {
+      "path": "wit/pack.wit",
+      "sha256": "sha256:d28a754aeca0b8089d9e9edf83bcf2059b240e42d056a75ea1c71d0d4ae34bcc",
+      "size": 291
+    },
+    {
+      "path": "wit/pi-adapter.wit",
+      "sha256": "sha256:80bbe4b791713b28a5f885e9036c7c681907812803842494bf1d6eabae837b81",
+      "size": 611
+    },
+    {
+      "path": "wit/pi-extension.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    }
+  ],
+  "flows": [],
+  "format": "tobkiri.pack/1",
+  "id": "local.pi-adapter",
+  "overlays": [],
+  "permissions": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 16,
+      "max_wall_ms": 300000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": [],
+      "user_origins": null
+    },
+    "ports": [
+      "local.pi-adapter.pi-extension@1.0"
+    ],
+    "proc": [],
+    "pty": false,
+    "secrets": [],
+    "storage": {
+      "private": false,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  },
+  "ports": {
+    "consumes": [
+      {
+        "optional": false,
+        "shape": "local.pi-adapter.pi-extension",
+        "version": "1.0"
+      }
+    ],
+    "provides": [
+      {
+        "optional": false,
+        "shape": "local.harness-agent.tool-provider",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.harness-agent.tool-call-guard",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.harness-chat.command-provider",
+        "version": "1.0"
+      }
+    ],
+    "untyped": []
+  },
+  "publisher_key": null,
+  "runtime": {
+    "component": "component.wasm",
+    "config": {
+      "path": "config.json",
+      "shape": null
+    },
+    "kind": "wasm",
+    "toolchain": "rust/1.94.0;wit-bindgen/0.62.0"
+  },
+  "shapes": [
+    {
+      "kind": "port",
+      "name": "local.pi-adapter.pi-extension",
+      "version": "1.0",
+      "wit": "wit/pi-adapter.wit"
+    }
+  ],
+  "stores": [],
+  "ui": null,
+  "version": "0.1.0"
+}

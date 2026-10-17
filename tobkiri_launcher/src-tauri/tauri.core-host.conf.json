@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tobkiri Launcher",
+  "version": "1.0.0-beta.3",
+  "identifier": "dev.rumiai.app",
+  "build": {
+    "beforeBuildCommand": "npm --prefix ../frontend run build:core-host",
+    "beforeDevCommand": "npm --prefix ../frontend run build:core-host",
+    "frontendDist": "../core-host-ui"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "security": {
+      "capabilities": [
+        "core-host"
+      ],
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' ipc: http://ipc.localhost; frame-src tobkiri-pack: http://tobkiri-pack.localhost https://tobkiri-pack.localhost; object-src 'none'; base-uri 'none'; form-action 'none'"
+    },
+    "windows": [
+      {
+        "label": "core-host",
+        "title": "Tobkiri Launcher",
+        "width": 1280,
+        "height": 800,
+        "visible": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": false,
+    "resources": null
+  }
+}

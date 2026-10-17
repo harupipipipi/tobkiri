@@ -1,5 +1,58 @@
 # Chat API
 
+## Captured full-UI integration
+
+The canonical map currently connects conversation CRUD to
+`rumi_conversation_store_pack`, not the legacy handlers documented below.
+The wire endpoint is `/api/contracts/defaultspack/` followed by the URL-encoded
+method and target, for example `POST%20%2Fapi%2Fchat%2Fconversations`.
+Normal panel authentication, CSRF, request identity, captured Profile grants
+and Broker checks remain required.
+
+- `GET /api/chat/conversations` returns `conversations`, `total` and
+  `store_revision` from the captured owner snapshot.
+- `POST /api/chat/conversations` requires `id` (canonical UUID) and
+  `expected_revision` (that snapshot's nonnegative integer revision), alongside
+  the UI's optional model/prompt/agent/tags/parent/kind/group/metadata fields.
+  The result is the real created conversation, including its
+  `conversation_revision` and the UI's `model` alias for `model_reference`.
+- A repeated ID or stale revision is rejected without another write. The UI
+  does not automatically retry conflicts. A transport failure is not proof that
+  creation failed; refresh history before deciding whether another create is needed.
+- Clients cannot provide `profile_id`, `approved`, owner operation, messages or
+  a manufactured conversation revision. A new source Profile action edge needs
+  normal activation review; existing live Profiles are not changed by this code.
+
+- `GET /api/chat/conversation?conversation_id=...` returns the actual record,
+  including its `conversation_revision`. This is a fixed route: a conversation
+  ID is query data, never an unregistered path suffix.
+- `PUT /api/chat/conversation` requires `conversation_id`,
+  `expected_conversation_revision` and a nonempty `updates` object of mutable
+  metadata fields. The UI sends the displayed revision, without a hidden
+  refetch that could overwrite another edit. IDs, messages and manufactured
+  revisions are not mutable metadata.
+- `DELETE /api/chat/conversation` requires `conversation_id` and
+  `expected_conversation_revision` in the JSON body. Only a confirmed owner
+  deletion returns `deleted: true`; stale updates/deletes leave storage unchanged.
+
+Message/stream/stop integration is still pending.
+The isolated Conversation `complete` ABI now preserves an explicitly selected
+`model` as a bounded `model_reference` in its digest-pinned AI request. Both guest
+and Host reject malformed references. Profile identity, credentials, arbitrary
+requirements and targets are still not forwarded from the outer UI payload;
+the existing gateway resolves the reference through its captured contracts.
+This bridge behavior alone does not connect the full UI's message/stream routes.
+The guest's bounded cancellation ledger never evicts a live cancellation to
+make room for another. If its 64 entries are full, an overflow fence rejects new
+bridge registrations until the last unrecorded cancellation's normal 60-second
+retention expires. Pending cancelled work is still removed. This trades temporary
+admission availability for preventing late cancelled work from being reintroduced;
+it is not evidence that the full UI's stop endpoint is connected.
+The following sections describe legacy APIs and are not evidence that those
+operations are available through the captured full-UI map.
+
+## Legacy API reference
+
 defaults Pack のチャット機能の全 API リファレンスです。handler は `blocks/chat/` に、ドメインロジックは `domain/chat/store.py`（ChatStore）に実装されています。
 
 ecosystem.json の chat コンポーネントは 18 個の handler を provides しています: `create_conversation`, `get_conversation`, `list_conversations`, `update_conversation`, `delete_conversation`, `export_conversation`, `send`, `stream`, `add_message`, `get_message`, `update_message`, `delete_message`, `branch`, `search`, `stop`, `regenerate`, `summarize_and_trim`, `auto_trim`。

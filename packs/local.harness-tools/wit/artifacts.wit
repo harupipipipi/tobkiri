@@ -1,0 +1,11 @@
+package local:harness-tools@1.0.0;
+
+interface artifacts {
+  record artifact {
+    path: string,
+    content: string,
+    exists: bool,
+    size: u64,
+    digest: option<string>,
+  }
+}

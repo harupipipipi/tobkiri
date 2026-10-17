@@ -40,7 +40,9 @@ def test_mcp_registry_persists_servers_and_permission_metadata(tmp_path, monkeyp
     assert persisted["tools"] == ["mcp__filesystem__read_file"]
 
 
-def test_unapproved_mcp_server_tool_execution_fails_closed(tmp_path, monkeypatch):
+def test_unapproved_mcp_server_tool_execution_fails_closed(
+    tmp_path, monkeypatch, defaultspack_capability_plan_context
+):
     monkeypatch.setenv("RUMI_DEFAULTSPACK_MCP_REGISTRY_PATH", str(tmp_path / "mcp_servers.json"))
 
     from domain.tool.executor import ToolExecutor
@@ -59,15 +61,20 @@ def test_unapproved_mcp_server_tool_execution_fails_closed(tmp_path, monkeypatch
         }
     )
     McpRegistry().add_server({"server_id": "demo", "transport": "stdio", "command": "python"})
+    plan_context = defaultspack_capability_plan_context("mcp_ping")
 
-    blocked = ToolExecutor().execute("mcp_ping", {"message": "hello"}, {})
+    blocked = ToolExecutor().execute(
+        "mcp_ping", {"message": "hello"}, plan_context
+    )
 
     assert blocked["is_error"] is True
     assert blocked["approval_required"] is True
     assert "not approved" in blocked["result"]
 
     McpRegistry().mark_connected("demo", approved=True)
-    allowed = ToolExecutor().execute("mcp_ping", {"message": "hello"}, {})
+    allowed = ToolExecutor().execute(
+        "mcp_ping", {"message": "hello"}, plan_context
+    )
 
     assert allowed["is_error"] is True
     assert "not connected" in allowed["result"]

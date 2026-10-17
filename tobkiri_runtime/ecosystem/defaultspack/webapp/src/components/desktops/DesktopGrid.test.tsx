@@ -171,3 +171,43 @@ test("desktop workspace preserves an explicit non-running selection", () => {
     destroyedDesktop.seat_id,
   );
 });
+
+test("registered desktop stays visible while unsupported actions are disabled", () => {
+  const html = renderToStaticMarkup(createElement(DesktopGrid, {
+    desktops: [desktop("saved-seat")], selectedSeatId: "saved-seat", density: "comfortable",
+    leaseSeatId: "saved-seat", operationSupport: { control: false, frame: false, lifecycle: false, delete: false },
+    onSelect: noop, onTakeOver: noop, onReturnToAI: noop, onInput: noop,
+    onStart: noop, onRestart: noop, onStop: noop, onDelete: noop,
+  }));
+  assert.match(html, /Desktop saved-seat/);
+  assert.match(html, /操作未接続/);
+  for (const action of ["Take over", "Snapshot", "Restart", "Stop", "Delete"]) {
+    assert.match(html, new RegExp(`<button[^>]*disabled=""[^>]*aria-label="${action} Desktop saved-seat"`));
+  }
+  assert.doesNotMatch(html, /Control available|Human control|Waiting for first snapshot|live snapshot/);
+  assert.match(html, /画面取得は未接続です/);
+});
+
+test("unconnected desktop frames label saved records without live readiness", async () => {
+  const { DesktopToolbar } = await import("./DesktopToolbar");
+  const html = renderToStaticMarkup(createElement(DesktopToolbar, {
+    totalCount: 1, runningCount: 1, framesAvailable: false, canCreate: false,
+    filter: "all", density: "comfortable", onFilterChange: noop,
+    onDensityChange: noop, onCreate: noop, onDoctor: noop,
+  }));
+  assert.match(html, /保存された一覧（稼働未確認）/);
+  assert.doesNotMatch(html, /Live snapshots|1 running/);
+});
+
+test("unprobed provider notice explains Mac Lima path and independent PackVM", async () => {
+  const { DesktopProviderNotice } = await import("./DesktopProviderNotice");
+  const html = renderToStaticMarkup(createElement(DesktopProviderNotice, {
+    availability: { status: "registered", selectedProvider: { provider_id: "mac_lima", status: "available" }, providers: [], missing: [], message: "登録済み・未診断" },
+    operation: null, operationSupport: { setup: false, doctor: false },
+    onSetup: noop, onDoctor: noop, onCopyDiagnostics: noop, onRefresh: noop,
+  }));
+  assert.match(html, /MacはLimaに対応/);
+  assert.match(html, /Tobkiri本体の実行環境とは別/);
+  assert.match(html, /登録情報を更新/);
+  assert.match(html, /<button[^>]*disabled=""[^>]*>[^]*?ゲストを準備/);
+});

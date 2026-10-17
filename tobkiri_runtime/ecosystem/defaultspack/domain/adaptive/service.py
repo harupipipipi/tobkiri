@@ -807,11 +807,33 @@ class AdaptiveService(EventServiceMixin, PackRecommendationServiceMixin, SkillSe
     def operating_profile_list(self, args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
         del args, ctx
         try:
-            from core_runtime.startup_profiles import StartupProfileManager
+            from core_runtime.bootstrap.profile_capture import capture_active_profile
 
-            return StartupProfileManager().list_profiles_payload()
+            active = capture_active_profile()
         except Exception as exc:
-            return {"profiles": [], "active_profile_id": self.profile_id, "degraded": True, "reason": str(exc)}
+            return {
+                "profiles": [],
+                "active_profile_id": None,
+                "degraded": True,
+                "reason": str(exc),
+                "profile_authority": "io.tobkiri.profile.v4",
+            }
+        profile = active.resolved.profile
+        plan = active.resolved.plan
+        payload = {
+            "profile_id": str(profile["profile_id"]),
+            "profile_revision": str(plan["profile_revision"]),
+            "plan_digest": str(plan["plan_digest"]),
+            "activation_id": str(active.activation["activation_id"]),
+            "base": dict(plan["base"]),
+            "shell": dict(plan["shell"]),
+            "immutable": True,
+        }
+        return {
+            "profiles": [payload],
+            "active_profile_id": payload["profile_id"],
+            "profile_authority": "io.tobkiri.profile.v4",
+        }
 
     def operating_profile_get(self, args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
         profile_id = str(args.get("target_profile_id") or args.get("id") or self.profile_id)
@@ -843,16 +865,26 @@ class AdaptiveService(EventServiceMixin, PackRecommendationServiceMixin, SkillSe
         self._ensure_not_frozen("operating_profile.activate")
         target = str(args.get("target_profile_id") or args.get("id") or args.get("profile_id") or self.profile_id)
         try:
-            from core_runtime.startup_profiles import StartupProfileManager
+            from core_runtime.bootstrap.profile_capture import capture_active_profile
 
-            result = StartupProfileManager().activate_profile(target)
-            if result.get("error"):
-                raise AdaptiveError("ACTIVATE_FAILED", str(result.get("error")), details=result)
-            return result
-        except AdaptiveError:
-            raise
+            active = capture_active_profile()
         except Exception as exc:
-            raise AdaptiveError("ACTIVATE_FAILED", str(exc)) from exc
+            raise AdaptiveError(
+                "PROFILE_CONFIRMATION_REQUIRED",
+                "Profile v4 activation requires an explicit digest-bound confirmation",
+            ) from exc
+        active_id = str(active.resolved.profile["profile_id"])
+        if target != active_id:
+            raise AdaptiveError(
+                "PROFILE_NOT_FOUND",
+                f"Profile is not in the active v4 catalog: {target}",
+            )
+        return {
+            "profile_id": active_id,
+            "activation_id": str(active.activation["activation_id"]),
+            "plan_digest": str(active.resolved.plan["plan_digest"]),
+            "status": "already_active",
+        }
 
     def _execute_prepared_action(self, action: dict[str, Any], args: dict[str, Any]) -> dict[str, Any]:
         operation = str(action.get("operation") or action.get("action_type") or "").strip()

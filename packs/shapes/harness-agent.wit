@@ -1,0 +1,11 @@
+package local:harness-agent@1.0.0;
+interface tool-provider {
+ use tobkiri:core/types@1.0.0.{error,json};
+ invoke: func(call:json)->result<json,error>;
+}
+interface tool-call-guard {
+ use tobkiri:core/types@1.0.0.{error,json};
+ record decision {block:bool,reason:string,input:json}
+ on-tool-call: func(call:json,has-ui:bool)->result<decision,error>;
+}
+interface tool-call {run:func();}

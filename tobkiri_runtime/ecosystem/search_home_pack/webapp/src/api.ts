@@ -1,6 +1,33 @@
 import type { RouteDecision, RouteSessionState } from "./routerTypes";
 
 export const MODEL_SETTINGS_KEY = "preferred" + "_model";
+export const SEARCH_HOME_CONTRACT_ENDPOINT = "/api/contracts/search_home_pack/";
+
+export type SearchHomeContractRoute = {
+  readonly kind: "search-home-contract-route";
+  readonly apiPath: string;
+};
+
+export function searchHomeContractRoute(apiPath: string): SearchHomeContractRoute {
+  const normalized = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
+  const segments = normalized.split("/");
+  if (
+    segments[1] !== "api"
+    || normalized.startsWith(SEARCH_HOME_CONTRACT_ENDPOINT)
+    || normalized.includes("//")
+    || segments.some((segment) => segment === "." || segment === "..")
+  ) {
+    throw new Error("invalid search home contract route");
+  }
+  return { kind: "search-home-contract-route", apiPath: normalized };
+}
+
+export function searchHomeContractUrl(
+  route: SearchHomeContractRoute,
+  method = "GET",
+): string {
+  return `${SEARCH_HOME_CONTRACT_ENDPOINT}${encodeURIComponent(`${method.toUpperCase()} ${route.apiPath}`)}`;
+}
 
 export type SearchHomeModel = {
   profile_id: string;
@@ -55,12 +82,14 @@ export type SearchAnswerResponse = {
   };
 };
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
+async function requestJson<T>(route: SearchHomeContractRoute, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? "GET").toUpperCase();
+  const response = await fetch(searchHomeContractUrl(route, method), {
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
     },
+    method,
     ...init,
   });
   if (!response.ok) {
@@ -79,29 +108,29 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function routeInput(input: string, model = ""): Promise<RouteDecision> {
-  return requestJson<RouteDecision>("/api/route", {
+  return requestJson<RouteDecision>(searchHomeContractRoute("api/route"), {
     method: "POST",
     body: JSON.stringify({ input, model }),
   });
 }
 
 export async function answerInput(input: string, model = ""): Promise<SearchAnswerResponse> {
-  return requestJson<SearchAnswerResponse>("/api/answer", {
+  return requestJson<SearchAnswerResponse>(searchHomeContractRoute("api/answer"), {
     method: "POST",
     body: JSON.stringify({ input, model, use_search: true }),
   });
 }
 
 export async function loadModels(): Promise<ModelsResponse> {
-  return requestJson<ModelsResponse>("/api/models");
+  return requestJson<ModelsResponse>(searchHomeContractRoute("api/models"));
 }
 
 export async function loadModelSettings(): Promise<ModelSettingsResponse> {
-  return requestJson<ModelSettingsResponse>("/api/settings");
+  return requestJson<ModelSettingsResponse>(searchHomeContractRoute("api/settings"));
 }
 
 export async function setPreferredModel(model: string): Promise<void> {
-  await requestJson<unknown>("/api/settings/model", {
+  await requestJson<unknown>(searchHomeContractRoute("api/settings/model"), {
     method: "POST",
     body: JSON.stringify({ model }),
   });
@@ -109,7 +138,7 @@ export async function setPreferredModel(model: string): Promise<void> {
 
 export async function loadRouteState(): Promise<Record<string, unknown> | null> {
   try {
-    return await requestJson<Record<string, unknown>>("/api/route-state");
+    return await requestJson<Record<string, unknown>>(searchHomeContractRoute("api/route-state"));
   } catch {
     return null;
   }
@@ -117,13 +146,14 @@ export async function loadRouteState(): Promise<Record<string, unknown> | null> 
 
 export function persistRouteStateRemotely(state: RouteSessionState): void {
   const payload = JSON.stringify(state);
+  const route = searchHomeContractRoute("api/route-state");
   if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
     const blob = new Blob([payload], { type: "application/json" });
-    if (navigator.sendBeacon("/api/route-state", blob)) {
+    if (navigator.sendBeacon(searchHomeContractUrl(route, "POST"), blob)) {
       return;
     }
   }
-  void fetch("/api/route-state", {
+  void fetch(searchHomeContractUrl(route, "POST"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: payload,

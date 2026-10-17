@@ -1,0 +1,1355 @@
+{
+ "provider_id": "google",
+ "models": [
+  {
+   "model_id": "deep-research-max-preview-04-2026",
+   "display_name": "Deep Research Max Preview (Apr-21-2026)",
+   "type": "image",
+   "context_window": 131072,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video",
+     "audio",
+     "pdf"
+    ],
+    "output": [
+     "text",
+     "image"
+    ]
+   },
+   "pricing": {
+    "input": 2,
+    "output": 12,
+    "cache_read": 0.2,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 18,
+      "cache_read": 0.4,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 18,
+     "cache_read": 0.4
+    }
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deep-research-preview-04-2026",
+   "display_name": "Deep Research Preview (Apr-21-2026)",
+   "type": "image",
+   "context_window": 131072,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video",
+     "audio",
+     "pdf"
+    ],
+    "output": [
+     "text",
+     "image"
+    ]
+   },
+   "pricing": {
+    "input": 2,
+    "output": 12,
+    "cache_read": 0.2,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 18,
+      "cache_read": 0.4,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 18,
+     "cache_read": 0.4
+    }
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-2.5-computer-use-preview-10-2025",
+   "display_name": "Gemini 2.5 Computer Use Preview 10-2025",
+   "type": "reasoning",
+   "context_window": 128000,
+   "max_output_tokens": 64000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1.25,
+    "output": 10,
+    "tiers": [
+     {
+      "input": 2.5,
+      "output": 15,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 2.5,
+     "output": 15
+    }
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-2.5-flash",
+   "display_name": "Gemini 2.5 Flash",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "audio",
+     "video",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.3,
+    "output": 2.5,
+    "cache_read": 0.03,
+    "input_audio": 1
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-2.5-flash-image",
+   "display_name": "Nano Banana",
+   "type": "image",
+   "context_window": 32768,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text",
+     "image"
+    ]
+   },
+   "pricing": {
+    "input": 0.3,
+    "output": 30,
+    "cache_read": 0.075
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-2.5-flash-lite",
+   "display_name": "Gemini 2.5 Flash-Lite",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "audio",
+     "video",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.1,
+    "output": 0.4,
+    "cache_read": 0.01,
+    "input_audio": 0.3
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-2.5-flash-preview-tts",
+   "display_name": "Gemini 2.5 Flash Preview TTS",
+   "type": "audio",
+   "context_window": 8192,
+   "max_output_tokens": 16384,
+   "capabilities": {
+    "text_input": true,
+    "text_output": false,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "audio"
+    ]
+   },
+   "pricing": {
+    "input": 0.5,
+    "output": 10
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-2.5-pro",
+   "display_name": "Gemini 2.5 Pro",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "audio",
+     "video",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1.25,
+    "output": 10,
+    "cache_read": 0.125,
+    "tiers": [
+     {
+      "input": 2.5,
+      "output": 15,
+      "cache_read": 0.25,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 2.5,
+     "output": 15,
+     "cache_read": 0.25
+    }
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-2.5-pro-preview-tts",
+   "display_name": "Gemini 2.5 Pro Preview TTS",
+   "type": "audio",
+   "context_window": 8192,
+   "max_output_tokens": 16384,
+   "capabilities": {
+    "text_input": true,
+    "text_output": false,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "audio"
+    ]
+   },
+   "pricing": {
+    "input": 1,
+    "output": 20
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-3-flash-preview",
+   "display_name": "Gemini 3 Flash Preview",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video",
+     "audio",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.5,
+    "output": 3,
+    "cache_read": 0.05,
+    "input_audio": 1
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-3-pro-image",
+   "display_name": "Nano Banana Pro",
+   "type": "image",
+   "context_window": 65536,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text",
+     "image"
+    ]
+   },
+   "pricing": {
+    "input": 2,
+    "output": 120
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-3-pro-image-preview",
+   "display_name": "Nano Banana Pro",
+   "type": "image",
+   "context_window": 131072,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text",
+     "image"
+    ]
+   },
+   "pricing": {
+    "input": 2,
+    "output": 120
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-3.1-flash-image",
+   "display_name": "Nano Banana 2",
+   "type": "image",
+   "context_window": 131072,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video",
+     "pdf"
+    ],
+    "output": [
+     "text",
+     "image"
+    ]
+   },
+   "pricing": {
+    "input": 0.5,
+    "output": 60
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-3.1-flash-image-preview",
+   "display_name": "Nano Banana 2",
+   "type": "image",
+   "context_window": 65536,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text",
+     "image"
+    ]
+   },
+   "pricing": {
+    "input": 0.5,
+    "output": 60
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-3.1-flash-lite",
+   "display_name": "Gemini 3.1 Flash Lite",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video",
+     "audio",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.25,
+    "output": 1.5,
+    "cache_read": 0.025,
+    "input_audio": 0.5
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-3.1-flash-lite-image",
+   "display_name": "Nano Banana 2 Lite",
+   "type": "image",
+   "context_window": 65536,
+   "max_output_tokens": 4096,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text",
+     "image"
+    ]
+   },
+   "pricing": {
+    "input": 0.25,
+    "output": 30
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-3.1-flash-lite-preview",
+   "display_name": "Gemini 3.1 Flash Lite Preview",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video",
+     "audio",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.25,
+    "output": 1.5,
+    "cache_read": 0.025,
+    "input_audio": 0.5
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-3.1-flash-live-preview",
+   "display_name": "Gemini 3.1 Flash Live Preview",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video",
+     "audio"
+    ],
+    "output": [
+     "text",
+     "audio"
+    ]
+   },
+   "pricing": {
+    "input": 0.75,
+    "output": 4.5,
+    "input_audio": 3,
+    "output_audio": 12
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-3.1-flash-tts-preview",
+   "display_name": "Gemini 3.1 Flash TTS Preview",
+   "type": "audio",
+   "context_window": 8192,
+   "max_output_tokens": 16384,
+   "capabilities": {
+    "text_input": true,
+    "text_output": false,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "audio"
+    ]
+   },
+   "pricing": {
+    "input": 1,
+    "output": 20
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-3.1-pro-preview",
+   "display_name": "Gemini 3.1 Pro Preview",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video",
+     "audio",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 2,
+    "output": 12,
+    "cache_read": 0.2,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 18,
+      "cache_read": 0.4,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 18,
+     "cache_read": 0.4
+    }
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-3.1-pro-preview-customtools",
+   "display_name": "Gemini 3.1 Pro Preview Custom Tools",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video",
+     "audio",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 2,
+    "output": 12,
+    "cache_read": 0.2,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 18,
+      "cache_read": 0.4,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 18,
+     "cache_read": 0.4
+    }
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-3.5-flash",
+   "display_name": "Gemini 3.5 Flash",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video",
+     "audio",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1.5,
+    "output": 9,
+    "cache_read": 0.15,
+    "input_audio": 1.5
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-3.5-flash-lite",
+   "display_name": "Gemini 3.5 Flash Lite",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video",
+     "audio",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.3,
+    "output": 2.5,
+    "cache_read": 0.03
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-3.5-live-translate-preview",
+   "display_name": "Gemini 3.5 Live Translate Preview",
+   "type": "unknown",
+   "context_window": 16384,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": false,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": true,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "audio"
+    ],
+    "output": [
+     "audio",
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 3.5,
+    "output": 21,
+    "input_audio": 3.5,
+    "output_audio": 21
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-3.6-flash",
+   "display_name": "Gemini 3.6 Flash",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video",
+     "audio",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.75,
+    "output": 3.75,
+    "cache_read": 0.075,
+    "input_audio": 0.75
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-3.7-flash",
+   "display_name": "Gemini 3.7 Flash",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video",
+     "audio",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.75,
+    "output": 3.75,
+    "cache_read": 0.075,
+    "input_audio": 0.75
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-3.8-flash",
+   "display_name": "Gemini 3.8 Flash",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video",
+     "audio",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.75,
+    "output": 3.75,
+    "cache_read": 0.075,
+    "input_audio": 0.75
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-embedding-001",
+   "display_name": "Gemini Embedding 001",
+   "type": "chat",
+   "context_window": 2048,
+   "max_output_tokens": 1,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.15,
+    "output": 0
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-embedding-2",
+   "display_name": "Gemini Embedding 2",
+   "type": "chat",
+   "context_window": 8192,
+   "max_output_tokens": 1,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "audio",
+     "video",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.2,
+    "output": 0,
+    "input_audio": 6.5
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-flash-latest",
+   "display_name": "Gemini Flash Latest",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video",
+     "audio",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.75,
+    "output": 3.75,
+    "cache_read": 0.075,
+    "input_audio": 0.75
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-flash-lite-latest",
+   "display_name": "Gemini Flash-Lite Latest",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video",
+     "audio",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.3,
+    "output": 2.5,
+    "cache_read": 0.03
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemini-omni-flash-preview",
+   "display_name": "Gemini Omni Flash Preview",
+   "type": "video",
+   "context_window": 131072,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": false,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video"
+    ],
+    "output": [
+     "video"
+    ]
+   },
+   "pricing": {
+    "input": 1.5,
+    "output": 17.5
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemma-4-26b-a4b-it",
+   "display_name": "Gemma 4 26B A4B IT",
+   "type": "reasoning",
+   "context_window": 262144,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {},
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gemma-4-31b-it",
+   "display_name": "Gemma 4 31B IT",
+   "type": "reasoning",
+   "context_window": 262144,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {},
+   "source": "models.dev"
+  },
+  {
+   "model_id": "lyria-3-clip-preview",
+   "display_name": "Lyria 3 Clip Preview",
+   "type": "chat",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text",
+     "audio"
+    ]
+   },
+   "pricing": {
+    "input": 0,
+    "output": 0
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "lyria-3-pro-preview",
+   "display_name": "Lyria 3 Pro Preview",
+   "type": "chat",
+   "context_window": 1048576,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text",
+     "audio"
+    ]
+   },
+   "pricing": {
+    "input": 0,
+    "output": 0
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "veo-3.1-fast-generate-preview",
+   "display_name": "Veo 3.1 fast",
+   "type": "video",
+   "context_window": 480,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": false,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video"
+    ],
+    "output": [
+     "video"
+    ]
+   },
+   "pricing": {},
+   "source": "models.dev"
+  },
+  {
+   "model_id": "veo-3.1-generate-preview",
+   "display_name": "Veo 3.1",
+   "type": "video",
+   "context_window": 480,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": false,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "video"
+    ]
+   },
+   "pricing": {},
+   "source": "models.dev"
+  },
+  {
+   "model_id": "veo-3.1-lite-generate-preview",
+   "display_name": "Veo 3.1 lite",
+   "type": "video",
+   "context_window": 480,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": false,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "video"
+    ]
+   },
+   "pricing": {},
+   "source": "models.dev"
+  }
+ ]
+}

@@ -13,18 +13,10 @@ def _read(relative_path: str) -> str:
 
 
 def test_company_routes_use_neutral_team_workspace_copy() -> None:
-    routes = json.loads((DEFAULTSPACK / "routes.json").read_text(encoding="utf-8"))
-    company_routes = [
-        route
-        for route in routes["routes"]
-        if route.get("flow_id") == "company_workspace"
-    ]
+    from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
 
-    assert company_routes
-    descriptions = [str(route.get("description") or "").lower() for route in company_routes]
-    assert all("company" not in description for description in descriptions)
-    assert all("mimo" not in description for description in descriptions)
-    assert any("team workspace" in description for description in descriptions)
+    assert not (DEFAULTSPACK / "routes.json").exists()
+    assert_profile_resolver_requires_authority_snapshot()
 
 
 def test_team_workspace_docs_define_model_and_profile_ownership() -> None:

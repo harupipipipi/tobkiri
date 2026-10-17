@@ -1,8 +1,5 @@
 """blocks/chat/channel/leave.py — Remove a member from a channel."""
 
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from blocks._common import ok, error
 from domain.chat.channel_manager import ChannelManager

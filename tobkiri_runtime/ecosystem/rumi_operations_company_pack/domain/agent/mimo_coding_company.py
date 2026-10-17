@@ -22,7 +22,13 @@ for _path in (str(_PACK_ROOT), str(_DEFAULTSPACK_ROOT)):
 from blocks._common import gen_id, timestamp
 from domain.agent.org_manager import OrgManager
 from domain.agent.role_registry import RoleRegistry
-from domain.agent.schedule_store import append_history, load_all_schedules, save_schedule
+from domain.agent.schedule_store import (
+    append_history,
+    load_all_schedules,
+    load_history,
+    load_schedule,
+    save_schedule,
+)
 from domain.agent.scheduler import Scheduler
 from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 from domain.company.runtime_store import CompanyRuntimeStore
@@ -830,12 +836,24 @@ class MimoCodingCompanyRuntime:
         override = os.environ.get("RUMI_DEFAULTSPACK_MIMO_CODING_STATE_PATH", "").strip()
         if override:
             return Path(override)
+        user_data = os.environ.get("RUMI_USER_DATA", "").strip()
+        if user_data:
+            return (
+                Path(user_data).expanduser()
+                / "defaultspack"
+                / "shared"
+                / "mimo_coding_company"
+                / "state.json"
+            )
         return self.pack_root / "user_data" / "shared" / "mimo_coding_company" / "state.json"
 
     def _resolve_schedules_dir(self) -> Path:
         override = os.environ.get("RUMI_DEFAULTSPACK_AGENT_SCHEDULES_DIR", "").strip()
         if override:
             return Path(override)
+        user_data = os.environ.get("RUMI_USER_DATA", "").strip()
+        if user_data:
+            return Path(user_data).expanduser() / "defaultspack" / "shared" / "schedules"
         runtime_root = self.pack_root.parent.parent if self.pack_root.parent.name == "ecosystem" else self.pack_root.parent
         return runtime_root / "user_data" / "shared" / "schedules"
 
@@ -2833,7 +2851,6 @@ class MimoCodingCompanyRuntime:
                 "metadata": metadata,
                 "events": message.get("events") if isinstance(message.get("events"), list) else [],
                 "tool_logs": message.get("tool_logs") if isinstance(message.get("tool_logs"), list) else [],
-                "model": message.get("model"),
             },
         )
 
@@ -3465,8 +3482,13 @@ class MimoCodingCompanyRuntime:
         }
         config = {"value": safe_minutes, "unit": "minutes"}
         name = f"MiMo Coding Company {key.replace('_', ' ')}"
-        if existing_id and scheduler.get_schedule(existing_id):
-            self._refresh_schedule(existing_id, task=task, config=config, name=name, description=description)
+        if existing_id and self._refresh_schedule(
+            existing_id,
+            task=task,
+            config=config,
+            name=name,
+            description=description,
+        ):
             return str(existing_id)
         schedule = scheduler.create_schedule(
             "interval",
@@ -3526,8 +3548,13 @@ class MimoCodingCompanyRuntime:
         }
         config = {"run_at": run_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")}
         name = "MiMo Coding Company kickoff review"
-        if existing_id and scheduler.get_schedule(existing_id):
-            self._refresh_schedule(existing_id, task=task, config=config, name=name, description=description)
+        if existing_id and self._refresh_schedule(
+            existing_id,
+            task=task,
+            config=config,
+            name=name,
+            description=description,
+        ):
             return str(existing_id)
         schedule = scheduler.create_schedule(
             "once",
@@ -3750,14 +3777,23 @@ class MimoCodingCompanyRuntime:
                 continue
             scheduler = getattr(Scheduler, "_instance", None)
             if scheduler is not None and getattr(scheduler, "_loaded", False):
-                try:
-                    scheduler.pause_schedule(schedule_id)
-                except Exception:
-                    pass
+                # Do not call Scheduler.pause_schedule here: that public
+                # method performs stale-run recovery first.  Bootstrap must
+                # pause the snapshot before refreshing its task input, or a
+                # legacy running record can be classified as a timeout before
+                # the profile runtime marks it obsolete for input change.
+                scheduler._cancel_timer(schedule_id)
+                with scheduler._lock:
+                    cached = scheduler._schedules.get(schedule_id)
+                    if isinstance(cached, dict):
+                        schedule = cached
             schedule["status"] = "paused"
             schedule["next_execution_at"] = None
             schedule["updated_at"] = timestamp()
             save_schedule(schedule)
+            if scheduler is not None and getattr(scheduler, "_loaded", False):
+                with scheduler._lock:
+                    scheduler._schedules[schedule_id] = schedule
             paused.add(schedule_id)
         return paused
 
@@ -3827,22 +3863,30 @@ class MimoCodingCompanyRuntime:
             elif execution_id in set(active_execution_ids):
                 continue
             completed_at = timestamp()
-            append_history(
-                schedule_id,
-                {
-                    "execution_id": execution_id,
-                    "schedule_id": schedule_id,
-                    "started_at": started_at or completed_at,
-                    "completed_at": completed_at,
-                    "status": "obsolete",
-                    "trigger": str(running.get("trigger") or "scheduled"),
-                    "result": None,
-                    "error": None,
-                    "obsolete_reason": "manager_bootstrap_restarted",
-                    "recovered_obsolete_running_execution": True,
-                    "recovered_bootstrap_orphaned_running_execution": True,
-                },
+            history, _total = load_history(schedule_id, limit=200)
+            already_recovered = any(
+                str(item.get("execution_id") or "") == execution_id
+                and item.get("status") == "obsolete"
+                for item in history
+                if isinstance(item, dict)
             )
+            if not already_recovered:
+                append_history(
+                    schedule_id,
+                    {
+                        "execution_id": execution_id,
+                        "schedule_id": schedule_id,
+                        "started_at": started_at or completed_at,
+                        "completed_at": completed_at,
+                        "status": "obsolete",
+                        "trigger": str(running.get("trigger") or "scheduled"),
+                        "result": None,
+                        "error": None,
+                        "obsolete_reason": "manager_bootstrap_restarted",
+                        "recovered_obsolete_running_execution": True,
+                        "recovered_bootstrap_orphaned_running_execution": True,
+                    },
+                )
             schedule.pop("running_execution", None)
             schedule.pop("running_started_at", None)
             try:
@@ -3913,22 +3957,56 @@ class MimoCodingCompanyRuntime:
         config: dict[str, Any],
         name: str,
         description: str,
-    ) -> None:
-        scheduler = Scheduler()
-        current = scheduler.get_schedule(schedule_id)
-        if not current:
-            return
-        updates: dict[str, Any] = {}
+    ) -> bool:
+        persisted = load_schedule(schedule_id)
+        if not isinstance(persisted, dict):
+            return False
+        if persisted.get("task") != task:
+            running = persisted.get("running_execution")
+            if isinstance(running, dict):
+                # Mark the old input before Scheduler.get_schedule() performs
+                # startup recovery.  Without this ordering, a legacy running
+                # record with no fingerprint is classified as a timeout and
+                # the same restart loses the more precise input-change cause.
+                running["obsolete_reason"] = "execution_input_changed"
+                running["obsolete_at"] = timestamp()
+                save_schedule(persisted)
+        current = dict(persisted)
+        changed = False
         if current.get("task") != task:
-            updates["task"] = task
+            current["task"] = {
+                **(
+                    dict(current.get("task"))
+                    if isinstance(current.get("task"), dict)
+                    else {}
+                ),
+                **task,
+            }
+            changed = True
         if current.get("config") != config:
-            updates["config"] = config
+            current["config"] = dict(config)
+            changed = True
         if current.get("name") != name:
-            updates["name"] = name
+            current["name"] = name
+            changed = True
         if current.get("description") != description:
-            updates["description"] = description
-        if updates:
-            scheduler.update_schedule(schedule_id, updates)
+            current["description"] = description
+            changed = True
+        if changed:
+            current["updated_at"] = timestamp()
+            scheduler = getattr(Scheduler, "_instance", None)
+            if current.get("status") == "active" and scheduler is not None:
+                scheduler._cancel_timer(schedule_id)
+                current["next_execution_at"] = scheduler._compute_next_execution(
+                    current
+                )
+            save_schedule(current)
+            if scheduler is not None and getattr(scheduler, "_loaded", False):
+                with scheduler._lock:
+                    scheduler._schedules[schedule_id] = current
+                if current.get("status") == "active":
+                    scheduler._arm_timer(schedule_id)
+        return True
 
     def _autonomy_board(self, state: dict[str, Any]) -> dict[str, Any]:
         main_model = str(state.get("main_model") or DEFAULT_MAIN_MODEL)

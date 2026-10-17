@@ -2,7 +2,9 @@
 
 ## Installation
 
-Install through the setup-pack selector as `rumi_mcp_gateway_pack`. The setup metadata marks the pack as optional, medium risk, and not eligible for automatic all-ok grants.
+Install through the setup-pack selector as `rumi_mcp_gateway_pack`. The setup
+metadata marks the pack as optional, critical risk, and not eligible for
+automatic all-ok grants because it exposes an MCP invocation adapter.
 
 Expected prerequisite:
 
@@ -10,7 +12,10 @@ Expected prerequisite:
 
 ## Development
 
-Keep this pack declarative. New executable MCP connector code, functions, routes, handlers, stores, or background discovery jobs are outside this pack's current responsibility and require a separate implementation task.
+Keep the executable surface limited to the verified, consumer-bound namespace
+adapter in `runtime/gateway.py`. New MCP connector processes, routes, handlers,
+stores, network transports, or background discovery jobs are outside this
+pack's responsibility and require a separate implementation task.
 
 When changing behavior, update the matching files:
 
@@ -46,7 +51,8 @@ python -m pytest tobkiri_runtime/tests/test_setup_pack_selector.py tobkiri_runti
 ## Change Review Checklist
 
 - Required docs from `tobkiri_runtime/docs/pack-documentation-contract.md` still exist.
-- No executable network connector code was added.
+- The artifact manifest binds the finite gateway adapter and no standalone
+  network connector code was added.
 - No secrets or credential-like literals were added.
 - Unknown MCP servers remain approval gated.
 - `defaults.tool.mcp_*` overlap behavior is documented.

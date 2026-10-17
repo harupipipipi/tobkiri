@@ -28,11 +28,17 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+
+pytestmark = pytest.mark.usefixtures(
+    "defaultspack_conversation_owner", "defaultspack_v4_tool_dispatch"
+)
 
 
 class _NoToolFakeClient:
@@ -117,6 +123,26 @@ def test_approval_required_strips_token_and_transport_keys_from_stored_args():
     assert request["details"]["arguments"] == {"message": "fix typo"}
 
 
+def test_coding_approval_infers_replay_tool_and_conversation():
+    from blocks.coding._approval import approval_required
+    from domain.safety import approval
+
+    approval.reset_approval_state_for_tests()
+    payload = approval_required(
+        "file.write",
+        "high",
+        args={
+            "path": "debug-e2e.txt",
+            "content": "approved",
+            "conversation_id": "debug-e2e-conversation",
+        },
+    )
+    request = approval.get_approval_request(payload["approval_request_id"])
+    assert request["details"]["tool_name"] == "coding_file_write"
+    assert request["details"]["function_id"] == "coding_file_write"
+    assert request["details"]["conversation_id"] == "debug-e2e-conversation"
+
+
 def test_executor_approval_required_tool_response_embeds_replayable_args():
     """Generic executor approval requests must also persist replayable args.
 
@@ -153,6 +179,41 @@ def test_executor_approval_required_tool_response_embeds_replayable_args():
     assert request["args_hash"] == approval.hash_arguments(request["details"]["arguments"])
 
 
+def test_browser_computer_approval_persists_replayable_screenshot_args():
+    """Display arguments can differ from the approval hash arguments, but the
+    stored followup arguments must stay replayable or deterministic approval
+    replay falls through to another model turn and can re-request open_url."""
+    from domain.safety import approval
+    from domain.tool.executor import _approval_required_tool_response
+
+    approval.reset_approval_state_for_tests()
+    tool_def = {
+        "name": "browser_computer",
+        "risk": "high",
+        "requires_approval": True,
+    }
+    original_args = {
+        "action": "computer.screenshot",
+        "payload": {"app": "ChatGPT Atlas"},
+    }
+
+    response = _approval_required_tool_response(
+        tool_def,
+        original_args,
+        {"conversation_id": "conv_browser_screenshot"},
+    )
+
+    request = approval.get_approval_request(response["widget"]["approval_request_id"])
+    assert request is not None
+    assert request["operation"] == "computer.screenshot"
+    assert request["details"]["tool_name"] == "browser_computer"
+    assert request["details"]["arguments"] == {
+        "action": "computer.screenshot",
+        "payload": {"app": "ChatGPT Atlas"},
+    }
+    assert request["args_hash"] == approval.hash_arguments(request["details"]["arguments"])
+
+
 def _make_conversation_with_followup(tmp_path, monkeypatch, *, args, token, request_id, tool_name):
     """Build a chat conversation whose latest user message carries a valid
     approval-followup metadata block targeting ``tool_name``."""
@@ -183,6 +244,813 @@ def _approve_pending(args, *, tool_name, operation):
     decision = approval.approve(request_id)
     assert decision["approved"] is True, decision
     return decision["token"], request_id
+
+
+def test_approval_followup_replays_browser_computer_action_operation(monkeypatch):
+    """Browser/computer approvals use action operations like
+    ``browser.open_url``. They still need deterministic replay so the model does
+    not have to rediscover and reissue the pending action after approval."""
+    from domain.chat.run_request import PreparedChatRun
+    from domain.chat.stream_engine import ChatRunEngine
+    from domain.safety import approval
+
+    approval.reset_approval_state_for_tests()
+    payload = {
+        "url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+        "profile_id": "default",
+        "persistent": False,
+        "target_app": "",
+    }
+    stored_args = {"action": "browser.open_url", "payload": payload}
+    request = approval.create_approval_request(
+        "browser.open_url",
+        "high",
+        stored_args,
+        details={
+            "tool_name": "computer_use",
+            "action": "browser.open_url",
+            "function_id": "browser.open_url",
+            "arguments": stored_args,
+            "pack_id": "defaultspack",
+            "conversation_id": "conv_browser",
+        },
+    )
+    decision = approval.approve(request["request_id"])
+    assert decision["approved"] is True
+
+    prepared = PreparedChatRun(
+        conversation_id="conv_browser",
+        conversation={},
+        input_data={},
+        request_id="run_browser",
+        content=[],
+        metadata={
+            "approval_followup": {
+                "approval_token": decision["token"],
+                "tool_name": "computer_use",
+                "request_id": request["request_id"],
+                "operation": "browser.open_url",
+                "action": "browser.open_url",
+            }
+        },
+        user_message={},
+        model="stub/default",
+        params={},
+        request_context={},
+        tool_context={},
+        standard_messages=[],
+        user_text="",
+        system_prompt="",
+        enrich_info={},
+        raw_tools=[],
+        provider_tools=[{"name": "computer_use"}],
+        tools_called=[],
+        connected_tool_names={"computer_use"},
+        call_handler=None,
+        model_routing={},
+    )
+    engine = ChatRunEngine()
+    invoked = []
+
+    def fake_execute_tool(prepared_arg, tool_name, tool_call_id, arguments):
+        invoked.append(
+            {
+                "prepared": prepared_arg,
+                "tool_name": tool_name,
+                "tool_call_id": tool_call_id,
+                "arguments": dict(arguments),
+            }
+        )
+        return {"action": "browser.open_url", "opened": True, "is_error": False}
+
+    monkeypatch.setattr(engine, "_execute_tool", fake_execute_tool)
+    working_messages: list[dict] = []
+    replay = engine._replay_approval_followup_if_present(
+        prepared,
+        working_messages,
+        prepared.chat_ir,
+        None,
+    )
+
+    events = []
+    try:
+        while True:
+            events.append(next(replay))
+    except StopIteration as stop:
+        replay_result = stop.value
+
+    assert replay_result is None
+    assert [event["phase"] for event in events] == ["tool_call_started", "tool_call_completed"]
+    assert invoked == [
+        {
+            "prepared": prepared,
+            "tool_name": "computer_use",
+            "tool_call_id": request["request_id"],
+            "arguments": {
+                "action": "browser.open_url",
+                **payload,
+                "approval_token": decision["token"],
+            },
+        }
+    ]
+    assert prepared.provider_tools == []
+    assert prepared.tool_context["approval_replayed"]["request_id"] == request["request_id"]
+    assert "approval_token" not in repr(working_messages)
+
+
+def test_approval_followup_replays_browser_computer_nested_payload_token(monkeypatch):
+    from domain.chat.run_request import PreparedChatRun
+    from domain.chat.stream_engine import ChatRunEngine
+    from domain.safety import approval
+
+    approval.reset_approval_state_for_tests()
+    payload = {
+        "url": "https://www.google.com",
+        "profile_id": "default",
+        "persistent": False,
+        "target_app": "ChatGPT Atlas",
+    }
+    stored_args = {"action": "browser.open_url", "payload": payload}
+    request = approval.create_approval_request(
+        "browser.open_url",
+        "high",
+        stored_args,
+        details={
+            "tool_name": "browser_computer",
+            "action": "browser.open_url",
+            "function_id": "browser.open_url",
+            "arguments": stored_args,
+            "pack_id": "defaultspack",
+            "conversation_id": "conv_browser_computer",
+        },
+    )
+    decision = approval.approve(request["request_id"])
+    assert decision["approved"] is True
+
+    prepared = PreparedChatRun(
+        conversation_id="conv_browser_computer",
+        conversation={},
+        input_data={},
+        request_id="run_browser_computer",
+        content=[],
+        metadata={
+            "approval_followup": {
+                "approval_token": decision["token"],
+                "tool_name": "browser_computer",
+                "request_id": request["request_id"],
+                "operation": "browser.open_url",
+                "action": "browser.open_url",
+            }
+        },
+        user_message={},
+        model="stub/default",
+        params={},
+        request_context={},
+        tool_context={},
+        standard_messages=[],
+        user_text="",
+        system_prompt="",
+        enrich_info={},
+        raw_tools=[],
+        provider_tools=[{"name": "browser_computer"}],
+        tools_called=[],
+        connected_tool_names={"browser_computer"},
+        call_handler=None,
+        model_routing={},
+    )
+    engine = ChatRunEngine()
+    invoked = []
+
+    def fake_execute_tool(prepared_arg, tool_name, tool_call_id, arguments):
+        invoked.append(dict(arguments))
+        return {"action": "browser.open_url", "opened": True, "is_error": False}
+
+    monkeypatch.setattr(engine, "_execute_tool", fake_execute_tool)
+    working_messages: list[dict] = []
+    replay = engine._replay_approval_followup_if_present(
+        prepared,
+        working_messages,
+        prepared.chat_ir,
+        None,
+    )
+    try:
+        while True:
+            next(replay)
+    except StopIteration as stop:
+        replay_result = stop.value
+
+    assert replay_result is None
+    assert invoked == [
+        {
+            "action": "browser.open_url",
+            "payload": {**payload, "approval_token": decision["token"]},
+            "approval_token": decision["token"],
+        }
+    ]
+    assert "approval_token" not in repr(working_messages)
+
+
+def test_consumed_browser_computer_approval_followup_does_not_fall_through_to_model(monkeypatch):
+    from domain.chat.run_request import PreparedChatRun
+    from domain.chat.stream_engine import ChatRunEngine
+    from domain.safety import approval
+
+    approval.reset_approval_state_for_tests()
+    stored_args = {
+        "action": "computer.screenshot",
+        "payload": {"app": "ChatGPT Atlas"},
+    }
+    request = approval.create_approval_request(
+        "computer.screenshot",
+        "high",
+        stored_args,
+        details={
+            "tool_name": "browser_computer",
+            "action": "computer.screenshot",
+            "function_id": "computer.screenshot",
+            "arguments": stored_args,
+            "pack_id": "defaultspack",
+            "conversation_id": "conv_browser_computer",
+        },
+    )
+    decision = approval.approve(request["request_id"])
+    assert decision["approved"] is True
+    consumed = approval.verify_execution_token(
+        decision["token"],
+        "computer.screenshot",
+        approval.hash_arguments(stored_args),
+        consume=True,
+        pack_id="defaultspack",
+        conversation_id="conv_browser_computer",
+    )
+    assert consumed.valid is True
+    assert approval.get_approval_request(request["request_id"])["status"] == "consumed"
+
+    prepared = PreparedChatRun(
+        conversation_id="conv_browser_computer",
+        conversation={},
+        input_data={},
+        request_id="run_browser_computer",
+        content=[],
+        metadata={
+            "approval_followup": {
+                "approval_token": decision["token"],
+                "tool_name": "browser_computer",
+                "request_id": request["request_id"],
+                "tool_call_id": "call_screenshot",
+                "operation": "computer.screenshot",
+                "action": "computer.screenshot",
+                "payload": stored_args,
+            }
+        },
+        user_message={
+            "metadata": {
+                "approval_followup": {
+                    "approval_token": decision["token"],
+                    "tool_name": "browser_computer",
+                    "request_id": request["request_id"],
+                    "tool_call_id": "call_screenshot",
+                    "operation": "computer.screenshot",
+                    "action": "computer.screenshot",
+                    "payload": stored_args,
+                }
+            }
+        },
+        model="stub/default",
+        params={},
+        request_context={"user_requested_computer_use": True},
+        tool_context={"user_requested_computer_use": True},
+        standard_messages=[],
+        user_text="",
+        system_prompt="",
+        enrich_info={},
+        raw_tools=[],
+        provider_tools=[{"name": "browser_computer"}],
+        tools_called=[],
+        connected_tool_names={"browser_computer"},
+        call_handler=None,
+        model_routing={},
+    )
+    engine = ChatRunEngine()
+
+    def fail_execute_tool(*_args, **_kwargs):  # pragma: no cover - must not run
+        raise AssertionError("consumed approval followup must not execute the tool again")
+
+    def fail_model_turn(*_args, **_kwargs):  # pragma: no cover - must not run
+        raise AssertionError("consumed approval followup must not fall through to the model")
+
+    monkeypatch.setattr(engine, "_execute_tool", fail_execute_tool)
+    monkeypatch.setattr(engine, "_model_turn", fail_model_turn)
+
+    execution = engine._execute(prepared, None)
+    events = []
+    try:
+        while True:
+            events.append(next(execution))
+    except StopIteration as stop:
+        result = stop.value
+
+    assert result["finish_reason"] == "stop"
+    assert result["metadata"]["approval_followup"]["status"] == "consumed"
+    assert "処理済み" in result["content"][0]["text"]
+    assert [event.get("phase") for event in events] == ["approval_followup_consumed"]
+
+
+def test_approval_followup_keeps_computer_tools_for_user_requested_computer_use(monkeypatch):
+    from domain.chat.run_request import PreparedChatRun
+    from domain.chat.stream_engine import ChatRunEngine
+    from domain.safety import approval
+
+    approval.reset_approval_state_for_tests()
+    payload = {
+        "url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+        "profile_id": "default",
+        "persistent": False,
+        "target_app": "Vivaldi",
+    }
+    stored_args = {"action": "browser.open_url", "payload": payload}
+    request = approval.create_approval_request(
+        "browser.open_url",
+        "high",
+        stored_args,
+        details={
+            "tool_name": "computer_use",
+            "action": "browser.open_url",
+            "function_id": "browser.open_url",
+            "arguments": stored_args,
+            "pack_id": "defaultspack",
+            "conversation_id": "conv_browser",
+        },
+    )
+    decision = approval.approve(request["request_id"])
+    assert decision["approved"] is True
+
+    provider_tools = [{"name": "computer_use"}]
+    prepared = PreparedChatRun(
+        conversation_id="conv_browser",
+        conversation={},
+        input_data={},
+        request_id="run_browser",
+        content=[],
+        metadata={
+            "approval_followup": {
+                "approval_token": decision["token"],
+                "tool_name": "computer_use",
+                "request_id": request["request_id"],
+                "operation": "browser.open_url",
+                "action": "browser.open_url",
+            }
+        },
+        user_message={},
+        model="stub/default",
+        params={},
+        request_context={"user_requested_computer_use": True},
+        tool_context={},
+        standard_messages=[],
+        user_text="",
+        system_prompt="",
+        enrich_info={},
+        raw_tools=[],
+        provider_tools=list(provider_tools),
+        tools_called=[],
+        connected_tool_names={"computer_use"},
+        call_handler=None,
+        model_routing={},
+    )
+    engine = ChatRunEngine()
+    monkeypatch.setattr(
+        engine,
+        "_execute_tool",
+        lambda prepared_arg, tool_name, tool_call_id, arguments: {
+            "action": "browser.open_url",
+            "opened": True,
+            "is_error": False,
+        },
+    )
+
+    replay = engine._replay_approval_followup_if_present(prepared, [], prepared.chat_ir, None)
+    try:
+        while True:
+            next(replay)
+    except StopIteration as stop:
+        assert stop.value is None
+
+    assert prepared.provider_tools == provider_tools
+    assert "_attached_provider_tools_snapshot" not in prepared.tool_context
+    assert prepared.tool_context["approval_replayed"]["request_id"] == request["request_id"]
+
+
+def test_approval_followup_replays_display_named_job_resume(monkeypatch):
+    """Runtime approval can store a manifest display name while followup uses
+    the executable tool id. The replay guard must accept that only when both
+    names resolve to the same registered tool manifest."""
+    from domain.chat.run_request import PreparedChatRun
+    from domain.chat.stream_engine import ChatRunEngine
+    from domain.safety import approval
+
+    approval.reset_approval_state_for_tests()
+    args = {"job_id": "job_123"}
+    request = approval.create_approval_request(
+        "tool.Job Resume",
+        "medium",
+        args,
+        details={
+            "tool_name": "Job Resume",
+            "function_id": "tool.Job Resume",
+            "operation": "tool.Job Resume",
+            "arguments": args,
+            "pack_id": "defaultspack",
+            "conversation_id": "conv_job_resume",
+        },
+    )
+    decision = approval.approve(request["request_id"])
+    assert decision["approved"] is True
+
+    prepared = PreparedChatRun(
+        conversation_id="conv_job_resume",
+        conversation={},
+        input_data={},
+        request_id="run_job_resume",
+        content=[],
+        metadata={
+            "approval_followup": {
+                "approval_token": decision["token"],
+                "tool_name": "job_resume",
+                "request_id": request["request_id"],
+                "operation": "tool.Job Resume",
+            }
+        },
+        user_message={},
+        model="stub/default",
+        params={},
+        request_context={},
+        tool_context={},
+        standard_messages=[],
+        user_text="",
+        system_prompt="",
+        enrich_info={},
+        raw_tools=[],
+        provider_tools=[{"name": "job_resume"}],
+        tools_called=[],
+        connected_tool_names={"job_resume"},
+        call_handler=None,
+        model_routing={},
+    )
+    engine = ChatRunEngine()
+    invoked = []
+
+    def fake_execute_tool(prepared_arg, tool_name, tool_call_id, arguments):
+        invoked.append(
+            {
+                "prepared": prepared_arg,
+                "tool_name": tool_name,
+                "tool_call_id": tool_call_id,
+                "arguments": dict(arguments),
+            }
+        )
+        return {"status": "ok", "is_error": False}
+
+    monkeypatch.setattr(engine, "_execute_tool", fake_execute_tool)
+    replay = engine._replay_approval_followup_if_present(
+        prepared,
+        [],
+        prepared.chat_ir,
+        None,
+    )
+
+    events = []
+    try:
+        while True:
+            events.append(next(replay))
+    except StopIteration as stop:
+        replay_result = stop.value
+
+    assert replay_result is None
+    assert [event["phase"] for event in events] == ["tool_call_started", "tool_call_completed"]
+    assert invoked == [
+        {
+            "prepared": prepared,
+            "tool_name": "job_resume",
+            "tool_call_id": request["request_id"],
+            "arguments": {**args, "approval_token": decision["token"]},
+        }
+    ]
+    assert prepared.provider_tools == []
+    assert prepared.tool_context["approval_replayed"]["request_id"] == request["request_id"]
+
+
+def test_hidden_authority_followup_continues_to_model_without_job_resume(monkeypatch):
+    """Authority resume metadata should retry the interrupted model request
+    directly instead of executing the public ``job_resume`` tool."""
+    from domain.chat.run_request import PreparedChatRun
+    from domain.chat.stream_engine import ChatRunEngine
+
+    prepared = PreparedChatRun(
+        conversation_id="conv_authority_resume",
+        conversation={},
+        input_data={},
+        request_id="run_authority_resume",
+        content=[],
+        metadata={
+            "authority_followup": {
+                "request_id": "auth_resume_1",
+                "permission_id": "model.invoke",
+                "hidden": True,
+            },
+            "chat_display": {
+                "hidden": True,
+                "reason": "authority_followup",
+            },
+        },
+        user_message={
+            "metadata": {
+                "authority_followup": {
+                    "request_id": "auth_resume_1",
+                    "permission_id": "model.invoke",
+                    "hidden": True,
+                },
+                "chat_display": {
+                    "hidden": True,
+                    "reason": "authority_followup",
+                },
+            }
+        },
+        model="stub/default",
+        params={},
+        request_context={},
+        tool_context={},
+        standard_messages=[],
+        user_text="",
+        system_prompt="",
+        enrich_info={},
+        raw_tools=[],
+        provider_tools=[{"name": "job_resume"}],
+        tools_called=[],
+        connected_tool_names={"job_resume"},
+        call_handler=None,
+        model_routing={},
+    )
+    engine = ChatRunEngine()
+    captured_model_turns = []
+
+    def fail_execute_tool_use(*args, **kwargs):  # pragma: no cover - must not run
+        raise AssertionError("authority resume must not execute job_resume")
+
+    def fake_model_turn(prepared_arg, working_messages, draft):
+        captured_model_turns.append(
+            {
+                "prepared": prepared_arg,
+                "messages": list(working_messages),
+            }
+        )
+        if False:
+            yield {}
+        return {"content": [{"type": "text", "text": "ok"}], "finish_reason": "stop"}, []
+
+    monkeypatch.setattr(engine, "_execute_tool_use", fail_execute_tool_use)
+    monkeypatch.setattr(engine, "_model_turn", fake_model_turn)
+
+    execution = engine._execute(prepared, None)
+    try:
+        while True:
+            next(execution)
+    except StopIteration as stop:
+        result = stop.value
+
+    assert result["finish_reason"] == "stop"
+    assert len(captured_model_turns) == 1
+    assert prepared.tool_context["authority_resume_followup_applied"] == {
+        "request_id": "auth_resume_1",
+        "tool_name": "job_resume",
+    }
+
+
+def test_authority_resume_reaches_first_computer_use_tool_call(monkeypatch):
+    """After model/API approval, the hidden authority resume must reach the
+    original provider-tool path and allow the model's first computer-use call
+    to start."""
+    from domain.chat.run_request import PreparedChatRun
+    from domain.chat.stream_engine import ChatRunEngine
+
+    approval_tokens = {
+        "model.invoke": {
+            "request_id": "auth_model_1",
+            "approval_token": "tok_model",
+            "permission_id": "model.invoke",
+        },
+        "api_key.use": {
+            "request_id": "auth_api_1",
+            "approval_token": "tok_api",
+            "permission_id": "api_key.use",
+        },
+        "network.egress": {
+            "request_id": "auth_network_1",
+            "approval_token": "tok_network",
+            "permission_id": "network.egress",
+        },
+    }
+    metadata = {
+        "authority_followup": {
+            "approval_token": "tok_model",
+            "request_id": "auth_model_1",
+            "permission_id": "model.invoke",
+            "approvals": list(approval_tokens.values()),
+            "hidden": True,
+        },
+        "chat_display": {
+            "hidden": True,
+            "reason": "authority_followup",
+        },
+    }
+    prepared = PreparedChatRun(
+        conversation_id="conv_authority_computer_resume",
+        conversation={},
+        input_data={},
+        request_id="run_authority_computer_resume",
+        content=[],
+        metadata=metadata,
+        user_message={"metadata": metadata},
+        model="openai/gpt-4o-mini",
+        params={},
+        request_context={
+            "authority_resume_followup": True,
+            "authority": {
+                "principal_id": "profile:work",
+                "conversation_id": "conv_authority_computer_resume",
+                "request_id": "auth_model_1",
+                "permission_id": "model.invoke",
+                "approval_tokens": approval_tokens,
+            },
+        },
+        tool_context={},
+        standard_messages=[],
+        user_text="",
+        system_prompt="",
+        enrich_info={},
+        raw_tools=[],
+        provider_tools=[{"name": "job_resume"}, {"name": "computer_use"}],
+        tools_called=[],
+        connected_tool_names={"job_resume", "computer_use"},
+        call_handler=None,
+        model_routing={"selected_model": "openai/gpt-4o-mini"},
+    )
+    engine = ChatRunEngine()
+    captured_model_turns = []
+    executed = []
+
+    def fake_model_turn(prepared_arg, working_messages, draft):
+        captured_model_turns.append(
+            {
+                "tools": list(prepared_arg.provider_tools or []),
+                "messages": list(working_messages),
+            }
+        )
+        if len(captured_model_turns) == 1:
+            if False:
+                yield {}
+            return (
+                {"content": [{"type": "text", "text": ""}], "finish_reason": "tool_calls"},
+                [
+                    {
+                        "id": "call_atlas_open_google",
+                        "name": "computer_use",
+                        "input": {
+                            "action": "browser.open_url",
+                            "url": "https://google.com",
+                            "target_app": "atlas",
+                        },
+                    }
+                ],
+            )
+        if False:
+            yield {}
+        return {"content": [{"type": "text", "text": "opened"}], "finish_reason": "stop"}, []
+
+    def fake_execute_tool(prepared_arg, tool_name, tool_call_id, arguments):
+        executed.append(
+            {
+                "tool_name": tool_name,
+                "tool_call_id": tool_call_id,
+                "arguments": dict(arguments or {}),
+            }
+        )
+        return {"result": {"ok": True}, "is_error": False}
+
+    monkeypatch.setattr(engine, "_model_turn", fake_model_turn)
+    monkeypatch.setattr(engine, "_execute_tool", fake_execute_tool)
+
+    events = []
+    execution = engine._execute(prepared, None)
+    try:
+        while True:
+            event = next(execution)
+            events.append(event)
+    except StopIteration as stop:
+        result = stop.value
+
+    assert result["finish_reason"] == "stop"
+    assert len(captured_model_turns) >= 1
+    assert captured_model_turns[0]["tools"] == [{"name": "job_resume"}, {"name": "computer_use"}]
+    assert prepared.tool_context["authority_resume_followup_applied"] == {
+        "request_id": "auth_model_1",
+        "tool_name": "job_resume",
+    }
+    assert executed == [
+        {
+            "tool_name": "computer_use",
+            "tool_call_id": "call_atlas_open_google",
+            "arguments": {
+                "action": "browser.open_url",
+                "url": "https://google.com",
+                "target_app": "atlas",
+            },
+        }
+    ]
+    started = [event for event in events if event.get("type") == "tool_call_started"]
+    assert started
+    assert started[0]["tool_name"] == "computer_use"
+    assert started[0]["tool_call_id"] == "call_atlas_open_google"
+
+
+def test_hidden_authority_followup_for_non_model_permissions_skips_job_resume(monkeypatch):
+    """Related Authority approvals such as network/API-key use also retry the
+    model request directly."""
+    from domain.chat.run_request import PreparedChatRun
+    from domain.chat.stream_engine import ChatRunEngine
+
+    prepared = PreparedChatRun(
+        conversation_id="conv_authority_network_resume",
+        conversation={},
+        input_data={},
+        request_id="run_authority_network_resume",
+        content=[],
+        metadata={
+            "authority_followup": {
+                "request_id": "auth_network_1",
+                "permission_id": "network.egress",
+                "hidden": True,
+            },
+            "chat_display": {
+                "hidden": True,
+                "reason": "authority_followup",
+            },
+        },
+        user_message={
+            "metadata": {
+                "authority_followup": {
+                    "request_id": "auth_network_1",
+                    "permission_id": "network.egress",
+                    "hidden": True,
+                },
+                "chat_display": {
+                    "hidden": True,
+                    "reason": "authority_followup",
+                },
+            }
+        },
+        model="stub/default",
+        params={},
+        request_context={},
+        tool_context={},
+        standard_messages=[],
+        user_text="",
+        system_prompt="",
+        enrich_info={},
+        raw_tools=[],
+        provider_tools=[{"name": "job_resume"}],
+        tools_called=[],
+        connected_tool_names={"job_resume"},
+        call_handler=None,
+        model_routing={},
+    )
+    engine = ChatRunEngine()
+    captured_model_turns = []
+
+    def fail_execute_tool_use(*args, **kwargs):  # pragma: no cover - must not run
+        raise AssertionError("authority resume must not execute job_resume")
+
+    def fake_model_turn(prepared_arg, working_messages, draft):
+        captured_model_turns.append(list(working_messages))
+        if False:
+            yield {}
+        return {"content": [{"type": "text", "text": "ok"}], "finish_reason": "stop"}, []
+
+    monkeypatch.setattr(engine, "_execute_tool_use", fail_execute_tool_use)
+    monkeypatch.setattr(engine, "_model_turn", fake_model_turn)
+
+    execution = engine._execute(prepared, None)
+    try:
+        while True:
+            next(execution)
+    except StopIteration as stop:
+        result = stop.value
+
+    assert result["finish_reason"] == "stop"
+    assert len(captured_model_turns) == 1
+    assert prepared.tool_context["authority_resume_followup_applied"] == {
+        "request_id": "auth_network_1",
+        "tool_name": "job_resume",
+    }
 
 
 def test_approval_followup_deterministically_replays_tool_once(tmp_path, monkeypatch):
@@ -598,7 +1466,10 @@ def test_approval_followup_replay_with_nested_approval_required_short_circuits(t
             "approval_request_id": "apr_nested_demo",
             "risk_level": "high",
             "action": "git.commit",
-            "payload": dict(arguments),
+            "payload": {
+                "action": "git.commit",
+                "payload": dict(arguments),
+            },
             "message": "secondary approval required",
         }
 
@@ -648,6 +1519,7 @@ def test_approval_followup_replay_with_nested_approval_required_short_circuits(t
     nested_payload = approval_events[0].get("payload") or {}
     assert isinstance(nested_payload, dict)
     assert "approval_token" not in nested_payload, approval_events[0]
+    assert "approval_token" not in nested_payload.get("payload", {}), approval_events[0]
     assert approval_events[0].get("approval_token") != token, approval_events[0]
 
     done_events = [event for event in events if event.get("type") == "done"]
@@ -765,21 +1637,20 @@ def test_approval_followup_replay_with_tool_blocked_recovery_short_circuits(tmp_
     ChatStore._instance = None
 
 
-def test_approval_followup_token_cannot_replay_twice(tmp_path, monkeypatch):
+def test_approval_followup_token_cannot_replay_twice(monkeypatch):
     """The one-shot approval token must be replay-safe across separate
     chat runs: once the first ``approval_followup`` has executed the
     pending tool (which consumes the token via ``verify_execution_token``
     and flips the request status to ``consumed``), a *second* chat run
     that carries the same ``approval_token`` + ``request_id`` must NOT
-    execute the tool a second time. The replay path falls through to the
-    regular model-driven turn instead so the user / model can never
-    silently double-spend an approval.
+    execute the tool a second time or fall through to a regular
+    model-driven turn. Hidden approval followups are deterministic replay
+    requests; a consumed one must stop instead of letting the model
+    rediscover and reissue stale tools.
     """
-    from blocks.chat.stream import run as stream_run
-    import domain.chat.stream_engine as engine_module
-    from domain.chat.store import ChatStore
+    from domain.chat.run_request import PreparedChatRun
+    from domain.chat.stream_engine import ChatRunEngine
     from domain.safety import approval
-    from domain.tool.executor import ToolExecutor
 
     approval.reset_approval_state_for_tests()
     args = {"message": "fix typo", "paths": ["a.txt"]}
@@ -787,38 +1658,51 @@ def test_approval_followup_token_cannot_replay_twice(tmp_path, monkeypatch):
         args, tool_name="coding_git_commit", operation="tool.coding_git_commit",
     )
 
-    storage_path = tmp_path / "user_data" / "shared" / "chat" / "conversations.json"
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(storage_path))
-    ChatStore._instance = None
-    store = ChatStore()
-    conversation = store.create_conversation(model="stub/default")
+    invoked: list[dict] = []
+    model_turns: list[dict] = []
 
-    recorded = {}
-    import blocks.chat.stream as stream_module
-    monkeypatch.setattr(engine_module, "AIClient", lambda: _NoToolFakeClient(recorded))
-    monkeypatch.setattr(stream_module, "AIClient", lambda: _NoToolFakeClient(recorded))
+    def make_prepared(run_id: str) -> PreparedChatRun:
+        metadata = {
+            "approval_followup": {
+                "approval_token": token,
+                "operation": "tool.coding_git_commit",
+                "request_id": request_id,
+                "tool_name": "coding_git_commit",
+            },
+        }
+        return PreparedChatRun(
+            conversation_id="conv_replay_twice",
+            conversation={},
+            input_data={},
+            request_id=run_id,
+            content=[],
+            metadata=metadata,
+            user_message={"metadata": metadata},
+            model="stub/default",
+            params={},
+            request_context={},
+            tool_context={},
+            standard_messages=[],
+            user_text="",
+            system_prompt="",
+            enrich_info={},
+            raw_tools=[],
+            provider_tools=[{"name": "coding_git_commit"}],
+            tools_called=[],
+            connected_tool_names={"coding_git_commit"},
+            call_handler=None,
+            model_routing={},
+        )
 
-    from domain.chat.stream_engine import ChatRunEngine
-
-    def _fake_complete_turn(self, prepared, messages):
-        recorded.setdefault("complete_calls", []).append(
+    def _fake_execute_tool(prepared, tool_name, tool_call_id, arguments):
+        invoked.append(
             {
-                "model": prepared.model,
-                "tools": list(prepared.provider_tools or []),
+                "run_id": prepared.request_id,
+                "tool_name": tool_name,
+                "tool_call_id": tool_call_id,
+                "arguments": dict(arguments),
             }
         )
-        return {
-            "content": [{"type": "text", "text": "ok"}],
-            "finish_reason": "stop",
-            "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
-        }
-
-    monkeypatch.setattr(ChatRunEngine, "_complete_turn", _fake_complete_turn)
-
-    invoked: list[dict] = []
-
-    def _fake_execute(self, tool_name, arguments, context):
-        invoked.append({"tool_name": tool_name, "arguments": dict(arguments)})
         # Real coding tools consume the one-shot token via
         # ``verify_execution_token(consume=True)``; mirror that here so the
         # approval store transitions to ``consumed`` exactly the way the
@@ -845,75 +1729,85 @@ def test_approval_followup_token_cannot_replay_twice(tmp_path, monkeypatch):
             "data": {"commit_hash": "abc1234"},
         }
 
-    followup_message = {
-        "role": "user",
-        "content": "ユーザーが許可しました。承認済みの操作を続行してください。",
-        "metadata": {
-            "approval_followup": {
-                "approval_token": token,
-                "operation": "tool.coding_git_commit",
-                "request_id": request_id,
-                "tool_name": "coding_git_commit",
-            },
-        },
-    }
-
-    with patch.object(ToolExecutor, "execute", _fake_execute):
-        first = stream_run(
+    def _fake_model_turn(prepared, working_messages, draft):
+        model_turns.append(
             {
-                "conversation_id": conversation["id"],
-                "message": dict(followup_message),
-                "tools": [],
-            },
-            {},
+                "run_id": prepared.request_id,
+                "tools": list(prepared.provider_tools or []),
+                "messages": list(working_messages),
+            }
         )
-        first_events = list(first["events"])
+        if False:
+            yield {}
+        return {
+            "content": [{"type": "text", "text": "ok"}],
+            "finish_reason": "stop",
+            "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+        }, []
 
-        # The approval store must now report the request as consumed and
-        # ``verify_execution_token`` must reject the same token, before the
-        # second chat run is even attempted.
-        request_after_first = approval.get_approval_request(request_id)
-        assert request_after_first is not None
-        assert request_after_first["status"] == "consumed"
-        verification_after_first = approval.verify_execution_token(
-            token,
-            "tool.coding_git_commit",
-            approval.hash_arguments(args),
-            consume=False,
-        )
-        assert verification_after_first.valid is False
+    first_engine = ChatRunEngine()
+    monkeypatch.setattr(first_engine, "_execute_tool", _fake_execute_tool)
+    monkeypatch.setattr(first_engine, "_model_turn", _fake_model_turn)
+    first_execution = first_engine._execute(make_prepared("run_first"), None)
+    first_events = []
+    try:
+        while True:
+            first_events.append(next(first_execution))
+    except StopIteration as stop:
+        first_result = stop.value
 
-        second = stream_run(
-            {
-                "conversation_id": conversation["id"],
-                "message": dict(followup_message),
-                "tools": [],
-            },
-            {},
-        )
-        second_events = list(second["events"])
+    # The approval store must now report the request as consumed and
+    # ``verify_execution_token`` must reject the same token, before the
+    # second chat run is even attempted.
+    request_after_first = approval.get_approval_request(request_id)
+    assert request_after_first is not None
+    assert request_after_first["status"] == "consumed"
+    verification_after_first = approval.verify_execution_token(
+        token,
+        "tool.coding_git_commit",
+        approval.hash_arguments(args),
+        consume=False,
+    )
+    assert verification_after_first.valid is False
+
+    second_engine = ChatRunEngine()
+
+    def fail_execute_tool(*_args, **_kwargs):  # pragma: no cover - must not run
+        raise AssertionError("consumed approval followup must not execute the tool again")
+
+    def fail_model_turn(*_args, **_kwargs):  # pragma: no cover - must not run
+        raise AssertionError("consumed approval followup must not enter another model turn")
+
+    monkeypatch.setattr(second_engine, "_execute_tool", fail_execute_tool)
+    monkeypatch.setattr(second_engine, "_model_turn", fail_model_turn)
+    second_execution = second_engine._execute(make_prepared("run_second"), None)
+    second_events = []
+    try:
+        while True:
+            second_events.append(next(second_execution))
+    except StopIteration as stop:
+        second_result = stop.value
 
     # First run replayed the tool exactly once.
-    assert first.get("_sse") is True
+    assert first_result["finish_reason"] == "stop"
     started_first = [event for event in first_events if event.get("type") == "tool_call_started"]
     assert len(started_first) == 1
     assert started_first[0].get("approval_replay") is True
 
     # Second run: the same token must not produce a synthetic replay event,
-    # and the tool must not be invoked a second time.
-    assert second.get("_sse") is True
+    # invoke the tool again, or enter another model turn.
     started_second = [event for event in second_events if event.get("type") == "tool_call_started"]
     replay_second = [event for event in started_second if event.get("approval_replay") is True]
     assert replay_second == [], second_events
+    assert started_second == []
     assert len(invoked) == 1, invoked
+    assert len(model_turns) == 1
 
-    # The second assistant message must reflect the fall-through path: no
-    # synthetic execution surfaces in ``executed_tools``.
-    done_second = [event for event in second_events if event.get("type") == "done"]
-    assert done_second
-    final_second = done_second[-1]["message"]
-    assert final_second["metadata"]["executed_tools"] == []
-    ChatStore._instance = None
+    # The second assistant message must be a terminal duplicate-followup
+    # response: no synthetic execution surfaces in ``executed_tools``.
+    assert [event.get("phase") for event in second_events] == ["approval_followup_consumed"]
+    assert second_result["finish_reason"] == "stop"
+    assert second_result["metadata"]["approval_followup"]["status"] == "consumed"
 
 
 def test_approval_followup_replay_keeps_attached_tools_metadata_truthful(tmp_path, monkeypatch):
@@ -1099,3 +1993,14 @@ def test_approval_followup_replay_keeps_attached_tools_metadata_truthful(tmp_pat
                 assert token not in tool_content, msg
     assert saw_synthetic_tool_call, summary_messages
     ChatStore._instance = None
+
+
+def test_debug_replay_accepts_only_exact_coding_operation_tool_identity():
+    # Importing stream_engine initializes its compatibility facades, so keep
+    # this pure helper assertion after the stateful replay fixtures above.
+    from domain.chat.stream_engine import _approval_replay_operation_allowed
+
+    assert _approval_replay_operation_allowed("file.write", "coding_file_write")
+    assert _approval_replay_operation_allowed("git.commit", "coding_git_commit")
+    assert not _approval_replay_operation_allowed("file.write", "coding_file_delete")
+    assert not _approval_replay_operation_allowed("model.invoke", "coding_model_invoke")

@@ -1,0 +1,57 @@
+{
+  "artifact_set_digest": "sha256:b1a49ca651a357791efb3947e023140f7ac8bd68687a9dcc792e43a6a4ff8c21",
+  "artifacts": [
+    {
+      "digest": "sha256:a9ad8486279c62d25fcc44c6d145b6fefa996df3a3d07ffd45597a626e3a979f",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:bc502cc79710476b9930662c5e4dcad0e3dfdbdca5f18a60a2cc1102bdd9968c",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:15c7b9083a1b73f051af6e09b5030df9af91f589f42cede2022b3bc9b3de29cd",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:08f90b5cf858099d62200b839418caa5b15cdcb36fb03e5ec1b55efe5603cbbb",
+      "path": "runtime/__init__.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:6f091cc5230c53d8571a134e3d35d0009a0af6cddd51ef933a5d1ea8dc5f2774",
+      "path": "runtime/gateway.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:594ac440619470486faf827a593e95edafeff5cf28674acc903616ce6b0d3415",
+      "path": "runtime/messages_generate.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:d57cfdb76c328ae9c54c045e1d5446b7d51f5afce9735ecc6052eff870f50608",
+      "path": "runtime/model_parameters.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:efb1761895c8b3577813c48cea9d996f4c4ab4859e158445a51778c9968c9ec2",
+      "path": "runtime/route_quote.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:7b794e600eb49701a972a142bd2c3c76a5c01e0787446fb0c1b0989f9fe1e5e7",
+      "path": "runtime/text_generate.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:e3ca544214d2d60001a09a57f24cf4c30c445aca26659b1c3411a514db6ceec4"
+  },
+  "pack_id": "rumi_ai_gateway_pack",
+  "source_identity": "sha256:847569c58d67d75948643e0ffbf02c50ffad0acfdfbb80aa552f2a698c49c62b"
+}

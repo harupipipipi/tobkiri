@@ -1,0 +1,97 @@
+{
+  "files": [
+    {
+      "path": "component.build.json",
+      "sha256": "sha256:51c1d12313ffb08913bac13c040e25b904bd0280007a0484ac606e3b21db1c42",
+      "size": 1677
+    },
+    {
+      "path": "component.wasm",
+      "sha256": "sha256:ceff0208aa687bf4d2077ee684e91562f71a8798d3288bc297cbd6da033123ab",
+      "size": 85536
+    },
+    {
+      "path": "config.json",
+      "sha256": "sha256:43f7c06449e5e60efe32c64c4d75f8b49353d0824200c47b2bdeb161c8285f7b",
+      "size": 111
+    },
+    {
+      "path": "wit/deps/core.wit",
+      "sha256": "sha256:f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "size": 5732
+    },
+    {
+      "path": "wit/deps/shape.wit",
+      "sha256": "sha256:ef33d57bac75158f1b58cf6c0a7547002bcc90fd4cf6cd671e8fbdff84de1585",
+      "size": 1762
+    },
+    {
+      "path": "wit/pack.wit",
+      "sha256": "sha256:60b0bbc4497e1cab95ffd0980ed60ca8f296ce33d99af0c296ad281f72a21842",
+      "size": 139
+    }
+  ],
+  "flows": [],
+  "format": "tobkiri.pack/1",
+  "id": "local.echo-prompt",
+  "overlays": [],
+  "permissions": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 16,
+      "max_wall_ms": 300000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": [],
+      "user_origins": null
+    },
+    "ports": [],
+    "proc": [],
+    "pty": false,
+    "secrets": [],
+    "storage": {
+      "private": false,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  },
+  "ports": {
+    "consumes": [],
+    "provides": [
+      {
+        "optional": false,
+        "shape": "local.echo-chat.prompt-builder",
+        "version": "1.0"
+      }
+    ],
+    "untyped": []
+  },
+  "publisher_key": null,
+  "runtime": {
+    "component": "component.wasm",
+    "config": {
+      "path": "config.json",
+      "shape": null
+    },
+    "kind": "wasm",
+    "toolchain": "rust/1.94.0;wit-bindgen/0.62.0"
+  },
+  "shapes": [],
+  "stores": [],
+  "ui": null,
+  "version": "0.1.0"
+}

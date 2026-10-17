@@ -1,153 +1,41 @@
-"""
-W19-F  VULN-M05 -- JSON file-size limit guard
-===============================================
-Tests for ``_check_json_file_size`` and ``RUMI_MAX_JSON_FILE_BYTES``
-in ``backend_core.ecosystem.registry``.
-"""
+"""v4 artifact digests replace the legacy Registry JSON scan guard."""
+
 from __future__ import annotations
 
-import importlib.util
-import logging
-import os
-import sys
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# Bootstrap: stub every relative-import dependency so registry.py can load
-# ---------------------------------------------------------------------------
-_STUBS = [
-    "backend_core",
-    "backend_core.ecosystem",
-    "backend_core.ecosystem.uuid_utils",
-    "backend_core.ecosystem.json_patch",
-    "backend_core.ecosystem.spec",
-    "backend_core.ecosystem.spec.schema",
-    "backend_core.ecosystem.spec.schema.validator",
-    "core_runtime",
-    "core_runtime.paths",
-]
-for _m in _STUBS:
-    if _m not in sys.modules:
-        sys.modules[_m] = MagicMock()
-
-_eco = sys.modules["backend_core.ecosystem"]
-_eco.__path__ = []
-_eco.__package__ = "backend_core.ecosystem"
-
-class _SVE(Exception):
-    pass
-
-_val = sys.modules["backend_core.ecosystem.spec.schema.validator"]
-_val.SchemaValidationError = _SVE
-_val.validate_ecosystem = MagicMock()
-_val.validate_component_manifest = MagicMock()
-_val.validate_addon = MagicMock()
-
-_REG_PY = (
-    Path(__file__).resolve().parent.parent
-    / "backend_core" / "ecosystem" / "registry.py"
-)
+from ecosystem.defaultspack.domain.runtime_v4 import BundleIntegrityError, BundledCatalog
+from tests.v4_batch_support import assert_legacy_registry_fails_closed
+from tests.v4_bundle_support import assert_verified_pack_inventory
 
 
-def _load_registry():
-    """(Re-)load registry.py from disk."""
-    spec = importlib.util.spec_from_file_location(
-        "backend_core.ecosystem.registry",
-        str(_REG_PY),
-        submodule_search_locations=[],
-    )
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = mod
-    spec.loader.exec_module(mod)
-    return mod
+ROOT = Path(__file__).resolve().parents[1]
+BUNDLE = ROOT / "ecosystem" / "defaultspack" / "v4"
 
 
-_reg = _load_registry()
-
-# ---------------------------------------------------------------------------
-# Helper
-# ---------------------------------------------------------------------------
-
-def _make_file(tmp_path: Path, size: int) -> Path:
-    """Create a file of exactly *size* bytes."""
-    fp = tmp_path / "test.json"
-    if size == 0:
-        fp.write_bytes(b"")
-    else:
-        base = '{"k": ""}'          # 10 bytes
-        if size < len(base):
-            fp.write_bytes(b"x" * size)
-        else:
-            fp.write_text(
-                '{"k": "' + "a" * (size - len(base)) + '"}',
-                encoding="utf-8",
-            )
-    assert fp.stat().st_size == size
-    return fp
+def test_legacy_registry_json_guard_is_not_importable() -> None:
+    assert_legacy_registry_fails_closed()
 
 
-# ---------------------------------------------------------------------------
-# Test cases  (8 >= required 5)
-# ---------------------------------------------------------------------------
+def test_v4_catalog_validates_each_manifest_digest() -> None:
+    catalog = BundledCatalog.load(BUNDLE)
+    assert_verified_pack_inventory(BUNDLE, catalog.packs)
+    assert all(item["pack"]["artifact_digest"].startswith("sha256:") for item in catalog.packs.values())
 
-class TestCheckJsonFileSize:
 
-    def test_normal_size_allows_load(self, tmp_path):
-        """TC-1: Normal-size file -> True (load OK)."""
-        fp = _make_file(tmp_path, 1024)
-        assert _reg._check_json_file_size(fp) is True
+def test_v4_catalog_rejects_manifest_byte_drift(tmp_path: Path) -> None:
+    copied = tmp_path / "v4"
+    import shutil
 
-    def test_oversized_warns_and_skips(self, tmp_path, caplog):
-        """TC-2: Oversized file -> WARNING + False."""
-        fp = _make_file(tmp_path, 600)
-        with caplog.at_level(logging.WARNING):
-            result = _reg._check_json_file_size(fp, max_bytes=500)
-        assert result is False
-        assert "too large" in caplog.text
+    shutil.copytree(BUNDLE, copied)
+    path = copied / "packs" / "defaultspack.pack.v4.json"
+    path.write_text(path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    with pytest.raises(BundleIntegrityError, match="digest changed"):
+        BundledCatalog.load(copied)
 
-    def test_custom_env_var(self, tmp_path, monkeypatch):
-        """TC-3: Custom RUMI_MAX_JSON_FILE_BYTES env var is respected."""
-        monkeypatch.setenv("RUMI_MAX_JSON_FILE_BYTES", "256")
-        mod = _load_registry()
-        assert mod.RUMI_MAX_JSON_FILE_BYTES == 256
 
-        fp_ok = _make_file(tmp_path, 256)
-        assert mod._check_json_file_size(fp_ok) is True
-
-        sub = tmp_path / "over"
-        sub.mkdir()
-        fp_ng = _make_file(sub, 257)
-        assert mod._check_json_file_size(fp_ng) is False
-
-    def test_zero_byte_file(self, tmp_path, caplog):
-        """TC-4: 0-byte file -> size check passes."""
-        fp = _make_file(tmp_path, 0)
-        with caplog.at_level(logging.WARNING):
-            result = _reg._check_json_file_size(fp)
-        assert result is True
-        assert "exceeds limit" not in caplog.text
-
-    def test_exact_limit_allows_load(self, tmp_path):
-        """TC-5: File size == limit -> True (boundary OK)."""
-        fp = _make_file(tmp_path, 2048)
-        assert _reg._check_json_file_size(fp, max_bytes=2048) is True
-
-    def test_nonexistent_file_skips(self, tmp_path, caplog):
-        """TC-6: Non-existent file -> False + WARNING."""
-        fp = tmp_path / "ghost.json"
-        with caplog.at_level(logging.WARNING):
-            result = _reg._check_json_file_size(fp)
-        assert result is False
-        assert "Cannot stat" in caplog.text
-
-    def test_one_byte_over(self, tmp_path):
-        """TC-7: limit + 1 byte -> False."""
-        fp = _make_file(tmp_path, 1001)
-        assert _reg._check_json_file_size(fp, max_bytes=1000) is False
-
-    def test_default_limit_is_2mb(self):
-        """TC-8: Default limit = 2 097 152 (2 MB)."""
-        assert _reg.RUMI_MAX_JSON_FILE_BYTES == 2097152
+def test_v4_artifact_index_is_present_for_every_pack() -> None:
+    for pack in (BUNDLE / "packs").glob("*.pack.v4.json"):
+        assert pack.is_file()

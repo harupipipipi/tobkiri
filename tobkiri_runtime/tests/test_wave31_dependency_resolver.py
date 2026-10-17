@@ -209,7 +209,7 @@ class TestStringDependency:
 
 
 # --------------------------------------------------------------------------- #
-# 11. depends_on が dict 形式 (version 付き → 現在は無視)
+# 11. depends_on が dict 形式 (version 付き)
 # --------------------------------------------------------------------------- #
 class TestDictDependencyWithVersion:
     def test_dict_with_version(self):
@@ -220,8 +220,8 @@ class TestDictDependencyWithVersion:
         order = resolve_load_order(packs)
         assert order == ["pack_b", "pack_a"]
 
-    def test_version_field_ignored(self):
-        """version フィールドがあっても動作に影響しない。"""
+    def test_version_field_is_non_strict_compatible(self):
+        """non-strict mode keeps ordering compatibility for mismatched versions."""
         packs_with_ver = {
             "pack_a": {"depends_on": [{"pack_id": "pack_b", "version": ">=99.0"}]},
             "pack_b": {},

@@ -1,0 +1,30 @@
+{
+  "artifacts": [
+    {
+      "path": "runtime/catalog.py",
+      "role": "runtime",
+      "sha256": "sha256:8dd434e9c80333d5a5c16d0a3d00da643a08d2a3d8a22b7149b3b71c503faca0"
+    },
+    {
+      "path": "runtime/datasource.py",
+      "role": "runtime",
+      "sha256": "sha256:77b83ccd9223b51aa89c8e0203693cc6d76eb7dd6d0189ca6d570d585c1129c7"
+    },
+    {
+      "path": "runtime/high_risk_adapter.py",
+      "role": "runtime",
+      "sha256": "sha256:b168952a90bd931d9562239ed57644d9bb355bb377ff31ec8cccbe4c55c30813"
+    },
+    {
+      "path": "runtime/invoke.py",
+      "role": "runtime",
+      "sha256": "sha256:2344b4bfa7b1e0211fb4067875e873c93c71a1351ee5d92300074eceaa011761"
+    },
+    {
+      "path": "runtime/state.py",
+      "role": "runtime",
+      "sha256": "sha256:2707d6b9bd1063aaf53fe51b05779531bf6afa7294c57231786a7801161ee37f"
+    }
+  ],
+  "schema_version": "rumi.artifact-manifest.v1"
+}

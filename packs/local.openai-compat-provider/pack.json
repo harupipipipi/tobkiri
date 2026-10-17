@@ -1,0 +1,110 @@
+{
+  "files": [
+    {
+      "path": "component.build.json",
+      "sha256": "sha256:07986b9ac54650012b38a0d307c679fa85668a9d2ff9e5ca475200d6bbf37bb9",
+      "size": 1725
+    },
+    {
+      "path": "component.wasm",
+      "sha256": "sha256:dae55e774511f53e107e5e124e9317003f8e7a31bbc6a7bb209fe1fa46ca2f66",
+      "size": 177264
+    },
+    {
+      "path": "config.json",
+      "sha256": "sha256:fdd7ec683174094e6a4fb5598210d99e6a661685ed076aa907cba54c86d390bb",
+      "size": 128
+    },
+    {
+      "path": "wit/deps/core.wit",
+      "sha256": "sha256:f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "size": 5732
+    },
+    {
+      "path": "wit/deps/shape.wit",
+      "sha256": "sha256:773dab1acafb9e85414e67572fa0b913a0476d41987880db34881c27f2420a82",
+      "size": 2202
+    },
+    {
+      "path": "wit/pack.wit",
+      "sha256": "sha256:d3c9b74f126a3f74a645c4de0278cfc1b0b93ed28d86dc812db389b09061cc52",
+      "size": 327
+    }
+  ],
+  "flows": [],
+  "format": "tobkiri.pack/1",
+  "id": "local.openai-compat-provider",
+  "overlays": [],
+  "permissions": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 16,
+      "max_wall_ms": 300000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": [
+        "http://127.0.0.1:18080"
+      ],
+      "user_origins": null
+    },
+    "ports": [],
+    "proc": [],
+    "pty": false,
+    "secrets": [
+      {
+        "name": "api-key",
+        "optional": true,
+        "reveal": false
+      }
+    ],
+    "storage": {
+      "private": false,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  },
+  "ports": {
+    "consumes": [],
+    "provides": [
+      {
+        "optional": false,
+        "shape": "local.harness-chat.llm-provider",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.harness-chat.structured-llm-provider",
+        "version": "1.0"
+      }
+    ],
+    "untyped": []
+  },
+  "publisher_key": null,
+  "runtime": {
+    "component": "component.wasm",
+    "config": {
+      "path": "config.json",
+      "shape": null
+    },
+    "kind": "wasm",
+    "toolchain": "rust/1.94.0;wit-bindgen/0.62.0"
+  },
+  "shapes": [],
+  "stores": [],
+  "ui": null,
+  "version": "0.1.0"
+}

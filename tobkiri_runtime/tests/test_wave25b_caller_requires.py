@@ -1,105 +1,83 @@
-"""
-W25-B: check_caller_requires() のテスト
-"""
-import os
-import sys
+"""Caller-requirement invariants on the Pack v4 Authority Kernel."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from pathlib import Path
+
 import pytest
 
-# tobkiri_runtime をパスに追加
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# DI container / approval_manager の import を回避するため環境変数でモードを固定
-# PermissionManager を直接インスタンス化する
-
-
-class TestCheckCallerRequiresPermissive:
-    """permissive モードのテスト"""
-
-    def _make_pm(self):
-        from core_runtime.permission_manager import PermissionManager
-        return PermissionManager(mode="permissive")
-
-    def test_empty_list_returns_true(self):
-        """空リストの場合 True"""
-        pm = self._make_pm()
-        assert pm.check_caller_requires("caller_1", []) is True
-
-    def test_none_returns_true(self):
-        """None の場合 True"""
-        pm = self._make_pm()
-        assert pm.check_caller_requires("caller_1", None) is True
-
-    def test_permissive_auto_pass(self):
-        """permissive モードでは全権限を自動パス"""
-        pm = self._make_pm()
-        assert pm.check_caller_requires("caller_1", ["file_read", "network", "exec"]) is True
-
-    def test_caller_id_empty_string_returns_false(self):
-        """caller_principal_id が空文字の場合 False"""
-        pm = self._make_pm()
-        assert pm.check_caller_requires("", ["file_read"]) is False
-
-    def test_caller_id_none_returns_false(self):
-        """caller_principal_id が None の場合 False"""
-        pm = self._make_pm()
-        assert pm.check_caller_requires(None, ["file_read"]) is False
+from core_runtime.authority.v4 import AuthorityDenied, AuthorityScope, GrantLifetime
+from tests.legacy_authority_contracts import assert_retired_module_absent
+from tests.test_authority_v4_lifecycle import _digest
+from tests.v4_batch_support import bounded_scope, harness
 
 
-class TestCheckCallerRequiresSecure:
-    """secure モードのテスト"""
-
-    def _make_pm(self):
-        from core_runtime.permission_manager import PermissionManager
-        return PermissionManager(mode="secure")
-
-    def test_all_permissions_granted(self):
-        """全権限を持つ場合 True"""
-        pm = self._make_pm()
-        pm.grant("caller_1", "file_read")
-        pm.grant("caller_1", "network")
-        assert pm.check_caller_requires("caller_1", ["file_read", "network"]) is True
-
-    def test_one_permission_missing(self):
-        """1つ権限が欠けている場合 False"""
-        pm = self._make_pm()
-        pm.grant("caller_1", "file_read")
-        # network は付与しない
-        assert pm.check_caller_requires("caller_1", ["file_read", "network"]) is False
-
-    def test_all_permissions_missing(self):
-        """全権限が欠けている場合 False"""
-        pm = self._make_pm()
-        assert pm.check_caller_requires("caller_1", ["file_read", "network"]) is False
-
-    def test_secure_mode_no_permission(self):
-        """secure モードで権限不足の場合 False"""
-        pm = self._make_pm()
-        assert pm.check_caller_requires("caller_1", ["exec"]) is False
-
-    def test_single_permission_granted(self):
-        """1つの権限のみ要求され、保有している場合 True"""
-        pm = self._make_pm()
-        pm.grant("caller_1", "file_read")
-        assert pm.check_caller_requires("caller_1", ["file_read"]) is True
-
-    def test_grant_then_check_becomes_true(self):
-        """grant() で権限付与後に True になる"""
-        pm = self._make_pm()
-        # 付与前は False
-        assert pm.check_caller_requires("caller_1", ["file_read"]) is False
-        # 付与
-        pm.grant("caller_1", "file_read")
-        # 付与後は True
-        assert pm.check_caller_requires("caller_1", ["file_read"]) is True
+def test_permission_manager_is_not_a_runtime_authority() -> None:
+    assert_retired_module_absent("core_runtime.permission_manager")
 
 
-class TestCheckCallerRequiresEdgeCases:
-    """エッジケースのテスト"""
+def test_caller_requires_exact_authenticated_session(tmp_path: Path) -> None:
+    h = harness(tmp_path)
+    with pytest.raises(AuthorityDenied):
+        h.kernel.authorize(h.context(caller_session_id="caller-forged"), h.scope)
+    assert h.store.grant_usage(h.grant.grant_id) == (0, 0)
 
-    def test_caller_requires_not_list_returns_false(self):
-        """caller_requires が list でない場合 False"""
-        from core_runtime.permission_manager import PermissionManager
-        pm = PermissionManager(mode="permissive")
-        assert pm.check_caller_requires("caller_1", "file_read") is False
-        assert pm.check_caller_requires("caller_1", 42) is False
-        assert pm.check_caller_requires("caller_1", {"file_read": True}) is False
+
+def test_caller_requires_exact_principal(tmp_path: Path) -> None:
+    h = harness(tmp_path)
+    with pytest.raises(AuthorityDenied):
+        h.kernel.authorize(h.context(target=replace(h.target, operation_id="admin")), h.scope)
+
+
+def test_caller_requires_all_captured_identity_fields(tmp_path: Path) -> None:
+    h = harness(tmp_path)
+    for changes in (
+        {"profile_id": "other"},
+        {"activation_id": "other"},
+        {"activation_digest": "sha256:" + "0" * 64},
+        {"plan_digest": "sha256:" + "0" * 64},
+        {"fencing_token": 999},
+    ):
+        with pytest.raises(AuthorityDenied):
+            h.kernel.authorize(h.context(**changes), h.scope)
+
+
+def test_caller_requires_scope_subset_of_every_ceiling(tmp_path: Path) -> None:
+    h = harness(tmp_path)
+    requested = bounded_scope(path="/outside")
+    with pytest.raises(AuthorityDenied, match="authority"):
+        h.kernel.authorize(h.context(), requested)
+    assert h.store.grant_usage(h.grant.grant_id) == (0, 0)
+
+
+def test_caller_requires_no_lease_for_missing_authority(tmp_path: Path) -> None:
+    h = harness(tmp_path)
+    h.kernel.revoke(
+        target_kind="grant", target_id=h.grant.grant_id, reason="caller test"
+    )
+    with pytest.raises(AuthorityDenied):
+        h.kernel.authorize(h.context(), h.scope)
+    assert h.store.grant_usage(h.grant.grant_id) == (0, 0)
+
+
+def test_caller_requires_opaque_scope_request_binding(tmp_path: Path) -> None:
+    opaque = AuthorityScope(
+        capability="host.http",
+        semantics_digest=_digest("e"),
+        dimensions={"path": ("/safe",), "method": ("GET",)},
+        quotas={"max_bytes": 1024},
+        exact_request_digest="sha256:" + "a" * 64,
+        opaque=True,
+    )
+    h = harness(tmp_path, scope=opaque, grant_lifetime=GrantLifetime.ONE_SHOT, max_uses=1)
+    with pytest.raises(AuthorityDenied, match="opaque"):
+        h.kernel.authorize(h.context(), opaque)
+
+
+def test_caller_requires_one_shot_grant_to_be_consumed_once(tmp_path: Path) -> None:
+    h = harness(tmp_path, grant_lifetime=GrantLifetime.ONE_SHOT, max_uses=1)
+    first = h.kernel.authorize(h.context(), h.scope)
+    with pytest.raises(AuthorityDenied, match="limit"):
+        h.kernel.authorize(h.context(request_id="request-2"), h.scope)
+    assert first.lease_id

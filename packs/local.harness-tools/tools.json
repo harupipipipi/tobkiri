@@ -1,0 +1,185 @@
+[
+  {
+    "description": "Save UTF-8 text in this Pack's private Core store. Requires a stable outer call id; repeating that id returns its receipt.",
+    "name": "artifact.write",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "description": "At most 262144 UTF-8 bytes.",
+          "maxLength": 262144,
+          "type": "string"
+        },
+        "path": {
+          "description": "Logical relative artifact path, at most 240 UTF-8 bytes; not a host file path.",
+          "maxLength": 240,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "content"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Read a stored text artifact, byte size and SHA-256.",
+    "name": "artifact.read",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "Logical relative artifact path, at most 240 UTF-8 bytes; not a host file path.",
+          "maxLength": 240,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Verify artifact existence, byte size and SHA-256.",
+    "name": "artifact.stat",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "Logical relative artifact path, at most 240 UTF-8 bytes; not a host file path.",
+          "maxLength": 240,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "List artifact metadata with bounded pagination.",
+    "name": "artifact.list",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "after": {
+          "maxLength": 240,
+          "type": "string"
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "prefix": {
+          "maxLength": 240,
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Mark a logical artifact deleted. Requires a stable outer call id. Prior content and immutable receipts remain for safe continuation.",
+    "name": "artifact.delete",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "Logical relative artifact path, at most 240 UTF-8 bytes; not a host file path.",
+          "maxLength": 240,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Checked StrictV1 safe integer arithmetic, left to right. Inputs and results must be within +/-9007199254740991. Division must be exact. No expression or code evaluation.",
+    "name": "calculator",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "operands": {
+          "items": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maxItems": 64,
+          "minItems": 2,
+          "type": "array"
+        },
+        "operation": {
+          "enum": [
+            "add",
+            "subtract",
+            "multiply",
+            "divide"
+          ]
+        }
+      },
+      "required": [
+        "operation",
+        "operands"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Check JSON syntax and report type or error position.",
+    "name": "json.validate",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "maxLength": 262144,
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Read the Core clock as Unix milliseconds.",
+    "name": "clock.now",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {},
+      "required": [],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Read 1..256 bytes from the Core random source as hex.",
+    "name": "random.bytes",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "length": {
+          "maximum": 256,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "length"
+      ],
+      "type": "object"
+    }
+  }
+]

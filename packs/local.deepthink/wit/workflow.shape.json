@@ -1,0 +1,9 @@
+{
+  "callbacks": {},
+  "cardinality": "one",
+  "conformance": null,
+  "streams": {
+    "continue-run": "chat-event",
+    "run": "chat-event"
+  }
+}

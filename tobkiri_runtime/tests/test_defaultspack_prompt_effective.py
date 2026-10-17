@@ -80,7 +80,16 @@ def test_effective_prompt_falls_back_to_defaultspack_prompt_component(tmp_path: 
 
 
 def test_effective_prompt_can_resolve_sibling_pack_prompt_from_profile_id(monkeypatch, tmp_path: Path):
+    from types import SimpleNamespace
+
     trusted_packs = {"defaultspack", "rumi_operations_company_pack"}
+    monkeypatch.setattr(
+        "core_runtime.resolved_profile_scope.persisted_resolved_profile",
+        lambda: SimpleNamespace(
+            profile_id="defaultspack.mimo_coding_company",
+            effective_pack_set=tuple(sorted(trusted_packs)),
+        ),
+    )
     monkeypatch.setattr(
         "domain.prompt.resolver.prompt_pack_is_trusted",
         lambda pack_id: str(pack_id) in trusted_packs,
@@ -93,7 +102,7 @@ def test_effective_prompt_can_resolve_sibling_pack_prompt_from_profile_id(monkey
         tmp_path,
         profile_id="defaultspack.mimo_coding_company",
         prompt_id="mimo_coding_company",
-        base_pack="",
+        base_pack="rumi_operations_company_pack",
     )
 
     result = run(

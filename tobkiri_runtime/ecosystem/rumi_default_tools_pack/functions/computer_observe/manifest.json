@@ -1,9 +1,11 @@
 {
   "function_id": "computer_observe",
-  "description": "Observe a desktop application – returns screenshot, AX tree, and capabilities via ComputerSeat.",
+  "description": "Project desktop observation through the selected Wave 8 contract.",
   "calling_convention": "subprocess",
   "host_execution": false,
   "requires_approval": true,
+  "authority_owner": "core_runtime.authority",
+  "client_approved_trusted": false,
   "risk_level": "high",
   "capabilities": ["screen_capture", "accessibility"],
   "input_schema": {

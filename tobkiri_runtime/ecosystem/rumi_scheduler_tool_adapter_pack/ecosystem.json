@@ -1,0 +1,77 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.resource.tool.definition.contribution.v1",
+      "rumi.service.tool.local.operation.v1"
+    ],
+    "requires": [
+      "rumi.action.schedule.v1",
+      "rumi.action.scheduler.v1",
+      "rumi.resource.schedule.v1",
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+    "rumi_schedule_store_pack": ">=1.0.0,<2.0.0",
+    "rumi_scheduler_runtime_pack": ">=1.0.0,<2.0.0",
+    "rumi_tool_local_executor_pack": ">=1.0.0,<2.0.0",
+    "rumi_tool_registry_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Scheduler tool definitions and receipt-aware contract projections.",
+  "display_name": "Rumi Scheduler Tool Adapter",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:eb5ade2b8037355b12306fd97c12d8bc7b15403d304dbdaf8071e467ee754601",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:1c889953e338d40e0bf0fee977807c2ce5b643a21e338f517f46cb43d9e38b21"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:1c889953e338d40e0bf0fee977807c2ce5b643a21e338f517f46cb43d9e38b21"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "scheduler_tool_definitions"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_scheduler_tool_adapter_pack",
+  "pack_identity": "rumi:ecosystem/rumi_scheduler_tool_adapter_pack",
+  "provenance": {
+    "build_identity": "rumi_scheduler_tool_adapter_pack:1.0.0",
+    "content_hash": "sha256:8ed554a43f3d0507df77a9c76e3504d5358a3bb2a83361f8e199645d67e9a39c",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "host.authority.consume",
+    "schedule.manage",
+    "schedule.read",
+    "scheduler.control",
+    "service.invoke",
+    "service.mutate",
+    "tool.definition.contribute",
+    "tool.local.operation"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

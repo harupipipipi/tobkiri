@@ -1,0 +1,18 @@
+{
+  "pack_id": "rumi_ai_modality_pack",
+  "display_name": "Rumi AI Modality Pack",
+  "description": "Replaceable embedding, image, transcription, and speech gateways.",
+  "target_pack_id": "rumi_ai_modality_pack",
+  "version": "1.0.0",
+  "recommended": true,
+  "risk_level": "medium",
+  "supports_all_ok": false,
+  "depends_on": ["rumi_provider_adapters_pack"],
+  "required_permissions": ["ai.embedding", "ai.image", "ai.audio.transcribe", "ai.audio.speech"],
+  "conflicts_with": [],
+  "compatibility": {"python": ">=3.10", "platforms": ["macos", "linux", "windows"]},
+  "marketplace": {"id": "rumi.ai_modality", "registry": "bundled", "publisher": "rumi-ai", "status": "verified", "category": "ai-runtime", "channel": "experimental"},
+  "signing": {"mode": "repository_reviewed", "verified": true},
+  "security_notes": ["No direct provider or credential access.", "Missing and ambiguous providers fail explicitly."]
+}
+

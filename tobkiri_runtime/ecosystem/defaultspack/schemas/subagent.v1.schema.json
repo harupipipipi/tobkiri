@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.dev/subagent/v1.json",
+  "title": "Tobkiri Subagent Definition v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "id",
+    "version",
+    "display_name",
+    "description",
+    "runtime",
+    "interfaces",
+    "ports",
+    "requirements",
+    "behavior"
+  ],
+  "properties": {
+    "schema_version": {"const": "tobkiri.subagent/v1"},
+    "kind": {"enum": ["main", "subagent"]},
+    "id": {"$ref": "#/$defs/id"},
+    "version": {"$ref": "#/$defs/semver"},
+    "display_name": {"type": "string", "minLength": 1},
+    "description": {"type": "string", "minLength": 1},
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["driver_contract", "driver_key", "supported_isolation", "state_modes"],
+      "properties": {
+        "driver_contract": {"type": "string", "minLength": 1},
+        "driver_key": {"type": "string", "minLength": 1},
+        "supported_isolation": {"$ref": "#/$defs/stringList"},
+        "state_modes": {"$ref": "#/$defs/stringList"},
+        "endpoint": {"type": "string", "minLength": 1}
+      }
+    },
+    "interfaces": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accepts", "produces", "protocols"],
+      "properties": {
+        "accepts": {"$ref": "#/$defs/stringList"},
+        "produces": {"$ref": "#/$defs/stringList"},
+        "protocols": {"$ref": "#/$defs/stringList"}
+      }
+    },
+    "ports": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["binding_policy"],
+        "properties": {
+          "contract": {"type": "string"},
+          "binding_policy": {
+            "enum": [
+              "fixed",
+              "default",
+              "placement",
+              "placement_required",
+              "compose",
+              "optional",
+              "forbidden"
+            ]
+          }
+        }
+      }
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "model_capabilities": {"$ref": "#/$defs/stringList"},
+        "runtime_capabilities": {"$ref": "#/$defs/stringList"},
+        "required_capabilities": {"$ref": "#/$defs/stringList"},
+        "optional_capabilities": {"$ref": "#/$defs/stringList"},
+        "denied_capabilities": {"$ref": "#/$defs/stringList"},
+        "minimum_pack_trust": {"enum": ["bundled", "verified", "local"]}
+      }
+    },
+    "behavior": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "base_instructions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["resource_ref", "merge"],
+          "properties": {
+            "resource_ref": {"type": "string", "minLength": 1},
+            "merge": {"enum": ["sealed_prefix", "append", "compose"]}
+          }
+        },
+        "placement_role_instructions": {
+          "enum": ["required", "optional", "forbidden"]
+        }
+      }
+    },
+    "limits": {"type": "object"},
+    "governance": {"type": "object"},
+    "enforcement": {"type": "object", "additionalProperties": {"type": "string"}},
+    "remote_card_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "topology_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$"
+    },
+    "stringList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}

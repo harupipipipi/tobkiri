@@ -127,7 +127,9 @@ def test_cloudflare_tool_coverage_summary_never_claims_all_tools_native() -> Non
     assert summary["pc_bridge_required"] is True
 
 
-def test_real_tool_registry_has_cloudflare_coverage_for_every_tool() -> None:
+def test_real_tool_registry_has_cloudflare_coverage_for_every_tool(
+    defaultspack_component_catalog_selected,
+) -> None:
     tools = ToolRegistry().list_tools()
     records = [cloudflare_tool_record(tool) for tool in tools]
     by_id = {str(tool.get("tool_id") or tool.get("name")): record for tool, record in zip(tools, records)}

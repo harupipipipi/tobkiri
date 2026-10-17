@@ -1,0 +1,317 @@
+{
+  "bindings": {
+    "local.harness-chat.assistant-output@1": "local.terminal-output",
+    "local.harness-chat.conversation-store@1": "local.harness-conversation-store",
+    "local.harness-chat.llm-provider@1": "local.mock-llm",
+    "local.harness-chat.prompt-builder@1": "local.harness-prompt",
+    "local.harness-chat.user-input@1": "local.terminal-input"
+  },
+  "ceiling": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [
+      "terminal-read-line",
+      "terminal-write",
+      "display"
+    ],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 16,
+      "max_wall_ms": 300000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": []
+    },
+    "ports": [
+      "local.harness-chat.user-input@1.0",
+      "local.harness-chat.assistant-output@1.0",
+      "local.harness-chat.conversation-store@1.0",
+      "local.harness-chat.prompt-builder@1.0",
+      "local.harness-chat.llm-provider@1.0",
+      "local.harness-chat.turn-flow@1.0"
+    ],
+    "proc": [],
+    "pty": false,
+    "secrets": [],
+    "storage": {
+      "private": true,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  },
+  "format": "tobkiri.published-profile/1",
+  "overlay_order": [],
+  "pack_limits": {
+    "local.harness-chat": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [
+        "local.harness-chat.assistant-output@1.0",
+        "local.harness-chat.conversation-store@1.0",
+        "local.harness-chat.llm-provider@1.0",
+        "local.harness-chat.prompt-builder@1.0",
+        "local.harness-chat.user-input@1.0"
+      ],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.harness-conversation-store": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": true,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.harness-prompt": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.mock-llm": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.terminal-input": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [
+        "terminal-read-line"
+      ],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [
+        "local.harness-chat.turn-flow@1.0"
+      ],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.terminal-output": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [
+        "terminal-write"
+      ],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    }
+  },
+  "packs": [
+    {
+      "id": "local.harness-chat",
+      "sha256": "sha256:919889d705a99afaf868cb4536dc4f501fe644021c0a4cf20dbaccb1e581ce4c",
+      "source": "file:../local.harness-chat",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.terminal-input",
+      "sha256": "sha256:e56ee691205e7bb8a6ce10f43db4181a3ffeb2119963977ef73a4e958a4e1b89",
+      "source": "file:../local.terminal-input",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.harness-conversation-store",
+      "sha256": "sha256:0efb9754fcc07a58912ad42ea57213345645406030322fddbd9d0a6207695088",
+      "source": "file:../local.harness-conversation-store",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.harness-prompt",
+      "sha256": "sha256:7af478f796d0361a219aa4ce4537c5bcf2ce3a8ac82891a23896e6a870c76fe1",
+      "source": "file:../local.harness-prompt",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.mock-llm",
+      "sha256": "sha256:f1b158f0b1b60caa526e1e043b325dd04a01c283ff4e3b28a7bb3dfedad02336",
+      "source": "file:../local.mock-llm",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.terminal-output",
+      "sha256": "sha256:fc5ecba333a011538b9fa1091d462f0df94cf6384b4df550ed8464219f683f9c",
+      "source": "file:../local.terminal-output",
+      "version": "0.1.0"
+    }
+  ],
+  "publishers": {},
+  "startup": {
+    "inputs": [
+      {
+        "exact_input_view": "local.harness-chat.user-input@1.0",
+        "operation": "read",
+        "source_pack": "local.terminal-input"
+      }
+    ],
+    "ui": null
+  },
+  "user_overlays": []
+}

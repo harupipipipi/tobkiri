@@ -1,0 +1,317 @@
+{
+  "bindings": {
+    "local.echo-chat.assistant-output@1": "local.echo-output",
+    "local.echo-chat.conversation-store@1": "local.echo-store",
+    "local.echo-chat.llm-provider@1": "local.echo-llm",
+    "local.echo-chat.prompt-builder@1": "local.echo-prompt",
+    "local.echo-chat.user-input@1": "local.echo-input"
+  },
+  "ceiling": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [
+      "terminal-read-line",
+      "terminal-write",
+      "display"
+    ],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 16,
+      "max_wall_ms": 300000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": []
+    },
+    "ports": [
+      "local.echo-chat.user-input@1.0",
+      "local.echo-chat.assistant-output@1.0",
+      "local.echo-chat.conversation-store@1.0",
+      "local.echo-chat.prompt-builder@1.0",
+      "local.echo-chat.llm-provider@1.0",
+      "local.echo-chat.turn-flow@1.0"
+    ],
+    "proc": [],
+    "pty": false,
+    "secrets": [],
+    "storage": {
+      "private": true,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  },
+  "format": "tobkiri.published-profile/1",
+  "overlay_order": [],
+  "pack_limits": {
+    "local.echo-chat": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [
+        "local.echo-chat.assistant-output@1.0",
+        "local.echo-chat.conversation-store@1.0",
+        "local.echo-chat.llm-provider@1.0",
+        "local.echo-chat.prompt-builder@1.0",
+        "local.echo-chat.user-input@1.0"
+      ],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.echo-input": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [
+        "terminal-read-line"
+      ],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [
+        "local.echo-chat.turn-flow@1.0"
+      ],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.echo-llm": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.echo-output": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [
+        "terminal-write"
+      ],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.echo-prompt": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.echo-store": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": true,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    }
+  },
+  "packs": [
+    {
+      "id": "local.echo-chat",
+      "sha256": "sha256:c1c50f7b9f0883db54aa5cbe6ad9aa3134759e41f63153d7d2a2a9beda761700",
+      "source": "file:../local.echo-chat",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.echo-input",
+      "sha256": "sha256:497b1fe7690c2d49a6b89b24e222eb18a9b8659ed01c85315e3dd24fc70556ee",
+      "source": "file:../local.echo-input",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.echo-store",
+      "sha256": "sha256:dc30fea989286c83ac4ec91e793ca8c10d94c4e41d10b11e23fa0f9b23408b6f",
+      "source": "file:../local.echo-store",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.echo-prompt",
+      "sha256": "sha256:33d554aaf39810502e0903737fe54f22e476f711e7fd2ceb61aaa06e9e29afda",
+      "source": "file:../local.echo-prompt",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.echo-llm",
+      "sha256": "sha256:affa4195d8c95277596dff69833a021c29d0bf289ef03a2b4b7087d3614d0bb6",
+      "source": "file:../local.echo-llm",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.echo-output",
+      "sha256": "sha256:1fcf11cbcdd8f40be68e23ae4860cb375a935eabc84720e63b1f4b5e4f02300f",
+      "source": "file:../local.echo-output",
+      "version": "0.1.0"
+    }
+  ],
+  "publishers": {},
+  "startup": {
+    "inputs": [
+      {
+        "exact_input_view": "local.echo-chat.user-input@1.0",
+        "operation": "read",
+        "source_pack": "local.echo-input"
+      }
+    ],
+    "ui": null
+  },
+  "user_overlays": []
+}

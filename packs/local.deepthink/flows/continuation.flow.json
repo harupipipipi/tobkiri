@@ -1,0 +1,32 @@
+{
+  "format": "tobkiri.flow/1",
+  "id": "continue",
+  "implements": "local.deepthink.continuation-flow@1.0",
+  "trigger": {"input": "local.deepthink.continuation-input@1.0"},
+  "loop_limits": "profile-default",
+  "on_error": {"default": "fail", "steps": {}},
+  "steps": [
+    {
+      "id": "continue",
+      "call": {
+        "shape": "local.deepthink.workflow@1.0",
+        "op": "continue-run",
+        "args": {"run-id": "$input.run-id", "conversation": "$input.conversation", "answers": "$input.answers"}
+      },
+      "out": "turn",
+      "stream": {"emit": "local.harness-chat.assistant-output@1.0", "collect": "turn"}
+    },
+    {
+      "id": "save",
+      "call": {
+        "shape": "local.harness-chat.conversation-store@1.0",
+        "op": "append",
+        "args": {
+          "conversation": "$input.conversation",
+          "input": {"conversation": "$input.conversation", "text": "$input.history-text"},
+          "events": "$turn"
+        }
+      }
+    }
+  ]
+}

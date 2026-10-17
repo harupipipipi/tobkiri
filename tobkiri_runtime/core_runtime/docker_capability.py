@@ -24,7 +24,7 @@ import subprocess
 import sys
 import threading
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 _this_module = sys.modules.get(__name__)
 if _this_module is not None:
@@ -328,7 +328,7 @@ class DockerCapabilityHandler:
 
     def _audit_log(
         self,
-        severity: str,
+        severity: Literal["info", "warning", "error", "critical"],
         action: str,
         success: bool,
         principal_id: str,
@@ -698,6 +698,21 @@ class DockerCapabilityHandler:
                 text=True,
                 timeout=timeout + 30,
             )
+
+            if result.returncode != 0:
+                error = result.stderr.strip() or "docker stop failed"
+                self._audit_log(
+                    "warning",
+                    "docker.stop.failed",
+                    False,
+                    principal_id,
+                    {"container_name": container_name, "error": error},
+                )
+                return {
+                    "stopped": False,
+                    "container_name": container_name,
+                    "error": error,
+                }
 
             with self._lock:
                 self._active_containers.pop(container_name, None)

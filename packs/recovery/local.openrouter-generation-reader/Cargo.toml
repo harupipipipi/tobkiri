@@ -1,0 +1,30 @@
+[package]
+name = "tobkiri-pack-openrouter-generation-reader"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "MIT"
+
+# This is intentionally independent of packs/Cargo.toml and Cargo.lock. Their
+# hashes belong to the frozen provider artifacts used by existing workflows.
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wit-bindgen = "=0.62.0"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = { version = "=1.0.154", features = ["raw_value"] }
+sha2 = "=0.10.9"
+
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.release]
+strip = true
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"

@@ -189,27 +189,16 @@ class TestEcosystemIntegration:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
     def test_full_initialization(self, full_ecosystem, monkeypatch):
-        from backend_core.ecosystem.active_ecosystem import ActiveEcosystemManager
-        from backend_core.ecosystem.mounts import MountManager
-        from backend_core.ecosystem.registry import Registry
+        del full_ecosystem, monkeypatch
+        from tests.v4_batch_support import assert_legacy_registry_fails_closed
+        from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
 
-        monkeypatch.setenv("RUMI_REQUIRE_HMAC", "0")
-
-        MountManager(
-            config_path=str(full_ecosystem["user_data"] / "mounts.json"),
-            base_dir=full_ecosystem["temp"],
+        assert_legacy_registry_fails_closed()
+        catalog = BundledCatalog.load(
+            Path(__file__).resolve().parents[1] / "ecosystem" / "defaultspack" / "v4"
         )
-
-        registry = Registry(str(full_ecosystem["ecosystem"]))
-        registry.load_all_packs()
-
-        active = ActiveEcosystemManager(
-            config_path=str(full_ecosystem["user_data"] / "active_ecosystem.json"),
-        )
-
-        assert len(registry.packs) == 1
-        assert active.active_pack_identity == "github:haru/default-pack"
-        assert active.get_override("chats") == "chats_v1"
+        assert catalog.profiles["defaults"]["state"] == "needs_resolution"
+        assert len(catalog.packs) == len(set(catalog.packs))
 
 
 if __name__ == "__main__":

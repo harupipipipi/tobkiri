@@ -1,0 +1,81 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.ai.audio.speech.v1",
+      "rumi.service.ai.audio.transcribe.v1",
+      "rumi.service.ai.embedding.v1",
+      "rumi.service.ai.image.v1"
+    ],
+    "requires": [
+      "rumi.resource.ai.model.profile.v1",
+      "rumi.service.ai.provider.audio.speech.v1",
+      "rumi.service.ai.provider.audio.transcribe.v1",
+      "rumi.service.ai.provider.embedding.v1",
+      "rumi.service.ai.provider.image.v1"
+    ]
+  },
+  "dependencies": {},
+  "description": "Replaceable embedding, image, transcription, and speech gateways.",
+  "display_name": "Rumi AI Modality",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:2a454ae8da4a0c3924ec12ec8c8b9bd29f8e08061238997c9012c693c9ac8a40",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:0358a858cc0ce8505bdba3b83f1378e9e3d02a74dbd0bcd2cd228e61f80dc7c0"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:0358a858cc0ce8505bdba3b83f1378e9e3d02a74dbd0bcd2cd228e61f80dc7c0"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "embedding_gateway",
+      "image_gateway",
+      "audio_transcription_gateway",
+      "audio_speech_gateway"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "missing_provider_is_explicit": true,
+      "provider_pack_id_branches": false,
+      "raw_artifact_paths": false
+    }
+  },
+  "pack_id": "rumi_ai_modality_pack",
+  "pack_identity": "rumi:ecosystem/rumi_ai_modality_pack",
+  "provenance": {
+    "build_identity": "rumi_ai_modality_pack:1.0.0",
+    "content_hash": "sha256:f05428021595dd18aa6d4d9d91bd32c10628f94a3ce9b35ada69ceaee8bf7cc3",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "ai.audio.speech",
+    "ai.audio.transcribe",
+    "ai.embedding",
+    "ai.image"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

@@ -1,0 +1,517 @@
+{
+  "bindings": {
+    "local.deepthink.continuation-input@1": "local.deepthink",
+    "local.deepthink.workflow@1": "local.deepthink",
+    "local.harness-agent.tool-provider@1": "local.harness-tools",
+    "local.harness-chat.assistant-output@1": "local.terminal-output",
+    "local.harness-chat.conversation-store@1": "local.harness-conversation-store",
+    "local.harness-chat.llm-provider@1": "local.openrouter-mimo-provider",
+    "local.harness-chat.prompt-builder@1": "local.mimo-prompt",
+    "local.harness-chat.structured-llm-provider@1": "local.openrouter-mimo-provider",
+    "local.harness-chat.user-input@1": "local.terminal-input"
+  },
+  "ceiling": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [
+      "terminal-read-line",
+      "terminal-write",
+      "display"
+    ],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 512,
+      "max_wall_ms": 3600000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": [
+        "https://openrouter.ai"
+      ]
+    },
+    "ports": [
+      "local.deepthink.continuation-flow@1.0",
+      "local.deepthink.continuation-input@1.0",
+      "local.deepthink.workflow@1.0",
+      "local.harness-agent.tool-provider@1.0",
+      "local.harness-chat.assistant-output@1.0",
+      "local.harness-chat.conversation-store@1.0",
+      "local.harness-chat.generate@1.0",
+      "local.harness-chat.llm-provider@1.0",
+      "local.harness-chat.prompt-builder@1.0",
+      "local.harness-chat.structured-llm-provider@1.0",
+      "local.harness-chat.turn-flow@1.0",
+      "local.harness-chat.user-input@1.0"
+    ],
+    "proc": [],
+    "pty": false,
+    "secrets": [
+      {
+        "name": "api-key",
+        "optional": false,
+        "reveal": false
+      }
+    ],
+    "storage": {
+      "private": true,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  },
+  "format": "tobkiri.published-profile/1",
+  "overlay_order": [
+    {
+      "order": [
+        "local.deepthink/deepthink-generate"
+      ],
+      "target": {
+        "role": "local.harness-chat.generate@1.0"
+      }
+    }
+  ],
+  "pack_limits": {
+    "local.deepthink": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 512,
+        "max_wall_ms": 3600000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [
+        "local.deepthink.continuation-flow@1.0",
+        "local.deepthink.continuation-input@1.0",
+        "local.deepthink.workflow@1.0",
+        "local.harness-agent.tool-provider@1.0",
+        "local.harness-chat.assistant-output@1.0",
+        "local.harness-chat.conversation-store@1.0",
+        "local.harness-chat.generate@1.0",
+        "local.harness-chat.llm-provider@1.0",
+        "local.harness-chat.structured-llm-provider@1.0"
+      ],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": true,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.harness-agent": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.harness-chat": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [
+        "local.deepthink.workflow@1.0",
+        "local.harness-chat.assistant-output@1.0",
+        "local.harness-chat.conversation-store@1.0",
+        "local.harness-chat.llm-provider@1.0",
+        "local.harness-chat.prompt-builder@1.0",
+        "local.harness-chat.user-input@1.0"
+      ],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.harness-conversation-store": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": true,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.harness-tools": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": true,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.mimo-prompt": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.openrouter-mimo-provider": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": [
+          "https://openrouter.ai"
+        ]
+      },
+      "ports": [],
+      "proc": [],
+      "pty": false,
+      "secrets": [
+        {
+          "name": "api-key",
+          "optional": false,
+          "reveal": false
+        }
+      ],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.terminal-input": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [
+        "terminal-read-line"
+      ],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [
+        "local.harness-chat.turn-flow@1.0"
+      ],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.terminal-output": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [
+        "terminal-write"
+      ],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    }
+  },
+  "packs": [
+    {
+      "id": "local.harness-chat",
+      "sha256": "sha256:14b593f6e8c67101e8edf33f9e6290c1bda5b0761d8dd92641146bb1d4daa84e",
+      "source": "file:../deepthink-variants/local.harness-chat",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.terminal-input",
+      "sha256": "sha256:e56ee691205e7bb8a6ce10f43db4181a3ffeb2119963977ef73a4e958a4e1b89",
+      "source": "file:../local.terminal-input",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.harness-conversation-store",
+      "sha256": "sha256:0efb9754fcc07a58912ad42ea57213345645406030322fddbd9d0a6207695088",
+      "source": "file:../local.harness-conversation-store",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.mimo-prompt",
+      "sha256": "sha256:344890427d3223ae9168ee367d940e263cbc2313ca4766420f67a378b1f6fa1a",
+      "source": "file:../local.mimo-prompt",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.openrouter-mimo-provider",
+      "sha256": "sha256:20f4b449c26ed691222c18756f6c0d1d6d5f0a4f3337c54d9e87b8fea450038c",
+      "source": "file:../local.openrouter-mimo-provider",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.terminal-output",
+      "sha256": "sha256:fc5ecba333a011538b9fa1091d462f0df94cf6384b4df550ed8464219f683f9c",
+      "source": "file:../local.terminal-output",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.harness-agent",
+      "sha256": "sha256:ca0b1fe3554b73e4a5e0c98681aa9835e84edf26e982b573f9c77f4fd3f2f1b3",
+      "source": "file:../local.harness-agent",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.harness-tools",
+      "sha256": "sha256:6450aaec62a831bd0148aff8d8ebdfb6c8e19f17cc241b0d2ec48a2913ab49e4",
+      "source": "file:../local.harness-tools",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.deepthink",
+      "sha256": "sha256:ea787521eeb91a2569956e83c21fae79c38376b29a0e3d7e935d7f2c6e010a31",
+      "source": "file:../local.deepthink",
+      "version": "0.1.0"
+    }
+  ],
+  "publishers": {},
+  "startup": {
+    "inputs": [
+      {
+        "exact_input_view": "local.harness-chat.user-input@1.0",
+        "operation": "read",
+        "source_pack": "local.terminal-input"
+      }
+    ],
+    "ui": null
+  },
+  "user_overlays": [],
+  "user_permissions": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 16,
+      "max_wall_ms": 300000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": []
+    },
+    "ports": [
+      "local.harness-chat.user-input@1.0",
+      "local.harness-chat.conversation-store@1.0",
+      "local.deepthink.continuation-input@1.0"
+    ],
+    "proc": [],
+    "pty": false,
+    "secrets": [],
+    "storage": {
+      "private": false,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  }
+}

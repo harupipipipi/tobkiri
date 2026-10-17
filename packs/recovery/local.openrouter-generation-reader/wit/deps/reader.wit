@@ -1,0 +1,13 @@
+package local:openrouter-generation-reader@1.0.0;
+
+interface generation-reader {
+  use tobkiri:core/types@1.0.0.{error, json};
+  record selection {
+    generation-id: string,
+    expected-model: string,
+    expected-provider: option<string>,
+    include-public-content: bool,
+  }
+  lookup: func(request: selection) -> result<json, error>;
+  lookup-requested: func(request: selection) -> result<json, error>;
+}

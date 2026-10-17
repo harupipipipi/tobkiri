@@ -1,0 +1,125 @@
+{
+  "status": "LATEST ASYNC/FIBER/SHARED/RESOURCE SOURCE IS UNBUILT. Prior successful wasmtime metadata receipt excludes these changes.",
+  "packages": [
+    {
+      "crate": "wasmtime",
+      "version": "47.0.4",
+      "original_readonly_source": "crates.io registry package wasmtime@47.0.4",
+      "archive_sha256": "4cdaf5b8af5713146e3a62d940c71e3eb2ad1ebacfa6b55f0c8509a5b4b87718",
+      "license_file": "vendor/wasmtime/LICENSE",
+      "license_sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "modified_files": [
+        {
+          "path": "src/runtime/component/allocation.rs",
+          "upstream_sha256": null,
+          "patched_sha256": "599082ee3c45ec556c94733595c78c42b0812fa49fcd6f6dfbda4e58e6e5898c"
+        },
+        {
+          "path": "src/runtime/component/func/host.rs",
+          "upstream_sha256": "0241ea657610c6fc2b403882c65c139687f284f795aa3bbddb2132b6ece643d5",
+          "patched_sha256": "00f662e2219524ffc22f4505b9ea8cf510a929a8bc695cec12246938ec507a8f"
+        },
+        {
+          "path": "src/runtime/component/func/options.rs",
+          "upstream_sha256": "07bcabc8850cf6bd9df888cb53e7e4e3f7e0e2b4e9ac99c2cc52e201d5900ee8",
+          "patched_sha256": "a0400e57ef99c0aeae0b1b6adbbf11ac20f8da19b161d6e3bea5fa6b870a9ca9"
+        },
+        {
+          "path": "src/runtime/component/func/typed.rs",
+          "upstream_sha256": "da1347b61f3551c16ad87f25867aa2adafd488712f8d30a68c6bd3e057252865",
+          "patched_sha256": "14a395eae718e9e7b3f0802b5f192b480235343d4d7c6ef783f62fcaf69443b1"
+        },
+        {
+          "path": "src/runtime/component/func.rs",
+          "upstream_sha256": "7fa5e56c6709f47600d02b6f7808822dd42a13d0091300cba8d77aa859449839",
+          "patched_sha256": "052e4d4a41acc63e778d031a63e79b68394a5dfd94ebed352eed7de3184bdc7c"
+        },
+        {
+          "path": "src/runtime/component/instance.rs",
+          "upstream_sha256": "d257b69e386f0b870377d35cbecbb9d1994655caca8326ea22715ccf9d289669",
+          "patched_sha256": "b41c01e2f32f114abfcdb741e94d8212c5a6c14ef2fd9fdf0decafc47dc2536e"
+        },
+        {
+          "path": "src/runtime/component/linker.rs",
+          "upstream_sha256": "fce2bc0962e644f49dd953fbff0a30f6a93ad552f549356deaaf7dde5c53a768",
+          "patched_sha256": "ba583f45128435d60a9045087422402695554e2e805e09c8fff0a2998aef6cd4"
+        },
+        {
+          "path": "src/runtime/component/mod.rs",
+          "upstream_sha256": "cfbea50a50eafcfdbb02ae4a9a6e3840bc17b5296552592cbeee5faaddc92f6b",
+          "patched_sha256": "a8e18ec32357a0021675873a606930ba0294ac7a3a34ceadef893bb68cd74c87"
+        },
+        {
+          "path": "src/runtime/component/resource_table.rs",
+          "upstream_sha256": "e8dad2d667783f227fa6967112589716c150071014a954203e28623dcc3bdc76",
+          "patched_sha256": "d9b3b5aaa6696b8a66efe25a3c7a515b8f5040d2b9eac0d4e4d6e7afd8b510a7"
+        },
+        {
+          "path": "src/runtime/component/resources/host_tables.rs",
+          "upstream_sha256": "3852c52eb023b17381eeaacf54af293be08c0d3ae0dfe7968207007cd8fd90c1",
+          "patched_sha256": "e441d52e718667924595f5299468952fcf05c1835d42cedd9841fd1466d643f1"
+        },
+        {
+          "path": "src/runtime/component/store.rs",
+          "upstream_sha256": "0a09410f8d396165bda51e9c987e100484e65f17353b16b457c2a5590b26364a",
+          "patched_sha256": "58d3a0429387d2fdd6778d8a0bdd7fc9fc4528a1e0579baaed65f1100e37dab4"
+        },
+        {
+          "path": "src/runtime/component/values.rs",
+          "upstream_sha256": "60140cd143cae9a2dcf0608a221735444d66fbdbef4120204b42001229c9e5fc",
+          "patched_sha256": "8e360b6befa6517ec3bff8eeeb882bbed34fc7380a649a82cfb1acc7fb3c4f91"
+        },
+        {
+          "path": "src/runtime/fiber.rs",
+          "upstream_sha256": "ca6be0af71901583466ea0fc7a26a09225e28a637d5febfc627c5e128d1edca3",
+          "patched_sha256": "dd7807381423436c9f56d3654c4528b7ca57aebed1e87b3cd60c1277db60c590"
+        },
+        {
+          "path": "src/runtime/store/async_.rs",
+          "upstream_sha256": "f3bcd62686f6dbb1f048b175ab077148cb8e556bfaa6f8a317b528fc90c53013",
+          "patched_sha256": "3c8c08c8d77c27157c63290451b1c67a718038074206124a654f2a7b4df172c2"
+        },
+        {
+          "path": "src/runtime/store.rs",
+          "upstream_sha256": "edd2bc1352a8df27ee8abe6d9e1cb30f5fa8cdc93c55acd52da1083ab89a04fe",
+          "patched_sha256": "3d8f77d6a967835d234adce351fbb9140a54f580aabbd48da957402be5504164"
+        },
+        {
+          "path": "src/runtime/vm/component/handle_table.rs",
+          "upstream_sha256": "1e18af865c9ca60e8adda63ef4e76dea2f4ca1029c0e80373dc2327707fd0fb8",
+          "patched_sha256": "d7f33a99fd2eb22017aedb269c2a99fd8878c3fbedfccdc60d814b63d1ffbb0a"
+        },
+        {
+          "path": "src/runtime/vm/component/resources.rs",
+          "upstream_sha256": "6b712e645376e5de80fd20cd848d18eee19ba7c3d6020b82b5e7c31fe42b7abc",
+          "patched_sha256": "2c33f50efa4ca54a62963a3b66928732550bcf06730a3e883f8e061722adc89a"
+        }
+      ]
+    },
+    {
+      "crate": "wasmtime-internal-fiber",
+      "version": "47.0.4",
+      "original_readonly_source": "crates.io registry package wasmtime-internal-fiber@47.0.4",
+      "archive_sha256": "4d126366176553e8f304e8ac2078a4cc37134fe8f19d4d4695a09c5a2f577f10",
+      "license_file": "vendor/wasmtime-internal-fiber/LICENSE",
+      "license_sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "modified_files": [
+        {
+          "path": ".gitignore",
+          "upstream_sha256": null,
+          "patched_sha256": "32ab07ec58c23e212af8a4bddf789cd92fe217179a5e093c1e75d776ed5622d3"
+        },
+        {
+          "path": "src/lib.rs",
+          "upstream_sha256": "cbad53a8430814870cbfe80cf44e94e8424d4cd69773f7a3569979cb018e04c9",
+          "patched_sha256": "52d3c4eec2bc7da63bbc73ea83ceb9170f6e7c62f314098511dd86a9353ba818"
+        },
+        {
+          "path": "src/unix.rs",
+          "upstream_sha256": "83121bc6a5becaeae393b99848f6c1fd169e44c1b7857b3b862f74c64b950c4c",
+          "patched_sha256": "e93f397e717b5a0cb4e40770fd8c0b22b72b89ab4ae16bc6ca3666c690357ccb"
+        }
+      ]
+    }
+  ]
+}
