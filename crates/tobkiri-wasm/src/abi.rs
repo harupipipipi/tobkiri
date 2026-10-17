@@ -288,10 +288,133 @@ fn from_type(ty: &WitType) -> AbiType {
 #[cfg(test)]
 mod staged_component_tests {
     use super::*;
+    use std::collections::BTreeSet;
     use std::path::Path;
     use tobkiri_manifest::{
         RuntimeSpec, build_tpk, inspect_pack_wit, load_shapes, parse_manifest, verify_tpk,
     };
+
+    const READER_ID: &str = "local.openrouter-generation-reader";
+    const READER_VIEW: &str = "local.openrouter-generation-reader.generation-reader@1.0";
+    const BASE_PACKS: &[&str] = &[
+        "harness-chat",
+        "echo-chat",
+        "harness-agent",
+        "harness-ui",
+        "openai-compat-provider",
+        "mock-llm",
+        "harness-conversation-store",
+        "harness-prompt",
+        "terminal-input",
+        "terminal-output",
+        "echo-llm",
+        "echo-store",
+        "echo-prompt",
+        "echo-input",
+        "echo-output",
+        "pi-adapter",
+        "harness-tools",
+        "deepthink",
+        "openrouter-mimo-provider",
+        "mimo-prompt",
+        "deepthink-ui",
+        "openrouter-generation-reader",
+    ];
+    const PRESET_STYLES: &[&str] = &[
+        "chatgpt-agent-deep-research-service",
+        "claude-code-service",
+        "cline-pair-programmer-service",
+        "gemini-cli-service",
+        "genspark-report-service",
+        "manus-project-service",
+        "openclaw-hermes-local-service",
+    ];
+
+    fn expected_artifacts() -> BTreeMap<String, (usize, usize)> {
+        // (distinct pinned artifacts, Wasm artifacts). Only harness-chat has
+        // both the unchanged baseline and the explicit DeepThink Flow variant.
+        let mut expected = BASE_PACKS
+            .iter()
+            .map(|name| {
+                let data = [
+                    "harness-chat",
+                    "echo-chat",
+                    "harness-agent",
+                    "harness-ui",
+                    "deepthink-ui",
+                ]
+                .contains(name);
+                (format!("local.{name}"), (1, usize::from(!data)))
+            })
+            .collect::<BTreeMap<_, _>>();
+        expected.insert("local.harness-chat".into(), (2, 0));
+        for style in PRESET_STYLES {
+            expected.insert(format!("local.preset-{style}"), (1, 1));
+            expected.insert(format!("local.deepthink-preset-{style}"), (1, 1));
+        }
+        expected
+    }
+
+    fn check_reader_declaration(reader: &VerifiedPack, pack_root: &Path) -> Result<()> {
+        let reference = tobkiri_manifest::ShapeRef::parse(READER_VIEW)?;
+        let shapes = load_shapes(&reader.manifest, &reader.files)?;
+        assert_eq!(shapes.len(), 1, "one authoritative Reader shape");
+        assert_eq!(shapes[0].reference, reference);
+        assert_eq!(
+            shapes[0]
+                .functions
+                .keys()
+                .map(|op| op.as_str())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["lookup", "lookup-requested"]),
+        );
+        assert_eq!(reader.manifest.shapes.len(), 1);
+        assert_eq!(reader.manifest.ports.provides.len(), 1);
+        let provided = &reader.manifest.ports.provides[0];
+        assert_eq!(provided.shape, reference.name);
+        assert_eq!(provided.version, reference.version);
+        assert!(!provided.optional);
+        assert!(reader.manifest.ports.consumes.is_empty());
+        assert!(reader.manifest.ports.untyped.is_empty());
+        assert!(reader.manifest.inputs.is_empty());
+        assert!(reader.manifest.flows.is_empty());
+        assert!(reader.manifest.overlays.is_empty());
+        assert!(reader.manifest.stores.is_empty());
+        assert!(reader.manifest.ui.is_none());
+        let source_wit = std::fs::read(
+            pack_root.join("recovery/local.openrouter-generation-reader/wit/deps/reader.wit"),
+        )?;
+        assert_eq!(
+            reader.files.get("wit/deps/reader.wit"),
+            Some(&source_wit),
+            "staged Reader WIT must be the exact current defining source",
+        );
+        let permissions = &reader.manifest.permissions;
+        assert_eq!(
+            permissions.network.origins,
+            BTreeSet::from(["https://openrouter.ai".to_owned()]),
+        );
+        assert!(permissions.network.user_origins.is_none());
+        assert_eq!(permissions.secrets.len(), 1);
+        assert_eq!(permissions.secrets[0].name, "api-key");
+        assert!(!permissions.secrets[0].reveal && !permissions.secrets[0].optional);
+        assert!(
+            permissions.fs.is_empty()
+                && permissions.proc.is_empty()
+                && !permissions.pty
+                && !permissions.native
+                && !permissions.storage.private
+                && !permissions.storage.public_read
+                && !permissions.storage.public_write
+                && !permissions.cross_profile_storage
+                && !permissions.audit_read
+                && permissions.host_io.is_empty()
+                && permissions.ports.is_empty()
+                && !permissions.mediator,
+            "Reader retains only its declared OpenRouter/opaque-key authority",
+        );
+        Ok(())
+    }
 
     fn staged_pack(directory: &Path) -> Result<VerifiedPack> {
         let manifest = parse_manifest(&std::fs::read(directory.join("pack.json"))?)?;
@@ -312,30 +435,7 @@ mod staged_component_tests {
     #[ignore = "requires packs/build.py and build_deepthink_profile.py staging"]
     async fn real_staged_components_match_verified_wit_and_closed_core_abi() -> Result<()> {
         let pack_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs");
-        let names = [
-            "harness-chat",
-            "echo-chat",
-            "harness-agent",
-            "harness-ui",
-            "openai-compat-provider",
-            "mock-llm",
-            "harness-conversation-store",
-            "harness-prompt",
-            "terminal-input",
-            "terminal-output",
-            "echo-llm",
-            "echo-store",
-            "echo-prompt",
-            "echo-input",
-            "echo-output",
-            "pi-adapter",
-            "harness-tools",
-            "deepthink",
-            "openrouter-mimo-provider",
-            "mimo-prompt",
-            "deepthink-ui",
-        ];
-        let mut packs = names
+        let mut packs = BASE_PACKS
             .iter()
             .map(|name| {
                 staged_pack(&pack_root.join(format!("local.{name}")))
@@ -407,7 +507,39 @@ mod staged_component_tests {
                 }
             }
         }
-        assert_eq!(packs.len(), 36);
+        let mut actual_artifacts = BTreeMap::new();
+        let mut exact_pins = BTreeSet::new();
+        for pack in &packs {
+            assert!(
+                exact_pins.insert((pack.manifest.id.clone(), pack.hash.clone())),
+                "a staged artifact must not be counted twice",
+            );
+            let wasm = match &pack.manifest.runtime {
+                RuntimeSpec::Wasm { .. } => true,
+                RuntimeSpec::Data => false,
+                RuntimeSpec::Native { .. } => bail!("native runtime entered staged Wasm fixtures"),
+            };
+            let counts = actual_artifacts
+                .entry(pack.manifest.id.to_string())
+                .or_insert((0usize, 0usize));
+            counts.0 += 1;
+            counts.1 += usize::from(wasm);
+        }
+        assert_eq!(
+            actual_artifacts,
+            expected_artifacts(),
+            "the exact baseline, style variants, Flow variant and Reader set must match",
+        );
+        assert_eq!(
+            packs.len(),
+            37,
+            "36 existing artifacts plus one real Reader"
+        );
+        let reader = packs
+            .iter()
+            .find(|pack| pack.manifest.id.as_str() == READER_ID)
+            .context("the staged Reader is absent")?;
+        check_reader_declaration(reader, &pack_root)?;
         let mut views = BTreeMap::new();
         for pack in &packs {
             for shape in load_shapes(&pack.manifest, &pack.files)? {
@@ -434,6 +566,26 @@ mod staged_component_tests {
             };
             let inspection = inspect_pack_wit(pack, &views)
                 .with_context(|| format!("inspect {}", pack.manifest.id))?;
+            if pack.manifest.id.as_str() == READER_ID {
+                let expected_imports = tobkiri_wit::MINIMAL_IMPORTS
+                    .iter()
+                    .copied()
+                    .chain(["network", "secrets"])
+                    .flat_map(|interface| {
+                        ["1.0.0", "1.1.0"]
+                            .map(|version| format!("tobkiri:core/{interface}@{version}"))
+                    })
+                    .collect::<BTreeSet<_>>();
+                assert_eq!(inspection.allowed_imports(), &expected_imports);
+                let reference = tobkiri_manifest::ShapeRef::parse(READER_VIEW)?;
+                for name in ["lookup", "lookup-requested"] {
+                    assert!(inspection.core_errors().has_core_error_result(
+                        tobkiri_manifest::WitBindingDirection::Export,
+                        &reference,
+                        &tobkiri_manifest::OpName::parse(name)?,
+                    ));
+                }
+            }
             let bytes = &pack.files[component];
             let digest = tobkiri_canon::Digest::hash(bytes);
             let component = if let Some(component) = components.get(&digest) {
@@ -443,8 +595,23 @@ mod staged_component_tests {
                 components.insert(digest, component.clone());
                 component
             };
-            crate::validate_imports(engine.engine(), &component, inspection.allowed_imports())
-                .with_context(|| format!("imports {}", pack.manifest.id))?;
+            let imports =
+                crate::validate_imports(engine.engine(), &component, inspection.allowed_imports())
+                    .with_context(|| format!("imports {}", pack.manifest.id))?;
+            if pack.manifest.id.as_str() == READER_ID {
+                for interface in ["network", "secrets"] {
+                    let name = format!("tobkiri:core/{interface}@1.0.0");
+                    assert!(imports.contains(&name), "real Reader imports {name}");
+                    let mut missing_authority = inspection.allowed_imports().clone();
+                    missing_authority
+                        .retain(|name| !name.starts_with(&format!("tobkiri:core/{interface}@")));
+                    assert!(
+                        crate::validate_imports(engine.engine(), &component, &missing_authority)
+                            .is_err(),
+                        "Reader cannot be admitted without {interface}",
+                    );
+                }
+            }
             validate_abi(engine.engine(), &component, pack, &shapes)
                 .with_context(|| format!("ABI {}", pack.manifest.id))?;
             assert!(
@@ -453,8 +620,37 @@ mod staged_component_tests {
             println!("verified component ABI {} {}", pack.manifest.id, pack.hash);
             wasm_count += 1;
         }
-        assert_eq!(wasm_count, 30);
+        assert_eq!(wasm_count, 31, "30 existing Wasm artifacts plus the Reader");
         for (name, profile, _) in profiles {
+            let deepthink = profile
+                .packs
+                .iter()
+                .any(|pin| pin.id.as_str() == "local.deepthink");
+            let reader_pins = profile
+                .packs
+                .iter()
+                .filter(|pin| pin.id.as_str() == READER_ID)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                reader_pins.len(),
+                usize::from(deepthink),
+                "Reader pin in {name}"
+            );
+            let binding = profile
+                .bindings
+                .get("local.openrouter-generation-reader.generation-reader@1")
+                .map(|id| id.as_str());
+            assert_eq!(
+                binding,
+                deepthink.then_some(READER_ID),
+                "Reader binding in {name}"
+            );
+            if deepthink {
+                assert_eq!(
+                    reader_pins[0].sha256, reader.hash,
+                    "exact Reader pin in {name}"
+                );
+            }
             let selected = profile
                 .packs
                 .iter()
