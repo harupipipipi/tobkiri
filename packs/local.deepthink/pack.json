@@ -2,13 +2,13 @@
   "files": [
     {
       "path": "component.build.json",
-      "sha256": "sha256:b3fac9f33404f3e90c0afd4c7e00f296507df4e2bf2923eca8cdf60f59daf2ea",
-      "size": 3100
+      "sha256": "sha256:25f19340b630a834bc067620a825f9a738ac454405bbde46df49358ed4290167",
+      "size": 3619
     },
     {
       "path": "component.wasm",
-      "sha256": "sha256:2380f71227101053ef3595e52bfe085ad39526e191de16ec6e63c0136a36acce",
-      "size": 1079620
+      "sha256": "sha256:b469c8ae02a5e98bb92bbc7287ff3ddff30d97683eded6b4b9b9bdff91bc86c4",
+      "size": 1247481
     },
     {
       "path": "config.json",
@@ -26,9 +26,19 @@
       "size": 2211
     },
     {
+      "path": "flows/goal-review.flow.json",
+      "sha256": "sha256:887d55fe19a32619212500dbf035d741200b531fbb1b4700ef2c8688472f49a8",
+      "size": 579
+    },
+    {
       "path": "flows/regeneration.flow.json",
       "sha256": "sha256:95681d8ffef57eb66fde504b220fa053cf45fa9d3091f82f33c5b2f239db0bb6",
       "size": 1196
+    },
+    {
+      "path": "flows/tool-diagnostics.flow.json",
+      "sha256": "sha256:8d06c543cd1917bd6405c20d3396a8c13d84568ca135afb801456ab89473a5b4",
+      "size": 528
     },
     {
       "path": "overlays/generate.overlay.json",
@@ -62,8 +72,8 @@
     },
     {
       "path": "wit/deps/deepthink.wit",
-      "sha256": "sha256:5dc786fe606252ab7ba3a9a5d657de90bd4fc6e5cb058b44229379682e540152",
-      "size": 2392
+      "sha256": "sha256:0372bd2abbc0c0b2aef2f58e1ab65e3e4039eb3e0bbe7add9fc7ddaea9f9f71b",
+      "size": 3735
     },
     {
       "path": "wit/deps/generation-reader.wit",
@@ -81,14 +91,29 @@
       "size": 2202
     },
     {
+      "path": "wit/goal-review-flow.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/goal-review-input.shape.json",
+      "sha256": "sha256:dd20df36b4444733761bdbc1fc8ec43ce2634a00cf327b2d78b7f7f1c9a084fe",
+      "size": 116
+    },
+    {
+      "path": "wit/goal-review-worker.shape.json",
+      "sha256": "sha256:8b42ec5aad9e2bc7077316d4b9352b4895bb1403523ea928602d84c3bbc540b0",
+      "size": 116
+    },
+    {
       "path": "wit/input-context.shape.json",
       "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
       "size": 86
     },
     {
       "path": "wit/pack.wit",
-      "sha256": "sha256:26a1176b19c1de1ee6e6042fc4d23f45e67d80e5d26b4bfd36560ea6078179b6",
-      "size": 263
+      "sha256": "sha256:f045b46c3243172e43bfc605dc3396cafb38a5d8ae7ed2043ea0a0d7b5042528",
+      "size": 366
     },
     {
       "path": "wit/records.shape.json",
@@ -101,6 +126,21 @@
       "size": 86
     },
     {
+      "path": "wit/tool-diagnostics-flow.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/tool-diagnostics.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/tool-receipt-reader.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
       "path": "wit/workflow.shape.json",
       "sha256": "sha256:8ec69d22386d5d9dd5200bc1bac7283b3e635598c3f99c7d1a748727cf5ef731",
       "size": 185
@@ -109,7 +149,9 @@
   "flows": [
     "flows/continuation.flow.json",
     "flows/regeneration.flow.json",
-    "flows/control.flow.json"
+    "flows/control.flow.json",
+    "flows/tool-diagnostics.flow.json",
+    "flows/goal-review.flow.json"
   ],
   "format": "tobkiri.pack/1",
   "id": "local.deepthink",
@@ -137,8 +179,14 @@
       "local.deepthink.continuation-flow@1.0",
       "local.deepthink.continuation-input@1.0",
       "local.deepthink.control-flow@1.0",
+      "local.deepthink.goal-review-flow@1.0",
+      "local.deepthink.goal-review-input@1.0",
+      "local.deepthink.goal-review-worker@1.0",
       "local.deepthink.input-context@1.0",
       "local.deepthink.regeneration-flow@1.0",
+      "local.deepthink.tool-diagnostics-flow@1.0",
+      "local.deepthink.tool-diagnostics@1.0",
+      "local.deepthink.tool-receipt-reader@1.0",
       "local.deepthink.workflow@1.0",
       "local.harness-agent.tool-provider@1.0",
       "local.harness-chat.assistant-output@1.0",
@@ -225,6 +273,36 @@
         "optional": false,
         "shape": "local.harness-chat.conversation-store",
         "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.tool-receipt-reader",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.tool-diagnostics",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.goal-review-worker",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.goal-review-input",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.tool-diagnostics-flow",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.goal-review-flow",
+        "version": "1.0"
       }
     ],
     "provides": [
@@ -236,6 +314,16 @@
       {
         "optional": false,
         "shape": "local.deepthink.input-context",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.tool-receipt-reader",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.goal-review-worker",
         "version": "1.0"
       }
     ],
@@ -291,6 +379,42 @@
     {
       "kind": "port",
       "name": "local.deepthink.input-context",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "port",
+      "name": "local.deepthink.tool-receipt-reader",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "port",
+      "name": "local.deepthink.tool-diagnostics",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "port",
+      "name": "local.deepthink.goal-review-worker",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "port",
+      "name": "local.deepthink.goal-review-input",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "flow",
+      "name": "local.deepthink.tool-diagnostics-flow",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "flow",
+      "name": "local.deepthink.goal-review-flow",
       "version": "1.0",
       "wit": "wit/deps/deepthink.wit"
     }

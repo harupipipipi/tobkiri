@@ -1,7 +1,11 @@
 {
   "bindings": {
     "local.deepthink.continuation-input@1": "local.deepthink-input",
+    "local.deepthink.goal-review-input@1": "local.deepthink-input",
+    "local.deepthink.goal-review-worker@1": "local.deepthink",
     "local.deepthink.input-context@1": "local.deepthink",
+    "local.deepthink.tool-diagnostics@1": "local.deepthink-input",
+    "local.deepthink.tool-receipt-reader@1": "local.deepthink",
     "local.deepthink.workflow@1": "local.deepthink",
     "local.harness-agent.tool-provider@1": "local.harness-tools",
     "local.harness-chat.assistant-output@1": "local.terminal-output",
@@ -38,8 +42,14 @@
       "local.deepthink.continuation-flow@1.0",
       "local.deepthink.continuation-input@1.0",
       "local.deepthink.control-flow@1.0",
+      "local.deepthink.goal-review-flow@1.0",
+      "local.deepthink.goal-review-input@1.0",
+      "local.deepthink.goal-review-worker@1.0",
       "local.deepthink.input-context@1.0",
       "local.deepthink.regeneration-flow@1.0",
+      "local.deepthink.tool-diagnostics-flow@1.0",
+      "local.deepthink.tool-diagnostics@1.0",
+      "local.deepthink.tool-receipt-reader@1.0",
       "local.deepthink.workflow@1.0",
       "local.harness-agent.tool-provider@1.0",
       "local.harness-chat.assistant-output@1.0",
@@ -108,8 +118,14 @@
         "local.deepthink.continuation-flow@1.0",
         "local.deepthink.continuation-input@1.0",
         "local.deepthink.control-flow@1.0",
+        "local.deepthink.goal-review-flow@1.0",
+        "local.deepthink.goal-review-input@1.0",
+        "local.deepthink.goal-review-worker@1.0",
         "local.deepthink.input-context@1.0",
         "local.deepthink.regeneration-flow@1.0",
+        "local.deepthink.tool-diagnostics-flow@1.0",
+        "local.deepthink.tool-diagnostics@1.0",
+        "local.deepthink.tool-receipt-reader@1.0",
         "local.deepthink.workflow@1.0",
         "local.harness-agent.tool-provider@1.0",
         "local.harness-chat.assistant-output@1.0",
@@ -155,7 +171,11 @@
         "local.deepthink.continuation-flow@1.0",
         "local.deepthink.continuation-input@1.0",
         "local.deepthink.control-flow@1.0",
-        "local.deepthink.regeneration-flow@1.0"
+        "local.deepthink.goal-review-flow@1.0",
+        "local.deepthink.goal-review-input@1.0",
+        "local.deepthink.regeneration-flow@1.0",
+        "local.deepthink.tool-diagnostics-flow@1.0",
+        "local.deepthink.tool-diagnostics@1.0"
       ],
       "proc": [],
       "pty": false,
@@ -588,13 +608,13 @@
     },
     {
       "id": "local.deepthink",
-      "sha256": "sha256:32ac2a67353931db4a0f9d64b866fc51ef9163c373b2844ad85bb618a8352350",
+      "sha256": "sha256:0297f3a392a395d3f94f7fde6dad7f64e82fa7ae97d52836ecf31ca7d5a60d8b",
       "source": "file:../local.deepthink",
       "version": "0.1.0"
     },
     {
       "id": "local.deepthink-input",
-      "sha256": "sha256:6c16c4630baa18415e1a8b30e84dfe87e209a1e9db9b048b3fde1b770f898b63",
+      "sha256": "sha256:27c76ec5f0b70baefb0948c2dd7db6f3ff597f6035088764306fd6a33cefea2f",
       "source": "file:../local.deepthink-input",
       "version": "0.1.0"
     },
@@ -642,7 +662,9 @@
     "ports": [
       "local.harness-chat.user-input@1.0",
       "local.harness-chat.conversation-store@1.0",
-      "local.deepthink.continuation-input@1.0"
+      "local.deepthink.continuation-input@1.0",
+      "local.deepthink.tool-diagnostics@1.0",
+      "local.deepthink.goal-review-input@1.0"
     ],
     "proc": [],
     "pty": false,

@@ -2,13 +2,13 @@
   "files": [
     {
       "path": "component.build.json",
-      "sha256": "sha256:ade587395a0971bcf9c201b9f8b5edd44f5301ad744720dd73c56c739a141208",
+      "sha256": "sha256:f64b898c18132fb4ed885203416b13bb8b70f989f10aee9e1da8b4417c75b723",
       "size": 1724
     },
     {
       "path": "component.wasm",
-      "sha256": "sha256:08605f72477935fe9aee6f596dd291742d5876079aabf87e829d8f3d01826047",
-      "size": 242378
+      "sha256": "sha256:54da5630ba948717adeab7b5b32f1f6b63a2e596c3b1cfcb5407e769a8289226",
+      "size": 251727
     },
     {
       "path": "config.json",
@@ -22,13 +22,13 @@
     },
     {
       "path": "wit/deps/deepthink.wit",
-      "sha256": "sha256:5dc786fe606252ab7ba3a9a5d657de90bd4fc6e5cb058b44229379682e540152",
-      "size": 2392
+      "sha256": "sha256:0372bd2abbc0c0b2aef2f58e1ab65e3e4039eb3e0bbe7add9fc7ddaea9f9f71b",
+      "size": 3735
     },
     {
       "path": "wit/pack.wit",
-      "sha256": "sha256:87fc37ca79225820c563cc3f765dbe3cfe0db9e60eb39b0224ef799626b7b257",
-      "size": 212
+      "sha256": "sha256:f0f4abcfd71ce809ffe5ba06a4898e8b0a3a421d9a2d75b1404c36c43bc5d5a1",
+      "size": 311
     }
   ],
   "flows": [],
@@ -56,7 +56,11 @@
       "local.deepthink.continuation-flow@1.0",
       "local.deepthink.continuation-input@1.0",
       "local.deepthink.control-flow@1.0",
-      "local.deepthink.regeneration-flow@1.0"
+      "local.deepthink.goal-review-flow@1.0",
+      "local.deepthink.goal-review-input@1.0",
+      "local.deepthink.regeneration-flow@1.0",
+      "local.deepthink.tool-diagnostics-flow@1.0",
+      "local.deepthink.tool-diagnostics@1.0"
     ],
     "proc": [],
     "pty": false,
@@ -93,7 +97,27 @@
       },
       {
         "optional": false,
+        "shape": "local.deepthink.tool-diagnostics-flow",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.goal-review-flow",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
         "shape": "local.deepthink.workflow",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.tool-receipt-reader",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.goal-review-worker",
         "version": "1.0"
       }
     ],
@@ -101,6 +125,16 @@
       {
         "optional": false,
         "shape": "local.deepthink.continuation-input",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.tool-diagnostics",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.goal-review-input",
         "version": "1.0"
       }
     ],

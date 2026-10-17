@@ -1,0 +1,8 @@
+{
+  "callbacks": {},
+  "cardinality": "one",
+  "conformance": null,
+  "streams": {
+    "review": "flow-frame"
+  }
+}
