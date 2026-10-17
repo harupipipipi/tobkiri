@@ -273,31 +273,31 @@
     },
     {
       "id": "local.terminal-input",
-      "sha256": "sha256:4d84413f9fdf3a10723a66d15f7ae1d09e8a582da069f75143421c8836594b0f",
+      "sha256": "sha256:8dfbf6736ad1ee34d5b6dbcc703a4d6f5734773db7e9ed64c64da318afbccfd4",
       "source": "file:../../local.terminal-input",
       "version": "0.1.0"
     },
     {
       "id": "local.harness-conversation-store",
-      "sha256": "sha256:3549ea0086788c5300cb00c020b83fe02ba8107019f8b84de974a8d09912f66e",
+      "sha256": "sha256:2041c5bf0c6b6958e5bba245db700ecfc372d48b762d179fde4d76405d0a11af",
       "source": "file:../../local.harness-conversation-store",
       "version": "0.1.0"
     },
     {
       "id": "local.preset-openclaw-hermes-local-service",
-      "sha256": "sha256:504fd74e1eab3e2505675fd565bf23957d3aaa12cebcc8dfb5638065045426f6",
+      "sha256": "sha256:2fdce76ec459408852b932ce064b6ad05ada7ee2d135eacf937cd7c55b313d96",
       "source": "file:../../local.preset-openclaw-hermes-local-service",
       "version": "0.1.0"
     },
     {
       "id": "local.mock-llm",
-      "sha256": "sha256:06f76c8b3d4db2e67b849f6a76ed87bc4fa10e252eebc370d9fa256c07af3970",
+      "sha256": "sha256:8063ac5102531f9af4c25c8fb7a38d66fdf0822ad15465429beddebac04fa630",
       "source": "file:../../local.mock-llm",
       "version": "0.1.0"
     },
     {
       "id": "local.terminal-output",
-      "sha256": "sha256:8dc9e0bc501c29bc8052ed4d9f24159f36189f3aa4e456aa1ad4b678f3989b58",
+      "sha256": "sha256:a77507791909d4613ef76c60cdcf9dc577e5d3d6b6dfdf9f2bc86bb7175b050f",
       "source": "file:../../local.terminal-output",
       "version": "0.1.0"
     }

@@ -199,6 +199,19 @@ fn start_chat(
         if !is_sse {
             return Err(error(ErrorCode::Invalid, "provider response is not SSE"));
         }
+        let mut chat = ChatStream::default();
+        let mut pending = VecDeque::new();
+        // Keep only the public provider receipt. Never forward raw headers.
+        for (_, id) in response
+            .headers()
+            .iter()
+            .filter(|(name, _)| name.eq_ignore_ascii_case("x-generation-id"))
+        {
+            pending.push_back(
+                chat.generation_header(id)
+                    .map_err(|message| error(ErrorCode::Invalid, message))?,
+            );
+        }
         state.next_id = state
             .next_id
             .checked_add(1)
@@ -209,8 +222,8 @@ fn start_chat(
             ActiveStream {
                 response,
                 decoder: Decoder::default(),
-                chat: ChatStream::default(),
-                pending: VecDeque::new(),
+                chat,
+                pending,
             },
         );
         Ok(StreamHandle { id })
@@ -235,46 +248,19 @@ impl stream_source::Guest for Pack {
                 state.streams.remove(&local_id);
                 return Ok(vec![]);
             }
-            let mut events = Vec::new();
-            while events.len() < max as usize {
-                if flow::is_cancelled() {
-                    state.streams.remove(&local_id);
-                    return Err(error(ErrorCode::Cancelled, "run cancelled"));
-                }
-                if let Some(event) = stream.pending.pop_front() {
-                    events.push(event);
-                    continue;
-                }
-                if stream.chat.is_done() {
-                    break;
-                }
-                if let Some(frame) = stream.decoder.next_frame() {
-                    stream.pending.extend(
-                        stream
-                            .chat
-                            .accept(&frame)
-                            .map_err(|message| error(ErrorCode::Invalid, message))?,
-                    );
-                    continue;
-                }
-                match stream.response.read(8192)? {
-                    Some(chunk) => stream
-                        .decoder
-                        .feed(&chunk)
-                        .map_err(|message| error(ErrorCode::Invalid, message))?,
-                    None => {
-                        stream
-                            .decoder
-                            .finish()
-                            .map_err(|message| error(ErrorCode::Invalid, message))?;
-                        return Err(error(
-                            ErrorCode::Invalid,
-                            "provider ended before SSE [DONE]",
-                        ));
+            pull_events(
+                &mut stream.decoder,
+                &mut stream.chat,
+                &mut stream.pending,
+                max as usize,
+                || {
+                    if flow::is_cancelled() {
+                        return Err(error(ErrorCode::Cancelled, "run cancelled"));
                     }
-                }
-            }
-            Ok(events)
+                    stream.response.read(8192)
+                },
+                |message| error(ErrorCode::Invalid, message),
+            )
         });
         if result.is_err() {
             Self::cancel(local_id);
@@ -285,6 +271,179 @@ impl stream_source::Guest for Pack {
         STATE.with_borrow_mut(|state| {
             state.streams.remove(&local_id);
         });
+    }
+}
+
+// Return every public batch before the next blocking read. Bounded metadata-only
+// work yields a content-free heartbeat rather than a false EOF or a long loop.
+fn pull_events<E>(
+    decoder: &mut Decoder,
+    chat: &mut ChatStream,
+    pending: &mut VecDeque<String>,
+    max: usize,
+    mut read: impl FnMut() -> Result<Option<Vec<u8>>, E>,
+    invalid: impl Fn(&'static str) -> E,
+) -> Result<Vec<String>, E> {
+    let mut events = Vec::new();
+    let mut reads = 0;
+    let mut frames = 0;
+    let mut received = 0usize;
+    loop {
+        while events.len() < max {
+            let Some(event) = pending.pop_front() else {
+                break;
+            };
+            events.push(event);
+        }
+        if !events.is_empty() || chat.is_done() {
+            return Ok(events);
+        }
+        if frames >= 16 {
+            break;
+        }
+        if let Some(frame) = decoder.next_frame() {
+            frames += 1;
+            pending.extend(chat.accept(&frame).map_err(&invalid)?);
+            continue;
+        }
+        if reads >= 1 {
+            break;
+        }
+        reads += 1;
+        match read()? {
+            Some(chunk) => {
+                received += chunk.len();
+                decoder.feed(&chunk).map_err(&invalid)?;
+            }
+            None => {
+                decoder.finish().map_err(&invalid)?;
+                return Err(invalid("provider ended before SSE [DONE]"));
+            }
+        }
+    }
+    Ok(vec![
+        serde_json::json!({"kind":"progress","text":serde_json::json!({
+        "version":"tobkiri.chat.transport.v1","received_bytes":received,"processed_frames":frames
+    }).to_string(),"prompt-tokens":null,"completion-tokens":null})
+        .to_string(),
+    ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn public_receipt_and_partial_are_returned_before_another_blocking_read() {
+        let mut decoder = Decoder::default();
+        let mut chat = ChatStream::default();
+        let mut pending = VecDeque::from([chat.generation_header("gen-test").unwrap()]);
+        let mut reads = 0;
+        let first = pull_events(
+            &mut decoder,
+            &mut chat,
+            &mut pending,
+            64,
+            || {
+                reads += 1;
+                Err("must not read")
+            },
+            |error| error,
+        )
+        .unwrap();
+        assert_eq!(reads, 0);
+        assert!(first[0].contains("gen-test"));
+        decoder
+            .feed(
+                b"data: {\"id\":\"gen-test\",\"choices\":[{\"delta\":{\"content\":\"391\"}}]}\n\n",
+            )
+            .unwrap();
+        let partial = pull_events(
+            &mut decoder,
+            &mut chat,
+            &mut pending,
+            64,
+            || {
+                reads += 1;
+                Err("later read failed")
+            },
+            |error| error,
+        )
+        .unwrap();
+        assert_eq!(reads, 0);
+        assert!(partial[0].contains("391"));
+        assert_eq!(
+            pull_events(
+                &mut decoder,
+                &mut chat,
+                &mut pending,
+                64,
+                || Err("later read failed"),
+                |error| error
+            )
+            .unwrap_err(),
+            "later read failed"
+        );
+    }
+
+    #[test]
+    fn private_only_or_fragmented_transport_yields_bounded_content_free_heartbeat() {
+        for chunk in [
+            b"data: {\"choices\":[{\"delta\":{\"reasoning\":\"private-marker\"}}]}\n\n".to_vec(),
+            b"data: {\"choices\":".to_vec(),
+        ] {
+            let mut reads = 0;
+            let events = pull_events(
+                &mut Decoder::default(),
+                &mut ChatStream::default(),
+                &mut VecDeque::new(),
+                64,
+                || {
+                    reads += 1;
+                    Ok::<_, &str>(Some(chunk.clone()))
+                },
+                |error| error,
+            )
+            .unwrap();
+            assert_eq!(reads, 1);
+            assert_eq!(events.len(), 1);
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&events[0]).unwrap()["kind"],
+                "progress"
+            );
+            assert!(!events[0].contains("private-marker"));
+        }
+    }
+
+    #[test]
+    fn empty_batch_is_only_returned_after_verified_done() {
+        let mut decoder = Decoder::default();
+        let mut chat = ChatStream::default();
+        let mut pending = VecDeque::new();
+        decoder.feed(b"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n").unwrap();
+        let mut kinds = Vec::new();
+        for _ in 0..3 {
+            let events = pull_events(
+                &mut decoder,
+                &mut chat,
+                &mut pending,
+                64,
+                || Err("unexpected read"),
+                |error| error,
+            )
+            .unwrap();
+            kinds.extend(events.iter().map(|event| {
+                serde_json::from_str::<serde_json::Value>(event).unwrap()["kind"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            }));
+            if events.is_empty() {
+                assert!(chat.is_done());
+                break;
+            }
+        }
+        assert_eq!(kinds, ["metadata", "done"]);
     }
 }
 

@@ -74,12 +74,53 @@ pub struct ChatStream {
     text: String,
     finished: bool,
     done: bool,
+    metadata: Value,
 }
 
 impl ChatStream {
     /// Whether the response reached both a successful finish and SSE DONE.
     pub fn is_done(&self) -> bool {
         self.done
+    }
+
+    /// Capture the public receipt before reading the response body. This is a
+    /// provider generation id, never the Core's local stream handle.
+    pub fn generation_header(&mut self, id: &str) -> Result<String, &'static str> {
+        self.merge_identity("generation_id", id)?;
+        Ok(self.metadata_event())
+    }
+
+    fn merge_identity(&mut self, key: &str, value: &str) -> Result<bool, &'static str> {
+        if value.is_empty() || value.len() > 256 || value.chars().any(char::is_control) {
+            return Err("provider public identity is invalid");
+        }
+        if key == "generation_id"
+            && (value.len() > 128
+                || !value
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b)))
+        {
+            return Err("provider generation identity is invalid");
+        }
+        if self.metadata.is_null() {
+            self.metadata = json!({});
+        }
+        if let Some(old) = self.metadata.get(key) {
+            if old.as_str() != Some(value) {
+                return Err("provider changed its generation identity");
+            }
+            return Ok(false);
+        }
+        self.metadata[key] = json!(value);
+        Ok(true)
+    }
+
+    fn metadata_event(&self) -> String {
+        let mut metadata = self.metadata.clone();
+        metadata["version"] = json!("tobkiri.chat.metadata.v1");
+        json!({"kind":"metadata","text":metadata.to_string(),
+            "prompt-tokens":null,"completion-tokens":null})
+        .to_string()
     }
 
     /// Consume one decoded SSE data frame.
@@ -100,6 +141,24 @@ impl ChatStream {
             return Err("provider stream failed");
         }
         let mut events = Vec::new();
+        let mut changed = false;
+        for (source, target) in [
+            ("id", "generation_id"),
+            ("model", "model"),
+            ("provider", "provider"),
+        ] {
+            if let Some(value) = value.get(source).filter(|v| !v.is_null()) {
+                changed |= self.merge_identity(
+                    target,
+                    value
+                        .as_str()
+                        .ok_or("provider public identity is invalid")?,
+                )?;
+            }
+        }
+        if changed {
+            events.push(self.metadata_event());
+        }
         if let Some(choices) = value.get("choices") {
             let choices = choices.as_array().ok_or("provider choices are invalid")?;
             for choice in choices {
@@ -129,6 +188,9 @@ impl ChatStream {
                         return Err("provider generation was interrupted or truncated");
                     }
                     self.finished = true;
+                    if self.merge_identity("finish_reason", "stop")? {
+                        events.push(self.metadata_event());
+                    }
                 }
             }
         }
@@ -304,7 +366,11 @@ mod tests {
         assert!(stream.is_done());
         assert!(done[0].contains("391"));
         assert!(!format!("{first:?}{final_events:?}{done:?}").contains("private-test-secret"));
-        let event: Value = serde_json::from_str(&final_events[0]).unwrap();
+        let event: Value = final_events
+            .iter()
+            .map(|event| serde_json::from_str::<Value>(event).unwrap())
+            .find(|event| event["kind"] == "usage")
+            .unwrap();
         let extra: Value = serde_json::from_str(event["text"].as_str().unwrap()).unwrap();
         assert_eq!(extra["cached_input_tokens"], 8);
         assert_eq!(extra["reasoning_tokens"], 4);
@@ -346,5 +412,40 @@ mod tests {
         assert_eq!(decimal_string("1.25e2").unwrap(), "125");
         assert_eq!(decimal_string("1e3").unwrap(), "1000");
         assert_eq!(decimal_string("0").unwrap(), "0");
+    }
+
+    #[test]
+    fn generation_header_and_sse_identity_are_early_stable_and_public_only() {
+        let mut stream = ChatStream::default();
+        let header: Value =
+            serde_json::from_str(&stream.generation_header("gen-abc-123").unwrap()).unwrap();
+        let receipt: Value = serde_json::from_str(header["text"].as_str().unwrap()).unwrap();
+        assert_eq!(receipt["generation_id"], "gen-abc-123");
+        assert!(!stream.is_done());
+        let events = stream.accept(&json!({"id":"gen-abc-123","model":"mimo","provider":"xiaomi",
+            "choices":[{"delta":{"content":"391","reasoning":"private-marker"},"finish_reason":null}]}).to_string()).unwrap();
+        assert!(events.iter().any(|event| event.contains("metadata")));
+        assert!(!events.join("").contains("private-marker"));
+        assert!(stream.accept(r#"{"id":"gen-other","choices":[]}"#).is_err());
+        assert!(
+            ChatStream::default()
+                .generation_header("secret\nheader")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn final_usage_repeating_stop_is_accounting_not_duplicate_completion() {
+        let mut stream = ChatStream::default();
+        stream.generation_header("gen-test").unwrap();
+        stream.accept(r#"{"id":"gen-test","choices":[{"delta":{"content":"391"},"finish_reason":"stop"}]}"#).unwrap();
+        let usage = stream.accept(r#"{"id":"gen-test","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":1}}"#).unwrap();
+        assert_eq!(usage.len(), 1);
+        assert_eq!(
+            serde_json::from_str::<Value>(&usage[0]).unwrap()["kind"],
+            "usage"
+        );
+        assert_eq!(stream.accept("[DONE]").unwrap().len(), 1);
+        assert!(stream.is_done());
     }
 }

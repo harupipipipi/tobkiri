@@ -1,9 +1,11 @@
 use crate::{
     phases,
-    workflow::{self, Failure, Generated, Ports, Run, Settings, Tool},
+    workflow::{
+        self, AttemptContext, Failure, Generated, GenerationProgress, Ports, Run, Settings, Tool,
+    },
 };
 use serde_json::{Value, json};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 fn settings() -> Settings {
     Settings {
@@ -75,6 +77,11 @@ struct FakePorts {
     invalid_after_tool_once: bool,
     selection_gap: Option<Value>,
     repeat_tool_after_rejection: bool,
+    progress_failure: bool,
+    progress: BTreeMap<String, GenerationProgress>,
+    persist_calls: usize,
+    fail_persist_at: Option<usize>,
+    snapshots: Vec<Run>,
 }
 impl Ports for FakePorts {
     fn active(&mut self) -> Result<(), Failure> {
@@ -92,8 +99,21 @@ impl Ports for FakePorts {
         _model: &str,
         messages: &[Value],
         phase: &str,
+        attempt: &AttemptContext,
     ) -> Result<Generated, Failure> {
         self.calls.push(phase.into());
+        if self.progress_failure {
+            let mut progress = GenerationProgress::new(attempt.clone());
+            progress.accept(&json!({"kind":"metadata","text":json!({"version":"tobkiri.chat.metadata.v1","generation_id":"gen-fixture-123","model":"fixture-model","provider":"fixture-provider"}).to_string()}))?;
+            progress.accept(&json!({"kind":"delta","text":"{\"summary\":"}))?;
+            progress.accept(&json!({"kind":"usage","prompt-tokens":10,"completion-tokens":2}))?;
+            progress.next_snapshot()?;
+            self.progress.insert(attempt.attempt_id.clone(), progress);
+            return Err(Failure {
+                code: "unavailable".into(),
+                message: "fixture stream interrupted".into(),
+            });
+        }
         if phase == "goal_intake"
             && (!self.bad_generation_seen || self.invalid_public_output_count > 0)
             && let Some(text) = self.invalid_public_output_once.clone()
@@ -210,6 +230,12 @@ impl Ports for FakePorts {
             Ok(json!({"ok":true,"result":{"path":"answer.md","size":3,"digest":"sha256:fixture"}}))
         }
     }
+    fn generation_progress(
+        &mut self,
+        attempt: &AttemptContext,
+    ) -> Result<Option<GenerationProgress>, Failure> {
+        Ok(self.progress.get(&attempt.attempt_id).cloned())
+    }
     fn verify_artifact(&mut self, path: &str) -> Result<Value, Failure> {
         if self.effects == 0 {
             return Err(workflow::invalid("missing actual artifact"));
@@ -217,10 +243,18 @@ impl Ports for FakePorts {
         Ok(json!({"path":path,"kind":"tool-owned-storage-artifact","digest":"sha256:fixture"}))
     }
     fn persist(&mut self, run: &Run) -> Result<(), Failure> {
+        self.persist_calls += 1;
+        if self.fail_persist_at == Some(self.persist_calls) {
+            return Err(Failure {
+                code: "core-internal".into(),
+                message: "fixture checkpoint commit unknown; do not replay".into(),
+            });
+        }
         if self.first_rejection_snapshot.is_none() && !run.rejected_generations.is_empty() {
             self.first_rejection_snapshot = Some(run.clone());
         }
         self.saved = Some(run.clone());
+        self.snapshots.push(run.clone());
         Ok(())
     }
 }
@@ -581,7 +615,10 @@ fn first_rejection_checkpoint_is_already_quarantined_and_resumes_without_overwri
     let checkpoint = ports.first_rejection_snapshot.as_ref().unwrap();
     assert_eq!(checkpoint.status, "quarantined");
     assert_eq!(checkpoint.goal["status"], "quarantined");
-    assert_eq!(checkpoint.error.as_ref().unwrap().code, "invalid");
+    assert_eq!(
+        checkpoint.error.as_ref().unwrap().code,
+        "invalid-phase-contract"
+    );
     assert!(checkpoint.entry.is_some());
     assert_eq!(checkpoint.attempts.len(), 1);
     assert!(checkpoint.generations.is_empty());
@@ -671,7 +708,7 @@ fn same_phase_resume_regenerates_rejected_outputs_and_keeps_prior_rejections_and
 }
 
 #[test]
-fn transport_resume_reuses_generation_and_tool_receipts_without_repeating_effect() {
+fn unresolved_transport_attempt_blocks_resume_and_preserves_completed_tool_receipts() {
     let config = tool_settings();
     let expected = new_run(config.clone());
     let mut run = expected.clone();
@@ -692,9 +729,13 @@ fn transport_resume_reuses_generation_and_tool_receipts_without_repeating_effect
         .count();
     let saved = serde_json::to_vec(ports.saved.as_ref().unwrap()).unwrap();
     let mut restored: Run = serde_json::from_slice(&saved).unwrap();
-    restored.resume(&expected).unwrap();
-    complete(&mut restored, &mut ports);
-    assert_eq!(restored.status, "completed");
+    let calls_before_resume = ports.calls.len();
+    assert_eq!(
+        restored.resume(&expected).unwrap_err().code,
+        "needs-reconciliation"
+    );
+    assert_eq!(restored.status, "quarantined");
+    assert_eq!(ports.calls.len(), calls_before_resume);
     assert_eq!(ports.effects, 1);
     assert_eq!(
         ports
@@ -712,7 +753,169 @@ fn transport_resume_reuses_generation_and_tool_receipts_without_repeating_effect
         restored.usage()["tokens"]["input_tokens"],
         (ports.calls.len() - 1) * 10
     );
-    assert!(restored.artifacts.contains_key("answer.md"));
+    assert_eq!(
+        restored
+            .tool_receipts
+            .values()
+            .filter(|receipt| receipt.status == "completed")
+            .count(),
+        1
+    );
+    assert!(restored.output().is_empty());
+}
+
+#[test]
+fn interrupted_public_progress_survives_restore_but_never_becomes_a_phase_cache_hit() {
+    let expected = new_run(settings());
+    let mut run = expected.clone();
+    let mut ports = FakePorts {
+        progress_failure: true,
+        ..Default::default()
+    };
+    assert!(run.advance(&mut ports).is_err());
+    let original_inputs = run.phase_inputs.clone();
+    let bytes = serde_json::to_vec(ports.saved.as_ref().unwrap()).unwrap();
+    let mut restored: Run = serde_json::from_slice(&bytes).unwrap();
+    let (id, attempt) = restored.attempts.iter().next().unwrap();
+    assert_eq!(
+        attempt["progress"]["metadata"]["generation_id"],
+        "gen-fixture-123"
+    );
+    assert_eq!(attempt["progress"]["public_text"], "{\"summary\":");
+    assert_eq!(attempt["context"]["attempt_id"], *id);
+    assert_eq!(
+        attempt["context"]["request_digest"].as_str().unwrap().len(),
+        64
+    );
+    assert_eq!(
+        attempt["context"]["route_digest"].as_str().unwrap().len(),
+        64
+    );
+    assert_eq!(restored.usage()["tokens"]["input_tokens"], 10);
+    assert_eq!(restored.usage()["tokens_complete"], false);
+    assert_eq!(restored.usage()["cost_known"], false);
+    assert!(restored.generations.is_empty());
+    assert!(restored.rejected_generations.is_empty());
+    assert!(restored.output().is_empty());
+    assert_eq!(
+        restored.resume(&expected).unwrap_err().code,
+        "needs-reconciliation"
+    );
+    assert_eq!(restored.phase_inputs, original_inputs);
+    // Even callers forcing the in-memory status cannot cause another POST.
+    restored.status = "running".into();
+    assert!(restored.advance(&mut ports).is_err());
+    assert_eq!(ports.calls.len(), 1);
+}
+
+#[test]
+fn legacy_pending_and_completed_attempt_without_public_generation_cannot_replay() {
+    for status in ["pending", "completed"] {
+        let expected = new_run(settings());
+        let mut run = expected.clone();
+        run.version = "deepthink.workflow.v3".into();
+        run.attempts.insert(
+            "goal_intake@0:0#0:0".into(),
+            json!({"phase":"goal_intake","status":status,"usage":null}),
+        );
+        let before = serde_json::to_value(&run).unwrap();
+        assert_eq!(
+            run.resume(&expected).unwrap_err().code,
+            "needs-reconciliation"
+        );
+        assert_eq!(serde_json::to_value(&run).unwrap(), before);
+    }
+}
+
+#[test]
+fn every_completed_attempt_and_its_public_generation_share_one_checkpoint() {
+    for invalid in [false, true] {
+        let mut run = new_run(settings());
+        let mut ports = FakePorts {
+            invalid_public_output_once: invalid.then(|| "{".into()),
+            ..Default::default()
+        };
+        let _ = run.advance(&mut ports);
+        for snapshot in &ports.snapshots {
+            for attempt in snapshot
+                .attempts
+                .values()
+                .filter(|attempt| attempt["status"] == "completed")
+            {
+                let key = attempt["context"]["generation_key"].as_str().unwrap();
+                assert!(
+                    snapshot.generations.contains_key(key)
+                        || snapshot.rejected_generations.contains_key(key)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn unconfirmed_checkpoint_never_retries_a_paid_request_or_writes_over_an_unknown_commit() {
+    for (at, invalid) in [(3, false), (4, false), (4, true)] {
+        let mut config = settings();
+        config.max_contract_retries = 3;
+        let mut run = new_run(config);
+        let mut ports = FakePorts {
+            fail_persist_at: Some(at),
+            invalid_public_output_once: invalid.then(|| "{".into()),
+            ..Default::default()
+        };
+        let error = run.advance(&mut ports).unwrap_err();
+        assert_eq!(error.code, "checkpoint-unconfirmed");
+        assert_eq!(ports.persist_calls, at);
+        assert_eq!(ports.calls.len(), usize::from(at == 4));
+        assert!(run.contract_retries.is_empty());
+        if at == 4 {
+            let saved = ports.saved.as_ref().unwrap();
+            assert_eq!(
+                saved.ensure_generations_reconciled().unwrap_err().code,
+                "needs-reconciliation"
+            );
+        }
+    }
+    let internal = crate::failure(crate::Error {
+        code: crate::ErrorCode::Internal,
+        message: "unconfirmed commit".into(),
+    });
+    assert_eq!(internal.code, "core-internal");
+}
+
+#[test]
+fn progress_keeps_only_public_fields_and_rejects_route_identity_or_prefix_changes() {
+    let mut run = new_run(settings());
+    let mut ports = FakePorts {
+        progress_failure: true,
+        ..Default::default()
+    };
+    let _ = run.advance(&mut ports);
+    let mut progress = ports.progress.values().next().unwrap().clone();
+    let original = serde_json::to_value(&run).unwrap();
+    progress.attempt.route_digest = "different-route".into();
+    assert!(run.merge_generation_progress(progress).is_err());
+    assert_eq!(serde_json::to_value(&run).unwrap(), original);
+    let mut progress = ports.progress.values().next().unwrap().clone();
+    progress.public_text = "changed".into();
+    assert!(run.merge_generation_progress(progress).is_err());
+    let mut progress = ports.progress.values().next().unwrap().clone();
+    progress.next_snapshot().unwrap();
+    progress.usage["input_tokens"] = json!(9);
+    assert!(run.merge_generation_progress(progress).is_err());
+    let mut progress = ports.progress.values().next().unwrap().clone();
+    progress.metadata["reasoning"] = json!("private-marker");
+    assert!(run.merge_generation_progress(progress).is_err());
+    let mut progress = ports.progress.values().next().unwrap().clone();
+    progress
+        .accept(&json!({"kind":"progress","text":"private-marker-must-not-persist"}))
+        .unwrap();
+    assert!(
+        !serde_json::to_string(&progress)
+            .unwrap()
+            .contains("private-marker")
+    );
+    assert!(progress.accept(&json!({"kind":"metadata","text":json!({"version":"tobkiri.chat.metadata.v1","reasoning":"private-marker"}).to_string()})).is_err());
 }
 
 #[test]
@@ -1138,8 +1341,9 @@ mod actual_tool_engine {
             model: &str,
             messages: &[Value],
             phase: &str,
+            attempt: &AttemptContext,
         ) -> Result<Generated, Failure> {
-            let mut generated = self.models.generate(model, messages, phase)?;
+            let mut generated = self.models.generate(model, messages, phase, attempt)?;
             let mut envelope: Value = serde_json::from_str(&generated.text).unwrap();
             if phase == "means_selection" {
                 envelope["result"]["selected_tools"] = json!([
@@ -1198,16 +1402,15 @@ mod actual_tool_engine {
         let mut ports = RealPorts {
             models: FakePorts {
                 tool_mode: true,
-                fail_after_tool: true,
                 ..Default::default()
             },
             store: Memory::default(),
             tool_results: vec![],
         };
-        while run.status == "running" {
-            let _ = run.advance(&mut ports);
+        while run.status == "running" && !run.artifacts.contains_key("answer.md") {
+            run.advance(&mut ports).unwrap();
         }
-        assert_eq!(run.status, "quarantined");
+        assert_eq!(run.status, "running");
         assert_eq!(ports.tool_results.len(), 4);
         assert_eq!(ports.tool_results[2].1["result"]["content"], "323");
         assert_eq!(ports.tool_results[3].1["result"]["value"], 323);
@@ -1238,6 +1441,6 @@ mod actual_tool_engine {
             restored.artifacts["answer.md"]["digest"],
             engine::digest(b"323")
         );
-        assert_eq!(restored.usage()["cost_known"], false);
+        assert_eq!(restored.usage()["cost_known"], true);
     }
 }

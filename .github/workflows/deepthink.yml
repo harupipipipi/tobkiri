@@ -44,7 +44,7 @@ jobs:
         run: >-
           cargo test --manifest-path packs/Cargo.toml
           -p tobkiri-guest-sdk -p tobkiri-pack-harness-tools
-          -p tobkiri-pack-deepthink --locked --lib
+          -p tobkiri-pack-deepthink -p tobkiri-pack-openai-compat-provider --locked --lib
       - name: UI usage accounting and syntax
         run: |
           node --test packs/tests/test_ui_accounting.mjs
@@ -77,7 +77,6 @@ jobs:
         run: |
           status=0
           cargo test -p tobkiri-canon --lib --locked || status=$?
-          cargo test -p tobkiri-wasm --lib --locked allocation || status=$?
           cargo test -p tobkiri-wasm --test byte_list_abi --locked || status=$?
           exit "$status"
       - name: Bounded call trees, stream cleanup and native User entry
@@ -113,6 +112,11 @@ jobs:
       - name: Native User port values and streams
         if: ${{ !cancelled() }}
         run: cargo test -p tobkiri-core --lib --locked user_ports
+      # These tests require the real allocation-owner backend. Unsupported
+      # Linux owner refusal is exercised by the Core User-entry test above.
+      - name: Native prepaid allocation ownership
+        if: ${{ !cancelled() }}
+        run: cargo test -p tobkiri-wasm --lib --locked allocation
       - name: Prepaid byte-list ABI
         if: ${{ !cancelled() }}
         run: cargo test -p tobkiri-wasm --test byte_list_abi --locked

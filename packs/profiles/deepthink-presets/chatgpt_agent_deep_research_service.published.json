@@ -455,31 +455,31 @@
     },
     {
       "id": "local.terminal-input",
-      "sha256": "sha256:4d84413f9fdf3a10723a66d15f7ae1d09e8a582da069f75143421c8836594b0f",
+      "sha256": "sha256:8dfbf6736ad1ee34d5b6dbcc703a4d6f5734773db7e9ed64c64da318afbccfd4",
       "source": "file:../../local.terminal-input",
       "version": "0.1.0"
     },
     {
       "id": "local.harness-conversation-store",
-      "sha256": "sha256:3549ea0086788c5300cb00c020b83fe02ba8107019f8b84de974a8d09912f66e",
+      "sha256": "sha256:2041c5bf0c6b6958e5bba245db700ecfc372d48b762d179fde4d76405d0a11af",
       "source": "file:../../local.harness-conversation-store",
       "version": "0.1.0"
     },
     {
       "id": "local.deepthink-preset-chatgpt-agent-deep-research-service",
-      "sha256": "sha256:ba458d309e5621052841d62b4b2113d9b7033b734aea6ad5b55b1fe309adb4d4",
+      "sha256": "sha256:540253999774eb71dda6605ac4067fc48885514c98b6d9a82de3ba530e5e8794",
       "source": "file:../../local.deepthink-preset-chatgpt-agent-deep-research-service",
       "version": "0.1.0"
     },
     {
       "id": "local.openrouter-mimo-provider",
-      "sha256": "sha256:c83c49963c8a460da7f939eeaa45fe0b3f6ff6f08bee5042018fe8a100ea62e1",
+      "sha256": "sha256:778252f475f8b5ea3f960eb11a6b0dfaf884541e2a99743cfbe82b7d22d50582",
       "source": "file:../../local.openrouter-mimo-provider",
       "version": "0.1.0"
     },
     {
       "id": "local.terminal-output",
-      "sha256": "sha256:8dc9e0bc501c29bc8052ed4d9f24159f36189f3aa4e456aa1ad4b678f3989b58",
+      "sha256": "sha256:a77507791909d4613ef76c60cdcf9dc577e5d3d6b6dfdf9f2bc86bb7175b050f",
       "source": "file:../../local.terminal-output",
       "version": "0.1.0"
     },
@@ -497,7 +497,7 @@
     },
     {
       "id": "local.deepthink",
-      "sha256": "sha256:8365bcf22824a5c32b0894e06380a0985cffcb5300005f26f4aaaa31f2b0d897",
+      "sha256": "sha256:dcbd10168b8101d14c8c0249fad76f8ad8516ee8e3bb7b56ea08f5afa1763d84",
       "source": "file:../../local.deepthink",
       "version": "0.1.0"
     },

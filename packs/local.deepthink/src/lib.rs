@@ -19,7 +19,9 @@ use tobkiri::core::{
     flow, storage,
     types::{Error, ErrorCode, StreamHandle},
 };
-use workflow::{Failure, Generated, Ports, Run, Settings, VERSION, invalid};
+use workflow::{
+    AttemptContext, Failure, Generated, GenerationProgress, Ports, Run, Settings, VERSION, invalid,
+};
 
 const LLM: &str = "local.harness-chat.llm-provider@1.0";
 const STRUCTURED_LLM: &str = "local.harness-chat.structured-llm-provider@1.0";
@@ -47,7 +49,8 @@ fn guest_error(failure: Failure) -> Error {
         code: match failure.code.as_str() {
             "cancelled" => ErrorCode::Cancelled,
             "denied" | "blocked" => ErrorCode::Denied,
-            "conflict" => ErrorCode::Conflict,
+            "conflict" | "needs-reconciliation" => ErrorCode::Conflict,
+            "core-internal" | "checkpoint-unconfirmed" => ErrorCode::Internal,
             "unavailable" => ErrorCode::Unavailable,
             "limit-exceeded" => ErrorCode::LimitExceeded,
             _ => ErrorCode::Invalid,
@@ -65,7 +68,9 @@ fn failure(error: Error) -> Failure {
             ErrorCode::Conflict => "conflict",
             ErrorCode::Unavailable => "unavailable",
             ErrorCode::LimitExceeded => "limit-exceeded",
-            _ => "invalid",
+            ErrorCode::Internal => "core-internal",
+            ErrorCode::NotFound => "core-not-found",
+            ErrorCode::Invalid => "core-invalid",
         }
         .into(),
         message: error.message,
@@ -74,6 +79,51 @@ fn failure(error: Error) -> Failure {
 
 fn private_store() -> Result<storage::Store, Failure> {
     storage::open("workflows").map_err(failure)
+}
+
+fn persist_progress(progress: &GenerationProgress) -> Result<(), Failure> {
+    let bytes = serde_json::to_vec(progress)
+        .map_err(|_| invalid("generation progress cannot be serialized"))?;
+    // The attempt intent was already committed before this request. A failed or
+    // unknown write never permits another POST; the older intent stays blocking.
+    let result = (|| {
+        private_store()?
+            .kv_put(&progress.attempt.storage_key(), &bytes)
+            .map_err(failure)
+    })();
+    result.map_err(|error: Failure| Failure {
+        code:"checkpoint-unconfirmed".into(), message:format!("Generation snapshot write was not confirmed; do not automatically repeat the request. {}", error.message)
+    })
+}
+
+fn read_progress(attempt: &AttemptContext) -> Result<Option<GenerationProgress>, Failure> {
+    private_store()?
+        .kv_get(&attempt.storage_key())
+        .map_err(failure)?
+        .map(|bytes| {
+            serde_json::from_slice(&bytes)
+                .map_err(|_| invalid("saved generation progress is invalid"))
+        })
+        .transpose()
+}
+
+fn merge_saved_progress(run: &mut Run) -> Result<(), Failure> {
+    let contexts = run
+        .attempts
+        .values()
+        .filter(|attempt| attempt["status"] != "completed")
+        .filter_map(|attempt| attempt.get("context"))
+        .map(|context| {
+            serde_json::from_value::<AttemptContext>(context.clone())
+                .map_err(|_| invalid("saved attempt binding is invalid"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    for context in contexts {
+        if let Some(progress) = read_progress(&context)? {
+            run.merge_generation_progress(progress)?;
+        }
+    }
+    Ok(())
 }
 
 struct Runtime;
@@ -94,6 +144,7 @@ impl Ports for Runtime {
         model: &str,
         messages: &[Value],
         phase: &str,
+        attempt: &AttemptContext,
     ) -> Result<Generated, Failure> {
         self.active()?;
         // Zero is the typed provider's explicit provider-default convention.
@@ -105,85 +156,65 @@ impl Ports for Runtime {
                 .is_some_and(|settings| settings.structured_provider)
         });
         let (port, arguments) = generation_port_arguments(model, messages, phase, structured);
+        let mut progress = GenerationProgress::new(attempt.clone());
+        // Sidecar admission must succeed before a paid model call can begin.
+        persist_progress(&progress)?;
         let stream =
             flow::call_port_stream(port, "chat", &arguments.to_string()).map_err(failure)?;
         let outcome = (|| {
-            let mut text = String::new();
-            let mut completed = false;
-            let mut usage = json!({});
             loop {
                 self.active()?;
                 let events = flow::pull(stream, 64).map_err(failure)?;
                 if events.is_empty() {
                     break;
                 }
+                let before = (
+                    progress.public_text.len(),
+                    progress.completed,
+                    progress.usage.clone(),
+                    progress.metadata.clone(),
+                );
                 for event in events {
                     let event: Value = serde_json::from_str(&event)
                         .map_err(|_| invalid("provider returned an invalid stream event"))?;
-                    match event["kind"].as_str() {
-                        Some("delta") => {
-                            if completed {
-                                return Err(invalid("provider emitted text after completion"));
-                            }
-                            text.push_str(event["text"].as_str().unwrap_or(""));
-                        }
-                        Some("done") => {
-                            if completed {
-                                return Err(invalid("provider emitted duplicate completion"));
-                            }
-                            let final_text = event["text"]
-                                .as_str()
-                                .ok_or_else(|| invalid("provider completion has no text"))?;
-                            if !text.is_empty() && text != final_text {
-                                return Err(invalid("provider completion differs from its deltas"));
-                            }
-                            text = final_text.into();
-                            completed = true;
-                        }
-                        Some("usage") => {
-                            for (source, target) in [
-                                ("prompt-tokens", "input_tokens"),
-                                ("completion-tokens", "output_tokens"),
-                            ] {
-                                if let Some(tokens) = event[source].as_u64() {
-                                    usage[target] = json!(tokens);
-                                }
-                            }
-                            if let Some(extra) = event["text"].as_str() {
-                                let extra: Value = serde_json::from_str(extra)
-                                    .map_err(|_| invalid("provider usage metadata is malformed"))?;
-                                for key in
-                                    ["cached_input_tokens", "reasoning_tokens", "total_tokens"]
-                                {
-                                    if let Some(tokens) = extra[key].as_u64() {
-                                        usage[key] = json!(tokens);
-                                    }
-                                }
-                                if let Some(cost) = extra["cost_usd"].as_str() {
-                                    usage["cost_usd"] = json!(cost);
-                                }
-                            }
-                        }
-                        Some("progress") => (),
-                        _ => {
-                            return Err(invalid(
-                                "provider stream has no valid completion evidence",
-                            ));
-                        }
-                    }
+                    progress.accept(&event)?;
+                }
+                if before
+                    != (
+                        progress.public_text.len(),
+                        progress.completed,
+                        progress.usage.clone(),
+                        progress.metadata.clone(),
+                    )
+                {
+                    progress.next_snapshot()?;
+                    // Persist changed public evidence before the next blocking
+                    // pull. Private-only heartbeats cause no checkpoint write.
+                    // A terminal snapshot also precedes Generated delivery.
+                    persist_progress(&progress)?;
                 }
             }
-            if !completed {
+            if !progress.completed {
                 return Err(invalid(
                     "provider stream ended before successful completion",
                 ));
             }
-            Ok(Generated { text, usage })
+            Ok(Generated {
+                text: progress.public_text.clone(),
+                usage: progress.usage.clone(),
+            })
         })();
         if outcome.is_err() {
             flow::cancel_stream(stream);
         }
         outcome
+    }
+
+    fn generation_progress(
+        &mut self,
+        attempt: &AttemptContext,
+    ) -> Result<Option<GenerationProgress>, Failure> {
+        read_progress(attempt)
     }
 
     fn tool(&mut self, call: &Value) -> Result<Value, Failure> {
@@ -284,7 +315,10 @@ fn load_run(run_id: &str) -> Result<Run, Error> {
         .map_err(guest_error)?
         .kv_get(&format!("{run_id}/checkpoint"))?
         .ok_or_else(|| guest_error(invalid("workflow was not found")))?;
-    serde_json::from_slice(&bytes).map_err(|_| guest_error(invalid("checkpoint is invalid")))
+    let mut run = serde_json::from_slice(&bytes)
+        .map_err(|_| guest_error(invalid("checkpoint is invalid")))?;
+    merge_saved_progress(&mut run).map_err(guest_error)?;
+    Ok(run)
 }
 
 fn register(mut run: Run) -> Result<StreamHandle, Error> {
@@ -364,6 +398,7 @@ impl Guest for Pack {
         let run = if let Some(bytes) = stored {
             let mut run: Run = serde_json::from_slice(&bytes)
                 .map_err(|_| guest_error(invalid("stored checkpoint is invalid")))?;
+            merge_saved_progress(&mut run).map_err(guest_error)?;
             if explicit_resume {
                 run.resume_pinned(&expected.conversation, &expected.model, &expected.settings)
                     .map_err(guest_error)?;
@@ -403,18 +438,15 @@ impl Guest for Pack {
         if run_id.len() != 64 || !run_id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return Err(guest_error(invalid("invalid run reference")));
         }
-        let bytes = private_store()
-            .map_err(guest_error)?
-            .kv_get(&format!("{run_id}/checkpoint"))?
-            .ok_or_else(|| guest_error(invalid("workflow was not found")))?;
-        let run: Run = serde_json::from_slice(&bytes)
-            .map_err(|_| guest_error(invalid("checkpoint is invalid")))?;
+        let run = load_run(&run_id)?;
+        let reconciliation = run.ensure_generations_reconciled().err();
         // The candidate is only exposed on this explicitly authorized diagnostic
         // port; the assistant stream never emits a rejected candidate as output.
         Ok(
-            json!({"version":VERSION,"run_id":run.id,"status":run.status,"goal":run.goal,
+            json!({"version":run.version,"run_id":run.id,"status":if reconciliation.is_some(){"needs_reconciliation"}else{&run.status},"goal":run.goal,
             "phases":run.phases,"usage":run.usage(),"artifacts":run.artifacts,
-            "capability_gaps":run.settings.capability_gaps,"error":run.error,"output":run.output()})
+            "capability_gaps":run.settings.capability_gaps,"error":run.error,"output":run.output(),
+            "reconciliation":reconciliation,"model_attempts":run.attempts})
             .to_string(),
         )
     }

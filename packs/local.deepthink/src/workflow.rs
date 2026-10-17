@@ -7,7 +7,8 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::phases;
 
-pub const VERSION: &str = "deepthink.workflow.v3";
+pub const VERSION: &str = "deepthink.workflow.v4";
+pub const PROGRESS_VERSION: &str = "deepthink.generation-progress.v1";
 
 fn default_contract_retries() -> u32 {
     2
@@ -97,6 +98,227 @@ pub struct Generated {
     pub usage: Value,
 }
 
+/// Exact, durable identity of one paid request. It never identifies a new retry.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AttemptContext {
+    pub run_id: String,
+    pub run_request_digest: String,
+    pub phase: String,
+    pub generation_key: String,
+    pub attempt_id: String,
+    pub request_digest: String,
+    pub route_digest: String,
+}
+
+impl AttemptContext {
+    pub fn storage_key(&self) -> String {
+        format!(
+            "{}/generation-progress/{}",
+            self.run_id,
+            digest(&json!(self))
+        )
+    }
+}
+
+/// Public stream evidence, separate from validated phase cache and tool receipts.
+/// No raw SSE, headers, reasoning, secret values or arbitrary provider fields.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct GenerationProgress {
+    pub version: String,
+    pub attempt: AttemptContext,
+    pub sequence: u64,
+    pub public_text: String,
+    pub usage: Value,
+    pub metadata: Value,
+    pub completed: bool,
+}
+
+impl GenerationProgress {
+    pub fn new(attempt: AttemptContext) -> Self {
+        Self {
+            version: PROGRESS_VERSION.into(),
+            attempt,
+            sequence: 0,
+            public_text: String::new(),
+            usage: json!({}),
+            metadata: json!({}),
+            completed: false,
+        }
+    }
+
+    pub fn accept(&mut self, event: &Value) -> Result<(), Failure> {
+        match event["kind"].as_str() {
+            Some("delta") => {
+                let text = event["text"]
+                    .as_str()
+                    .ok_or_else(|| invalid("provider delta has no public text"))?;
+                if self.completed
+                    || self.public_text.len().saturating_add(text.len()) > 4 * 1024 * 1024
+                {
+                    return Err(invalid(
+                        "provider delta followed completion or exceeded four MiB",
+                    ));
+                }
+                self.public_text.push_str(text);
+            }
+            Some("done") => {
+                let text = event["text"]
+                    .as_str()
+                    .ok_or_else(|| invalid("provider completion has no text"))?;
+                if self.completed
+                    || text.len() > 4 * 1024 * 1024
+                    || (!self.public_text.is_empty() && self.public_text != text)
+                {
+                    return Err(invalid(
+                        "provider completion differs from its public deltas",
+                    ));
+                }
+                self.public_text = text.into();
+                self.completed = true;
+            }
+            Some("metadata") => {
+                let metadata: Value = serde_json::from_str(
+                    event["text"]
+                        .as_str()
+                        .ok_or_else(|| invalid("provider metadata has no public payload"))?,
+                )
+                .map_err(|_| invalid("provider metadata is invalid"))?;
+                if metadata["version"] != "tobkiri.chat.metadata.v1"
+                    || metadata.as_object().is_none_or(|fields| {
+                        fields.keys().any(|key| {
+                            ![
+                                "version",
+                                "generation_id",
+                                "model",
+                                "provider",
+                                "finish_reason",
+                            ]
+                            .contains(&key.as_str())
+                        })
+                    })
+                {
+                    return Err(invalid(
+                        "provider metadata has an unsupported public schema",
+                    ));
+                }
+                for key in ["generation_id", "model", "provider", "finish_reason"] {
+                    if let Some(value) = metadata.get(key) {
+                        let text = value
+                            .as_str()
+                            .ok_or_else(|| invalid("provider identity is invalid"))?;
+                        if text.is_empty()
+                            || text.len() > 256
+                            || text.chars().any(char::is_control)
+                            || (key == "generation_id"
+                                && (text.len() > 128
+                                    || !text
+                                        .bytes()
+                                        .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))))
+                            || (key == "finish_reason" && text != "stop")
+                            || self.metadata.get(key).is_some_and(|old| old != value)
+                        {
+                            return Err(invalid(
+                                "provider changed or invalidated its public identity",
+                            ));
+                        }
+                        self.metadata[key] = value.clone();
+                    }
+                }
+            }
+            Some("usage") => {
+                for (source, target) in [
+                    ("prompt-tokens", "input_tokens"),
+                    ("completion-tokens", "output_tokens"),
+                ] {
+                    if let Some(value) = event.get(source).filter(|v| !v.is_null()) {
+                        self.merge_counter(target, value)?;
+                    }
+                }
+                if let Some(extra) = event["text"].as_str() {
+                    let extra: Value = serde_json::from_str(extra)
+                        .map_err(|_| invalid("provider usage metadata is malformed"))?;
+                    for key in ["cached_input_tokens", "reasoning_tokens", "total_tokens"] {
+                        if let Some(value) = extra.get(key).filter(|v| !v.is_null()) {
+                            self.merge_counter(key, value)?;
+                        }
+                    }
+                    if let Some(cost) = extra.get("cost_usd").filter(|v| !v.is_null()) {
+                        let text = cost
+                            .as_str()
+                            .ok_or_else(|| invalid("provider cost receipt is invalid"))?;
+                        if sum_decimals(&[text.to_owned()]).is_none()
+                            || self.usage.get("cost_usd").is_some_and(|old| old != cost)
+                        {
+                            return Err(invalid("provider cost receipt changed or is invalid"));
+                        }
+                        self.usage["cost_usd"] = cost.clone();
+                    }
+                }
+            }
+            Some("progress") => (), // Content-free heartbeat; do not persist arbitrary text.
+            _ => return Err(invalid("provider stream has no valid completion evidence")),
+        }
+        Ok(())
+    }
+
+    fn merge_counter(&mut self, key: &str, value: &Value) -> Result<(), Failure> {
+        let count = value
+            .as_u64()
+            .ok_or_else(|| invalid("provider usage counter is invalid"))?;
+        if self
+            .usage
+            .get(key)
+            .and_then(Value::as_u64)
+            .is_some_and(|old| old > count)
+        {
+            return Err(invalid("provider usage counter decreased"));
+        }
+        self.usage[key] = json!(count);
+        Ok(())
+    }
+
+    pub fn next_snapshot(&mut self) -> Result<(), Failure> {
+        self.sequence = self
+            .sequence
+            .checked_add(1)
+            .ok_or_else(|| invalid("generation progress sequence exhausted"))?;
+        Ok(())
+    }
+
+    fn validate_snapshot(&self) -> Result<(), Failure> {
+        if self.version != PROGRESS_VERSION
+            || !self.metadata.is_object()
+            || !self.usage.is_object()
+            || self.public_text.len() > 4 * 1024 * 1024
+        {
+            return Err(invalid(
+                "saved generation progress has an invalid public schema",
+            ));
+        }
+        let mut normalized = Self::new(self.attempt.clone());
+        let mut metadata = self.metadata.clone();
+        metadata["version"] = json!("tobkiri.chat.metadata.v1");
+        normalized.accept(&json!({"kind":"metadata","text":metadata.to_string()}))?;
+        normalized.accept(&json!({"kind":"delta","text":self.public_text}))?;
+        normalized.accept(
+            &json!({"kind":"usage","prompt-tokens":self.usage["input_tokens"],
+            "completion-tokens":self.usage["output_tokens"],"text":json!({
+                "cached_input_tokens":self.usage["cached_input_tokens"],
+                "reasoning_tokens":self.usage["reasoning_tokens"],
+                "total_tokens":self.usage["total_tokens"],"cost_usd":self.usage["cost_usd"]
+            }).to_string()}),
+        )?;
+        if normalized.metadata != self.metadata || normalized.usage != self.usage {
+            return Err(invalid(
+                "saved generation progress contains unsupported fields",
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CachedGeneration {
     pub request_digest: String,
@@ -140,7 +362,14 @@ pub trait Ports {
         model: &str,
         messages: &[Value],
         phase: &str,
+        attempt: &AttemptContext,
     ) -> Result<Generated, Failure>;
+    fn generation_progress(
+        &mut self,
+        _attempt: &AttemptContext,
+    ) -> Result<Option<GenerationProgress>, Failure> {
+        Ok(None)
+    }
     fn tool(&mut self, call: &Value) -> Result<Value, Failure>;
     fn verify_artifact(&mut self, path: &str) -> Result<Value, Failure>;
     fn persist(&mut self, run: &Run) -> Result<(), Failure>;
@@ -270,6 +499,15 @@ pub fn review_approved(review: &Value, candidate: &Value, expected: &BTreeSet<St
 }
 
 impl Run {
+    fn save(&self, ports: &mut impl Ports) -> Result<(), Failure> {
+        ports.persist(self).map_err(|error| Failure {
+            code: "checkpoint-unconfirmed".into(),
+            message: format!(
+                "Checkpoint write was not confirmed; do not automatically repeat the request. {}",
+                error.message
+            ),
+        })
+    }
     pub fn new(
         conversation: String,
         model: String,
@@ -330,6 +568,7 @@ impl Run {
     }
 
     pub fn resume(&mut self, expected: &Self) -> Result<(), Failure> {
+        self.ensure_generations_reconciled()?;
         if self.version != VERSION || self.request_digest != expected.request_digest {
             return Err(invalid(
                 "resume cannot change the exact model, input or captured configuration",
@@ -390,6 +629,92 @@ impl Run {
             self.status = "running".into();
             self.error = None;
         }
+        Ok(())
+    }
+
+    /// Pending legacy attempts and completed receipts without their exact public
+    /// generation are both unresolved. No continuation may create a fresh POST.
+    pub fn ensure_generations_reconciled(&self) -> Result<(), Failure> {
+        if self.attempts.iter().any(|(id, attempt)| {
+            let key = attempt
+                .pointer("/context/generation_key")
+                .and_then(Value::as_str)
+                .or_else(|| id.rsplit_once(':').map(|(key, _)| key));
+            let record = key.and_then(|key| {
+                self.generations
+                    .get(key)
+                    .or_else(|| self.rejected_generations.get(key))
+            });
+            attempt["status"] != "completed"
+                || record.is_none()
+                || attempt
+                    .pointer("/context/request_digest")
+                    .and_then(Value::as_str)
+                    .is_some_and(|expected| {
+                        record.is_none_or(|record| record.request_digest != expected)
+                    })
+        }) {
+            return Err(Failure { code:"needs-reconciliation".into(), message:
+                "A model attempt has no durably finalized generation. Inspect its retained provider id, public partial and usage; reconcile it explicitly before continuing. No model request was automatically repeated.".into() });
+        }
+        Ok(())
+    }
+
+    pub fn merge_generation_progress(
+        &mut self,
+        progress: GenerationProgress,
+    ) -> Result<(), Failure> {
+        progress.validate_snapshot()?;
+        let attempt = self
+            .attempts
+            .get_mut(&progress.attempt.attempt_id)
+            .ok_or_else(|| invalid("generation progress has no original attempt"))?;
+        if progress.version != PROGRESS_VERSION
+            || progress.attempt.run_id != self.id
+            || progress.attempt.run_request_digest != self.request_digest
+            || attempt.get("context") != Some(&json!(progress.attempt))
+        {
+            return Err(invalid(
+                "generation progress changed its pinned request or route",
+            ));
+        }
+        if let Some(previous) = attempt.get("progress") {
+            let previous: GenerationProgress = serde_json::from_value(previous.clone())
+                .map_err(|_| invalid("saved generation progress is invalid"))?;
+            if progress.sequence < previous.sequence
+                || !progress.public_text.starts_with(&previous.public_text)
+                || (previous.completed && !progress.completed)
+                || (progress.sequence == previous.sequence && progress != previous)
+            {
+                return Err(invalid("generation progress regressed"));
+            }
+            for (key, value) in previous
+                .usage
+                .as_object()
+                .ok_or_else(|| invalid("saved usage is invalid"))?
+            {
+                let current = progress.usage.get(key);
+                if current.is_none()
+                    || (key == "cost_usd" && current != Some(value))
+                    || value.as_u64().is_some_and(|old| {
+                        current.and_then(Value::as_u64).is_none_or(|new| new < old)
+                    })
+                {
+                    return Err(invalid("generation progress usage regressed"));
+                }
+            }
+            for (key, value) in previous
+                .metadata
+                .as_object()
+                .ok_or_else(|| invalid("saved metadata is invalid"))?
+            {
+                if progress.metadata.get(key) != Some(value) {
+                    return Err(invalid("generation progress identity changed"));
+                }
+            }
+        }
+        attempt["usage"] = progress.usage.clone();
+        attempt["progress"] = json!(progress);
         Ok(())
     }
 
@@ -514,6 +839,7 @@ impl Run {
     }
 
     fn generate_phase(&mut self, ports: &mut impl Ports, phase: &Phase) -> Result<Value, Failure> {
+        self.ensure_generations_reconciled()?;
         if self
             .tool_receipts
             .values()
@@ -536,7 +862,7 @@ impl Run {
             let messages = self.phase_messages(phase);
             self.phase_inputs
                 .insert(phase_key.clone(), messages.clone());
-            ports.persist(self)?;
+            self.save(ports)?;
             messages
         };
         for round in 0..=self.settings.max_tool_rounds {
@@ -566,24 +892,65 @@ impl Run {
                 // A pending generation remains durable even if the transport
                 // stops before it can return a usage receipt.
                 let attempt = format!("{}:{}", key, self.attempts.len());
+                let context = AttemptContext {
+                    run_id: self.id.clone(),
+                    run_request_digest: self.request_digest.clone(),
+                    phase: phase.id.clone(),
+                    generation_key: key.clone(),
+                    attempt_id: attempt.clone(),
+                    request_digest: request_digest.clone(),
+                    route_digest: digest(&json!({"model":self.model,"settings":self.settings})),
+                };
                 self.attempts.insert(
                     attempt.clone(),
-                    json!({"phase":phase.id,"status":"pending","usage":null}),
+                    json!({"phase":phase.id,"status":"pending","usage":null,"context":context}),
                 );
-                ports.persist(self)?;
-                let generated = ports.generate(&self.model, &messages, &phase.id)?;
-                self.attempts.insert(
-                    attempt,
-                    json!({"phase":phase.id,"status":"completed","usage":generated.usage}),
-                );
-                ports.persist(self)?;
-                generated
+                self.save(ports)?;
+                let outcome = ports.generate(&self.model, &messages, &phase.id, &context);
+                if let Err(error) = &outcome
+                    && error.code == "checkpoint-unconfirmed"
+                {
+                    return Err(error.clone());
+                }
+                let progress = ports.generation_progress(&context);
+                match outcome {
+                    Ok(generated) => {
+                        if let Some(progress) = progress? {
+                            self.merge_generation_progress(progress)?;
+                        }
+                        generated
+                    }
+                    Err(error) => {
+                        // A cancelled/deadline context may no longer admit a
+                        // sidecar read. Preserve the original transport/unknown
+                        // classification; already committed sidecars survive.
+                        if let Ok(Some(progress)) = progress {
+                            if self.merge_generation_progress(progress).is_err() {
+                                return Err(Failure {
+                                    code: error.code,
+                                    message: format!(
+                                        "{} Retained progress could not be verified; reconciliation is required.",
+                                        error.message
+                                    ),
+                                });
+                            }
+                        }
+                        return Err(error);
+                    }
+                }
             };
             let validated = serde_json::from_str::<Value>(&generated.text)
-                .map_err(|_| invalid("generation returned malformed JSON"))
+                .map_err(|_| Failure {
+                    code: "invalid-phase-contract".into(),
+                    message: "generation returned malformed JSON".into(),
+                })
                 .and_then(|value| {
-                    phases::validate(&value, &phases::schema(&phase.id))
-                        .map_err(|message| invalid(&message))?;
+                    phases::validate(&value, &phases::schema(&phase.id)).map_err(|message| {
+                        Failure {
+                            code: "invalid-phase-contract".into(),
+                            message,
+                        }
+                    })?;
                     Ok(value)
                 });
             let value = match validated {
@@ -592,6 +959,7 @@ impl Run {
                     // Public completion text and its actual receipt survive a
                     // failed contract. Rejected output is never a cache hit.
                     self.generations.remove(&key);
+                    self.complete_attempt(&key, &request_digest, &generated.usage)?;
                     self.rejected_generations.insert(
                         key,
                         CachedGeneration {
@@ -604,11 +972,12 @@ impl Run {
                     self.status = "quarantined".into();
                     self.goal["status"] = json!("quarantined");
                     self.error = Some(error.clone());
-                    ports.persist(self)?;
+                    self.save(ports)?;
                     return Err(error);
                 }
             };
             if !cached {
+                self.complete_attempt(&key, &request_digest, &generated.usage)?;
                 self.generations.insert(
                     key.clone(),
                     CachedGeneration {
@@ -616,7 +985,7 @@ impl Run {
                         generated: generated.clone(),
                     },
                 );
-                ports.persist(self)?;
+                self.save(ports)?;
             }
             let calls = value["tool_calls"].as_array().unwrap();
             if !calls.is_empty()
@@ -694,7 +1063,7 @@ impl Run {
                             outcome: None,
                         },
                     );
-                    ports.persist(self)?;
+                    self.save(ports)?;
                     let outcome = ports.tool(&exact_call)?;
                     if outcome.get("ok") != Some(&Value::Bool(true)) {
                         return Err(Failure {code:"blocked".into(),message:"Real tool did not return success; its pending receipt was retained for reconciliation.".into()});
@@ -702,7 +1071,7 @@ impl Run {
                     let receipt = self.tool_receipts.get_mut(&receipt_key).unwrap();
                     receipt.status = "completed".into();
                     receipt.outcome = Some(outcome.clone());
-                    ports.persist(self)?;
+                    self.save(ports)?;
                     outcome
                 };
                 outcomes.push(json!({"id":call["id"],"name":name,"outcome":outcome}));
@@ -711,6 +1080,31 @@ impl Run {
             messages.push(json!({"role":"user","content":format!("Verified real tool results: {}. Continue the SAME phase; return its final contract or request another permitted tool.",json!(outcomes))}));
         }
         Err(invalid("tool loop ended without a completed phase"))
+    }
+
+    fn complete_attempt(
+        &mut self,
+        key: &str,
+        request_digest: &str,
+        usage: &Value,
+    ) -> Result<(), Failure> {
+        let attempt = self
+            .attempts
+            .values_mut()
+            .find(|attempt| {
+                attempt
+                    .pointer("/context/generation_key")
+                    .and_then(Value::as_str)
+                    == Some(key)
+                    && attempt
+                        .pointer("/context/request_digest")
+                        .and_then(Value::as_str)
+                        == Some(request_digest)
+            })
+            .ok_or_else(|| invalid("completed generation has no exact attempt"))?;
+        attempt["status"] = json!("completed");
+        attempt["usage"] = usage.clone();
+        Ok(())
     }
 
     fn verify(&mut self, ports: &mut impl Ports, value: &Value) -> Result<(), Failure> {
@@ -741,7 +1135,9 @@ impl Run {
         let Some(point) = self.last_generation.clone() else {
             return Ok(None);
         };
-        if error.code != "invalid" || !self.rejected_generations.contains_key(&point.key) {
+        if error.code != "invalid-phase-contract"
+            || !self.rejected_generations.contains_key(&point.key)
+        {
             return Ok(None);
         }
         let count = self
@@ -765,7 +1161,7 @@ impl Run {
         let expected = self.clone();
         self.resume(&expected)?;
         self.contract_retries.insert(point.base_key, count + 1);
-        ports.persist(self)?;
+        self.save(ports)?;
         Ok(Some(json!({
             "version":VERSION,"run_id":self.id,"phase":phase.id,"status":"retrying",
             "reason":"invalid_phase_contract","retry":count+1,
@@ -793,13 +1189,13 @@ impl Run {
                 candidate: self.candidate.clone(),
                 candidate_state: self.candidate_state.clone(),
             });
-            ports.persist(self)?;
+            self.save(ports)?;
         }
         match self.advance_inner(ports, &phase) {
             Ok(value) => {
                 self.phases.push(json!({"phase":phase.id,"status":"completed","summary":self.context.get("last_summary"),"result":value}));
                 self.entry = None;
-                ports.persist(self)?;
+                self.save(ports)?;
                 Ok(vec![
                     json!({"version":VERSION,"run_id":self.id,"phase":phase.id,"status":"completed","summary":self.context.get("last_summary"),"usage":self.usage()}),
                 ])
@@ -808,10 +1204,18 @@ impl Run {
                 self.status = "quarantined".into();
                 self.goal["status"] = json!("quarantined");
                 self.error = Some(error.clone());
+                if matches!(
+                    error.code.as_str(),
+                    "checkpoint-unconfirmed" | "core-internal"
+                ) {
+                    // The original write may still own its worker/transaction.
+                    // Do not issue another write or retry from an older snapshot.
+                    return Err(error);
+                }
                 if let Some(progress) = self.retry_rejected_contract(ports, &phase, &error)? {
                     return Ok(vec![progress]);
                 }
-                ports.persist(self)?;
+                self.save(ports)?;
                 Err(error)
             }
         }
@@ -1112,6 +1516,7 @@ impl Run {
             let usage = &attempt["usage"];
             if attempt["status"] != "completed" {
                 pending_attempts += 1;
+                known = false;
             }
             if attempt["status"] != "completed"
                 || usage["input_tokens"].as_u64().is_none()

@@ -23,9 +23,9 @@ compliance. `structured_provider=true` requires that binding and never silently
 falls back to a less restrictive provider operation. Existing plain chat Prompts
 and the ordinary `llm-provider` interface remain compatible.
 
-Protocol `deepthink.workflow.v3` records typed capability gaps. Only a blocking
+Protocol `deepthink.workflow.v4` records typed capability gaps. Only a blocking
 gap tied to an actual Goal requirement pauses for input; optional limitations
-retain their real fallback plan. Old v2 checkpoints remain retained and cannot
+retain their real fallback plan. Old v2/v3 checkpoints remain retained and cannot
 be silently upgraded or mixed with this schema/configuration.
 Malformed or schema-invalid public responses have at most two automatic retries
 by default (`max_contract_retries`: 0..3). Every rejection and actual usage receipt
@@ -37,11 +37,13 @@ final contract without further tool requests; attempted effect replay is refused
 Each completed model generation, usage receipt and phase transition is persisted
 in this Pack's private Core store. `goal.json`, `goal.md`, drafts, quarantined
 candidates and final answers are projections of one atomic checkpoint value.
-Repeating the identical input resumes an interrupted run. `workflow.status`
+Repeating the identical input resumes a run only when its earlier model and tool
+attempts have durably finalized outcomes. `workflow.status`
 exposes the run reference, Goal, progress, actual usage and verified artifact
 references. A changed model, input or captured config requires a distinct run.
 For explicit continuation, the UI calls `continuation-input.submit` with the
-run reference and conversation. `answers: null` resumes the original snapshot,
+run reference and conversation. `answers: null` resumes the original snapshot
+when it has no unresolved attempt,
 so later conversation history does not invalidate an interrupted run. A nonempty
 answer is accepted only in `needs_input`: it reevaluates that paused phase and
 its downstream dependents, retaining earlier Goal definitions, phase records,
@@ -51,9 +53,9 @@ streams the workflow and appends a meaningful answer or resume marker to the
 conversation. The UI does not call an execution method outside Flow.
 The native CLI can submit the same input through the ordinary User port:
 
-```sh
-tobkiri --data-root ./host-data profile invoke --profile PROFILE_ID \
-  --shape local.deepthink.continuation-input@1.0 --op submit \
+```powershell
+tobkiri --data-root 'C:\Tobkiri\host-data' profile invoke --profile PROFILE_ID `
+  --shape local.deepthink.continuation-input@1.0 --op submit `
   --args-file ./resume.json
 ```
 
@@ -65,6 +67,29 @@ reference and inspect the saved state before retrying an uncertain effect.
 Unresolved non-idempotent tool outcomes require reconciliation; they are never
 automatically replayed. Missing provider cost receipts remain explicitly unknown.
 The default review schedule is two reviews, configurable from one to five.
+
+Before a model request, v4 atomically saves an attempt bound to the exact run,
+phase, request digest and captured model/provider configuration. While consuming
+the response it saves versioned progress values in the same private Core store.
+These contain only the provider generation ID, actual public model/provider
+identity, public completion prefix, verified usage counters/cost and completion
+evidence. Private reasoning, raw SSE and raw HTTP headers are excluded. Each
+public batch is saved before the next blocking read. The OpenRouter
+[`X-Generation-Id` header](https://openrouter.ai/docs/api_reference/streaming)
+is delivered before reading the body and must agree with
+SSE IDs; final usage repeating `finish_reason: stop` is counted as accounting,
+not a second completion. A heartbeat without public content never means EOF.
+
+`workflow.status` joins matching progress values and reports
+`status: needs_reconciliation` with `model_attempts` when an attempt is unresolved.
+Partials remain diagnostic evidence and cannot become an approved answer or a
+validated phase cache entry. A pending legacy attempt, or a completed receipt
+whose exact generation was not saved, also refuses continuation without sending
+a new model request. Full public text and its usage become finalized in one
+checkpoint. Unconfirmed checkpoint writes stop without an automatic retry or
+replacement write. This version does not implement external provider generation
+lookup or interrupted SSE reattachment: retain the run and inspect its receipt;
+do not assume cancellation ended billing or repeat an unknown request.
 
 Tool calls are explicit JSON plans executed against the selected real tool
 provider. They do not impersonate native model API tool calls. Actual artifacts
