@@ -31,7 +31,30 @@ fn checks() -> Value {
     )
 }
 
-/// Full JSON contract for a phase, including an explicit real-tool request lane.
+/// Only these work phases may request already selected tools through the Gate.
+pub fn allows_tool_execution(phase: &str) -> bool {
+    matches!(
+        phase.split(':').next().unwrap_or(phase),
+        "work_environment"
+            | "reference_search"
+            | "evidence"
+            | "section"
+            | "integration"
+            | "review"
+            | "revision"
+    )
+}
+
+/// Keep the current phase separate from executing the user's entire task.
+pub fn execution_policy(phase: &str) -> &'static str {
+    if allows_tool_execution(phase) {
+        "In this work phase, request only available tools selected by means_selection. Each actual tool call still requires the host Gate. Return result=null while requesting tools, or tool_calls=[] with the completed phase result."
+    } else {
+        "This is a declarative phase. Define, plan or check the requested phase only; do not execute the user's task or call any tool here, even when the original request asks you to use tools. tool_calls must be [] and result must contain the complete non-null phase result. Record required tool work for selection and the later work phases; do not claim it has already run."
+    }
+}
+
+/// Full JSON contract; declarative phases have no executable tool request lane.
 pub fn schema(phase: &str) -> Value {
     let body = match phase.split(':').next().unwrap_or(phase) {
         "goal_intake" => json!({"objective":nonempty(),
@@ -108,9 +131,17 @@ pub fn schema(phase: &str) -> Value {
             "Only unresolved questions requiring a user answer before work can proceed. Otherwise []. Notes, unused tools, limitations and completed checks are not questions."
         );
     }
-    object(json!({"summary":summary,
-        "tool_calls":array(object(json!({"id":nonempty(),"name":nonempty(),"arguments":{"type":"object"}})),0),
-        "result":{"oneOf":[final_schema,{"type":"null"}]}}))
+    let mut calls = array(
+        object(json!({"id":nonempty(),"name":nonempty(),"arguments":{"type":"object"}})),
+        0,
+    );
+    let result = if allows_tool_execution(phase) {
+        json!({"oneOf":[final_schema,{"type":"null"}]})
+    } else {
+        calls["maxItems"] = json!(0);
+        final_schema
+    };
+    object(json!({"summary":summary,"tool_calls":calls,"result":result}))
 }
 
 /// Describe observable work and decisions, never private reasoning traces.

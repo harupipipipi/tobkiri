@@ -687,6 +687,8 @@ impl Run {
                 .any(|key| key.starts_with(&phase_prefix));
             self.retry_contexts.insert(key,json!({"discarded_generation":resolution.attempt.generation_key,
                 "resolution_digest":resolution_digest,"completed_tool_receipts":self.tool_receipts,
+                "phase_contract":phases::schema(&resolution.attempt.phase),
+                "phase_execution_policy":phases::execution_policy(&resolution.attempt.phase),
                 "allow_additional_tools":additional,"instruction":"User explicitly discarded unavailable model content. Keep the original Goal and completed tool receipts. Never repeat their effects."}));
             authorization
         };

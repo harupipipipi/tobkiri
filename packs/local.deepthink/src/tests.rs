@@ -76,6 +76,8 @@ struct FakePorts {
     cancelled: bool,
     pause_preflight: bool,
     tool_in_profile_check: bool,
+    declarative_tool_request_count: usize,
+    captured_messages: Vec<(String, Vec<Value>)>,
     bad_selection_once: bool,
     missing_criterion_once: bool,
     two_requirements: bool,
@@ -125,6 +127,8 @@ impl Ports for FakePorts {
         attempt: &AttemptContext,
     ) -> Result<Generated, Failure> {
         self.calls.push(phase.into());
+        self.captured_messages
+            .push((phase.into(), messages.to_vec()));
         if self.progress_failure {
             let mut progress = GenerationProgress::new(attempt.clone());
             progress.accept(&json!({"kind":"metadata","text":json!({"version":"tobkiri.chat.metadata.v1","generation_id":"gen-fixture-123","model":"fixture-model","provider":"fixture-provider"}).to_string()}))?;
@@ -135,6 +139,13 @@ impl Ports for FakePorts {
             return Err(Failure {
                 code: "unavailable".into(),
                 message: "fixture stream interrupted".into(),
+            });
+        }
+        if phase == "goal_intake" && self.declarative_tool_request_count > 0 {
+            self.declarative_tool_request_count -= 1;
+            return Ok(Generated {
+                text: json!({"summary":summary(),"tool_calls":[{"id":"too-early","name":"artifact.write","arguments":{"path":"unexpected.md","content":"x"}}],"result":null}).to_string(),
+                usage: json!({"input_tokens":10,"output_tokens":5,"cost_usd":"0.000001"}),
             });
         }
         if phase == "goal_intake"
@@ -239,7 +250,10 @@ impl Ports for FakePorts {
             result["acceptance_results"][0]["passed"] = json!(false);
         }
         let envelope = json!({"summary":summary(),"tool_calls":calls,"result":result});
-        phases::validate(&envelope, &phases::schema(phase)).unwrap();
+        // This deliberate provider violation must reach the real validator.
+        if !(phase.starts_with("profile_check:") && self.tool_in_profile_check) {
+            phases::validate(&envelope, &phases::schema(phase)).unwrap();
+        }
         Ok(Generated {
             text: envelope.to_string(),
             usage: json!({"input_tokens":10,"output_tokens":5,"cost_usd":"0.000001"}),
@@ -1177,6 +1191,7 @@ fn declarative_profile_checks_cannot_request_tool_execution() {
         let _ = run.advance(&mut ports);
     }
     assert_eq!(run.status, "quarantined");
+    assert_eq!(run.error.as_ref().unwrap().code, "invalid-phase-contract");
     assert_eq!(ports.effects, 0);
     assert!(
         run.error
@@ -1185,6 +1200,213 @@ fn declarative_profile_checks_cannot_request_tool_execution() {
             .message
             .contains("declarative phase")
     );
+}
+
+#[test]
+fn declarative_contracts_require_empty_tools_and_a_result_for_every_phase() {
+    let declarative = [
+        "goal_intake",
+        "quality_terms:1",
+        "goal_contract",
+        "preflight",
+        "answer_plan",
+        "capability_assessment",
+        "means_selection",
+        "profile_check:local",
+        "reference_plan",
+    ];
+    let work = [
+        "work_environment",
+        "reference_search",
+        "evidence",
+        "section:calculation",
+        "integration",
+        "review:1",
+        "revision:1",
+    ];
+    for phase in declarative.into_iter().chain(work) {
+        let schema = phases::schema(phase);
+        let result = fixture(phase);
+        let valid = json!({"summary":summary(),"tool_calls":[],"result":result});
+        phases::validate(&valid, &schema).unwrap();
+        let requested = json!({"summary":summary(),"tool_calls":[{"id":"one","name":"artifact.write","arguments":{}}],"result":null});
+        if declarative.contains(&phase) {
+            assert!(!phases::allows_tool_execution(phase));
+            assert_eq!(schema["properties"]["tool_calls"]["maxItems"], 0);
+            assert!(phases::validate(&requested, &schema).is_err());
+            let missing_result = json!({"summary":summary(),"tool_calls":[],"result":null});
+            assert!(phases::validate(&missing_result, &schema).is_err());
+        } else {
+            assert!(phases::allows_tool_execution(phase));
+            phases::validate(&requested, &schema).unwrap();
+        }
+    }
+}
+
+#[test]
+fn forbidden_goal_tool_requests_are_durable_bounded_corrections_without_effects() {
+    let mut config = settings();
+    config.max_contract_retries = 2;
+    let mut run = new_run(config.clone());
+    let mut ports = FakePorts {
+        declarative_tool_request_count: 1,
+        ..Default::default()
+    };
+    assert_eq!(
+        run.advance_segment(&mut ports).unwrap()[0]["status"],
+        "retrying"
+    );
+    let checkpoint = ports.first_rejection_snapshot.as_ref().unwrap();
+    assert_eq!(checkpoint.status, "quarantined");
+    assert_eq!(
+        checkpoint.error.as_ref().unwrap().code,
+        "invalid-phase-contract"
+    );
+    assert_eq!(
+        checkpoint.attempts.values().next().unwrap()["status"],
+        "completed"
+    );
+    assert!(checkpoint.generations.is_empty());
+    let rejected = serde_json::to_value(&run.rejected_generations).unwrap();
+    let old_inputs = run.phase_inputs.clone();
+    let saved = serde_json::to_vec(ports.saved.as_ref().unwrap()).unwrap();
+    let mut restored: Run = serde_json::from_slice(&saved).unwrap();
+    restored.advance_segment(&mut ports).unwrap();
+    assert_eq!(restored.status, "paused");
+    assert_eq!(restored.phases.len(), 1);
+    assert_eq!(restored.phases[0]["phase"], "goal_intake");
+    assert_eq!(
+        serde_json::to_value(&restored.rejected_generations).unwrap(),
+        rejected
+    );
+    assert_eq!(restored.phase_inputs, old_inputs);
+    assert_eq!(restored.usage()["attempts"], 2);
+    assert_eq!(restored.usage()["pending_attempts"], 0);
+    assert_eq!(restored.usage()["tokens"]["input_tokens"], 20);
+    assert_eq!(restored.usage()["tokens"]["output_tokens"], 10);
+    assert_eq!(ports.effects, 0);
+    let retry = &restored.retry_contexts["goal_intake@0:0#1"];
+    assert_eq!(retry["phase_contract"], phases::schema("goal_intake"));
+    assert_eq!(
+        retry["phase_execution_policy"],
+        phases::execution_policy("goal_intake")
+    );
+    let messages = &ports.captured_messages.last().unwrap().1;
+    assert!(
+        messages[0]["content"]
+            .as_str()
+            .unwrap()
+            .contains("This is a declarative phase")
+    );
+    assert!(
+        messages.last().unwrap()["content"]
+            .as_str()
+            .unwrap()
+            .contains("phase_contract")
+    );
+
+    let mut exhausted = new_run(config);
+    let mut ports = FakePorts {
+        declarative_tool_request_count: 3,
+        ..Default::default()
+    };
+    assert_eq!(
+        exhausted.advance_segment(&mut ports).unwrap()[0]["retry"],
+        1
+    );
+    assert_eq!(
+        exhausted.advance_segment(&mut ports).unwrap()[0]["retry"],
+        2
+    );
+    assert_eq!(
+        exhausted.advance_segment(&mut ports).unwrap_err().code,
+        "invalid-phase-contract"
+    );
+    assert_eq!(exhausted.status, "quarantined");
+    assert_eq!(exhausted.rejected_generations.len(), 3);
+    assert_eq!(exhausted.usage()["attempts"], 3);
+    assert_eq!(ports.effects, 0);
+    assert_eq!(ports.calls.len(), 3);
+    assert!(exhausted.output().is_empty());
+}
+
+#[test]
+fn a_legacy_known_declarative_failure_resumes_without_rewriting_its_receipts() {
+    let config = settings();
+    let mut run = new_run(config.clone());
+    let mut ports = FakePorts {
+        declarative_tool_request_count: 1,
+        ..Default::default()
+    };
+    run.advance_segment(&mut ports).unwrap_err();
+    // The former worker saved a completed generation before its generic Invalid
+    // phase guard. Recreate that historical state without changing its receipt.
+    let key = "goal_intake@0:0#0";
+    let mut generation = run.rejected_generations.remove(key).unwrap();
+    let mut old_schema = phases::schema("goal_intake");
+    old_schema["properties"]["tool_calls"]
+        .as_object_mut()
+        .unwrap()
+        .remove("maxItems");
+    old_schema["properties"]["result"] =
+        json!({"oneOf":[old_schema["properties"]["result"].clone(),{"type":"null"}]});
+    let inputs = run.phase_inputs.get_mut("goal_intake@0").unwrap();
+    let ctx = context(inputs);
+    inputs[0]["content"] = json!("Legacy general phase instruction with a tool request lane.");
+    *inputs.last_mut().unwrap() = json!({"role":"user","content":format!("Legacy goal prompt\n\nphase:goal_intake\n\nschema:{old_schema}\n\ncontext:{ctx}")});
+    let old_digest =
+        workflow::digest(&json!({"model":run.model,"messages":inputs,"schema":old_schema}));
+    generation.request_digest = old_digest.clone();
+    let attempt_id = format!("{key}:0");
+    run.attempts.get_mut(&attempt_id).unwrap()["context"]["request_digest"] = json!(old_digest);
+    run.generations.insert(key.into(), generation);
+    run.error = Some(Failure {
+        code: "invalid".into(),
+        message: "this declarative phase does not execute tools".into(),
+    });
+    let retained =
+        serde_json::to_value((&run.attempts, &run.generations, &run.phase_inputs)).unwrap();
+    let before_usage = run.usage();
+    let mut unknown = run.clone();
+    unknown.attempts.get_mut(&attempt_id).unwrap()["status"] = json!("pending");
+    assert_eq!(
+        unknown
+            .resume_pinned("fixture-conversation", "fixture-model", &config)
+            .unwrap_err()
+            .code,
+        "needs-reconciliation"
+    );
+    assert!(unknown.generation_epochs.is_empty());
+    let saved = serde_json::to_vec(&run).unwrap();
+    let mut restored: Run = serde_json::from_slice(&saved).unwrap();
+    restored
+        .resume_pinned("fixture-conversation", "fixture-model", &config)
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value((
+            &restored.attempts,
+            &restored.generations,
+            &restored.phase_inputs
+        ))
+        .unwrap(),
+        retained
+    );
+    assert_eq!(restored.usage(), before_usage);
+    restored.advance_segment(&mut ports).unwrap();
+    assert_eq!(restored.status, "paused");
+    assert_eq!(restored.phases.len(), 1);
+    assert_eq!(restored.attempts[&attempt_id], run.attempts[&attempt_id]);
+    assert_eq!(
+        serde_json::to_value(&restored.generations[key]).unwrap(),
+        serde_json::to_value(&run.generations[key]).unwrap()
+    );
+    assert_eq!(restored.phase_inputs, run.phase_inputs);
+    assert_eq!(ports.calls.len(), 2);
+    assert_eq!(ports.effects, 0);
+    let correction = ports.captured_messages.last().unwrap().1.last().unwrap()["content"]
+        .as_str()
+        .unwrap();
+    assert!(correction.contains("phase_execution_policy") && correction.contains("phase_contract"));
 }
 
 #[test]

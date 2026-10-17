@@ -664,6 +664,12 @@ impl Run {
                     }) {
                         return Err(Failure{code:"conflict".into(),message:"The failed generation already committed tool effects. Its output cannot be safely regenerated automatically; reconcile the retained receipts first.".into()});
                     }
+                    let phase = self
+                        .pending
+                        .front()
+                        .ok_or_else(|| invalid("failed workflow has no pending phase"))?
+                        .id
+                        .clone();
                     let next = self
                         .generation_epochs
                         .get(&point.base_key)
@@ -681,6 +687,8 @@ impl Run {
                         "failed_generation":point.key,"failure":self.error,
                         "completed_tool_receipts":self.tool_receipts,
                         "allow_additional_tools":allow_additional_tools,
+                        "phase_contract":phases::schema(&phase),
+                        "phase_execution_policy":phases::execution_policy(&phase),
                         "instruction":"Correct only the failed generation. Earlier tool effects are already complete and must not be repeated. Return the required phase contract using the retained evidence."
                     }));
                 }
@@ -957,8 +965,8 @@ impl Run {
     }
 
     fn phase_messages(&self, phase: &Phase) -> Vec<Value> {
-        let mut messages = vec![json!({"role":"system","content":
-            "You perform one explicit workflow phase. Return exactly one JSON object matching the schema, with nothing before or after it. The three top-level keys summary, tool_calls and result are mandatory inside that same object; always include tool_calls:[] even when no tools are needed. Never append a missing field after closing the object. summary contains concise decisions, assumptions and next actions, never private reasoning or chain-of-thought. All tool execution remains subject to the host's Gate, permissions and approvals. Never invent tools, skills, sources, files, completed checks or secret values. Use tool_calls only for actual selected tools; set result=null while requesting tools. Otherwise tool_calls=[] and result is the phase result. Do not request a user answer for mere notes, unused tools or confirmed settings."})];
+        let mut messages = vec![json!({"role":"system","content":format!(
+            "You perform one explicit workflow phase. Return exactly one JSON object matching the schema, with nothing before or after it. The three top-level keys summary, tool_calls and result are mandatory inside that same object; always include tool_calls:[] even when no tools are needed. Never append a missing field after closing the object. summary contains concise decisions, assumptions and next actions, never private reasoning or chain-of-thought. All tool execution remains subject to the host's Gate, permissions and approvals. Never invent tools, skills, sources, files, completed checks or secret values. Do not request a user answer for mere notes, unused tools or confirmed settings. {}", phases::execution_policy(&phase.id))})];
         messages.extend(self.messages.clone());
         messages.push(json!({"role":"user","content":format!("{}\n\nphase:{}\n\nschema:{}\n\ncontext:{}",phases::prompt(&phase.id),phase.id,phases::schema(&phase.id),self.phase_context(phase))}));
         messages
@@ -997,6 +1005,9 @@ impl Run {
             let revision = self.generation_epochs.get(&base_key).copied().unwrap_or(0);
             let key = format!("{base_key}#{revision}");
             if let Some(retry) = self.retry_contexts.get(&key) {
+                // New retry contexts carry their captured phase policy/schema.
+                // Keep this format and every old input/context unchanged so a
+                // retained completion is not reinterpreted as a new request.
                 messages.push(json!({"role":"user","content":format!("Retry the incomplete final generation only. Retained diagnostic and real-effect evidence: {retry}")}));
             }
             self.last_generation = Some(GenerationPoint {
@@ -1085,6 +1096,26 @@ impl Run {
                     message: "generation returned malformed JSON".into(),
                 })
                 .and_then(|value| {
+                    if value["tool_calls"]
+                        .as_array()
+                        .is_some_and(|calls| !calls.is_empty())
+                        && self
+                            .retry_contexts
+                            .get(&key)
+                            .is_some_and(|retry| retry["allow_additional_tools"] == false)
+                    {
+                        return Err(Failure{code:"conflict".into(),message:"This correction follows completed tool effects. Additional tool requests require reconciliation; retained effects were not repeated.".into()});
+                    }
+                    if !phases::allows_tool_execution(&phase.id)
+                        && value["tool_calls"]
+                            .as_array()
+                            .is_some_and(|calls| !calls.is_empty())
+                    {
+                        return Err(Failure {
+                            code: "invalid-phase-contract".into(),
+                            message: "this declarative phase does not execute tools; return tool_calls=[] and its non-null phase result".into(),
+                        });
+                    }
                     phases::validate(&value, &phases::schema(&phase.id)).map_err(|message| {
                         Failure {
                             code: "invalid-phase-contract".into(),
@@ -1128,14 +1159,6 @@ impl Run {
                 self.save(ports)?;
             }
             let calls = value["tool_calls"].as_array().unwrap();
-            if !calls.is_empty()
-                && self
-                    .retry_contexts
-                    .get(&key)
-                    .is_some_and(|retry| retry["allow_additional_tools"] == false)
-            {
-                return Err(Failure{code:"conflict".into(),message:"This correction follows completed tool effects. Additional tool requests require reconciliation; retained effects were not repeated.".into()});
-            }
             if calls.is_empty() {
                 if value["result"].is_null() {
                     return Err(invalid("completed phase has no result"));
@@ -1148,18 +1171,6 @@ impl Run {
                 return Err(invalid(
                     "tool phase is mixed with a final result or its round limit was exhausted",
                 ));
-            }
-            if !matches!(
-                phase.id.split(':').next().unwrap(),
-                "work_environment"
-                    | "reference_search"
-                    | "evidence"
-                    | "section"
-                    | "integration"
-                    | "review"
-                    | "revision"
-            ) {
-                return Err(invalid("this declarative phase does not execute tools"));
             }
             let selected = self
                 .context

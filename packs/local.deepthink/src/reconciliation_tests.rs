@@ -523,3 +523,73 @@ fn explicit_correction_after_completed_effect_refuses_additional_tool_requests()
     assert_eq!(ports.calls, 2);
     assert!(run.output().is_empty());
 }
+
+#[test]
+fn a_resolved_unknown_and_legacy_known_successor_survive_a_same_run_correction() {
+    let (mut run, mut ports, id) = stopped();
+    let original = run.attempts[&id].clone();
+    let resolution = resolve(&mut run, &id, None);
+    let authorization = run
+        .prepare_regeneration(&id, &resolution.resolution_digest)
+        .unwrap();
+    assert_eq!(
+        run.retry_contexts[&authorization.new_generation_key]["phase_contract"],
+        phases::schema("goal_intake")
+    );
+    ports.fail_transport = false;
+    ports.request_extra_tool = true;
+    assert_eq!(
+        run.advance_segment(&mut ports).unwrap_err().code,
+        "invalid-phase-contract"
+    );
+    let key = authorization.new_generation_key.clone();
+    // The previous worker cached this known completion before reporting its
+    // generic Invalid phase error. Its accepted-completion ledger row is not
+    // rewritten as a rejection by a later worker.
+    let generated = run.rejected_generations.remove(&key).unwrap();
+    run.generations.insert(key.clone(), generated);
+    run.error = Some(Failure {
+        code: "invalid".into(),
+        message: "this declarative phase does not execute tools".into(),
+    });
+    let old_attempts = run.attempts.clone();
+    let old_generation = serde_json::to_value(&run.generations[&key]).unwrap();
+    let old_resolutions = serde_json::to_value(&run.generation_resolutions).unwrap();
+    let old_auth = serde_json::to_value(&run.regeneration_authorizations).unwrap();
+    let old_inputs = run.phase_inputs.clone();
+    let usage = run.usage();
+    let saved = serde_json::to_vec(&run).unwrap();
+    let mut restored: Run = serde_json::from_slice(&saved).unwrap();
+    let expected = restored.clone();
+    restored.resume(&expected).unwrap();
+    assert_eq!(restored.usage(), usage);
+    assert_eq!(restored.attempts, old_attempts);
+    assert_eq!(restored.generation_epochs["goal_intake@0:0"], 2);
+    ports.request_extra_tool = false;
+    restored.advance_segment(&mut ports).unwrap();
+    assert_eq!(restored.status, "paused");
+    assert_eq!(restored.phases.len(), 1);
+    assert_eq!(restored.attempts[&id], original);
+    for (id, attempt) in old_attempts {
+        assert_eq!(restored.attempts[&id], attempt);
+    }
+    assert_eq!(
+        serde_json::to_value(&restored.generations[&key]).unwrap(),
+        old_generation
+    );
+    assert_eq!(
+        serde_json::to_value(&restored.generation_resolutions).unwrap(),
+        old_resolutions
+    );
+    assert_eq!(
+        serde_json::to_value(&restored.regeneration_authorizations).unwrap(),
+        old_auth
+    );
+    assert_eq!(restored.phase_inputs, old_inputs);
+    assert!(restored.generations.contains_key("goal_intake@0:0#2"));
+    assert_eq!(restored.usage()["attempts"], 3);
+    assert_eq!(restored.usage()["pending_attempts"], 0);
+    assert_eq!(restored.usage()["tokens"]["total_tokens"], 45);
+    assert_eq!(restored.usage()["cost_usd"], "0.0040000000000000000001");
+    assert_eq!(ports.calls, 3);
+}
