@@ -475,7 +475,7 @@
     },
     {
       "id": "local.openrouter-mimo-provider",
-      "sha256": "sha256:778252f475f8b5ea3f960eb11a6b0dfaf884541e2a99743cfbe82b7d22d50582",
+      "sha256": "sha256:97f912349e249b452d531aeaf0ab49ddcae2a1cf11283ea2f0b6d84b7528200f",
       "source": "file:../local.openrouter-mimo-provider",
       "version": "0.1.0"
     },
@@ -499,7 +499,7 @@
     },
     {
       "id": "local.deepthink",
-      "sha256": "sha256:dcbd10168b8101d14c8c0249fad76f8ad8516ee8e3bb7b56ea08f5afa1763d84",
+      "sha256": "sha256:ed7915ccfd7ad28193073cbac425dc388af5492fc37a82bf175a3f004bb5380c",
       "source": "file:../local.deepthink",
       "version": "0.1.0"
     },

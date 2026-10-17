@@ -78,6 +78,7 @@ jobs:
           status=0
           cargo test -p tobkiri-canon --lib --locked || status=$?
           cargo test -p tobkiri-wasm --lib --locked effect_values::network_digest_tests || status=$?
+          cargo test -p tobkiri-wasm --lib --locked network::tests::coalesce_ || status=$?
           cargo test -p tobkiri-wasm --test byte_list_abi --locked || status=$?
           exit "$status"
       - name: Bounded call trees, stream cleanup and native User entry
@@ -103,10 +104,11 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@1.94.0
-      - name: Native ownership, quota, vault and canonical names
+      - name: Native ownership, authority escrow, vault and canonical names
         run: >-
           cargo test -p tobkiri-store --locked --lib
           --test owner_windows --test windows_storage_names
+          --test security --test terminal -- --test-threads=1
       - name: CLI contracts and cancellable native input
         if: ${{ !cancelled() }}
         run: cargo test -p tobkiri-cli --bin tobkiri --locked

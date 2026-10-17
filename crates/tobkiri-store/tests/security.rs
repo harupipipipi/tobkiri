@@ -99,7 +99,9 @@ impl Fixture {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(temp.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
         }
-        let root = DataRoot::open(temp.path().canonicalize().unwrap()).unwrap();
+        // DataRoot creates the protected, current-user-owned storage child;
+        // an ordinary Windows temp directory inherits its parent's DACL.
+        let root = DataRoot::open(temp.path().canonicalize().unwrap().join("data")).unwrap();
         let profile = ProfileId::parse("prof_test").unwrap();
         let approvals = Arc::new(Approvals::open(&root, &profile).unwrap());
         let audit = Arc::new(AuditLog::open(&root, &profile, AuditQuota::default()).unwrap());
@@ -1004,11 +1006,16 @@ async fn secrets_are_opaque_encrypted_profile_bound_and_only_revealed_after_trus
         .read_profile_file(&f.profile, "secrets.vault", 4 * 1024 * 1024)
         .unwrap();
     assert!(!file.windows(secret.len()).any(|w| w == secret));
-    let audit = f
-        .root
-        .read_profile_file(&f.profile, "audit.sqlite", 4 * 1024 * 1024)
-        .unwrap();
-    assert!(!audit.windows(secret.len()).any(|w| w == secret));
+    #[cfg(windows)]
+    {
+        // A live SQLite writer retains its actual handle's sharing boundary.
+        // Inspecting raw audit bytes is an offline test, not a second lease.
+        let error = f
+            .root
+            .read_profile_file(&f.profile, "audit.sqlite", 4 * 1024 * 1024)
+            .unwrap_err();
+        assert!(matches!(error, StoreError::Io(ref error) if error.raw_os_error()==Some(32)));
+    }
     let other = ProfileId::parse("prof_other").unwrap();
     f.root
         .write_profile_file_atomic(&other, "secrets.vault", &file)
@@ -1028,6 +1035,33 @@ async fn secrets_are_opaque_encrypted_profile_bound_and_only_revealed_after_trus
             .await
             .is_err()
     );
+    drop(permit);
+    drop(opaque);
+    drop(vault);
+    drop(cx);
+    // Preserve the temporary directory while releasing every real Gate/audit
+    // owner. Unix may unlink open files, while Windows correctly denies the
+    // simultaneous raw-read sharing mode; both inspect the same closed bytes.
+    let Fixture {
+        _temp,
+        root,
+        profile,
+        approvals,
+        audit,
+        prompt,
+        gate,
+    } = f;
+    drop(gate);
+    drop(audit);
+    drop(approvals);
+    drop(prompt);
+    let audit = root
+        .read_profile_file(&profile, "audit.sqlite", 4 * 1024 * 1024)
+        .unwrap();
+    assert!(!audit.windows(secret.len()).any(|w| w == secret));
+    // Normal same-Profile decrypt remains valid after close/reopen. The copied
+    // other-Profile ciphertext was rejected above by the unchanged AEAD check.
+    Vault::open(&root, &profile, Arc::new(TestKeys)).unwrap();
 }
 
 #[test]
@@ -1664,14 +1698,15 @@ async fn live_reservation_last_slot_is_atomic_across_separate_sqlite_connections
     )
     .unwrap();
     // The actual limit also reserves future terminal metadata and payload
-    // bytes. Fill through the real API, then free one trusted fixture slot.
-    let mut last_seed = None;
+    // bytes. Fill through the real API, then settle and deliver complete
+    // receipts until exactly one original full escrow can be admitted.
+    let mut seeds = Vec::new();
     let mut limit_reached = false;
     for index in 0..4096 {
         let mut seeded = reservation.clone();
         seeded.id = id_for(&format!("seed{index}"));
         match f.approvals.reserve(&seeded) {
-            Ok(()) => last_seed = Some(seeded.id),
+            Ok(()) => seeds.push(seeded.id),
             Err(GateError::Limit(_)) => {
                 limit_reached = true;
                 break;
@@ -1688,14 +1723,50 @@ async fn live_reservation_last_slot_is_atomic_across_separate_sqlite_connections
         )
         .unwrap();
     assert!((2..=4096).contains(&full_count));
-    assert_eq!(
-        raw.execute(
-            "DELETE FROM reservations WHERE id=?1 AND state='pending'",
-            [last_seed.unwrap().as_str()]
+    let page_size: i64 = raw
+        .query_row("PRAGMA page_size", [], |row| row.get(0))
+        .unwrap();
+    let page_size = u64::try_from(page_size).unwrap();
+    let slot = 64 * page_size + 2 * 4096;
+    let available = || {
+        let pages: i64 = raw
+            .query_row("PRAGMA page_count", [], |row| row.get(0))
+            .unwrap();
+        let pages = u64::try_from(pages).unwrap();
+        let fault: Vec<u8> = raw
+            .query_row(
+                "SELECT fault_remaining FROM terminal_capacity_state WHERE singleton=1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let mut used = pages * page_size + u64::from_be_bytes(fault.try_into().unwrap());
+        let mut query = raw.prepare("SELECT remaining FROM terminal_capacity_escrow WHERE state IN('active','terminal')").unwrap();
+        for row in query.query_map([], |row| row.get::<_, Vec<u8>>(0)).unwrap() {
+            used += u64::from_be_bytes(row.unwrap().try_into().unwrap());
+        }
+        100 * 1024 * 1024 - used
+    };
+    while available() < slot {
+        let released = seeds.pop().unwrap();
+        f.approvals.abandon_terminal(&released).unwrap();
+        f.gate.flush_outbox(&f.profile).await.unwrap();
+    }
+    let mut refill = 0;
+    while available() >= 2 * slot {
+        let mut seeded = reservation.clone();
+        seeded.id = id_for(&format!("refill{refill}"));
+        f.approvals.reserve(&seeded).unwrap();
+        refill += 1;
+    }
+    assert!((slot..2 * slot).contains(&available()));
+    let before_race: i64 = raw
+        .query_row(
+            "SELECT COUNT(*) FROM reservations WHERE state!='finished'",
+            [],
+            |row| row.get(0),
         )
-        .unwrap(),
-        1
-    );
+        .unwrap();
     let a = Approvals::open(&f.root, &f.profile).unwrap();
     let b = Approvals::open(&f.root, &f.profile).unwrap();
     let barrier = Arc::new(std::sync::Barrier::new(2));
@@ -1728,6 +1799,6 @@ async fn live_reservation_last_slot_is_atomic_across_separate_sqlite_connections
             |r| r.get::<_, i64>(0)
         )
         .unwrap(),
-        full_count
+        before_race + 1
     );
 }

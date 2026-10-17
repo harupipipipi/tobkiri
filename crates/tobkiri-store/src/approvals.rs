@@ -20,6 +20,9 @@ const MAX_UNDELIVERED_AND_RESERVED: i64 = 4096;
 const TERMINAL_METADATA_PAGES: i64 = 64;
 const FAULT_METADATA_PAGES: i64 = 16;
 
+#[path = "approvals_capacity.rs"]
+mod capacity;
+
 /// Profile-bound approvals and transactional dispatch reservations; never exported.
 pub struct Approvals {
     profile: ProfileId,
@@ -44,8 +47,10 @@ impl Approvals {
         path: &std::path::Path,
     ) -> Result<Self, StoreError> {
         let (mut connection, directory) = root.database(path)?;
+        capacity::physical_limit(&connection)?;
         let initialization =
             connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let capacity_before_schema = capacity::reopen_start(&initialization)?;
         initialization.execute_batch("CREATE TABLE IF NOT EXISTS security_epoch(singleton INTEGER PRIMARY KEY CHECK(singleton=1),epoch INTEGER NOT NULL); INSERT OR IGNORE INTO security_epoch(singleton,epoch) VALUES(1,0); CREATE TABLE IF NOT EXISTS permissions(pack TEXT NOT NULL, hash TEXT NOT NULL, body BLOB NOT NULL, PRIMARY KEY(pack,hash)); CREATE TABLE IF NOT EXISTS reservations(id TEXT PRIMARY KEY, body BLOB NOT NULL, state TEXT NOT NULL CHECK(state IN ('pending','dispatched','consumed','finished')), outcome BLOB,expires INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS public_writers(writer TEXT NOT NULL, owner TEXT NOT NULL, store TEXT NOT NULL, PRIMARY KEY(writer,owner,store)); CREATE TABLE IF NOT EXISTS paired_devices(device TEXT PRIMARY KEY,key BLOB NOT NULL); CREATE TABLE IF NOT EXISTS attestation_nonces(device TEXT NOT NULL,nonce TEXT NOT NULL,expires INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(device,nonce));")?;
         if initialization
             .prepare("SELECT expires FROM reservations LIMIT 0")
@@ -113,6 +118,8 @@ impl Approvals {
         if broken {
             return Err(StoreError::Integrity(IntegrityFaultCode::AuthorityDatabase));
         }
+        capacity::initialize(&initialization)?;
+        capacity::reopen_finish(&initialization, capacity_before_schema)?;
         initialization.commit()?;
         Ok(Self {
             profile: profile.clone(),
@@ -127,6 +134,23 @@ impl Approvals {
             Err(GateError::Denied("approval store Profile mismatch".into()))
         }
     }
+    fn ordinary<T>(
+        &self,
+        operation: impl FnOnce(&rusqlite::Transaction<'_>) -> Result<T, GateError>,
+    ) -> Result<T, GateError> {
+        let result = (|| {
+            let mut conn = self.connection.lock().map_err(persistence)?;
+            let tx = conn
+                .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                .map_err(persistence)?;
+            let before = capacity::ordinary_start(&tx)?;
+            let value = operation(&tx)?;
+            capacity::ordinary_finish(&tx, before)?;
+            tx.commit().map_err(persistence)?;
+            Ok(value)
+        })();
+        self.checked_integrity(result)
+    }
     /// Core user operation after explicit device pairing, never a guest import.
     pub fn pair_device(
         &self,
@@ -136,11 +160,10 @@ impl Approvals {
     ) -> Result<(), StoreError> {
         self.local(profile)?;
         crate::secure::name(device)?;
-        let conn = self
-            .connection
-            .lock()
-            .map_err(|_| StoreError::Conflict("approval lock poisoned".into()))?;
-        conn.execute("INSERT INTO paired_devices(device,key) VALUES(?1,?2) ON CONFLICT(device) DO UPDATE SET key=excluded.key",params![device,key.as_slice()])?;
+        self.ordinary(|tx| {
+            tx.execute("INSERT INTO paired_devices(device,key) VALUES(?1,?2) ON CONFLICT(device) DO UPDATE SET key=excluded.key",params![device,key.as_slice()]).map_err(persistence)?;
+            Ok(())
+        })?;
         Ok(())
     }
     pub fn pending(&self) -> Result<Vec<Reservation>, StoreError> {
@@ -209,12 +232,15 @@ impl Approvals {
         if reservation.expires_unix_ms <= now_ms().map_err(persistence)? {
             return Err(GateError::Deadline);
         }
+        let charge = capacity::begin_grant(&tx, id.as_str(), false)?;
         tx.execute(
             "UPDATE reservations SET state='dispatched' WHERE id=?1 AND state='pending'",
             [id.as_str()],
         )
         .map_err(persistence)?;
+        capacity::finish_grant(&tx, charge, capacity::Next::Keep)?;
         if let Some(public) = public {
+            let ordinary = capacity::ordinary_start(&tx)?;
             self.local(&public.profile)?;
             if public.profile != reservation.profile
                 || reservation
@@ -229,6 +255,7 @@ impl Approvals {
                 params![public.writer.as_str(), public.owner.as_str(), public.store],
             )
             .map_err(persistence)?;
+            capacity::ordinary_finish(&tx, ordinary)?;
         }
         tx.commit().map_err(persistence)?;
         Ok(())
@@ -239,6 +266,7 @@ impl Approvals {
         outcome: Outcome,
         disposition: TerminalDisposition,
     ) -> Result<TerminalDecision, GateError> {
+        let charge = capacity::begin_grant(tx, reservation.id.as_str(), false)?;
         if let Outcome::Failed { code } = &outcome {
             if code.len() > 128
                 || !code
@@ -271,12 +299,13 @@ impl Approvals {
             ],
         )
         .map_err(persistence)?;
+        capacity::finish_grant(tx, charge, capacity::Next::Terminal)?;
         Ok(decision)
     }
     fn insert_reservation(
         tx: &rusqlite::Transaction<'_>,
         r: &Reservation,
-    ) -> Result<(), GateError> {
+    ) -> Result<capacity::GrantCharge, GateError> {
         let mut future = r.clone();
         future.original_expires_unix_ms = Some(
             future
@@ -296,32 +325,15 @@ impl Approvals {
             ));
         }
         deny_faulted(tx)?;
-        let (active, pending, retained): (i64,i64,i64) = tx.query_row("SELECT (SELECT COUNT(*) FROM reservations WHERE state!='finished'),COALESCE(SUM(CASE WHEN delivered=0 THEN 1 ELSE 0 END),0),COUNT(*) FROM terminal_outbox", [], |row|Ok((row.get(0)?,row.get(1)?,row.get(2)?))).map_err(persistence)?;
-        let page_size: i64 = tx
-            .query_row("PRAGMA page_size", [], |row| row.get(0))
-            .map_err(persistence)?;
-        if !(512..=65536).contains(&page_size) || !(page_size as u64).is_power_of_two() {
-            return Err(GateError::Integrity(IntegrityFaultCode::AuthorityDatabase));
-        }
-        let slot = TERMINAL_METADATA_PAGES
-            .checked_mul(page_size)
-            .and_then(|n| n.checked_add(MAX_TERMINAL_ENTRY_BYTES * 2))
-            .ok_or_else(|| GateError::Limit("terminal accounting range".into()))?;
-        let capacity = retained
-            .checked_add(active)
-            .and_then(|n| n.checked_add(1))
-            .and_then(|n| n.checked_mul(slot))
-            .and_then(|n| n.checked_add(FAULT_METADATA_PAGES * page_size))
-            .ok_or_else(|| GateError::Limit("terminal accounting range".into()))?;
-        if active.saturating_add(pending) >= MAX_UNDELIVERED_AND_RESERVED
-            || capacity > MAX_TERMINAL_BYTES
-        {
+        let (active, pending): (i64,i64) = tx.query_row("SELECT (SELECT COUNT(*) FROM reservations WHERE state!='finished'),(SELECT COUNT(*) FROM terminal_outbox WHERE delivered=0)", [], |row|Ok((row.get(0)?,row.get(1)?))).map_err(persistence)?;
+        if active.saturating_add(pending) >= MAX_UNDELIVERED_AND_RESERVED {
             return Err(GateError::Limit("live reservation quota".into()));
         }
         let reused:bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM terminal_outbox WHERE grant_id=?1) OR EXISTS(SELECT 1 FROM reservations WHERE id=?1)",[r.id.as_str()],|row|row.get(0)).map_err(persistence)?;
         if reused {
             return Err(GateError::Consumed);
         }
+        let charge = capacity::begin_admission(tx, r.id.as_str())?;
         tx.execute(
             "INSERT INTO reservations(id,body,state,expires) VALUES(?1,?2,'pending',?3)",
             params![
@@ -331,7 +343,7 @@ impl Approvals {
             ],
         )
         .map_err(persistence)?;
-        Ok(())
+        Ok(charge)
     }
     fn checked_integrity<T>(&self, result: Result<T, GateError>) -> Result<T, GateError> {
         if let Err(GateError::Integrity(code)) = &result {
@@ -495,12 +507,7 @@ fn status(conn: &rusqlite::Connection) -> Result<AdmissionStatus, GateError> {
     })
 }
 fn latch(conn: &rusqlite::Connection, code: IntegrityFaultCode) -> Result<(), GateError> {
-    conn.execute(
-        "INSERT OR IGNORE INTO authority_fault(singleton,code) VALUES(1,?1)",
-        [canonical(&code).map_err(persistence)?],
-    )
-    .map_err(persistence)?;
-    Ok(())
+    capacity::latch_fault(conn, &canonical(&code).map_err(persistence)?)
 }
 fn deny_faulted(conn: &rusqlite::Connection) -> Result<(), GateError> {
     match status(conn)? {
@@ -520,8 +527,12 @@ impl ApprovalStore for Approvals {
         code: IntegrityFaultCode,
     ) -> Result<(), GateError> {
         self.local(profile)?;
-        let conn = self.connection.lock().map_err(persistence)?;
-        latch(&conn, code)
+        let mut conn = self.connection.lock().map_err(persistence)?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(persistence)?;
+        latch(&tx, code)?;
+        tx.commit().map_err(persistence)
     }
     fn security_epoch(&self, profile: &ProfileId) -> Result<u64, GateError> {
         self.local(profile)?;
@@ -535,28 +546,25 @@ impl ApprovalStore for Approvals {
     }
     fn advance_security_epoch(&self, profile: &ProfileId) -> Result<u64, GateError> {
         self.local(profile)?;
-        let mut conn = self.connection.lock().map_err(persistence)?;
-        let tx = conn
-            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
-            .map_err(persistence)?;
-        let epoch: u64 = tx
-            .query_row(
-                "SELECT epoch FROM security_epoch WHERE singleton=1",
-                [],
-                |r| crate::sql_u64(r, 0),
+        self.ordinary(|tx| {
+            let epoch: u64 = tx
+                .query_row(
+                    "SELECT epoch FROM security_epoch WHERE singleton=1",
+                    [],
+                    |r| crate::sql_u64(r, 0),
+                )
+                .map_err(persistence)?;
+            let next = epoch
+                .checked_add(1)
+                .filter(|v| *v <= i64::MAX as u64)
+                .ok_or_else(|| GateError::Limit("epoch exhausted".into()))?;
+            tx.execute(
+                "UPDATE security_epoch SET epoch=?1 WHERE singleton=1",
+                [next as i64],
             )
             .map_err(persistence)?;
-        let next = epoch
-            .checked_add(1)
-            .filter(|v| *v <= i64::MAX as u64)
-            .ok_or_else(|| GateError::Limit("epoch exhausted".into()))?;
-        tx.execute(
-            "UPDATE security_epoch SET epoch=?1 WHERE singleton=1",
-            [next as i64],
-        )
-        .map_err(persistence)?;
-        tx.commit().map_err(persistence)?;
-        Ok(next)
+            Ok(next)
+        })
     }
     fn permissions(
         &self,
@@ -585,9 +593,10 @@ impl ApprovalStore for Approvals {
     ) -> Result<(), GateError> {
         self.local(profile)?;
         let body = canonical(p).map_err(persistence)?;
-        let conn = self.connection.lock().map_err(persistence)?;
-        conn.execute("INSERT INTO permissions(pack,hash,body) VALUES(?1,?2,?3) ON CONFLICT(pack,hash) DO UPDATE SET body=excluded.body",params![pack.as_str(),hash.as_str(),body]).map_err(persistence)?;
-        Ok(())
+        self.ordinary(|tx| {
+            tx.execute("INSERT INTO permissions(pack,hash,body) VALUES(?1,?2,?3) ON CONFLICT(pack,hash) DO UPDATE SET body=excluded.body",params![pack.as_str(),hash.as_str(),body]).map_err(persistence)?;
+            Ok(())
+        })
     }
     fn user_permissions(
         &self,
@@ -611,9 +620,10 @@ impl ApprovalStore for Approvals {
         permissions: &PermissionSet,
     ) -> Result<(), GateError> {
         self.local(profile)?;
-        let conn = self.connection.lock().map_err(persistence)?;
-        conn.execute("INSERT INTO user_approvals(profile_hash,revision,epoch,body) VALUES(?1,?2,?3,?4) ON CONFLICT(profile_hash,revision,epoch) DO UPDATE SET body=excluded.body",params![profile_hash.as_str(),revision.as_str(),i64::try_from(epoch).map_err(persistence)?,canonical(permissions).map_err(persistence)?]).map_err(persistence)?;
-        Ok(())
+        self.ordinary(|tx| {
+            tx.execute("INSERT INTO user_approvals(profile_hash,revision,epoch,body) VALUES(?1,?2,?3,?4) ON CONFLICT(profile_hash,revision,epoch) DO UPDATE SET body=excluded.body",params![profile_hash.as_str(),revision.as_str(),i64::try_from(epoch).map_err(persistence)?,canonical(permissions).map_err(persistence)?]).map_err(persistence)?;
+            Ok(())
+        })
     }
     fn reserve(&self, r: &Reservation) -> Result<(), GateError> {
         self.local(&r.profile)?;
@@ -634,7 +644,8 @@ impl ApprovalStore for Approvals {
             let tx = conn
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(persistence)?;
-            Self::insert_reservation(&tx, r)?;
+            let charge = Self::insert_reservation(&tx, r)?;
+            capacity::finish_grant(&tx, charge, capacity::Next::Keep)?;
             tx.commit().map_err(persistence)?;
             Ok(())
         })();
@@ -708,13 +719,14 @@ impl ApprovalStore for Approvals {
             let namespace = Digest::parse(&namespace)
                 .map_err(|_| GateError::Integrity(IntegrityFaultCode::AuthorityDatabase))?;
             let reservation = request.bind(namespace, generation, sequence)?;
-            Self::insert_reservation(&tx, &reservation)?;
+            let charge = Self::insert_reservation(&tx, &reservation)?;
             tx.execute("INSERT INTO reservation_identities(nonce,grant_id,generation,sequence) VALUES(?1,?2,?3,?4)",params![request.nonce().as_str(),reservation.id.as_str(),generation as i64,sequence as i64]).map_err(persistence)?;
             tx.execute(
                 "UPDATE authority_sequence SET sequence=?1 WHERE singleton=1",
                 [sequence as i64],
             )
             .map_err(persistence)?;
+            capacity::finish_grant(&tx, charge, capacity::Next::Keep)?;
             tx.commit().map_err(persistence)?;
             Ok(reservation)
         })();
@@ -735,17 +747,19 @@ impl ApprovalStore for Approvals {
     }
     fn sweep_expired(&self, profile: &ProfileId, now: u64) -> Result<u64, GateError> {
         let changed = self.expire_terminal(profile, now)?.len() as u64;
-        let conn = self.connection.lock().map_err(persistence)?;
-        conn.execute(
-            "DELETE FROM reservations WHERE state='finished' AND expires<?1",
-            [now.saturating_sub(86400000).min(i64::MAX as u64) as i64],
-        )
-        .map_err(persistence)?;
-        conn.execute(
-            "DELETE FROM attestation_nonces WHERE expires<=?1",
-            [now.min(i64::MAX as u64) as i64],
-        )
-        .map_err(persistence)?;
+        self.ordinary(|tx| {
+            tx.execute(
+                "DELETE FROM reservations WHERE state='finished' AND expires<?1",
+                [now.saturating_sub(86400000).min(i64::MAX as u64) as i64],
+            )
+            .map_err(persistence)?;
+            tx.execute(
+                "DELETE FROM attestation_nonces WHERE expires<=?1",
+                [now.min(i64::MAX as u64) as i64],
+            )
+            .map_err(persistence)?;
+            Ok(())
+        })?;
         Ok(changed)
     }
     fn consume(&self, r: &Reservation) -> Result<(), GateError> {
@@ -782,10 +796,12 @@ impl ApprovalStore for Approvals {
             if consumed.expires_unix_ms <= now {
                 return Err(GateError::Deadline);
             }
+            let charge = capacity::begin_grant(&tx, r.id.as_str(), false)?;
             let changed=tx.execute("UPDATE reservations SET state='consumed',body=?3,expires=?4 WHERE id=?1 AND body=?2 AND state='dispatched'",params![r.id.as_str(),canonical(r).map_err(persistence)?,canonical(&consumed).map_err(persistence)?,i64::try_from(consumed.expires_unix_ms).map_err(persistence)?]).map_err(persistence)?;
             if changed != 1 {
                 return Err(GateError::Consumed);
             }
+            capacity::finish_grant(&tx, charge, capacity::Next::Keep)?;
             tx.commit().map_err(persistence)?;
             Ok(consumed)
         })();
@@ -815,6 +831,7 @@ impl ApprovalStore for Approvals {
                 return Err(GateError::Denied("lease binding mismatch".into()));
             }
             current.expires_unix_ms = current.expires_unix_ms.min(deadline);
+            let charge = capacity::begin_grant(&tx, r.id.as_str(), false)?;
             tx.execute(
                 "UPDATE reservations SET body=?2,expires=?3 WHERE id=?1 AND state='consumed'",
                 params![
@@ -824,6 +841,7 @@ impl ApprovalStore for Approvals {
                 ],
             )
             .map_err(persistence)?;
+            capacity::finish_grant(&tx, charge, capacity::Next::Keep)?;
             tx.commit().map_err(persistence)?;
             Ok(current)
         })();
@@ -1057,11 +1075,14 @@ impl ApprovalStore for Approvals {
                     acknowledged: false,
                 });
             }
+            let consumed_charge = capacity::begin_grant(&tx, r.id.as_str(), false)?;
             tx.execute("UPDATE reservations SET body=?2,expires=?3,state='consumed' WHERE id=?1 AND state='dispatched'",params![r.id.as_str(),canonical(&current).map_err(persistence)?,i64::try_from(current.expires_unix_ms).map_err(persistence)?]).map_err(persistence)?;
+            capacity::finish_grant(&tx, consumed_charge, capacity::Next::Keep)?;
             // Candidate approvals do not advance the active revision epoch; the
             // committed Profile CAS performs that advancement under its lock.
             tx.execute_batch("SAVEPOINT permission_mutation")
                 .map_err(persistence)?;
+            let ordinary = capacity::ordinary_start(&tx)?;
             match effect {
                 PermissionEffect::Pack {
                     pack,
@@ -1079,16 +1100,21 @@ impl ApprovalStore for Approvals {
                     tx.execute("INSERT INTO user_approvals(profile_hash,revision,epoch,body) VALUES(?1,?2,?3,?4) ON CONFLICT(profile_hash,revision,epoch) DO UPDATE SET body=excluded.body",params![profile_hash.as_str(),revision.as_str(),i64::try_from(epoch).map_err(persistence)?,canonical(permissions).map_err(persistence)?]).map_err(persistence)?;
                 }
             }
+            // Permission bodies are general data, never terminal escrow.
+            // Check while the entire future terminal reservation is retained.
+            capacity::ordinary_finish(&tx, ordinary)?;
             let due = current.expires_unix_ms <= now_ms().map_err(persistence)?;
             if due {
                 tx.execute_batch("ROLLBACK TO permission_mutation; RELEASE permission_mutation")
                     .map_err(persistence)?;
             } else {
+                let receipt_charge = capacity::begin_grant(&tx, r.id.as_str(), false)?;
                 tx.execute(
                     "INSERT INTO permission_effects(grant_id,digest) VALUES(?1,?2)",
                     params![r.id.as_str(), digest.as_str()],
                 )
                 .map_err(persistence)?;
+                capacity::finish_grant(&tx, receipt_charge, capacity::Next::Keep)?;
                 tx.execute_batch("RELEASE permission_mutation")
                     .map_err(persistence)?;
             }
@@ -1272,11 +1298,13 @@ impl ApprovalStore for Approvals {
                     Ok(r) => r,
                     Err(GateError::Integrity(code)) => {
                         latch(&tx, code)?;
+                        let charge = capacity::begin_grant(&tx, &id, false)?;
                         tx.execute(
                             "INSERT OR IGNORE INTO reservation_quarantine(id,code) VALUES(?1,?2)",
                             params![id, canonical(&code).map_err(persistence)?],
                         )
                         .map_err(persistence)?;
+                        capacity::finish_grant(&tx, charge, capacity::Next::Keep)?;
                         continue; // Keep corrupt evidence and its reservation; no guessed outcome.
                     }
                     Err(error) => return Err(error),
@@ -1357,11 +1385,13 @@ impl ApprovalStore for Approvals {
                     Ok(decision) => decisions.push(decision),
                     Err(GateError::Integrity(code)) => {
                         latch(&tx, code)?;
+                        let charge = capacity::begin_grant(&tx, &grant, true)?;
                         tx.execute(
                             "UPDATE terminal_outbox SET quarantined=1 WHERE grant_id=?1",
                             [&grant],
                         )
                         .map_err(persistence)?;
+                        capacity::finish_grant(&tx, charge, capacity::Next::Keep)?;
                     }
                     Err(error) => return Err(error),
                 }
@@ -1377,11 +1407,11 @@ impl ApprovalStore for Approvals {
             let tx = conn
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(persistence)?;
-            let (grant, body): (String, Vec<u8>) = tx
+            let (grant, body, delivered): (String, Vec<u8>, bool) = tx
                 .query_row(
-                    "SELECT grant_id,body FROM terminal_outbox WHERE event_id=?1",
+                    "SELECT grant_id,body,delivered FROM terminal_outbox WHERE event_id=?1",
                     [event_id.as_str()],
-                    |r| Ok((r.get(0)?, r.get(1)?)),
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
                 )
                 .map_err(persistence)?;
             let decision = validated_terminal(&self.profile, &grant, event_id.as_str(), &body)?;
@@ -1392,11 +1422,19 @@ impl ApprovalStore for Approvals {
                     "terminal acknowledgement payload conflict".into(),
                 ));
             }
+            if delivered {
+                tx.commit().map_err(persistence)?;
+                return Ok(());
+            }
+            let charge = capacity::begin_grant(&tx, &grant, true)?;
             tx.execute(
                 "UPDATE terminal_outbox SET delivered=1 WHERE event_id=?1",
                 [event_id.as_str()],
             )
             .map_err(persistence)?;
+            // Include delivered-index and closed-escrow/state-index growth
+            // before releasing any unused remainder.
+            capacity::finish_grant(&tx, charge, capacity::Next::Closed)?;
             tx.commit().map_err(persistence)?;
             Ok(())
         })();
@@ -1426,13 +1464,14 @@ impl ApprovalStore for Approvals {
         store: &str,
     ) -> Result<(), GateError> {
         self.local(profile)?;
-        let conn = self.connection.lock().map_err(persistence)?;
-        conn.execute(
-            "INSERT OR IGNORE INTO public_writers(writer,owner,store) VALUES(?1,?2,?3)",
-            params![writer.as_str(), owner.as_str(), store],
-        )
-        .map_err(persistence)?;
-        Ok(())
+        self.ordinary(|tx| {
+            tx.execute(
+                "INSERT OR IGNORE INTO public_writers(writer,owner,store) VALUES(?1,?2,?3)",
+                params![writer.as_str(), owner.as_str(), store],
+            )
+            .map_err(persistence)?;
+            Ok(())
+        })
     }
     fn paired_device_key(
         &self,
@@ -1464,33 +1503,30 @@ impl ApprovalStore for Approvals {
         expires_unix_ms: u64,
     ) -> Result<bool, GateError> {
         self.local(profile)?;
-        let mut conn = self.connection.lock().map_err(persistence)?;
-        let tx = conn
-            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        self.ordinary(|tx| {
+            let now = now_ms().map_err(persistence)?;
+            if expires_unix_ms <= now || expires_unix_ms > now.saturating_add(300000) {
+                return Err(GateError::Denied("attestation expiry invalid".into()));
+            }
+            tx.execute(
+                "DELETE FROM attestation_nonces WHERE expires<=?1",
+                [now as i64],
+            )
             .map_err(persistence)?;
-        let now = now_ms().map_err(persistence)?;
-        if expires_unix_ms <= now || expires_unix_ms > now.saturating_add(300000) {
-            return Err(GateError::Denied("attestation expiry invalid".into()));
-        }
-        tx.execute(
-            "DELETE FROM attestation_nonces WHERE expires<=?1",
-            [now as i64],
-        )
-        .map_err(persistence)?;
-        let count: i64 = tx
-            .query_row("SELECT COUNT(*) FROM attestation_nonces", [], |r| r.get(0))
-            .map_err(persistence)?;
-        if count >= 4096 {
-            return Err(GateError::Limit("attestation nonce quota".into()));
-        }
-        let changed = tx
+            let count: i64 = tx
+                .query_row("SELECT COUNT(*) FROM attestation_nonces", [], |r| r.get(0))
+                .map_err(persistence)?;
+            if count >= 4096 {
+                return Err(GateError::Limit("attestation nonce quota".into()));
+            }
+            let changed = tx
             .execute(
                 "INSERT OR IGNORE INTO attestation_nonces(device,nonce,expires) VALUES(?1,?2,?3)",
                 params![device, nonce, expires_unix_ms as i64],
             )
             .map_err(persistence)?;
-        tx.commit().map_err(persistence)?;
-        Ok(changed == 1)
+            Ok(changed == 1)
+        })
     }
 }
 

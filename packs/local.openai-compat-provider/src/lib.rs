@@ -38,6 +38,15 @@ struct ActiveStream {
     decoder: Decoder,
     chat: ChatStream,
     pending: VecDeque<String>,
+    failure: Option<BufferedFailure>,
+}
+
+#[derive(Clone, Copy)]
+enum BufferedFailure {
+    // Decoder::feed may have queued valid frames before a later framing error.
+    // Deliver only that queued prefix, then report the fixed error without a read.
+    AfterQueuedFrames(&'static str),
+    Ready(&'static str),
 }
 
 #[derive(Default)]
@@ -224,6 +233,7 @@ fn start_chat(
                 decoder: Decoder::default(),
                 chat,
                 pending,
+                failure: None,
             },
         );
         Ok(StreamHandle { id })
@@ -252,6 +262,7 @@ impl stream_source::Guest for Pack {
                 &mut stream.decoder,
                 &mut stream.chat,
                 &mut stream.pending,
+                &mut stream.failure,
                 max as usize,
                 || {
                     if flow::is_cancelled() {
@@ -274,16 +285,20 @@ impl stream_source::Guest for Pack {
     }
 }
 
-// Return every public batch before the next blocking read. Bounded metadata-only
-// work yields a content-free heartbeat rather than a false EOF or a long loop.
+// Batch only already buffered frames after public events. Never perform another
+// read with a public batch in hand. Bounded metadata-only work yields a heartbeat.
 fn pull_events<E>(
     decoder: &mut Decoder,
     chat: &mut ChatStream,
     pending: &mut VecDeque<String>,
+    failure: &mut Option<BufferedFailure>,
     max: usize,
     mut read: impl FnMut() -> Result<Option<Vec<u8>>, E>,
     invalid: impl Fn(&'static str) -> E,
 ) -> Result<Vec<String>, E> {
+    if let Some(BufferedFailure::Ready(message)) = *failure {
+        return Err(invalid(message));
+    }
     let mut events = Vec::new();
     let mut reads = 0;
     let mut frames = 0;
@@ -295,7 +310,7 @@ fn pull_events<E>(
             };
             events.push(event);
         }
-        if !events.is_empty() || chat.is_done() {
+        if events.len() == max || chat.is_done() {
             return Ok(events);
         }
         if frames >= 16 {
@@ -303,23 +318,48 @@ fn pull_events<E>(
         }
         if let Some(frame) = decoder.next_frame() {
             frames += 1;
-            pending.extend(chat.accept(&frame).map_err(&invalid)?);
+            match chat.accept(&frame) {
+                Ok(accepted) => pending.extend(accepted),
+                Err(message) => {
+                    // Earlier public evidence must reach its caller's durable
+                    // recorder before this later frame failure is delivered.
+                    *failure = Some(BufferedFailure::Ready(message));
+                    if events.is_empty() {
+                        return Err(invalid(message));
+                    }
+                    return Ok(events);
+                }
+            }
             continue;
         }
-        if reads >= 1 {
+        if let Some(BufferedFailure::AfterQueuedFrames(message)) = *failure {
+            *failure = Some(BufferedFailure::Ready(message));
+            if events.is_empty() {
+                return Err(invalid(message));
+            }
+            return Ok(events);
+        }
+        if !events.is_empty() || reads >= 1 {
             break;
         }
         reads += 1;
         match read()? {
             Some(chunk) => {
                 received += chunk.len();
-                decoder.feed(&chunk).map_err(&invalid)?;
+                if let Err(message) = decoder.feed(&chunk) {
+                    // feed stops at its first invalid frame. Any queued frames
+                    // precede that failure; later bytes are never fed again.
+                    *failure = Some(BufferedFailure::AfterQueuedFrames(message));
+                }
             }
             None => {
                 decoder.finish().map_err(&invalid)?;
                 return Err(invalid("provider ended before SSE [DONE]"));
             }
         }
+    }
+    if !events.is_empty() {
+        return Ok(events);
     }
     Ok(vec![
         serde_json::json!({"kind":"progress","text":serde_json::json!({
@@ -333,16 +373,327 @@ fn pull_events<E>(
 mod tests {
     use super::*;
 
+    fn frame(value: serde_json::Value) -> String {
+        format!("data: {value}\n\n")
+    }
+
+    fn delta(text: &str) -> String {
+        frame(serde_json::json!({"choices":[{"delta":{"content":text}}]}))
+    }
+
+    fn decoded(events: &[String]) -> Vec<serde_json::Value> {
+        events
+            .iter()
+            .map(|event| serde_json::from_str(event).unwrap())
+            .collect()
+    }
+
     #[test]
-    fn public_receipt_and_partial_are_returned_before_another_blocking_read() {
+    fn buffered_public_frames_share_one_batch_without_another_read() {
+        let chunk = [
+            frame(serde_json::json!({"id":"gen-batch","choices":[{"delta":{"content":"3"}}]})),
+            delta("91"),
+            frame(
+                serde_json::json!({"choices":[{"delta":{},"finish_reason":"stop"}],
+                "usage":{"prompt_tokens":2,"completion_tokens":3}}),
+            ),
+            "data: [DONE]\n\n".into(),
+        ]
+        .concat()
+        .into_bytes();
         let mut decoder = Decoder::default();
         let mut chat = ChatStream::default();
-        let mut pending = VecDeque::from([chat.generation_header("gen-test").unwrap()]);
+        let mut reads = 0;
+        let events = pull_events(
+            &mut decoder,
+            &mut chat,
+            &mut VecDeque::new(),
+            &mut None,
+            64,
+            || {
+                reads += 1;
+                assert_eq!(reads, 1, "a public batch must not issue another read");
+                Ok::<_, &str>(Some(chunk.clone()))
+            },
+            |error| error,
+        )
+        .unwrap();
+        assert_eq!(reads, 1);
+        let events = decoded(&events);
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event["kind"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["metadata", "delta", "delta", "metadata", "usage", "done"]
+        );
+        assert_eq!(events[1]["text"], "3");
+        assert_eq!(events[2]["text"], "91");
+        assert_eq!(events[4]["prompt-tokens"], 2);
+        assert_eq!(events[4]["completion-tokens"], 3);
+        assert_eq!(events[5]["text"], "391");
+        assert!(chat.is_done());
+    }
+
+    #[test]
+    fn public_prefix_precedes_a_later_buffered_contract_failure() {
+        let mut decoder = Decoder::default();
+        decoder.feed([
+            frame(serde_json::json!({"id":"gen-prefix","choices":[{"delta":{"content":"391"}}]})),
+            "data: invalid-json\n\n".into(),
+            delta("must-not-be-accepted"),
+        ].concat().as_bytes()).unwrap();
+        let mut chat = ChatStream::default();
+        let mut pending = VecDeque::new();
+        let mut failure = None;
+        let first = pull_events(
+            &mut decoder,
+            &mut chat,
+            &mut pending,
+            &mut failure,
+            64,
+            || Err("unexpected read"),
+            |error| error,
+        )
+        .unwrap();
+        let first = decoded(&first);
+        assert_eq!(first.len(), 2);
+        assert_eq!(first[0]["kind"], "metadata");
+        assert!(first[0]["text"].as_str().unwrap().contains("gen-prefix"));
+        assert_eq!(first[1]["text"], "391");
+        assert_eq!(
+            pull_events(
+                &mut decoder,
+                &mut chat,
+                &mut pending,
+                &mut failure,
+                64,
+                || Err("unexpected read"),
+                |error| error,
+            )
+            .unwrap_err(),
+            "provider sent invalid SSE JSON"
+        );
+        assert!(!chat.is_done());
+        assert!(
+            decoder
+                .next_frame()
+                .unwrap()
+                .contains("must-not-be-accepted")
+        );
+    }
+
+    #[test]
+    fn queued_public_prefix_survives_a_later_framing_failure() {
+        let mut chunk =
+            frame(serde_json::json!({"id":"gen-framing","choices":[{"delta":{"content":"391"}}]}))
+                .into_bytes();
+        chunk.extend_from_slice(b"data: \xff\n\n");
+        let mut decoder = Decoder::default();
+        let mut chat = ChatStream::default();
+        let mut pending = VecDeque::new();
+        let mut failure = None;
         let mut reads = 0;
         let first = pull_events(
             &mut decoder,
             &mut chat,
             &mut pending,
+            &mut failure,
+            64,
+            || {
+                reads += 1;
+                Ok::<_, &str>(Some(chunk.clone()))
+            },
+            |error| error,
+        )
+        .unwrap();
+        assert_eq!(reads, 1);
+        let first = decoded(&first);
+        assert_eq!(first.len(), 2);
+        assert!(first[0]["text"].as_str().unwrap().contains("gen-framing"));
+        assert_eq!(first[1]["text"], "391");
+        assert_eq!(
+            pull_events(
+                &mut decoder,
+                &mut chat,
+                &mut pending,
+                &mut failure,
+                64,
+                || Err("unexpected read"),
+                |error| error,
+            )
+            .unwrap_err(),
+            "invalid SSE UTF-8"
+        );
+    }
+
+    #[test]
+    fn max_keeps_pending_events_and_done_stops_buffered_parsing() {
+        let mut decoder = Decoder::default();
+        decoder.feed([
+            frame(serde_json::json!({"id":"gen-max","choices":[{"delta":{"content":"391"},"finish_reason":"stop"}],
+                "usage":{"prompt_tokens":2,"completion_tokens":3}})),
+            "data: [DONE]\n\n".into(),
+            "data: invalid-after-done\n\n".into(),
+        ].concat().as_bytes()).unwrap();
+        let mut chat = ChatStream::default();
+        let mut pending = VecDeque::new();
+        let mut failure = None;
+        let mut kinds = Vec::new();
+        for _ in 0..6 {
+            let events = pull_events(
+                &mut decoder,
+                &mut chat,
+                &mut pending,
+                &mut failure,
+                1,
+                || Err("unexpected read"),
+                |error| error,
+            )
+            .unwrap();
+            assert!(events.len() <= 1);
+            kinds.extend(
+                decoded(&events)
+                    .iter()
+                    .map(|event| event["kind"].as_str().unwrap().to_owned()),
+            );
+            if events.is_empty() {
+                assert!(chat.is_done());
+                break;
+            }
+        }
+        assert_eq!(kinds, ["metadata", "delta", "metadata", "usage", "done"]);
+        assert!(failure.is_none());
+        assert_eq!(decoder.next_frame().unwrap(), "invalid-after-done");
+    }
+
+    #[test]
+    fn buffered_public_work_stops_after_sixteen_frames() {
+        let mut decoder = Decoder::default();
+        decoder.feed(delta("x").repeat(20).as_bytes()).unwrap();
+        let mut chat = ChatStream::default();
+        let mut pending = VecDeque::new();
+        let mut failure = None;
+        for expected in [16, 4] {
+            let events = pull_events(
+                &mut decoder,
+                &mut chat,
+                &mut pending,
+                &mut failure,
+                64,
+                || Err("unexpected read"),
+                |error| error,
+            )
+            .unwrap();
+            assert_eq!(events.len(), expected);
+            assert!(
+                decoded(&events)
+                    .iter()
+                    .all(|event| event["kind"] == "delta")
+            );
+        }
+    }
+
+    #[test]
+    fn buffered_private_work_yields_a_heartbeat_after_sixteen_frames() {
+        let mut decoder = Decoder::default();
+        decoder
+            .feed(
+                frame(serde_json::json!({"choices":[{"delta":{"reasoning":"private-marker"}}]}))
+                    .repeat(32)
+                    .as_bytes(),
+            )
+            .unwrap();
+        let mut chat = ChatStream::default();
+        let mut pending = VecDeque::new();
+        let mut failure = None;
+        for _ in 0..2 {
+            let events = pull_events(
+                &mut decoder,
+                &mut chat,
+                &mut pending,
+                &mut failure,
+                64,
+                || Err("unexpected read"),
+                |error| error,
+            )
+            .unwrap();
+            let values = decoded(&events);
+            assert_eq!(values.len(), 1);
+            assert_eq!(values[0]["kind"], "progress");
+            let progress: serde_json::Value =
+                serde_json::from_str(values[0]["text"].as_str().unwrap()).unwrap();
+            assert_eq!(progress["processed_frames"], 16);
+            assert_eq!(progress["received_bytes"], 0);
+            assert!(!events[0].contains("private-marker"));
+        }
+    }
+
+    #[test]
+    fn missing_done_remains_an_error_after_delivering_a_public_prefix() {
+        let mut decoder = Decoder::default();
+        decoder.feed(delta("391").as_bytes()).unwrap();
+        let mut chat = ChatStream::default();
+        let mut pending = VecDeque::new();
+        let mut failure = None;
+        let first = pull_events(
+            &mut decoder,
+            &mut chat,
+            &mut pending,
+            &mut failure,
+            64,
+            || Err("unexpected read"),
+            |error| error,
+        )
+        .unwrap();
+        assert_eq!(decoded(&first)[0]["text"], "391");
+        assert_eq!(
+            pull_events(
+                &mut decoder,
+                &mut chat,
+                &mut pending,
+                &mut failure,
+                64,
+                || Ok::<_, &str>(None),
+                |error| error,
+            )
+            .unwrap_err(),
+            "provider ended before SSE [DONE]"
+        );
+        assert!(!chat.is_done());
+    }
+
+    #[test]
+    fn invalid_first_frame_is_an_immediate_fixed_error() {
+        let mut decoder = Decoder::default();
+        decoder.feed(b"data: invalid-json\n\n").unwrap();
+        assert_eq!(
+            pull_events(
+                &mut decoder,
+                &mut ChatStream::default(),
+                &mut VecDeque::new(),
+                &mut None,
+                64,
+                || Err("unexpected read"),
+                |error| error,
+            )
+            .unwrap_err(),
+            "provider sent invalid SSE JSON"
+        );
+    }
+
+    #[test]
+    fn public_receipt_and_partial_are_returned_before_another_blocking_read() {
+        let mut decoder = Decoder::default();
+        let mut chat = ChatStream::default();
+        let mut pending = VecDeque::from([chat.generation_header("gen-test").unwrap()]);
+        let mut failure = None;
+        let mut reads = 0;
+        let first = pull_events(
+            &mut decoder,
+            &mut chat,
+            &mut pending,
+            &mut failure,
             64,
             || {
                 reads += 1;
@@ -362,6 +713,7 @@ mod tests {
             &mut decoder,
             &mut chat,
             &mut pending,
+            &mut failure,
             64,
             || {
                 reads += 1;
@@ -377,6 +729,7 @@ mod tests {
                 &mut decoder,
                 &mut chat,
                 &mut pending,
+                &mut failure,
                 64,
                 || Err("later read failed"),
                 |error| error
@@ -397,6 +750,7 @@ mod tests {
                 &mut Decoder::default(),
                 &mut ChatStream::default(),
                 &mut VecDeque::new(),
+                &mut None,
                 64,
                 || {
                     reads += 1;
@@ -420,6 +774,7 @@ mod tests {
         let mut decoder = Decoder::default();
         let mut chat = ChatStream::default();
         let mut pending = VecDeque::new();
+        let mut failure = None;
         decoder.feed(b"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n").unwrap();
         let mut kinds = Vec::new();
         for _ in 0..3 {
@@ -427,6 +782,7 @@ mod tests {
                 &mut decoder,
                 &mut chat,
                 &mut pending,
+                &mut failure,
                 64,
                 || Err("unexpected read"),
                 |error| error,

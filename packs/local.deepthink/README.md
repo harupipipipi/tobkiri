@@ -80,6 +80,15 @@ is delivered before reading the body and must agree with
 SSE IDs; final usage repeating `finish_reason: stop` is counted as accounting,
 not a second completion. A heartbeat without public content never means EOF.
 
+The provider drains at most 16 already-buffered frames per pull, within the
+requested event bound. Once public events exist, it returns them before another
+transport read. A later malformed buffered frame is reported on the next pull;
+earlier public events can therefore be journaled first. If stricter progress
+validation fails later in a batch, only the accepted prefix is saved, then the
+original failure is returned. An uncertain save takes precedence over that
+failure. One Runtime reuses its private Store only within that phase invocation;
+each KV operation still passes through Core/Gate with the current context.
+
 `workflow.status` joins matching progress values and reports
 `status: needs_reconciliation` with `model_attempts` when an attempt is unresolved.
 Partials remain diagnostic evidence and cannot become an approved answer or a
@@ -90,6 +99,14 @@ checkpoint. Unconfirmed checkpoint writes stop without an automatic retry or
 replacement write. This version does not implement external provider generation
 lookup or interrupted SSE reattachment: retain the run and inspect its receipt;
 do not assume cancellation ended billing or repeat an unknown request.
+
+The current MiMo Profile gives the whole User request a 300-second deadline,
+shared by all phases and their persistence. Repeated pulls do not renew it.
+Checkpoint and progress values are currently single KV records; Core limits a
+KV value to one MiB, while the public stream parser can accept up to four MiB.
+Large responses or accumulated phase inputs can therefore fail persistence.
+Chunked storage and a pause at a completed phase boundary are not implemented.
+No output-token cap is added to disguise these storage or liveness limits.
 
 Tool calls are explicit JSON plans executed against the selected real tool
 provider. They do not impersonate native model API tool calls. Actual artifacts

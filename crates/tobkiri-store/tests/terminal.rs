@@ -70,7 +70,9 @@ impl Fixture {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
         }
-        let root = DataRoot::open(dir.path().canonicalize().unwrap()).unwrap();
+        // Use the real private-directory constructor, including its Windows
+        // protected DACL, instead of admitting an inherited temp-directory ACL.
+        let root = DataRoot::open(dir.path().canonicalize().unwrap().join("data")).unwrap();
         let profile = ProfileId::parse("prof_terminal").unwrap();
         let approvals = Arc::new(Approvals::open(&root, &profile).unwrap());
         let audit = Arc::new(AuditLog::open(&root, &profile, AuditQuota::default()).unwrap());
@@ -606,7 +608,7 @@ async fn sink_dedup_rejects_conflicting_payload_and_mixed_old_new_chain_survives
 #[test]
 fn actual_legacy_audit_schema_upgrades_without_rewriting_existing_hashes() {
     let dir = tempfile::tempdir().unwrap();
-    let root = DataRoot::open(dir.path().canonicalize().unwrap()).unwrap();
+    let root = DataRoot::open(dir.path().canonicalize().unwrap().join("data")).unwrap();
     let profile = ProfileId::parse("prof_legacy_audit").unwrap();
     root.write_profile_file_atomic(&profile, "marker", b"")
         .unwrap();
@@ -630,17 +632,32 @@ fn actual_legacy_audit_schema_upgrades_without_rewriting_existing_hashes() {
         &serde_json::json!({"seq":1,"prev_digest":prev,"event":event}),
     ));
     let body = strict(&serde_json::to_value(&event).unwrap());
-    let raw =
-        rusqlite::Connection::open(root.path().join(format!("profiles/{profile}/audit.sqlite")))
-            .unwrap();
+    // Build and close the legacy image outside DATA, then import its exact
+    // bytes through DataRoot so its file has the normal private protections.
+    let seed_path = dir.path().join("legacy-audit-seed.sqlite");
+    let raw = rusqlite::Connection::open(&seed_path).unwrap();
     raw.execute_batch("CREATE TABLE audit(seq INTEGER PRIMARY KEY,prev_digest TEXT NOT NULL,digest TEXT NOT NULL,body BLOB NOT NULL,writer TEXT NOT NULL,minute INTEGER NOT NULL,size INTEGER NOT NULL);").unwrap();
     raw.execute(
         "INSERT INTO audit VALUES(1,?1,?2,?3,'user',0,?4)",
         rusqlite::params![prev.as_str(), hash.as_str(), body, body.len() as i64],
     )
     .unwrap();
+    raw.close().unwrap();
+    root.write_profile_file_atomic(
+        &profile,
+        "audit.sqlite",
+        &std::fs::read(&seed_path).unwrap(),
+    )
+    .unwrap();
     let audit = AuditLog::open(&root, &profile, AuditQuota::default()).unwrap();
     audit.verify().unwrap();
+    drop(audit);
+    let audit_path = root.path().join(format!("profiles/{profile}/audit.sqlite"));
+    let raw = rusqlite::Connection::open_with_flags(
+        &audit_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .unwrap();
     assert_eq!(
         raw.query_row("SELECT digest FROM audit WHERE seq=1", [], |r| r
             .get::<_, String>(0))
@@ -653,10 +670,18 @@ fn actual_legacy_audit_schema_upgrades_without_rewriting_existing_hashes() {
             .unwrap()
             .is_none()
     );
+    drop(raw);
+    let audit = AuditLog::open(&root, &profile, AuditQuota::default()).unwrap();
     audit
         .append_idempotent(&Digest::hash(b"new identified row"), event)
         .unwrap();
     audit.verify().unwrap();
+    drop(audit);
+    let raw = rusqlite::Connection::open_with_flags(
+        &audit_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .unwrap();
     assert_eq!(
         raw.query_row("SELECT digest FROM audit WHERE seq=1", [], |r| r
             .get::<_, String>(0))
@@ -893,6 +918,15 @@ async fn fresh_ids_retain_namespace_and_sequence_across_reopen_with_distinct_os_
     assert_eq!(a.generation, b.generation);
     assert_eq!(a.sequence + 1, b.sequence);
     assert_ne!(a.nonce, b.nonce);
+    // Real Gate fresh reservations include nonce/sequence/escrow insertion in
+    // the same admission transaction; completed receipts retain no future slot.
+    let raw = f.raw();
+    let (identities, closed, width): (i64, i64, i64) = raw.query_row(
+        "SELECT (SELECT COUNT(*) FROM reservation_identities),(SELECT COUNT(*) FROM terminal_capacity_escrow WHERE state='closed' AND remaining=x'0000000000000000'),(SELECT MIN(length(remaining)) FROM terminal_capacity_escrow)", [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?)),
+    ).unwrap();
+    assert_eq!(identities, 2);
+    assert_eq!(closed, 2);
+    assert_eq!(width, 8);
 }
 #[tokio::test]
 async fn consumed_deadline_is_durable_reduce_only_and_settlement_honors_the_existing_winner() {

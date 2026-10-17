@@ -81,30 +81,101 @@ fn private_store() -> Result<storage::Store, Failure> {
     storage::open("workflows").map_err(failure)
 }
 
-fn persist_progress(progress: &GenerationProgress) -> Result<(), Failure> {
-    let bytes = serde_json::to_vec(progress)
-        .map_err(|_| invalid("generation progress cannot be serialized"))?;
-    // The attempt intent was already committed before this request. A failed or
-    // unknown write never permits another POST; the older intent stays blocking.
-    let result = (|| {
-        private_store()?
-            .kv_put(&progress.attempt.storage_key(), &bytes)
-            .map_err(failure)
-    })();
-    result.map_err(|error: Failure| Failure {
-        code:"checkpoint-unconfirmed".into(), message:format!("Generation snapshot write was not confirmed; do not automatically repeat the request. {}", error.message)
-    })
+#[derive(Default)]
+struct Runtime {
+    // Runtime lives only for the current synchronous phase/export. The handle
+    // never enters STATE or Active, and every KV call retains its own Gate check.
+    store: Option<storage::Store>,
 }
 
-fn read_progress(attempt: &AttemptContext) -> Result<Option<GenerationProgress>, Failure> {
-    private_store()?
-        .kv_get(&attempt.storage_key())
-        .map_err(failure)?
-        .map(|bytes| {
-            serde_json::from_slice(&bytes)
-                .map_err(|_| invalid("saved generation progress is invalid"))
+impl Runtime {
+    fn private_store(&mut self) -> Result<&storage::Store, Failure> {
+        if self.store.is_none() {
+            self.store = Some(private_store()?);
+        }
+        Ok(self.store.as_ref().expect("store was opened above"))
+    }
+
+    fn persist_progress(&mut self, progress: &GenerationProgress) -> Result<(), Failure> {
+        let bytes = serde_json::to_vec(progress)
+            .map_err(|_| invalid("generation progress cannot be serialized"))?;
+        // The attempt intent was already committed before this request. A failed or
+        // unknown write never permits another POST; the older intent stays blocking.
+        let result = (|| {
+            self.private_store()?
+                .kv_put(&progress.attempt.storage_key(), &bytes)
+                .map_err(failure)
+        })();
+        result.map_err(|error: Failure| Failure {
+            code: "checkpoint-unconfirmed".into(),
+            message: format!(
+                "Generation snapshot write was not confirmed; do not automatically repeat the request. {}",
+                error.message
+            ),
         })
-        .transpose()
+    }
+
+    fn read_progress(
+        &mut self,
+        attempt: &AttemptContext,
+    ) -> Result<Option<GenerationProgress>, Failure> {
+        self.private_store()?
+            .kv_get(&attempt.storage_key())
+            .map_err(failure)?
+            .map(|bytes| {
+                serde_json::from_slice(&bytes)
+                    .map_err(|_| invalid("saved generation progress is invalid"))
+            })
+            .transpose()
+    }
+}
+
+// Keep the valid public prefix even if a later event in the same provider batch
+// fails stricter local validation. Only small evidence fields are cloned per
+// event: accept() never replaces/truncates public text on a failed event.
+fn record_public_batch(
+    progress: &mut GenerationProgress,
+    events: Vec<String>,
+    persist: impl FnOnce(&GenerationProgress) -> Result<(), Failure>,
+) -> Result<(), Failure> {
+    let before = (
+        progress.public_text.len(),
+        progress.completed,
+        progress.usage.clone(),
+        progress.metadata.clone(),
+    );
+    let outcome = (|| {
+        for event in events {
+            let event: Value = serde_json::from_str(&event)
+                .map_err(|_| invalid("provider returned an invalid stream event"))?;
+            let accepted_length = progress.public_text.len();
+            let completed = progress.completed;
+            let usage = progress.usage.clone();
+            let metadata = progress.metadata.clone();
+            if let Err(error) = progress.accept(&event) {
+                progress.public_text.truncate(accepted_length);
+                progress.completed = completed;
+                progress.usage = usage;
+                progress.metadata = metadata;
+                return Err(error);
+            }
+        }
+        Ok(())
+    })();
+    if before
+        != (
+            progress.public_text.len(),
+            progress.completed,
+            progress.usage.clone(),
+            progress.metadata.clone(),
+        )
+    {
+        progress.next_snapshot()?;
+        // A failed save supersedes the event error: its unknown commit must not
+        // be retried or followed by an outer checkpoint write.
+        persist(progress)?;
+    }
+    outcome
 }
 
 fn merge_saved_progress(run: &mut Run) -> Result<(), Failure> {
@@ -118,15 +189,15 @@ fn merge_saved_progress(run: &mut Run) -> Result<(), Failure> {
                 .map_err(|_| invalid("saved attempt binding is invalid"))
         })
         .collect::<Result<Vec<_>, _>>()?;
+    let mut runtime = Runtime::default();
     for context in contexts {
-        if let Some(progress) = read_progress(&context)? {
+        if let Some(progress) = runtime.read_progress(&context)? {
             run.merge_generation_progress(progress)?;
         }
     }
     Ok(())
 }
 
-struct Runtime;
 impl Ports for Runtime {
     fn active(&mut self) -> Result<(), Failure> {
         if flow::is_cancelled() {
@@ -158,7 +229,7 @@ impl Ports for Runtime {
         let (port, arguments) = generation_port_arguments(model, messages, phase, structured);
         let mut progress = GenerationProgress::new(attempt.clone());
         // Sidecar admission must succeed before a paid model call can begin.
-        persist_progress(&progress)?;
+        self.persist_progress(&progress)?;
         let stream =
             flow::call_port_stream(port, "chat", &arguments.to_string()).map_err(failure)?;
         let outcome = (|| {
@@ -168,31 +239,11 @@ impl Ports for Runtime {
                 if events.is_empty() {
                     break;
                 }
-                let before = (
-                    progress.public_text.len(),
-                    progress.completed,
-                    progress.usage.clone(),
-                    progress.metadata.clone(),
-                );
-                for event in events {
-                    let event: Value = serde_json::from_str(&event)
-                        .map_err(|_| invalid("provider returned an invalid stream event"))?;
-                    progress.accept(&event)?;
-                }
-                if before
-                    != (
-                        progress.public_text.len(),
-                        progress.completed,
-                        progress.usage.clone(),
-                        progress.metadata.clone(),
-                    )
-                {
-                    progress.next_snapshot()?;
-                    // Persist changed public evidence before the next blocking
-                    // pull. Private-only heartbeats cause no checkpoint write.
-                    // A terminal snapshot also precedes Generated delivery.
-                    persist_progress(&progress)?;
-                }
+                // Persist accepted evidence before another blocking pull or a
+                // later batch error. Private-only heartbeats cause no write.
+                record_public_batch(&mut progress, events, |snapshot| {
+                    self.persist_progress(snapshot)
+                })?;
             }
             if !progress.completed {
                 return Err(invalid(
@@ -214,7 +265,7 @@ impl Ports for Runtime {
         &mut self,
         attempt: &AttemptContext,
     ) -> Result<Option<GenerationProgress>, Failure> {
-        read_progress(attempt)
+        self.read_progress(attempt)
     }
 
     fn tool(&mut self, call: &Value) -> Result<Value, Failure> {
@@ -251,7 +302,7 @@ impl Ports for Runtime {
     }
 
     fn persist(&mut self, run: &Run) -> Result<(), Failure> {
-        let store = private_store()?;
+        let store = self.private_store()?;
         let checkpoint = serde_json::to_vec(run)
             .map_err(|_| invalid("workflow checkpoint cannot be serialized"))?;
         // This single atomic KV value is authoritative on resume. The following
@@ -338,7 +389,7 @@ fn register(mut run: Run) -> Result<StreamHandle, Error> {
         }
         Ok(())
     })?;
-    Runtime.persist(&run).map_err(guest_error)?;
+    Runtime::default().persist(&run).map_err(guest_error)?;
     STATE.with_borrow_mut(|state| {
         if state.streams.len() >= 64 {
             return Err(guest_error(invalid("too many active workflow streams")));
@@ -572,7 +623,8 @@ impl Active {
                 self.announced = true;
                 return Ok(vec![event("progress",Some(json!({"version":VERSION,"run_id":self.run.id,"phase":self.run.pending.front().map(|phase|phase.id.as_str()),"status":"running"}).to_string()))]);
             }
-            match self.run.advance(&mut Runtime) {
+            let mut runtime = Runtime::default();
+            match self.run.advance(&mut runtime) {
                 Ok(events) => {
                     self.announced = false;
                     for value in events {
@@ -628,6 +680,155 @@ impl stream_source::Guest for Pack {
         STATE.with_borrow_mut(|state| {
             state.streams.remove(&local_id);
         });
+    }
+}
+
+#[cfg(test)]
+mod runtime_progress_tests {
+    use super::*;
+
+    fn progress() -> GenerationProgress {
+        GenerationProgress::new(AttemptContext {
+            run_id: "0".repeat(64),
+            run_request_digest: "1".repeat(64),
+            phase: "goal_intake".into(),
+            generation_key: "goal_intake@0:0#0".into(),
+            attempt_id: "goal_intake@0:0#0:0".into(),
+            request_digest: "2".repeat(64),
+            route_digest: "3".repeat(64),
+        })
+    }
+
+    fn rejected(
+        mut progress: GenerationProgress,
+        events: Vec<String>,
+    ) -> (GenerationProgress, GenerationProgress, Failure) {
+        let mut saved = None;
+        let error = record_public_batch(&mut progress, events, |snapshot| {
+            saved = Some(snapshot.clone());
+            Ok(())
+        })
+        .unwrap_err();
+        let saved = saved.expect("the accepted public prefix must be saved first");
+        assert_eq!(progress, saved);
+        assert!(!saved.completed);
+        assert_eq!(saved.sequence, 1);
+        assert_eq!(saved.public_text, "391");
+        (progress, saved, error)
+    }
+
+    #[test]
+    fn accepted_prefix_is_saved_before_regressing_usage_without_partial_fields() {
+        let mut progress = progress();
+        progress.usage = json!({"input_tokens":5,"output_tokens":9});
+        let (_, saved, error) = rejected(
+            progress,
+            vec![
+                json!({"kind":"delta","text":"391"}).to_string(),
+                json!({"kind":"usage","prompt-tokens":6,"completion-tokens":8}).to_string(),
+            ],
+        );
+        assert_eq!(saved.usage, json!({"input_tokens":5,"output_tokens":9}));
+        assert_eq!(error.message, "provider usage counter decreased");
+    }
+
+    #[test]
+    fn accepted_prefix_is_saved_before_identity_failure_without_partial_fields() {
+        for (previous, invalid_metadata) in [
+            (
+                json!({"generation_id":"gen-original"}),
+                json!({"generation_id":"gen-changed"}),
+            ),
+            (
+                json!({"model":"original"}),
+                json!({"generation_id":"gen-new","model":"changed"}),
+            ),
+        ] {
+            let mut progress = progress();
+            progress.metadata = previous.clone();
+            let mut metadata = invalid_metadata;
+            metadata["version"] = json!("tobkiri.chat.metadata.v1");
+            let (_, saved, error) = rejected(
+                progress,
+                vec![
+                    json!({"kind":"delta","text":"391"}).to_string(),
+                    json!({"kind":"metadata","text":metadata.to_string()}).to_string(),
+                ],
+            );
+            assert_eq!(saved.metadata, previous);
+            assert_eq!(
+                error.message,
+                "provider changed or invalidated its public identity"
+            );
+        }
+    }
+
+    #[test]
+    fn accepted_prefix_is_saved_before_mismatching_done_without_completion() {
+        let mut progress = progress();
+        progress.public_text = "39".into();
+        let (_, _, error) = rejected(
+            progress,
+            vec![
+                json!({"kind":"delta","text":"1"}).to_string(),
+                json!({"kind":"done","text":"392"}).to_string(),
+            ],
+        );
+        assert_eq!(
+            error.message,
+            "provider completion differs from its public deltas"
+        );
+    }
+
+    #[test]
+    fn accepted_prefix_is_saved_before_a_malformed_later_event() {
+        let (_, _, error) = rejected(
+            progress(),
+            vec![
+                json!({"kind":"delta","text":"391"}).to_string(),
+                "invalid-event-json".into(),
+            ],
+        );
+        assert_eq!(error.message, "provider returned an invalid stream event");
+    }
+
+    #[test]
+    fn prefix_write_failure_retains_checkpoint_unconfirmed_instead_of_event_error() {
+        let mut progress = progress();
+        let mut writes = 0;
+        let error = record_public_batch(
+            &mut progress,
+            vec![
+                json!({"kind":"delta","text":"391"}).to_string(),
+                json!({"kind":"done","text":"wrong"}).to_string(),
+            ],
+            |snapshot| {
+                writes += 1;
+                assert_eq!(snapshot.public_text, "391");
+                assert!(!snapshot.completed);
+                Err(Failure {
+                    code: "checkpoint-unconfirmed".into(),
+                    message: "write not confirmed".into(),
+                })
+            },
+        )
+        .unwrap_err();
+        assert_eq!(writes, 1);
+        assert_eq!(error.code, "checkpoint-unconfirmed");
+        assert_eq!(error.message, "write not confirmed");
+    }
+
+    #[test]
+    fn private_only_heartbeat_never_writes_a_progress_snapshot() {
+        let mut progress = progress();
+        let before = progress.clone();
+        record_public_batch(
+            &mut progress,
+            vec![json!({"kind":"progress","text":"untrusted-private-marker"}).to_string()],
+            |_| panic!("a content-free heartbeat must not cause a write"),
+        )
+        .unwrap();
+        assert_eq!(progress, before);
     }
 }
 

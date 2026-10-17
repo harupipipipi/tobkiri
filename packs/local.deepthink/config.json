@@ -21,7 +21,7 @@
       "local.mimo-prompt": "sha256:104c2110fdbfcf818cb4221c5e458edab4832cb6eb04e48c7d91a7acfc3c1582"
     },
     "provider": "OpenRouter",
-    "provider_pack_hash": "sha256:778252f475f8b5ea3f960eb11a6b0dfaf884541e2a99743cfbe82b7d22d50582",
+    "provider_pack_hash": "sha256:97f912349e249b452d531aeaf0ab49ddcae2a1cf11283ea2f0b6d84b7528200f",
     "tool_pack_hash": "sha256:0545d2240002a1a1b5539e3c9422b888b83ab953751062fc89ef6e74d1825c59"
   },
   "max_contract_retries": 2,
