@@ -2,23 +2,33 @@
   "files": [
     {
       "path": "component.build.json",
-      "sha256": "sha256:ac7a60d8ad47808d568e8a6bb46d815d337a006796901e44c96bd8f38bc74f0f",
-      "size": 1804
+      "sha256": "sha256:10a14a19cd29a46f603357c8cdc9daaa46221082ec2e88620d727ee58f6c6897",
+      "size": 3100
     },
     {
       "path": "component.wasm",
-      "sha256": "sha256:b6ba22d0c6084c458d66b1a75b2dbcdc1631257eb25158c955763710c4fcbe2e",
-      "size": 717435
+      "sha256": "sha256:3653d792fe2693d2d1504141b769cffc549f2d1f3e878809a52ab51c1c7d34aa",
+      "size": 1076586
     },
     {
       "path": "config.json",
-      "sha256": "sha256:2390a41e7439169aa3419c17dc81267ebfb571ed2664ab64ab9cb05b6eeca5e5",
+      "sha256": "sha256:d773ffe5c8ec21a41f2aec7ba7fde7f811c5b4f43ca5cafb1b3fec561c42e821",
       "size": 6949
     },
     {
       "path": "flows/continuation.flow.json",
-      "sha256": "sha256:5f2dfc735260ac68eae69f6c2131c796c13131eaf6e9552d02a54dca71a399be",
-      "size": 977
+      "sha256": "sha256:0ff434ae34a16c07c3d0334ab838d9346031bf4124b2259ea205a624fb1453c0",
+      "size": 1263
+    },
+    {
+      "path": "flows/control.flow.json",
+      "sha256": "sha256:056752ad7f1d97d744e5d5251d4fe30f38baae9de66c9a30470af001bcfe4040",
+      "size": 2211
+    },
+    {
+      "path": "flows/regeneration.flow.json",
+      "sha256": "sha256:95681d8ffef57eb66fde504b220fa053cf45fa9d3091f82f33c5b2f239db0bb6",
+      "size": 1196
     },
     {
       "path": "overlays/generate.overlay.json",
@@ -32,8 +42,18 @@
     },
     {
       "path": "wit/continuation-input.shape.json",
-      "sha256": "sha256:a3de3bba17dd35763b60f6b31201d3cfdf870e54cbd361679c7198a65ec947de",
-      "size": 116
+      "sha256": "sha256:1f6f7150066fed4cc2357e0a5d807a7b68f4b3ad239ad0a44eeaa19eb3c86e0d",
+      "size": 154
+    },
+    {
+      "path": "wit/control-flow.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/deps/core-v1-1.wit",
+      "sha256": "sha256:519ae1215e01df9d782e0f5808cc53207b5be71f1f10e9f7bf1073796c66c90f",
+      "size": 6639
     },
     {
       "path": "wit/deps/core.wit",
@@ -42,8 +62,13 @@
     },
     {
       "path": "wit/deps/deepthink.wit",
-      "sha256": "sha256:6a3abb0d7c3c09008ff061b5e321404e130d17c688d7ac6df837b1dc2a9bcbd9",
-      "size": 1204
+      "sha256": "sha256:5dc786fe606252ab7ba3a9a5d657de90bd4fc6e5cb058b44229379682e540152",
+      "size": 2392
+    },
+    {
+      "path": "wit/deps/generation-reader.wit",
+      "sha256": "sha256:fa21aa76f65d634f584e09d73259a65a8e91a9156bd641243d2cda0a9b2de9aa",
+      "size": 410
     },
     {
       "path": "wit/deps/harness-agent.wit",
@@ -56,9 +81,14 @@
       "size": 2202
     },
     {
+      "path": "wit/input-context.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
       "path": "wit/pack.wit",
-      "sha256": "sha256:9e42e1a2e4d0bb0f9fb9fc54ab02efcb2e2e087884023bc1ba95ed8dc6050fdd",
-      "size": 268
+      "sha256": "sha256:26a1176b19c1de1ee6e6042fc4d23f45e67d80e5d26b4bfd36560ea6078179b6",
+      "size": 263
     },
     {
       "path": "wit/records.shape.json",
@@ -66,13 +96,20 @@
       "size": 86
     },
     {
+      "path": "wit/regeneration-flow.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
       "path": "wit/workflow.shape.json",
-      "sha256": "sha256:56caa29005ceddf9cce35cd0e7a6edf2daf058c7502959c75eab5d59e73747af",
-      "size": 147
+      "sha256": "sha256:8ec69d22386d5d9dd5200bc1bac7283b3e635598c3f99c7d1a748727cf5ef731",
+      "size": 185
     }
   ],
   "flows": [
-    "flows/continuation.flow.json"
+    "flows/continuation.flow.json",
+    "flows/regeneration.flow.json",
+    "flows/control.flow.json"
   ],
   "format": "tobkiri.pack/1",
   "id": "local.deepthink",
@@ -99,13 +136,17 @@
     "ports": [
       "local.deepthink.continuation-flow@1.0",
       "local.deepthink.continuation-input@1.0",
+      "local.deepthink.control-flow@1.0",
+      "local.deepthink.input-context@1.0",
+      "local.deepthink.regeneration-flow@1.0",
       "local.deepthink.workflow@1.0",
       "local.harness-agent.tool-provider@1.0",
       "local.harness-chat.assistant-output@1.0",
       "local.harness-chat.conversation-store@1.0",
       "local.harness-chat.generate@1.0",
       "local.harness-chat.llm-provider@1.0",
-      "local.harness-chat.structured-llm-provider@1.0"
+      "local.harness-chat.structured-llm-provider@1.0",
+      "local.openrouter-generation-reader.generation-reader@1.0"
     ],
     "proc": [],
     "pty": false,
@@ -162,6 +203,26 @@
       },
       {
         "optional": false,
+        "shape": "local.deepthink.regeneration-flow",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.control-flow",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.input-context",
+        "version": "1.0"
+      },
+      {
+        "optional": true,
+        "shape": "local.openrouter-generation-reader.generation-reader",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
         "shape": "local.harness-chat.conversation-store",
         "version": "1.0"
       }
@@ -174,7 +235,7 @@
       },
       {
         "optional": false,
-        "shape": "local.deepthink.continuation-input",
+        "shape": "local.deepthink.input-context",
         "version": "1.0"
       }
     ],
@@ -212,6 +273,24 @@
     {
       "kind": "flow",
       "name": "local.deepthink.continuation-flow",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "flow",
+      "name": "local.deepthink.regeneration-flow",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "flow",
+      "name": "local.deepthink.control-flow",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "port",
+      "name": "local.deepthink.input-context",
       "version": "1.0",
       "wit": "wit/deps/deepthink.wit"
     }
