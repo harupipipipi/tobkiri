@@ -8,6 +8,10 @@ use std::{
 use tobkiri_canon::{Digest, ids::ProfileId};
 use tobkiri_gate::{AuditEvent, AuditSink, CallCx, EffectRequest, GateError, Grant};
 
+#[path = "audit_image.rs"]
+mod image;
+use image::VerifiedImage;
+
 #[derive(Clone, Debug)]
 pub struct AuditQuota {
     pub records_per_minute: u64,
@@ -60,9 +64,17 @@ impl AuditRow {
 /// Append-only Profile audit chain. Guest reads require their own dispatch grant.
 pub struct AuditLog {
     profile: ProfileId,
-    connection: Mutex<rusqlite::Connection>,
+    connection: Mutex<AuditConnection>,
     _directory: crate::vfs::DatabaseGuard,
     quota: AuditQuota,
+    #[cfg(test)]
+    decoded_rows: std::sync::atomic::AtomicU64,
+}
+struct AuditConnection {
+    sql: rusqlite::Connection,
+    verified: Option<VerifiedImage>,
+    #[cfg(test)]
+    lose_commit_ack: bool,
 }
 impl AuditLog {
     pub fn open(
@@ -79,19 +91,28 @@ impl AuditLog {
         conn.execute_batch("CREATE UNIQUE INDEX IF NOT EXISTS audit_event_identity ON audit(event_id) WHERE event_id IS NOT NULL;")?;
         let log = Self {
             profile: profile.clone(),
-            connection: Mutex::new(conn),
+            connection: Mutex::new(AuditConnection {
+                sql: conn,
+                verified: None,
+                #[cfg(test)]
+                lose_commit_ack: false,
+            }),
             _directory: directory,
             quota,
+            #[cfg(test)]
+            decoded_rows: std::sync::atomic::AtomicU64::new(0),
         };
         log.verify()?;
         Ok(log)
     }
     pub fn verify(&self) -> Result<(), StoreError> {
-        let conn = self
+        let mut connection = self
             .connection
             .lock()
             .map_err(|_| StoreError::Conflict("audit lock poisoned".into()))?;
-        self.verify_connection(&conn)
+        // Explicit verification always performs the complete semantic check.
+        connection.verified = None;
+        self.verify_connection(&connection.sql)
     }
     fn verify_connection(&self, conn: &rusqlite::Connection) -> Result<(), StoreError> {
         let mut statement =
@@ -104,6 +125,9 @@ impl AuditLog {
                 .map_err(|_| StoreError::Integrity(tobkiri_gate::IntegrityFaultCode::AuditChain))?;
             let stored_prev: String = row.get(1)?;
             let stored_digest: String = row.get(2)?;
+            #[cfg(test)]
+            self.decoded_rows
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let event: AuditEvent = decode(&row.get::<_, Vec<u8>>(3)?)
                 .map_err(|_| StoreError::Integrity(tobkiri_gate::IntegrityFaultCode::AuditChain))?;
             sequence += 1;
@@ -157,14 +181,25 @@ impl AuditLog {
                 _ => "user".into(),
             },
         };
-        let mut conn = self
+        let mut connection = self
             .connection
             .lock()
             .map_err(|_| StoreError::Conflict("audit lock poisoned".into()))?;
-        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        // Taking first makes every transaction/scan/insert/commit failure
+        // invalidate reuse. No cache survives an unknown acknowledgement.
+        let previous = connection.verified.take();
+        let tx = connection
+            .sql
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         // Existing outbox decisions may progress through a faulted admission
         // domain only while this independent audit chain is still verified.
-        self.verify_connection(&tx)?;
+        let mut image = VerifiedImage::scan(&tx)?;
+        if previous
+            .as_ref()
+            .is_none_or(|previous| !image.matches(previous))
+        {
+            self.verify_connection(&tx)?;
+        }
         if let Some(event_id) = event_id {
             let existing: Option<Vec<u8>> = tx
                 .query_row(
@@ -180,6 +215,11 @@ impl AuditLog {
                     ));
                 }
                 tx.commit()?;
+                #[cfg(test)]
+                if std::mem::take(&mut connection.lose_commit_ack) {
+                    return Err(StoreError::Invalid("fixture lost audit commit ack".into()));
+                }
+                connection.verified = Some(image);
                 return Ok(());
             }
         }
@@ -197,23 +237,31 @@ impl AuditLog {
         {
             return Err(StoreError::Quota);
         }
-        let last: Option<(u64, String)> = tx
-            .query_row(
-                "SELECT seq,digest FROM audit ORDER BY seq DESC LIMIT 1",
-                [],
-                |r| Ok((crate::sql_u64(r, 0)?, r.get(1)?)),
-            )
-            .optional()?;
-        let (seq, prev) = match last {
-            Some((n, h)) => (
-                n + 1,
-                Digest::parse(&h).map_err(|e| StoreError::Canon(e.to_string()))?,
-            ),
+        let (seq, prev) = match &image.last {
+            Some((n, digest)) => (n + 1, digest.clone()),
             None => (1, Digest::hash(&[])),
         };
         let digest = AuditRow::digest(seq, &prev, &event, event_id)?;
+        use rusqlite::types::ValueRef;
+        image.append_row([
+            ValueRef::Integer(seq as i64),
+            ValueRef::Text(prev.as_str().as_bytes()),
+            ValueRef::Text(digest.as_str().as_bytes()),
+            ValueRef::Blob(&body),
+            ValueRef::Text(writer.as_bytes()),
+            ValueRef::Integer(minute as i64),
+            ValueRef::Integer(body.len() as i64),
+            event_id.map_or(ValueRef::Null, |id| ValueRef::Text(id.as_str().as_bytes())),
+        ])?;
+        image.last = Some((seq, digest.clone()));
         tx.execute("INSERT INTO audit(seq,prev_digest,digest,body,writer,minute,size,event_id) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![seq as i64,prev.as_str(),digest.as_str(),body,writer,minute as i64,body.len()as i64,event_id.map(Digest::as_str)])?;
         tx.commit()?;
+        #[cfg(test)]
+        if std::mem::take(&mut connection.lose_commit_ack) {
+            return Err(StoreError::Invalid("fixture lost audit commit ack".into()));
+        }
+        // No fallible operation follows confirmed commit before publishing.
+        connection.verified = Some(image);
         Ok(())
     }
     pub fn read_digest(after: u64, max: u32) -> Result<Digest, StoreError> {
@@ -241,7 +289,7 @@ impl AuditLog {
             .connection
             .lock()
             .map_err(|_| StoreError::Conflict("audit lock poisoned".into()))?;
-        let mut statement = conn.prepare(
+        let mut statement = conn.sql.prepare(
             "SELECT seq,prev_digest,digest,body,event_id FROM audit WHERE seq>?1 ORDER BY seq LIMIT ?2",
         )?;
         statement
@@ -304,3 +352,7 @@ impl AuditSink for AuditLog {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "audit_image_tests.rs"]
+mod image_tests;
