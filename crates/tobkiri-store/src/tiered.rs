@@ -1690,14 +1690,7 @@ fn execute_fixed_native(
             if value.len() > MAX_DATA_VALUE_BYTES || encoded_max > output_limit {
                 return Err(StoreError::Quota);
             }
-            let mut result =
-                CoreValue::array_builder(output_budget, value.len()).map_err(budget_err)?;
-            for byte in value {
-                result
-                    .push(CoreValue::int(i64::from(byte), output_budget).map_err(budget_err)?)
-                    .map_err(budget_err)?;
-            }
-            result.finish().map_err(budget_err)
+            CoreValue::u8_array(&value, output_budget).map_err(budget_err)
         }
         crate::FixedDataOperation::Put => {
             let key = core_text(fields.get("key"), "KV key required")?;
@@ -3762,6 +3755,118 @@ fn typed_cell_size(value: ValueRef<'_>) -> Result<usize, StoreError> {
             .checked_mul(4)
             .and_then(|size| size.checked_add(16))
             .ok_or(StoreError::Quota),
+    }
+}
+
+#[cfg(test)]
+mod fixed_native_kv_tests {
+    use super::*;
+    use tobkiri_canon::AllocationError;
+
+    #[derive(Default)]
+    struct OutputBudget {
+        calls: AtomicU64,
+        deny_at: u64,
+    }
+    impl AllocationBudget for OutputBudget {
+        fn reserve(&self, _: AllocationRequest) -> Result<(), AllocationError> {
+            let call = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+            if call == self.deny_at {
+                Err(AllocationError::Limit)
+            } else {
+                Ok(())
+            }
+        }
+        fn release(&self, _: u64) {}
+    }
+
+    fn database() -> rusqlite::Connection {
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE __tobkiri_kv(store TEXT NOT NULL,key TEXT NOT NULL,
+                 value BLOB NOT NULL,PRIMARY KEY(store,key));",
+            )
+            .unwrap();
+        connection
+    }
+
+    fn request() -> crate::FixedDataRequest {
+        let budget: Arc<dyn AllocationBudget> = Arc::new(OutputBudget::default());
+        let arguments =
+            CoreValue::parse_guest(br#"{"op":"kv-get","key":"bytes"}"#, &budget).unwrap();
+        crate::FixedDataRequest::from_value(arguments, &budget).unwrap()
+    }
+
+    fn put_bytes(connection: &rusqlite::Connection, value: &[u8]) {
+        connection
+            .execute(
+                "INSERT INTO __tobkiri_kv(store,key,value) VALUES('probe','bytes',?1)
+                 ON CONFLICT(store,key) DO UPDATE SET value=excluded.value",
+                [value],
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn get_bytes_preserves_u8_array_with_constant_output_admissions() {
+        let connection = database();
+        let request = request();
+        for length in [0usize, 1024, 6144] {
+            let bytes = (0..length)
+                .map(|index| (index % 256) as u8)
+                .collect::<Vec<_>>();
+            put_bytes(&connection, &bytes);
+            let counts = Arc::new(OutputBudget::default());
+            let budget: Arc<dyn AllocationBudget> = counts.clone();
+            let output =
+                execute_fixed_native(&connection, "probe", &request, length * 4 + 16, &budget)
+                    .unwrap();
+            let CoreRef::Arr(values) = output.inspect() else {
+                panic!("KV bytes must keep their integer-array wire shape");
+            };
+            assert_eq!(values.len(), bytes.len());
+            for (actual, expected) in values.iter().zip(bytes) {
+                assert_eq!(actual.as_i64(), Some(i64::from(expected)));
+            }
+            assert_eq!(counts.calls.load(Ordering::SeqCst), 2);
+        }
+    }
+
+    #[test]
+    fn get_missing_key_remains_null() {
+        let connection = database();
+        let counts = Arc::new(OutputBudget::default());
+        let budget: Arc<dyn AllocationBudget> = counts.clone();
+        let output = execute_fixed_native(&connection, "probe", &request(), 16, &budget).unwrap();
+        assert!(matches!(output.inspect(), CoreRef::Null));
+        assert_eq!(counts.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn get_bytes_keeps_output_limit_and_allocation_denial() {
+        let connection = database();
+        put_bytes(&connection, &vec![255; 6144]);
+        let request = request();
+        let counts = Arc::new(OutputBudget::default());
+        let budget: Arc<dyn AllocationBudget> = counts.clone();
+        assert!(matches!(
+            execute_fixed_native(&connection, "probe", &request, 6144 * 4 + 15, &budget),
+            Err(StoreError::Quota)
+        ));
+        assert_eq!(counts.calls.load(Ordering::SeqCst), 0);
+        for deny_at in [1, 2] {
+            let counts = Arc::new(OutputBudget {
+                deny_at,
+                ..Default::default()
+            });
+            let budget: Arc<dyn AllocationBudget> = counts.clone();
+            assert!(matches!(
+                execute_fixed_native(&connection, "probe", &request, 6144 * 4 + 16, &budget),
+                Err(StoreError::Quota)
+            ));
+            assert_eq!(counts.calls.load(Ordering::SeqCst), deny_at);
+        }
     }
 }
 

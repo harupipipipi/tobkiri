@@ -1045,12 +1045,21 @@ fn load_list(cx: &mut LiftContext<'_>, ty: TypeListIndex, ptr: usize, len: usize
     }
 
     let mut values = BudgetedVecBuilder::new(len, cx.allocation_owner(), cx.allocation_depth())?;
-    for index in 0..len {
-        values.push(Val::load(
-            cx,
-            elem,
-            &cx.memory()[ptr + index * element_size..][..element_size],
-        )?)?;
+    if elem == InterfaceType::U8 {
+        cx.with_prepaid_u8_elements(len, |cx| {
+            for index in 0..len {
+                values.push(Val::load_inner(cx, elem, &cx.memory()[ptr + index..][..1])?)?;
+            }
+            Ok(())
+        })?;
+    } else {
+        for index in 0..len {
+            values.push(Val::load(
+                cx,
+                elem,
+                &cx.memory()[ptr + index * element_size..][..element_size],
+            )?)?;
+        }
     }
     Ok(Val::List(values.finish()?))
 }
@@ -1181,9 +1190,21 @@ fn lower_list<T>(
         .ok_or_else(|| crate::format_err!("size overflow copying a list"))?;
     let ptr = cx.realloc(0, 0, elt_align, size)?;
     let mut element_ptr = ptr;
-    for item in items {
-        item.store(cx, element_type, element_ptr)?;
-        element_ptr += elt_size;
+    if element_type == InterfaceType::U8 {
+        cx.with_prepaid_u8_elements(items.len(), |cx| {
+            for item in items {
+                // Keep scalar type validation and byte writes identical. Only
+                // the already prepaid scalar-entry reservation is omitted.
+                item.store_inner(cx, element_type, element_ptr)?;
+                element_ptr += elt_size;
+            }
+            Ok(())
+        })?;
+    } else {
+        for item in items {
+            item.store(cx, element_type, element_ptr)?;
+            element_ptr += elt_size;
+        }
     }
     Ok((ptr, items.len()))
 }

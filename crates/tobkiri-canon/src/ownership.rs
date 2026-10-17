@@ -29,6 +29,14 @@ pub struct AllocationRequest {
     pub depth: u32,
     pub work: u64,
 }
+/// Checked bound for the fixed `op`/`key`/byte-array record conversion below.
+/// `validation_work` also prepays borrowed validation and hashing outside the
+/// graph codec. It is part of, not additional to, `allocation.work`.
+#[derive(Clone, Copy, Debug)]
+pub struct ByteRecordConversionBound {
+    pub allocation: AllocationRequest,
+    pub validation_work: u64,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum AllocationError {
     #[error("host allocation owner unavailable")]
@@ -403,6 +411,54 @@ pub struct CoreObject<'a> {
     values: &'a [(String, Node)],
 }
 impl CoreValue {
+    /// Bound the existing KV put graph construction and its StrictV1 encoding.
+    /// This inspects lengths only: callers must fund `validation_work` before
+    /// inspecting the borrowed key or byte elements. Every scalar temporary,
+    /// container, string, encoded buffer and shared control block is included.
+    /// The bound sums temporary allocations rather than assuming early reuse.
+    pub fn kv_put_conversion_bound(
+        key_bytes: usize,
+        value_bytes: usize,
+    ) -> Result<ByteRecordConversionBound, AllocationError> {
+        let key = u64::try_from(key_bytes).map_err(|_| AllocationError::Overflow)?;
+        let count = u64::try_from(value_bytes).map_err(|_| AllocationError::Overflow)?;
+        let add = |a: u64, b: u64| a.checked_add(b).ok_or(AllocationError::Overflow);
+        let mul = |a: u64, b: u64| a.checked_mul(b).ok_or(AllocationError::Overflow);
+        // A u8 needs at most three decimal bytes plus one separator. A key
+        // byte needs at most six JSON escape bytes. The fixed record is <64.
+        let encoded = add(add(mul(count, 4)?, mul(key, 6)?)?, 64)?;
+        let graph_blocks = mul(add(count, 4)?, Shared::<Node>::storage_bytes() as u64)?;
+        let sequence = mul(count, size_of::<Node>() as u64)?;
+        let fields = mul(3, size_of::<(String, Node)>() as u64)?;
+        // Owned text: key, "kv-put", and the three field names (2+3+5).
+        let text = add(key, 16)?;
+        let bytes = add(
+            add(add(graph_blocks, sequence)?, add(fields, text)?)?,
+            add(encoded, Shared::<Vec<u8>>::storage_bytes() as u64)?,
+        )?;
+        if bytes > isize::MAX as u64 {
+            return Err(AllocationError::Overflow);
+        }
+        // Both borrowed validators and SHA traversal are otherwise outside
+        // Lease::charge. Codec work includes scalar creation/copy, link-depth
+        // checks, field comparison/shifts and strict sizing/emission passes.
+        let validation_work = add(add(mul(count, 2)?, mul(key, 2)?)?, encoded)?;
+        let work = add(
+            add(add(mul(count, 16)?, mul(key, 16)?)?, mul(encoded, 3)?)?,
+            add(1024, mul(16, size_of::<(String, Node)>() as u64)?)?,
+        )?;
+        Ok(ByteRecordConversionBound {
+            allocation: AllocationRequest {
+                kind: AllocationKind::Temporary,
+                bytes,
+                elements: count,
+                depth: 2,
+                work,
+            },
+            validation_work,
+        })
+    }
+
     /// Prepares a fixed prepaid append capacity before any stream/producer work.
     pub fn array_builder(
         budget: &Arc<dyn AllocationBudget>,
@@ -576,6 +632,20 @@ impl CoreValue {
             return Err(AllocationError::Invalid);
         }
         Self::from_node(Node::Int(value), Lease::new(budget))
+    }
+    /// Copy bytes into the existing immutable integer-array representation.
+    /// The entire Node vector and its traversal work are admitted before the
+    /// first byte is read. No scalar shared blocks or unleased payload escape.
+    pub fn u8_array(
+        bytes: &[u8],
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Self, AllocationError> {
+        let mut lease = Lease::new(budget);
+        let mut values = reserve_vec::<Node>(bytes.len(), &mut lease, 1, AllocationKind::Sequence)?;
+        for byte in bytes {
+            values.push(Node::Int(i64::from(*byte)));
+        }
+        Self::from_node(Node::Arr(values), lease)
     }
     pub fn array_from<I>(
         values: I,
@@ -1627,5 +1697,170 @@ fn equal_nodes(left: &Node, right: &Node) -> bool {
         }
         // The complete precheck already rejects legacy floats and BigInt.
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod byte_conversion_tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct Usage {
+        live: u64,
+        peak: u64,
+        work: u64,
+        calls: usize,
+    }
+    struct Budget {
+        bytes: u64,
+        work: u64,
+        deny_call: Option<usize>,
+        usage: Mutex<Usage>,
+    }
+    impl Budget {
+        fn new(bytes: u64, work: u64, deny_call: Option<usize>) -> Arc<Self> {
+            Arc::new(Self {
+                bytes,
+                work,
+                deny_call,
+                usage: Mutex::default(),
+            })
+        }
+    }
+    impl AllocationBudget for Budget {
+        fn reserve(&self, request: AllocationRequest) -> Result<(), AllocationError> {
+            let mut usage = self.usage.lock().unwrap();
+            usage.calls += 1;
+            if self.deny_call == Some(usage.calls) {
+                return Err(AllocationError::Limit);
+            }
+            let live = usage
+                .live
+                .checked_add(request.bytes)
+                .ok_or(AllocationError::Overflow)?;
+            let work = usage
+                .work
+                .checked_add(request.work.max(request.elements))
+                .ok_or(AllocationError::Overflow)?;
+            if live > self.bytes || work > self.work {
+                return Err(AllocationError::Limit);
+            }
+            usage.live = live;
+            usage.peak = usage.peak.max(live);
+            usage.work = work;
+            Ok(())
+        }
+        fn release(&self, bytes: u64) {
+            let mut usage = self.usage.lock().unwrap();
+            usage.live = usage
+                .live
+                .checked_sub(bytes)
+                .expect("known physical release");
+        }
+    }
+
+    #[test]
+    fn u8_array_preserves_all_bytes_and_uses_two_admissions_including_empty() {
+        for length in [0usize, 1, 256, 6144] {
+            let counted = Budget::new(u64::MAX, u64::MAX, None);
+            let budget: Arc<dyn AllocationBudget> = counted.clone();
+            let bytes: Vec<u8> = (0..length).map(|index| index as u8).collect();
+            let array = CoreValue::u8_array(&bytes, &budget).unwrap();
+            assert_eq!(counted.usage.lock().unwrap().calls, 2);
+            assert_eq!(counted.usage.lock().unwrap().work, length as u64 + 1);
+            let old = CoreValue::array_from(
+                bytes
+                    .iter()
+                    .map(|byte| CoreValue::int(i64::from(*byte), &budget)),
+                &budget,
+            )
+            .unwrap();
+            assert_eq!(
+                array.encode_guest(&budget).unwrap().as_bytes(),
+                old.encode_guest(&budget).unwrap().as_bytes()
+            );
+            let CoreRef::Arr(items) = array.inspect() else {
+                panic!("integer array required")
+            };
+            assert_eq!(items.len(), length);
+            for (item, expected) in items.iter().zip(&bytes) {
+                assert!(
+                    matches!(item.inspect(), CoreRef::Int(value) if value == i64::from(*expected))
+                );
+            }
+            drop(old);
+            let alias = array.clone();
+            let retained = counted.usage.lock().unwrap().live;
+            assert!(retained > 0);
+            drop(array);
+            assert_eq!(counted.usage.lock().unwrap().live, retained);
+            drop(alias);
+            assert_eq!(counted.usage.lock().unwrap().live, 0);
+        }
+    }
+
+    #[test]
+    fn u8_array_precharge_denial_and_shared_block_failure_release_everything() {
+        for deny_call in [1usize, 2] {
+            let counted = Budget::new(u64::MAX, u64::MAX, Some(deny_call));
+            let budget: Arc<dyn AllocationBudget> = counted.clone();
+            assert!(matches!(
+                CoreValue::u8_array(&[0, 1, 255], &budget),
+                Err(AllocationError::Limit)
+            ));
+            let usage = counted.usage.lock().unwrap();
+            assert_eq!(usage.calls, deny_call);
+            assert_eq!(usage.live, 0);
+            if deny_call == 1 {
+                assert_eq!(usage.peak, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn checked_kv_conversion_bound_covers_scalar_temporaries_and_strict_encoding() {
+        for length in [0usize, 1, 256, 6144] {
+            let key = "\u{1}\\\"\n日本語".repeat(40);
+            let bound = CoreValue::kv_put_conversion_bound(key.len(), length).unwrap();
+            let counted = Budget::new(bound.allocation.bytes, bound.allocation.work, None);
+            let budget: Arc<dyn AllocationBudget> = counted.clone();
+            budget
+                .reserve(AllocationRequest {
+                    bytes: 0,
+                    elements: 0,
+                    work: bound.validation_work,
+                    ..bound.allocation
+                })
+                .unwrap();
+            let bytes = CoreValue::array_from(
+                (0..length).map(|byte| CoreValue::int(i64::from(byte as u8), &budget)),
+                &budget,
+            )
+            .unwrap();
+            let record = CoreValue::object_shared(
+                [
+                    Ok(("op", CoreValue::string("kv-put", &budget).unwrap())),
+                    Ok(("key", CoreValue::string(&key, &budget).unwrap())),
+                    Ok(("value", bytes)),
+                ]
+                .into_iter(),
+                &budget,
+            )
+            .unwrap();
+            let encoded = record.encode_guest(&budget).unwrap();
+            let _digest = Digest::hash(encoded.as_bytes());
+            let usage = counted.usage.lock().unwrap();
+            assert!(usage.peak <= bound.allocation.bytes);
+            assert!(usage.work <= bound.allocation.work);
+            drop(usage);
+            drop(encoded);
+            drop(record);
+            assert_eq!(counted.usage.lock().unwrap().live, 0);
+        }
+        assert!(matches!(
+            CoreValue::kv_put_conversion_bound(usize::MAX, usize::MAX),
+            Err(AllocationError::Overflow)
+        ));
     }
 }

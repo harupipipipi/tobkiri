@@ -245,6 +245,25 @@ impl PackHost {
     ) -> Result<crate::AllocationOwners> {
         crate::allocation::PackAllocationBudget::for_frame(&self.shared, cx, scope)
     }
+    /// Prepay only the synchronous fixed-KV conversion. Returned graphs retain
+    /// their sealed physical owner; execution/output use their existing budgets.
+    pub(crate) fn with_prepaid_frame_conversion(
+        &self,
+        cx: &CallCx,
+        scope: tobkiri_gate::AllocationFrameScope,
+        source: &Arc<dyn tobkiri_canon::AllocationBudget>,
+        bound: tobkiri_canon::AllocationRequest,
+        convert: impl FnOnce(&crate::AllocationOwners) -> Result<tobkiri_store::FixedDataRequest>,
+    ) -> Result<tobkiri_store::FixedDataRequest> {
+        crate::allocation::PackAllocationBudget::with_prepaid_frame_conversion(
+            &self.shared,
+            cx,
+            scope,
+            source,
+            bound,
+            convert,
+        )
+    }
     /// Take one actual reached producer scope. Funding retains this proof and
     /// its original effective principal; registered owners alone cannot mint it.
     pub fn allocation_budget_for_frame(

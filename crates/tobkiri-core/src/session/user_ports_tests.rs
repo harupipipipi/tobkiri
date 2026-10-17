@@ -622,6 +622,10 @@ async fn actual_user_port_cannot_bypass_missing_user_policy() {
     assert!(session.user_streams.snapshot().unwrap().is_empty());
     session.close().await.unwrap();
 }
+// The production Windows broker and verified Mac ARM64 owner combination admit
+// this native positive route. Windows CI executes its full assertions; Mac has
+// not been exercised in this run. Linux tests the explicit proof refusal below.
+#[cfg(any(windows, all(target_os = "macos", target_arch = "aarch64")))]
 #[tokio::test]
 async fn actual_user_value_and_stream_follow_the_same_gate_without_ui() {
     let (_fixture, session) = user_fixture(true).await;
@@ -679,5 +683,62 @@ async fn actual_user_value_and_stream_follow_the_same_gate_without_ui() {
     }
     assert!(batches > 0);
     session.user_stream_cancel(&handle).await.unwrap();
+    session.close().await.unwrap();
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn actual_user_entry_refuses_unavailable_linux_owner_proof_without_publishing_output() {
+    fn refused<T>(result: Result<T, CoreError>) {
+        match result {
+            Err(CoreError::Step(error)) => {
+                assert_eq!(error.code, "component");
+                assert_eq!(
+                    error.message,
+                    "storage primitive unavailable: allocation owner OS/filesystem proof unavailable"
+                );
+            }
+            Err(error) => panic!("unexpected User entry refusal: {error}"),
+            Ok(_) => panic!("unavailable physical owner proof must not publish a value or stream"),
+        }
+    }
+    let (fixture, session) = user_fixture(true).await;
+    let shape = ShapeRef::parse("local.fixture.input@1.0").unwrap();
+    assert!(session.user_document.is_some());
+    assert!(
+        session
+            .compiled
+            .profile
+            .user_permissions
+            .as_ref()
+            .unwrap()
+            .ports
+            .contains(&shape.to_string())
+    );
+    // Check the exact production platform guard independently of dispatch:
+    // Linux is not an admitted allocation-owner OS/filesystem combination.
+    assert!(matches!(fixture.root.user_owner_lease(&fixture.profile.id),
+        Err(tobkiri_store::StoreError::Unavailable(message))
+        if message == "allocation owner OS/filesystem proof unavailable"));
+    let args = CanonValue::Obj(BTreeMap::new());
+    refused(
+        session
+            .call_user_port(shape.clone(), OpName::parse("read").unwrap(), &args)
+            .await,
+    );
+    assert!(session.user_streams.snapshot().unwrap().is_empty());
+    for operation in ["read", "stream"] {
+        refused(
+            session
+                .invoke_user_port(
+                    shape.clone(),
+                    OpName::parse(operation).unwrap(),
+                    &args,
+                    TokioCancellationToken::new(),
+                )
+                .await,
+        );
+        assert!(session.user_streams.snapshot().unwrap().is_empty());
+    }
     session.close().await.unwrap();
 }

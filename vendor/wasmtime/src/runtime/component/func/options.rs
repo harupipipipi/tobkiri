@@ -34,6 +34,31 @@ impl<C> Drop for AllocationDepthGuard<'_, C> {
     }
 }
 
+// Only flat u8 elements use this prepayment. Their inner load/store cannot
+// allocate, recurse, or call guest code; container storage remains separately
+// funded. Preserve the N scalar-entry work charges at the actual child depth.
+fn prepay_u8_elements(
+    owner: &HostAllocationOwner,
+    parent_depth: usize,
+    count: usize,
+) -> Result<usize> {
+    let depth = parent_depth
+        .checked_add(1)
+        .ok_or(HostAllocationError::Overflow)?;
+    if depth > 64 {
+        return Err(HostAllocationError::Depth.into());
+    }
+    let count = u64::try_from(count).map_err(|_| HostAllocationError::Overflow)?;
+    owner.reserve(HostAllocationRequest {
+        kind: HostAllocationKind::Temporary,
+        bytes: 0,
+        elements: count,
+        depth: depth as u32,
+        work: count,
+    })?;
+    Ok(depth)
+}
+
 /// A helper structure which is a "package" of the context used during lowering
 /// values into a component (or storing them into memory).
 ///
@@ -323,6 +348,24 @@ impl<'a, T: 'static> LowerContext<'a, T> {
     pub(crate) fn allocation_depth(&self) -> usize {
         self.allocation_depth
     }
+    pub(crate) fn with_prepaid_u8_elements<R>(
+        &mut self,
+        count: usize,
+        run: impl FnOnce(&mut Self) -> Result<R>,
+    ) -> Result<R> {
+        if count == 0 {
+            return run(self);
+        }
+        // Resolve the Store's current owner here, after canonical realloc has
+        // returned. Reentrant guest allocation must not preserve an old owner.
+        self.allocation_depth =
+            prepay_u8_elements(&self.allocation_owner()?, self.allocation_depth, count)?;
+        let guard = AllocationDepthGuard {
+            context: self,
+            exit: Self::allocation_exit,
+        };
+        run(&mut *guard.context)
+    }
     pub(crate) fn with_allocation<R>(
         &mut self,
         run: impl FnOnce(&mut Self) -> Result<R>,
@@ -497,6 +540,22 @@ impl<'a> LiftContext<'a> {
     }
     pub(crate) fn allocation_depth(&self) -> usize {
         self.allocation_depth
+    }
+    pub(crate) fn with_prepaid_u8_elements<R>(
+        &mut self,
+        count: usize,
+        run: impl FnOnce(&mut Self) -> Result<R>,
+    ) -> Result<R> {
+        if count == 0 {
+            return run(self);
+        }
+        self.allocation_depth =
+            prepay_u8_elements(&self.allocation_owner, self.allocation_depth, count)?;
+        let guard = AllocationDepthGuard {
+            context: self,
+            exit: Self::allocation_exit,
+        };
+        run(&mut *guard.context)
     }
     pub(crate) fn with_allocation<R>(
         &mut self,

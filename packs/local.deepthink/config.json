@@ -22,7 +22,7 @@
     },
     "provider": "OpenRouter",
     "provider_pack_hash": "sha256:c83c49963c8a460da7f939eeaa45fe0b3f6ff6f08bee5042018fe8a100ea62e1",
-    "tool_pack_hash": "sha256:0247aafb3c88d24cb34551a0eb62a0430f07f6a402f61d51ad443efbc045cbbb"
+    "tool_pack_hash": "sha256:0545d2240002a1a1b5539e3c9422b888b83ab953751062fc89ef6e74d1825c59"
   },
   "max_contract_retries": 2,
   "max_review_rounds": 2,

@@ -55,7 +55,11 @@ fn reap_locked(slots: &mut [Option<Custody>; MAX_CUSTODY]) -> usize {
         let idle = slot
             .as_ref()
             .and_then(|custody| custody.owner.as_ref())
-            .is_some_and(|owner| Arc::strong_count(owner) == 1 && Arc::weak_count(owner) == 0);
+            .is_some_and(|owner| {
+                Arc::strong_count(owner) == 1
+                    && Arc::weak_count(owner) == 0
+                    && owner.conversion_reapable()
+            });
         if idle {
             drop(slot.take());
             freed += 1;
@@ -77,6 +81,28 @@ struct AllocationState {
     live_bytes: u64,
     work_remaining: u64,
     invalid: bool,
+    mode: AllocationMode,
+}
+#[derive(Clone, Copy)]
+enum AllocationMode {
+    Metered,
+    Conversion { bytes: u64, sealed: bool },
+}
+/// A synchronous conversion cannot leave allocation permission in an escaped
+/// allocator clone. This guard also seals during unwinding, before custody can
+/// release the actual adapter/control block.
+struct SealConversion(Arc<PackAllocationBudget>);
+impl Drop for SealConversion {
+    fn drop(&mut self) {
+        let mut state = self
+            .0
+            .state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if let AllocationMode::Conversion { sealed, .. } = &mut state.mode {
+            *sealed = true;
+        }
+    }
 }
 
 pub(crate) struct PackAllocationBudget {
@@ -151,6 +177,60 @@ impl PackAllocationBudget {
         cx: &CallCx,
         funding: Funding,
     ) -> anyhow::Result<ValueOwners> {
+        Ok(Self::create_inner(gate, ledger, root, cx, funding, None)?.0)
+    }
+
+    /// A distinct owner for one pure synchronous conversion. The original
+    /// graph prepays work; this cannot replenish its remaining fuel. Only the
+    /// actual frame admission may reserve this carrier's complete byte bound.
+    pub(crate) fn with_prepaid_frame_conversion<T>(
+        shared: &Shared,
+        cx: &CallCx,
+        scope: AllocationFrameScope,
+        source: &Arc<dyn AllocationBudget>,
+        bound: AllocationRequest,
+        convert: impl FnOnce(&ValueOwners) -> anyhow::Result<T>,
+    ) -> anyhow::Result<T> {
+        Self::with_prepaid_conversion(
+            shared.gate.clone(),
+            &shared.capacity,
+            &shared.root,
+            cx,
+            Funding::Frame(scope),
+            source,
+            bound,
+            convert,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn with_prepaid_conversion<T>(
+        gate: Arc<dyn Gate>,
+        ledger: &tobkiri_gate::CapacityLedger,
+        root: &tobkiri_store::DataRoot,
+        cx: &CallCx,
+        funding: Funding,
+        source: &Arc<dyn AllocationBudget>,
+        bound: AllocationRequest,
+        convert: impl FnOnce(&ValueOwners) -> anyhow::Result<T>,
+    ) -> anyhow::Result<T> {
+        // No payload inspection or allocation precedes this work admission.
+        source.reserve(AllocationRequest { bytes: 0, ..bound })?;
+        let (owners, owner) = Self::create_inner(gate, ledger, root, cx, funding, Some(bound))?;
+        let seal = SealConversion(owner);
+        let result = convert(&owners);
+        drop(seal);
+        result
+    }
+
+    fn create_inner(
+        gate: Arc<dyn Gate>,
+        ledger: &tobkiri_gate::CapacityLedger,
+        root: &tobkiri_store::DataRoot,
+        cx: &CallCx,
+        funding: Funding,
+        conversion: Option<AllocationRequest>,
+    ) -> anyhow::Result<(ValueOwners, Arc<Self>)> {
         ledger.check_domain()?;
         check_custody_process()?;
         // Adapter IDs/proofs/locks are bounded native Core control. Only
@@ -193,8 +273,13 @@ impl PackAllocationBudget {
             let (owner, provenance) = proposal
                 .take()
                 .ok_or(tobkiri_gate::GateError::Unavailable)?;
-            capacity =
-                Some(ledger.reserve(owner, provenance, CapacityKind::AbiMarshal, 0, limit)?);
+            capacity = Some(ledger.reserve(
+                owner,
+                provenance,
+                CapacityKind::AbiMarshal,
+                conversion.map_or(0, |bound| bound.bytes),
+                limit,
+            )?);
             Ok(())
         })?;
         let capacity = capacity.ok_or(tobkiri_gate::GateError::Unavailable)?;
@@ -243,23 +328,44 @@ impl PackAllocationBudget {
             capacity: capacity.clone(),
             state: Mutex::new(AllocationState {
                 live_bytes: 0,
-                work_remaining: cx.limits().fuel_per_call,
+                work_remaining: conversion.map_or(cx.limits().fuel_per_call, |bound| bound.work),
                 invalid: false,
+                mode: conversion.map_or(AllocationMode::Metered, |bound| {
+                    AllocationMode::Conversion {
+                        bytes: bound.bytes,
+                        sealed: false,
+                    }
+                }),
             }),
             failure: failure.clone(),
         });
         let graph = owner.clone() as Arc<dyn AllocationBudget>;
         let component = owner.clone() as Arc<dyn HostAllocationBudget>;
         *slot = Some(Custody {
-            owner: Some(owner),
+            owner: Some(owner.clone()),
             capacity: Some(capacity),
             control: Some(control),
         });
-        Ok(ValueOwners {
-            graph,
-            component,
-            allocation_failure: Some(failure),
-        })
+        Ok((
+            ValueOwners {
+                graph,
+                component,
+                allocation_failure: Some(failure),
+            },
+            owner,
+        ))
+    }
+
+    fn conversion_reapable(&self) -> bool {
+        let Ok(state) = self.state.lock() else {
+            return false;
+        };
+        match state.mode {
+            AllocationMode::Metered => true,
+            AllocationMode::Conversion { sealed, .. } => {
+                sealed && !state.invalid && state.live_bytes == 0
+            }
+        }
     }
 
     fn reserve_checked(&self, request: AllocationRequest) -> Result<(), AllocationError> {
@@ -292,6 +398,22 @@ impl PackAllocationBudget {
             .live_bytes
             .checked_add(request.bytes)
             .ok_or(AllocationError::Overflow)?;
+        if let AllocationMode::Conversion { bytes, sealed } = state.mode {
+            if sealed {
+                return Err(AllocationError::Unavailable);
+            }
+            self.cx
+                .check_active()
+                .map_err(|_| AllocationError::Unavailable)?;
+            if live_bytes > bytes {
+                return Err(AllocationError::Limit);
+            }
+            // This only consumes already admitted carrier capacity. No Gate,
+            // effect, SQL or growth occurs inside the pure conversion window.
+            state.live_bytes = live_bytes;
+            state.work_remaining = work_remaining;
+            return Ok(());
+        }
         let allocated = live_bytes;
         let mut admitted = false;
         self.funding
@@ -343,6 +465,12 @@ impl PackAllocationBudget {
             state.invalid = true;
             return;
         };
+        if matches!(state.mode, AllocationMode::Conversion { .. }) {
+            // Freed suballocations may be reused inside the finite carrier,
+            // but its full external charge survives all payload/Arc storage.
+            state.live_bytes = live_bytes;
+            return;
+        }
         if self.capacity.resize(live_bytes, 0).is_err() {
             self.failure.store(13, Ordering::Release);
             state.invalid = true;
@@ -429,6 +557,9 @@ mod tests {
         }
     }
     fn context() -> CallCx {
+        context_with_fuel(100_000)
+    }
+    fn context_with_fuel(fuel: u64) -> CallCx {
         let control = tobkiri_gate::CoreControl::default();
         CallCx::try_root_with_control(
             ProfileId::parse("capacity-fixture").unwrap(),
@@ -440,7 +571,7 @@ mod tests {
             tobkiri_gate::CoreCancellation::new_with_control(&control).unwrap(),
             std::time::Instant::now() + std::time::Duration::from_secs(30),
             ResourceLimits {
-                fuel_per_call: 100_000,
+                fuel_per_call: fuel,
                 memory_mib: 1,
                 wall_ms: 30_000,
                 table_elements: 32,
@@ -629,5 +760,398 @@ mod tests {
         drop(next);
         reap_custody().unwrap();
         assert_eq!(ledger.snapshot(&identity).unwrap().charged_bytes, 0);
+    }
+
+    #[derive(Default)]
+    struct CountingGate {
+        admissions: std::sync::atomic::AtomicUsize,
+        effects: std::sync::atomic::AtomicUsize,
+    }
+    #[async_trait::async_trait]
+    impl Gate for CountingGate {
+        fn check_context(&self, cx: &CallCx) -> Result<(), tobkiri_gate::GateError> {
+            cx.check_active()
+        }
+        async fn authorize(
+            &self,
+            _: &CallCx,
+            _: EffectRequest,
+            _: Digest,
+        ) -> Result<Grant, tobkiri_gate::GateError> {
+            self.effects.fetch_add(1, Ordering::SeqCst);
+            Err(tobkiri_gate::GateError::Unavailable)
+        }
+        async fn record_outcome(
+            &self,
+            _: GrantId,
+            _: Outcome,
+        ) -> Result<(), tobkiri_gate::GateError> {
+            self.effects.fetch_add(1, Ordering::SeqCst);
+            Err(tobkiri_gate::GateError::Unavailable)
+        }
+        async fn record_denial(
+            &self,
+            _: &CallCx,
+            _: &'static str,
+            _: &'static str,
+        ) -> Result<(), tobkiri_gate::GateError> {
+            self.effects.fetch_add(1, Ordering::SeqCst);
+            Err(tobkiri_gate::GateError::Unavailable)
+        }
+        fn capacity_limit(&self, cx: &CallCx) -> Result<u64, tobkiri_gate::GateError> {
+            cx.check_active()?;
+            self.admissions.fetch_add(1, Ordering::SeqCst);
+            Ok(16 * 1024 * 1024)
+        }
+    }
+
+    #[test]
+    fn prepaid_fixed_kv_has_constant_admissions_and_identical_request_digest() {
+        let _serial = TEST_CUSTODY.lock().unwrap();
+        for length in [0usize, 1, 256, 6144] {
+            let directory = tempfile::tempdir().unwrap();
+            let root = private_root(&directory);
+            let ledger = tobkiri_gate::CapacityLedger::new();
+            let cx = context_with_fuel(1_000_000);
+            let identity = CapacityOwner::from_context(&cx).unwrap();
+            let gate = Arc::new(CountingGate::default());
+            let source =
+                PackAllocationBudget::create(gate.clone(), &ledger, &root, &cx, Funding::Caller)
+                    .unwrap();
+            let key = "key\"\\\n\u{1}日本語";
+            let payload: Vec<u8> = (0..length).map(|n| n as u8).collect();
+            let value = crate::effect_values::EffectValues(&source)
+                .bytes(&payload)
+                .unwrap();
+            let old_arguments = CoreValue::object_shared(
+                [
+                    Ok(("op", CoreValue::string("kv-put", source.graph()).unwrap())),
+                    Ok(("key", CoreValue::string(key, source.graph()).unwrap())),
+                    Ok((
+                        "value",
+                        crate::effect_values::EffectValues(&source)
+                            .wire(&value)
+                            .unwrap(),
+                    )),
+                ]
+                .into_iter(),
+                source.graph(),
+            )
+            .unwrap();
+            let old =
+                tobkiri_store::FixedDataRequest::from_value(old_arguments, source.graph()).unwrap();
+            let expected = old.digest().clone();
+            drop(old);
+            let baseline = ledger.snapshot(&identity).unwrap().charged_bytes;
+            let before = gate.admissions.load(Ordering::SeqCst);
+            let bound = CoreValue::kv_put_conversion_bound(key.len(), length).unwrap();
+            let (fixed, escaped) = PackAllocationBudget::with_prepaid_conversion(
+                gate.clone(),
+                &ledger,
+                &root,
+                &cx,
+                Funding::Caller,
+                source.graph(),
+                bound.allocation,
+                |owners| {
+                    Ok((
+                        crate::effects::fixed_kv_put_conversion(
+                            key,
+                            &value,
+                            owners,
+                            bound.validation_work,
+                        )?,
+                        owners.graph().clone(),
+                    ))
+                },
+            )
+            .unwrap();
+            assert_eq!(gate.admissions.load(Ordering::SeqCst) - before, 2);
+            assert_eq!(gate.effects.load(Ordering::SeqCst), 0);
+            assert_eq!(fixed.digest(), &expected);
+            assert!(matches!(
+                fixed.operation(),
+                tobkiri_store::FixedDataOperation::Put
+            ));
+            assert_eq!(
+                escaped.reserve(AllocationRequest {
+                    kind: AllocationKind::Temporary,
+                    bytes: 0,
+                    elements: 0,
+                    depth: 0,
+                    work: 0,
+                }),
+                Err(AllocationError::Unavailable)
+            );
+            let alias = fixed.arguments().clone();
+            let charged = ledger.snapshot(&identity).unwrap().charged_bytes;
+            assert!(charged >= baseline + bound.allocation.bytes);
+            drop(fixed);
+            drop(escaped);
+            reap_custody().unwrap();
+            assert_eq!(ledger.snapshot(&identity).unwrap().charged_bytes, charged);
+            drop(alias);
+            reap_custody().unwrap();
+            assert_eq!(ledger.snapshot(&identity).unwrap().charged_bytes, baseline);
+            drop(value);
+            drop(source);
+            reap_custody().unwrap();
+            assert_eq!(ledger.snapshot(&identity).unwrap().charged_bytes, 0);
+        }
+    }
+
+    #[test]
+    fn prepaid_conversion_rejects_work_before_entry_and_never_replenishes_source() {
+        let _serial = TEST_CUSTODY.lock().unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let root = private_root(&directory);
+        let ledger = tobkiri_gate::CapacityLedger::new();
+        let cx = context_with_fuel(3);
+        let (source, owner) = PackAllocationBudget::create_inner(
+            Arc::new(CountingGate::default()),
+            &ledger,
+            &root,
+            &cx,
+            Funding::Caller,
+            None,
+        )
+        .unwrap();
+        let entered = std::sync::atomic::AtomicBool::new(false);
+        let mut bound = AllocationRequest {
+            kind: AllocationKind::Temporary,
+            bytes: 128,
+            elements: 0,
+            depth: 0,
+            work: 4,
+        };
+        assert!(
+            PackAllocationBudget::with_prepaid_conversion(
+                Arc::new(CountingGate::default()),
+                &ledger,
+                &root,
+                &cx,
+                Funding::Caller,
+                source.graph(),
+                bound,
+                |_| {
+                    entered.store(true, Ordering::SeqCst);
+                    Ok(())
+                },
+            )
+            .is_err()
+        );
+        assert!(!entered.load(Ordering::SeqCst));
+        assert_eq!(owner.state.lock().unwrap().work_remaining, 3);
+        bound.work = 2;
+        PackAllocationBudget::with_prepaid_conversion(
+            Arc::new(CountingGate::default()),
+            &ledger,
+            &root,
+            &cx,
+            Funding::Caller,
+            source.graph(),
+            bound,
+            |_| Ok(()),
+        )
+        .unwrap();
+        assert_eq!(owner.state.lock().unwrap().work_remaining, 1);
+        assert!(
+            PackAllocationBudget::with_prepaid_conversion(
+                Arc::new(CountingGate::default()),
+                &ledger,
+                &root,
+                &cx,
+                Funding::Caller,
+                source.graph(),
+                bound,
+                |_| Ok(()),
+            )
+            .is_err()
+        );
+        drop(source);
+        drop(owner);
+        reap_custody().unwrap();
+    }
+
+    #[test]
+    fn prepaid_conversion_bounds_and_cancel_fail_before_any_effect() {
+        let _serial = TEST_CUSTODY.lock().unwrap();
+        for case in 0..4 {
+            let directory = tempfile::tempdir().unwrap();
+            let root = private_root(&directory);
+            let ledger = tobkiri_gate::CapacityLedger::new();
+            let cx = context();
+            let gate = Arc::new(CountingGate::default());
+            let source =
+                PackAllocationBudget::create(gate.clone(), &ledger, &root, &cx, Funding::Caller)
+                    .unwrap();
+            let bound = AllocationRequest {
+                kind: AllocationKind::Temporary,
+                bytes: if case == 0 { 1 } else { 4096 },
+                elements: 0,
+                depth: 0,
+                work: if case == 1 { 1 } else { 100 },
+            };
+            let result = PackAllocationBudget::with_prepaid_conversion(
+                gate.clone(),
+                &ledger,
+                &root,
+                &cx,
+                Funding::Caller,
+                source.graph(),
+                bound,
+                |owners| {
+                    if case == 2 {
+                        owners.graph().reserve(AllocationRequest {
+                            depth: (MAX_DEPTH + 1) as u32,
+                            bytes: 0,
+                            work: 0,
+                            ..bound
+                        })?;
+                    }
+                    if case == 3 {
+                        cx.cancel().cancel();
+                    }
+                    Ok(CoreValue::string("bounded payload", owners.graph())?)
+                },
+            );
+            assert!(result.is_err());
+            assert_eq!(gate.effects.load(Ordering::SeqCst), 0);
+            drop(source);
+            reap_custody().unwrap();
+            assert_eq!(
+                ledger
+                    .snapshot(&CapacityOwner::from_context(&cx).unwrap())
+                    .unwrap()
+                    .charged_bytes,
+                0
+            );
+        }
+    }
+
+    #[test]
+    fn prepaid_conversion_error_and_panic_seal_but_retain_escaped_payload_and_weak() {
+        let _serial = TEST_CUSTODY.lock().unwrap();
+        for panic in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let root = private_root(&directory);
+            let ledger = tobkiri_gate::CapacityLedger::new();
+            let cx = context();
+            let identity = CapacityOwner::from_context(&cx).unwrap();
+            let source = PackAllocationBudget::create(
+                Arc::new(CountingGate::default()),
+                &ledger,
+                &root,
+                &cx,
+                Funding::Caller,
+            )
+            .unwrap();
+            let baseline = ledger.snapshot(&identity).unwrap().charged_bytes;
+            let mut escaped = None;
+            let mut allocator = None;
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                PackAllocationBudget::with_prepaid_conversion::<()>(
+                    Arc::new(CountingGate::default()),
+                    &ledger,
+                    &root,
+                    &cx,
+                    Funding::Caller,
+                    source.graph(),
+                    AllocationRequest {
+                        kind: AllocationKind::Temporary,
+                        bytes: 4096,
+                        elements: 0,
+                        depth: 0,
+                        work: 100,
+                    },
+                    |owners| {
+                        escaped = Some(CoreValue::string("retained", owners.graph())?);
+                        allocator = Some(owners.graph().clone());
+                        if panic {
+                            panic!("fixture conversion abort");
+                        }
+                        anyhow::bail!("fixture conversion error")
+                    },
+                )
+            }));
+            assert!(matches!(result, Err(_) | Ok(Err(_))));
+            let allocator = allocator.take().unwrap();
+            assert!(CoreValue::null(&allocator).is_err());
+            let weak = {
+                let slots = CUSTODY.lock().unwrap();
+                let owner = slots
+                    .iter()
+                    .flatten()
+                    .filter_map(|slot| slot.owner.as_ref())
+                    .find(|owner| {
+                        matches!(
+                            owner.state.lock().unwrap().mode,
+                            AllocationMode::Conversion { .. }
+                        )
+                    })
+                    .unwrap();
+                Arc::downgrade(owner)
+            };
+            let charged = ledger.snapshot(&identity).unwrap().charged_bytes;
+            drop(allocator);
+            reap_custody().unwrap();
+            assert_eq!(ledger.snapshot(&identity).unwrap().charged_bytes, charged);
+            drop(escaped.take());
+            reap_custody().unwrap();
+            assert_eq!(ledger.snapshot(&identity).unwrap().charged_bytes, charged);
+            drop(weak);
+            reap_custody().unwrap();
+            assert_eq!(ledger.snapshot(&identity).unwrap().charged_bytes, baseline);
+            drop(source);
+            reap_custody().unwrap();
+        }
+    }
+
+    #[test]
+    fn prepaid_byte_validation_is_funded_and_rejects_non_u8_without_effects() {
+        let _serial = TEST_CUSTODY.lock().unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let root = private_root(&directory);
+        let ledger = tobkiri_gate::CapacityLedger::new();
+        let cx = context();
+        let gate = Arc::new(CountingGate::default());
+        let source =
+            PackAllocationBudget::create(gate.clone(), &ledger, &root, &cx, Funding::Caller)
+                .unwrap();
+        let value = crate::effect_values::EffectValues(&source)
+            .list(
+                [
+                    wasmtime::component::Val::U8(1),
+                    wasmtime::component::Val::U16(2),
+                ]
+                .into_iter(),
+            )
+            .unwrap();
+        let bound = CoreValue::kv_put_conversion_bound(3, 2).unwrap();
+        let mut entered = false;
+        let result = PackAllocationBudget::with_prepaid_conversion(
+            gate.clone(),
+            &ledger,
+            &root,
+            &cx,
+            Funding::Caller,
+            source.graph(),
+            bound.allocation,
+            |owners| {
+                entered = true;
+                crate::effects::fixed_kv_put_conversion(
+                    "key",
+                    &value,
+                    owners,
+                    bound.validation_work,
+                )
+            },
+        );
+        assert!(entered);
+        assert!(result.is_err());
+        assert_eq!(gate.effects.load(Ordering::SeqCst), 0);
+        drop(value);
+        drop(source);
+        reap_custody().unwrap();
     }
 }

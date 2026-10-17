@@ -72,6 +72,14 @@ jobs:
       - name: Supervised filesystem effects
         if: ${{ !cancelled() }}
         run: cargo test -p tobkiri-wasm --lib --locked filesystem -- --nocapture
+      - name: Prepaid byte-list ABI and allocation contracts
+        if: ${{ !cancelled() }}
+        run: |
+          status=0
+          cargo test -p tobkiri-canon --lib --locked || status=$?
+          cargo test -p tobkiri-wasm --lib --locked allocation || status=$?
+          cargo test -p tobkiri-wasm --test byte_list_abi --locked || status=$?
+          exit "$status"
       - name: Bounded call trees, stream cleanup and native User entry
         if: ${{ !cancelled() }}
         run: |
@@ -102,3 +110,9 @@ jobs:
       - name: CLI contracts and cancellable native input
         if: ${{ !cancelled() }}
         run: cargo test -p tobkiri-cli --bin tobkiri --locked
+      - name: Native User port values and streams
+        if: ${{ !cancelled() }}
+        run: cargo test -p tobkiri-core --lib --locked user_ports
+      - name: Prepaid byte-list ABI
+        if: ${{ !cancelled() }}
+        run: cargo test -p tobkiri-wasm --test byte_list_abi --locked

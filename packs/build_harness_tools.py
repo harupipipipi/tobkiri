@@ -63,6 +63,11 @@ def stage(target_dir: Path) -> dict[str, Any]:
     component = (target_dir / "wasm32-wasip2/debug" /
                  "tobkiri_pack_harness_tools.wasm")
     shutil.copyfile(component, directory / "component.wasm")
+    # Keep the exact typed-SQL Core package as separate nominal WIT evidence.
+    # storage@1.0 remains a different ABI and is never reinterpreted as 1.1.
+    (directory / "wit/deps").mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(REPO / "crates/tobkiri-wit/wit/core-v1-1/core.wit",
+                    directory / "wit/deps/core-v1-1.wit")
     build.write_json(directory / "config.json", {})
     build.write_json(directory / "tools.json", inventory())
     permissions = build.permission_set(private=True)
@@ -85,7 +90,8 @@ def stage(target_dir: Path) -> dict[str, Any]:
                directory / "wit/pack.wit", ROOT / "shapes/harness-tools.wit",
                ROOT / "shapes/harness-agent.wit", ROOT / "Cargo.lock",
                ROOT / "Cargo.toml", Path(__file__).resolve(),
-               REPO / "crates/tobkiri-wit/wit/core/core.wit"]
+               REPO / "crates/tobkiri-wit/wit/core/core.wit",
+               REPO / "crates/tobkiri-wit/wit/core-v1-1/core.wit"]
     build.write_json(directory / "component.build.json", {
         "format": "tobkiri.component-build/1", "language": "rust",
         "tools": {"rust": "1.94.0", "wit-bindgen": "0.62.0"},
@@ -97,7 +103,7 @@ def stage(target_dir: Path) -> dict[str, Any]:
     return build.bind_files(directory, manifest, [
         "component.wasm", "component.build.json", "config.json", "tools.json",
         "wit/pack.wit", "wit/artifacts.wit", "wit/artifacts.shape.json",
-        "wit/deps/core.wit", "wit/deps/harness-agent.wit",
+        "wit/deps/core.wit", "wit/deps/core-v1-1.wit", "wit/deps/harness-agent.wit",
     ])
 
 

@@ -491,13 +491,13 @@
     },
     {
       "id": "local.harness-tools",
-      "sha256": "sha256:0247aafb3c88d24cb34551a0eb62a0430f07f6a402f61d51ad443efbc045cbbb",
+      "sha256": "sha256:0545d2240002a1a1b5539e3c9422b888b83ab953751062fc89ef6e74d1825c59",
       "source": "file:../../local.harness-tools",
       "version": "0.1.0"
     },
     {
       "id": "local.deepthink",
-      "sha256": "sha256:fc83fbcdf467a1eacd9ca98d7bec60c5af22e62630eef28d2e50253c31911f72",
+      "sha256": "sha256:8365bcf22824a5c32b0894e06380a0985cffcb5300005f26f4aaaa31f2b0d897",
       "source": "file:../../local.deepthink",
       "version": "0.1.0"
     },

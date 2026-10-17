@@ -1119,53 +1119,69 @@ async fn storage(
             _ => unreachable!(),
         };
     }
-    let value = match operation {
-        "[method]store.kv-get" | "[method]store.kv-delete" => CoreValue::object_shared(
-            [
-                Ok((
-                    "op",
-                    CoreValue::string(
-                        if operation.ends_with("kv-get") {
-                            "kv-get"
-                        } else {
-                            "kv-delete"
-                        },
-                        budget,
-                    )?,
-                )),
-                Ok(("key", CoreValue::string(text(&params[1])?, budget)?)),
-            ]
-            .into_iter(),
-            budget,
-        )?,
-        "[method]store.kv-put" => CoreValue::object_shared(
-            [
-                Ok(("op", CoreValue::string("kv-put", budget)?)),
-                Ok(("key", CoreValue::string(text(&params[1])?, budget)?)),
-                Ok(("value", codec.wire(&params[2])?)),
-            ]
-            .into_iter(),
-            budget,
-        )?,
-        "[method]store.kv-list" => CoreValue::object_shared(
-            [
-                Ok(("op", CoreValue::string("kv-list", budget)?)),
-                Ok(("prefix", CoreValue::string(text(&params[1])?, budget)?)),
-                Ok(("after", codec.wire(&params[2])?)),
-                Ok(("limit", scalar_json(uint(&params[3])?, budget)?)),
-            ]
-            .into_iter(),
-            budget,
-        )?,
-        _ => {
-            return Err(StepError::new(
-                "unavailable",
-                "owned native typed SQL resource adapter is being connected",
-            )
-            .into());
+    let fixed = if operation == "[method]store.kv-put" {
+        // Length inspection is O(1). The carrier prepays every element/key
+        // validation before the first borrowed walk or owned conversion.
+        let key = text(&params[1])?;
+        let bytes = list(&params[2])?;
+        if key.is_empty() || key.len() > 1024 {
+            return Err(tobkiri_store::StoreError::Invalid("invalid KV key".into()).into());
         }
+        if bytes.len() > 1024 * 1024 {
+            return Err(tobkiri_store::StoreError::Quota.into());
+        }
+        let bound = CoreValue::kv_put_conversion_bound(key.len(), bytes.len())?;
+        let scope = store
+            .data()
+            .data
+            .frame
+            .as_ref()
+            .context("KV conversion lacks actual provider frame")?
+            .allocation_scope(tobkiri_gate::AllocationReason::RuntimeValue)
+            .map_err(anyhow::Error::new)?;
+        host.with_prepaid_frame_conversion(cx, scope, budget, bound.allocation, |prepaid| {
+            fixed_kv_put_conversion(key, &params[2], prepaid, bound.validation_work)
+        })?
+    } else {
+        let value = match operation {
+            "[method]store.kv-get" | "[method]store.kv-delete" => CoreValue::object_shared(
+                [
+                    Ok((
+                        "op",
+                        CoreValue::string(
+                            if operation.ends_with("kv-get") {
+                                "kv-get"
+                            } else {
+                                "kv-delete"
+                            },
+                            budget,
+                        )?,
+                    )),
+                    Ok(("key", CoreValue::string(text(&params[1])?, budget)?)),
+                ]
+                .into_iter(),
+                budget,
+            )?,
+            "[method]store.kv-list" => CoreValue::object_shared(
+                [
+                    Ok(("op", CoreValue::string("kv-list", budget)?)),
+                    Ok(("prefix", CoreValue::string(text(&params[1])?, budget)?)),
+                    Ok(("after", codec.wire(&params[2])?)),
+                    Ok(("limit", scalar_json(uint(&params[3])?, budget)?)),
+                ]
+                .into_iter(),
+                budget,
+            )?,
+            _ => {
+                return Err(StepError::new(
+                    "unavailable",
+                    "owned native typed SQL resource adapter is being connected",
+                )
+                .into());
+            }
+        };
+        FixedDataRequest::from_value(value, budget)?
     };
-    let fixed = FixedDataRequest::from_value(value, budget)?;
     let (request, args) = match &handle {
         HostStore::Profile(handle) => handle.fixed_request(&fixed)?,
         HostStore::Global(handle) => handle.fixed_request(&fixed)?,
@@ -1220,6 +1236,35 @@ async fn storage(
     delivery
         .finish_fixed(host.shared.gate.as_ref(), cx, result)
         .await
+}
+
+pub(super) fn fixed_kv_put_conversion(
+    key: &str,
+    value: &Val,
+    owners: &ValueOwners,
+    validation_work: u64,
+) -> Result<FixedDataRequest> {
+    let budget = owners.graph();
+    budget.reserve(tobkiri_canon::AllocationRequest {
+        kind: tobkiri_canon::AllocationKind::Temporary,
+        bytes: 0,
+        elements: 0,
+        depth: 2,
+        work: validation_work,
+    })?;
+    if key.contains('\0') || list(value)?.iter().any(|byte| !matches!(byte, Val::U8(_))) {
+        bail!("invalid KV key or byte element")
+    }
+    let arguments = CoreValue::object_shared(
+        [
+            Ok(("op", CoreValue::string("kv-put", budget)?)),
+            Ok(("key", CoreValue::string(key, budget)?)),
+            Ok(("value", EffectValues(owners).wire(value)?)),
+        ]
+        .into_iter(),
+        budget,
+    )?;
+    Ok(FixedDataRequest::from_value(arguments, budget)?)
 }
 
 #[cfg(test)]

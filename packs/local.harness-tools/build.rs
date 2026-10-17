@@ -10,6 +10,10 @@ fn main() {
             "core.wit",
         ),
         (
+            root.join("../../crates/tobkiri-wit/wit/core-v1-1/core.wit"),
+            "core-v1-1.wit",
+        ),
+        (
             root.join("../shapes/harness-agent.wit"),
             "harness-agent.wit",
         ),
