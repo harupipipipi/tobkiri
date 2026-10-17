@@ -77,6 +77,7 @@ jobs:
         run: |
           status=0
           cargo test -p tobkiri-canon --lib --locked || status=$?
+          cargo test -p tobkiri-wasm --lib --locked effect_values::network_digest_tests || status=$?
           cargo test -p tobkiri-wasm --test byte_list_abi --locked || status=$?
           exit "$status"
       - name: Bounded call trees, stream cleanup and native User entry

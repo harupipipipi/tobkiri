@@ -901,6 +901,158 @@ mod tests {
     }
 
     #[test]
+    fn prepaid_network_digest_has_constant_admissions_and_retains_sealed_owner_custody() {
+        let _serial = TEST_CUSTODY.lock().unwrap();
+        for length in [0usize, 1024, 6144] {
+            let directory = tempfile::tempdir().unwrap();
+            let root = private_root(&directory);
+            let ledger = tobkiri_gate::CapacityLedger::new();
+            let cx = context_with_fuel(1_000_000);
+            let identity = CapacityOwner::from_context(&cx).unwrap();
+            let gate = Arc::new(CountingGate::default());
+            let source =
+                PackAllocationBudget::create(gate.clone(), &ledger, &root, &cx, Funding::Caller)
+                    .unwrap();
+            let (request, names) =
+                crate::effect_values::network_digest_fixture(&source, Some(length), 2, 1, 2);
+            let expected = crate::effect_values::baseline_network_digest(&request, &names, &source);
+            let baseline = ledger.snapshot(&identity).unwrap().charged_bytes;
+            let before = gate.admissions.load(Ordering::SeqCst);
+            let prepared = crate::effect_values::EffectValues(&source)
+                .prepare_network_digest(&request, &names)
+                .unwrap();
+            let bound = prepared.bound();
+            let (actual, escaped) = PackAllocationBudget::with_prepaid_conversion(
+                gate.clone(),
+                &ledger,
+                &root,
+                &cx,
+                Funding::Caller,
+                source.graph(),
+                bound,
+                |owners| Ok((prepared.digest(owners)?, owners.graph().clone())),
+            )
+            .unwrap();
+            assert_eq!(actual, expected);
+            // Two paid length-collection admissions, original work admission,
+            // and actual carrier capacity admission; none scale with body bytes.
+            assert_eq!(gate.admissions.load(Ordering::SeqCst) - before, 4);
+            assert_eq!(gate.effects.load(Ordering::SeqCst), 0);
+            assert_eq!(
+                escaped.reserve(AllocationRequest {
+                    kind: AllocationKind::Temporary,
+                    bytes: 0,
+                    elements: 0,
+                    depth: 0,
+                    work: 0,
+                }),
+                Err(AllocationError::Unavailable)
+            );
+            let charged = ledger.snapshot(&identity).unwrap().charged_bytes;
+            assert!(charged >= baseline + bound.bytes);
+            let weak = Arc::downgrade(&escaped);
+            drop(escaped);
+            reap_custody().unwrap();
+            assert_eq!(ledger.snapshot(&identity).unwrap().charged_bytes, charged);
+            drop(weak);
+            reap_custody().unwrap();
+            assert_eq!(ledger.snapshot(&identity).unwrap().charged_bytes, baseline);
+            drop(request);
+            drop(source);
+            reap_custody().unwrap();
+            assert_eq!(ledger.snapshot(&identity).unwrap().charged_bytes, 0);
+        }
+    }
+
+    #[test]
+    fn prepaid_network_digest_denials_cannot_enter_effects_or_leave_an_open_budget_clone() {
+        let _serial = TEST_CUSTODY.lock().unwrap();
+        for case in 0..5 {
+            let directory = tempfile::tempdir().unwrap();
+            let root = private_root(&directory);
+            let ledger = tobkiri_gate::CapacityLedger::new();
+            let cx = context_with_fuel(1_000_000);
+            let identity = CapacityOwner::from_context(&cx).unwrap();
+            let gate = Arc::new(CountingGate::default());
+            let (source, owner) = PackAllocationBudget::create_inner(
+                gate.clone(),
+                &ledger,
+                &root,
+                &cx,
+                Funding::Caller,
+                None,
+            )
+            .unwrap();
+            let (request, names) =
+                crate::effect_values::network_digest_fixture(&source, Some(1024), 2, 1, 2);
+            let prepared = crate::effect_values::EffectValues(&source)
+                .prepare_network_digest(&request, &names)
+                .unwrap();
+            let mut bound = prepared.bound();
+            match case {
+                0 => {
+                    let remaining = owner.state.lock().unwrap().work_remaining;
+                    source
+                        .graph()
+                        .reserve(AllocationRequest {
+                            kind: AllocationKind::Temporary,
+                            bytes: 0,
+                            elements: 0,
+                            depth: 0,
+                            work: remaining.checked_sub(bound.work - 1).unwrap(),
+                        })
+                        .unwrap();
+                }
+                1 => bound.bytes = 0,
+                2 => bound.work = 1,
+                3 => bound.depth = (MAX_DEPTH + 1) as u32,
+                4 => (),
+                _ => unreachable!(),
+            }
+            let mut entered = false;
+            let mut escaped = None;
+            let result = PackAllocationBudget::with_prepaid_conversion(
+                gate.clone(),
+                &ledger,
+                &root,
+                &cx,
+                Funding::Caller,
+                source.graph(),
+                bound,
+                |owners| {
+                    entered = true;
+                    escaped = Some(owners.graph().clone());
+                    if case == 4 {
+                        cx.cancel().cancel();
+                    }
+                    prepared.digest(owners)
+                },
+            );
+            assert!(result.is_err());
+            assert_eq!(entered, matches!(case, 1 | 2 | 4));
+            assert_eq!(gate.effects.load(Ordering::SeqCst), 0);
+            if let Some(escaped) = escaped {
+                assert!(
+                    escaped
+                        .reserve(AllocationRequest {
+                            kind: AllocationKind::Temporary,
+                            bytes: 0,
+                            elements: 0,
+                            depth: 0,
+                            work: 0,
+                        })
+                        .is_err()
+                );
+            }
+            drop(request);
+            drop(source);
+            drop(owner);
+            reap_custody().unwrap();
+            assert_eq!(ledger.snapshot(&identity).unwrap().charged_bytes, 0);
+        }
+    }
+
+    #[test]
     fn prepaid_conversion_rejects_work_before_entry_and_never_replenishes_source() {
         let _serial = TEST_CUSTODY.lock().unwrap();
         let directory = tempfile::tempdir().unwrap();

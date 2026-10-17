@@ -37,6 +37,19 @@ pub struct ByteRecordConversionBound {
     pub allocation: AllocationRequest,
     pub validation_work: u64,
 }
+/// Length-only inventory of the fixed Core network request digest shape.
+/// The caller must fund collection and validate the WIT shape before using it.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NetworkDigestLengths {
+    pub body_bytes: usize,
+    pub headers: usize,
+    pub secret_headers: usize,
+    pub secret_names: usize,
+    pub method_url_bytes: usize,
+    pub header_bytes: usize,
+    pub secret_header_bytes: usize,
+    pub secret_name_bytes: usize,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum AllocationError {
     #[error("host allocation owner unavailable")]
@@ -411,6 +424,81 @@ pub struct CoreObject<'a> {
     values: &'a [(String, Node)],
 }
 impl CoreValue {
+    /// Bound the unchanged network request graph and its StrictV1 digest.
+    /// No byte traversal is needed to compute this checked, finite reservation.
+    /// All scalar temporaries, deep copies and shared blocks are included; the
+    /// digest itself streams into SHA and allocates no encoded byte buffer.
+    pub fn network_digest_conversion_bound(
+        lengths: NetworkDigestLengths,
+    ) -> Result<AllocationRequest, AllocationError> {
+        let add = |a: u64, b: u64| a.checked_add(b).ok_or(AllocationError::Overflow);
+        let mul = |a: u64, b: u64| a.checked_mul(b).ok_or(AllocationError::Overflow);
+        let count = |n: usize| u64::try_from(n).map_err(|_| AllocationError::Overflow);
+        let n = count(lengths.body_bytes)?;
+        let h = count(lengths.headers)?;
+        let d = count(lengths.secret_headers)?;
+        let s = count(lengths.secret_names)?;
+        if add(h, d)? > 128 || s > 32 {
+            return Err(AllocationError::Invalid);
+        }
+        let basic = count(lengths.method_url_bytes)?;
+        let headers = count(lengths.header_bytes)?;
+        let descriptors = count(lengths.secret_header_bytes)?;
+        let names = count(lengths.secret_name_bytes)?;
+        let text = add(add(basic, headers)?, add(descriptors, names)?)?;
+        let node = size_of::<Node>() as u64;
+        let field = size_of::<(String, Node)>() as u64;
+        // The original codec constructs a scalar Shared for every node, then
+        // copies the byte array once into the request record. Header tuples and
+        // secret-header records are copied at each of their fixed three levels.
+        let blocks = add(add(add(add(9, mul(h, 3)?)?, mul(d, 4)?)?, s)?, n)?;
+        let slots = add(add(add(mul(h, 8)?, mul(d, 2)?)?, mul(n, 2)?)?, s)?;
+        let fields = add(8, mul(d, 9)?)?;
+        let copied_text = add(
+            add(mul(basic, 2)?, mul(add(headers, descriptors)?, 4)?)?,
+            add(mul(names, 2)?, add(63, mul(d, 45)?)?)?,
+        )?;
+        let bytes = add(
+            add(
+                mul(blocks, Shared::<Node>::storage_bytes() as u64)?,
+                mul(slots, node)?,
+            )?,
+            add(mul(fields, field)?, copied_text)?,
+        )?;
+        if bytes > isize::MAX as u64 {
+            return Err(AllocationError::Overflow);
+        }
+        // u8 encodes as <=3 decimal bytes plus a separator. UTF-8 strings need
+        // <=6 encoded bytes per input byte. Include null body/timeout variants,
+        // every quote/key/separator, and all fixed request/envelope containers.
+        let encoded = add(
+            add(mul(n, 4)?, mul(text, 6)?)?,
+            add(add(mul(h, 8)?, mul(d, 43)?)?, add(mul(s, 3)?, 121)?)?,
+        )?;
+        // Seven original work units per body element cover scalar construction,
+        // vector reservations, copies, depth and encoded-size walks. One more
+        // prepays the narrow u8 validator. The metadata term conservatively
+        // covers copies, field comparisons/shifts (max record arity six), depth
+        // and sizing. Actual encoding/hash is prepaid as 2*encoded separately.
+        let metadata_work = add(
+            add(add(1024, mul(field, 32)?)?, mul(h, 32)?)?,
+            add(
+                add(mul(d, add(192, mul(field, 6)?)?)?, mul(s, 8)?)?,
+                add(
+                    mul(add(basic, names)?, 4)?,
+                    mul(add(headers, descriptors)?, 6)?,
+                )?,
+            )?,
+        )?;
+        Ok(AllocationRequest {
+            kind: AllocationKind::Temporary,
+            bytes,
+            elements: add(blocks, 2)?, // Include the two envelope links.
+            depth: 4,
+            work: add(add(mul(n, 8)?, metadata_work)?, mul(encoded, 2)?)?,
+        })
+    }
+
     /// Bound the existing KV put graph construction and its StrictV1 encoding.
     /// This inspects lengths only: callers must fund `validation_work` before
     /// inspecting the borrowed key or byte elements. Every scalar temporary,
@@ -1862,5 +1950,77 @@ mod byte_conversion_tests {
             CoreValue::kv_put_conversion_bound(usize::MAX, usize::MAX),
             Err(AllocationError::Overflow)
         ));
+    }
+
+    #[test]
+    fn network_digest_bound_checks_shape_overflow_and_all_body_temporaries() {
+        let base = NetworkDigestLengths {
+            headers: 2,
+            secret_headers: 1,
+            secret_names: 2,
+            method_url_bytes: 40,
+            header_bytes: 80,
+            secret_header_bytes: 22,
+            secret_name_bytes: 30,
+            ..NetworkDigestLengths::default()
+        };
+        let empty = CoreValue::network_digest_conversion_bound(base).unwrap();
+        for count in [1, 1024, 6144] {
+            let bound = CoreValue::network_digest_conversion_bound(NetworkDigestLengths {
+                body_bytes: count,
+                ..base
+            })
+            .unwrap();
+            assert_eq!(
+                bound.bytes - empty.bytes,
+                count as u64 * (Shared::<Node>::storage_bytes() + 2 * size_of::<Node>()) as u64
+            );
+            // Eight units include the paid u8 validator; hash bound adds 8*N.
+            assert_eq!(bound.work - empty.work, count as u64 * 16);
+            assert_eq!(bound.depth, 4);
+        }
+        for invalid in [
+            NetworkDigestLengths {
+                headers: 128,
+                secret_headers: 1,
+                ..base
+            },
+            NetworkDigestLengths {
+                secret_names: 33,
+                ..base
+            },
+        ] {
+            assert_eq!(
+                CoreValue::network_digest_conversion_bound(invalid),
+                Err(AllocationError::Invalid)
+            );
+        }
+        for overflow in [
+            NetworkDigestLengths {
+                body_bytes: usize::MAX,
+                ..base
+            },
+            NetworkDigestLengths {
+                method_url_bytes: usize::MAX,
+                ..base
+            },
+            NetworkDigestLengths {
+                header_bytes: usize::MAX,
+                ..base
+            },
+            NetworkDigestLengths {
+                secret_header_bytes: usize::MAX,
+                ..base
+            },
+            NetworkDigestLengths {
+                secret_name_bytes: usize::MAX,
+                ..base
+            },
+        ] {
+            assert_eq!(
+                CoreValue::network_digest_conversion_bound(overflow),
+                Err(AllocationError::Overflow)
+            );
+        }
     }
 }

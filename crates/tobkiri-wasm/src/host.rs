@@ -264,6 +264,26 @@ impl PackHost {
             convert,
         )
     }
+    /// Prepay only a synchronous network argument digest. The closure returns
+    /// no graph, handle or effect; the sealed carrier retains actual custody
+    /// until every temporary payload and owner control block has disappeared.
+    pub(crate) fn with_prepaid_network_digest(
+        &self,
+        cx: &CallCx,
+        scope: tobkiri_gate::AllocationFrameScope,
+        source: &Arc<dyn tobkiri_canon::AllocationBudget>,
+        bound: tobkiri_canon::AllocationRequest,
+        convert: impl FnOnce(&crate::AllocationOwners) -> Result<tobkiri_canon::Digest>,
+    ) -> Result<tobkiri_canon::Digest> {
+        crate::allocation::PackAllocationBudget::with_prepaid_frame_conversion(
+            &self.shared,
+            cx,
+            scope,
+            source,
+            bound,
+            convert,
+        )
+    }
     /// Take one actual reached producer scope. Funding retains this proof and
     /// its original effective principal; registered owners alone cannot mint it.
     pub fn allocation_budget_for_frame(

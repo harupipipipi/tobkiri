@@ -841,22 +841,25 @@ async fn network(
                 .clone(),
         );
     }
-    let names_graph = CoreValue::array_from(
-        names
-            .iter()
-            .map(|name| CoreValue::string(name, owners.graph())),
+    let digest_input = codec.prepare_network_digest(req, &names)?;
+    let scope = store
+        .data()
+        .data
+        .frame
+        .as_ref()
+        .context("network digest lacks actual provider frame")?
+        .allocation_scope(tobkiri_gate::AllocationReason::RuntimeValue)
+        .map_err(anyhow::Error::new)?;
+    // Only the unchanged pure argument codec uses the finite carrier. Effect
+    // authorization, secret access, HTTP and response output retain their
+    // original Gate path and budgets below.
+    let hash = host.with_prepaid_network_digest(
+        cx,
+        scope,
         owners.graph(),
+        digest_input.bound(),
+        |prepaid| digest_input.digest(prepaid),
     )?;
-    let request_graph = codec.wire(req)?;
-    let hash = CoreValue::object_shared(
-        [
-            Ok(("request", request_graph)),
-            Ok(("secret-names", names_graph)),
-        ]
-        .into_iter(),
-        owners.graph(),
-    )?
-    .digest_guest(owners.graph())?;
     let grant = host
         .shared
         .gate
