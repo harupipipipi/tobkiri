@@ -32,6 +32,16 @@ interface continuation-input {
   cancel: func(%stream: stream-handle);
 }
 
+interface input-context {
+  use tobkiri:core/types@1.0.0.{error, json};
+  use workflow.{recovery-selection};
+  record context { conversation: string, history-text: string }
+  continuation: func(run-id: string, conversation: string, answers: option<string>) -> result<context, error>;
+  regeneration: func(selection: recovery-selection) -> result<context, error>;
+  control-result: func(op: string, value: json) -> result<json, error>;
+}
+
+interface control-flow { run: func(); }
 interface continuation-flow { run: func(); }
 interface regeneration-flow { run: func(); }
 

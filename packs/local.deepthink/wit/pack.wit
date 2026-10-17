@@ -5,5 +5,5 @@ world pack {
   import tobkiri:core/storage@1.1.0;
   export tobkiri:core/stream-source@1.0.0;
   export local:deepthink/workflow@1.0.0;
-  export local:deepthink/continuation-input@1.0.0;
+  export local:deepthink/input-context@1.0.0;
 }

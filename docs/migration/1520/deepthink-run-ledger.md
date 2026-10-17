@@ -27,17 +27,24 @@ changes separately; keep Pack artifacts and generic Core corrections reviewable
 as distinct commits. Source alignment, component ABI admission, host tests and
 complete MiMo execution are separate acceptance conditions.
 
-There is still an R4.3 gap: `continuation-input.status` and
-`reconcile-generation` currently enter gated Wasm exports directly, whereas
-submit/regeneration start Pack Flows. Issue 1520 declares no diagnostic-query
-exception. Routing these inputs through ordinary Pack control Flows is required
-before claiming complete alignment. Domain-specific Run/history preparation
-before submit/regeneration must also move into ordinary Flow worker steps.
-A synchronous Flow that calls back into the
-same still-exporting Pack hits the current instance re-entry guard; removing
-that guard is not a recovery shortcut. An input adapter must supply the complete
-continuation-input shape, because Profile bindings select a whole shape rather
-than individual operations.
+`local.deepthink-input` supplies the complete public continuation-input shape.
+Profile bindings select that whole shape, so the operation signatures stay
+unchanged. Status and reconciliation enter the ordinary DeepThink control Flow;
+submit and regeneration enter their respective Flows before a worker reads Run
+history. `local.deepthink` remains the authoritative WIT and private SQL owner.
+The adapter has no Store, network, secret, filesystem, process or PTY authority.
+This separates the still-exporting input instance from its worker and preserves
+the Core instance re-entry guard. Component admission and actual Core execution
+must establish this source implementation's R4.3 behavior separately.
+
+Synchronous control results require one Completed frame followed by successful
+empty EOF. Every nominal Core pull error is propagated unchanged, including an
+unknown cleanup/commit result after a candidate completion. The adapter examines
+at most 128 frames and 8 MiB total, with one frame per pull and an explicit
+1 MiB frame refusal. Core's event allocation is also a shared 1 MiB budget;
+these read bounds cannot enlarge it. Oversized results fail explicitly and are
+never truncated or routed around Flow. The earlier generic 4 MiB output limit
+therefore does not guarantee equivalent capacity for a control result.
 
 ## Saving and dispatching
 
@@ -170,10 +177,13 @@ operator observation; it is not generalized into guest authority.
 
 ## Portable preparation and validation
 
-`packs/recovery/build_deepthink_ledger.py` stages only the new DeepThink
+`packs/recovery/build_deepthink_ledger.py` stages the new DeepThink
 component from a frozen Profile's original configuration and resource caps.
-It copies every other Pack archive unchanged and replaces/adds only DeepThink
-and the generation-reader. Output Profile sources are relative `file:packs/`
+`packs/build_deepthink_input.py` stages its separate input component. The
+`profile` preparation command requires `--input-archive` as well as the ledger
+and Reader archives. It copies other Pack archives unchanged, keeps an already
+selected Reader byte-identical, replaces DeepThink, and adds the input adapter.
+Output Profile sources are relative `file:packs/`
 references. Preparation neither reads DATA/Vault nor applies a Profile,
 approves permissions, starts a Session or calls a model. Use ordinary Core
 Profile create/apply and its approval path separately.

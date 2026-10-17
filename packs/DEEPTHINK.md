@@ -18,8 +18,13 @@ The Goal and checkpoint are logical artifacts in the Pack's private Core store,
 including `goal.json`, `goal.md`, drafts, accepted answers and quarantined
 candidates. These names do not grant access to arbitrary host files.
 
-Continuation uses `local.deepthink.continuation-input@1.0` and its dedicated
-Flow. It retains the original Goal, completed generations, tool receipts and
+`local.deepthink-input` provides `local.deepthink.continuation-input@1.0`;
+DeepThink owns its WIT and private SQL store. Status and reconciliation use a
+control Flow, while continuation and regeneration prepare history in their
+first worker step. This preserves the Core instance re-entry guard. The input
+adapter has no storage, network or secret authority.
+
+Continuation retains the original Goal, completed generations, tool receipts and
 usage. Clarification answers re-evaluate the stopped phase. A failed generation
 can be retried without discarding earlier work. A tool with an unknown outcome
 is not automatically replayed; the workflow requires reconciliation. Review
@@ -36,7 +41,7 @@ rejected response and billing receipt.
 Build the existing components and then compose the DeepThink Profiles:
 
 ```sh
-cargo test --manifest-path packs/Cargo.toml -p tobkiri-guest-sdk -p tobkiri-pack-harness-tools -p tobkiri-pack-deepthink
+cargo test --manifest-path packs/Cargo.toml -p tobkiri-guest-sdk -p tobkiri-pack-harness-tools -p tobkiri-pack-deepthink -p tobkiri-pack-deepthink-input
 cargo build --manifest-path packs/Cargo.toml --workspace --locked --target wasm32-wasip2 --target-dir <target>
 python3 -B packs/build.py --skip-build --target-dir <target>
 python3 -B packs/build_deepthink_profile.py --target-dir <target>
@@ -88,28 +93,28 @@ Computer use and 3D editing software are not migrated by these Packs.
 
 ## Verification and current platform limits
 
-The Windows verification run passed 221 host pure tests and 39 guest tests
-(SDK 11, tools 7, DeepThink 21). A separate explicitly selected Rust test verified
-30 staged Wasm components against production WIT/import/ABI checks, compiled
-20 Profiles and rejected 20 modified pins. That is 261 Rust test cases in total;
-the component and Profile subchecks are not added again. All 35 `.tpk` archives
-passed CLI build/verify and source/archive manifest hash comparison. Three UI
-usage-formatting tests and five isolated SQLite SQL fixtures also passed.
+The input adapter has 16 transport tests, and the worker has 125 unit tests.
+The nine new tools have actual Core contract evidence for 29 cases plus five
+negative checks. Those tools cover private text artifacts and utilities; they
+do not establish execution of the 154 legacy tool definitions or model-selected
+tool use. Artifact, Profile and ABI checks must be rerun after changes to WIT,
+bindings or staged components.
 
-These checks do not establish a successful Core session. In the PR #1521
-baseline, Windows Core stops before Profile startup with:
+Actual Windows test-DATA Core sessions have exercised the SQL repository,
+provider interruption, retained progress and typed User recovery operations.
+The optimized test CLI explicitly enables the existing test-DATA constructor;
+this does not certify an ordinary production release or every supported host.
+The latest real SQL MiMo run retained a 2,025-byte prefix and confirmed 3,067
+tokens, but reached the unchanged 300-second deadline before accepting its
+first phase. Provider metadata was terminal and public completion returned
+404. This is persistence and accounting evidence, not a completed workflow.
 
-```text
-descriptor-relative nofollow storage is unsupported on this platform
-```
+Control results use Core's shared 1 MiB event transport budget. The adapter
+also refuses more than 128 frames or 8 MiB examined bytes; it does not promise
+the former generic 4 MiB output capacity. Completed is not success until EOF;
+unknown cleanup or commit errors remain failures without an automatic replay.
 
-Secure DataRoot, allocation-owner proof, capability/quota SQLite VFS and other
-platform effects need Windows implementations. The existing Unix owner proof
-also restricts support to Apple Silicon, local APFS and Darwin 24.6.0; moving to
-WSL does not satisfy it. The platform checks remain enforced. A separate Python
-Lab's live model result is not evidence of running this Rust Core.
-
-The full host test target also has 36 pre-existing old-API compile errors in
-`crates/tobkiri-wasm/tests/port_proxy.rs`. Legacy migration fixtures still retain
-historical counts/digests. All legacy tools and Defaults host execution remain
-pending migration and runtime verification. Terminal-Bench has not been run.
+Follow [Issue 1520 integration and recovery](../docs/migration/1520/deepthink-run-ledger.md)
+when transplanting this work into `codex/issue-1520-rust-core`. Unpublished host
+changes, all Defaults host/Profile behavior, full UI, legacy tools and complete
+MiMo execution remain separate acceptance items. Terminal-Bench has not run.

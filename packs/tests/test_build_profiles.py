@@ -20,6 +20,7 @@ PACKS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PACKS))
 import build
 import build_deepthink
+import build_deepthink_input
 import build_deepthink_profile
 import build_harness_tools
 
@@ -40,17 +41,18 @@ class BuildProfileTests(unittest.TestCase):
             "deepthink": "tobkiri_pack_deepthink.wasm",
             "tools": "tobkiri_pack_harness_tools.wasm",
             "reader": "tobkiri_pack_openrouter_generation_reader.wasm",
+            "input": "tobkiri_pack_deepthink_input.wasm",
         }
         for profile in ["debug", "release"]:
             for filename in self.names.values():
                 content = f"NOT-WASM: public {profile} fixture {filename}".encode()
-                if filename == self.names["reader"]:
+                if filename in (self.names["reader"], self.names["input"]):
                     # The staging header check is exercised, not Core ABI admission.
                     content = b"\0asm\r\0\1\0" + content
                 self.write(self.target / "wasm32-wasip2" / profile / filename,
                            content)
         common = ["Cargo.toml", "Cargo.lock", "build.py", "guest-sdk/src/lib.rs",
-                  "build_harness_tools.py", "shapes/harness-chat.wit",
+                  "build_harness_tools.py", "build_deepthink_input.py", "shapes/harness-chat.wit",
                   "shapes/harness-agent.wit", "shapes/harness-tools.wit",
                   "shapes/deepthink.wit",
                   "recovery/build_generation_reader.py",
@@ -62,12 +64,15 @@ class BuildProfileTests(unittest.TestCase):
                      "wit/deps/generation-reader.wit", "wit/deps/deepthink.wit",
                      "wit/deps/harness-chat.wit", "wit/deps/harness-agent.wit",
                      "overlays/generate.overlay.json", "flows/continuation.flow.json",
-                     "flows/regeneration.flow.json"]
+                     "flows/regeneration.flow.json", "flows/control.flow.json"]
+        input_source = ["Cargo.toml", "build.rs", "src/lib.rs", "src/control_flow.rs",
+                        "wit/pack.wit"]
         tools = ["Cargo.toml", "build.rs", "src/lib.rs", "wit/pack.wit",
                  "wit/artifacts.wit", "wit/deps/core.wit", "wit/deps/harness-agent.wit"]
         for relative in common:
             self.write(self.root / relative, b"public source fixture")
         for name, paths in [("mock-llm", baseline), ("deepthink", deepthink),
+                            ("deepthink-input", input_source),
                             ("harness-tools", tools)]:
             for relative in paths:
                 self.write(self.root / ("local." + name) / relative, b"public source fixture")
@@ -82,6 +87,9 @@ class BuildProfileTests(unittest.TestCase):
             (build, "ROOT", self.root), (build, "REPO", self.repo),
             (build_deepthink, "ROOT", self.root),
             (build_deepthink, "SOURCE", self.root / "local.deepthink"),
+            (build_deepthink_input, "ROOT", self.root),
+            (build_deepthink_input, "SOURCE", self.root / "local.deepthink-input"),
+            (build_deepthink_input, "__file__", str(self.root / "build_deepthink_input.py")),
             (build_harness_tools, "ROOT", self.root),
             (build_harness_tools, "REPO", self.repo),
             (build_harness_tools, "__file__", str(self.root / "build_harness_tools.py")),
@@ -108,6 +116,8 @@ class BuildProfileTests(unittest.TestCase):
             ("deepthink", "local.deepthink", lambda **kwargs: build_deepthink.stage(
                 self.target, **kwargs)),
             ("tools", "local.harness-tools", lambda **kwargs: build_harness_tools.stage(
+                self.target, **kwargs)),
+            ("input", "local.deepthink-input", lambda **kwargs: build_deepthink_input.stage(
                 self.target, **kwargs)),
             ("reader", "local.openrouter-generation-reader",
              lambda **kwargs: build_deepthink_profile.stage_generation_reader(
@@ -172,6 +182,8 @@ class BuildProfileTests(unittest.TestCase):
         with patch.object(build_harness_tools, "stage", return_value=copy.deepcopy(manifest)) as tools, \
                 patch.object(build_deepthink_profile, "stage_generation_reader",
                              return_value=copy.deepcopy(manifest)) as reader, \
+                patch.object(build_deepthink_input, "stage",
+                             return_value=copy.deepcopy(manifest)) as adapter, \
                 patch.object(build_deepthink_profile, "variant", side_effect=lambda *a, **k: copy.deepcopy(manifest)), \
                 patch.object(build_deepthink_profile.publish_presets, "publish"), \
                 patch.object(build, "write_json"), \
@@ -180,6 +192,7 @@ class BuildProfileTests(unittest.TestCase):
                 build_deepthink_profile.stage(self.target, build_profile="release")
             tools.assert_called_once_with(self.target, build_profile="release")
             reader.assert_called_once_with(self.target, build_profile="release")
+            adapter.assert_called_once_with(self.target, build_profile="release")
             self.assertEqual(workflow.call_args.kwargs["build_profile"], "release")
 
     def test_only_release_cargo_invocations_receive_release_flag(self):
@@ -204,13 +217,42 @@ class BuildProfileTests(unittest.TestCase):
                     patch.object(module, "stage", return_value=[]) as stage:
                 module.main()
                 stage.assert_called_once_with(self.target, build_profile="release")
-        for module in [build, build_deepthink, build_harness_tools, build_deepthink_profile]:
+        for module in [build, build_deepthink, build_harness_tools, build_deepthink_profile,
+                       build_deepthink_input]:
             with self.subTest(invalid=module.__name__), \
                     patch.object(sys, "argv", ["builder", "--target-dir", str(self.target),
                                                "--build-profile", "production"]), \
                     contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
                 module.main()
             self.assertEqual(error.exception.code, 2)
+
+    def test_input_adapter_has_only_nominal_provided_interface_and_flow_views(self):
+        manifest = build_deepthink_input.stage(self.target)
+        self.assertEqual(manifest["shapes"], [])
+        self.assertEqual(manifest["stores"], [])
+        self.assertEqual(manifest["flows"], [])
+        self.assertEqual(manifest["ports"]["provides"], [
+            build.port("local.deepthink.continuation-input"),
+        ])
+        self.assertEqual(set(manifest["permissions"]["ports"]), {
+            build_deepthink_input.INPUT_VIEW, *build_deepthink_input.FLOW_VIEWS,
+        })
+        self.assertEqual(manifest["ports"]["consumes"], build_deepthink_input.consumed_ports())
+        self.assertIn(build.port("local.deepthink.workflow"), manifest["ports"]["consumes"])
+        self.assertNotIn(build_deepthink_input.WORKFLOW_TYPE_VIEW,
+                         manifest["permissions"]["ports"])
+        for key in ("secrets", "fs", "proc", "host_io"):
+            self.assertEqual(manifest["permissions"][key], [])
+        self.assertFalse(any(manifest["permissions"]["storage"].values()))
+        self.assertEqual(manifest["permissions"]["network"]["origins"], [])
+
+    def test_input_adapter_rejects_noncomponent_without_creating_output(self):
+        artifact = build.component_artifact(self.target, self.names["input"])
+        artifact.write_bytes(b"not a component")
+        destination = self.root / "missing-input"
+        with self.assertRaisesRegex(ValueError, "component header"):
+            build_deepthink_input.stage(self.target, destination)
+        self.assertFalse(destination.exists())
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ resolver = "3"
 members = [
   "guest-sdk",
   "local.deepthink",
+  "local.deepthink-input",
   "local.harness-tools",
   "local.openai-compat-provider",
   "local.mock-llm",

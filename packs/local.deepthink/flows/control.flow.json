@@ -1,0 +1,72 @@
+{
+  "format": "tobkiri.flow/1",
+  "id": "control",
+  "implements": "local.deepthink.control-flow@1.0",
+  "trigger": {"input": "local.deepthink.continuation-input@1.0"},
+  "loop_limits": "profile-default",
+  "on_error": {"default": "fail", "steps": {}},
+  "steps": [
+    {
+      "id": "select-status",
+      "branch": {
+        "if": {"eq": ["$input.op", "status"]},
+        "then": [
+          {
+            "id": "status",
+            "call": {
+              "shape": "local.deepthink.workflow@1.0",
+              "op": "status",
+              "args": {"run-id": "$input.run-id"}
+            },
+            "out": "status-result"
+          },
+          {
+            "id": "status-envelope",
+            "call": {
+              "shape": "local.deepthink.input-context@1.0",
+              "op": "control-result",
+              "args": {"op": "status", "value": "$status-result"}
+            }
+          }
+        ],
+        "else": [
+          {
+            "id": "select-reconciliation",
+            "branch": {
+              "if": {"eq": ["$input.op", "reconcile-generation"]},
+              "then": [
+                {
+                  "id": "reconcile-generation",
+                  "call": {
+                    "shape": "local.deepthink.workflow@1.0",
+                    "op": "reconcile-generation",
+                    "args": {"selection": "$input.selection"}
+                  },
+                  "out": "reconciliation-result"
+                },
+                {
+                  "id": "reconciliation-envelope",
+                  "call": {
+                    "shape": "local.deepthink.input-context@1.0",
+                    "op": "control-result",
+                    "args": {"op": "reconcile-generation", "value": "$reconciliation-result"}
+                  }
+                }
+              ],
+              "else": [
+                {
+                  "id": "reject-operation",
+                  "call": {
+                    "shape": "local.deepthink.input-context@1.0",
+                    "op": "control-result",
+                    "args": {"op": "invalid", "value": null}
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

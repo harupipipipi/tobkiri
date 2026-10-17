@@ -126,6 +126,13 @@ class ProfileSourceVariantTests(unittest.TestCase):
         component.write_bytes(b"\0asm\r\0\1\0public staging fixture; not compiled Wasm")
         reader = deepthink.stage_generation_reader(target, build_profile="release")
         manifests["openrouter-generation-reader"] = reader
+        component.with_name("tobkiri_pack_deepthink_input.wasm").write_bytes(
+            b"\0asm\r\0\1\0public input staging fixture; not compiled Wasm",
+        )
+        adapter = deepthink.build_deepthink_input.stage(
+            target, self.root / "local.deepthink-input", build_profile="release",
+        )
+        manifests["deepthink-input"] = adapter
         variant = deepthink.workflow_harness_variant()
         manifests["harness-chat"] = variant
         for ui in [False, True]:
@@ -165,6 +172,22 @@ class ProfileSourceVariantTests(unittest.TestCase):
                         reader["permissions"], document["ceiling"],
                     ),
                 )
+                self.assertEqual(
+                    document["bindings"]["local.deepthink.continuation-input@1"],
+                    "local.deepthink-input",
+                )
+                self.assertEqual(
+                    document["bindings"]["local.deepthink.input-context@1"],
+                    "local.deepthink",
+                )
+                self.assertEqual(adapter["shapes"], [])
+                self.assertEqual(
+                    document["pack_limits"]["local.deepthink-input"],
+                    build.intersect_permissions(adapter["permissions"], document["ceiling"]),
+                )
+                for private in ("local.deepthink.input-context@1.0",
+                                "local.deepthink.control-flow@1.0"):
+                    self.assertNotIn(private, document["user_permissions"]["ports"])
                 self.assertNotIn(
                     reader_view, document["user_permissions"]["ports"],
                 )

@@ -296,6 +296,8 @@ mod staged_component_tests {
 
     const READER_ID: &str = "local.openrouter-generation-reader";
     const READER_VIEW: &str = "local.openrouter-generation-reader.generation-reader@1.0";
+    const INPUT_ID: &str = "local.deepthink-input";
+    const INPUT_VIEW: &str = "local.deepthink.continuation-input@1.0";
     const BASE_PACKS: &[&str] = &[
         "harness-chat",
         "echo-chat",
@@ -315,6 +317,7 @@ mod staged_component_tests {
         "pi-adapter",
         "harness-tools",
         "deepthink",
+        "deepthink-input",
         "openrouter-mimo-provider",
         "mimo-prompt",
         "deepthink-ui",
@@ -429,6 +432,67 @@ mod staged_component_tests {
         Ok(verify_tpk(&archive, &BTreeMap::new())?)
     }
 
+    fn check_input_declaration(input: &VerifiedPack, pack_root: &Path) -> Result<()> {
+        assert!(
+            input.manifest.shapes.is_empty(),
+            "the worker owns this shape"
+        );
+        assert!(input.manifest.stores.is_empty());
+        assert!(input.manifest.flows.is_empty());
+        assert!(input.manifest.overlays.is_empty());
+        assert!(input.manifest.inputs.is_empty());
+        assert!(input.manifest.ports.untyped.is_empty());
+        assert!(input.manifest.ui.is_none());
+        let reference = tobkiri_manifest::ShapeRef::parse(INPUT_VIEW)?;
+        assert_eq!(input.manifest.ports.provides.len(), 1);
+        assert_eq!(input.manifest.ports.provides[0].shape, reference.name);
+        assert_eq!(input.manifest.ports.provides[0].version, reference.version);
+        assert!(!input.manifest.ports.provides[0].optional);
+        let flow_views = BTreeSet::from([
+            "local.deepthink.control-flow@1.0".to_owned(),
+            "local.deepthink.continuation-flow@1.0".to_owned(),
+            "local.deepthink.regeneration-flow@1.0".to_owned(),
+        ]);
+        let mut consumed_views = flow_views.clone();
+        consumed_views.insert("local.deepthink.workflow@1.0".to_owned());
+        assert_eq!(
+            input
+                .manifest
+                .ports
+                .consumes
+                .iter()
+                .map(|port| {
+                    assert!(!port.optional);
+                    format!("{}@{}", port.shape, port.version)
+                })
+                .collect::<BTreeSet<_>>(),
+            consumed_views,
+        );
+        let mut views = flow_views;
+        views.insert(INPUT_VIEW.to_owned());
+        let permissions = &input.manifest.permissions;
+        assert_eq!(permissions.ports, views);
+        assert!(
+            !permissions.ports.contains("local.deepthink.workflow@1.0"),
+            "a WIT type dependency is not direct workflow call authority"
+        );
+        assert!(permissions.network.origins.is_empty());
+        assert!(permissions.network.user_origins.is_none());
+        assert!(permissions.secrets.is_empty());
+        assert!(permissions.fs.is_empty() && permissions.proc.is_empty());
+        assert!(!permissions.pty && !permissions.native && !permissions.mediator);
+        assert!(!permissions.cross_profile_storage && !permissions.audit_read);
+        assert!(permissions.host_io.is_empty());
+        assert!(
+            !permissions.storage.private
+                && !permissions.storage.public_read
+                && !permissions.storage.public_write
+        );
+        let source_wit = std::fs::read(pack_root.join("shapes/deepthink.wit"))?;
+        assert_eq!(input.files.get("wit/deps/deepthink.wit"), Some(&source_wit));
+        Ok(())
+    }
+
     /// Admission-only proof for the real built components. This never creates
     /// a DataRoot, grants permission, substitutes HostIo or executes a guest.
     #[tokio::test]
@@ -532,14 +596,22 @@ mod staged_component_tests {
         );
         assert_eq!(
             packs.len(),
-            37,
-            "36 existing artifacts plus one real Reader"
+            expected_artifacts()
+                .values()
+                .map(|(count, _)| count)
+                .sum::<usize>(),
+            "distinct selected artifact inventory",
         );
         let reader = packs
             .iter()
             .find(|pack| pack.manifest.id.as_str() == READER_ID)
             .context("the staged Reader is absent")?;
         check_reader_declaration(reader, &pack_root)?;
+        let input = packs
+            .iter()
+            .find(|pack| pack.manifest.id.as_str() == INPUT_ID)
+            .context("the staged input adapter is absent")?;
+        check_input_declaration(input, &pack_root)?;
         let mut views = BTreeMap::new();
         for pack in &packs {
             for shape in load_shapes(&pack.manifest, &pack.files)? {
@@ -598,6 +670,16 @@ mod staged_component_tests {
             let imports =
                 crate::validate_imports(engine.engine(), &component, inspection.allowed_imports())
                     .with_context(|| format!("imports {}", pack.manifest.id))?;
+            if pack.manifest.id.as_str() == INPUT_ID {
+                println!("input actual import names: {imports:?}");
+                super::deepthink_ledger_tests::check_input_type_dependency_imports(
+                    engine.engine(),
+                    &component,
+                    pack,
+                    &shapes,
+                )?;
+                assert!(imports.iter().any(|name| name == "tobkiri:core/flow@1.0.0"));
+            }
             if pack.manifest.id.as_str() == READER_ID {
                 for interface in ["network", "secrets"] {
                     let name = format!("tobkiri:core/{interface}@1.0.0");
@@ -620,12 +702,51 @@ mod staged_component_tests {
             println!("verified component ABI {} {}", pack.manifest.id, pack.hash);
             wasm_count += 1;
         }
-        assert_eq!(wasm_count, 31, "30 existing Wasm artifacts plus the Reader");
+        assert_eq!(
+            wasm_count,
+            expected_artifacts()
+                .values()
+                .map(|(_, count)| count)
+                .sum::<usize>(),
+            "selected Wasm artifact inventory"
+        );
         for (name, profile, _) in profiles {
             let deepthink = profile
                 .packs
                 .iter()
                 .any(|pin| pin.id.as_str() == "local.deepthink");
+            let input_pins = profile
+                .packs
+                .iter()
+                .filter(|pin| pin.id.as_str() == INPUT_ID)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                input_pins.len(),
+                usize::from(deepthink),
+                "input adapter pin in {name}"
+            );
+            assert_eq!(
+                profile
+                    .bindings
+                    .get("local.deepthink.continuation-input@1")
+                    .map(|id| id.as_str()),
+                deepthink.then_some(INPUT_ID),
+                "whole input binding in {name}"
+            );
+            assert_eq!(
+                profile
+                    .bindings
+                    .get("local.deepthink.input-context@1")
+                    .map(|id| id.as_str()),
+                deepthink.then_some("local.deepthink"),
+                "worker preparation binding in {name}"
+            );
+            if deepthink {
+                assert_eq!(
+                    input_pins[0].sha256, input.hash,
+                    "exact input adapter pin in {name}"
+                );
+            }
             let reader_pins = profile
                 .packs
                 .iter()

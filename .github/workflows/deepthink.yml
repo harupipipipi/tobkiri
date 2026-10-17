@@ -44,7 +44,7 @@ jobs:
         run: >-
           cargo test --manifest-path packs/Cargo.toml
           -p tobkiri-guest-sdk -p tobkiri-pack-harness-tools
-          -p tobkiri-pack-deepthink -p tobkiri-pack-openai-compat-provider
+          -p tobkiri-pack-deepthink -p tobkiri-pack-deepthink-input -p tobkiri-pack-openai-compat-provider
           -p tobkiri-pack-harness-conversation-store --locked --lib
       - name: Independent read-only generation reader tests
         run: |

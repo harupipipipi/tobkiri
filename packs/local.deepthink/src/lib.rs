@@ -1,5 +1,6 @@
 //! DeepThink is an ordinary Wasm Pack: Flow, typed ports, Gate and private store.
 
+mod input_context;
 mod phases;
 mod public_progress;
 mod repository_adapter;
@@ -13,7 +14,7 @@ mod workflow;
 wit_bindgen::generate!({path:"wit",world:"pack",generate_all});
 
 use exports::local::deepthink::{
-    continuation_input,
+    input_context as input_context_port,
     workflow::{Guest, Prompt, RecoverySelection},
 };
 use exports::tobkiri::core1_0_0::{lifecycle, stream_source};
@@ -436,12 +437,6 @@ fn head_value(head: &run_repository::Head) -> Value {
         "run_request_digest":head.run_request_digest.as_str()})
 }
 
-fn selection_value(selection: &RecoverySelection) -> Value {
-    json!({"run-id":selection.run_id,"conversation":selection.conversation,
-        "attempt-id":selection.attempt_id,"expected-revision":selection.expected_revision,
-        "expected-snapshot-digest":selection.expected_snapshot_digest})
-}
-
 fn selected_run(selection: &RecoverySelection) -> Result<(Run, run_repository::Head), Error> {
     let (run, head) = managed_run(load_run(&selection.run_id)?)?;
     let revision = selection
@@ -797,93 +792,38 @@ impl Guest for Pack {
     }
 }
 
-impl continuation_input::Guest for Pack {
-    fn status(run_id: String) -> Result<String, Error> {
-        <Pack as Guest>::status(run_id)
-    }
-
-    fn submit(
+impl input_context_port::Guest for Pack {
+    fn continuation(
         run_id: String,
         conversation: String,
         answers: Option<String>,
-    ) -> Result<StreamHandle, Error> {
+    ) -> Result<input_context_port::Context, Error> {
+        // These reads are reached only as a normal worker step after the
+        // separate input adapter has entered the selected continuation Flow.
         let (run, _) = managed_run(load_run(&run_id)?)?;
-        if run.conversation != conversation {
-            return Err(guest_error(invalid("continuation conversation changed")));
-        }
-        let history = run
-            .conversation_input(answers.as_deref())
+        let context = input_context::continuation(&run, &conversation, answers.as_deref())
             .map_err(guest_error)?;
-        flow::run_flow("local.deepthink.continuation-flow@1.0",&json!({
-            "run-id":run_id,"conversation":conversation,"answers":answers,"history-text":history,
-        }).to_string())
+        Ok(input_context_port::Context {
+            conversation: context.conversation,
+            history_text: context.history_text,
+        })
     }
 
-    fn reconcile_generation(
-        selection: continuation_input::RecoverySelection,
-    ) -> Result<String, Error> {
-        reconcile_generation(selection)
-    }
-
-    fn regenerate_phase(
-        selection: continuation_input::RecoverySelection,
-        resolution_digest: String,
-    ) -> Result<StreamHandle, Error> {
+    fn regeneration(
+        selection: input_context_port::RecoverySelection,
+    ) -> Result<input_context_port::Context, Error> {
+        // Keep the existing saved-head/configuration/conversation admission.
+        // This preparation does not resolve or authorize a model attempt.
         let (run, _) = selected_run(&selection)?;
-        let history = run.conversation_input(None).map_err(guest_error)?;
-        let input = json!({"selection":selection_value(&selection),
-            "resolution-digest":resolution_digest,"conversation":selection.conversation,
-            "history-text":history});
-        flow::run_flow("local.deepthink.regeneration-flow@1.0", &input.to_string())
+        let context = input_context::regeneration(&run).map_err(guest_error)?;
+        Ok(input_context_port::Context {
+            conversation: context.conversation,
+            history_text: context.history_text,
+        })
     }
 
-    fn pull(stream: StreamHandle, max: u32) -> Result<Vec<continuation_input::ChatEvent>, Error> {
-        if max == 0 || max > 64 {
-            return Err(guest_error(invalid("pull batch must be 1..64")));
-        }
-        let frames = flow::pull(stream, max)?;
-        let mut events = vec![];
-        for frame in frames {
-            let frame: Value = serde_json::from_str(&frame)
-                .map_err(|_| guest_error(invalid("continuation Flow returned malformed frame")))?;
-            let kind = frame
-                .pointer("/kind/kind")
-                .and_then(Value::as_str)
-                .ok_or_else(|| guest_error(invalid("continuation Flow has no event kind")))?;
-            let value = match kind {
-                "emitted" => frame
-                    .pointer("/kind/value")
-                    .cloned()
-                    .ok_or_else(|| guest_error(invalid("continuation emission is missing")))?,
-                "completed" => json!({"kind":"completed"}),
-                "failed" => {
-                    return Err(guest_error(invalid(
-                        "continuation Flow failed; its checkpoints remain available",
-                    )));
-                }
-                "cancelled" => {
-                    return Err(guest_error(Failure {
-                        code: "cancelled".into(),
-                        message: "Continuation cancelled; checkpoints remain available.".into(),
-                    }));
-                }
-                _ => json!({"kind":"progress"}),
-            };
-            events.push(continuation_input::ChatEvent {
-                kind: value["kind"].as_str().unwrap_or("progress").into(),
-                text: value["text"].as_str().map(String::from),
-                prompt_tokens: value["prompt-tokens"]
-                    .as_u64()
-                    .and_then(|tokens| u32::try_from(tokens).ok()),
-                completion_tokens: value["completion-tokens"]
-                    .as_u64()
-                    .and_then(|tokens| u32::try_from(tokens).ok()),
-            });
-        }
-        Ok(events)
-    }
-    fn cancel(stream: StreamHandle) {
-        flow::cancel_stream(stream);
+    fn control_result(op: String, value: String) -> Result<String, Error> {
+        input_context::control_result(&op, &value).map_err(guest_error)
     }
 }
 

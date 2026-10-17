@@ -4,6 +4,7 @@
   "conformance": null,
   "streams": {
     "continue-run": "chat-event",
+    "regenerate-phase": "chat-event",
     "run": "chat-event"
   }
 }

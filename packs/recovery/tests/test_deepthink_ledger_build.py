@@ -77,6 +77,25 @@ class LedgerBuildTests(unittest.TestCase):
             provides=[build.port(reader.VIEW.rsplit("@", 1)[0])],
         ))
 
+    def input_archive(self, edit=None, wit=None):
+        def manifest_edit(manifest):
+            manifest["ports"].update(
+                provides=[build.port("local.deepthink.continuation-input")],
+                consumes=ledger.input_adapter.consumed_ports(),
+            )
+            if edit:
+                edit(manifest)
+        return self.archive(ledger.input_adapter.PACK_ID, {
+            "wit/deps/deepthink.wit": wit if wit is not None else (
+                ledger.PACKS / "shapes/deepthink.wit"
+            ).read_bytes(),
+        }, ledger.input_adapter.permissions(), manifest_edit)
+
+    def extend_profile(self, *args, **kwargs):
+        if "input_archive" not in kwargs:
+            kwargs["input_archive"] = self.input_archive()[0]
+        return ledger.extend_profile(*args, **kwargs)
+
     @staticmethod
     def pin(path, manifest):
         return {
@@ -146,15 +165,30 @@ class LedgerBuildTests(unittest.TestCase):
 
     def ledger_archive(self, raw_config, old_manifest, edit=None):
         def manifest_edit(manifest):
+            manifest["ports"]["provides"] = [build.port("local.deepthink.workflow"),
+                                              build.port("local.deepthink.input-context")]
             manifest["ports"]["consumes"] = [
                 build.port(view.rsplit("@", 1)[0]) for view in sorted(ledger.ADDED_PORTS)
             ]
-            manifest["flows"] = ["flows/regeneration.flow.json"]
+            manifest["flows"] = [f"flows/{name}.flow.json"
+                                 for name in ("continuation", "regeneration", "control")]
+            manifest["shapes"] = [
+                {"name": ledger.DEEPTHINK + "." + name, "version": "1.0",
+                 "kind": kind, "wit": "wit/deps/deepthink.wit"}
+                for name, kind in (("workflow", "port"), ("records", "data"),
+                                   ("continuation-input", "port"), ("continuation-flow", "flow"),
+                                   ("regeneration-flow", "flow"), ("control-flow", "flow"),
+                                   ("input-context", "port"))
+            ]
             if edit:
                 edit(manifest)
         return self.archive(ledger.DEEPTHINK, {
             "config.json": raw_config,
             "flows/regeneration.flow.json": build.canonical({"implements": ledger.REGENERATION}),
+            "flows/continuation.flow.json": build.canonical({
+                "implements": "local.deepthink.continuation-flow@1.0"}),
+            "flows/control.flow.json": build.canonical({"implements": ledger.CONTROL}),
+            "wit/deps/deepthink.wit": (ledger.PACKS / "shapes/deepthink.wit").read_bytes(),
             "wit/deps/generation-reader.wit": (
                 reader.SOURCE / "wit/deps/reader.wit"
             ).read_bytes(),
@@ -171,12 +205,12 @@ class LedgerBuildTests(unittest.TestCase):
         baseline_bytes = baseline.read_bytes()
         before = {pin["id"]: (self.root / pin["source"][5:]).read_bytes()
                   for pin in original["packs"]}
-        output = ledger.extend_profile(baseline, new, reader_path, self.root / "ready")
+        output = self.extend_profile(baseline, new, reader_path, self.root / "ready")
         profile = json.loads(output.read_bytes())
         self.assertNotIn("id", profile)
         self.assertEqual(profile["name"], original["name"])
         self.assertEqual(baseline.read_bytes(), baseline_bytes)
-        self.assertEqual(len(profile["packs"]), len(original["packs"]) + 1)
+        self.assertEqual(len(profile["packs"]), len(original["packs"]) + 2)
         by_id = {pin["id"]: pin for pin in profile["packs"]}
         for pin in original["packs"]:
             if pin["id"] == ledger.DEEPTHINK:
@@ -203,22 +237,38 @@ class LedgerBuildTests(unittest.TestCase):
             self.assertFalse(receipt[key])
         self.assertEqual(receipt["model_calls"], 0)
         self.assertEqual(receipt["lookup_calls"], 0)
+        self.assertEqual(receipt["selected_pack_count"], len(profile["packs"]))
+        self.assertEqual(len(receipt["copied_packs"]), len(profile["packs"]))
+        self.assertEqual(profile["bindings"]["local.deepthink.continuation-input@1"],
+                         ledger.input_adapter.PACK_ID)
+        self.assertEqual(profile["bindings"]["local.deepthink.input-context@1"], ledger.DEEPTHINK)
+        self.assertEqual(set(profile["user_permissions"]["ports"]),
+                         set(original["user_permissions"]["ports"]) | {reader.VIEW})
+        permissions = profile["pack_limits"][ledger.input_adapter.PACK_ID]
+        self.assertFalse(any(permissions["storage"].values()))
+        self.assertEqual(permissions["secrets"], [])
+        self.assertEqual(permissions["network"]["origins"], [])
+        self.assertEqual(set(permissions["ports"]), {
+            ledger.input_adapter.INPUT_VIEW, *ledger.input_adapter.FLOW_VIEWS,
+        })
 
-    def test_existing_reader_is_replaced_once_with_restrictions_and_id_preserved(self):
+    def test_existing_reader_is_retained_once_with_restrictions_and_id_preserved(self):
         baseline, original, _, _, new, reader_path = self.ready(existing_reader=True, with_id=True)
-        output = ledger.extend_profile(baseline, new, reader_path, self.root / "replace")
+        output = self.extend_profile(baseline, new, reader_path, self.root / "replace")
         profile = json.loads(output.read_bytes())
         self.assertEqual(profile["id"], original["id"])
-        self.assertEqual(len(profile["packs"]), len(original["packs"]))
+        self.assertEqual(len(profile["packs"]), len(original["packs"]) + 1)
         self.assertEqual(sum(pin["id"] == reader.PACK_ID for pin in profile["packs"]), 1)
         self.assertEqual(profile["pack_limits"][reader.PACK_ID]["loops"]["max_iterations"], 1)
-        self.assertTrue(json.loads((output.parent / "PREPARATION.json").read_bytes())["old_reader_replaced"])
+        receipt = json.loads((output.parent / "PREPARATION.json").read_bytes())
+        self.assertFalse(receipt["old_reader_replaced"])
+        self.assertTrue(receipt["existing_reader_bytes_retained"])
 
     def test_config_semantically_equal_but_different_bytes_is_rejected(self):
         baseline, _, config, old, _, reader_path = self.ready()
         changed, _ = self.ledger_archive(build.canonical(json.loads(config)), old)
         with self.assertRaisesRegex(ValueError, "configuration bytes"):
-            ledger.extend_profile(baseline, changed, reader_path, self.root / "bad-config")
+            self.extend_profile(baseline, changed, reader_path, self.root / "bad-config")
         self.assertFalse((self.root / "bad-config").exists())
 
     def test_numeric_limits_and_nonport_authority_cannot_change(self):
@@ -234,7 +284,7 @@ class LedgerBuildTests(unittest.TestCase):
                         manifest["permissions"]["storage"]["public_write"] = True
                 changed, _ = self.ledger_archive(config, old, edit)
                 with self.assertRaisesRegex(ValueError, "authority or numeric"):
-                    ledger.extend_profile(baseline, changed, reader_path, self.root / mutation)
+                    self.extend_profile(baseline, changed, reader_path, self.root / mutation)
                 self.assertFalse((self.root / mutation).exists())
 
     def test_ceiling_is_intersected_without_enlarging_old_pack_limits(self):
@@ -242,7 +292,7 @@ class LedgerBuildTests(unittest.TestCase):
         original["ceiling"]["wasm"]["output_bytes"] = 1024
         original["pack_limits"][ledger.DEEPTHINK]["loops"]["max_iterations"] = 100
         build.write_json(baseline, original)
-        output = ledger.extend_profile(baseline, new, reader_path, self.root / "intersection")
+        output = self.extend_profile(baseline, new, reader_path, self.root / "intersection")
         result = json.loads(output.read_bytes())
         self.assertEqual(result["pack_limits"][ledger.DEEPTHINK]["wasm"]["output_bytes"], 1024)
         self.assertEqual(result["pack_limits"][reader.PACK_ID]["wasm"]["output_bytes"], 1024)
@@ -265,7 +315,7 @@ class LedgerBuildTests(unittest.TestCase):
                 build.write_json(baseline, profile)
                 destination = self.root / ("invalid-" + mutation)
                 with self.assertRaises(ValueError):
-                    ledger.extend_profile(baseline, new, reader_path, destination)
+                    self.extend_profile(baseline, new, reader_path, destination)
                 self.assertFalse(destination.exists())
 
     def test_provider_pin_capture_mismatch_rejects(self):
@@ -276,28 +326,66 @@ class LedgerBuildTests(unittest.TestCase):
         profile["packs"][1] = self.pin(path, manifest)
         build.write_json(baseline, profile)
         with self.assertRaisesRegex(ValueError, "captured provider"):
-            ledger.extend_profile(baseline, new, reader_path, self.root / "bad-provider")
+            self.extend_profile(baseline, new, reader_path, self.root / "bad-provider")
 
     def test_reader_authority_binding_and_wit_mismatch_reject(self):
         baseline, profile, config, old, new, reader_path = self.ready()
         profile["bindings"][reader.VIEW.rsplit("@", 1)[0] + "@1"] = "local.someone-else"
         build.write_json(baseline, profile)
         with self.assertRaisesRegex(ValueError, "binding"):
-            ledger.extend_profile(baseline, new, reader_path, self.root / "binding")
+            self.extend_profile(baseline, new, reader_path, self.root / "binding")
         del profile["bindings"][reader.VIEW.rsplit("@", 1)[0] + "@1"]
         build.write_json(baseline, profile)
         permissions = reader.reader_permissions()
         permissions["secrets"][0]["reveal"] = True
         broad, _ = self.archive(reader.PACK_ID, {}, permissions)
         with self.assertRaisesRegex(ValueError, "reader authority"):
-            ledger.extend_profile(baseline, new, broad, self.root / "broad")
+            self.extend_profile(baseline, new, broad, self.root / "broad")
         changed_reader, _ = self.archive(reader.PACK_ID, {
             "wit/deps/reader.wit": b"different-public-shape",
         }, reader.reader_permissions(), lambda manifest: manifest["ports"].update(
             provides=[build.port(reader.VIEW.rsplit("@", 1)[0])],
         ))
         with self.assertRaisesRegex(ValueError, "dependency WIT"):
-            ledger.extend_profile(baseline, new, changed_reader, self.root / "wit")
+            self.extend_profile(baseline, new, changed_reader, self.root / "wit")
+
+    def test_adapter_cannot_gain_effects_redeclare_owner_or_change_dependencies(self):
+        baseline, _, _, _, new, reader_path = self.ready()
+        for mutation in ("storage", "network", "shape", "consumes", "missing-type", "wit"):
+            with self.subTest(mutation=mutation):
+                def edit(manifest):
+                    if mutation == "storage":
+                        manifest["permissions"]["storage"]["private"] = True
+                    elif mutation == "network":
+                        manifest["permissions"]["network"]["origins"] = [reader.ORIGIN]
+                    elif mutation == "shape":
+                        manifest["shapes"] = [{"name": "local.deepthink.continuation-input"}]
+                    elif mutation == "consumes":
+                        manifest["ports"]["consumes"].append(build.port("local.deepthink.input-context"))
+                    elif mutation == "missing-type":
+                        manifest["ports"]["consumes"] = [port for port in manifest["ports"]["consumes"]
+                            if port["shape"] != "local.deepthink.workflow"]
+                adapter, _ = self.input_archive(edit, wit=(b"different" if mutation == "wit" else None))
+                destination = self.root / ("adapter-" + mutation)
+                with self.assertRaisesRegex(ValueError, "input adapter"):
+                    self.extend_profile(baseline, new, reader_path, destination,
+                                        input_archive=adapter)
+                self.assertFalse(destination.exists())
+
+    def test_existing_reader_bytes_and_unrelated_input_binding_cannot_change(self):
+        baseline, profile, _, _, new, reader_path = self.ready(existing_reader=True)
+        different, _ = self.archive(reader.PACK_ID, {
+            "config.json": b'{"different":true}',
+            "wit/deps/reader.wit": (reader.SOURCE / "wit/deps/reader.wit").read_bytes(),
+        }, reader.reader_permissions(), lambda manifest: manifest["ports"].update(
+            provides=[build.port(reader.VIEW.rsplit("@", 1)[0])],
+        ))
+        with self.assertRaisesRegex(ValueError, "existing reader archive bytes"):
+            self.extend_profile(baseline, new, different, self.root / "changed-reader")
+        profile["bindings"]["local.deepthink.continuation-input@1"] = "local.someone-else"
+        build.write_json(baseline, profile)
+        with self.assertRaisesRegex(ValueError, "input binding"):
+            self.extend_profile(baseline, new, reader_path, self.root / "changed-input")
 
     def test_existing_output_is_never_overwritten(self):
         baseline, _, _, _, new, reader_path = self.ready()
@@ -306,7 +394,7 @@ class LedgerBuildTests(unittest.TestCase):
         sentinel = destination / "sentinel"
         sentinel.write_bytes(b"keep")
         with self.assertRaises(FileExistsError):
-            ledger.extend_profile(baseline, new, reader_path, destination)
+            self.extend_profile(baseline, new, reader_path, destination)
         with self.assertRaises(FileExistsError):
             ledger.stage_from_frozen(self.root / "no-target", baseline, destination)
         self.assertEqual(sentinel.read_bytes(), b"keep")
@@ -326,7 +414,7 @@ class LedgerBuildTests(unittest.TestCase):
         destination = self.root / "changed-during-copy"
         with patch.object(ledger, "_copy", mutate_after_copy):
             with self.assertRaisesRegex(ValueError, "baseline changed"):
-                ledger.extend_profile(baseline, new, reader_path, destination)
+                self.extend_profile(baseline, new, reader_path, destination)
         self.assertFalse((destination / "profile.json").exists())
         self.assertFalse((destination / "PREPARATION.json").exists())
 
@@ -337,10 +425,10 @@ class LedgerBuildTests(unittest.TestCase):
                 invalid = self.archives / "invalid.tpk"
                 self.tar(invalid, {name: b"x", "pack.json": b"{}"})
                 with self.assertRaises(ValueError):
-                    ledger.extend_profile(baseline, invalid, reader_path, self.root / "unsafe")
+                    self.extend_profile(baseline, invalid, reader_path, self.root / "unsafe")
         baseline.write_bytes(b'{"packs":[],"packs":[]}')
         with self.assertRaisesRegex(ValueError, "duplicate JSON"):
-            ledger.extend_profile(baseline, new, reader_path, self.root / "duplicate-json")
+            self.extend_profile(baseline, new, reader_path, self.root / "duplicate-json")
 
     def artifact(self, profile="release"):
         path = self.root / f"target/wasm32-wasip2/{profile}/tobkiri_pack_deepthink.wasm"
@@ -361,6 +449,8 @@ class LedgerBuildTests(unittest.TestCase):
         self.assertEqual((destination / "component.wasm").read_bytes(), artifact.read_bytes())
         bound = {item["path"]: item for item in result["files"]}
         for relative in ("config.json", "component.build.json", "flows/regeneration.flow.json",
+                         "flows/control.flow.json", "wit/control-flow.shape.json",
+                         "wit/input-context.shape.json",
                          "wit/deps/generation-reader.wit", "wit/deps/core-v1-1.wit"):
             self.assertEqual(bound[relative]["sha256"], reader.file_sha(destination / relative))
         self.assertEqual(json.loads((destination / "wit/workflow.shape.json").read_bytes())["streams"]["regenerate-phase"], "chat-event")
@@ -369,6 +459,9 @@ class LedgerBuildTests(unittest.TestCase):
         self.assertFalse(provenance["incremental_frozen_baseline"]["other_packs_rebuilt"])
         self.assertEqual(provenance["incremental_frozen_baseline"]["exact_config_sha256"], build.sha256(config))
         self.assertEqual(provenance["sources"]["packs/recovery/build_deepthink_ledger.py"], reader.file_sha(Path(ledger.__file__)))
+        self.assertEqual(result["ports"]["provides"], [
+            build.port("local.deepthink.workflow"), build.port("local.deepthink.input-context"),
+        ])
 
     def test_stage_has_no_debug_fallback_or_invalid_component_acceptance(self):
         baseline, _, _, _ = self.baseline()

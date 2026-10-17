@@ -23,12 +23,15 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(PACKS))
 import build
 import build_deepthink
+import build_deepthink_input as input_adapter
 import build_generation_reader as reader
 
 DEEPTHINK = "local.deepthink"
 PROVIDER = "local.openrouter-mimo-provider"
 REGENERATION = DEEPTHINK + ".regeneration-flow@1.0"
-ADDED_PORTS = {REGENERATION, reader.VIEW}
+CONTROL = DEEPTHINK + ".control-flow@1.0"
+INPUT_CONTEXT = DEEPTHINK + ".input-context@1.0"
+ADDED_PORTS = {REGENERATION, reader.VIEW, CONTROL, INPUT_CONTEXT}
 MAX_JSON = 4 * 1024 * 1024
 MAX_PACKS = 256
 COMPONENT_HEADER = b"\0asm\r\0\1\0"
@@ -246,15 +249,57 @@ def _validate_ledger(old: dict[str, Any], ledger: dict[str, Any],
     consumed = {entry["shape"] + "@" + entry["version"]
                 for entry in manifest["ports"]["consumes"]}
     if not ADDED_PORTS <= consumed \
-            or "flows/regeneration.flow.json" not in manifest["flows"]:
+            or manifest["ports"]["provides"] != [
+                build.port(DEEPTHINK + ".workflow"),
+                build.port(DEEPTHINK + ".input-context"),
+            ]:
         raise ValueError("new recovery typed ports and Flow are not bound")
-    flow = _json(_member(ledger, "flows/regeneration.flow.json"))
-    if flow.get("implements") != REGENERATION:
-        raise ValueError("regeneration Flow identity differs")
+    owned = {(shape["name"], shape["version"], shape["kind"], shape["wit"])
+             for shape in manifest["shapes"]}
+    if not {
+        (DEEPTHINK + "." + name, "1.0", kind, "wit/deps/deepthink.wit")
+        for name, kind in (("workflow", "port"), ("records", "data"),
+                           ("continuation-input", "port"),
+                           ("continuation-flow", "flow"), ("regeneration-flow", "flow"),
+                           ("control-flow", "flow"), ("input-context", "port"))
+    } <= owned:
+        raise ValueError("DeepThink input contracts lack their defining shape owner")
+    for name in ("continuation", "regeneration", "control"):
+        path = f"flows/{name}.flow.json"
+        if path not in manifest["flows"]:
+            raise ValueError("new input and recovery Flows are not bound")
+        flow = _json(_member(ledger, path))
+        if flow.get("implements") != DEEPTHINK + f".{name}-flow@1.0":
+            raise ValueError("input or recovery Flow identity differs")
     if _member(ledger, "wit/deps/generation-reader.wit") != _member(
         generation_reader, "wit/deps/reader.wit"
     ):
         raise ValueError("reader dependency WIT differs from selected reader Pack")
+
+
+def _validate_input(inspected: dict[str, Any], ledger: dict[str, Any]) -> None:
+    """Require the narrow adapter and the selected worker's nominal contract."""
+    manifest = inspected["manifest"]
+    expected = build.base_manifest("deepthink-input", {"kind": "data"},
+                                   input_adapter.permissions())
+    build.normalize_manifest(expected)
+    if manifest["permissions"] != expected["permissions"]:
+        raise ValueError("input adapter authority differs from its Flow-only contract")
+    if manifest["runtime"]["kind"] != "wasm" \
+            or manifest["runtime"].get("config", {}).get("path") != "config.json" \
+            or any(manifest[key] for key in ("shapes", "stores", "flows", "overlays")) \
+            or manifest["ports"]["untyped"] \
+            or manifest["ports"]["provides"] != [
+                build.port(input_adapter.INPUT_VIEW.rsplit("@", 1)[0]),
+            ] \
+            or manifest["ports"]["consumes"] != input_adapter.consumed_ports():
+        raise ValueError("input adapter is not the standalone typed Flow bridge")
+    if _json(_member(inspected, "config.json")) != {}:
+        raise ValueError("input adapter configuration changed")
+    if _member(inspected, "wit/deps/deepthink.wit") != _member(
+        ledger, "wit/deps/deepthink.wit",
+    ):
+        raise ValueError("input adapter dependency WIT differs from selected DeepThink")
 
 
 def _copy(inspected: dict[str, Any], directory: Path) -> str:
@@ -271,16 +316,21 @@ def _copy(inspected: dict[str, Any], directory: Path) -> str:
 
 
 def extend_profile(baseline_profile: Path, ledger_archive: Path,
-                   reader_archive: Path, destination: Path) -> Path:
-    """Copy the frozen Profile, replacing only DeepThink and optional Reader."""
+                   reader_archive: Path, destination: Path, *,
+                   input_archive: Path) -> Path:
+    """Retain frozen data/model Packs and add the ordinary Flow input bridge."""
     destination = _new_destination(destination)
     original, baseline_hash, originals = _baseline(baseline_profile)
     ledger = _inspect(ledger_archive, DEEPTHINK)
     generation_reader = _inspect(reader_archive, reader.PACK_ID)
     _validate_reader(generation_reader)
     _validate_ledger(originals[DEEPTHINK], ledger, generation_reader)
+    adapter = _inspect(input_archive, input_adapter.PACK_ID)
+    _validate_input(adapter, ledger)
     if reader.PACK_ID in originals:
         _validate_reader(originals[reader.PACK_ID])
+        if generation_reader["archive_sha256"] != originals[reader.PACK_ID]["archive_sha256"]:
+            raise ValueError("existing reader archive bytes must remain unchanged")
     profile = deepcopy(original)
     ceiling = profile["ceiling"]
     if reader.ORIGIN not in ceiling["network"]["origins"] or not any(
@@ -297,6 +347,14 @@ def extend_profile(baseline_profile: Path, ledger_archive: Path,
     if profile["bindings"].get(binding, reader.PACK_ID) != reader.PACK_ID:
         raise ValueError("reader binding belongs to a different Pack")
     profile["bindings"][binding] = reader.PACK_ID
+    input_binding = input_adapter.INPUT_VIEW.rsplit("@", 1)[0] + "@1"
+    if profile["bindings"].get(input_binding) not in (DEEPTHINK, input_adapter.PACK_ID):
+        raise ValueError("continuation input binding belongs to a different Pack")
+    profile["bindings"][input_binding] = input_adapter.PACK_ID
+    context_binding = INPUT_CONTEXT.rsplit("@", 1)[0] + "@1"
+    if profile["bindings"].get(context_binding, DEEPTHINK) != DEEPTHINK:
+        raise ValueError("input context binding belongs to a different Pack")
+    profile["bindings"][context_binding] = DEEPTHINK
     deepthink_limit = deepcopy(profile["pack_limits"][DEEPTHINK])
     deepthink_limit["ports"] = sorted(_ports(deepthink_limit) | ADDED_PORTS)
     profile["pack_limits"][DEEPTHINK] = build.intersect_permissions(
@@ -311,7 +369,18 @@ def extend_profile(baseline_profile: Path, ledger_archive: Path,
     profile["pack_limits"][reader.PACK_ID] = build.intersect_permissions(
         reader_limit, ceiling,
     )
-    replacements = {DEEPTHINK: ledger, reader.PACK_ID: generation_reader}
+    adapter_limit = adapter["manifest"]["permissions"]
+    if input_adapter.PACK_ID in profile["pack_limits"]:
+        adapter_limit = build.intersect_permissions(
+            adapter_limit, profile["pack_limits"][input_adapter.PACK_ID],
+        )
+    profile["pack_limits"][input_adapter.PACK_ID] = build.intersect_permissions(
+        adapter_limit, ceiling,
+    )
+    replacements = {DEEPTHINK: ledger, reader.PACK_ID: generation_reader,
+                    input_adapter.PACK_ID: adapter}
+    if len(set(originals) | set(replacements)) > MAX_PACKS:
+        raise ValueError("new Profile pack inventory exceeds its bound")
     destination.mkdir(parents=True, exist_ok=False)
     (destination / "packs").mkdir()
     copies = []
@@ -323,16 +392,24 @@ def extend_profile(baseline_profile: Path, ledger_archive: Path,
                    source=_copy(inspected, destination / "packs"))
         copies.append({"id": identity, "manifest_sha256": pin["sha256"],
                        "archive_sha256": inspected["archive_sha256"],
-                       "unchanged_from_baseline": identity not in replacements})
-    if reader.PACK_ID not in originals:
+                       "unchanged_from_baseline": inspected["archive_sha256"]
+                       == originals[identity]["archive_sha256"]})
+    for identity in (reader.PACK_ID, input_adapter.PACK_ID):
+        if identity in originals:
+            continue
+        inspected = replacements[identity]
         profile["packs"].append({
-            "id": reader.PACK_ID, "version": generation_reader["manifest"]["version"],
-            "sha256": generation_reader["manifest_sha256"],
-            "source": _copy(generation_reader, destination / "packs"),
+            "id": identity, "version": inspected["manifest"]["version"],
+            "sha256": inspected["manifest_sha256"],
+            "source": _copy(inspected, destination / "packs"),
         })
+        copies.append({"id": identity, "manifest_sha256": inspected["manifest_sha256"],
+                       "archive_sha256": inspected["archive_sha256"],
+                       "unchanged_from_baseline": False})
     _recheck_baseline(baseline_profile, baseline_hash, originals)
     _unchanged(ledger)
     _unchanged(generation_reader)
+    _unchanged(adapter)
     output = destination / "profile.json"
     build.write_json(output, profile)
     build.write_json(destination / "PREPARATION.json", {
@@ -346,7 +423,12 @@ def extend_profile(baseline_profile: Path, ledger_archive: Path,
         "deepthink_archive_sha256": ledger["archive_sha256"],
         "reader_manifest_sha256": generation_reader["manifest_sha256"],
         "reader_archive_sha256": generation_reader["archive_sha256"],
-        "old_reader_replaced": reader.PACK_ID in originals,
+        "input_manifest_sha256": adapter["manifest_sha256"],
+        "input_archive_sha256": adapter["archive_sha256"],
+        "input_binding": input_adapter.PACK_ID,
+        "selected_pack_count": len(profile["packs"]),
+        "old_reader_replaced": False,
+        "existing_reader_bytes_retained": reader.PACK_ID in originals,
         "copied_packs": copies,
         "nonport_ceiling_and_user_policy_unchanged": True,
         "other_pack_limits_unchanged": True,
@@ -371,6 +453,7 @@ def main() -> None:
     profile.add_argument("--baseline", type=Path, required=True)
     profile.add_argument("--ledger-archive", type=Path, required=True)
     profile.add_argument("--reader-archive", type=Path, required=True)
+    profile.add_argument("--input-archive", type=Path, required=True)
     profile.add_argument("--destination", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "stage":
@@ -378,7 +461,7 @@ def main() -> None:
                           args.build_profile)
     else:
         extend_profile(args.baseline, args.ledger_archive, args.reader_archive,
-                       args.destination)
+                       args.destination, input_archive=args.input_archive)
 
 
 if __name__ == "__main__":

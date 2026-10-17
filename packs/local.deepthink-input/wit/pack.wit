@@ -1,0 +1,8 @@
+package local:deepthink-input@1.0.0;
+
+world pack {
+  import tobkiri:core/types@1.0.0;
+  import tobkiri:core/flow@1.0.0;
+  export tobkiri:core/lifecycle@1.0.0;
+  export local:deepthink/continuation-input@1.0.0;
+}

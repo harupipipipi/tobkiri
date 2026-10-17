@@ -15,6 +15,7 @@ from typing import Any
 
 import build
 import build_deepthink
+import build_deepthink_input
 import build_harness_tools
 import publish_presets
 from recovery import build_generation_reader
@@ -124,7 +125,7 @@ def compose(manifests: dict[str, dict[str, Any]], *, ui: bool) -> dict[str, Any]
         pin["id"] = identities.get(pin["id"], pin["id"])
     profile["bindings"] = {key: identities.get(value, value)
                             for key, value in profile["bindings"].items()}
-    for name in ["harness-agent", "harness-tools", "deepthink",
+    for name in ["harness-agent", "harness-tools", "deepthink", "deepthink-input",
                  "openrouter-generation-reader"] + (["deepthink-ui"] if ui else []):
         profile["packs"].append({"id": "local." + name, "version": "0.1.0"})
     profile["id"] = "prof_deepthink_mimo_ui" if ui else "prof_deepthink_mimo"
@@ -133,7 +134,8 @@ def compose(manifests: dict[str, dict[str, Any]], *, ui: bool) -> dict[str, Any]
         "local.harness-agent.tool-provider@1": "local.harness-tools",
         "local.harness-chat.structured-llm-provider@1": "local.openrouter-mimo-provider",
         "local.deepthink.workflow@1": "local.deepthink",
-        "local.deepthink.continuation-input@1": "local.deepthink",
+        "local.deepthink.continuation-input@1": "local.deepthink-input",
+        "local.deepthink.input-context@1": "local.deepthink",
         "local.openrouter-generation-reader.generation-reader@1":
             "local.openrouter-generation-reader",
     })
@@ -145,6 +147,7 @@ def compose(manifests: dict[str, dict[str, Any]], *, ui: bool) -> dict[str, Any]
                    "local.deepthink.continuation-input@1.0",
                    "local.deepthink.continuation-flow@1.0",
                    "local.deepthink.regeneration-flow@1.0",
+                   "local.deepthink.control-flow@1.0", "local.deepthink.input-context@1.0",
                    "local.openrouter-generation-reader.generation-reader@1.0"]
     profile["ceiling"]["ports"] = sorted(set(profile["ceiling"]["ports"] + extra_ports))
     profile["ceiling"]["secrets"] = [{"name": "api-key", "reveal": False, "optional": False}]
@@ -172,6 +175,7 @@ def stage(target_dir: Path, build_profile: str = "debug") -> list[Path]:
     """Publish two portable Profiles without acquiring credentials or approval."""
     tools_manifest = build_harness_tools.stage(target_dir, build_profile=build_profile)
     reader_manifest = stage_generation_reader(target_dir, build_profile=build_profile)
+    input_manifest = build_deepthink_input.stage(target_dir, build_profile=build_profile)
     provider = variant("openai-compat-provider", "openrouter-mimo-provider", {
         "base_url": ORIGIN + "/api/v1", "model": MODEL,
         "secret_name": "api-key", "timeout_ms": 300000, "provider_order": ["xiaomi"],
@@ -217,6 +221,7 @@ def stage(target_dir: Path, build_profile: str = "debug") -> list[Path]:
     manifests = {name: read_manifest(name) for name in names}
     manifests.update({"harness-chat": workflow_harness_variant(),
                       "deepthink": deepthink, "harness-tools": tools_manifest,
+                      "deepthink-input": input_manifest,
                       "openrouter-mimo-provider": provider, "mimo-prompt": prompt,
                       "openrouter-generation-reader": reader_manifest,
                       "deepthink-ui": ui})

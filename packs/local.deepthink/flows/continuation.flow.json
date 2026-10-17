@@ -7,6 +7,15 @@
   "on_error": {"default": "fail", "steps": {}},
   "steps": [
     {
+      "id": "context",
+      "call": {
+        "shape": "local.deepthink.input-context@1.0",
+        "op": "continuation",
+        "args": {"run-id": "$input.run-id", "conversation": "$input.conversation", "answers": "$input.answers"}
+      },
+      "out": "context"
+    },
+    {
       "id": "continue",
       "call": {
         "shape": "local.deepthink.workflow@1.0",
@@ -22,8 +31,8 @@
         "shape": "local.harness-chat.conversation-store@1.0",
         "op": "append",
         "args": {
-          "conversation": "$input.conversation",
-          "input": {"conversation": "$input.conversation", "text": "$input.history-text"},
+          "conversation": "$context.conversation",
+          "input": {"conversation": "$context.conversation", "text": "$context.history-text"},
           "events": "$turn"
         }
       }

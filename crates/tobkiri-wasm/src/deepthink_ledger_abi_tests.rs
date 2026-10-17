@@ -4,9 +4,99 @@ use super::validate_abi;
 use anyhow::{Context, Result, bail};
 use std::{collections::BTreeMap, path::PathBuf};
 use tobkiri_manifest::{
-    RuntimeSpec, build_tpk, inspect_pack_wit, load_shapes, parse_manifest, verify_tpk,
+    RuntimeSpec, VerifiedPack, build_tpk, inspect_pack_wit, load_shapes, parse_manifest, verify_tpk,
 };
 use wasmtime::component::{Component, Linker, types::ComponentItem};
+
+fn verified_stage(directory: &std::path::Path) -> Result<VerifiedPack> {
+    let manifest = parse_manifest(&std::fs::read(directory.join("pack.json"))?)?;
+    let mut files = BTreeMap::new();
+    for entry in &manifest.files {
+        files.insert(
+            entry.path.clone(),
+            std::fs::read(directory.join(&entry.path))?,
+        );
+    }
+    Ok(verify_tpk(
+        &build_tpk(&manifest, &files, None)?,
+        &BTreeMap::new(),
+    )?)
+}
+
+/// Additional test-only check for record aliases in the unchanged public WIT.
+/// Call after validate_imports has enforced the existing Core/WASI allowlist.
+/// This proves structural type agreement, not a new foreign nominal-identity
+/// guarantee from the production validator's Core-only named-type branch.
+pub(super) fn check_input_type_dependency_imports(
+    engine: &wasmtime::Engine,
+    component: &Component,
+    pack: &VerifiedPack,
+    shapes: &[tobkiri_manifest::ShapeDef],
+) -> Result<()> {
+    const WORKFLOW: &str = "local:deepthink/workflow@1.0.0";
+    let reference = tobkiri_manifest::ShapeRef::parse("local.deepthink.workflow@1.0")?;
+    let owner = shapes
+        .iter()
+        .find(|shape| shape.reference == reference)
+        .context("selected worker's authoritative workflow shape is required")?;
+    assert_eq!(
+        pack.files
+            .get("wit/deps/deepthink.wit")
+            .context("adapter must bind the shared public WIT")?
+            .as_slice(),
+        owner.wit.as_bytes()
+    );
+    let component_type = component.component_type();
+    let mut interfaces = 0;
+    let mut types = 0;
+    let mut functions = 0;
+    for (name, item) in component_type.imports(engine) {
+        println!("input actual import {name}: {:?}", item.ty);
+        if name.starts_with("wasi:")
+            || matches!(name, "tobkiri:core/types@1.0.0" | "tobkiri:core/flow@1.0.0")
+        {
+            continue;
+        }
+        if name != WORKFLOW {
+            bail!("unexpected foreign input dependency interface: {name}")
+        }
+        interfaces += 1;
+        let ComponentItem::ComponentInstance(instance) = item.ty else {
+            bail!("workflow type dependency must be an interface")
+        };
+        for (member, item) in instance.exports(engine) {
+            println!("input workflow dependency member {member}: {:?}", item.ty);
+            match item.ty {
+                ComponentItem::Type(actual) => {
+                    let expected = owner
+                        .types
+                        .get(member)
+                        .context("unknown named type in workflow dependency")?;
+                    if !super::matches_type(&actual, &super::from_type(expected), &BTreeMap::new())
+                    {
+                        bail!("workflow dependency type differs from authoritative WIT: {member}")
+                    }
+                    types += 1;
+                }
+                ComponentItem::ComponentFunc(_) => functions += 1,
+                _ => bail!("workflow dependency is not a plain named type: {member}"),
+            }
+        }
+    }
+    println!(
+        "input workflow dependency interfaces={interfaces} types={types} functions={functions}"
+    );
+    assert_eq!(interfaces, 1, "one exact workflow record-owner dependency");
+    assert!(
+        types > 0,
+        "the dependency must contain actual record aliases"
+    );
+    assert_eq!(
+        functions, 0,
+        "record aliases must import no worker functions"
+    );
+    Ok(())
+}
 
 /// Validate the actual built component against its verified WIT and the same
 /// production ABI/import validators used before PackHost links callbacks.
@@ -20,16 +110,8 @@ async fn real_ledger_matches_verified_wit_and_storage_1_1_abi() -> Result<()> {
         std::env::var_os("TOBKIRI_TEST_DEEPTHINK_LEDGER_STAGE")
             .context("set TOBKIRI_TEST_DEEPTHINK_LEDGER_STAGE to the immutable real Pack stage")?,
     );
-    let manifest = parse_manifest(&std::fs::read(directory.join("pack.json"))?)?;
-    assert_eq!(manifest.id.as_str(), "local.deepthink");
-    let mut files = BTreeMap::new();
-    for entry in &manifest.files {
-        files.insert(
-            entry.path.clone(),
-            std::fs::read(directory.join(&entry.path))?,
-        );
-    }
-    let pack = verify_tpk(&build_tpk(&manifest, &files, None)?, &BTreeMap::new())?;
+    let pack = verified_stage(&directory)?;
+    assert_eq!(pack.manifest.id.as_str(), "local.deepthink");
     let shapes = load_shapes(&pack.manifest, &pack.files)?;
     let views = shapes
         .iter()
@@ -58,9 +140,15 @@ async fn real_ledger_matches_verified_wit_and_storage_1_1_abi() -> Result<()> {
     // Core package versions, not just function names or a component file header.
     validate_abi(engine.engine(), &component, &pack, &shapes)?;
     let component_type = component.component_type();
-    for required_interface in [
-        "local:deepthink/workflow@1.0.0",
-        "local:deepthink/continuation-input@1.0.0",
+    for (required_interface, operations) in [
+        (
+            "local:deepthink/workflow@1.0.0",
+            ["status", "reconcile-generation", "regenerate-phase"],
+        ),
+        (
+            "local:deepthink/input-context@1.0.0",
+            ["continuation", "regeneration", "control-result"],
+        ),
     ] {
         let exported = component_type
             .exports(engine.engine())
@@ -70,7 +158,7 @@ async fn real_ledger_matches_verified_wit_and_storage_1_1_abi() -> Result<()> {
         let ComponentItem::ComponentInstance(instance) = exported.ty else {
             bail!("ledger export must be a typed interface")
         };
-        for required_operation in ["status", "reconcile-generation", "regenerate-phase"] {
+        for required_operation in operations {
             assert!(
                 instance.exports(engine.engine()).any(|(name, item)| {
                     name == required_operation && matches!(item.ty, ComponentItem::ComponentFunc(_))
@@ -79,6 +167,12 @@ async fn real_ledger_matches_verified_wit_and_storage_1_1_abi() -> Result<()> {
             );
         }
     }
+    assert!(
+        !component_type
+            .exports(engine.engine())
+            .any(|(name, _)| name == "local:deepthink/continuation-input@1.0.0"),
+        "the worker no longer implements the public input provider"
+    );
     assert!(crate::validate_imports(engine.engine(), &component, &Default::default()).is_err());
     let mut missing_storage = inspection.allowed_imports().clone();
     assert!(missing_storage.remove("tobkiri:core/storage@1.1.0"));
@@ -93,6 +187,137 @@ async fn real_ledger_matches_verified_wit_and_storage_1_1_abi() -> Result<()> {
         pack.manifest.id,
         pack.hash,
         tobkiri_canon::Digest::hash(component_bytes)
+    );
+    Ok(())
+}
+
+/// A distinct component provides the unchanged foreign-owned input contract.
+/// Both artifacts are verified, and no callback or guest code is executed.
+#[tokio::test]
+#[ignore = "requires real immutable DeepThink ledger and input adapter stages"]
+async fn real_input_adapter_matches_owned_wit_and_closed_core_abi() -> Result<()> {
+    let worker_directory = PathBuf::from(
+        std::env::var_os("TOBKIRI_TEST_DEEPTHINK_LEDGER_STAGE")
+            .context("set TOBKIRI_TEST_DEEPTHINK_LEDGER_STAGE to the immutable worker stage")?,
+    );
+    let directory = PathBuf::from(
+        std::env::var_os("TOBKIRI_TEST_DEEPTHINK_INPUT_STAGE")
+            .context("set TOBKIRI_TEST_DEEPTHINK_INPUT_STAGE to the immutable adapter stage")?,
+    );
+    let worker = verified_stage(&worker_directory)?;
+    let pack = verified_stage(&directory)?;
+    assert_eq!(worker.manifest.id.as_str(), "local.deepthink");
+    assert_eq!(pack.manifest.id.as_str(), "local.deepthink-input");
+    assert!(pack.manifest.shapes.is_empty());
+    assert!(pack.manifest.stores.is_empty() && pack.manifest.flows.is_empty());
+    assert_eq!(
+        pack.files.get("wit/deps/deepthink.wit"),
+        worker.files.get("wit/deps/deepthink.wit")
+    );
+    let shapes = load_shapes(&worker.manifest, &worker.files)?;
+    let views = shapes
+        .iter()
+        .map(|shape| (shape.reference.clone(), shape.clone()))
+        .collect();
+    let reference = tobkiri_manifest::ShapeRef::parse("local.deepthink.continuation-input@1.0")?;
+    assert!(shapes.iter().any(|shape| shape.reference == reference));
+    let inspection = inspect_pack_wit(&pack, &views)?;
+    let dependency = pack
+        .manifest
+        .ports
+        .consumes
+        .iter()
+        .find(|port| port.shape.as_str() == "local.deepthink.workflow")
+        .context("public record aliases need their declared workflow type owner")?;
+    assert!(!dependency.optional);
+    assert!(
+        !pack
+            .manifest
+            .permissions
+            .ports
+            .contains("local.deepthink.workflow@1.0")
+    );
+    // Reproduce the original rejection with a normally built/verified negative
+    // artifact. The runtime bytes and public WIT are unchanged; only the missing
+    // dependency declaration differs, without adding any direct call authority.
+    let mut missing_dependency_manifest = pack.manifest.clone();
+    missing_dependency_manifest
+        .ports
+        .consumes
+        .retain(|port| port.shape.as_str() != "local.deepthink.workflow");
+    let missing_dependency = verify_tpk(
+        &build_tpk(&missing_dependency_manifest, &pack.files, None)?,
+        &BTreeMap::new(),
+    )?;
+    let missing_error = inspect_pack_wit(&missing_dependency, &views)
+        .err()
+        .context("an undeclared operational type owner must fail inspection")?;
+    assert!(
+        missing_error
+            .to_string()
+            .contains("undeclared type dependency interface has operations")
+    );
+    for operation in [
+        "status",
+        "submit",
+        "reconcile-generation",
+        "regenerate-phase",
+        "pull",
+    ] {
+        assert!(inspection.core_errors().has_core_error_result(
+            tobkiri_manifest::WitBindingDirection::Export,
+            &reference,
+            &tobkiri_manifest::OpName::parse(operation)?,
+        ));
+    }
+    let RuntimeSpec::Wasm { component, .. } = &pack.manifest.runtime else {
+        bail!("the input adapter must be an actual Wasm component")
+    };
+    let engine = crate::WasmEngine::new()?;
+    let bytes = &pack.files[component];
+    let component = Component::new(engine.engine(), bytes)?;
+    let imports =
+        crate::validate_imports(engine.engine(), &component, inspection.allowed_imports())?;
+    println!("input actual import names: {imports:?}");
+    check_input_type_dependency_imports(engine.engine(), &component, &pack, &shapes)?;
+    assert!(imports.iter().any(|name| name == "tobkiri:core/flow@1.0.0"));
+    validate_abi(engine.engine(), &component, &pack, &shapes)?;
+    let component_type = component.component_type();
+    let exported = component_type
+        .exports(engine.engine())
+        .find(|(name, _)| *name == "local:deepthink/continuation-input@1.0.0")
+        .context("the adapter lacks the exact foreign-owned public interface")?
+        .1;
+    let ComponentItem::ComponentInstance(instance) = exported.ty else {
+        bail!("the input export must be a typed interface")
+    };
+    for operation in [
+        "status",
+        "submit",
+        "reconcile-generation",
+        "regenerate-phase",
+        "pull",
+        "cancel",
+    ] {
+        assert!(
+            instance
+                .exports(engine.engine())
+                .any(|(name, item)| name == operation
+                    && matches!(item.ty, ComponentItem::ComponentFunc(_)))
+        );
+    }
+    assert!(crate::validate_imports(engine.engine(), &component, &Default::default()).is_err());
+    let mut missing_flow = inspection.allowed_imports().clone();
+    missing_flow.retain(|name| !name.starts_with("tobkiri:core/flow@"));
+    assert!(crate::validate_imports(engine.engine(), &component, &missing_flow).is_err());
+    let empty: Linker<()> = Linker::new(engine.engine());
+    assert!(empty.instantiate_pre(&component).is_err());
+    println!(
+        "verified input ABI {} {} worker={} component={}",
+        pack.manifest.id,
+        pack.hash,
+        worker.hash,
+        tobkiri_canon::Digest::hash(bytes)
     );
     Ok(())
 }

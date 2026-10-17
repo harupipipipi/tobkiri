@@ -273,6 +273,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobkiri-pack-deepthink-input"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "tobkiri-pack-echo-input"
 version = "0.1.0"
 dependencies = [
