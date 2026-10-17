@@ -647,3 +647,90 @@ fn revision_questions_keep_old_context_and_do_not_erase_or_reset_gate_history() 
     assert_eq!(run.contract_gate.as_ref().unwrap().candidates.len(), 2);
     assert_eq!(run.usage()["attempts"], 6);
 }
+
+fn three_item_pointer_fixture() -> (Value, Value, Value) {
+    let original = json!({"requirements":(0..3).map(|index| {
+        json!({"id":format!("requirement-{index}"),"description":"Original requested relationship"})
+    }).collect::<Vec<_>>()});
+    let candidate = json!({"success_criteria":(0..3).map(|index| {
+        json!({"id":format!("criterion-{index}"),"requirement_id":format!("requirement-{index}"),
+            "criterion":"Compare the requested subject","measurement":"Compare the specified relationship",
+            "target":"Match the original requirement"})
+    }).collect::<Vec<_>>()});
+    let context = json!({"original_goal":original,"contract_candidate":candidate,
+        "contract_candidate_digest":digest(&candidate)});
+    let assessment = approved_review(&context);
+    (original, candidate, assessment)
+}
+
+#[test]
+fn twelve_whole_item_review_pointers_remain_rejected_by_the_domain_contract() {
+    let (original, candidate, valid) = three_item_pointer_fixture();
+    let candidate_digest = digest(&candidate);
+    assert!(validate_review(&original, &candidate, &candidate_digest, &valid).is_ok());
+    let result_schema = schema("goal_contract_review:1")["properties"]["result"].clone();
+    let mut rejected = 0;
+    for collection in ["requirement_checks", "criterion_checks"] {
+        for index in 0..3 {
+            for (field, array) in [
+                ("source_pointer", "requirements"),
+                ("candidate_pointer", "success_criteria"),
+            ] {
+                let mut value = valid.clone();
+                value[collection][index][field] = json!(format!("/{array}/{index}"));
+                // The provider's JSON schema accepts this string. The domain
+                // deliberately requires a real child field, not the item root.
+                assert!(phases::validate(&value, &result_schema).is_ok());
+                assert!(validate_review(&original, &candidate, &candidate_digest, &value).is_err());
+                rejected += 1;
+            }
+        }
+    }
+    assert_eq!(rejected, 12);
+}
+
+#[test]
+fn review_prompt_examples_use_existing_child_fields_and_exclude_whole_objects() {
+    let (original, candidate, _) = three_item_pointer_fixture();
+    for phase in ["goal_contract_review:1", "goal_contract_review:2"] {
+        let instruction = prompt(phase);
+        for (source, pointer, prefix) in [
+            (&original, "/requirements/0/description", "/requirements/0/"),
+            (
+                &candidate,
+                "/success_criteria/0/measurement",
+                "/success_criteria/0/",
+            ),
+            (
+                &candidate,
+                "/success_criteria/0/criterion",
+                "/success_criteria/0/",
+            ),
+            (
+                &candidate,
+                "/success_criteria/0/target",
+                "/success_criteria/0/",
+            ),
+        ] {
+            assert!(instruction.contains(pointer));
+            assert!(check_pointer(source, &json!(pointer), prefix).is_ok());
+        }
+        assert!(instruction.contains("whole-object"));
+        assert!(instruction.contains("joint_satisfiability"));
+        assert!(instruction.contains("公開検証結果"));
+        assert!(instruction.contains("私的推論過程を出さない"));
+    }
+}
+
+#[test]
+fn rejected_pointer_feedback_names_the_expected_child_prefix() {
+    let (original, candidate, _) = three_item_pointer_fixture();
+    for (source, pointer, prefix) in [
+        (&original, "/requirements/0", "/requirements/0/"),
+        (&candidate, "/success_criteria/0", "/success_criteria/0/"),
+    ] {
+        let error = check_pointer(source, &json!(pointer), prefix).unwrap_err();
+        assert!(error.message.contains(prefix));
+        assert!(error.message.contains("child-field"));
+    }
+}

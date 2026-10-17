@@ -33,6 +33,13 @@ An approval requires every required check to pass and no outstanding issues
 or clarifications. Revision preserves criterion identities and requirement
 links. No task-specific arithmetic or vocabulary is a production gate rule.
 
+Evidence pointers address existing child fields, using the original Goal or
+candidate itself as the root. Examples are `/requirements/0/description` and
+`/success_criteria/0/target`, with the index selected by the corresponding ID.
+Whole-item pointers such as `/requirements/0` are rejected. The prompt and
+format-repair error identify this requirement explicitly. Resolving a pointer
+establishes its location; it does not establish the truth of a model's check.
+
 All three new phases are declarative: they produce public decision summaries
 and structured results, with no tool execution. They do not request private
 reasoning. A model review is evidence, not a general proof that arbitrary

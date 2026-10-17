@@ -151,7 +151,7 @@ pub fn prompt(phase: &str) -> &'static str {
     if phase == "goal_contract_revision:1" {
         "原ユーザー要求・受理済み回答・original_goalを保持し、直前の独立意味レビューの指摘だけを根拠に新しいGoal契約候補を作る。元contractや過去phaseを書き換えない。requirement/criterion/deliverableのIDと対応を保持し、要件を省略・強化・追加しない。criterion/measurement/targetで対象、中間値と最終値、単位、依存順序を混同しない。契約候補はcontract、変更点はchangesへ。実作業・tool実行・最終回答はしない。真に不可欠な利用者質問だけcontract.clarificationsへ。"
     } else {
-        "独立したGoal契約の意味レビューだけを行う。contract_candidateを原ユーザー要求・受理済み回答・original_goalと照合する。全requirementと全criterionを各1件評価し、原要件への忠実性、暗黙の強化や省略の有無、条件全体の充足可能性、測定対象とmeasurement/targetの整合、中間結果と最終結果・単位・対象期間の区別、依存/実行順序を確認する。単にJSONが正しい、confirmed=true、先の作成者が合格と述べたことは合格理由にならない。全global_checksとIDチェックを埋め、source_pointerはoriginal_goal内の該当requirement、candidate_pointerはcontract_candidate内の該当criterionへのJSON pointerにする。evidence/issueは短い検証結果と根拠だけで、私的推論過程を出さない。矛盾、誤った比較、過大な合格条件、必要な情報不足があればapproved=falseと具体的issues。真に不可欠な利用者質問だけclarificationsへ、注記・未使用tool・不確実な自己評価を質問にしない。実際のtool使用・制作・最終回答済みと主張しない。全checkがtrueでissues/clarificationsが空の時だけapproved=true。意味的正しさを数学的に保証できるとの主張はしない。"
+        "独立したGoal契約の意味レビューだけを行う。contract_candidateを原ユーザー要求・受理済み回答・original_goalと照合する。全requirementと全criterionを各1件評価し、原要件への忠実性、暗黙の強化や省略の有無、条件全体の充足可能性、測定対象とmeasurement/targetの整合、中間結果と最終結果・単位・対象期間の区別、依存/実行順序を確認する。単にJSONが正しい、confirmed=true、先の作成者が合格と述べたことは合格理由にならない。全global_checksとIDチェックを埋め、source_pointerはoriginal_goal自体をrootとする該当requirementの既存child field、candidate_pointerはcontract_candidate自体をrootとする該当criterionの既存child fieldへのJSON pointerにする。例えばsource_pointer=/requirements/0/description、candidate_pointer=/success_criteria/0/measurement又は/success_criteria/0/criterion又は/success_criteria/0/targetを使い、実際のindexは各IDの対応に合わせる。/requirements/0や/success_criteria/0のような項目全体を指すwhole-object pointerは禁止。contextやoriginal_goalというwrapper名をpointerへ足さず、存在しないfield/index/IDを例から捏造しない。joint_satisfiabilityのevidenceには原要件と全candidate条件を同時に満たせるかの短い公開検証結果だけを書く。比較対象・中間値と最終値の別・単位・等式や不等式の対応を明示し、異なる対象の値に同じ閾値を黙って課さない。矛盾や未検証の仮定が残るのに、合格という主張を繰り返してtrueにしない。この整合確認を実taskやtoolの実行証拠と呼ばない。evidence/issueは短い検証結果と根拠だけで、私的推論過程を出さない。矛盾、誤った比較、過大な合格条件、必要な情報不足があればapproved=falseと具体的issues。真に不可欠な利用者質問だけclarificationsへ、注記・未使用tool・不確実な自己評価を質問にしない。実際のtool使用・制作・最終回答済みと主張しない。全checkがtrueでissues/clarificationsが空の時だけapproved=true。意味的正しさを数学的に保証できるとの主張はしない。"
     }
 }
 
@@ -220,9 +220,9 @@ fn check_pointer(source: &Value, pointer: &Value, prefix: &str) -> Result<(), Fa
         .as_str()
         .ok_or_else(|| invalid("Goal review evidence has no pointer"))?;
     if !pointer.starts_with(prefix) || source.pointer(pointer).is_none() {
-        return Err(invalid(
-            "Goal review evidence points outside its assigned source",
-        ));
+        return Err(invalid(&format!(
+            "Goal review evidence must reference an existing field under {prefix}; requirement/criterion item roots are not child-field pointers"
+        )));
     }
     Ok(())
 }
