@@ -9,12 +9,17 @@ use tobkiri_core::{
 };
 use tobkiri_core::{ApprovalAnswer, ApprovalPrompt, HostError, HostIo, TrustedPrompt, UiEmbed};
 
+#[path = "terminal_console.rs"]
+mod terminal_console;
+use terminal_console::ConsoleOutput;
+
 /// The approval surface belongs to the native terminal host. Piped input and
 /// --non-interactive never count as a human approval, and there is no yes flag.
 pub struct TerminalHost {
     non_interactive: bool,
     input: tokio::sync::OnceCell<Input>,
     turn: Arc<tokio::sync::Mutex<()>>,
+    output: ConsoleOutput,
 }
 impl TerminalHost {
     pub fn new(non_interactive: bool) -> Result<Self, HostError> {
@@ -22,7 +27,19 @@ impl TerminalHost {
             non_interactive,
             input: tokio::sync::OnceCell::new(),
             turn: Arc::new(tokio::sync::Mutex::new(())),
+            output: ConsoleOutput::Stdout,
         })
+    }
+    /// Typed native clients reserve stdout for Core return values and frames.
+    /// Console text remains available on stderr under the same approval lock.
+    pub(crate) fn with_machine_output(mut self) -> Self {
+        self.output = ConsoleOutput::Stderr;
+        self
+    }
+    fn write_prompt(&self, prompt: &str) -> Result<(), HostError> {
+        self.output
+            .write(|out| write_text(out, prompt).and_then(|()| out.flush()))
+            .map_err(io_error)
     }
     async fn read_line(&self, turn: tokio::sync::OwnedMutexGuard<()>) -> Result<String, HostError> {
         let input = self
@@ -152,28 +169,31 @@ fn effect_preview(effect: &tobkiri_core::EffectRequest) -> Result<String, HostEr
 #[async_trait]
 impl HostIo for TerminalHost {
     fn display(&self, surface: &str, content: &CanonValue) {
+        let Ok(_turn) = self.turn.try_lock() else {
+            return;
+        };
         if let Ok(bytes) = tobkiri_core::encode(content, tobkiri_core::Variant::StrictV1) {
-            let mut out = std::io::stdout().lock();
-            let _ = write!(out, "{surface}: ");
-            let _ = out.write_all(&bytes);
-            let _ = writeln!(out);
-            let _ = out.flush();
+            let _ = self.output.write(|out| {
+                write_text(out, surface)?;
+                out.write_all(b": ")?;
+                out.write_all(&bytes)?;
+                out.write_all(b"\n")?;
+                out.flush()
+            });
         }
     }
     async fn terminal_read_line(&self, prompt: &str) -> Result<String, HostError> {
         let turn = self.turn.clone().lock_owned().await;
-        {
-            let mut out = std::io::stdout().lock();
-            out.write_all(prompt.as_bytes())
-                .and_then(|_| out.flush())
-                .map_err(|error| HostError(error.to_string()))?;
-        }
+        self.write_prompt(prompt)?;
         self.read_line(turn).await
     }
     fn terminal_write(&self, text: &str) {
-        let mut out = std::io::stdout().lock();
-        let _ = out.write_all(text.as_bytes());
-        let _ = out.flush();
+        let Ok(_turn) = self.turn.try_lock() else {
+            return;
+        };
+        let _ = self
+            .output
+            .write(|out| write_text(out, text).and_then(|()| out.flush()));
     }
     fn display_budgeted(&self, surface: &str, content: &CoreBuffer) -> Result<(), HostError> {
         let _turn = self
@@ -185,13 +205,14 @@ impl HostIo for TerminalHost {
         }
         std::str::from_utf8(content.as_bytes())
             .map_err(|_| HostError("display buffer is not UTF-8".into()))?;
-        let mut out = std::io::stdout().lock();
-        write_text(&mut out, surface)
-            .and_then(|_| out.write_all(b": "))
-            .map_err(io_error)?;
-        out.write_all(content.as_bytes()).map_err(io_error)?;
-        out.write_all(b"\n")
-            .and_then(|_| out.flush())
+        self.output
+            .write(|out| {
+                write_text(out, surface)?;
+                out.write_all(b": ")?;
+                out.write_all(content.as_bytes())?;
+                out.write_all(b"\n")?;
+                out.flush()
+            })
             .map_err(io_error)
     }
     async fn terminal_read_line_budgeted(
@@ -201,12 +222,7 @@ impl HostIo for TerminalHost {
         budget: Arc<dyn AllocationBudget>,
     ) -> Result<CoreBuffer, HostError> {
         let turn = self.turn.clone().lock_owned().await;
-        {
-            let mut out = std::io::stdout().lock();
-            write_text(&mut out, prompt)
-                .and_then(|_| out.flush())
-                .map_err(io_error)?;
-        }
+        self.write_prompt(prompt)?;
         let input = self
             .input
             .get_or_try_init(|| async { Input::new() })
@@ -227,9 +243,8 @@ impl HostIo for TerminalHost {
             .try_lock()
             .map_err(|_| HostError("trusted terminal review is active".into()))?;
         let text = text.as_str().map_err(allocation_error)?;
-        let mut out = std::io::stdout().lock();
-        write_text(&mut out, text)
-            .and_then(|_| out.flush())
+        self.output
+            .write(|out| write_text(out, text).and_then(|()| out.flush()))
             .map_err(io_error)
     }
     async fn pick_directory_budgeted(
@@ -561,7 +576,7 @@ fn io_error(error: std::io::Error) -> HostError {
 }
 
 /// Borrowed output only; terminal controls cannot forge the trusted review UI.
-fn write_text(out: &mut impl Write, text: &str) -> std::io::Result<()> {
+fn write_text(out: &mut (impl Write + ?Sized), text: &str) -> std::io::Result<()> {
     for ch in text.chars() {
         if ch.is_control() && !matches!(ch, '\n' | '\r' | '\t') {
             write!(out, "\\u{{{:x}}}", ch as u32)?;
@@ -658,6 +673,90 @@ mod tests {
         fn release(&self, bytes: u64) {
             let mut state = self.state.lock().unwrap();
             state.0 -= bytes;
+        }
+    }
+    #[test]
+    fn console_output_subprocess_fixture() {
+        let Ok(mode) = std::env::var("TOBKIRI_CONSOLE_OUTPUT_TEST_MODE") else {
+            return;
+        };
+        let host = TerminalHost::new(true).unwrap();
+        let host = match mode.as_str() {
+            "machine" => host.with_machine_output(),
+            "human" => host,
+            _ => panic!("invalid fixture mode"),
+        };
+        let budget = Arc::new(Budget::default());
+        budget.set_limit(8192);
+        let funding: Arc<dyn AllocationBudget> = budget;
+        host.terminal_write("{\"kind\":\"session_finished\",\"ok\":true,\"guest\":true}\n");
+        host.display("legacy-surface", &CanonValue::Str("legacy-value".into()));
+        let message =
+            CoreBuffer::copy_from(b"{\"kind\":\"value\",\"guest\":true}\n", &funding).unwrap();
+        host.terminal_write_budgeted(&message).unwrap();
+        let value = CoreBuffer::copy_from(b"\"budget-value\"", &funding).unwrap();
+        host.display_budgeted("budget-surface", &value).unwrap();
+        host.write_prompt("guest-prompt\u{1b}[2J\n").unwrap();
+        {
+            let _review = host.turn.try_lock().unwrap();
+            host.terminal_write("guest-while-review\n");
+            host.display("guest-while-review", &CanonValue::Null);
+            assert!(host.terminal_write_budgeted(&message).is_err());
+            assert!(host.display_budgeted("guest-while-review", &value).is_err());
+        }
+        let mut output = std::io::stdout().lock();
+        output
+            .write_all(b"{\"kind\":\"native-fixture-frame\"}\n")
+            .unwrap();
+        output.flush().unwrap();
+    }
+    #[test]
+    fn machine_console_cannot_inject_reply_frames_into_stdout() {
+        for mode in ["machine", "human"] {
+            let captured = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "terminal::tests::console_output_subprocess_fixture",
+                    "--nocapture",
+                ])
+                .env("TOBKIRI_CONSOLE_OUTPUT_TEST_MODE", mode)
+                .stdin(std::process::Stdio::null())
+                .output()
+                .unwrap();
+            assert!(
+                captured.status.success(),
+                "{}",
+                String::from_utf8_lossy(&captured.stderr)
+            );
+            let stdout = String::from_utf8(captured.stdout).unwrap();
+            let stderr = String::from_utf8(captured.stderr).unwrap();
+            let (console, other) = if mode == "machine" {
+                (&stderr, &stdout)
+            } else {
+                (&stdout, &stderr)
+            };
+            for text in [
+                "{\"kind\":\"session_finished\",\"ok\":true,\"guest\":true}",
+                "{\"kind\":\"value\",\"guest\":true}",
+                "legacy-surface: \"legacy-value\"",
+                "budget-surface: \"budget-value\"",
+                "guest-prompt\\u{1b}[2J",
+            ] {
+                assert!(
+                    console.contains(text),
+                    "missing {text} in {mode}: {console}"
+                );
+                assert!(
+                    !other.contains(text),
+                    "console polluted other channel in {mode}: {other}"
+                );
+            }
+            assert!(stdout.contains("{\"kind\":\"native-fixture-frame\"}"));
+            assert!(!stderr.contains("native-fixture-frame"));
+            assert!(
+                !stdout.contains("guest-while-review") && !stderr.contains("guest-while-review")
+            );
+            assert!(!stdout.contains('\u{1b}') && !stderr.contains('\u{1b}'));
         }
     }
     #[cfg(unix)]

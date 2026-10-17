@@ -52,7 +52,17 @@ User value/stream output between each request's markers:
 {"kind":"session_finished","ok":true}
 ```
 
-The normal one-shot `profile invoke` output remains unchanged. Both modes use
+In `profile session` and `profile invoke`, stdout contains only native transport
+markers and typed Core return values. Pack terminal display, write text and read
+prompts go to stderr, selected before Core opens. Pack text may look like a JSON
+marker; consumers must parse stdout separately and must not parse merged
+stdout/stderr as the native protocol. Interactive `profile run` keeps its normal
+console output on stdout. The trusted approval surface and shared input/terminal
+mutex are unchanged. Budgeted output and prompts propagate write/flush errors
+without falling back to stdout; the two legacy void display/write callbacks
+retain their best-effort error behavior.
+
+The normal one-shot `profile invoke` typed output remains unchanged. Both modes use
 the same dispatcher: `Session.invoke_user_port`, producer-owned output encoding,
 stream pulls through EOF, and awaited stream cancellation/close. Every operation
 still receives a fresh Core RequestId, deadline and allocation scope under the

@@ -53,7 +53,12 @@ pub async fn run(args: Args) -> Result<()> {
             bail!("data-root override is available only in debug/test builds");
         }
     }
-    let host = Arc::new(TerminalHost::new(args.non_interactive)?);
+    let terminal = TerminalHost::new(args.non_interactive)?;
+    let host = Arc::new(if machine_output(&args.command) {
+        terminal.with_machine_output()
+    } else {
+        terminal
+    });
     let core = Core::open(config, host.clone())?;
     match args.command {
         Command::Profile { command } => profile(&core, &host, command, prepared_apply).await,
@@ -78,6 +83,15 @@ pub async fn run(args: Args) -> Result<()> {
         }
         Command::Pack { .. } => unreachable!(),
     }
+}
+
+fn machine_output(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::Profile {
+            command: ProfileCommand::Session { .. } | ProfileCommand::Invoke { .. }
+        }
+    )
 }
 
 async fn profile(
@@ -525,6 +539,45 @@ fn filesystem_unknown(error: &tobkiri_core::CoreError) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn typed_native_commands_reserve_stdout_for_replies() {
+        use clap::Parser;
+        for argv in [
+            vec!["tobkiri", "profile", "session", "--profile", "fixture"],
+            vec![
+                "tobkiri",
+                "profile",
+                "invoke",
+                "--profile",
+                "fixture",
+                "--shape",
+                "local.fixture@1.0",
+                "--op",
+                "read",
+                "--args-file",
+                "fixture.json",
+            ],
+        ] {
+            let args = Args::try_parse_from(argv).unwrap();
+            assert!(machine_output(&args.command));
+        }
+        for argv in [
+            vec!["tobkiri", "profile", "run", "--profile", "fixture"],
+            vec![
+                "tobkiri",
+                "profile",
+                "create",
+                "--name",
+                "fixture",
+                "--definition",
+                "fixture.json",
+            ],
+            vec!["tobkiri", "approve", "--profile", "fixture"],
+        ] {
+            let args = Args::try_parse_from(argv).unwrap();
+            assert!(!machine_output(&args.command));
+        }
+    }
     #[test]
     fn cleanup_failure_cannot_turn_a_success_into_success() {
         let result = complete_with_cleanup(
