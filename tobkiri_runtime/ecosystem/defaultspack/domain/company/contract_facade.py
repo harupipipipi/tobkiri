@@ -926,6 +926,8 @@ def _legacy_company(value: Mapping[str, Any]) -> dict[str, Any]:
         "metadata": dict(company.get("metadata") or {}),
         "agents": agents,
         "channels": dict(company.get("channels") or {}),
+        "message_count": _state_record_count(company, "messages"),
+        "task_count": _state_record_count(company, "tasks"),
         "created_at_ms": company.get("created_at_ms"),
         "updated_at_ms": company.get("updated_at_ms"),
     }
@@ -1110,13 +1112,22 @@ def _state_runtime_counts(company: Mapping[str, Any] | None) -> dict[str, int]:
     if not isinstance(company, Mapping):
         return {}
     return {
-        "messages": len(company.get("messages") or []),
-        "tasks": len(company.get("tasks") or {}),
+        "messages": _state_record_count(company, "messages"),
+        "tasks": _state_record_count(company, "tasks"),
         "threads": 0,
         "runs": 0,
         "inbox": 0,
         "summaries": 0,
     }
+
+
+def _state_record_count(company: Mapping[str, Any], key: str) -> int:
+    """Count records in one selected Company state collection."""
+
+    records = company.get(key)
+    if isinstance(records, (Mapping, list)):
+        return len(records)
+    return 0
 
 
 def _state_blocker_summary(company: Mapping[str, Any] | None) -> dict[str, Any]:
