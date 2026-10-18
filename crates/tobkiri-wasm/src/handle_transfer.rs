@@ -44,7 +44,7 @@ impl PackHost {
         owner: &CallCx,
         recipient: &CallCx,
         authority: &ShapeRef,
-        generation: u64,
+        generation: Arc<crate::generation_retirement::GenerationRetirement>,
         frame: &Arc<dyn ProviderFrame>,
         owners: &ValueOwners,
     ) -> Result<Val> {
@@ -93,7 +93,7 @@ impl PackHost {
                     id,
                     recipient,
                     authority,
-                    Some(generation),
+                    Some(&generation),
                     frame,
                 )
                 .await?

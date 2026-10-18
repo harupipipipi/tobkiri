@@ -76,17 +76,21 @@ pub(crate) struct PackInstance {
     pack: Arc<VerifiedPack>,
     component: Component,
     config: Vec<u8>,
-    live: Option<(Store<InvocationState<PackState>>, Instance)>,
+    live: Option<(
+        Store<InvocationState<PackState>>,
+        Option<Instance>,
+        Arc<crate::generation_retirement::GenerationRetirement>,
+    )>,
     // Field order is deliberate: Store is destroyed before this external
     // physical lease, including on ordinary PackInstance destruction.
     physical: Option<Arc<crate::instance_capacity::InstanceCapacity>>,
-    retirement: Arc<StdMutex<tokio_util::sync::CancellationToken>>,
+    retirement: Arc<StdMutex<Option<Arc<crate::generation_retirement::GenerationRetirement>>>>,
     generation: Arc<AtomicU64>,
     current_generation: u64,
 }
 pub(crate) struct InstanceSlot {
     instance: Mutex<PackInstance>,
-    retirement: Arc<StdMutex<tokio_util::sync::CancellationToken>>,
+    retirement: Arc<StdMutex<Option<Arc<crate::generation_retirement::GenerationRetirement>>>>,
     sources: BTreeMap<HandleKind, &'static str>,
     generation: Arc<AtomicU64>,
 }
@@ -574,7 +578,7 @@ impl PackHost {
                     }
                 }
             }
-            let retirement = Arc::new(StdMutex::new(tokio_util::sync::CancellationToken::new()));
+            let retirement = Arc::new(StdMutex::new(None));
             let generation = Arc::new(AtomicU64::new(0));
             shared
                 .instances
@@ -719,7 +723,7 @@ impl PackHost {
         id: u64,
         recipient: &CallCx,
         authority: &ShapeRef,
-        expected_generation: Option<u64>,
+        expected_generation: Option<&Arc<crate::generation_retirement::GenerationRetirement>>,
         provider: &Arc<dyn crate::ProviderFrame>,
     ) -> Result<u64> {
         let (pack, hash) = owner
@@ -734,9 +738,16 @@ impl PackHost {
                 .await?;
             return Err(StepError::new("invalid", "guest handle source export is missing").into());
         };
-        let generation =
-            expected_generation.unwrap_or(self.instance(pack)?.generation.load(Ordering::Acquire));
-        self.check_generation(pack, generation)?;
+        let generation = match expected_generation {
+            Some(generation) => generation.clone(),
+            None => source_slot
+                .retirement
+                .lock()
+                .map_err(|_| anyhow::anyhow!("retirement state poisoned"))?
+                .clone()
+                .context("guest source generation missing")?,
+        };
+        self.check_generation_identity(pack, hash, &generation)?;
         let entry = match kind {
             HandleKind::Stream => WasmEntryKind::StreamOpen { handle: id },
             HandleKind::Callback => WasmEntryKind::CallbackOpen { handle: id },
@@ -779,7 +790,7 @@ impl PackHost {
                 .await?;
             return Err(error.into());
         }
-        if let Err(error) = self.check_generation(pack, generation) {
+        if let Err(error) = self.check_generation_identity(pack, hash, &generation) {
             self.shared
                 .gate
                 .record_outcome(
@@ -804,7 +815,7 @@ impl PackHost {
                     kind,
                     local_id: id,
                     authority,
-                    generation,
+                    generation: generation.number(),
                 },
                 &permit,
             ) {
@@ -949,18 +960,62 @@ impl PackHost {
     }
 
     pub(crate) fn check_handle_generation(&self, entry: &crate::HandleEntry) -> Result<()> {
-        if let Some(generation) = entry.generation {
-            self.check_generation(
-                entry
-                    .owner
-                    .principal()
-                    .pack()
-                    .context("guest source owner missing")?
-                    .0,
-                generation,
-            )?;
+        if entry.generation.is_some() {
+            let (pack, hash) = entry
+                .owner
+                .principal()
+                .pack()
+                .context("guest source owner missing")?;
+            let generation = self.captured_generation(entry)?;
+            self.check_generation_identity(pack, hash, generation)?;
+        } else if entry.generation_retirement.is_some() {
+            bail!("guest source generation binding missing")
         }
         Ok(())
+    }
+    fn captured_generation<'a>(
+        &self,
+        entry: &'a crate::HandleEntry,
+    ) -> Result<&'a Arc<crate::generation_retirement::GenerationRetirement>> {
+        let (pack, hash) = entry
+            .owner
+            .principal()
+            .pack()
+            .context("guest source owner missing")?;
+        let number = entry
+            .generation
+            .context("guest source generation missing")?;
+        let generation = entry
+            .generation_retirement
+            .as_ref()
+            .context("guest source retirement receipt missing")?;
+        if !generation.matches(pack, hash, number) {
+            bail!("guest source retirement binding mismatch")
+        }
+        Ok(generation)
+    }
+    fn check_generation_identity(
+        &self,
+        id: &PackId,
+        hash: &PackHash,
+        generation: &Arc<crate::generation_retirement::GenerationRetirement>,
+    ) -> Result<()> {
+        let slot = self.instance(id)?;
+        let current = slot
+            .retirement
+            .lock()
+            .map_err(|_| anyhow::anyhow!("retirement state poisoned"))?
+            .clone();
+        if !generation.matches(id, hash, generation.number())
+            || !current
+                .as_ref()
+                .is_some_and(|current| Arc::ptr_eq(current, generation))
+        {
+            return Err(
+                tobkiri_gate::GateError::Denied("handle source instance retired".into()).into(),
+            );
+        }
+        self.check_generation(id, generation.number())
     }
     fn check_generation(&self, id: &PackId, generation: u64) -> Result<()> {
         let slot = self.instance(id)?;
@@ -969,8 +1024,9 @@ impl PackHost {
             || slot
                 .retirement
                 .lock()
-                .map_err(|_| anyhow::anyhow!("retirement token poisoned"))?
-                .is_cancelled()
+                .map_err(|_| anyhow::anyhow!("retirement state poisoned"))?
+                .as_ref()
+                .is_none_or(|current| current.number() != generation || !current.is_live())
         {
             return Err(
                 tobkiri_gate::GateError::Denied("handle source instance retired".into()).into(),
@@ -990,7 +1046,10 @@ impl PackHost {
         owners: &crate::owned_values::ValueOwners,
         frame: Arc<dyn crate::ProviderFrame>,
         physical_scope: tobkiri_gate::AllocationFrameScope,
-    ) -> Result<(wasmtime::component::BudgetedVec<Val>, u64)> {
+    ) -> Result<(
+        wasmtime::component::BudgetedVec<Val>,
+        Arc<crate::generation_retirement::GenerationRetirement>,
+    )> {
         self.export_call_owned_inner(
             id,
             cx,
@@ -1017,7 +1076,10 @@ impl PackHost {
         owners: &crate::owned_values::ValueOwners,
         frame: Arc<dyn crate::ProviderFrame>,
         physical_scope: tobkiri_gate::AllocationFrameScope,
-    ) -> Result<(wasmtime::component::BudgetedVec<Val>, u64)> {
+    ) -> Result<(
+        wasmtime::component::BudgetedVec<Val>,
+        Arc<crate::generation_retirement::GenerationRetirement>,
+    )> {
         let pack = self
             .shared
             .verified
@@ -1045,6 +1107,11 @@ impl PackHost {
                 instance=slot.instance.lock()=>instance,
             }
         };
+        if expected_generation.is_none() {
+            // A replacement must not race the previous Store's destruction or
+            // its retained retirement task. This does not wait under the lock.
+            instance.prepare_generation()?;
+        }
         if let Some(physical) = &instance.physical {
             physical.enter(&cx, physical_scope)?;
         } else {
@@ -1055,7 +1122,13 @@ impl PackHost {
             )?);
         }
         if let Some(generation) = expected_generation {
-            if instance.live.is_none() || instance.current_generation != generation {
+            if instance
+                .live
+                .as_ref()
+                .is_none_or(|(_, instance, _)| instance.is_none())
+                || instance.current_generation != generation
+                || self.check_generation(id, generation).is_err()
+            {
                 if let Some(physical) = &instance.physical {
                     physical.leave();
                 }
@@ -1066,12 +1139,11 @@ impl PackHost {
             }
         } else {
             if let Err(error) = instance.initialize(&self.shared, &cx, owners, &frame).await {
-                instance.live.take();
-                instance.physical.take();
+                instance.drop_store();
                 return Err(error);
             }
         }
-        if let Some((store, _)) = instance.live.as_mut() {
+        if let Some((store, _, _)) = instance.live.as_mut() {
             store.data_mut().data.frame = Some(frame);
         }
         let result = instance.call_owned(&cx, interface, op, args, owners).await;
@@ -1081,29 +1153,25 @@ impl PackHost {
             let fuel_remaining = instance
                 .live
                 .as_ref()
-                .and_then(|(store, _)| crate::entry_diagnostics::remaining_fuel(&error, store));
+                .and_then(|(store, _, _)| crate::entry_diagnostics::remaining_fuel(&error, store));
             crate::entry_diagnostics::annotate(error, "export", &cx, owners, fuel_remaining)
         });
-        if let Some((store, _)) = instance.live.as_mut() {
+        if let Some((store, _, _)) = instance.live.as_mut() {
             store.data_mut().data.frame.take();
         }
         if let Some(physical) = &instance.physical {
             physical.leave();
         }
         if result.is_err() {
-            instance.live.take();
-            instance.physical.take();
-            instance.generation.fetch_add(1, Ordering::AcqRel);
+            instance.drop_store();
         }
-        let generation = instance.current_generation;
-        if result.is_ok()
-            && let Err(error) = self.check_generation(id, generation)
-        {
-            instance.live.take();
-            instance.generation.fetch_add(1, Ordering::AcqRel);
+        let values = result?;
+        let generation = instance.current_retirement()?;
+        if let Err(error) = self.check_generation_identity(id, &pack.hash, &generation) {
+            instance.drop_store();
             return Err(error);
         }
-        result.map(|values| (values, generation))
+        Ok((values, generation))
     }
     pub(crate) async fn export_call_scoped(
         &self,
@@ -1155,7 +1223,13 @@ impl PackHost {
             }
         };
         if let Some(generation) = expected_generation {
-            if instance.live.is_none() || instance.current_generation != generation {
+            if instance
+                .live
+                .as_ref()
+                .is_none_or(|(_, instance, _)| instance.is_none())
+                || instance.current_generation != generation
+                || self.check_generation(id, generation).is_err()
+            {
                 return Err(tobkiri_gate::GateError::Denied(
                     "handle source instance retired".into(),
                 )
@@ -1172,60 +1246,115 @@ impl PackHost {
         }
         let result = instance.call(&cx, interface, op, args).await;
         if result.is_err() {
-            instance.live.take();
-            instance.generation.fetch_add(1, Ordering::AcqRel);
+            instance.drop_store();
         }
         let generation = instance.current_generation;
         if result.is_ok()
             && let Err(error) = self.check_generation(id, generation)
         {
-            instance.live.take();
-            instance.generation.fetch_add(1, Ordering::AcqRel);
+            instance.drop_store();
             return Err(error);
         }
         result.map(|values| (values, generation))
     }
 
-    pub(crate) async fn discard_instance(&self, id: &PackId) -> Result<()> {
-        // Dropping the store releases every outstanding HTTP response/process
-        // resource; no cancelled principal is granted fresh cleanup authority.
-        let slot = self.instance(id)?;
-        slot.generation.fetch_add(1, Ordering::AcqRel);
-        slot.retirement
-            .lock()
-            .map_err(|_| anyhow::anyhow!("retirement token poisoned"))?
-            .cancel();
-        // Cleanup cannot wait on a locked ancestor. Its in-flight future is
-        // interrupted, then only that retired store is dropped when unlocked.
-        let control = self
-            .shared
-            .control
-            .reserve(tobkiri_gate::ControlKind::Task, 4096)?;
-        let task = tokio::spawn(async move {
-            let _control = control;
-            let mut instance = slot.instance.lock().await;
-            if instance.live.as_ref().is_some_and(|(store, _)| {
-                store
-                    .data()
-                    .retirement
-                    .as_ref()
-                    .is_some_and(|token| token.is_cancelled())
-            }) {
-                instance.live.take();
-                // Actual Store destruction precedes refund of its external
-                // linear/table occupancy, including detached cleanup tasks.
-                instance.physical.take();
-            }
-        });
-        tokio::time::timeout(std::time::Duration::from_secs(2), task)
+    pub(crate) async fn discard_handle_instance(&self, entry: &crate::HandleEntry) -> Result<()> {
+        // The captured actual generation is the only cleanup target. A newer
+        // Store under this Pack ID is never cancelled, dropped, or evidence.
+        let generation = self.captured_generation(entry)?.clone();
+        let slot = self.instance(
+            entry
+                .owner
+                .principal()
+                .pack()
+                .context("guest source owner missing")?
+                .0,
+        )?;
+        let expected = generation.clone();
+        generation
+            .retire(move || async move {
+                let mut instance = slot.instance.lock().await;
+                if Arc::ptr_eq(&instance.current_retirement()?, &expected) {
+                    instance.drop_store();
+                }
+                if !expected.destruction_observed() {
+                    bail!("captured Store destruction unconfirmed")
+                }
+                Ok(())
+            })
             .await
-            .context("component retirement completion unknown")?
-            .context("component retirement task did not complete")?;
-        Ok(())
     }
 }
 
 impl PackInstance {
+    fn current_retirement(
+        &self,
+    ) -> Result<Arc<crate::generation_retirement::GenerationRetirement>> {
+        let generation = self
+            .retirement
+            .lock()
+            .map_err(|_| anyhow::anyhow!("retirement state poisoned"))?
+            .clone()
+            .context("Store generation missing")?;
+        if !generation.matches(
+            &self.pack.manifest.id,
+            &self.pack.hash,
+            self.current_generation,
+        ) {
+            bail!("Store generation binding mismatch")
+        }
+        if let Some((_, _, actual)) = &self.live {
+            if !Arc::ptr_eq(actual, &generation) {
+                bail!("actual Store generation mismatch")
+            }
+        }
+        Ok(generation)
+    }
+    fn drop_store(&mut self) {
+        let live = self.live.take();
+        let generation = live
+            .as_ref()
+            .map(|(_, _, actual)| actual.clone())
+            .or_else(|| self.current_retirement().ok());
+        let had_store = live.is_some();
+        // The receipt is published only after both actual resources drop.
+        drop(live);
+        drop(self.physical.take());
+        if let Some(generation) = generation {
+            if had_store {
+                generation.destroyed();
+            } else {
+                generation.unstarted();
+            }
+        }
+    }
+    fn prepare_generation(&mut self) -> Result<()> {
+        if self
+            .live
+            .as_ref()
+            .is_some_and(|(_, instance, _)| instance.is_some())
+            && self.current_retirement()?.is_live()
+            && self.generation.load(Ordering::Acquire) == self.current_generation
+        {
+            return Ok(());
+        }
+        self.drop_store();
+        let previous = self
+            .retirement
+            .lock()
+            .map_err(|_| anyhow::anyhow!("retirement state poisoned"))?
+            .clone();
+        if let Some(previous) = previous {
+            if !previous.replacement_ready()? {
+                return Err(StepError::new(
+                    "unavailable",
+                    "previous Store retirement is not joined",
+                )
+                .into());
+            }
+        }
+        Ok(())
+    }
     async fn initialize(
         &mut self,
         shared: &Arc<Shared>,
@@ -1233,19 +1362,16 @@ impl PackInstance {
         owners: &crate::owned_values::ValueOwners,
         frame: &Arc<dyn crate::ProviderFrame>,
     ) -> Result<()> {
-        if self.generation.load(Ordering::Acquire) != self.current_generation
-            || self.live.as_ref().is_some_and(|(store, _)| {
-                store
-                    .data()
-                    .retirement
-                    .as_ref()
-                    .is_some_and(|token| token.is_cancelled())
-            })
-        {
-            self.live.take();
-        }
         if self.live.is_some() {
-            return Ok(());
+            if self
+                .live
+                .as_ref()
+                .is_some_and(|(_, instance, _)| instance.is_some())
+                && self.current_retirement()?.is_live()
+            {
+                return Ok(());
+            }
+            bail!("component instance retired during entry")
         }
         let init_cx = cx.try_non_interactive_precharged()?;
         let request = EffectRequest::WasmEntry {
@@ -1262,15 +1388,23 @@ impl PackInstance {
         let permit = grant.consume(&init_cx, &request, &args)?;
         let init_cx = init_cx.narrow_limits(permit.limits());
         let result=async {
-        self.current_generation=self.generation.fetch_update(Ordering::AcqRel,Ordering::Acquire,|n|n.checked_add(1)).map_err(|_|anyhow::anyhow!("instance generations exhausted"))?+1;
-        let retirement=tokio_util::sync::CancellationToken::new();
-        *self.retirement.lock().map_err(|_|anyhow::anyhow!("retirement token poisoned"))?=retirement.clone();
+        let previous=self.retirement.lock().map_err(|_|anyhow::anyhow!("retirement state poisoned"))?.clone();
+        if let Some(previous)=previous { if !previous.replacement_ready()? { bail!("previous Store retirement is not joined") } }
+        let next=self.generation.load(Ordering::Acquire).checked_add(1).context("instance generations exhausted")?;
+        let generation=crate::generation_retirement::GenerationRetirement::new(&shared.control,&self.pack.manifest.id,&self.pack.hash,next)?;
+        let retirement=generation.token();
+        *self.retirement.lock().map_err(|_|anyhow::anyhow!("retirement state poisoned"))?=Some(generation.clone());
+        self.current_generation=next;
+        self.generation.store(next,Ordering::Release);
         let wasi=RestrictedWasi::new_with_control(init_cx.limits().output_bytes,&shared.control)?;
         let physical=self.physical.as_ref().context("component physical reservation missing")?.clone();
         let mut store=shared.engine.store_owned(init_cx.clone(),PackState{shared:Arc::downgrade(shared),wasi,owners:owners.clone(),frame:Some(frame.clone())},physical)
             .map_err(|error|entry_phase_error(error,"store-admission",&init_cx,owners))?;
         store.data_mut().retirement=Some(retirement.clone());
         store.host_allocation_budget(owners.component().clone());
+        // Own a partially initialized Store before the first await. A dropped
+        // entry future leaves it available to the exact generation retirement.
+        self.live=Some((store,None,generation));
         let mut linker=Linker::new(shared.engine.engine());
         if self.component.component_type().imports(shared.engine.engine()).any(|(name,_)|name.starts_with("wasi:")) {
             crate::wasi::link_restricted_wasi(&mut linker).map_err(|error|entry_phase_error(error,"restricted-wasi-link",&init_cx,owners))?;
@@ -1278,14 +1412,15 @@ impl PackInstance {
         }
         crate::core_imports::link_core_and_ports(&mut linker,shared,&self.pack,&self.component,owners).map_err(|error|entry_phase_error(error,"core-import-link",&init_cx,owners))?;
         let instance={
+        let (store,_,_)=self.live.as_mut().context("initializing Store missing")?;
         let _output=store.data().data.wasi.activate_output(&init_cx,owners.graph())?;
         tokio::select!{
             _=retirement.cancelled()=>bail!("component instance retired during initialization"),
             _=cx.cancel().cancelled()=>bail!("component instantiation cancelled"),
             _=tokio::time::sleep_until(cx.deadline().into())=>bail!("component instantiation deadline elapsed"),
-            result=linker.instantiate_async(&mut store,&self.component)=>result.map_err(|error|entry_phase_error(error.into(),"instantiate",&init_cx,owners))?,
+            result=linker.instantiate_async(&mut *store,&self.component)=>result.map_err(|error|entry_phase_error(error.into(),"instantiate",&init_cx,owners))?,
         }};
-        self.live=Some((store,instance));
+        self.live.as_mut().context("initialized Store missing")?.1=Some(instance);
         let config=Val::String(wasmtime::component::BudgetedString::copy_from(std::str::from_utf8(&self.config)?,owners.component(),0)
             .map_err(|error|entry_phase_error(error.into(),"lifecycle-config",&init_cx,owners))?);
         let mut lifecycle=None;
@@ -1296,13 +1431,13 @@ impl PackInstance {
         }
         let lifecycle=lifecycle.context("component lifecycle export missing")?;
         let result=self.call(&init_cx,lifecycle,"init",&[config]).await.map_err(|error|entry_phase_error(error,"lifecycle-init",&init_cx,owners));
-        if result.is_err(){self.live.take();}
+        if result.is_err(){self.drop_store();}
         let results=result?;
-        if !matches!(results.as_slice(),[Val::Result(Ok(None))]){self.live.take();bail!("component lifecycle initialization failed")}
+        if !matches!(results.as_slice(),[Val::Result(Ok(None))]){self.drop_store();bail!("component lifecycle initialization failed")}
         Ok(())
         }.await;
         if result.is_err() {
-            self.live.take();
+            self.drop_store();
         }
         shared
             .gate
@@ -1356,10 +1491,13 @@ impl PackInstance {
         owners: &crate::owned_values::ValueOwners,
     ) -> Result<wasmtime::component::BudgetedVec<Val>> {
         cx.check_active()?;
-        let (store, instance) = self
+        let (store, instance, _) = self
             .live
             .as_mut()
             .context("component instance unavailable")?;
+        let instance = instance
+            .as_ref()
+            .context("component initialization incomplete")?;
         store.data_mut().cx = cx.clone();
         store.data_mut().data.owners = owners.clone();
         store.host_allocation_budget(owners.component().clone());
@@ -1400,6 +1538,12 @@ pub(crate) fn interface_name(shape: &ShapeRef) -> String {
         shape.version.major,
         shape.version.minor
     )
+}
+
+impl Drop for PackInstance {
+    fn drop(&mut self) {
+        self.drop_store();
+    }
 }
 
 /// Closed entry diagnostics distinguish an unavailable lift path from expired

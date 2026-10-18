@@ -10,6 +10,7 @@ mod engine;
 mod entry;
 mod entry_diagnostics;
 pub mod filesystem;
+mod generation_retirement;
 mod handle_transfer;
 mod handles;
 mod host;

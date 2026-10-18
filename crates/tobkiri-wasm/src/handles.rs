@@ -86,6 +86,8 @@ pub struct HandleEntry {
     pub(crate) lease: Arc<HandleLease>,
     pub(crate) source: Option<Arc<tokio::sync::Mutex<CoreStream>>>,
     pub(crate) generation: Option<u64>,
+    pub(crate) generation_retirement:
+        Option<Arc<crate::generation_retirement::GenerationRetirement>>,
     pub(crate) source_frame: Option<Arc<dyn crate::ProviderFrame>>,
     pub(crate) source_version: Option<&'static str>,
 }
@@ -121,7 +123,7 @@ impl HandleTable {
         recipient: CallCx,
         authority: ShapeRef,
         permit: DispatchPermit,
-        generation: u64,
+        generation: Arc<crate::generation_retirement::GenerationRetirement>,
         frame: Arc<dyn crate::ProviderFrame>,
         version: &'static str,
     ) -> Result<u64> {
@@ -133,6 +135,7 @@ impl HandleTable {
             authority,
             Arc::new(HandleLease::new(Some(permit))),
             None,
+            Some(generation.number()),
             Some(generation),
             Some(frame),
             Some(version),
@@ -155,6 +158,7 @@ impl HandleTable {
             None,
             None,
             None,
+            None,
         )
     }
     pub(crate) fn alias(&mut self, entry: HandleEntry, recipient: CallCx) -> Result<u64> {
@@ -167,6 +171,7 @@ impl HandleTable {
             entry.lease,
             entry.source,
             entry.generation,
+            entry.generation_retirement,
             entry.source_frame,
             entry.source_version,
         )
@@ -183,6 +188,7 @@ impl HandleTable {
         lease: Arc<HandleLease>,
         source: Option<Arc<tokio::sync::Mutex<CoreStream>>>,
         generation: Option<u64>,
+        generation_retirement: Option<Arc<crate::generation_retirement::GenerationRetirement>>,
         source_frame: Option<Arc<dyn crate::ProviderFrame>>,
         source_version: Option<&'static str>,
     ) -> Result<u64> {
@@ -206,6 +212,7 @@ impl HandleTable {
                 lease,
                 source,
                 generation,
+                generation_retirement,
                 source_frame,
                 source_version,
             },
@@ -336,6 +343,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
             )
             .unwrap();
         assert_eq!(
@@ -363,5 +371,59 @@ mod tests {
             777
         );
         assert!(table.resolve(id, HandleKind::Stream, &recipient).is_err());
+    }
+
+    #[test]
+    fn aliases_keep_the_producing_generation_receipt_and_individual_lease() {
+        let owner = cx("profile-a", "local.owner", "owner-request");
+        let recipient = cx("profile-a", "local.recipient", "recipient-request");
+        let (pack, hash) = owner.principal().pack().unwrap();
+        let generation = crate::generation_retirement::GenerationRetirement::new(
+            &tobkiri_gate::CoreControl::default(),
+            pack,
+            hash,
+            7,
+        )
+        .unwrap();
+        let mut table = HandleTable::new(2);
+        let id = table
+            .insert(
+                HandleKind::Stream,
+                owner,
+                777,
+                recipient.clone(),
+                ShapeRef::parse("local.contract.events@1.0").unwrap(),
+                Arc::new(HandleLease::new(None)),
+                None,
+                Some(7),
+                Some(generation.clone()),
+                None,
+                None,
+            )
+            .unwrap();
+        let original = table.resolve(id, HandleKind::Stream, &recipient).unwrap();
+        let alias = table.alias(original.clone(), recipient.clone()).unwrap();
+        let alias = table
+            .resolve(alias, HandleKind::Stream, &recipient)
+            .unwrap();
+        assert!(Arc::ptr_eq(&original.lease, &alias.lease));
+        assert!(Arc::ptr_eq(
+            original.generation_retirement.as_ref().unwrap(),
+            alias.generation_retirement.as_ref().unwrap()
+        ));
+        assert!(Arc::ptr_eq(
+            alias.generation_retirement.as_ref().unwrap(),
+            &generation
+        ));
+        assert_eq!(alias.generation, Some(7));
+        assert!(
+            table
+                .resolve(
+                    id,
+                    HandleKind::Stream,
+                    &cx("profile-a", "local.recipient", "other-request")
+                )
+                .is_err()
+        );
     }
 }

@@ -851,14 +851,15 @@ async fn release_stream(host: &PackHost, entry: &crate::HandleEntry) -> Result<(
             }
             return Ok(());
         }
-        host.check_handle_generation(entry)?;
         let (owner, _) = entry
             .owner
             .principal()
             .pack()
             .context("stream owner is not a Pack")?;
         let mut cancel_result = Err(anyhow::anyhow!("guest stream cancellation was not entered"));
-        if host.shared.gate.check_context(&entry.owner).is_ok() {
+        if host.check_handle_generation(entry).is_ok()
+            && host.shared.gate.check_context(&entry.owner).is_ok()
+        {
             if let (Some(frame), Some(version)) = (&entry.source_frame, entry.source_version) {
                 let call = async {
                     let cx = frame.context();
@@ -899,14 +900,14 @@ async fn release_stream(host: &PackHost, entry: &crate::HandleEntry) -> Result<(
         // Until per-stream native resource custody exists, ALWAYS await destruction
         // of this Store, including after a valid ACK. Revoked/expired contexts never
         // execute fresh guest cleanup. Native tasks retain their own actual leases.
-        let retirement = host
-            .discard_instance(owner)
-            .await
-            .context(if cancel_result.is_ok() {
-                "physical stream cleanup incomplete after void cancel acknowledgement"
-            } else {
-                "physical stream cleanup incomplete without cancel acknowledgement"
-            });
+        let retirement =
+            host.discard_handle_instance(entry)
+                .await
+                .context(if cancel_result.is_ok() {
+                    "physical stream cleanup incomplete after void cancel acknowledgement"
+                } else {
+                    "physical stream cleanup incomplete without cancel acknowledgement"
+                });
         guest_stream_cleanup_result(&entry.owner, cancel_result, retirement)
     }
     .await;
@@ -937,10 +938,9 @@ fn guest_stream_cleanup_result(
     // workers. An uncertain mutation therefore takes precedence over either
     // a successful retirement or a second retirement error.
     if let Err(error) = cancellation {
-        if matches!(
-            error.downcast_ref::<crate::filesystem::FsError>(),
-            Some(crate::filesystem::FsError::CommitUnknown)
-        ) {
+        if storage_failure_metadata(&error).is_some()
+            || facaded_no_replay_metadata(&error).is_some()
+        {
             return Err(error);
         }
     }
@@ -1035,20 +1035,7 @@ pub(crate) async fn expire_handle(
             .lock()
             .map_err(|_| anyhow::anyhow!("handle table poisoned"))?
             .resolve_cleanup(id, kind, cx)?;
-        entry.lease.begin_close();
-        let cleanup = match entry.owner.principal().pack() {
-            Some((pack, _)) => host.discard_instance(pack).await,
-            None => Err(anyhow::anyhow!("callback physical owner missing")),
-        };
-        // Callback retirement has no guest completion acknowledgement. Store
-        // destruction alone cannot prove that dispatched native FS work stopped.
-        let cleanup = guest_stream_cleanup_result(
-            &entry.owner,
-            Err(anyhow::anyhow!(
-                "callback native work completion unacknowledged"
-            )),
-            cleanup,
-        );
+        let cleanup = release_callback_once(host, &entry).await;
         finish_handle(
             host,
             &entry,
@@ -1080,20 +1067,48 @@ async fn close_retired_handle(
             .lock()
             .map_err(|_| anyhow::anyhow!("handle table poisoned"))?
             .resolve_cleanup(id, kind, cx)?;
-        finish_handle(
+        let cleanup = match kind {
+            HandleKind::Stream => release_stream_once(host, &entry).await,
+            HandleKind::Callback => release_callback_once(host, &entry).await,
+        };
+        let delivery = finish_handle(
             host,
             &entry,
             Outcome::Failed {
                 code: "source-retired".into(),
             },
         )
-        .await?;
-        // A retired generation is no proof that its asynchronous Drop completed.
-        // Keep the closed lease quarantined rather than advertising slot reuse.
-        bail!("retired component cleanup completion unknown")
+        .await;
+        finish_stream_cleanup(cleanup, delivery)?;
+        host.shared
+            .handles
+            .lock()
+            .map_err(|_| anyhow::anyhow!("handle table poisoned"))?
+            .remove_captured(id, cx, &entry)?;
+        // The caller still returns its original source-retired dispatch error.
+        // Only this captured generation's joined cleanup can release the lease.
+        Ok(())
     }
     .await;
     result.map_err(|error| crate::filesystem::preserve_effect_error(cx, error))
+}
+
+async fn release_callback_once(host: &PackHost, entry: &crate::HandleEntry) -> Result<()> {
+    entry.lease.begin_close();
+    let mut receipt = entry.lease.close.lock().await;
+    if !receipt.cleanup_started {
+        receipt.cleanup_started = true;
+        let retirement = host.discard_handle_instance(entry).await;
+        let cleanup = guest_stream_cleanup_result(
+            &entry.owner,
+            Err(anyhow::anyhow!(
+                "callback native work completion unacknowledged"
+            )),
+            retirement,
+        );
+        record_stream_cleanup(&mut receipt, &entry.owner, cleanup);
+    }
+    stream_cleanup_result(&receipt, &entry.owner)
 }
 
 /// Imported port arguments carry the caller's scoped handles as opaque record
@@ -1771,6 +1786,55 @@ mod error_tests {
         cx.note_filesystem_mutation();
         assert_fs_unknown(stream_cleanup_result(&interrupted, &cx).unwrap_err());
         assert!(!interrupted.cleanup_done);
+    }
+
+    #[test]
+    fn joined_store_retirement_cannot_erase_native_sql_or_filesystem_unknown() {
+        let cx = effect_context();
+        for original in [
+            anyhow::Error::new(crate::filesystem::FsError::CommitUnknown),
+            anyhow::Error::new(tobkiri_store::StoreError::CommitUnknown),
+            anyhow::Error::new(tobkiri_store::StoreError::PendingDataMove),
+        ] {
+            let expected = storage_failure_metadata(&original).unwrap().0;
+            let result = guest_stream_cleanup_result(&cx, Err(original), Ok(()));
+            let mut receipt = crate::handles::HandleCloseReceipt::default();
+            receipt.cleanup_started = true;
+            record_stream_cleanup(&mut receipt, &cx, result);
+            for _ in 0..2 {
+                assert!(!receipt.cleanup_done);
+                assert_eq!(
+                    storage_failure_metadata(&stream_cleanup_result(&receipt, &cx).unwrap_err())
+                        .unwrap()
+                        .0,
+                    expected
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn joined_store_retirement_preserves_facades_without_minting_native_proof() {
+        let cx = effect_context();
+        for code in [
+            "filesystem-commit-unknown",
+            "storage-sql-commit-unknown",
+            "storage-pending-data-move",
+        ] {
+            let original =
+                anyhow::Error::new(tobkiri_flow::StepError::new(code, "private diagnostic"));
+            let result = guest_stream_cleanup_result(&cx, Err(original), Ok(()));
+            let mut receipt = crate::handles::HandleCloseReceipt::default();
+            receipt.cleanup_started = true;
+            record_stream_cleanup(&mut receipt, &cx, result);
+            for _ in 0..2 {
+                let error = stream_cleanup_result(&receipt, &cx).unwrap_err();
+                assert!(!receipt.cleanup_done);
+                assert!(storage_failure_metadata(&error).is_none());
+                assert_eq!(facaded_no_replay_metadata(&error).unwrap().0, code);
+                assert!(!error.to_string().contains("private diagnostic"));
+            }
+        }
     }
 
     struct Meter(AtomicU64, u64);
