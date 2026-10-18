@@ -132,6 +132,36 @@ impl GenerationRetirement {
             None => Ok(false),
         }
     }
+    /// Await an already-started retirement for replacement readiness. Never
+    /// select a cleanup target or create a new task/grace from an entry request.
+    /// The explicit Unstarted state permits initial creation, not a destruction
+    /// receipt; an absent Store or a generation mismatch is never inferred here.
+    pub(crate) async fn join_existing(&self) -> Result<()> {
+        // A physically joined late task is usable for replacement, just as in
+        // replacement_ready. This does not edit any per-handle unknown receipt.
+        if self.replacement_ready()? {
+            return Ok(());
+        }
+        let (deadline, completion) = {
+            let state = self
+                .state
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Store retirement state poisoned"))?;
+            match &*state {
+                State::Joined | State::Unstarted => return Ok(()),
+                State::Retiring {
+                    deadline,
+                    completion,
+                } => (*deadline, completion.clone()),
+                State::Live | State::Unknown => bail!("Store retirement completion unknown"),
+            }
+        };
+        let _waiter = self.control.reserve(ControlKind::Waiter, 256)?;
+        let result = tokio::time::timeout_at(deadline, completion)
+            .await
+            .context("Store retirement completion unknown")?;
+        self.complete(result)
+    }
     /// One task per actual generation. Dropped waiters keep its shared join.
     /// All waiters use the first task's absolute deadline, not a new grace.
     pub(crate) async fn retire<F, Fut>(self: &Arc<Self>, work: F) -> Result<()>
@@ -187,6 +217,48 @@ impl GenerationRetirement {
             .await
             .context("Store retirement completion unknown")?;
         self.complete(result)
+    }
+}
+
+/// Acquire a new entry's instance without holding its mutex across the old
+/// generation's physical join. `prepare` is fixed host bookkeeping, not guest
+/// code; every reacquisition must inspect the actual current generation again.
+pub(crate) async fn lock_for_entry<'a, T>(
+    slot: &'a tokio::sync::Mutex<T>,
+    cx: &tobkiri_gate::CallCx,
+    reentrant: bool,
+    mut prepare: impl FnMut(&mut T) -> Result<Option<Arc<GenerationRetirement>>>,
+) -> Result<tokio::sync::MutexGuard<'a, T>> {
+    loop {
+        cx.check_active()?;
+        let mut instance = if reentrant {
+            slot.try_lock().map_err(|_| {
+                tobkiri_flow::StepError::new(
+                    "conflict",
+                    "nested component has no free instance capacity",
+                )
+            })?
+        } else {
+            tokio::select! {
+                _ = cx.cancel().cancelled() => bail!("component call cancelled while waiting"),
+                _ = tokio::time::sleep_until(cx.deadline().into()) => bail!("original component deadline elapsed while waiting"),
+                instance = slot.lock() => instance,
+            }
+        };
+        cx.check_active()?;
+        let Some(previous) = prepare(&mut instance)? else {
+            return Ok(instance);
+        };
+        // The captured generation's existing task itself may need this mutex.
+        // Retain only its Arc, not the instance guard, while observing the join.
+        drop(instance);
+        tokio::select! {
+            _ = cx.cancel().cancelled() => bail!("component call cancelled while joining retirement"),
+            _ = tokio::time::sleep_until(cx.deadline().into()) => bail!("original component deadline elapsed while joining retirement"),
+            joined = previous.join_existing() => joined?,
+        }
+        // No new deadline or cleanup target. Reacquire and prepare the actual
+        // slot: another entry may already have installed a different generation.
     }
 }
 

@@ -1097,7 +1097,15 @@ impl PackHost {
         if let Some(generation) = expected_generation {
             self.check_generation(id, generation)?;
         }
-        let mut instance = if reentrant {
+        let mut instance = if expected_generation.is_none() {
+            crate::generation_retirement::lock_for_entry(
+                &slot.instance,
+                &cx,
+                reentrant,
+                PackInstance::prepare_generation,
+            )
+            .await?
+        } else if reentrant {
             slot.instance.try_lock().map_err(|_| {
                 StepError::new("conflict", "nested component has no free instance capacity")
             })?
@@ -1108,11 +1116,6 @@ impl PackHost {
                 instance=slot.instance.lock()=>instance,
             }
         };
-        if expected_generation.is_none() {
-            // A replacement must not race the previous Store's destruction or
-            // its retained retirement task. This does not wait under the lock.
-            instance.prepare_generation()?;
-        }
         if let Some(physical) = &instance.physical {
             physical.enter(&cx, physical_scope)?;
         } else {
@@ -1329,7 +1332,9 @@ impl PackInstance {
             }
         }
     }
-    fn prepare_generation(&mut self) -> Result<()> {
+    fn prepare_generation(
+        &mut self,
+    ) -> Result<Option<Arc<crate::generation_retirement::GenerationRetirement>>> {
         if self
             .live
             .as_ref()
@@ -1337,7 +1342,7 @@ impl PackInstance {
             && self.current_retirement()?.is_live()
             && self.generation.load(Ordering::Acquire) == self.current_generation
         {
-            return Ok(());
+            return Ok(None);
         }
         self.drop_store();
         let previous = self
@@ -1347,14 +1352,10 @@ impl PackInstance {
             .clone();
         if let Some(previous) = previous {
             if !previous.replacement_ready()? {
-                return Err(StepError::new(
-                    "unavailable",
-                    "previous Store retirement is not joined",
-                )
-                .into());
+                return Ok(Some(previous));
             }
         }
-        Ok(())
+        Ok(None)
     }
     async fn initialize(
         &mut self,

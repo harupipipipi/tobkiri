@@ -308,3 +308,341 @@ fn generation_control_is_prepaid_and_zero_is_not_a_generation() {
     drop(generation);
     assert_eq!(control.usage().count(ControlKind::Registration), 0);
 }
+
+fn entry_context() -> tobkiri_gate::CallCx {
+    use tobkiri_canon::ids::{ProfileId, RequestId};
+    use tobkiri_gate::{CoreCancellation, Principal, ResourceLimits};
+    tobkiri_gate::CallCx::root(
+        ProfileId::parse("retirement-entry-profile").unwrap(),
+        Principal::Pack {
+            pack: PackId::parse("local.retirement-test").unwrap(),
+            hash: PackHash::new(Digest::hash(b"retirement-test")),
+        },
+        RequestId::parse("retirement-entry-request").unwrap(),
+        CoreCancellation::new(),
+        std::time::Instant::now() + std::time::Duration::from_secs(5),
+        ResourceLimits {
+            fuel_per_call: 100_000,
+            memory_mib: 8,
+            wall_ms: 5_000,
+            table_elements: 1024,
+            output_bytes: 1024,
+        },
+    )
+}
+
+struct EntryDrop(Arc<AtomicUsize>);
+impl Drop for EntryDrop {
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
+struct EntrySlot {
+    generation: Arc<GenerationRetirement>,
+    store: Option<EntryDrop>,
+    external_lease: Option<EntryDrop>,
+    prepares: usize,
+}
+impl EntrySlot {
+    fn drop_owned(&mut self) {
+        let had_store = self.store.is_some();
+        drop(self.store.take());
+        drop(self.external_lease.take());
+        if had_store {
+            self.generation.destroyed();
+        }
+    }
+    // Fixed test payload bookkeeping corresponding to prepare_generation; the
+    // lock/join loop and GenerationRetirement below are the production helpers.
+    fn prepare(&mut self) -> Result<Option<Arc<GenerationRetirement>>> {
+        self.prepares += 1;
+        if self.store.is_some() && self.generation.is_live() {
+            return Ok(None);
+        }
+        self.drop_owned();
+        if self.generation.replacement_ready()? {
+            Ok(None)
+        } else {
+            Ok(Some(self.generation.clone()))
+        }
+    }
+}
+
+#[tokio::test]
+async fn entry_unlocks_for_the_exact_retirement_task_queued_behind_it() {
+    let control = CoreControl::default();
+    let old = generation(&control, 1);
+    let store_drops = Arc::new(AtomicUsize::new(0));
+    let lease_drops = Arc::new(AtomicUsize::new(0));
+    let slot = Arc::new(tokio::sync::Mutex::new(EntrySlot {
+        generation: old.clone(),
+        store: Some(EntryDrop(store_drops.clone())),
+        external_lease: Some(EntryDrop(lease_drops.clone())),
+        prepares: 0,
+    }));
+    let cx = entry_context();
+    let held = slot.lock().await;
+    let mut entry = Box::pin(lock_for_entry(&slot, &cx, false, EntrySlot::prepare));
+    assert!(futures_util::poll!(&mut entry).is_pending());
+    // Entry is the first FIFO mutex waiter. The exact retirement task is
+    // queued second, while both are blocked by the original active holder.
+    let task_slot = slot.clone();
+    let target = old.clone();
+    let starts = Arc::new(AtomicUsize::new(0));
+    let task_starts = starts.clone();
+    let (queued_tx, queued_rx) = oneshot::channel();
+    let mut retirement = Box::pin(old.retire(move || async move {
+        task_starts.fetch_add(1, Ordering::SeqCst);
+        let mut acquiring = Box::pin(task_slot.lock());
+        assert!(futures_util::poll!(&mut acquiring).is_pending());
+        queued_tx.send(()).unwrap();
+        let mut instance = acquiring.await;
+        if Arc::ptr_eq(&instance.generation, &target) {
+            instance.drop_owned();
+        }
+        assert!(target.destruction_observed());
+        Ok(())
+    }));
+    assert!(futures_util::poll!(&mut retirement).is_pending());
+    queued_rx.await.unwrap();
+    drop(held);
+    // The real entry helper acquires first, drops both payload owners, releases
+    // the mutex, and waits on the one retained task. It must not return Err.
+    assert!(futures_util::poll!(&mut entry).is_pending());
+    assert_eq!(store_drops.load(Ordering::SeqCst), 1);
+    assert_eq!(lease_drops.load(Ordering::SeqCst), 1);
+    let guard = entry.await.unwrap();
+    assert_eq!(guard.prepares, 2);
+    assert!(Arc::ptr_eq(&guard.generation, &old));
+    assert!(old.replacement_ready().unwrap());
+    assert_eq!(starts.load(Ordering::SeqCst), 1);
+    drop(guard);
+    retirement.await.unwrap();
+    assert_eq!(control.usage().count(ControlKind::Task), 0);
+    assert_eq!(control.usage().count(ControlKind::Waiter), 0);
+}
+
+#[tokio::test]
+async fn entry_rechecks_the_current_generation_after_its_old_join() {
+    let control = CoreControl::default();
+    let old = generation(&control, 7);
+    let new = generation(&control, 8);
+    let store_drops = Arc::new(AtomicUsize::new(0));
+    let lease_drops = Arc::new(AtomicUsize::new(0));
+    let slot = Arc::new(tokio::sync::Mutex::new(EntrySlot {
+        generation: old.clone(),
+        store: Some(EntryDrop(store_drops.clone())),
+        external_lease: Some(EntryDrop(lease_drops.clone())),
+        prepares: 0,
+    }));
+    let (release_tx, release_rx) = oneshot::channel();
+    let target = old.clone();
+    let mut retiring = Box::pin(old.retire(move || async move {
+        release_rx.await.unwrap();
+        assert!(target.destruction_observed());
+        Ok(())
+    }));
+    assert!(futures_util::poll!(&mut retiring).is_pending());
+    let cx = entry_context();
+    let mut entry = Box::pin(lock_for_entry(&slot, &cx, false, EntrySlot::prepare));
+    assert!(futures_util::poll!(&mut entry).is_pending());
+    // Another entry can hold the free mutex while the first waits for join.
+    let mut winner = slot
+        .try_lock()
+        .expect("entry must release the instance mutex");
+    let shared_join = completion(&old);
+    release_tx.send(()).unwrap();
+    assert_eq!(shared_join.await, Ok(()));
+    assert!(old.replacement_ready().unwrap());
+    let new_store_drops = Arc::new(AtomicUsize::new(0));
+    let new_lease_drops = Arc::new(AtomicUsize::new(0));
+    winner.generation = new.clone();
+    winner.store = Some(EntryDrop(new_store_drops.clone()));
+    winner.external_lease = Some(EntryDrop(new_lease_drops.clone()));
+    assert!(futures_util::poll!(&mut entry).is_pending());
+    drop(winner);
+    let guard = entry.await.unwrap();
+    assert!(Arc::ptr_eq(&guard.generation, &new));
+    assert_eq!(guard.prepares, 2);
+    assert!(new.is_live());
+    assert_eq!(new_store_drops.load(Ordering::SeqCst), 0);
+    assert_eq!(new_lease_drops.load(Ordering::SeqCst), 0);
+    drop(guard);
+    retiring.await.unwrap();
+    // A late observer of old g never selects the new slot/generation for work.
+    old.retire(|| async { panic!("old cleanup must not target new g") })
+        .await
+        .unwrap();
+    assert!(new.is_live());
+    assert!(!new.destruction_observed());
+}
+
+#[tokio::test]
+async fn entry_expired_join_is_not_renewed_or_falsely_succeeded() {
+    let control = CoreControl::default();
+    let old = generation(&control, 1);
+    let (release_tx, release_rx) = oneshot::channel();
+    let witness = old.clone();
+    let mut retirement = Box::pin(old.retire(move || async move {
+        release_rx.await.unwrap();
+        witness.destroyed();
+        Ok(())
+    }));
+    assert!(futures_util::poll!(&mut retirement).is_pending());
+    drop(retirement);
+    let original_expired = Instant::now();
+    {
+        let mut state = old.state.lock().unwrap();
+        let State::Retiring { deadline, .. } = &mut *state else {
+            panic!()
+        };
+        *deadline = original_expired;
+    }
+    let slot = tokio::sync::Mutex::new(old.clone());
+    let cx = entry_context();
+    assert!(
+        lock_for_entry(&slot, &cx, false, |g| Ok(Some(g.clone())))
+            .await
+            .is_err()
+    );
+    assert!(slot.try_lock().is_ok());
+    assert_eq!(control.usage().count(ControlKind::Task), 1);
+    assert!(!old.replacement_ready().unwrap());
+    {
+        let state = old.state.lock().unwrap();
+        let State::Retiring { deadline, .. } = &*state else {
+            panic!()
+        };
+        assert_eq!(*deadline, original_expired);
+    }
+    let physical_join = completion(&old);
+    release_tx.send(()).unwrap();
+    assert_eq!(physical_join.await, Ok(()));
+    assert!(old.replacement_ready().unwrap());
+    // The earlier failed entry remains failed. No per-handle receipt is edited.
+}
+
+#[tokio::test]
+async fn entry_cancellation_retains_the_task_and_releases_the_mutex_and_waiter() {
+    let control = CoreControl::default();
+    let old = generation(&control, 1);
+    let (release_tx, release_rx) = oneshot::channel();
+    let witness = old.clone();
+    let mut retiring = Box::pin(old.retire(move || async move {
+        release_rx.await.unwrap();
+        witness.destroyed();
+        Ok(())
+    }));
+    assert!(futures_util::poll!(&mut retiring).is_pending());
+    drop(retiring);
+    let slot = tokio::sync::Mutex::new(old.clone());
+    let cx = entry_context();
+    let mut entry = Box::pin(lock_for_entry(&slot, &cx, false, |g| Ok(Some(g.clone()))));
+    assert!(futures_util::poll!(&mut entry).is_pending());
+    assert_eq!(control.usage().count(ControlKind::Waiter), 1);
+    cx.cancel().cancel();
+    assert!(entry.await.is_err());
+    assert!(slot.try_lock().is_ok());
+    assert_eq!(control.usage().count(ControlKind::Waiter), 0);
+    assert_eq!(control.usage().count(ControlKind::Task), 1);
+    let physical_join = completion(&old);
+    release_tx.send(()).unwrap();
+    assert_eq!(physical_join.await, Ok(()));
+    assert!(old.replacement_ready().unwrap());
+}
+
+#[tokio::test]
+async fn entry_reentrant_busy_and_original_expiry_do_not_prepare_or_spawn() {
+    let control = CoreControl::default();
+    let old = generation(&control, 1);
+    let slot = tokio::sync::Mutex::new(old.clone());
+    let held = slot.lock().await;
+    let cx = entry_context();
+    let error = lock_for_entry(&slot, &cx, true, |_| panic!("busy nested prepare"))
+        .await
+        .err()
+        .expect("nested entry remains immediate conflict");
+    assert_eq!(
+        error
+            .downcast_ref::<tobkiri_flow::StepError>()
+            .unwrap()
+            .code,
+        "conflict"
+    );
+    drop(held);
+    let expired = entry_context().cap_deadline(std::time::Instant::now());
+    let error = lock_for_entry(&slot, &expired, false, |_| panic!("expired entry prepare"))
+        .await
+        .err()
+        .expect("original request deadline remains binding");
+    assert!(matches!(
+        error.downcast_ref::<tobkiri_gate::GateError>(),
+        Some(tobkiri_gate::GateError::Deadline)
+    ));
+    assert!(old.is_live());
+    assert_eq!(control.usage().count(ControlKind::Task), 0);
+}
+
+#[tokio::test]
+async fn join_existing_cannot_start_cleanup_or_turn_failed_join_into_success() {
+    let control = CoreControl::default();
+    let live = generation(&control, 1);
+    assert!(live.join_existing().await.is_err());
+    assert!(live.is_live());
+    assert_eq!(control.usage().count(ControlKind::Task), 0);
+    let failed = generation(&control, 2);
+    let witness = failed.clone();
+    assert!(
+        failed
+            .retire(move || async move {
+                witness.destroyed();
+                bail!("actual task failure after physical destruction")
+            })
+            .await
+            .is_err()
+    );
+    assert!(failed.destruction_observed());
+    assert!(failed.join_existing().await.is_err());
+    let slot = tokio::sync::Mutex::new(failed.clone());
+    assert!(
+        lock_for_entry(&slot, &entry_context(), false, |g| Ok(Some(g.clone())))
+            .await
+            .is_err()
+    );
+    assert!(!failed.replacement_ready().unwrap());
+    assert_eq!(control.usage().count(ControlKind::Task), 0);
+}
+
+#[tokio::test]
+async fn entry_waiter_quota_failure_keeps_one_existing_task_without_dispatch() {
+    let control = CoreControl::new(CoreControlLimits {
+        max_waiters: 0,
+        ..CoreControlLimits::default()
+    })
+    .unwrap();
+    let old = generation(&control, 1);
+    let (release_tx, release_rx) = oneshot::channel();
+    let witness = old.clone();
+    assert!(
+        old.retire(move || async move {
+            release_rx.await.unwrap();
+            witness.destroyed();
+            Ok(())
+        })
+        .await
+        .is_err()
+    );
+    let slot = tokio::sync::Mutex::new(old.clone());
+    assert!(
+        lock_for_entry(&slot, &entry_context(), false, |g| Ok(Some(g.clone())))
+            .await
+            .is_err()
+    );
+    assert!(slot.try_lock().is_ok());
+    assert_eq!(control.usage().count(ControlKind::Task), 1);
+    assert_eq!(control.usage().count(ControlKind::Waiter), 0);
+    let physical_join = completion(&old);
+    release_tx.send(()).unwrap();
+    assert_eq!(physical_join.await, Ok(()));
+    assert!(old.replacement_ready().unwrap());
+}

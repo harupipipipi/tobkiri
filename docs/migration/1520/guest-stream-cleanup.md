@@ -38,3 +38,13 @@ settle historical unknown effects, or prove whole-process quiescence.
 The unchanged 64-stream session-close regression must continue to pass. Dedicated
 tests cover shared close, interrupted observers, aliases, admission/spawn/join
 failure, physical destruction order and sticky filesystem/SQL uncertainty.
+
+New entry releases the instance mutex before awaiting an already-started
+retirement task, because that task may itself be queued on the same mutex. It
+waits only for the captured generation, with the original retirement and request
+deadlines, then reacquires the mutex and checks the actual generation again.
+Reentrant admission still uses immediate try-lock, and existing-handle generation
+checks are unchanged. A failed or expired join remains unavailable; entry cannot
+start replacement cleanup or erase an earlier unknown result. Deterministic
+mutex-order tests cover this race in addition to the unchanged real 64-stream
+fixture. They do not prove that this interleaving caused a particular CI failure.
