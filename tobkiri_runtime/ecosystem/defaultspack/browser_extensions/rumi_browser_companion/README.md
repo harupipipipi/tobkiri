@@ -1,11 +1,11 @@
-# Rumi Browser Companion
+# Tobkiri Browser Companion
 
-`Rumi Browser Companion` is a Manifest V3 Chromium extension that lets Rumi drive the user's real browser session through a local bridge. It is designed to complement the existing `browser_use` and `computer_use` tools:
+`Tobkiri Browser Companion` is a Manifest V3 Chromium extension that lets Tobkiri drive the user's real browser session through a local bridge. It is designed to complement the existing `browser_use` and `computer_use` tools:
 
 - `computer_use` / `browser_computer`: visible-window, computer-use style control
 - `browser_companion`: DOM-aware browser control inside the user's signed-in browser profile
 
-This gives Rumi a "computer use + browser use" path where the model can inspect DOM state, select between connected browsers, and operate with the user's live cookies and sessions.
+This gives Tobkiri a "computer use + browser use" path where the model can inspect DOM state, select between connected browsers, and operate with the user's live cookies and sessions.
 
 ## Files
 
@@ -22,7 +22,7 @@ This gives Rumi a "computer use + browser use" path where the model can inspect 
 
    `<repo>/tobkiri_runtime/ecosystem/defaultspack/browser_extensions/rumi_browser_companion`
 
-4. In Rumi, call `browser_companion` with `action: "bridge.pairing"` to get the pairing token and candidate server URLs.
+4. In Tobkiri, call `browser_companion` with `action: "bridge.pairing"` to get the pairing token and candidate server URLs.
 5. Open the extension options page and paste:
 
    - `Server URL` such as `http://127.0.0.1:8766`
@@ -30,6 +30,22 @@ This gives Rumi a "computer use + browser use" path where the model can inspect 
    - Optional `Profile Label`, for example `Work` or `Personal`
 
 6. Click `Poll Bridge Now` to confirm the extension can connect.
+
+## Options status and recovery
+
+The Options page reports Load, Save, and Poll progress separately. A failed
+extension API or background-worker operation keeps the form usable and exposes
+a `Retry` action. Polling is de-duplicated while a request is pending.
+
+Connection status includes the endpoint, browser profile, status update time,
+last successful contact, and a fresh/stale indicator. Actionable states include
+`Not configured`, `Tobkiri offline`, `Pairing rejected`,
+`Version incompatible`, and `Connected`.
+
+Expand `Diagnostic details` to copy a bounded technical summary for support.
+Diagnostics omit the pairing token and other credential-shaped fields. Generate
+a new pairing token in Tobkiri if the page reports `Pairing rejected`; start
+or restart Tobkiri and verify the Server URL for `Tobkiri offline`.
 
 ## Bridge API
 
