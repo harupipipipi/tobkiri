@@ -18,6 +18,24 @@ pub(super) struct VerifiedImage {
 
 impl VerifiedImage {
     pub(super) fn scan(connection: &rusqlite::Connection) -> Result<Self, StoreError> {
+        #[cfg(feature = "closed-request-metrics")]
+        let observation = tobkiri_gate::closed_metrics::current_span(
+            tobkiri_gate::closed_metrics::Metric::AuditImageScan,
+        );
+        let result = Self::scan_inner(
+            connection,
+            #[cfg(feature = "closed-request-metrics")]
+            &observation,
+        );
+        #[cfg(feature = "closed-request-metrics")]
+        observation.finish();
+        result
+    }
+
+    fn scan_inner(
+        connection: &rusqlite::Connection,
+        #[cfg(feature = "closed-request-metrics")] observation: &tobkiri_gate::closed_metrics::Span,
+    ) -> Result<Self, StoreError> {
         let mut hash = Sha256::new();
         hash.update(b"tobkiri.audit.sqlite-value-image.v1\0");
         let mut image = Self {
@@ -34,7 +52,7 @@ impl VerifiedImage {
             // typed tail query can turn a corrupt sequence into persistence.
             crate::sql_u64(row, 0)
                 .map_err(|_| StoreError::Integrity(tobkiri_gate::IntegrityFaultCode::AuditChain))?;
-            image.append_row([
+            let fields = [
                 row.get_ref(0)?,
                 row.get_ref(1)?,
                 row.get_ref(2)?,
@@ -43,7 +61,19 @@ impl VerifiedImage {
                 row.get_ref(5)?,
                 row.get_ref(6)?,
                 row.get_ref(7)?,
-            ])?;
+            ];
+            #[cfg(feature = "closed-request-metrics")]
+            {
+                // SQLite value payload bytes only, not page I/O or RSS. This
+                // loop already reads all eight fields; no second SQL/row walk.
+                observation.add_units(1, 0);
+                for value in &fields {
+                    if let ValueRef::Text(bytes) | ValueRef::Blob(bytes) = value {
+                        observation.add_units(0, bytes.len() as u64);
+                    }
+                }
+            }
+            image.append_row(fields)?;
         }
         let last: Option<(u64, String)> = connection
             .query_row(

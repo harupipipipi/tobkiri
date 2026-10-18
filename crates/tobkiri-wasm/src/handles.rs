@@ -7,10 +7,9 @@ use std::{
     },
 };
 use tobkiri_canon::ids::ShapeRef;
-use tobkiri_flow::CoreStream;
 use tobkiri_gate::{CallCx, DispatchPermit, GrantId, Outcome};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum HandleCleanupError {
     CompletionUnknown,
     FilesystemCommitUnknown,
@@ -84,7 +83,7 @@ pub struct HandleEntry {
     pub authority: ShapeRef,
     recipient: CallCx,
     pub(crate) lease: Arc<HandleLease>,
-    pub(crate) source: Option<Arc<tokio::sync::Mutex<CoreStream>>>,
+    pub(crate) source: Option<Arc<crate::core_source_close::CoreSourceClose>>,
     pub(crate) generation: Option<u64>,
     pub(crate) generation_retirement:
         Option<Arc<crate::generation_retirement::GenerationRetirement>>,
@@ -145,7 +144,7 @@ impl HandleTable {
         &mut self,
         cx: CallCx,
         authority: ShapeRef,
-        stream: CoreStream,
+        stream: Arc<crate::core_source_close::CoreSourceClose>,
     ) -> Result<u64> {
         self.insert(
             HandleKind::Stream,
@@ -154,7 +153,7 @@ impl HandleTable {
             cx,
             authority,
             Arc::new(HandleLease::new(None)),
-            Some(Arc::new(tokio::sync::Mutex::new(stream))),
+            Some(stream),
             None,
             None,
             None,
@@ -186,7 +185,7 @@ impl HandleTable {
         recipient: CallCx,
         authority: ShapeRef,
         lease: Arc<HandleLease>,
-        source: Option<Arc<tokio::sync::Mutex<CoreStream>>>,
+        source: Option<Arc<crate::core_source_close::CoreSourceClose>>,
         generation: Option<u64>,
         generation_retirement: Option<Arc<crate::generation_retirement::GenerationRetirement>>,
         source_frame: Option<Arc<dyn crate::ProviderFrame>>,
@@ -425,5 +424,57 @@ mod tests {
                 )
                 .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn core_aliases_share_the_actual_source_close_cell_and_individual_receipt() {
+        struct PureSource;
+        #[async_trait::async_trait]
+        impl tobkiri_flow::StreamSource for PureSource {
+            async fn pull(
+                &mut self,
+                _: u32,
+            ) -> Result<tobkiri_canon::CoreValue, tobkiri_flow::StepError> {
+                Err(tobkiri_flow::StepError::new("unavailable", "no test pull"))
+            }
+            fn cancel(&mut self) {}
+        }
+        let owner = cx("profile-a", "local.owner", "core-source");
+        let source = crate::core_source_close::CoreSourceClose::new(
+            &tobkiri_gate::CoreControl::default(),
+            tobkiri_flow::CoreStream::new(PureSource),
+        )
+        .unwrap();
+        let mut table = HandleTable::new(2);
+        let id = table
+            .register_core(
+                owner.clone(),
+                ShapeRef::parse("local.contract.events@1.0").unwrap(),
+                source.clone(),
+            )
+            .unwrap();
+        let original = table.resolve(id, HandleKind::Stream, &owner).unwrap();
+        let alias_id = table.alias(original.clone(), owner.clone()).unwrap();
+        let alias = table.resolve(alias_id, HandleKind::Stream, &owner).unwrap();
+        assert!(Arc::ptr_eq(&original.lease, &alias.lease));
+        assert!(Arc::ptr_eq(
+            original.source.as_ref().unwrap(),
+            alias.source.as_ref().unwrap()
+        ));
+        assert!(
+            table
+                .resolve(
+                    alias_id,
+                    HandleKind::Stream,
+                    &cx("profile-a", "local.owner", "other-request")
+                )
+                .is_err()
+        );
+        original.lease.begin_close();
+        source.close().await.unwrap();
+        alias.source.as_ref().unwrap().close().await.unwrap();
+        assert!(source.physical_receipt().is_some());
+        assert!(table.resolve(id, HandleKind::Stream, &owner).is_err());
+        assert!(table.resolve(alias_id, HandleKind::Stream, &owner).is_err());
     }
 }

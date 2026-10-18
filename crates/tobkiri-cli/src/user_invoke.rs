@@ -34,8 +34,49 @@ pub(super) async fn invoke(
     operation: OpName,
     args: &tobkiri_core::CanonValue,
 ) -> Result<()> {
+    invoke_inner(
+        session,
+        shape,
+        operation,
+        args,
+        #[cfg(feature = "closed-request-metrics")]
+        None,
+    )
+    .await
+}
+
+#[cfg(feature = "closed-request-metrics")]
+pub(super) async fn invoke_observed(
+    session: &Session,
+    shape: ShapeRef,
+    operation: OpName,
+    args: &tobkiri_core::CanonValue,
+    observation: &tobkiri_core::closed_metrics::Observation,
+) -> Result<()> {
+    invoke_inner(session, shape, operation, args, Some(observation)).await
+}
+
+async fn invoke_inner(
+    session: &Session,
+    shape: ShapeRef,
+    operation: OpName,
+    args: &tobkiri_core::CanonValue,
+    #[cfg(feature = "closed-request-metrics")] observation: Option<
+        &tobkiri_core::closed_metrics::Observation,
+    >,
+) -> Result<()> {
     let cancel = CancellationToken::new();
-    let mut call = Box::pin(session.invoke_user_port(shape, operation, args, cancel.clone()));
+    let mut call = Box::pin(async {
+        #[cfg(feature = "closed-request-metrics")]
+        if let Some(observation) = observation {
+            return session
+                .invoke_user_port_observed(shape, operation, args, cancel.clone(), observation)
+                .await;
+        }
+        session
+            .invoke_user_port(shape, operation, args, cancel.clone())
+            .await
+    });
     let output = tokio::select! {
         result = &mut call => result,
         _ = tokio::signal::ctrl_c() => {

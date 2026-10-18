@@ -94,6 +94,8 @@ pub struct CallCx {
     control: CoreControl,
     _control_reservation: std::sync::Arc<ControlReservation>,
     extra_control_reservations: std::sync::Arc<Vec<std::sync::Arc<ControlReservation>>>,
+    #[cfg(feature = "closed-request-metrics")]
+    observation: Option<crate::closed_metrics::Observation>,
 }
 
 #[derive(Debug)]
@@ -168,6 +170,8 @@ impl CallCx {
             control,
             _control_reservation: reservation,
             extra_control_reservations: std::sync::Arc::new(Vec::new()),
+            #[cfg(feature = "closed-request-metrics")]
+            observation: None,
         })
     }
 
@@ -175,6 +179,26 @@ impl CallCx {
     /// and scheduling metadata.
     pub fn control(&self) -> &CoreControl {
         &self.control
+    }
+    /// Native opt-in diagnostics only. A descendant cannot swap its request's
+    /// bank or borrow control capacity from another Core account.
+    #[cfg(feature = "closed-request-metrics")]
+    pub fn with_observation(
+        mut self,
+        observation: &crate::closed_metrics::Observation,
+    ) -> Result<Self, GateError> {
+        if self.depth != 0 || self.observation.is_some() || !observation.uses_control(&self.control)
+        {
+            return Err(GateError::Denied(
+                "observation account or root mismatch".into(),
+            ));
+        }
+        self.observation = Some(observation.clone());
+        Ok(self)
+    }
+    #[cfg(feature = "closed-request-metrics")]
+    pub fn observation(&self) -> Option<&crate::closed_metrics::Observation> {
+        self.observation.as_ref()
     }
     /// Trusted native host only: record a consumed filesystem mutation just
     /// before dispatch. This cannot authorize work and can never be cleared.
@@ -493,6 +517,8 @@ impl CallCx {
             control: self.control.clone(),
             _control_reservation: std::sync::Arc::new(reservation),
             extra_control_reservations: self.extra_control_reservations.clone(),
+            #[cfg(feature = "closed-request-metrics")]
+            observation: self.observation.clone(),
         })
     }
     pub fn profile(&self) -> &ProfileId {

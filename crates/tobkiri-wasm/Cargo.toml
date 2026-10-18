@@ -7,6 +7,7 @@ edition = "2024"
 # Keep the checksum-pinned private SQLite producer available for experiments.
 # Production DATA uses the bounded native Store backend.
 private-sqlite-experiment = []
+closed-request-metrics = ["tobkiri-gate/closed-request-metrics", "tobkiri-store/closed-request-metrics"]
 
 [dependencies]
 anyhow.workspace = true

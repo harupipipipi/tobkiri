@@ -624,6 +624,7 @@ impl PackHost {
         stream: CoreStream,
     ) -> Result<u64> {
         cx.check_active()?;
+        let stream = crate::core_source_close::CoreSourceClose::new(&self.shared.control, stream)?;
         let id = self
             .shared
             .handles
@@ -1894,7 +1895,10 @@ impl StreamSource for ComponentStream {
             .check_context(&self.cx)
             .map_err(|e| step_error(e.into()))?;
         let result = if let Some(source) = &self.entry.source {
-            source.lock().await.pull(max).await
+            match source.lock_open().await {
+                Ok(mut source) => source.pull(max).await,
+                Err(error) => Err(error),
+            }
         } else {
             crate::core_imports::pull_guest_source(&self.host, &self.entry, max, false)
                 .await
@@ -1934,10 +1938,13 @@ impl StreamSource for ComponentStream {
             .check_context(&self.cx)
             .map_err(|e| step_error(e.into()))?;
         let result = if let Some(source) = &self.entry.source {
-            source.lock().await.pull_final(max).await.map(|buffer| {
-                let empty = buffer.as_bytes() == b"[]";
-                (buffer, empty)
-            })
+            match source.lock_open().await {
+                Ok(mut source) => source.pull_final(max).await.map(|buffer| {
+                    let empty = buffer.as_bytes() == b"[]";
+                    (buffer, empty)
+                }),
+                Err(error) => Err(error),
+            }
         } else {
             crate::core_imports::pull_guest_source(&self.host, &self.entry, max, true)
                 .await

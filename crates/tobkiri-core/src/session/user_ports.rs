@@ -391,6 +391,9 @@ impl Session {
         shape: ShapeRef,
         operation: OpName,
         args: &CanonValue,
+        #[cfg(feature = "closed-request-metrics")] observation: Option<
+            &tobkiri_gate::closed_metrics::Observation,
+        >,
     ) -> Result<PreparedCall, CoreError> {
         self.ensure_started().await?;
         self.check_snapshot()?;
@@ -412,6 +415,11 @@ impl Session {
         .with_security_epoch(self.epoch)
         .with_revision(self.compiled.plan_digest.clone())
         .with_budget(budget)?;
+        #[cfg(feature = "closed-request-metrics")]
+        let cx = match observation {
+            Some(observation) => cx.with_observation(observation)?,
+            None => cx,
+        };
         let factory = self.execution_factory.as_ref().ok_or_else(|| {
             unavailable("prepared User invocation is unavailable for this Session")
         })?;
@@ -448,7 +456,15 @@ impl Session {
         operation: OpName,
         args: &CanonValue,
     ) -> Result<CoreBuffer, CoreError> {
-        let prepared = self.prepare_user_call(shape, operation, args).await?;
+        let prepared = self
+            .prepare_user_call(
+                shape,
+                operation,
+                args,
+                #[cfg(feature = "closed-request-metrics")]
+                None,
+            )
+            .await?;
         let mut guard = RequestGuard {
             cx: prepared.cx.clone(),
             cleanup: None,
@@ -492,13 +508,66 @@ impl Session {
         args: &CanonValue,
         cancel: TokioCancellationToken,
     ) -> Result<UserPortOutput, CoreError> {
+        self.invoke_user_port_inner(
+            shape,
+            operation,
+            args,
+            cancel,
+            #[cfg(feature = "closed-request-metrics")]
+            None,
+        )
+        .await
+    }
+
+    /// Fixed prepaid diagnostics, separate from User/Pack execution authority.
+    #[cfg(feature = "closed-request-metrics")]
+    pub fn new_request_observation(
+        &self,
+    ) -> Result<tobkiri_gate::closed_metrics::Observation, CoreError> {
+        tobkiri_gate::closed_metrics::Observation::try_new(self.gate.control())
+            .map_err(tobkiri_gate::GateError::from)
+            .map_err(CoreError::from)
+    }
+
+    /// Uses the exact ordinary User dispatch path and unchanged approvals.
+    #[cfg(feature = "closed-request-metrics")]
+    pub async fn invoke_user_port_observed(
+        &self,
+        shape: ShapeRef,
+        operation: OpName,
+        args: &CanonValue,
+        cancel: TokioCancellationToken,
+        observation: &tobkiri_gate::closed_metrics::Observation,
+    ) -> Result<UserPortOutput, CoreError> {
+        self.invoke_user_port_inner(shape, operation, args, cancel, Some(observation))
+            .await
+    }
+
+    async fn invoke_user_port_inner(
+        &self,
+        shape: ShapeRef,
+        operation: OpName,
+        args: &CanonValue,
+        cancel: TokioCancellationToken,
+        #[cfg(feature = "closed-request-metrics")] observation: Option<
+            &tobkiri_gate::closed_metrics::Observation,
+        >,
+    ) -> Result<UserPortOutput, CoreError> {
         if cancel.is_cancelled() {
             return Err(CoreError::Step(StepError::new(
                 "cancelled",
                 "User invocation cancelled before preparation",
             )));
         }
-        let prepared = self.prepare_user_call(shape, operation, args).await?;
+        let prepared = self
+            .prepare_user_call(
+                shape,
+                operation,
+                args,
+                #[cfg(feature = "closed-request-metrics")]
+                observation,
+            )
+            .await?;
         let supervisor_control = reserve_task(&prepared.cx)?;
         let dispatch_control = reserve_task(&prepared.cx)?;
         let entry = self

@@ -620,6 +620,8 @@ impl GateEngine {
         reason: AllocationReason,
         admit: &mut dyn FnMut(PreparedFrameFunding<'_>) -> Result<(), GateError>,
     ) -> Result<(), GateError> {
+        #[cfg(feature = "closed-request-metrics")]
+        let _sync_observation = crate::closed_metrics::enter_sync(cx.observation());
         self.check_context(cx)?;
         let mut called = false;
         let mut callback_error = None;
@@ -853,6 +855,8 @@ impl GateEngine {
         scope: &AllocationFrameScope,
         admit: &mut dyn FnMut(u64) -> Result<(), GateError>,
     ) -> Result<(), GateError> {
+        #[cfg(feature = "closed-request-metrics")]
+        let _sync_observation = crate::closed_metrics::enter_sync(cx.observation());
         // Drop every Gate registry guard/SQLite transaction before waiting on
         // Core's node state. Inside it the fixed order is Core -> Gate -> DB.
         self.check_context(cx)?;

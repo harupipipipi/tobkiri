@@ -399,58 +399,84 @@ impl PackAllocationBudget {
             .checked_add(request.bytes)
             .ok_or(AllocationError::Overflow)?;
         if let AllocationMode::Conversion { bytes, sealed } = state.mode {
-            if sealed {
+            #[cfg(feature = "closed-request-metrics")]
+            let observation = tobkiri_gate::closed_metrics::span(
+                self.cx.observation(),
+                tobkiri_gate::closed_metrics::Metric::AllocationConversion,
+            );
+            #[cfg(feature = "closed-request-metrics")]
+            observation.add_units(request.bytes, work);
+            let result = (|| {
+                if sealed {
+                    return Err(AllocationError::Unavailable);
+                }
+                self.cx
+                    .check_active()
+                    .map_err(|_| AllocationError::Unavailable)?;
+                if live_bytes > bytes {
+                    return Err(AllocationError::Limit);
+                }
+                // This only consumes already admitted carrier capacity. No Gate,
+                // effect, SQL or growth occurs inside the pure conversion window.
+                state.live_bytes = live_bytes;
+                state.work_remaining = work_remaining;
+                Ok(())
+            })();
+            #[cfg(feature = "closed-request-metrics")]
+            observation.finish();
+            return result;
+        }
+        #[cfg(feature = "closed-request-metrics")]
+        let observation = tobkiri_gate::closed_metrics::span(
+            self.cx.observation(),
+            tobkiri_gate::closed_metrics::Metric::AllocationMetered,
+        );
+        #[cfg(feature = "closed-request-metrics")]
+        observation.add_units(request.bytes, work);
+        #[cfg(feature = "closed-request-metrics")]
+        let _sync_observation = tobkiri_gate::closed_metrics::enter_sync(self.cx.observation());
+        let result = (|| {
+            let allocated = live_bytes;
+            let mut admitted = false;
+            self.funding
+                .with_admission(self.gate.as_ref(), &self.cx, &mut |limit| {
+                    if admitted {
+                        return Err(tobkiri_gate::GateError::Unavailable);
+                    }
+                    self.capacity.resize(allocated, limit)?;
+                    admitted = true;
+                    Ok(())
+                })
+                .map_err(|error| {
+                    use tobkiri_gate::GateError;
+                    let code = match &error {
+                        GateError::Denied(_) => 4,
+                        GateError::Deadline => 5,
+                        GateError::Cancelled => 6,
+                        GateError::Persistence(_)
+                        | GateError::Integrity(_)
+                        | GateError::AuditFailure { .. } => 7,
+                        GateError::Unavailable => 8,
+                        GateError::Limit(_) => 9,
+                        _ => 10,
+                    };
+                    self.failure.store(code, Ordering::Release);
+                    match error {
+                        GateError::Limit(_) => AllocationError::Limit,
+                        _ => AllocationError::Unavailable,
+                    }
+                })?;
+            if !admitted {
+                self.failure.store(11, Ordering::Release);
                 return Err(AllocationError::Unavailable);
             }
-            self.cx
-                .check_active()
-                .map_err(|_| AllocationError::Unavailable)?;
-            if live_bytes > bytes {
-                return Err(AllocationError::Limit);
-            }
-            // This only consumes already admitted carrier capacity. No Gate,
-            // effect, SQL or growth occurs inside the pure conversion window.
             state.live_bytes = live_bytes;
             state.work_remaining = work_remaining;
-            return Ok(());
-        }
-        let allocated = live_bytes;
-        let mut admitted = false;
-        self.funding
-            .with_admission(self.gate.as_ref(), &self.cx, &mut |limit| {
-                if admitted {
-                    return Err(tobkiri_gate::GateError::Unavailable);
-                }
-                self.capacity.resize(allocated, limit)?;
-                admitted = true;
-                Ok(())
-            })
-            .map_err(|error| {
-                use tobkiri_gate::GateError;
-                let code = match &error {
-                    GateError::Denied(_) => 4,
-                    GateError::Deadline => 5,
-                    GateError::Cancelled => 6,
-                    GateError::Persistence(_)
-                    | GateError::Integrity(_)
-                    | GateError::AuditFailure { .. } => 7,
-                    GateError::Unavailable => 8,
-                    GateError::Limit(_) => 9,
-                    _ => 10,
-                };
-                self.failure.store(code, Ordering::Release);
-                match error {
-                    GateError::Limit(_) => AllocationError::Limit,
-                    _ => AllocationError::Unavailable,
-                }
-            })?;
-        if !admitted {
-            self.failure.store(11, Ordering::Release);
-            return Err(AllocationError::Unavailable);
-        }
-        state.live_bytes = live_bytes;
-        state.work_remaining = work_remaining;
-        Ok(())
+            Ok(())
+        })();
+        #[cfg(feature = "closed-request-metrics")]
+        observation.finish();
+        result
     }
 
     fn release_known(&self, bytes: u64) {
@@ -803,6 +829,230 @@ mod tests {
             self.admissions.fetch_add(1, Ordering::SeqCst);
             Ok(16 * 1024 * 1024)
         }
+    }
+
+    #[cfg(all(
+        feature = "closed-request-metrics",
+        any(
+            windows,
+            all(target_os = "macos", target_arch = "aarch64"),
+            all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")
+        )
+    ))]
+    #[test]
+    fn closed_metrics_real_store_separates_metered_and_prepaid_conversion_sql() {
+        use tobkiri_gate::{
+            ApprovalAnswer, ApprovalPrompt, ApprovalStore, GateEngine, MediatorChain, PackPolicy,
+            PermissionSet, TrustedPrompt,
+            closed_metrics::{Metric, Observation},
+        };
+        struct NoPrompt;
+        #[async_trait::async_trait]
+        impl TrustedPrompt for NoPrompt {
+            async fn prompt_approval(&self, _: ApprovalPrompt) -> ApprovalAnswer {
+                ApprovalAnswer::Deny
+            }
+        }
+        let _serial = TEST_CUSTODY.lock().unwrap();
+        for length in [1usize, 1024] {
+            let directory = tempfile::tempdir().unwrap();
+            let root = private_root(&directory);
+            let cx = context();
+            let approvals = Arc::new(tobkiri_store::Approvals::open(&root, cx.profile()).unwrap());
+            let audit = Arc::new(
+                tobkiri_store::AuditLog::open(
+                    &root,
+                    cx.profile(),
+                    tobkiri_store::AuditQuota::default(),
+                )
+                .unwrap(),
+            );
+            let gate = Arc::new(GateEngine::new_with_control(
+                approvals.clone(),
+                audit,
+                Arc::new(NoPrompt),
+                MediatorChain::default(),
+                cx.control().clone(),
+            ));
+            let (pack, hash) = cx.principal().pack().unwrap();
+            let policy = PermissionSet {
+                wasm: cx.limits().clone(),
+                ..Default::default()
+            };
+            approvals
+                .set_permissions(cx.profile(), pack, hash, &policy)
+                .unwrap();
+            gate.register_pack(
+                cx.profile(),
+                pack,
+                hash,
+                PackPolicy {
+                    declaration: policy.clone(),
+                    ceiling: policy.clone(),
+                    pack_limits: policy,
+                },
+            )
+            .unwrap();
+            gate.register_revision(
+                cx.profile(),
+                cx.revision().unwrap(),
+                std::collections::BTreeMap::from([(
+                    (pack.clone(), hash.clone()),
+                    cx.limits().clone(),
+                )]),
+            )
+            .unwrap();
+            let observation = Observation::try_new(cx.control()).unwrap();
+            let epoch = gate.epoch(cx.profile()).unwrap();
+            let cx = cx
+                .with_security_epoch(epoch)
+                .with_observation(&observation)
+                .unwrap();
+            let ledger = tobkiri_gate::CapacityLedger::new();
+            let source =
+                PackAllocationBudget::create(gate.clone(), &ledger, &root, &cx, Funding::Caller)
+                    .unwrap();
+            let before = observation.snapshot();
+            let payload = "x".repeat(length);
+            let value = PackAllocationBudget::with_prepaid_conversion(
+                gate.clone(),
+                &ledger,
+                &root,
+                &cx,
+                Funding::Caller,
+                source.graph(),
+                AllocationRequest {
+                    kind: AllocationKind::Temporary,
+                    bytes: 4096,
+                    elements: 0,
+                    depth: 0,
+                    work: 4096,
+                },
+                |owners| Ok(CoreValue::string(&payload, owners.graph())?),
+            )
+            .unwrap();
+            let after = observation.snapshot();
+            let count = |snapshot: &tobkiri_gate::closed_metrics::Snapshot| {
+                [
+                    Metric::GuardFaultSelect,
+                    Metric::GuardEpochSelect,
+                    Metric::GuardPackPermissionsSelect,
+                ]
+                .iter()
+                .map(|metric| snapshot.slots[*metric as usize].started)
+                .sum::<u64>()
+            };
+            // This trusted Caller fixture uses capacity_limit (4 SQL), not an
+            // authenticated guest Frame (which has its own guard sequence).
+            // The two real admissions stay constant as payload size grows.
+            assert_eq!(count(&after) - count(&before), 8);
+            assert_eq!(
+                after.slots[Metric::AllocationMetered as usize].started
+                    - before.slots[Metric::AllocationMetered as usize].started,
+                1
+            );
+            assert!(
+                after.slots[Metric::AllocationConversion as usize].returned
+                    > before.slots[Metric::AllocationConversion as usize].returned
+            );
+            drop(value);
+            drop(source);
+            reap_custody().unwrap();
+        }
+    }
+
+    #[cfg(all(
+        feature = "closed-request-metrics",
+        any(
+            windows,
+            all(target_os = "macos", target_arch = "aarch64"),
+            all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")
+        )
+    ))]
+    #[test]
+    fn closed_metrics_denied_allocations_return_and_panic_timer_drops() {
+        use tobkiri_gate::closed_metrics::{Metric, Observation};
+        let _serial = TEST_CUSTODY.lock().unwrap();
+        for conversion in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let root = private_root(&directory);
+            let ledger = tobkiri_gate::CapacityLedger::new();
+            let cx = context();
+            let observation = Observation::try_new(cx.control()).unwrap();
+            let cx = cx.with_observation(&observation).unwrap();
+            let gate = Arc::new(CountingGate::default());
+            let source =
+                PackAllocationBudget::create(gate.clone(), &ledger, &root, &cx, Funding::Caller)
+                    .unwrap();
+            let request = AllocationRequest {
+                kind: AllocationKind::Temporary,
+                bytes: 2,
+                elements: 0,
+                depth: 0,
+                work: 1,
+            };
+            if conversion {
+                PackAllocationBudget::with_prepaid_conversion(
+                    gate.clone(),
+                    &ledger,
+                    &root,
+                    &cx,
+                    Funding::Caller,
+                    source.graph(),
+                    AllocationRequest {
+                        bytes: 1,
+                        work: 16,
+                        ..request
+                    },
+                    |owners| {
+                        let before =
+                            observation.snapshot().slots[Metric::AllocationConversion as usize];
+                        let result = owners.graph().reserve(request);
+                        assert!(matches!(result, Err(AllocationError::Limit)));
+                        let after =
+                            observation.snapshot().slots[Metric::AllocationConversion as usize];
+                        assert_eq!(after.started - before.started, 1);
+                        assert_eq!(after.returned - before.returned, 1);
+                        assert_eq!(after.dropped - before.dropped, 0);
+                        Ok(())
+                    },
+                )
+                .unwrap();
+            } else {
+                cx.cancel().cancel();
+                let before = observation.snapshot().slots[Metric::AllocationMetered as usize];
+                let result = source.graph().reserve(request);
+                assert!(matches!(result, Err(AllocationError::Unavailable)));
+                let after = observation.snapshot().slots[Metric::AllocationMetered as usize];
+                assert_eq!(after.started - before.started, 1);
+                assert_eq!(after.returned - before.returned, 1);
+                assert_eq!(after.dropped - before.dropped, 0);
+            }
+            assert_eq!(gate.effects.load(Ordering::SeqCst), 0);
+            drop(source);
+            reap_custody().unwrap();
+            assert_eq!(
+                ledger
+                    .snapshot(&CapacityOwner::from_context(&cx).unwrap())
+                    .unwrap()
+                    .charged_bytes,
+                0
+            );
+        }
+        // Exercise the exact production timer's panic Drop independently. A
+        // panic inside the allocator's locked state would poison and retain
+        // its real custody; this numeric regression must not clear that proof.
+        let observation = Observation::try_new(&Default::default()).unwrap();
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            observation.span(Metric::AllocationMetered).measure(|| {
+                panic!("fixed metrics fixture panic");
+            });
+        }));
+        assert!(panic.is_err());
+        let slot = observation.snapshot().slots[Metric::AllocationMetered as usize];
+        assert_eq!(slot.started, 1);
+        assert_eq!(slot.returned, 0);
+        assert_eq!(slot.dropped, 1);
     }
 
     #[test]

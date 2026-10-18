@@ -5,6 +5,8 @@ pub use tobkiri_canon::{
     CoreBufferBuilder, CoreRef, CoreValue, Digest, MAX_BYTES, Variant, digest, encode, ids, parse,
 };
 pub use tobkiri_flow::{CoreStream, RunEvent, RunEventKind, RunHandle, StepError};
+#[cfg(feature = "closed-request-metrics")]
+pub use tobkiri_gate::closed_metrics;
 pub use tobkiri_gate::{
     ApprovalAnswer, ApprovalPrompt, EffectRequest, HostError, HostIo, PermissionSet, Risk,
     TrustedPrompt, UiEmbed,

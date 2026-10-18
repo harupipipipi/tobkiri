@@ -101,6 +101,8 @@ impl Grant {
         request: &EffectRequest,
         args: &Digest,
     ) -> Result<DispatchPermit, GateError> {
+        #[cfg(feature = "closed-request-metrics")]
+        let _sync_observation = crate::closed_metrics::enter_sync(cx.observation());
         cx.check_active()?;
         if self.reservation.profile != *cx.profile()
             || self.reservation.principal != *cx.principal()
@@ -1176,6 +1178,8 @@ impl GateEngine {
         self.approvals.advance_security_epoch(profile)
     }
     pub fn effective_permissions(&self, cx: &CallCx) -> Result<PermissionSet, GateError> {
+        #[cfg(feature = "closed-request-metrics")]
+        let _sync_observation = crate::closed_metrics::enter_sync(cx.observation());
         if let Some((pack, hash)) = cx.principal().pack() {
             let policies = self
                 .policies
@@ -1333,6 +1337,8 @@ impl GateEngine {
         cx: &CallCx,
         owner: PreparedCodeOwner<'_>,
     ) -> Result<ResourceLimits, GateError> {
+        #[cfg(feature = "closed-request-metrics")]
+        let _sync_observation = crate::closed_metrics::enter_sync(cx.observation());
         let limits = match owner {
             PreparedCodeOwner::Pack { pack, hash } => {
                 let maximum = {
@@ -1489,7 +1495,7 @@ impl GateEngine {
         if self.epoch(cx.profile())? != cx.security_epoch() {
             return Err(GateError::StaleEpoch);
         }
-        self.event(&reservation, "user-permission-update", None)?;
+        self.event(cx, &reservation, "user-permission-update", None)?;
         self.approvals.dispatch(&reservation.id)?;
         let terminal = self.approvals.commit_permission_effect(
             &reservation,
@@ -1582,7 +1588,14 @@ impl GateEngine {
             .prompt
             .cancellation_waiter(cx)
             .map_err(|_| GateError::Unavailable)?;
+        #[cfg(feature = "closed-request-metrics")]
+        let observation = crate::closed_metrics::span(
+            cx.observation(),
+            crate::closed_metrics::Metric::ApprovalWait,
+        );
         let answer = tokio::select! {result=cancellation=>return Err(cancellation_result(cx,result)),_ = tokio::time::sleep_until(cx.deadline().into())=>return Err(GateError::Deadline),answer=self.prompt.prompt_approval(prompt.clone())=>answer};
+        #[cfg(feature = "closed-request-metrics")]
+        observation.finish();
         cx.check_active()?;
         if self.epoch(cx.profile())? != cx.security_epoch() {
             return Err(GateError::StaleEpoch);
@@ -1656,7 +1669,7 @@ impl GateEngine {
         if self.epoch(cx.profile())? != cx.security_epoch() {
             return Err(GateError::StaleEpoch);
         }
-        self.event(&reservation, "permission-update", None)?;
+        self.event(cx, &reservation, "permission-update", None)?;
         self.approvals.dispatch(&reservation.id)?;
         let terminal = self.approvals.commit_permission_effect(
             &reservation,
@@ -1724,10 +1737,15 @@ impl GateEngine {
     }
     fn event(
         &self,
+        cx: &CallCx,
         res: &Reservation,
         kind: &str,
         outcome: Option<&Outcome>,
     ) -> Result<(), GateError> {
+        #[cfg(feature = "closed-request-metrics")]
+        let _sync_observation = crate::closed_metrics::enter_sync(cx.observation());
+        #[cfg(not(feature = "closed-request-metrics"))]
+        let _ = cx;
         let mut object = serde_json::Map::new();
         object.insert(
             "grant".into(),
@@ -1916,7 +1934,7 @@ impl GateEngine {
         if self.epoch(cx.profile())? != cx.security_epoch() {
             return Err(GateError::StaleEpoch);
         }
-        self.event(&reservation, "dispatch", None)?;
+        self.event(cx, &reservation, "dispatch", None)?;
         if first_public_write {
             if let EffectRequest::Storage {
                 profile,
@@ -2041,6 +2059,8 @@ impl Gate for GateEngine {
         self.audit_denial_result(cx, "port-call", result).await
     }
     fn check_context(&self, cx: &CallCx) -> Result<(), GateError> {
+        #[cfg(feature = "closed-request-metrics")]
+        let _sync_observation = crate::closed_metrics::enter_sync(cx.observation());
         self.require_admission(cx.profile())?;
         cx.check_active()?;
         if self.epoch(cx.profile())? != cx.security_epoch() {
@@ -2089,6 +2109,9 @@ impl Gate for GateEngine {
         kind: &'static str,
         code: &'static str,
     ) -> Result<(), GateError> {
+        // No await in this body: the thread-local scope ends in this poll.
+        #[cfg(feature = "closed-request-metrics")]
+        let _sync_observation = crate::closed_metrics::enter_sync(cx.observation());
         let payload = tobkiri_canon::parse(
             &strict_bytes(&(kind, code, cx.security_epoch()))?,
             Variant::StrictV1,

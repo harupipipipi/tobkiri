@@ -106,10 +106,12 @@ impl AuditLog {
         Ok(log)
     }
     pub fn verify(&self) -> Result<(), StoreError> {
-        let mut connection = self
-            .connection
-            .lock()
-            .map_err(|_| StoreError::Conflict("audit lock poisoned".into()))?;
+        let mut connection = tobkiri_gate::measure_closed!(
+            AuditDbLockWait,
+            self.connection
+                .lock()
+                .map_err(|_| StoreError::Conflict("audit lock poisoned".into()))
+        )?;
         // Explicit verification always performs the complete semantic check.
         connection.verified = None;
         self.verify_connection(&connection.sql)
@@ -181,10 +183,12 @@ impl AuditLog {
                 _ => "user".into(),
             },
         };
-        let mut connection = self
-            .connection
-            .lock()
-            .map_err(|_| StoreError::Conflict("audit lock poisoned".into()))?;
+        let mut connection = tobkiri_gate::measure_closed!(
+            AuditDbLockWait,
+            self.connection
+                .lock()
+                .map_err(|_| StoreError::Conflict("audit lock poisoned".into()))
+        )?;
         // Taking first makes every transaction/scan/insert/commit failure
         // invalidate reuse. No cache survives an unknown acknowledgement.
         let previous = connection.verified.take();

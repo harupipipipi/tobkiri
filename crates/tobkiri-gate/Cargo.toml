@@ -7,6 +7,7 @@ rust-version.workspace = true
 [features]
 default = []
 test-gate = []
+closed-request-metrics = []
 
 [dependencies]
 tobkiri-canon = { path = "../tobkiri-canon" }

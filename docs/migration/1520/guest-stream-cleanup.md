@@ -20,7 +20,19 @@ Store cannot erase filesystem or SQL commit-unknown results, pending data moves,
 unconfirmed native workers, or a previously selected terminal outcome. Neither
 retirement nor an ordinary stream cancellation acknowledgement authorizes replay.
 
-This change covers guest Store generations. Core-owned source close still has
-a separate two-second timeout around its close future; retaining that future
-through an interrupted observer is a remaining lifecycle issue. The existing
-64-stream session-close regression remains unchanged and must continue to pass.
+Core-owned stream handles also share one retained source-close cell. It owns the
+actual source, takes it once, and runs its close future in one prepaid task.
+Aliases join that same task. The two-second observer deadline remains fixed;
+timeout or a dropped observer cannot drop the actual close future or start a
+replacement close. Source destruction and the task join precede a physical close
+receipt. A late receipt cannot change an earlier uncertain handle outcome.
+
+Registration, task, waiter, runtime and join failures still fail closed. In
+particular, failure to admit the cell after a source was produced is not proof of
+a physical join; the source's existing tracked cleanup remains responsible for
+that path. This does not repair unrelated outer `CoreStream` close cancellation,
+settle historical unknown effects, or prove whole-process quiescence.
+
+The unchanged 64-stream session-close regression must continue to pass. Dedicated
+tests cover shared close, interrupted observers, aliases, admission/spawn/join
+failure, physical destruction order and sticky filesystem/SQL uncertainty.

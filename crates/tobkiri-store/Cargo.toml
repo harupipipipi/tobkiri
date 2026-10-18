@@ -5,6 +5,9 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[features]
+closed-request-metrics = ["tobkiri-gate/closed-request-metrics"]
+
 [dependencies]
 async-trait.workspace = true
 tobkiri-canon.workspace = true

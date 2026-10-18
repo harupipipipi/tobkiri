@@ -5,6 +5,9 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[features]
+closed-request-metrics = ["tobkiri-core/closed-request-metrics"]
+
 [[bin]]
 name = "tobkiri"
 path = "src/main.rs"

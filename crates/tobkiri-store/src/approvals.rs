@@ -491,14 +491,16 @@ fn persistence(error: impl std::fmt::Display) -> GateError {
     GateError::Persistence(error.to_string())
 }
 fn status(conn: &rusqlite::Connection) -> Result<AdmissionStatus, GateError> {
-    let code: Option<Vec<u8>> = conn
-        .query_row(
+    let code: Option<Vec<u8>> = tobkiri_gate::measure_closed!(
+        GuardFaultSelect,
+        conn.query_row(
             "SELECT code FROM authority_fault WHERE singleton=1",
             [],
             |r| r.get(0),
         )
         .optional()
-        .map_err(persistence)?;
+        .map_err(persistence)
+    )?;
     code.map_or(Ok(AdmissionStatus::Allowed), |bytes| {
         Ok(AdmissionStatus::IntegrityFault {
             code: decode(&bytes)
@@ -518,7 +520,10 @@ fn deny_faulted(conn: &rusqlite::Connection) -> Result<(), GateError> {
 impl ApprovalStore for Approvals {
     fn admission_status(&self, profile: &ProfileId) -> Result<AdmissionStatus, GateError> {
         self.local(profile)?;
-        let conn = self.connection.lock().map_err(persistence)?;
+        let conn = tobkiri_gate::measure_closed!(
+            ApprovalDbLockWait,
+            self.connection.lock().map_err(persistence)
+        )?;
         status(&conn)
     }
     fn latch_integrity(
@@ -536,13 +541,19 @@ impl ApprovalStore for Approvals {
     }
     fn security_epoch(&self, profile: &ProfileId) -> Result<u64, GateError> {
         self.local(profile)?;
-        let conn = self.connection.lock().map_err(persistence)?;
-        conn.query_row(
-            "SELECT epoch FROM security_epoch WHERE singleton=1",
-            [],
-            |r| crate::sql_u64(r, 0),
+        let conn = tobkiri_gate::measure_closed!(
+            ApprovalDbLockWait,
+            self.connection.lock().map_err(persistence)
+        )?;
+        tobkiri_gate::measure_closed!(
+            GuardEpochSelect,
+            conn.query_row(
+                "SELECT epoch FROM security_epoch WHERE singleton=1",
+                [],
+                |r| crate::sql_u64(r, 0),
+            )
+            .map_err(persistence)
         )
-        .map_err(persistence)
     }
     fn advance_security_epoch(&self, profile: &ProfileId) -> Result<u64, GateError> {
         self.local(profile)?;
@@ -573,15 +584,20 @@ impl ApprovalStore for Approvals {
         hash: &PackHash,
     ) -> Result<Option<PermissionSet>, GateError> {
         self.local(profile)?;
-        let conn = self.connection.lock().map_err(persistence)?;
-        let body: Option<Vec<u8>> = conn
-            .query_row(
+        let conn = tobkiri_gate::measure_closed!(
+            ApprovalDbLockWait,
+            self.connection.lock().map_err(persistence)
+        )?;
+        let body: Option<Vec<u8>> = tobkiri_gate::measure_closed!(
+            GuardPackPermissionsSelect,
+            conn.query_row(
                 "SELECT body FROM permissions WHERE pack=?1 AND hash=?2",
                 params![pack.as_str(), hash.as_str()],
                 |r| r.get(0),
             )
             .optional()
-            .map_err(persistence)?;
+            .map_err(persistence)
+        )?;
         body.map(|b| decode(&b).map_err(persistence)).transpose()
     }
     fn set_permissions(
@@ -606,8 +622,11 @@ impl ApprovalStore for Approvals {
         epoch: u64,
     ) -> Result<Option<PermissionSet>, GateError> {
         self.local(profile)?;
-        let conn = self.connection.lock().map_err(persistence)?;
-        let body: Option<Vec<u8>> = conn.query_row("SELECT body FROM user_approvals WHERE profile_hash=?1 AND revision=?2 AND epoch=?3", params![profile_hash.as_str(),revision.as_str(),i64::try_from(epoch).map_err(persistence)?], |r|r.get(0)).optional().map_err(persistence)?;
+        let conn = tobkiri_gate::measure_closed!(
+            ApprovalDbLockWait,
+            self.connection.lock().map_err(persistence)
+        )?;
+        let body: Option<Vec<u8>> = tobkiri_gate::measure_closed!(GuardUserPermissionsSelect, conn.query_row("SELECT body FROM user_approvals WHERE profile_hash=?1 AND revision=?2 AND epoch=?3", params![profile_hash.as_str(),revision.as_str(),i64::try_from(epoch).map_err(persistence)?], |r|r.get(0)).optional().map_err(persistence))?;
         body.map(|bytes| decode(&bytes).map_err(persistence))
             .transpose()
     }

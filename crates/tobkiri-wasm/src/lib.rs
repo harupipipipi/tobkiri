@@ -3,6 +3,7 @@
 mod abi;
 mod allocation;
 mod core_imports;
+mod core_source_close;
 mod dispatch;
 mod effect_values;
 mod effects;

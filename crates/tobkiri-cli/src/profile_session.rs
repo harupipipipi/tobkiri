@@ -85,6 +85,10 @@ trait RequestInput {
 trait Dispatcher {
     async fn invoke(&mut self, request: &Invocation) -> Result<()>;
     async fn close(&mut self) -> Result<(), CoreError>;
+    #[cfg(feature = "closed-request-metrics")]
+    fn take_observation(&mut self) -> Option<tobkiri_core::closed_metrics::Observation> {
+        None
+    }
 }
 
 struct NativeRequests<'a>(&'a TerminalHost);
@@ -110,13 +114,35 @@ impl RequestInput for NativeRequests<'_> {
     }
 }
 
-struct CoreDispatcher<'a>(&'a Session);
+struct CoreDispatcher<'a> {
+    session: &'a Session,
+    #[cfg(feature = "closed-request-metrics")]
+    observation: Option<tobkiri_core::closed_metrics::Observation>,
+}
 
 #[async_trait(?Send)]
 impl Dispatcher for CoreDispatcher<'_> {
     async fn invoke(&mut self, request: &Invocation) -> Result<()> {
+        #[cfg(feature = "closed-request-metrics")]
+        {
+            use tobkiri_core::closed_metrics::Metric;
+            let observation = self.session.new_request_observation()?;
+            let timer = observation.span(Metric::RequestWall);
+            self.observation = Some(observation.clone());
+            let result = super::user_invoke::invoke_observed(
+                self.session,
+                request.shape.clone(),
+                request.operation.clone(),
+                &request.args,
+                &observation,
+            )
+            .await;
+            timer.finish();
+            return result;
+        }
+        #[cfg(not(feature = "closed-request-metrics"))]
         super::user_invoke::invoke(
-            self.0,
+            self.session,
             request.shape.clone(),
             request.operation.clone(),
             &request.args,
@@ -125,14 +151,23 @@ impl Dispatcher for CoreDispatcher<'_> {
     }
 
     async fn close(&mut self) -> Result<(), CoreError> {
-        self.0.close().await
+        self.session.close().await
+    }
+
+    #[cfg(feature = "closed-request-metrics")]
+    fn take_observation(&mut self) -> Option<tobkiri_core::closed_metrics::Observation> {
+        self.observation.take()
     }
 }
 
 pub(super) async fn run(core: &Core, host: &TerminalHost, profile: &str) -> Result<()> {
     let session = core.start(&ProfileId::parse(profile)?).await?;
     let mut source = NativeRequests(host);
-    let mut dispatcher = CoreDispatcher(&session);
+    let mut dispatcher = CoreDispatcher {
+        session: &session,
+        #[cfg(feature = "closed-request-metrics")]
+        observation: None,
+    };
     let mut output = std::io::stdout();
     run_loop(&mut source, &mut dispatcher, &mut output).await
 }
@@ -205,7 +240,22 @@ async fn drive(
             request.id,
             outcome.is_ok()
         )
-        .and_then(|()| output.flush());
+        .and_then(|()| output.flush())
+        .and_then(|()| {
+            #[cfg(feature = "closed-request-metrics")]
+            if let Some(observation) = dispatcher.take_observation() {
+                // The bank prepays this fixed scratch and snapshot, retained
+                // through the real write. No payload/error is reserialized.
+                let snapshot = observation.snapshot();
+                let mut bytes = [0u8; tobkiri_core::closed_metrics::ENCODER_BYTES];
+                let mut encoded = std::io::Cursor::new(bytes.as_mut_slice());
+                snapshot.write_json(request.id, outcome.is_ok(), &mut encoded)?;
+                let size = encoded.position() as usize;
+                output.write_all(&bytes[..size])?;
+                output.flush()?;
+            }
+            Ok(())
+        });
         match (outcome, marker) {
             (Ok(()), Ok(())) => {}
             (Err(error), Ok(())) => return Err(error),
@@ -222,3 +272,7 @@ async fn drive(
 #[cfg(test)]
 #[path = "profile_session_tests.rs"]
 mod tests;
+
+#[cfg(all(test, feature = "closed-request-metrics"))]
+#[path = "profile_session_metrics_tests.rs"]
+mod metrics_tests;

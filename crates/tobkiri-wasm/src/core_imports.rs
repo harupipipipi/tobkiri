@@ -446,8 +446,32 @@ async fn release_stream_once(host: &PackHost, entry: &crate::HandleEntry) -> Res
         receipt.cleanup_started = true;
         let result = release_stream(host, entry).await;
         record_stream_cleanup(&mut receipt, &entry.owner, result);
+    } else if entry.source.is_some() {
+        // Observe the same actual Core source task after an abandoned waiter.
+        // No second source.close is entered, and late success cannot replace a
+        // recorded per-handle unknown or its immutable terminal proposal.
+        let observed = release_stream(host, entry).await;
+        retain_late_core_cleanup(&mut receipt, &entry.owner, observed);
     }
     stream_cleanup_result(&receipt, &entry.owner)
+}
+
+fn retain_late_core_cleanup(
+    receipt: &mut crate::handles::HandleCloseReceipt,
+    cx: &CallCx,
+    result: Result<()>,
+) {
+    if result.is_ok() || receipt.cleanup_done {
+        return;
+    }
+    if matches!(
+        receipt.cleanup_error,
+        None | Some(crate::handles::HandleCleanupError::CompletionUnknown)
+    ) {
+        let mut observed = crate::handles::HandleCloseReceipt::default();
+        record_stream_cleanup(&mut observed, cx, result);
+        receipt.cleanup_error = observed.cleanup_error;
+    }
 }
 
 fn record_stream_cleanup(
@@ -483,7 +507,12 @@ fn stream_cleanup_result(receipt: &crate::handles::HandleCloseReceipt, cx: &Call
     if receipt.cleanup_done {
         return Ok(());
     }
-    let error = match receipt.cleanup_error {
+    let error = handle_cleanup_error(receipt.cleanup_error);
+    Err(crate::filesystem::preserve_effect_error(cx, error))
+}
+
+fn handle_cleanup_error(error: Option<crate::handles::HandleCleanupError>) -> anyhow::Error {
+    match error {
         Some(crate::handles::HandleCleanupError::FilesystemCommitUnknown) => {
             crate::filesystem::FsError::CommitUnknown.into()
         }
@@ -515,8 +544,7 @@ fn stream_cleanup_result(receipt: &crate::handles::HandleCloseReceipt, cx: &Call
             anyhow::anyhow!("stream cleanup completion unknown")
         }
         None => anyhow::anyhow!("stream cleanup attempt was interrupted"),
-    };
-    Err(crate::filesystem::preserve_effect_error(cx, error))
+    }
 }
 
 pub(crate) async fn finish_stream_eof(
@@ -605,7 +633,7 @@ pub(crate) async fn pull_stream(
             let mut source = tokio::select! {
                 _=cx.cancel().cancelled()=>bail!("stream pull cancelled"),
                 _=tokio::time::sleep_until(cx.deadline().into())=>bail!("stream pull deadline elapsed"),
-                source=source.lock()=>source,
+                source=source.lock_open()=>source.map_err(anyhow::Error::new)?,
             };
             source.pull(max).await.map_err(anyhow::Error::new)?
         } else {
@@ -835,21 +863,16 @@ pub(crate) fn stream_error_after_cleanup(
 async fn release_stream(host: &PackHost, entry: &crate::HandleEntry) -> Result<()> {
     let result = async {
         if let Some(source) = &entry.source {
-            match tokio::time::timeout(std::time::Duration::from_secs(2), async {
-                source.lock().await.close().await
-            })
-            .await
-            {
-                Ok(result) => result.map_err(anyhow::Error::new)?,
-                Err(_) => {
-                    // A pull holds this mutex while awaiting the run. Revoke its
-                    // original request after the grace bound so cleanup cannot wait
-                    // indefinitely for its own producer.
-                    entry.owner.cancel().cancel();
-                    bail!("core stream cleanup exceeded its cancellation grace")
-                }
+            // The exact source owns one prepaid close task. Only observing its
+            // retained join has the two-second bound; timeout cannot drop the
+            // source.close future or start it again on a later cleanup attempt.
+            let observed = source.close().await;
+            if source.was_interrupted() {
+                // Preserve the original request cancellation policy. A pull may
+                // still hold the source mutex when this observer's grace expires.
+                entry.owner.cancel().cancel();
             }
-            return Ok(());
+            return observed.map_err(|error| handle_cleanup_error(Some(error)));
         }
         let (owner, _) = entry
             .owner
@@ -1834,6 +1857,87 @@ mod error_tests {
                 assert_eq!(facaded_no_replay_metadata(&error).unwrap().0, code);
                 assert!(!error.to_string().contains("private diagnostic"));
             }
+        }
+    }
+
+    #[test]
+    fn late_core_physical_join_never_changes_unknown_or_terminal_proposal() {
+        let cx = effect_context();
+        let proposal = Outcome::Failed {
+            code: "cleanup-unknown".into(),
+        };
+        let mut receipt = crate::handles::HandleCloseReceipt::default();
+        receipt.cleanup_started = true;
+        receipt.cleanup_error = Some(crate::handles::HandleCleanupError::CompletionUnknown);
+        receipt.outcome = Some(proposal.clone());
+        receipt.deadline_settlement = true;
+        receipt.delivered = true;
+        retain_late_core_cleanup(&mut receipt, &cx, Ok(()));
+        assert!(!receipt.cleanup_done);
+        assert_eq!(
+            receipt.cleanup_error,
+            Some(crate::handles::HandleCleanupError::CompletionUnknown)
+        );
+        assert_eq!(receipt.outcome, Some(proposal.clone()));
+        assert!(receipt.deadline_settlement && receipt.delivered);
+        assert!(stream_cleanup_result(&receipt, &cx).is_err());
+        retain_late_core_cleanup(
+            &mut receipt,
+            &cx,
+            Err(tobkiri_flow::StepError::new(
+                "storage-sql-commit-unknown",
+                "PRIVATE ignored message",
+            )
+            .into()),
+        );
+        assert_eq!(
+            receipt.cleanup_error,
+            Some(crate::handles::HandleCleanupError::FacadedStorageCommitUnknown)
+        );
+        assert_eq!(receipt.outcome, Some(proposal));
+        assert!(receipt.deadline_settlement && receipt.delivered);
+        let error = stream_cleanup_result(&receipt, &cx).unwrap_err();
+        assert!(storage_failure_metadata(&error).is_none());
+        assert_eq!(
+            facaded_no_replay_metadata(&error).unwrap().0,
+            "storage-sql-commit-unknown"
+        );
+        assert!(!error.to_string().contains("PRIVATE"));
+    }
+
+    #[test]
+    fn late_core_join_cannot_replace_native_or_facaded_no_replay() {
+        let cx = effect_context();
+        for original in [
+            anyhow::Error::new(crate::filesystem::FsError::CommitUnknown),
+            anyhow::Error::new(tobkiri_store::StoreError::CommitUnknown),
+            anyhow::Error::new(tobkiri_store::StoreError::PendingDataMove),
+            anyhow::Error::new(tobkiri_flow::StepError::new(
+                "filesystem-commit-unknown",
+                "private",
+            )),
+            anyhow::Error::new(tobkiri_flow::StepError::new(
+                "storage-sql-commit-unknown",
+                "private",
+            )),
+            anyhow::Error::new(tobkiri_flow::StepError::new(
+                "storage-pending-data-move",
+                "private",
+            )),
+        ] {
+            let mut receipt = crate::handles::HandleCloseReceipt::default();
+            receipt.cleanup_started = true;
+            record_stream_cleanup(&mut receipt, &cx, Err(original));
+            let original_kind = receipt.cleanup_error;
+            retain_late_core_cleanup(&mut receipt, &cx, Ok(()));
+            retain_late_core_cleanup(
+                &mut receipt,
+                &cx,
+                Err(anyhow::anyhow!("ordinary late error")),
+            );
+            assert_eq!(receipt.cleanup_error, original_kind);
+            assert!(!receipt.cleanup_done);
+            assert!(stream_cleanup_result(&receipt, &cx).is_err());
         }
     }
 

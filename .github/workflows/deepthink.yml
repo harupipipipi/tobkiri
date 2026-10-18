@@ -146,6 +146,19 @@ jobs:
           cargo test -p tobkiri-cli --bin tobkiri --locked || status=$?
           exit "$status"
 
+      - name: Retained stream close and optional numeric request metrics
+        if: ${{ !cancelled() }}
+        run: |
+          status=0
+          cargo test -p tobkiri-wasm --lib --locked || status=$?
+          cargo test -p tobkiri-core --lib --locked ui_handle_capacity_and_session_close_are_bounded || status=$?
+          cargo test -p tobkiri-gate --features closed-request-metrics --lib --locked closed_metrics || status=$?
+          cargo test -p tobkiri-store --features closed-request-metrics --locked --test closed_metrics -- --test-threads=1 || status=$?
+          cargo test -p tobkiri-wasm --features closed-request-metrics --lib --locked closed_metrics -- --test-threads=1 || status=$?
+          cargo test -p tobkiri-cli --features closed-request-metrics --bin tobkiri --locked profile_session:: || status=$?
+          cargo test -p tobkiri-core --features closed-request-metrics --lib --locked user_ports || status=$?
+          exit "$status"
+
   windows-storage:
     name: Native Windows storage and CLI input
     runs-on: windows-latest
@@ -179,6 +192,25 @@ jobs:
       - name: Native User port values and streams
         if: ${{ !cancelled() }}
         run: cargo test -p tobkiri-core --lib --locked user_ports
+      - name: Retained stream close and optional numeric request metrics
+        if: ${{ !cancelled() }}
+        run: |
+          $taskStatus = 0
+          cargo test -p tobkiri-wasm --lib --locked
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-core --lib --locked ui_handle_capacity_and_session_close_are_bounded
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-gate --features closed-request-metrics --lib --locked closed_metrics
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-store --features closed-request-metrics --locked --test closed_metrics -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-wasm --features closed-request-metrics --lib --locked closed_metrics -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-cli --features closed-request-metrics --bin tobkiri --locked profile_session::
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-core --features closed-request-metrics --lib --locked user_ports
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          exit $taskStatus
       - name: Typed stream failures and cleanup uncertainty
         if: ${{ !cancelled() }}
         run: |
