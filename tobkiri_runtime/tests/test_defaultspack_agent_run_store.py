@@ -178,7 +178,7 @@ def test_agent_run_store_redacts_tool_arguments_before_persisting(tmp_path, monk
     assert "[REDACTED]" in row["arguments_json"]
 
 
-def test_multi_agent_session_records_isolated_workspace_contracts(tmp_path, monkeypatch):
+def test_multi_agent_metadata_only_creates_no_writable_checkouts(tmp_path, monkeypatch):
     from domain.agent.multi import MultiAgentOrchestrator
     from domain.coding.workspace_store import WorkspaceStore
 
@@ -190,6 +190,10 @@ def test_multi_agent_session_records_isolated_workspace_contracts(tmp_path, monk
         orchestrator,
         "_ai_complete",
         lambda messages, model, tools: {"status": "ok", "data": {"content": "[DONE] ok"}},
+    )
+    allocation_root = tmp_path.parent / ".tobkiri-workspaces"
+    allocations_before = (
+        set(allocation_root.iterdir()) if allocation_root.is_dir() else set()
     )
 
     result = orchestrator.execute(
@@ -208,10 +212,18 @@ def test_multi_agent_session_records_isolated_workspace_contracts(tmp_path, monk
     reviewer_workspace = contexts["reviewer"]["workspace"]
 
     assert coder_workspace["contract_version"] == "rumi.agent_workspace.v1"
-    assert coder_workspace["mode"] == "isolated_workspace"
-    assert coder_workspace["workspace_root"] != reviewer_workspace["workspace_root"]
-    assert Path(coder_workspace["workspace_root"]).is_dir()
-    assert Path(reviewer_workspace["workspace_root"]).is_dir()
+    assert coder_workspace["mode"] == "metadata_only"
+    assert reviewer_workspace["mode"] == "metadata_only"
+    assert coder_workspace["workspace_root"] is None
+    assert reviewer_workspace["workspace_root"] is None
+    assert coder_workspace["write_scope"] == "none"
+    assert reviewer_workspace["write_scope"] == "none"
+    assert coder_workspace["worktree"]["path"] is None
+    assert reviewer_workspace["worktree"]["path"] is None
+    allocations_after = (
+        set(allocation_root.iterdir()) if allocation_root.is_dir() else set()
+    )
+    assert allocations_after == allocations_before
     assert result["result"]["shared_context"]["workspace"]["base_workspace_root"] == str(tmp_path.resolve())
     assert result["result"]["shared_context"]["workspace"]["workspace_id"] == "multi"
 
