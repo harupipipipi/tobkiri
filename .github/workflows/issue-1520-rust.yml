@@ -83,7 +83,9 @@ jobs:
         run: |
           test "$(uname -m)" = arm64
           test "$(uname -r)" = 24.6.0
-          diskutil info "$RUNNER_TEMP" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          device="$(df -P "$RUNNER_TEMP" | awk 'NR == 2 {print $1}')"
+          test -n "$device"
+          diskutil info "$device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
           echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@1.94.0
         with:
