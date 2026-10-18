@@ -65,9 +65,9 @@ jobs:
         run: python3 -B packs/build.py --skip-build --build-profile release --target-dir "$CARGO_TARGET_DIR"
       - name: Stage DeepThink and preset Profiles
         run: python3 -B packs/build_deepthink_profile.py --build-profile release --target-dir "$CARGO_TARGET_DIR"
-      - name: Staged UI usage, continuation and syntax
+      - name: Staged UI usage, restoration, continuation and syntax
         run: |
-          node --test packs/tests/test_ui_accounting.mjs packs/tests/test_ui_continuation.mjs
+          node --test packs/tests/test_ui_accounting.mjs packs/tests/test_ui_continuation.mjs packs/tests/test_ui_restore.mjs
           node --check packs/local.harness-ui/ui/app.js
           node --check packs/local.deepthink-ui/ui/app.js
       - name: Explicit Profile variant sources and authority

@@ -82,7 +82,7 @@ cargo test --manifest-path packs/Cargo.toml -p tobkiri-guest-sdk -p tobkiri-pack
 cargo build --manifest-path packs/Cargo.toml --workspace --locked --target wasm32-wasip2 --target-dir <target>
 python3 -B packs/build.py --skip-build --target-dir <target>
 python3 -B packs/build_deepthink_profile.py --target-dir <target>
-node --test packs/tests/test_ui_accounting.mjs
+node --test packs/tests/test_ui_accounting.mjs packs/tests/test_ui_continuation.mjs packs/tests/test_ui_restore.mjs
 ```
 
 The build uses Rust 1.94.0, `wasm32-wasip2`, and build-time Python with PyYAML.
