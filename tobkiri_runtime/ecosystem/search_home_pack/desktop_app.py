@@ -221,7 +221,7 @@ def _wait_until_ready(host: str, port: int, timeout: float = 10.0) -> bool:
     return False
 
 
-def _open_desktop_surface(url: str, title: str = "Rumi Search Home") -> str:
+def _open_desktop_surface(url: str, title: str = "Tobkiri Search Home") -> str:
     if os.environ.get("SEARCH_HOME_OPEN_BROWSER", "1") == "0":
         return "disabled"
 
@@ -319,22 +319,55 @@ def _make_handler(pack_root: Path):
                 )
                 return
             if path == "/api/route":
+                from ecosystem.search_home_pack.domain.attachment_contract import attachment_metadata, normalize_attachments
+
+                try:
+                    attachments = normalize_attachments(payload.get("attachments"))
+                except ValueError as exc:
+                    self._json_response(
+                        {"status": "error", "error": {"message": str(exc), "code": "INVALID_ATTACHMENT"}},
+                        status=HTTPStatus.BAD_REQUEST,
+                    )
+                    return
                 selected_model = str(payload.get("model") or payload.get(_SETTINGS_MODEL_KEY) or "").strip()
                 decision = resolver.resolve(
                     str(payload.get("input") or ""),
-                    context={"source": "search_home.route", _SETTINGS_MODEL_KEY: selected_model},
+                    context={
+                        "source": "search_home.route",
+                        _SETTINGS_MODEL_KEY: selected_model,
+                        "attachments": attachment_metadata(attachments),
+                    },
                 )
                 persist_route_state(decision.to_dict(), root=pack_root / "user_data" / "shared" / "search_home")
                 self._json_response(decision.to_dict())
                 return
             if path == "/api/answer":
+                from ecosystem.search_home_pack.domain.attachment_contract import normalize_attachments
+
+                try:
+                    attachments = normalize_attachments(payload.get("attachments"))
+                except ValueError as exc:
+                    self._json_response(
+                        {"status": "error", "error": {"message": str(exc), "code": "INVALID_ATTACHMENT"}},
+                        status=HTTPStatus.BAD_REQUEST,
+                    )
+                    return
                 answer = bridge.answer_query(
                     str(payload.get("input") or payload.get("query") or ""),
                     model_ref_override=str(payload.get("model") or payload.get(_SETTINGS_MODEL_KEY) or "").strip(),
                     use_search=bool(payload.get("use_search", True)),
+                    attachments=attachments,
                     context={"source": "search_home.answer"},
                 )
-                status = HTTPStatus.OK if answer.get("status") == "ok" else HTTPStatus.BAD_GATEWAY
+                error = answer.get("error") if isinstance(answer.get("error"), dict) else {}
+                client_error_codes = {"INVALID_INPUT", "INVALID_ATTACHMENT", "ATTACHMENT_MODEL_UNSUPPORTED"}
+                status = (
+                    HTTPStatus.OK
+                    if answer.get("status") == "ok"
+                    else HTTPStatus.BAD_REQUEST
+                    if str(error.get("code") or "") in client_error_codes
+                    else HTTPStatus.BAD_GATEWAY
+                )
                 self._json_response(answer, status=status)
                 return
             if path == "/api/settings/model":
@@ -358,7 +391,11 @@ def _make_handler(pack_root: Path):
             )
 
         def _read_json(self) -> dict[str, Any]:
+            from ecosystem.search_home_pack.domain.attachment_contract import MAX_REQUEST_BYTES
+
             length = int(self.headers.get("Content-Length", "0") or "0")
+            if length > MAX_REQUEST_BYTES:
+                raise ValueError("request body exceeds the 7 MB Search Home limit")
             raw = self.rfile.read(length) if length > 0 else b"{}"
             try:
                 payload = json.loads(raw.decode("utf-8"))
@@ -448,7 +485,7 @@ def main() -> int:
     if not _wait_until_ready(host, port, timeout=10.0):
         raise RuntimeError("Search Home server did not become ready in time")
 
-    surface_result = _open_desktop_surface(url, title="Rumi Search Home")
+    surface_result = _open_desktop_surface(url, title="Tobkiri Search Home")
     if surface_result == "webview":
         if server is not None:
             server.stop()

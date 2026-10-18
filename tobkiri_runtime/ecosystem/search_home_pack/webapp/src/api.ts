@@ -1,5 +1,5 @@
 import type { RouteDecision, RouteSessionState } from "./routerTypes";
-
+import type { SearchHomeAttachment } from "./attachments";
 export const MODEL_SETTINGS_KEY = "preferred" + "_model";
 export const SEARCH_HOME_CONTRACT_ENDPOINT = "/api/contracts/search_home_pack/";
 
@@ -82,6 +82,37 @@ export type SearchAnswerResponse = {
   };
 };
 
+type SearchHomeRequestErrorCode =
+  | "ATTACHMENT_MODEL_UNSUPPORTED"
+  | "INVALID_ATTACHMENT"
+  | "INVALID_INPUT";
+
+const REQUEST_ERROR_MESSAGES: Record<SearchHomeRequestErrorCode, string> = {
+  ATTACHMENT_MODEL_UNSUPPORTED:
+    "The selected model does not advertise image input. Choose a vision-capable model or remove the image.",
+  INVALID_ATTACHMENT:
+    "The server rejected the attachment. Remove it or choose a supported file and retry.",
+  INVALID_INPUT:
+    "Search Home rejected the request. Review the query and attachment, then retry.",
+};
+
+export class SearchHomeRequestError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super("Search Home request failed");
+    this.name = "SearchHomeRequestError";
+    this.code = code;
+  }
+}
+
+export function searchHomeRequestMessage(error: unknown, fallback: string): string {
+  if (error instanceof SearchHomeRequestError && error.code in REQUEST_ERROR_MESSAGES) {
+    return REQUEST_ERROR_MESSAGES[error.code as SearchHomeRequestErrorCode];
+  }
+  return fallback;
+}
+
 async function requestJson<T>(route: SearchHomeContractRoute, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? "GET").toUpperCase();
   const response = await fetch(searchHomeContractUrl(route, method), {
@@ -93,31 +124,40 @@ async function requestJson<T>(route: SearchHomeContractRoute, init?: RequestInit
     ...init,
   });
   if (!response.ok) {
-    let message = `Request failed (${response.status})`;
+    let errorCode = "";
     try {
-      const payload = (await response.json()) as { error?: { message?: string } };
-      if (payload?.error?.message) {
-        message = payload.error.message;
-      }
+      const payload = (await response.json()) as { error?: { code?: string } };
+      errorCode = String(payload?.error?.code ?? "");
     } catch {
-      // Ignore malformed error payloads and surface the HTTP status instead.
+      console.warn("Search Home returned a malformed error response");
     }
-    throw new Error(message);
+    if (errorCode) {
+      throw new SearchHomeRequestError(errorCode);
+    }
+    throw new Error(`Request failed (${response.status})`);
   }
   return (await response.json()) as T;
 }
 
-export async function routeInput(input: string, model = ""): Promise<RouteDecision> {
+export async function routeInput(
+  input: string,
+  model = "",
+  attachments: SearchHomeAttachment[] = [],
+): Promise<RouteDecision> {
   return requestJson<RouteDecision>(searchHomeContractRoute("api/route"), {
     method: "POST",
-    body: JSON.stringify({ input, model }),
+    body: JSON.stringify({ input, model, attachments }),
   });
 }
 
-export async function answerInput(input: string, model = ""): Promise<SearchAnswerResponse> {
+export async function answerInput(
+  input: string,
+  model = "",
+  attachments: SearchHomeAttachment[] = [],
+): Promise<SearchAnswerResponse> {
   return requestJson<SearchAnswerResponse>(searchHomeContractRoute("api/answer"), {
     method: "POST",
-    body: JSON.stringify({ input, model, use_search: true }),
+    body: JSON.stringify({ input, model, use_search: true, attachments }),
   });
 }
 

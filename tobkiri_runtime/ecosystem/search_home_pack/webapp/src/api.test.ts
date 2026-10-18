@@ -8,10 +8,21 @@ import {
   loadModels,
   loadRouteState,
   routeInput,
+  SearchHomeRequestError,
+  searchHomeRequestMessage,
   searchHomeContractRoute,
   searchHomeContractUrl,
   setPreferredModel,
 } from "./api";
+import type { SearchHomeAttachment } from "./attachments";
+
+const attachment: SearchHomeAttachment = {
+  id: "a1",
+  name: "notes.txt",
+  size: 5,
+  type: "text/plain",
+  content: "alpha",
+};
 
 function routeKey(path: string): string {
   return `/${path}`;
@@ -27,9 +38,19 @@ function requestTarget(input: RequestInfo | URL): string {
 
 test("search home API map emits only canonical Host contract URLs", async () => {
   const originalFetch = globalThis.fetch;
-  const requests: Array<{ target: string; method: string }> = [];
+  const requests: Array<{
+    target: string;
+    method: string;
+    body?: Record<string, unknown>;
+  }> = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requests.push({ target: requestTarget(input), method: String(init?.method ?? "GET") });
+    requests.push({
+      target: requestTarget(input),
+      method: String(init?.method ?? "GET"),
+      body: init?.body
+        ? JSON.parse(String(init.body)) as Record<string, unknown>
+        : undefined,
+    });
     return new Response(JSON.stringify({ status: "ok", data: { models: [] } }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -37,8 +58,8 @@ test("search home API map emits only canonical Host contract URLs", async () => 
   }) as typeof fetch;
 
   try {
-    await routeInput("hello", "demo/model");
-    await answerInput("hello", "demo/model");
+    await routeInput("hello", "demo/model", [attachment]);
+    await answerInput("hello", "demo/model", [attachment]);
     await loadModels();
     await loadModelSettings();
     await setPreferredModel("demo/model");
@@ -63,6 +84,9 @@ test("search home API map emits only canonical Host contract URLs", async () => 
     "POST",
     "GET",
   ]);
+  assert.deepEqual(requests[0].body?.attachments, [attachment]);
+  assert.deepEqual(requests[1].body?.attachments, [attachment]);
+  assert.equal(requests[1].body?.use_search, true);
 });
 
 test("search home route helper rejects recursion and traversal", () => {
@@ -72,4 +96,18 @@ test("search home route helper rejects recursion and traversal", () => {
   const route = searchHomeContractRoute("api/answer");
   assert.match(searchHomeContractUrl(route, "POST"), /^\/api\/contracts\/search_home_pack\//);
   assert.match(searchHomeContractUrl(route, "POST"), /POST%20%2Fapi%2Fanswer/);
+});
+
+test("request failures expose only fixed user-facing copy", () => {
+  assert.equal(
+    searchHomeRequestMessage(
+      new SearchHomeRequestError("ATTACHMENT_MODEL_UNSUPPORTED"),
+      "fallback",
+    ),
+    "The selected model does not advertise image input. Choose a vision-capable model or remove the image.",
+  );
+  assert.equal(
+    searchHomeRequestMessage(new Error("secret provider traceback"), "Safe fallback"),
+    "Safe fallback",
+  );
 });
