@@ -1,0 +1,75 @@
+name: Windows Core host contracts
+
+on:
+  pull_request:
+    branches: [soon]
+    paths:
+      - '.github/workflows/core-host-windows.yml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'crates/**'
+      - 'vendor/**'
+      - 'wit/**'
+      - 'tobkiri_launcher/core-host/**'
+      - 'tobkiri_launcher/src-tauri/**'
+      - 'tobkiri_launcher/frontend/**'
+  push:
+    branches: [soon]
+    paths:
+      - '.github/workflows/core-host-windows.yml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'crates/**'
+      - 'vendor/**'
+      - 'wit/**'
+      - 'tobkiri_launcher/core-host/**'
+      - 'tobkiri_launcher/src-tauri/**'
+      - 'tobkiri_launcher/frontend/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-host-windows:
+    name: Windows Core host build and unit contracts
+    runs-on: windows-latest
+    # A cold runner builds two locked Cargo graphs, including Wasmtime/Tauri.
+    # This is CI build time, not a change to Core or approval deadlines.
+    timeout-minutes: 90
+    env:
+      RUSTUP_TOOLCHAIN: '1.94.0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      CARGO_PROFILE_DEV_OPT_LEVEL: '1'
+      CARGO_PROFILE_TEST_OPT_LEVEL: '1'
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-target-core-host-windows
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+      - name: Install locked frontend dependencies
+        working-directory: tobkiri_launcher/frontend
+        run: npm ci
+      - name: Build the isolated Core host frontend
+        working-directory: tobkiri_launcher/frontend
+        run: npm run build:core-host
+      # Real Core fixture DATA is created as a protected child of TempDir.
+      # No user DATA, model, credentials or native GUI is opened by this job.
+      - name: Core host fixture unit contracts
+        run: cargo test -p tobkiri-launcher-core-host --lib --locked
+      - name: Windows native renderer and startup unit contracts
+        run: cargo test --manifest-path tobkiri_launcher/src-tauri/Cargo.toml --features core-host --lib --locked
+      - name: Build the Windows Core host
+        run: cargo build --manifest-path tobkiri_launcher/src-tauri/Cargo.toml --features core-host --locked
+      # Compilation/unit success does not certify actual GUI review, WebView
+      # frame isolation, all hosts, defaults migration or paid model behavior.

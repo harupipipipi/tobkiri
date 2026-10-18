@@ -912,8 +912,32 @@ impl LauncherCore {
         host: Arc<dyn HostIo>,
         tickets: TransportTickets,
     ) -> Result<Self, HostError> {
+        Self::open_with_config(host, tickets, CoreConfig::default())
+    }
+
+    /// Open an explicitly selected native test root without changing Core policy.
+    ///
+    /// Only trusted process startup may select this debug-only route. It is not
+    /// a renderer command and cannot change the root of an already open Core.
+    #[cfg(debug_assertions)]
+    pub fn open_for_test_data_root_with_tickets(
+        host: Arc<dyn HostIo>,
+        tickets: TransportTickets,
+        root: std::path::PathBuf,
+    ) -> Result<Self, HostError> {
+        if !root.is_absolute() {
+            return Err(HostError::Invalid);
+        }
+        Self::open_with_config(host, tickets, CoreConfig::for_test_data_root(root))
+    }
+
+    fn open_with_config(
+        host: Arc<dyn HostIo>,
+        tickets: TransportTickets,
+        config: CoreConfig,
+    ) -> Result<Self, HostError> {
         Ok(Self::from_core_with_tickets(
-            Core::open(CoreConfig::default(), host).map_err(|_| HostError::Core)?,
+            Core::open(config, host).map_err(|_| HostError::Core)?,
             tickets,
         ))
     }
@@ -1563,8 +1587,10 @@ mod tests {
 
     async fn launcher_fixture() -> (LauncherCore, ProfileId, tempfile::TempDir) {
         let directory = tempfile::tempdir().unwrap();
+        // Core creates and protects DATA itself; the existing TempDir is only
+        // its parent, whose inherited Windows DACL is not a valid DATA root.
         let core = Core::open(
-            CoreConfig::for_test_data_root(directory.path().canonicalize().unwrap()),
+            CoreConfig::for_test_data_root(directory.path().join("data")),
             Arc::new(ClosedHost),
         )
         .unwrap();
@@ -1586,6 +1612,62 @@ mod tests {
         let id = profile.id.clone();
         core.save_profile(profile, None).await.unwrap();
         (LauncherCore::from_core(core), id, directory)
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn test_data_root_open_rejects_relative_path_before_core_open() {
+        assert!(matches!(
+            LauncherCore::open_for_test_data_root_with_tickets(
+                Arc::new(ClosedHost),
+                TransportTickets::default(),
+                std::path::PathBuf::from("relative-native-test-root"),
+            ),
+            Err(HostError::Invalid)
+        ));
+    }
+
+    #[cfg(debug_assertions)]
+    #[tokio::test]
+    async fn test_data_root_open_starts_profile_from_exact_selected_root() {
+        let (original, profile, directory) = launcher_fixture().await;
+        drop(original);
+        let launcher = LauncherCore::open_for_test_data_root_with_tickets(
+            Arc::new(ClosedHost),
+            TransportTickets::new().unwrap(),
+            directory.path().join("data"),
+        )
+        .unwrap();
+        let frames = launcher.start(caller(), profile.as_str()).await.unwrap();
+        assert!(frames.is_empty());
+        assert!(launcher.current_generation().is_some());
+        launcher.stop(caller()).await.unwrap();
+        assert!(launcher.current_generation().is_none());
+    }
+
+    #[tokio::test]
+    async fn initial_navigation_without_a_session_allows_later_start_and_stop() {
+        let (launcher, profile, _directory) = launcher_fixture().await;
+        assert!(launcher.current_generation().is_none());
+        launcher.retire_active_generation().unwrap();
+        assert!(launcher.current_generation().is_none());
+        {
+            let state = launcher.operations.state.lock().unwrap();
+            assert!(state.sessions.active.is_none());
+            assert!(state.sessions.retiring.is_none());
+        }
+        assert_eq!(launcher.tickets.snapshot().unwrap(), (0, 0));
+
+        let frames = launcher.start(caller(), profile.as_str()).await.unwrap();
+        assert!(frames.is_empty());
+        assert!(launcher.current_generation().is_some());
+        launcher.stop(caller()).await.unwrap();
+        assert!(launcher.current_generation().is_none());
+        let state = launcher.operations.state.lock().unwrap();
+        assert!(state.sessions.active.is_none());
+        assert!(state.sessions.retiring.is_none());
+        drop(state);
+        assert_eq!(launcher.tickets.snapshot().unwrap(), (0, 0));
     }
 
     fn operation_key(
@@ -1688,7 +1770,7 @@ mod tests {
     async fn missing_exact_session_retires_all_registered_dispatch_kinds() {
         let directory = tempfile::tempdir().unwrap();
         let core = Core::open(
-            CoreConfig::for_test_data_root(directory.path().canonicalize().unwrap()),
+            CoreConfig::for_test_data_root(directory.path().join("data")),
             Arc::new(ClosedHost),
         )
         .unwrap();
@@ -1967,7 +2049,7 @@ mod tests {
     async fn actual_core_adapter_has_no_ambient_ui_session_or_origin_fallback() {
         let root = tempfile::tempdir().unwrap();
         let core = Core::open(
-            CoreConfig::for_test_data_root(root.path().canonicalize().unwrap()),
+            CoreConfig::for_test_data_root(root.path().join("data")),
             Arc::new(ClosedHost),
         )
         .unwrap();

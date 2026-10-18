@@ -5610,6 +5610,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-single-instance",
+ "tempfile",
  "tobkiri-launcher-core-host",
  "tokio",
  "ulid",
@@ -5678,6 +5679,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tobkiri-canon",
  "tobkiri-gate",
+ "windows-sys 0.61.2",
  "zeroize",
 ]
 

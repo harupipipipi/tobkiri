@@ -78,8 +78,12 @@ impl PackAssetRequest {
         if uri.len() > 16_384 {
             return Err(HostError::AssetPath);
         }
+        // WebView2's mapped http(s) origin is reverted by Wry before the
+        // protocol handler runs: /HASH/path becomes scheme://localhost/HASH/path.
+        // Strip only that exact authority; keep the raw path and hash checks.
         let tail = uri
-            .strip_prefix("tobkiri-pack://")
+            .strip_prefix("tobkiri-pack://localhost/")
+            .or_else(|| uri.strip_prefix("tobkiri-pack://"))
             .or_else(|| uri.strip_prefix("http://tobkiri-pack.localhost/"))
             .or_else(|| uri.strip_prefix("https://tobkiri-pack.localhost/"))
             .ok_or(HostError::AssetPath)?;
@@ -249,5 +253,29 @@ mod tests {
             PackAssetRequest::parse(&format!("tobkiri-pack://{hash}/ui/%252e%252e.js")).unwrap();
         assert_eq!(literal.path.as_str(), "ui/%2e%2e.js");
         assert!(PackAssetRequest::parse(&format!("tobkiri-pack://{hash}/ui/a%2fb.js")).is_err());
+    }
+
+    #[test]
+    fn webview2_reverted_pack_urls_preserve_exact_verified_map_keys() {
+        let hash = "a".repeat(64);
+        let request = PackAssetRequest::parse(&format!(
+            "tobkiri-pack://localhost/{hash}/ui/%E6%97%A5%E6%9C%AC%20name.js"
+        ))
+        .unwrap();
+        assert_eq!(request.hash_hex, hash);
+        assert_eq!(request.path.as_str(), "ui/日本 name.js");
+        for uri in [
+            format!("tobkiri-pack://localhost.evil/{hash}/ui/index.html"),
+            format!("tobkiri-pack://user@localhost/{hash}/ui/index.html"),
+            format!("tobkiri-pack://localhost:80/{hash}/ui/index.html"),
+            format!("tobkiri-pack://localhost/{hash}/ui/%2e%2e/pack.json"),
+            format!("tobkiri-pack://localhost/{hash}/ui/a%2fb.js"),
+            format!("tobkiri-pack://localhost/{hash}/ui/index.html?query"),
+            format!("tobkiri-pack://localhost/{hash}/ui/index.html#fragment"),
+            format!("tobkiri-pack://localhost/{hash}/ui//index.html"),
+            "tobkiri-pack://localhost/not-a-hash/ui/index.html".into(),
+        ] {
+            assert!(PackAssetRequest::parse(&uri).is_err(), "{uri}");
+        }
     }
 }

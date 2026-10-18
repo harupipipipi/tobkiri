@@ -6,22 +6,22 @@ use std::{
     collections::BTreeMap,
     path::PathBuf,
     sync::{
-        Arc, Mutex,
         atomic::{AtomicBool, AtomicU8, Ordering},
+        Arc, Mutex,
     },
     time::Duration,
 };
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 use tobkiri_launcher_core_host::{
-    HostCaller, HostError, LauncherCore, PACK_UI_CSP, ShutdownCompletion, ShutdownObservation,
-    TRUSTED_HOST_RECEIVER, TransportTickets, UiFrame, UiOperationRegistration, UiTransportResponse,
-    UiTransportTicket, copy_final_host_payload,
+    copy_final_host_payload,
     core::{
-        AllocationBudget, ApprovalAnswer, ApprovalPrompt, CanonValue, CoreBuffer, HostIo,
-        TrustedPrompt, UiEmbed, ids::UiSessionId,
+        ids::UiSessionId, AllocationBudget, ApprovalAnswer, ApprovalPrompt, CanonValue, CoreBuffer,
+        HostIo, TrustedPrompt, UiEmbed,
     },
     observe_shutdown, preserve_primary_close, restore_primary, startup_ui_embedding,
-    trusted_host_origin, trusted_review,
+    trusted_host_origin, trusted_review, HostCaller, HostError, LauncherCore, ShutdownCompletion,
+    ShutdownObservation, TransportTickets, UiFrame, UiOperationRegistration, UiTransportResponse,
+    UiTransportTicket, PACK_UI_CSP, TRUSTED_HOST_RECEIVER,
 };
 
 #[derive(Clone, Serialize)]
@@ -79,7 +79,6 @@ struct NativeHost {
     startup_warning_sent: AtomicBool,
     output_generation: std::sync::RwLock<Option<u64>>,
     generation_transition: tokio::sync::Mutex<()>,
-    host_page_loaded: AtomicBool,
     tickets: TransportTickets,
 }
 
@@ -149,7 +148,7 @@ impl NativeHost {
             .emit_to(
                 "core-host",
                 "tobkiri-core-output",
-                HostOutputEvent {
+                &HostOutputEvent {
                     namespace: self.tickets.namespace(),
                     generation,
                     receiver: TRUSTED_HOST_RECEIVER,
@@ -283,8 +282,13 @@ impl Drop for TerminalLease<'_> {
 #[async_trait]
 impl TrustedPrompt for NativeHost {
     async fn prompt_approval(&self, prompt: ApprovalPrompt) -> ApprovalAnswer {
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", windows))]
         {
+            #[cfg(target_os = "macos")]
+            use crate::native_plan_review as native_review;
+            #[cfg(windows)]
+            use crate::native_plan_review_windows as native_review;
+
             let Some(window) = self.app.get_webview_window("core-host") else {
                 return ApprovalAnswer::Unavailable;
             };
@@ -294,7 +298,7 @@ impl TrustedPrompt for NativeHost {
             let cancelled = Arc::new(AtomicBool::new(false));
             let _lease = NativeCancellation(cancelled.clone());
             return match tauri::async_runtime::spawn_blocking(move || {
-                crate::native_plan_review::show_detail_cancellable_with_warning(
+                native_review::show_detail_cancellable_with_warning(
                     &window,
                     review.title,
                     review.explanation,
@@ -311,7 +315,7 @@ impl TrustedPrompt for NativeHost {
                 _ => ApprovalAnswer::Unavailable,
             };
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", windows)))]
         {
             let _ = prompt;
             // A complete, scrollable native review renderer is a prerequisite;
@@ -761,13 +765,49 @@ fn show_primary(app: &AppHandle) -> Result<(), String> {
 }
 
 pub(crate) fn run() {
+    let startup = match crate::native_startup::parse(std::env::args_os().skip(1)) {
+        Ok(startup) => startup,
+        Err(error) => {
+            eprintln!("Cannot start Tobkiri Core host: {error}");
+            std::process::exit(2);
+        }
+    };
+    let test_webview_data_directory = match startup.test_webview_data_directory() {
+        Ok(path) => path,
+        Err(error) => {
+            eprintln!("Cannot start Tobkiri Core host: {error}");
+            std::process::exit(2);
+        }
+    };
+    let mut context = tauri::generate_context!("tauri.core-host.conf.json");
+    let test_window_config = if test_webview_data_directory.is_some() {
+        let window = context
+            .config_mut()
+            .app
+            .windows
+            .iter_mut()
+            .find(|window| window.label == "core-host")
+            .expect("fixed Core host window configuration");
+        // Automatic windows are created before setup. Delay this one until its
+        // absolute test cache can be installed through the native builder.
+        window.create = false;
+        Some(window.clone())
+    } else {
+        None
+    };
     let builder = tauri::Builder::default();
     #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
-    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-        if let Err(error) = show_primary(app) {
-            log::warn!("Cannot restore Core host window: {error}");
-        }
-    }));
+    let builder = if startup.test_data_root.is_some() {
+        // The explicit debug/test root must never reopen an existing process
+        // with a different root. Normal production startup keeps its one owner.
+        builder
+    } else {
+        builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Err(error) = show_primary(app) {
+                log::warn!("Cannot restore Core host window: {error}");
+            }
+        }))
+    };
     let app = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(
@@ -791,20 +831,20 @@ pub(crate) fn run() {
                     if main_url.as_str() != payload.url().as_str() {
                         return;
                     }
-                    let Some(host) = webview.app_handle().try_state::<Arc<NativeHost>>() else {
-                        return;
-                    };
-                    let already_loaded = host.host_page_loaded.swap(true, Ordering::AcqRel);
-                    if !already_loaded {
-                        return;
-                    }
+                    // The first load may precede managed state or its native
+                    // callback may be absent. Every observed main Started must
+                    // retire even a start that has not published a generation.
                     if let Some(core) = webview.app_handle().try_state::<Arc<LauncherCore>>() {
                         if let Err(error) = core.retire_active_generation() {
                             log::warn!("Cannot retire Core UI after host page navigation: {error}");
                         }
                     }
-                    if let Err(error) = host.retire_output_generation() {
-                        log::warn!("Cannot retire Core output after host page navigation: {error}");
+                    if let Some(host) = webview.app_handle().try_state::<Arc<NativeHost>>() {
+                        if let Err(error) = host.retire_output_generation() {
+                            log::warn!(
+                                "Cannot retire Core output after host page navigation: {error}"
+                            );
+                        }
                     }
                 })
                 .build(),
@@ -844,7 +884,7 @@ pub(crate) fn run() {
                 responder.respond(response);
             });
         })
-        .setup(|app| {
+        .setup(move |app| {
             let tickets = TransportTickets::new()?;
             let host = Arc::new(NativeHost {
                 app: app.handle().clone(),
@@ -852,12 +892,27 @@ pub(crate) fn run() {
                 startup_warning_sent: AtomicBool::new(false),
                 output_generation: std::sync::RwLock::new(None),
                 generation_transition: tokio::sync::Mutex::new(()),
-                host_page_loaded: AtomicBool::new(false),
                 tickets: tickets.clone(),
             });
-            let core = Arc::new(LauncherCore::open_with_tickets(host.clone(), tickets)?);
+            #[cfg(debug_assertions)]
+            let core = match startup.test_data_root {
+                Some(path) => {
+                    LauncherCore::open_for_test_data_root_with_tickets(host.clone(), tickets, path)?
+                }
+                None => LauncherCore::open_with_tickets(host.clone(), tickets)?,
+            };
+            #[cfg(not(debug_assertions))]
+            let core = LauncherCore::open_with_tickets(host.clone(), tickets)?;
+            let core = Arc::new(core);
             app.manage(host);
             app.manage(core);
+            if let (Some(config), Some(directory)) =
+                (test_window_config, test_webview_data_directory)
+            {
+                tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
+                    .data_directory(directory)
+                    .build()?;
+            }
             setup_tray(app)?;
             Ok(())
         })
@@ -898,7 +953,7 @@ pub(crate) fn run() {
             pack_ui_stream_cancel,
             core_terminal_reply
         ])
-        .build(tauri::generate_context!("tauri.core-host.conf.json"))
+        .build(context)
         .expect("failed to create generic Core host");
     let shutdown = Arc::new(AtomicU8::new(0));
     app.run(move |app, event| {

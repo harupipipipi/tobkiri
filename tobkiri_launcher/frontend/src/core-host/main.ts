@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import './host.css';
 import { listen } from '@tauri-apps/api/event';
 import { appendBoundedHistory, HOST_MAX_BODY_BYTES, HOST_MAX_INFLIGHT, HostOutputWatermark, UiTransportQueue, utf8ByteLength } from './boundedTransport';
 import { mountPackUi, type IsolatedFrame, type UiAttachment, type UiRequest } from './isolatedPackUi';
