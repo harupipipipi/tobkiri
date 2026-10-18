@@ -9,9 +9,112 @@ use tobkiri::core::{
 };
 struct Pack;
 
+// This is a different boundary from a successfully completed phase. Zero new
+// phases are allowed here, but an answer, unsettled attempt or mixed boundary is
+// never appended as a conversation turn.
+fn awaiting_retry_turn(conversation: &str, events: &[ChatEvent]) -> Result<bool, Error> {
+    if !events.iter().any(|event| event.kind == "awaiting_retry") {
+        return Ok(false);
+    }
+    let invalid = || Error {
+        code: ErrorCode::Invalid,
+        message: "incomplete or conflicting contract retry cannot be saved as a turn".into(),
+    };
+    if events
+        .iter()
+        .filter(|event| event.kind == "awaiting_retry")
+        .count()
+        != 1
+        || events
+            .last()
+            .is_none_or(|event| event.kind != "awaiting_retry")
+        || events
+            .iter()
+            .any(|event| !matches!(event.kind.as_str(), "progress" | "usage" | "awaiting_retry"))
+    {
+        return Err(invalid());
+    }
+    let receipt: serde_json::Value = serde_json::from_str(
+        events
+            .last()
+            .and_then(|event| event.text.as_deref())
+            .ok_or_else(invalid)?,
+    )
+    .map_err(|_| invalid())?;
+    let keys = [
+        "version",
+        "retry_boundary_version",
+        "run_id",
+        "conversation",
+        "status",
+        "approved",
+        "phase",
+        "next_phase",
+        "completed_phases",
+        "completed_phases_this_segment",
+        "reason",
+        "rejected_attempt",
+        "rejected_generation",
+        "prepared_generation",
+        "retry",
+        "maximum_retries",
+        "usage",
+    ];
+    let rejected = receipt["rejected_generation"]
+        .as_str()
+        .ok_or_else(invalid)?;
+    let (base, epoch) = rejected.rsplit_once('#').ok_or_else(invalid)?;
+    let number = epoch.parse::<u32>().map_err(|_| invalid())?;
+    let next = number.checked_add(1).ok_or_else(invalid)?;
+    let phase = receipt["phase"]
+        .as_str()
+        .filter(|phase| !phase.trim().is_empty())
+        .ok_or_else(invalid)?;
+    let attempt = receipt["rejected_attempt"].as_str().ok_or_else(invalid)?;
+    let ordinal = attempt
+        .strip_prefix(&format!("{rejected}:"))
+        .ok_or_else(invalid)?;
+    let ordinal_number = ordinal.parse::<u64>().map_err(|_| invalid())?;
+    let retry = receipt["retry"].as_u64().ok_or_else(invalid)?;
+    let maximum = receipt["maximum_retries"].as_u64().ok_or_else(invalid)?;
+    if receipt.as_object().is_none_or(|fields| {
+        fields.len() != keys.len() || fields.keys().any(|key| !keys.contains(&key.as_str()))
+    }) || receipt["version"] != "deepthink.workflow.v5"
+        || receipt["retry_boundary_version"] != "deepthink.contract-retry-boundary.v1"
+        || receipt["status"] != "awaiting_retry"
+        || receipt["approved"] != false
+        || receipt["reason"] != "invalid_phase_contract"
+        || receipt["conversation"] != conversation
+        || receipt["run_id"].as_str().is_none_or(|id| {
+            id.len() != 64
+                || !id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        })
+        || receipt["next_phase"] != phase
+        || receipt["completed_phases"].as_u64().is_none()
+        || receipt["completed_phases_this_segment"] != 0
+        || !base.starts_with(&format!("{phase}@"))
+        || number.to_string() != epoch
+        || ordinal_number.to_string() != ordinal
+        || receipt["prepared_generation"] != format!("{base}#{next}")
+        || retry == 0
+        || retry > maximum
+        || maximum > 3
+        || !receipt["usage"].is_object()
+        || receipt["usage"]["pending_attempts"] != 0
+    {
+        return Err(invalid());
+    }
+    Ok(true)
+}
+
 // Flow's stream.collect passes chat-event values, not enclosing Flow frames.
 // A suspended segment has no assistant answer and must not append an empty turn.
 fn completed_turn(conversation: &str, events: &[ChatEvent]) -> Result<Option<String>, Error> {
+    if awaiting_retry_turn(conversation, events)? {
+        return Ok(None);
+    }
     let invalid = || Error {
         code: ErrorCode::Invalid,
         message: "incomplete or conflicting stream cannot be saved as a turn".into(),
@@ -246,6 +349,81 @@ mod tests {
         extra["output"] = json!("not approved");
         assert!(completed_turn("fixture", &paused(&extra)).is_err());
         assert!(completed_turn("fixture", &[event("paused", Some("broken".into()))]).is_err());
+    }
+
+    fn retry_receipt() -> Value {
+        json!({"version":"deepthink.workflow.v5","retry_boundary_version":"deepthink.contract-retry-boundary.v1",
+            "run_id":"a".repeat(64),"conversation":"fixture","status":"awaiting_retry","approved":false,
+            "phase":"goal_intake","next_phase":"goal_intake","completed_phases":0,"completed_phases_this_segment":0,
+            "reason":"invalid_phase_contract","rejected_attempt":"goal_intake@0:0#0:0",
+            "rejected_generation":"goal_intake@0:0#0","prepared_generation":"goal_intake@0:0#1",
+            "retry":1,"maximum_retries":2,"usage":{"pending_attempts":0,"cost_known":false,"cost_usd":null}})
+    }
+
+    fn awaiting(receipt: &Value) -> Vec<ChatEvent> {
+        vec![
+            event("progress", Some(receipt.to_string())),
+            event("usage", Some(receipt["usage"].to_string())),
+            event("awaiting_retry", Some(receipt.to_string())),
+        ]
+    }
+
+    #[test]
+    fn retry_with_zero_completed_phases_does_not_initialize_or_append_history() {
+        let events = awaiting(&retry_receipt());
+        assert_eq!(completed_turn("fixture", &events).unwrap(), None);
+        <Pack as Guest>::append(
+            "fixture".into(),
+            Input {
+                conversation: "fixture".into(),
+                text: "original request".into(),
+            },
+            events,
+        )
+        .unwrap();
+        // The ordinary completed-phase pause contract stays strict.
+        let mut invalid_pause = receipt();
+        invalid_pause["completed_phases"] = json!(0);
+        assert!(completed_turn("fixture", &paused(&invalid_pause)).is_err());
+    }
+
+    #[test]
+    fn retry_boundary_rejects_answers_mixed_boundaries_and_unsettled_usage() {
+        for kind in [
+            "delta",
+            "done",
+            "paused",
+            "completed",
+            "failed",
+            "cancelled",
+            "awaiting_retry",
+        ] {
+            let mut events = awaiting(&retry_receipt());
+            events.insert(0, event(kind, Some("not an answer".into())));
+            assert!(completed_turn("fixture", &events).is_err(), "{kind}");
+        }
+        for (field, value) in [
+            ("completed_phases_this_segment", json!(1)),
+            ("approved", json!(true)),
+            ("retry", json!(0)),
+            ("retry", json!(3)),
+            ("maximum_retries", json!(4)),
+            ("next_phase", json!("goal_contract")),
+            ("prepared_generation", json!("goal_intake@0:0#0")),
+            ("rejected_attempt", json!("goal_intake@0:0#1:1")),
+            ("usage", json!({"pending_attempts":1})),
+            ("reason", json!("transport_unknown")),
+        ] {
+            let mut changed = retry_receipt();
+            changed[field] = value;
+            assert!(
+                completed_turn("fixture", &awaiting(&changed)).is_err(),
+                "{field}"
+            );
+        }
+        let mut extra = retry_receipt();
+        extra["output"] = json!("unapproved");
+        assert!(completed_turn("fixture", &awaiting(&extra)).is_err());
     }
 }
 export!(Pack);

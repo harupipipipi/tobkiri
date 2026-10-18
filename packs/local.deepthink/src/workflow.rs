@@ -7,6 +7,8 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::phases;
 
+#[path = "contract_retry.rs"]
+mod contract_retry;
 #[path = "goal_contract_gate.rs"]
 pub mod goal_contract_gate;
 #[path = "reconciliation.rs"]
@@ -685,6 +687,14 @@ impl Run {
                 self.ensure_goal_generation_budget(&phase.id)?;
             }
         }
+        if self.status == "awaiting_retry" {
+            self.retry_receipt()?;
+            self.ensure_goal_generation_budget(&self.pending.front().unwrap().id)?;
+            // The exact next epoch/context/counter was committed before the
+            // previous stream ended. Do not prepare or count it a second time.
+            self.status = "running".into();
+            return Ok(());
+        }
         if self.status == "paused" {
             self.pause_receipt()?;
             self.status = "running".into();
@@ -867,6 +877,18 @@ impl Run {
             return Err(invalid(
                 "continuation changed its conversation, exact model or captured configuration",
             ));
+        }
+        self.ensure_generations_reconciled()?;
+        if self.status == "quarantined"
+            && self
+                .error
+                .as_ref()
+                .is_some_and(|error| error.code == "invalid-phase-contract")
+        {
+            return Err(Failure {
+                code: "conflict".into(),
+                message: "This contract rejection has no confirmed explicit retry boundary, or its bounded retries are exhausted. Its evidence was retained; ordinary continuation did not regenerate it.".into(),
+            });
         }
         let expected = self.clone();
         self.resume(&expected)
@@ -1363,6 +1385,7 @@ impl Run {
         ports: &mut impl Ports,
         phase: &Phase,
         error: &Failure,
+        suspend_retry: bool,
     ) -> Result<Option<Value>, Failure> {
         let Some(point) = self.last_generation.clone() else {
             return Ok(None);
@@ -1392,8 +1415,33 @@ impl Run {
         }
         let expected = self.clone();
         self.resume(&expected)?;
-        self.contract_retries.insert(point.base_key, count + 1);
-        self.save(ports)?;
+        self.contract_retries
+            .insert(point.base_key.clone(), count + 1);
+        let receipt = if suspend_retry {
+            let next = self.generation_epochs[&point.base_key];
+            let retry = self
+                .retry_contexts
+                .get_mut(&format!("{}#{next}", point.base_key))
+                .ok_or_else(|| invalid("prepared contract retry context is missing"))?;
+            retry["retry_boundary"] = json!({
+                "version":contract_retry::RETRY_BOUNDARY_VERSION,"retry":count+1
+            });
+            self.status = "awaiting_retry".into();
+            Some(self.retry_receipt()?)
+        } else {
+            None
+        };
+        if let Err(error) = self.save(ports) {
+            self.status = "quarantined".into();
+            self.goal["status"] = json!("quarantined");
+            self.error = Some(error.clone());
+            // No boundary, replacement write, next pull or claim is allowed
+            // after an unconfirmed preparation commit.
+            return Err(error);
+        }
+        if let Some(receipt) = receipt {
+            return Ok(Some(receipt));
+        }
         Ok(Some(json!({
             "version":VERSION,"run_id":self.id,"phase":phase.id,"status":"retrying",
             "reason":"invalid_phase_contract","retry":count+1,
@@ -1407,7 +1455,8 @@ impl Run {
     }
 
     /// The public stream invocation has a fixed budget of one completed phase.
-    /// Contract retries do not spend that budget; they never renew its deadline.
+    /// A rejected contract suspends without spending that budget. Only another
+    /// explicit User invocation may claim the already prepared retry epoch.
     pub fn advance_segment(&mut self, ports: &mut impl Ports) -> Result<Vec<Value>, Failure> {
         self.advance_with_boundary(ports, true)
     }
@@ -1527,7 +1576,9 @@ impl Run {
                     // Do not issue another write or retry from an older snapshot.
                     return Err(error);
                 }
-                if let Some(progress) = self.retry_rejected_contract(ports, &phase, &error)? {
+                if let Some(progress) =
+                    self.retry_rejected_contract(ports, &phase, &error, suspend_after_phase)?
+                {
                     return Ok(vec![progress]);
                 }
                 self.save(ports)?;

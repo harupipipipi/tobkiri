@@ -191,7 +191,7 @@ impl Ports for FixturePorts {
 }
 
 fn next_segment(run: &mut Run, ports: &mut FixturePorts) -> Result<Vec<Value>, Failure> {
-    if run.status == "paused" {
+    if matches!(run.status.as_str(), "paused" | "awaiting_retry") {
         run.resume_pinned("semantic-fixture", "fixture-model", &config())?;
     }
     run.advance_segment(ports)
@@ -512,15 +512,22 @@ fn bounded_json_correction_cannot_be_reset_by_manual_resume() {
     };
     let mut run = drafted(&mut ports);
     next_segment(&mut run, &mut ports).unwrap();
-    assert_eq!(run.status, "running");
-    run.advance_segment(&mut ports).unwrap();
-    assert!(run.advance_segment(&mut ports).is_err());
+    assert_eq!(run.status, "awaiting_retry");
+    assert_eq!(run.retry_receipt().unwrap()["retry"], 1);
+    let count = ports.calls.len();
+    assert!(run.advance_segment(&mut ports).unwrap().is_empty());
+    assert_eq!(ports.calls.len(), count);
+    next_segment(&mut run, &mut ports).unwrap();
+    assert_eq!(run.status, "awaiting_retry");
+    assert_eq!(run.retry_receipt().unwrap()["retry"], 2);
+    assert!(next_segment(&mut run, &mut ports).is_err());
+    assert_eq!(run.status, "quarantined");
     let count = ports.calls.len();
     assert_eq!(
         run.resume_pinned("semantic-fixture", "fixture-model", &config())
             .unwrap_err()
             .code,
-        "goal-contract-gate-exhausted"
+        "conflict"
     );
     assert_eq!(ports.calls.len(), count);
     assert_eq!(run.rejected_generations.len(), 3);
@@ -569,7 +576,7 @@ fn schema_retry_restores_entry_without_rolling_back_a_prior_semantic_review() {
     next_segment(&mut run, &mut ports).unwrap();
     let prior = serde_json::to_value(&run.contract_gate.as_ref().unwrap().reviews).unwrap();
     next_segment(&mut run, &mut ports).unwrap();
-    assert_eq!(run.status, "running");
+    assert_eq!(run.status, "awaiting_retry");
     assert!(
         run.rejected_generations
             .contains_key("goal_contract_revision:1@0:0#0")
@@ -580,7 +587,7 @@ fn schema_retry_restores_entry_without_rolling_back_a_prior_semantic_review() {
     );
     let bytes = serde_json::to_vec(&run).unwrap();
     run = serde_json::from_slice(&bytes).unwrap();
-    run.advance_segment(&mut ports).unwrap();
+    next_segment(&mut run, &mut ports).unwrap();
     assert_eq!(run.status, "paused");
     assert_eq!(run.pending.front().unwrap().id, "goal_contract_review:2");
     assert_eq!(

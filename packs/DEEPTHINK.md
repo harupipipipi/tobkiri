@@ -46,6 +46,20 @@ The rejection, error and quarantined state share one atomic checkpoint. Recovery
 from a confirmed saved rejection retains the old response and billing receipt.
 An unconfirmed save must be reconciled before a new generation is allowed.
 
+A public invocation stops after a format rejection rather than starting another
+provider attempt in the same request. Within the captured correction limit it
+first saves the rejection and then a prepared `awaiting_retry` checkpoint. The
+stream emits usage, progress and the distinct retry boundary before EOF. It
+does not publish an answer or count a completed phase. Explicit continuation
+of the same Run validates that saved preparation and claims its next attempt
+through the ordinary Core path. UI Resume remains a manual action. Repeated
+status reads and implicit workflow calls cannot consume the preparation.
+
+Pending attempts and unknown checkpoint/tool outcomes cannot become retry
+boundaries. Installing this version does not repair an older pending attempt
+or authorize its replay. See the
+[explicit contract-retry boundary](../docs/migration/1520/explicit-contract-retry-boundary.md).
+
 ## OpenRouter and usage
 
 Build the existing components and then compose the DeepThink Profiles:

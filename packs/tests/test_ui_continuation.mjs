@@ -168,3 +168,85 @@ test("unexpected persisted messages after pause block the UI continuation contro
   assert.equal(h.elements.get("#resume").disabled, true);
   assert.equal(h.calls.filter((call) => call.shape === continuationShape).length, 0);
 });
+
+function retryReceipt() {
+  return {
+    version: "deepthink.workflow.v5", retry_boundary_version: "deepthink.contract-retry-boundary.v1",
+    run_id: runId, conversation: "e2e", status: "awaiting_retry", approved: false,
+    phase: "goal_intake", next_phase: "goal_intake", completed_phases: 0, completed_phases_this_segment: 0,
+    reason: "invalid_phase_contract", rejected_attempt: "goal_intake@0:0#0:0",
+    rejected_generation: "goal_intake@0:0#0", prepared_generation: "goal_intake@0:0#1",
+    retry: 1, maximum_retries: 2,
+    usage: { pending_attempts: 0, tokens: { input_tokens: 10, output_tokens: 5 }, tokens_complete: true, cost_known: false, cost_usd: null },
+  };
+}
+
+function retryEvents(value = retryReceipt()) {
+  return [
+    emitted({ kind: "progress", text: JSON.stringify(value) }),
+    emitted({ kind: "usage", text: JSON.stringify(value.usage) }),
+    emitted({ kind: "awaiting_retry", text: JSON.stringify(value) }), end,
+  ];
+}
+
+test("a zero-phase retry boundary preserves history and waits for a manual resume", async () => {
+  const h = await harness([{ events: retryEvents() }, { events: pauseEvents() }]);
+  await h.context.submit("課題");
+  const assistant = h.elements.get("#messages").children[1];
+  assert.equal(assistant.children[0].textContent, "");
+  assert.match(assistant.children[1].textContent, /再試行待ち/);
+  assert.match(h.elements.get("#next-action").textContent, /工程はまだ完了していません/);
+  assert.doesNotMatch(h.elements.get("#status").textContent, /1工程を保存/);
+  assert.equal(h.elements.get("#resume").disabled, false);
+  assert.equal(h.calls.filter((call) => call.shape === continuationShape).length, 0);
+  await h.elements.get("#resume").listeners.get("click")();
+  const continuations = h.calls.filter((call) => call.shape === continuationShape);
+  assert.equal(continuations.length, 1);
+  assert.equal(continuations[0].args["run-id"], runId);
+  assert.equal(continuations[0].args.answers, null);
+  assert.match(h.elements.get("#status").textContent, /1工程を保存/);
+});
+
+test("a retry boundary cannot promote an answer, mixed pause, pending attempt or changed key", async () => {
+  for (const mutate of [
+    (value) => { value.approved = true; },
+    (value) => { value.usage.pending_attempts = 1; },
+    (value) => { value.completed_phases_this_segment = 1; },
+    (value) => { value.retry = 3; },
+    (value) => { value.prepared_generation = "goal_intake@0:0#0"; },
+    (value) => { value.next_phase = "goal_contract"; },
+  ]) {
+    const value = retryReceipt();
+    mutate(value);
+    const h = await harness([{ events: retryEvents(value) }]);
+    await h.context.submit("課題");
+    assert.match(h.elements.get("#status").textContent, /安全な中断を確認できません/);
+    assert.equal(h.elements.get("#resume").disabled, true);
+  }
+  for (const value of [{ kind: "delta", text: "not approved" }, { kind: "paused", text: JSON.stringify(receipt()) }]) {
+    const events = retryEvents();
+    events.splice(0, 0, emitted(value));
+    const h = await harness([{ events }]);
+    await h.context.submit("課題");
+    assert.equal(h.elements.get("#resume").disabled, true);
+    assert.equal(h.calls.filter((call) => call.shape === continuationShape).length, 0);
+  }
+});
+
+test("a retry progress update without its terminal receipt cannot enable continuation", async () => {
+  const events = retryEvents().filter((event) => event.kind?.value?.kind !== "awaiting_retry");
+  const h = await harness([{ events }]);
+  await h.context.submit("課題");
+  assert.match(h.elements.get("#status").textContent, /中断の終端を確認できません/);
+  assert.equal(h.elements.get("#resume").disabled, true);
+});
+
+test("unexpected saved messages at a retry boundary disable the continuation control", async () => {
+  const h = await harness([{
+    events: retryEvents(),
+    persisted: [{ role: "user", content: "課題" }, { role: "assistant", content: "unexpected answer" }],
+  }]);
+  await h.context.submit("課題");
+  assert.match(h.elements.get("#status").textContent, /再試行待ちの工程が回答として保存されていない/);
+  assert.equal(h.elements.get("#resume").disabled, true);
+});

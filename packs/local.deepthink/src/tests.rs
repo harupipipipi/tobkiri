@@ -7,6 +7,9 @@ use crate::{
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
+#[path = "contract_retry_tests.rs"]
+mod contract_retry_tests;
+
 fn settings() -> Settings {
     Settings {
         max_review_rounds: 2,
@@ -1265,7 +1268,7 @@ fn forbidden_goal_tool_requests_are_durable_bounded_corrections_without_effects(
     };
     assert_eq!(
         run.advance_segment(&mut ports).unwrap()[0]["status"],
-        "retrying"
+        "awaiting_retry"
     );
     let checkpoint = ports.first_rejection_snapshot.as_ref().unwrap();
     assert_eq!(checkpoint.status, "quarantined");
@@ -1282,6 +1285,9 @@ fn forbidden_goal_tool_requests_are_durable_bounded_corrections_without_effects(
     let old_inputs = run.phase_inputs.clone();
     let saved = serde_json::to_vec(ports.saved.as_ref().unwrap()).unwrap();
     let mut restored: Run = serde_json::from_slice(&saved).unwrap();
+    restored
+        .resume_pinned("fixture-conversation", "fixture-model", &config)
+        .unwrap();
     restored.advance_segment(&mut ports).unwrap();
     assert_eq!(restored.status, "paused");
     assert_eq!(restored.phases.len(), 1);
@@ -1316,7 +1322,7 @@ fn forbidden_goal_tool_requests_are_durable_bounded_corrections_without_effects(
             .contains("phase_contract")
     );
 
-    let mut exhausted = new_run(config);
+    let mut exhausted = new_run(config.clone());
     let mut ports = FakePorts {
         declarative_tool_request_count: 3,
         ..Default::default()
@@ -1325,10 +1331,16 @@ fn forbidden_goal_tool_requests_are_durable_bounded_corrections_without_effects(
         exhausted.advance_segment(&mut ports).unwrap()[0]["retry"],
         1
     );
+    exhausted
+        .resume_pinned("fixture-conversation", "fixture-model", &config)
+        .unwrap();
     assert_eq!(
         exhausted.advance_segment(&mut ports).unwrap()[0]["retry"],
         2
     );
+    exhausted
+        .resume_pinned("fixture-conversation", "fixture-model", &config)
+        .unwrap();
     assert_eq!(
         exhausted.advance_segment(&mut ports).unwrap_err().code,
         "invalid-phase-contract"
@@ -1610,16 +1622,20 @@ fn separate_user_segments_keep_every_phase_criteria_review_and_exact_usage() {
 fn a_schema_retry_spends_no_completed_phase_until_a_valid_result_is_saved() {
     let mut config = settings();
     config.max_contract_retries = 1;
-    let mut run = new_run(config);
+    let mut run = new_run(config.clone());
     let mut ports = FakePorts {
         invalid_public_output_once: Some("{".into()),
         ..Default::default()
     };
     let retry = run.advance_segment(&mut ports).unwrap();
-    assert_eq!(retry[0]["status"], "retrying");
-    assert_eq!(run.status, "running");
+    assert_eq!(retry[0]["status"], "awaiting_retry");
+    assert_eq!(run.status, "awaiting_retry");
     assert!(run.phases.is_empty());
     assert!(run.pause_receipt().is_err());
+    assert!(run.advance_segment(&mut ports).unwrap().is_empty());
+    assert_eq!(ports.calls.len(), 1);
+    run.resume_pinned("fixture-conversation", "fixture-model", &config)
+        .unwrap();
     run.advance_segment(&mut ports).unwrap();
     assert_eq!(run.status, "paused");
     assert_eq!(run.phases.len(), 1);

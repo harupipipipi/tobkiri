@@ -785,10 +785,11 @@ impl Guest for Pack {
                 run.resume_pinned(&expected.conversation, &expected.model, &expected.settings)
                     .map_err(guest_error)?;
             } else {
-                if run.status == "paused" {
+                if run.requires_explicit_continuation() {
+                    run.ensure_generations_reconciled().map_err(guest_error)?;
                     return Err(guest_error(Failure {
                         code: "conflict".into(),
-                        message: "This request has a saved phase boundary. Use its run reference through continuation-input to continue; it was not automatically restarted.".into(),
+                        message: "This request has a saved phase or contract-retry boundary, or a retained contract rejection. Use its explicit continuation reference; it was not automatically restarted.".into(),
                     }));
                 }
                 run.resume(&expected).map_err(guest_error)?;
@@ -830,18 +831,24 @@ impl Guest for Pack {
         let repository = loaded.head.as_ref().map(head_value);
         let run = loaded.run;
         let reconciliation = run.ensure_generations_reconciled().err();
+        let retry_boundary = if run.status == "awaiting_retry" {
+            Some(run.retry_receipt().map_err(guest_error)?)
+        } else {
+            None
+        };
         // The candidate is only exposed on this explicitly authorized diagnostic
         // port; the assistant stream never emits a rejected candidate as output.
-        Ok(
-            json!({"version":run.version,"run_id":run.id,"status":if reconciliation.is_some(){"needs_reconciliation"}else{&run.status},"goal":run.goal,
+        let mut value = json!({"version":run.version,"run_id":run.id,"status":if reconciliation.is_some(){"needs_reconciliation"}else{&run.status},"goal":run.goal,
             "phases":run.phases,"usage":run.usage(),"artifacts":run.artifacts,
             "capability_gaps":run.settings.capability_gaps,"error":run.error,"output":run.output(),
             "reconciliation":reconciliation,"model_attempts":run.attempts,
             "repository":repository,"generation_resolutions":run.generation_resolutions,
             "regeneration_authorizations":run.regeneration_authorizations,
-            "contract_gate":run.contract_gate_status(),"effective_goal_contract":run.effective_goal_contract()})
-            .to_string(),
-        )
+            "contract_gate":run.contract_gate_status(),"effective_goal_contract":run.effective_goal_contract()});
+        if let Some(receipt) = retry_boundary {
+            value["retry_boundary"] = receipt;
+        }
+        Ok(value.to_string())
     }
 
     fn reconcile_generation(selection: RecoverySelection) -> Result<String, Error> {
@@ -963,8 +970,12 @@ impl Active {
                     self.events.push_back(event("progress",Some(json!({"version":VERSION,"run_id":self.run.id,"status":"quarantined","error":error,"output":""}).to_string())));
                 }
             }
-        } else if self.run.status == "paused" {
-            let receipt = self.run.pause_receipt()?;
+        } else if matches!(self.run.status.as_str(), "paused" | "awaiting_retry") {
+            let (kind, receipt) = if self.run.status == "awaiting_retry" {
+                ("awaiting_retry", self.run.retry_receipt()?)
+            } else {
+                ("paused", self.run.pause_receipt()?)
+            };
             self.terminal_sent = true;
             let usage = self.run.usage();
             self.events.push_back(json!({"kind":"usage","text":usage.to_string(),
@@ -972,7 +983,7 @@ impl Active {
             self.events
                 .push_back(event("progress", Some(receipt.to_string())));
             self.events
-                .push_back(event("paused", Some(receipt.to_string())));
+                .push_back(event(kind, Some(receipt.to_string())));
         } else if self.run.status == "quarantined" {
             return Err(self
                 .run

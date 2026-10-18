@@ -76,6 +76,31 @@ const message = (role, content, receipt) => {
   return { body, state };
 };
 
+function validRetryReceipt(receipt) {
+  const keys = ["version", "retry_boundary_version", "run_id", "conversation", "status", "approved", "phase", "next_phase", "completed_phases", "completed_phases_this_segment", "reason", "rejected_attempt", "rejected_generation", "prepared_generation", "retry", "maximum_retries", "usage"];
+  if (!receipt || typeof receipt !== "object" || Array.isArray(receipt) || Object.keys(receipt).length !== keys.length || Object.keys(receipt).some((key) => !keys.includes(key))) return false;
+  const rejected = typeof receipt.rejected_generation === "string" ? /^(.+)#(0|[1-9][0-9]*)$/.exec(receipt.rejected_generation) : null;
+  const epoch = rejected ? Number(rejected[2]) : NaN;
+  const ordinal = typeof receipt.rejected_attempt === "string" && receipt.rejected_attempt.startsWith(`${receipt.rejected_generation}:`)
+    ? receipt.rejected_attempt.slice(receipt.rejected_generation.length + 1) : "";
+  return receipt.version === "deepthink.workflow.v5"
+    && receipt.retry_boundary_version === "deepthink.contract-retry-boundary.v1"
+    && receipt.status === "awaiting_retry" && receipt.approved === false
+    && receipt.reason === "invalid_phase_contract"
+    && receipt.conversation === conversation && receipt.run_id === runId
+    && typeof receipt.phase === "string" && !!receipt.phase.trim() && receipt.next_phase === receipt.phase
+    && Number.isSafeInteger(receipt.completed_phases) && receipt.completed_phases >= 0
+    && receipt.completed_phases_this_segment === 0
+    && Number.isSafeInteger(receipt.retry) && receipt.retry >= 1
+    && Number.isSafeInteger(receipt.maximum_retries) && receipt.retry <= receipt.maximum_retries && receipt.maximum_retries <= 3
+    && !!rejected && rejected[1].startsWith(`${receipt.phase}@`)
+    && Number.isSafeInteger(epoch) && Number.isSafeInteger(epoch + 1)
+    && receipt.prepared_generation === `${rejected[1]}#${epoch + 1}`
+    && /^(0|[1-9][0-9]*)$/.test(ordinal) && Number.isSafeInteger(Number(ordinal))
+    && receipt.usage && typeof receipt.usage === "object" && !Array.isArray(receipt.usage)
+    && receipt.usage.pending_attempts === 0;
+}
+
 async function submit(input, continuation = false) {
   if (!client || busy) return;
   if (continuation && !runId) return;
@@ -104,6 +129,7 @@ async function submit(input, continuation = false) {
     stop.disabled = false;
     let completed = false;
     let pausedSegment = false;
+    let retrySegment = false;
     let sawAnswer = false;
     while (active && !completed) {
       const events = await stream.pull(8);
@@ -128,12 +154,22 @@ async function submit(input, continuation = false) {
           if (value.kind === "progress") progress(parseEventText(value.text));
           if (value.kind === "paused") {
             const receipt = parseEventText(value.text);
-            if (pausedSegment || sawAnswer || receipt.version !== "deepthink.workflow.v5" || receipt.status !== "paused" || receipt.approved !== false || receipt.conversation !== conversation || receipt.run_id !== runId || !Number.isSafeInteger(receipt.completed_phases) || receipt.completed_phases < 1 || typeof receipt.next_phase !== "string" || !receipt.next_phase.trim() || receipt.usage?.pending_attempts !== 0) {
+            if (pausedSegment || retrySegment || sawAnswer || receipt.version !== "deepthink.workflow.v5" || receipt.status !== "paused" || receipt.approved !== false || receipt.conversation !== conversation || receipt.run_id !== runId || !Number.isSafeInteger(receipt.completed_phases) || receipt.completed_phases < 1 || typeof receipt.next_phase !== "string" || !receipt.next_phase.trim() || receipt.usage?.pending_attempts !== 0) {
               runStatus = "needs_reconciliation";
               rememberRun();
               throw new Error("工程の安全な中断を確認できませんでした。再送せず実行参照を保持してください。");
             }
             pausedSegment = true;
+            progress(receipt);
+          }
+          if (value.kind === "awaiting_retry") {
+            const receipt = parseEventText(value.text);
+            if (pausedSegment || retrySegment || sawAnswer || !validRetryReceipt(receipt)) {
+              runStatus = "needs_reconciliation";
+              rememberRun();
+              throw new Error("契約再試行の安全な中断を確認できませんでした。再送せず実行参照を保持してください。");
+            }
+            retrySegment = true;
             progress(receipt);
           }
           if (value.kind === "usage") {
@@ -145,7 +181,25 @@ async function submit(input, continuation = false) {
     }
     if (cancelled) throw new Error("停止しました。下書きを残しています。");
     if (!completed) throw new Error("会話の完了を確認できませんでした。下書きを残しています。");
+    if (!pausedSegment && !retrySegment && ["paused", "awaiting_retry"].includes(runStatus)) {
+      runStatus = "needs_reconciliation";
+      rememberRun();
+      throw new Error("安全な中断の終端を確認できませんでした。再送せず実行参照を保持してください。");
+    }
     const persisted = await client.call(storeShape, "load", { conversation });
+    if (retrySegment) {
+      if (sawAnswer || runStatus !== "awaiting_retry" || JSON.stringify(persisted.messages) !== JSON.stringify(previous.messages)) {
+        runStatus = "needs_reconciliation";
+        rememberRun();
+        throw new Error("再試行待ちの工程が回答として保存されていないことを確認できませんでした。");
+      }
+      user.state.textContent = "依頼はチェックポイントに保持されています";
+      assistant.state.textContent = "契約不適合の応答を保存して再試行待ち";
+      text.value = "";
+      nextAction.textContent = "工程はまだ完了していません。「再開」で同じ工程の次の契約修正を明示的に実行します。";
+      status.textContent = "応答の契約不適合を保存しました。自動再試行はしていません。";
+      return;
+    }
     if (pausedSegment) {
       if (sawAnswer || runStatus !== "paused" || JSON.stringify(persisted.messages) !== JSON.stringify(previous.messages)) {
         runStatus = "needs_reconciliation";
