@@ -7,8 +7,8 @@
     },
     {
       "path": "ui/app.js",
-      "sha256": "sha256:4d441a3a9e288750e443324f92b82b941bba9b9bb55975273aeb1b4840802d38",
-      "size": 10056
+      "sha256": "sha256:d1019aec78917f4c990c4d7c9c4adb52416b111c31b8ea96ccf89878ab37e709",
+      "size": 17453
     },
     {
       "path": "ui/float.js",
@@ -17,8 +17,8 @@
     },
     {
       "path": "ui/index.html",
-      "sha256": "sha256:d6fbfda214c5cc658bec1379ef0a30c92bf7c053c24e6ceca0ead95e9a153f86",
-      "size": 1384
+      "sha256": "sha256:5df75a2711a160d0bd201ae81fec85446488f64a92f10516b8c8f46513395a4f",
+      "size": 2185
     },
     {
       "path": "ui/ports.js",
@@ -26,9 +26,14 @@
       "size": 5277
     },
     {
+      "path": "ui/restore.mjs",
+      "sha256": "sha256:3ac48621065a9a7bd7d93cab2ebd40d0ed79bd5249f0a8a342701b9270dfaac5",
+      "size": 8189
+    },
+    {
       "path": "ui/style.css",
-      "sha256": "sha256:b5ca7e74b3390fc8e913159f7054a0258de23149fa993dfa81cf0c7fd1dd4745",
-      "size": 1345
+      "sha256": "sha256:0eaf03e7091fad47c0b54ca2779370b9fd546e7fec54a29346f4e4295a19deb6",
+      "size": 1772
     }
   ],
   "flows": [],

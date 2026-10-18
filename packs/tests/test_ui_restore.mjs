@@ -8,6 +8,9 @@ import * as restore from "../local.deepthink-ui/ui/restore.mjs";
 // The actual app, a memory DOM and fake typed ports only. No browser/host/model.
 const source = readFileSync(new URL("../local.deepthink-ui/ui/app.js", import.meta.url), "utf8")
   .replace(/^import .*;\r?$/gm, "");
+const html = readFileSync(new URL("../local.deepthink-ui/ui/index.html", import.meta.url), "utf8");
+const buttonTypes = new Map([...html.matchAll(/<button\b[^>]*\bid="([^"]+)"[^>]*\btype="([^"]+)"/g)]
+  .map((match) => [`#${match[1]}`, match[2]]));
 const RUN = "a".repeat(64);
 const OTHER = "b".repeat(64);
 const SHAPE = "local.deepthink.continuation-input@1.0";
@@ -20,9 +23,21 @@ class Element {
   dataset = {};
   children = [];
   listeners = new Map();
+  formSubmissionAttempts = 0;
+  constructor(selector) { this.type = buttonTypes.get(selector); }
   append(...items) { this.children.push(...items); }
   replaceChildren(...items) { this.children = items; }
   addEventListener(name, listener) { this.listeners.set(name, listener); }
+  async click() {
+    if (this.disabled) return;
+    const event = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+    await this.listeners.get("click")?.(event);
+    // An allow-scripts-only frame blocks this before any form submit event.
+    if (this.type === "submit" && !event.defaultPrevented) {
+      this.formSubmissionAttempts += 1;
+      throw new Error("sandbox blocks the form submission algorithm");
+    }
+  }
 }
 
 function usage() {
@@ -57,7 +72,7 @@ function retrySnapshot() {
 async function harness({ reply = snapshot(), cached = null, storageThrows = false } = {}) {
   const elements = new Map();
   const element = (id) => {
-    if (!elements.has(id)) elements.set(id, new Element());
+    if (!elements.has(id)) elements.set(id, new Element(id));
     return elements.get(id);
   };
   const calls = [];
@@ -102,15 +117,80 @@ async function harness({ reply = snapshot(), cached = null, storageThrows = fals
     async read(id = RUN, conversation = "restored") {
       element("#restore-run").value = id;
       element("#restore-conversation").value = conversation;
-      await element("#restore-form").listeners.get("submit")({ preventDefault() {} });
+      await element("#restore").click();
     },
     async resume() { await element("#resume").listeners.get("click")(); },
     async compose(text = "answer") {
       element("#text").value = text;
-      await element("#composer").listeners.get("submit")({ preventDefault() {} });
+      await element("#send").click();
+    },
+    async key(selector, options = {}) {
+      const event = { key: "Enter", target: element(selector), defaultPrevented: false,
+        preventDefault() { this.defaultPrevented = true; }, ...options };
+      const form = selector.startsWith("#restore") ? "#restore-form" : "#composer";
+      await element(form).listeners.get("keydown")(event);
+      return event;
+    },
+    async submitForm(selector) {
+      const event = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+      await element(selector).listeners.get("submit")(event);
+      return event;
     },
   };
 }
+
+test("sandboxed restoration uses a button click without any form submission", async () => {
+  const h = await harness();
+  assert.equal(h.element("#restore").type, "button");
+  assert.equal(h.element("#send").type, "button");
+  await h.read();
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0].op, "status");
+  assert.equal(h.element("#restore").formSubmissionAttempts, 0);
+  assert.equal((await h.submitForm("#restore-form")).defaultPrevented, true);
+  assert.equal(h.calls.length, 1, "a synthetic form event is not a second effect entry");
+});
+
+test("restore input Enter uses the same action; IME and repeated keys do not dispatch", async () => {
+  for (const selector of ["#restore-run", "#restore-conversation", "#restore"]) {
+    const h = await harness();
+    h.element("#restore-run").value = RUN;
+    h.element("#restore-conversation").value = "restored";
+    for (const options of [{ isComposing: true }, { keyCode: 229 }, { repeat: true }]) {
+      await h.key(selector, options);
+      assert.equal(h.calls.length, 0);
+    }
+    if (selector === "#restore") {
+      for (const modifier of [{ altKey: true }, { shiftKey: true }, { altKey: true, shiftKey: true }]) {
+        for (const options of [{ isComposing: true }, { keyCode: 229 }, { repeat: true }]) {
+          assert.equal((await h.key(selector, { ...modifier, ...options })).defaultPrevented, true);
+          assert.equal(h.calls.length, 0);
+        }
+      }
+    }
+    assert.equal((await h.key(selector)).defaultPrevented, true);
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.element("#resume").disabled, false);
+  }
+});
+
+test("click and Enter cannot duplicate a busy STATUS; invalid click still revokes resume", async () => {
+  let release;
+  const h = await harness({ reply: () => new Promise((resolve) => { release = resolve; }) });
+  const pending = h.read();
+  await h.key("#restore-conversation");
+  await h.element("#restore").click();
+  await h.submitForm("#restore-form");
+  assert.equal(h.calls.length, 1);
+  release(snapshot());
+  await pending;
+  const saved = structuredClone(h.writes);
+  assert.equal(h.element("#resume").disabled, false);
+  await h.read("invalid", "restored");
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.element("#resume").disabled, true);
+  assert.deepEqual(h.writes, saved);
+});
 
 test("a cache is a visible unverified reference, even with forged status/authority flags", async () => {
   const h = await harness({ cached: { runId: RUN, conversation: "cached", runStatus: "paused", verified: true, canResume: true } });

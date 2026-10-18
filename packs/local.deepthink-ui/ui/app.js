@@ -287,16 +287,38 @@ async function submit(input, continuation = false) {
     controls();
   }
 }
-form.addEventListener("submit", async (event) => {
+async function sendMessage(event) {
   event.preventDefault();
   if (!text.value.trim() || send.disabled) return;
   await submit(text.value, runStatus === "needs_input" && !!runId);
-});
-resume.addEventListener("click", () => submit(null, true));
-restoreForm.addEventListener("submit", async (event) => {
+}
+async function readReference(event) {
   event.preventDefault();
   await restoreReference();
-});
+}
+async function entryKey(event) {
+  const actionButton = event.target === send || event.target === restoreButton;
+  if (event.key === "Enter" && actionButton) event.preventDefault();
+  const restoreEntry = event.target === restoreRun || event.target === restoreConversation || event.target === restoreButton;
+  const composeEntry = event.target === send || (event.target === text && (event.ctrlKey || event.metaKey));
+  if (event.key !== "Enter" || event.altKey || event.shiftKey || (!restoreEntry && !composeEntry)) return;
+  if (event.isComposing || event.keyCode === 229) {
+    return;
+  }
+  event.preventDefault();
+  if (event.repeat) return;
+  if (restoreEntry) await readReference(event);
+  else await sendMessage(event);
+}
+// Sandboxed Pack frames intentionally lack allow-forms. Click and explicit
+// keyboard actions must not depend on the browser's form submission algorithm.
+form.addEventListener("submit", (event) => event.preventDefault());
+restoreForm.addEventListener("submit", (event) => event.preventDefault());
+form.addEventListener("keydown", entryKey);
+restoreForm.addEventListener("keydown", entryKey);
+send.addEventListener("click", sendMessage);
+restoreButton.addEventListener("click", readReference);
+resume.addEventListener("click", () => submit(null, true));
 document.querySelector("#new-request").addEventListener("click", () => {
   if (busy) return;
   runId = undefined;

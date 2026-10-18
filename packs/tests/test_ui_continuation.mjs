@@ -9,6 +9,9 @@ import { REQUEST_OPTIONS, inspectStatus, statusUsage, validConversation, validRe
 // browser, Core request, provider API or local database is used by this test.
 const source = readFileSync(new URL("../local.deepthink-ui/ui/app.js", import.meta.url), "utf8")
   .replace(/^import .*;\r?$/gm, "");
+const html = readFileSync(new URL("../local.deepthink-ui/ui/index.html", import.meta.url), "utf8");
+const buttonTypes = new Map([...html.matchAll(/<button\b[^>]*\bid="([^"]+)"[^>]*\btype="([^"]+)"/g)]
+  .map((match) => [`#${match[1]}`, match[2]]));
 const runId = "a".repeat(64);
 const storeShape = "local.harness-chat.conversation-store@1.0";
 const inputShape = "local.harness-chat.user-input@1.0";
@@ -16,16 +19,25 @@ const continuationShape = "local.deepthink.continuation-input@1.0";
 const assistantShape = "local.harness-chat.assistant-output@1.0";
 
 class Element {
-  constructor() {
+  constructor(selector) {
     this.textContent = "";
     this.value = "";
     this.dataset = {};
     this.children = [];
     this.listeners = new Map();
+    this.type = buttonTypes.get(selector);
   }
   append(...children) { this.children.push(...children); }
   replaceChildren(...children) { this.children = children; }
   addEventListener(name, listener) { this.listeners.set(name, listener); }
+  async click() {
+    if (this.disabled) return;
+    const event = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+    await this.listeners.get("click")?.(event);
+    if (this.type === "submit" && !event.defaultPrevented) {
+      throw new Error("sandbox blocks the form submission algorithm");
+    }
+  }
 }
 
 function receipt(count = 1) {
@@ -51,7 +63,7 @@ function pauseEvents(value = receipt(), flat = false) {
 async function harness(segments) {
   const elements = new Map();
   const element = (selector) => {
-    if (!elements.has(selector)) elements.set(selector, new Element());
+    if (!elements.has(selector)) elements.set(selector, new Element(selector));
     return elements.get(selector);
   };
   const calls = [];
@@ -93,8 +105,64 @@ async function harness(segments) {
   };
   runInNewContext(source, context);
   await new Promise((resolve) => setImmediate(resolve));
-  return { context, elements, calls, cancelled: () => cancelled };
+  return { context, elements, calls, cancelled: () => cancelled,
+    async key(options = {}) {
+      const event = { key: "Enter", target: element("#text"), defaultPrevented: false,
+        preventDefault() { this.defaultPrevented = true; }, ...options };
+      await element("#composer").listeners.get("keydown")(event);
+      return event;
+    },
+  };
 }
+
+test("sandboxed send click runs the actual app without form submission or double dispatch", async () => {
+  const h = await harness([{ events: pauseEvents() }]);
+  assert.equal(h.elements.get("#send").type, "button");
+  h.elements.get("#text").value = "課題";
+  const clicked = h.elements.get("#send").click();
+  await h.elements.get("#send").click();
+  await clicked;
+  await h.elements.get("#composer").listeners.get("submit")({ preventDefault() {} });
+  assert.equal(h.calls.filter((call) => call.shape === inputShape).length, 1);
+  assert.equal(h.elements.get("#resume").disabled, false);
+});
+
+test("plain textarea Enter remains a newline; Ctrl/Meta Enter is explicit and ignores IME/repeat", async () => {
+  assert.match(html, /Ctrl\+Enter（Macは⌘\+Enter）で送信。Enterは改行/);
+  for (const modifier of ["ctrlKey", "metaKey"]) {
+    const h = await harness([{ events: pauseEvents() }]);
+    h.elements.get("#text").value = "課題";
+    assert.equal((await h.key()).defaultPrevented, false);
+    for (const options of [{ isComposing: true }, { keyCode: 229 }, { repeat: true }]) {
+      await h.key({ [modifier]: true, ...options });
+    }
+    assert.equal(h.calls.length, 0);
+    assert.equal((await h.key({ [modifier]: true })).defaultPrevented, true);
+    assert.equal(h.calls.filter((call) => call.shape === inputShape).length, 1);
+  }
+});
+
+test("explicit send click preserves empty-input validation", async () => {
+  const h = await harness([]);
+  h.elements.get("#text").value = " \n ";
+  await h.elements.get("#send").click();
+  await h.key({ ctrlKey: true });
+  assert.equal(h.calls.length, 0);
+});
+
+test("focused send Enter prevents implicit activation and repeated or composing sends", async () => {
+  const h = await harness([{ events: pauseEvents() }]);
+  h.elements.get("#text").value = "課題";
+  const target = h.elements.get("#send");
+  for (const modifier of [{}, { altKey: true }, { shiftKey: true }, { altKey: true, shiftKey: true }]) {
+    for (const options of [{ repeat: true }, { isComposing: true }, { keyCode: 229 }]) {
+      assert.equal((await h.key({ target, ...modifier, ...options })).defaultPrevented, true);
+    }
+  }
+  assert.equal(h.calls.length, 0);
+  assert.equal((await h.key({ target })).defaultPrevented, true);
+  assert.equal(h.calls.filter((call) => call.shape === inputShape).length, 1);
+});
 
 test("a paused collected Flow segment is visible, resumable and never a saved answer", async () => {
   for (const flat of [false, true]) {

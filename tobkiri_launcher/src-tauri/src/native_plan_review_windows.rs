@@ -6,15 +6,16 @@
 use std::cell::Cell;
 use std::ptr::{null, null_mut};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
-use std::sync::{Arc, OnceLock, mpsc};
+use std::sync::{mpsc, Arc, OnceLock};
 use std::time::{Duration, Instant};
+use windows_sys::core::w;
 use windows_sys::Win32::Foundation::{
     GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WAIT_FAILED, WPARAM,
 };
 use windows_sys::Win32::Graphics::Gdi::{
-    COLOR_BTNFACE, CreateSolidBrush, DEFAULT_GUI_FONT, DeleteObject, GetMonitorInfoW,
-    GetStockObject, GetSysColorBrush, HBRUSH, HDC, MONITOR_DEFAULTTONEAREST, MONITORINFO,
-    MonitorFromWindow, SetBkColor, SetTextColor,
+    CreateSolidBrush, DeleteObject, GetMonitorInfoW, GetStockObject, GetSysColorBrush,
+    MonitorFromWindow, SetBkColor, SetTextColor, COLOR_BTNFACE, DEFAULT_GUI_FONT, HBRUSH, HDC,
+    MONITORINFO, MONITOR_DEFAULTTONEAREST,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::SystemServices::{SS_LEFT, SS_NOPREFIX};
@@ -24,7 +25,6 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     EnableWindow, IsWindowEnabled, SetFocus, VK_ESCAPE, VK_RETURN,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
-use windows_sys::core::w;
 
 const MAX_REVIEW_BYTES: usize = 512 * 1024;
 const REVIEW_SECONDS: u64 = 240;
@@ -1282,37 +1282,31 @@ mod tests {
             assert!(x >= left && y >= top && x + w <= work.right && y + h <= work.bottom);
             assert!(w >= 600 && h >= 440);
         }
-        assert!(
-            window_bounds(RECT {
-                left: 0,
-                top: 0,
-                right: 500,
-                bottom: 300
-            })
-            .is_err()
-        );
+        assert!(window_bounds(RECT {
+            left: 0,
+            top: 0,
+            right: 500,
+            bottom: 300
+        })
+        .is_err());
     }
 
     #[test]
     fn invalid_screen_arithmetic_fails_closed() {
-        assert!(
-            window_bounds(RECT {
-                left: i32::MIN,
-                top: 0,
-                right: i32::MAX,
-                bottom: 1000
-            })
-            .is_err()
-        );
-        assert!(
-            window_bounds(RECT {
-                left: 1000,
-                top: 0,
-                right: 0,
-                bottom: 1000
-            })
-            .is_err()
-        );
+        assert!(window_bounds(RECT {
+            left: i32::MIN,
+            top: 0,
+            right: i32::MAX,
+            bottom: 1000
+        })
+        .is_err());
+        assert!(window_bounds(RECT {
+            left: 1000,
+            top: 0,
+            right: 0,
+            bottom: 1000
+        })
+        .is_err());
     }
     #[test]
     fn native_close_failure_stops_loop_before_a_second_destroy_attempt() {

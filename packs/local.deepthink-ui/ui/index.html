@@ -16,7 +16,7 @@
       <input id="restore-run" type="text" maxlength="64" pattern="[a-f0-9]{64}" autocomplete="off" spellcheck="false" required>
       <label for="restore-conversation">元の会話ID</label>
       <input id="restore-conversation" type="text" value="e2e" maxlength="256" autocomplete="off" required>
-      <button id="restore" type="submit" disabled>保存状態を読む</button>
+      <button id="restore" type="button" disabled>保存状態を読む</button>
       <p>保存済みの進捗と使用量を表示します。会話IDは再開時に照合します。</p>
     </form>
     <section id="messages" aria-label="会話" aria-live="polite"></section>
@@ -27,8 +27,9 @@
       <button id="resume" type="button" disabled>チェックポイントから再開</button>
       <button id="new-request" type="button">新しい依頼</button>
     </aside>
-    <form id="composer"><label for="text">メッセージ</label><textarea id="text" rows="3" required></textarea>
-      <div><button id="send" type="submit" disabled>送信</button><button id="stop" type="button" disabled>停止</button></div>
+    <form id="composer"><label for="text">メッセージ</label><textarea id="text" rows="3" aria-describedby="send-help" required></textarea>
+      <p id="send-help">Ctrl+Enter（Macは⌘+Enter）で送信。Enterは改行です。</p>
+      <div><button id="send" type="button" disabled>送信</button><button id="stop" type="button" disabled>停止</button></div>
     </form>
   </main>
   <script type="module" src="app.js"></script>
