@@ -142,6 +142,20 @@ _PROVIDER_ATTEMPT_CONTEXT_KEYS = (
 )
 
 
+def _ai_failure_message(exc: Exception) -> str:
+    """Preserve safe component diagnostics instead of mislabeling them as AI errors."""
+
+    safe_diagnostic = getattr(exc, "safe_diagnostic", None)
+    if callable(safe_diagnostic):
+        try:
+            diagnostic = str(safe_diagnostic()).strip()
+        except Exception:
+            diagnostic = ""
+        if diagnostic.startswith("component resolution failed:"):
+            return diagnostic
+    return "AI request failed: " + str(exc)
+
+
 def _tool_selection_activity_message(selection: dict[str, Any]) -> str:
     services = selection.get("selected_services") if isinstance(selection.get("selected_services"), list) else []
     labels = [
@@ -2270,7 +2284,7 @@ class ChatRunEngine:
                     events=list(self._activity_events),
                 )
             except Exception as exc:
-                message_text = _clip_error_text("AI request failed: " + str(exc), 1200)
+                message_text = _clip_error_text(_ai_failure_message(exc), 1200)
                 task_failed_event = self._emit(
                     "task_failed",
                     data={"error": message_text, "terminal": True},
@@ -3385,7 +3399,7 @@ class ChatRunEngine:
                     ):
                         yield event
                     raise
-                message_text = "AI request failed: " + str(exc)
+                message_text = _ai_failure_message(exc)
                 safe_message_text = _clip_error_text(message_text, 1200)
                 attempt_visible_text = "".join(self._text_parts[attempt_text_start:])
                 can_retry = (

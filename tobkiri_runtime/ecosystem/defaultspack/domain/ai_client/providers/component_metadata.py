@@ -5,7 +5,13 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from ...components import get_domain_component_registry
+from ...components import (
+    ComponentEntrypointResolutionError,
+    DomainComponent,
+    DomainComponentRegistry,
+    get_domain_component_registry,
+    resolve_component_entrypoint,
+)
 from ..metadata_json import load_strict_metadata_json
 from ..model_metadata_schema import validate_model_catalog_source
 
@@ -72,19 +78,30 @@ def _provider_id(component_manifest: dict[str, Any]) -> str:
     return str(component_manifest.get("provider_id") or component_manifest.get("id") or "").strip()
 
 
-def _load_json_entrypoint(component_manifest: dict[str, Any], key: str) -> Any:
-    entrypoints = component_manifest.get("entrypoints")
-    rel_path = entrypoints.get(key) if isinstance(entrypoints, dict) else None
-    if not isinstance(rel_path, str) or not rel_path.strip():
-        return None
-    source_path = component_manifest.get("source_path")
-    if not isinstance(source_path, str) or not source_path:
-        return None
-    path = (Path(source_path).parent / rel_path).resolve()
+def _load_json_entrypoint(
+    registry: DomainComponentRegistry,
+    component: DomainComponent,
+    key: str,
+) -> tuple[Any, Path | None]:
+    resolved = resolve_component_entrypoint(
+        registry,
+        category=component.category,
+        component_id=component.id,
+        contract_id=key,
+        required=False,
+    )
+    if resolved is None:
+        return None, None
     try:
-        return load_strict_metadata_json(path)
-    except OSError:
-        return None
+        return load_strict_metadata_json(resolved.path), resolved.path
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ComponentEntrypointResolutionError(
+            category=resolved.category,
+            component_id=resolved.component_id,
+            contract_id=resolved.contract_id,
+            revision=resolved.revision,
+            reason="entrypoint_metadata_invalid",
+        ) from exc
 
 
 def _trusted_provider_component_root() -> Path:
@@ -297,48 +314,20 @@ def model_manifests_from_provider_components(provider_id: str) -> list[dict[str,
         manifest = component.as_dict()
         if _provider_id(manifest) != provider_id:
             continue
-        raw_models = _load_json_entrypoint(manifest, "models")
+        raw_models, resolved_models_path = _load_json_entrypoint(
+            registry,
+            component,
+            "models",
+        )
         source_path = manifest.get("source_path", "")
-        rel_path = (
-            (manifest.get("entrypoints") or {}).get("models")
-            if isinstance(manifest.get("entrypoints"), dict)
-            else ""
-        )
-        raw_models_path = (
-            (Path(source_path).parent / rel_path).resolve()
-            if source_path and rel_path
-            else source_path
-        )
+        raw_models_path = resolved_models_path or source_path
         trusted_metadata = _is_trusted_runtime_provider_component(component) or _is_repository_catalog_component(component)
-        if raw_models is None and _is_repository_catalog_component(component):
-            catalog_models_path = Path(source_path).parent / "models.json" if source_path else Path()
-            if catalog_models_path and catalog_models_path.is_file():
-                try:
-                    raw_models = load_strict_metadata_json(catalog_models_path)
-                    raw_models_path = catalog_models_path.resolve()
-                except OSError:
-                    raw_models = None
         if raw_models is not None and trusted_metadata:
             source_path = manifest.get("source_path", "")
             validate_model_catalog_source(
                 raw_models,
                 path=raw_models_path,
             )
-        if raw_models is None and _is_repository_catalog_component(component):
-            extension_root = _model_catalog_root().parent / "extensions" / "llm" / "providers" / provider_id / "models"
-            if extension_root.is_dir():
-                raw_models = []
-                for model_path in sorted(extension_root.glob("*.json")):
-                    try:
-                        model = load_strict_metadata_json(model_path)
-                        validate_model_catalog_source(
-                            {"models": [model]},
-                            path=model_path,
-                        )
-                    except (OSError, ValueError):
-                        continue
-                    if isinstance(model, dict):
-                        raw_models.append(model)
         if isinstance(raw_models, dict):
             raw_models = raw_models.get("models")
         if not isinstance(raw_models, list):
