@@ -2,7 +2,7 @@
 name: computer-safety
 description: Keep approval boundaries and verify visible outcomes for computer and browser operations.
 compatibility: Tobkiri computer and browser activities
-allowed-tools: desktop_list desktop_create desktop_frame desktop_input desktop_control_acquire desktop_control_renew desktop_control_release browser_use browser_companion browser_computer
+allowed-tools: desktop_list desktop_create desktop_frame desktop_frame_evidence desktop_input desktop_control_acquire desktop_control_renew desktop_control_release browser_use browser_companion browser_computer
 ---
 
 # Computer Safety
