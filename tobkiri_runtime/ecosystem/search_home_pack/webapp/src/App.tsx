@@ -25,12 +25,22 @@ import {
 import { NavigationReview } from "./NavigationReview";
 import { conversationHref, normalizeAnswerResponse, type AnswerResult } from "./answerState";
 import { evaluateExplicitDestinationInput } from "./destinationPolicy";
+import { describeRequestError, joinRequestErrors } from "./requestErrors";
 
 const ROUTE_DECISION_STORAGE_KEY = "rumi-search-home-route-decision";
 const ANSWER_ROUTE_TYPES = new Set(["ASK_AI", "ASK_AI_WITH_SEARCH"]);
 
 type HydratedRouteState = RouteDecision | null;
 type SearchAction = "smart" | "answer" | "google" | "open";
+type SearchRequestFailure = {
+  kind: "route" | "answer";
+  title: string;
+  message: string;
+  query: string;
+  action: SearchAction;
+  model: string;
+};
+type ModelSaveFailure = { attemptedModel: string; message: string };
 
 const ACTIONS: Array<{ id: SearchAction; title: string; subtitle: (query: string) => string }> = [
   {
@@ -279,7 +289,11 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [answerLoading, setAnswerLoading] = useState(false);
   const [answerResult, setAnswerResult] = useState<(AnswerResult & { query: string; requestedModel: string }) | null>(null);
-  const [answerTransportError, setAnswerTransportError] = useState("");
+  const [searchRequestFailure, setSearchRequestFailure] = useState<SearchRequestFailure | null>(null);
+  const [modelsLoading, setModelsLoading] = useState(true);
+  const [modelLoadError, setModelLoadError] = useState("");
+  const [modelSaveFailure, setModelSaveFailure] = useState<ModelSaveFailure | null>(null);
+  const [modelSavePending, setModelSavePending] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -287,6 +301,8 @@ export default function App() {
   const modelFilterRef = useRef<HTMLInputElement | null>(null);
   const committedNavigationRef = useRef(false);
   const answerRequestRef = useRef(0);
+  const modelSaveRequestRef = useRef(0);
+  const modelLoadRequestRef = useRef(0);
 
   const currentDecision = useMemo(() => {
     if (!decision) {
@@ -308,7 +324,17 @@ export default function App() {
       ? modelLabel(selectedModelItem)
       : selectedModel
     : "Default model";
-  const selectedModelStatus = selectedModelItem ? modelStatusLabel(selectedModelItem) : "default routing";
+  const selectedModelStatus = modelsLoading
+    ? "loading model data"
+    : modelSavePending
+      ? "saving selection"
+      : modelSaveFailure
+        ? "selection not saved"
+        : modelLoadError
+          ? "model data unavailable"
+          : selectedModelItem
+            ? modelStatusLabel(selectedModelItem)
+            : "default routing";
   const filteredModels = useMemo(() => {
     const needle = modelFilter.trim().toLowerCase();
     return models.filter((model) => {
@@ -388,17 +414,36 @@ export default function App() {
     });
   }, []);
 
-  useEffect(() => {
-    void Promise.all([loadModels(), loadModelSettings()])
-      .then(([modelsPayload, settingsPayload]) => {
-        setModels(Array.isArray(modelsPayload.models) ? modelsPayload.models : []);
-        const preferred = String(settingsPayload.models?.[MODEL_SETTINGS_KEY] || "");
-        if (preferred) {
-          setSelectedModel(preferred);
-        }
-      })
-      .catch(() => undefined);
+  const loadModelControl = useCallback(async () => {
+    const requestRevision = ++modelLoadRequestRef.current;
+    const selectionRevision = modelSaveRequestRef.current;
+    setModelsLoading(true);
+    setModelLoadError("");
+    const [catalogResult, settingsResult] = await Promise.allSettled([loadModels(), loadModelSettings()]);
+    if (requestRevision !== modelLoadRequestRef.current) return;
+    const failures: string[] = [];
+    if (catalogResult.status === "fulfilled") {
+      setModels(Array.isArray(catalogResult.value.models) ? catalogResult.value.models : []);
+    } else {
+      failures.push(
+        `Model catalog failed: ${describeRequestError(catalogResult.reason, "The catalog could not be loaded.")}`,
+      );
+    }
+    if (settingsResult.status === "fulfilled") {
+      const preferred = String(settingsResult.value.models?.[MODEL_SETTINGS_KEY] || "");
+      if (selectionRevision === modelSaveRequestRef.current) setSelectedModel(preferred);
+    } else {
+      failures.push(
+        `Model settings failed: ${describeRequestError(settingsResult.reason, "Saved model settings could not be loaded.")}`,
+      );
+    }
+    setModelLoadError(joinRequestErrors(failures));
+    setModelsLoading(false);
   }, []);
+
+  useEffect(() => {
+    void loadModelControl();
+  }, [loadModelControl]);
 
   useEffect(() => {
     if (!modelPickerOpen) {
@@ -426,21 +471,33 @@ export default function App() {
   }, [modelPickerOpen]);
 
   const runAnswer = useCallback(
-    async (query: string, baseDecision: RouteDecision = syntheticAnswerDecision(query)) => {
+    async (
+      query: string,
+      baseDecision: RouteDecision = syntheticAnswerDecision(query),
+      modelOverride?: string,
+    ) => {
+      const requestModel = modelOverride === undefined ? selectedModel : modelOverride;
       setDecision(baseDecision);
       setSelectedIndex(-1);
       persistRouteState(baseDecision, -1);
       const requestRevision = ++answerRequestRef.current;
       setAnswerResult(null);
-      setAnswerTransportError("");
+      setSearchRequestFailure(null);
       setAnswerLoading(true);
       try {
-        const payload = await answerInput(query, selectedModel);
+        const payload = await answerInput(query, requestModel);
         if (requestRevision !== answerRequestRef.current) return;
-        setAnswerResult({ ...normalizeAnswerResponse(payload), query, requestedModel: selectedModel });
-      } catch {
+        setAnswerResult({ ...normalizeAnswerResponse(payload), query, requestedModel: requestModel });
+      } catch (error) {
         if (requestRevision !== answerRequestRef.current) return;
-        setAnswerTransportError("The answer request could not be completed. Check the connection and retry intentionally.");
+        setSearchRequestFailure({
+          kind: "answer",
+          title: "Answer request failed",
+          message: describeRequestError(error, "The answer request could not be completed."),
+          query,
+          action: "answer",
+          model: requestModel,
+        });
       } finally {
         if (requestRevision === answerRequestRef.current) setAnswerLoading(false);
       }
@@ -449,12 +506,14 @@ export default function App() {
   );
 
   const executeSearch = useCallback(
-    async (action: SearchAction) => {
-      const query = input.trim();
+    async (action: SearchAction, queryOverride?: string, modelOverride?: string) => {
+      const query = (queryOverride === undefined ? input : queryOverride).trim();
+      const requestModel = modelOverride === undefined ? selectedModel : modelOverride;
       if (!query || loading || answerLoading) {
         return;
       }
       committedNavigationRef.current = false;
+      setSearchRequestFailure(null);
       setLoading(true);
       try {
         const explicitDestination = evaluateExplicitDestinationInput(query);
@@ -477,7 +536,7 @@ export default function App() {
           return;
         }
         if (action === "answer") {
-          await runAnswer(query);
+          await runAnswer(query, syntheticAnswerDecision(query), requestModel);
           return;
         }
         if (action === "google") {
@@ -498,17 +557,24 @@ export default function App() {
           return;
         }
 
-        const nextDecision = await routeInput(query, selectedModel);
+        const nextDecision = await routeInput(query, requestModel);
         const nextIndex = normalizeSelectedIndex(nextDecision, nextDecision.selected_index);
         setDecision(nextDecision);
         setSelectedIndex(nextIndex);
         persistRouteState(nextDecision, nextIndex);
         if (isAnswerRoute(nextDecision)) {
-          await runAnswer(query, nextDecision);
+          await runAnswer(query, nextDecision, requestModel);
           return;
         }
       } catch (submitError) {
-        console.warn("Search Home route failed", submitError);
+        setSearchRequestFailure({
+          kind: "route",
+          title: "Routing request failed",
+          message: describeRequestError(submitError, "The destination could not be resolved."),
+          query,
+          action,
+          model: requestModel,
+        });
       } finally {
         setLoading(false);
       }
@@ -532,12 +598,28 @@ export default function App() {
     [activeAction, executeSearch],
   );
 
-  const selectModel = useCallback((nextModel: string) => {
+  const selectModel = useCallback(async (nextModel: string) => {
+    const previousModel = selectedModel;
+    const requestRevision = ++modelSaveRequestRef.current;
     setSelectedModel(nextModel);
+    setModelSaveFailure(null);
+    setModelSavePending(true);
     setModelPickerOpen(false);
     setModelFilter("");
-    void setPreferredModel(nextModel).catch(() => undefined);
-  }, []);
+    try {
+      await setPreferredModel(nextModel);
+    } catch (error) {
+      if (requestRevision !== modelSaveRequestRef.current) return;
+      setSelectedModel(previousModel);
+      setModelSaveFailure({
+        attemptedModel: nextModel,
+        message: describeRequestError(error, "The preferred model could not be saved."),
+      });
+      setModelPickerOpen(true);
+    } finally {
+      if (requestRevision === modelSaveRequestRef.current) setModelSavePending(false);
+    }
+  }, [selectedModel]);
 
   const handleFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const nextFile = event.target.files?.[0] ?? null;
@@ -552,11 +634,12 @@ export default function App() {
       <section className="hero-search">
         <div className="hero-header">
           <div>
-            <span className="product-mark">Rumi Search Home</span>
+            <span className="product-mark">Tobkiri Search Home</span>
             <h1>何を探しましょう？</h1>
           </div>
           <div className="model-control" ref={modelPickerRef}>
             <button
+              aria-describedby={modelPickerOpen && (modelLoadError || modelSaveFailure) ? "model-control-status" : undefined}
               aria-expanded={modelPickerOpen}
               aria-haspopup="listbox"
               className="model-trigger"
@@ -572,11 +655,37 @@ export default function App() {
               </span>
             </button>
             {modelPickerOpen ? (
-              <div className="model-popover">
+              <div className={`model-popover${modelLoadError || modelSaveFailure ? " model-popover-has-errors" : ""}`}>
                 <div className="model-popover-head">
                   <strong>Model</strong>
-                  <span>{models.length} available</span>
+                  <span>{modelsLoading ? "Loading…" : `${models.length} available`}</span>
                 </div>
+                {modelLoadError || modelSaveFailure ? (
+                  <div className="model-control-errors" id="model-control-status" role="alert">
+                    {modelLoadError ? (
+                      <div>
+                        <strong>Model data unavailable</strong>
+                        <p>{modelLoadError}</p>
+                        <button type="button" onClick={() => void loadModelControl()} disabled={modelsLoading}>
+                          {modelsLoading ? "Retrying…" : "Retry model load"}
+                        </button>
+                      </div>
+                    ) : null}
+                    {modelSaveFailure ? (
+                      <div>
+                        <strong>Model choice was not saved</strong>
+                        <p>{modelSaveFailure.message} The previous selection was restored.</p>
+                        <button
+                          type="button"
+                          onClick={() => void selectModel(modelSaveFailure.attemptedModel)}
+                          disabled={modelSavePending}
+                        >
+                          {modelSavePending ? "Retrying…" : "Retry save"}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <input
                   aria-label="Filter models"
                   autoComplete="off"
@@ -590,7 +699,8 @@ export default function App() {
                   <button
                     aria-selected={!selectedModel}
                     className={`model-option${!selectedModel ? " model-option-active" : ""}`}
-                    onClick={() => selectModel("")}
+                    disabled={modelSavePending}
+                    onClick={() => void selectModel("")}
                     role="option"
                     type="button"
                   >
@@ -620,7 +730,8 @@ export default function App() {
                         aria-selected={active}
                         className={`model-option${active ? " model-option-active" : ""}`}
                         key={value}
-                        onClick={() => selectModel(value)}
+                        disabled={modelSavePending}
+                        onClick={() => void selectModel(value)}
                         role="option"
                         type="button"
                       >
@@ -641,7 +752,9 @@ export default function App() {
                       </button>
                     );
                   })}
-                  {filteredModels.length === 0 ? <div className="model-empty">No matching models</div> : null}
+                  {!modelsLoading && !modelLoadError && filteredModels.length === 0 ? (
+                    <div className="model-empty">No matching models</div>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -733,20 +846,47 @@ export default function App() {
               </div>
             ) : null}
           </div>
+          {searchRequestFailure ? (
+            <section className="request-error" role="alert">
+              <div>
+                <strong>{searchRequestFailure.title}</strong>
+                <p>{searchRequestFailure.message}</p>
+                <small>
+                  Query and {searchRequestFailure.kind === "route" ? "selected action/model" : "selected model"} were preserved.
+                </small>
+              </div>
+              <div className="request-error-actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (searchRequestFailure.kind === "answer") {
+                      void runAnswer(
+                        searchRequestFailure.query,
+                        syntheticAnswerDecision(searchRequestFailure.query),
+                        searchRequestFailure.model,
+                      );
+                    } else {
+                      void executeSearch(
+                        searchRequestFailure.action,
+                        searchRequestFailure.query,
+                        searchRequestFailure.model,
+                      );
+                    }
+                  }}
+                  disabled={loading || answerLoading}
+                >
+                  Retry
+                </button>
+                <button type="button" onClick={() => setSearchRequestFailure(null)}>Dismiss</button>
+              </div>
+            </section>
+          ) : null}
         </form>
 
         {answerLoading ? (
           <section className="answer-card" aria-busy="true" aria-live="polite">
             <strong>Answer in progress</strong>
             <p>The request is committed. Duplicate submission is disabled until it settles.</p>
-          </section>
-        ) : null}
-
-        {answerTransportError ? (
-          <section className="answer-card answer-card-error" role="alert">
-            <strong>Answer request failed</strong>
-            <p>{answerTransportError}</p>
-            <button type="button" onClick={() => void runAnswer(input.trim())}>Retry intentionally</button>
           </section>
         ) : null}
 
@@ -767,12 +907,23 @@ export default function App() {
             </dl>
             <div className="answer-actions">
               {answerResult.conversationId ? (
-                <a href={conversationHref(answerResult.conversationId)}>Open conversation / Continue in Rumi</a>
+                <a href={conversationHref(answerResult.conversationId)}>Open conversation / Continue in Tobkiri</a>
               ) : null}
-              <button type="button" onClick={() => void runAnswer(answerResult.query)}>Retry intentionally</button>
-              <button type="button" onClick={() => { setAnswerResult(null); setAnswerTransportError(""); }}>Dismiss</button>
+              <button
+                type="button"
+                onClick={() =>
+                  void runAnswer(
+                    answerResult.query,
+                    syntheticAnswerDecision(answerResult.query),
+                    answerResult.requestedModel,
+                  )
+                }
+              >
+                Retry intentionally
+              </button>
+              <button type="button" onClick={() => { setAnswerResult(null); setSearchRequestFailure(null); }}>Dismiss</button>
             </div>
-            <p className="answer-privacy-note">Answer text is kept in memory only. Reload recovery uses the durable Rumi conversation link when available.</p>
+            <p className="answer-privacy-note">Answer text is kept in memory only. Reload recovery uses the durable Tobkiri conversation link when available.</p>
           </section>
         ) : null}
       </section>

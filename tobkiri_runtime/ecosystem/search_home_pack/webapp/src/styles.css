@@ -202,6 +202,53 @@ a {
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
+.model-popover-has-errors {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
+.model-control-errors {
+  display: grid;
+  gap: 8px;
+}
+
+.model-control-errors > div {
+  display: grid;
+  gap: 7px;
+  padding: 10px 12px;
+  border: 1px solid rgba(248, 113, 113, 0.42);
+  border-radius: 12px;
+  background: rgba(127, 29, 29, 0.16);
+}
+
+.model-control-errors strong {
+  color: #fecaca;
+  font-size: 0.82rem;
+}
+
+.model-control-errors p {
+  margin: 0;
+  color: #d4d4d8;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.model-control-errors button {
+  justify-self: start;
+  min-height: 44px;
+  border: 1px solid #52525b;
+  border-radius: 8px;
+  background: #27272a;
+  color: #f4f4f5;
+  cursor: pointer;
+  padding: 0 11px;
+}
+
+.model-control-errors button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 .model-popover-head {
   display: flex;
   align-items: center;
@@ -347,6 +394,44 @@ a {
 
 .hero-form {
   width: 100%;
+}
+
+.request-error {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 14px 18px;
+  border: 1px solid rgba(248, 113, 113, 0.48);
+  border-radius: 18px;
+  background: rgba(69, 10, 10, 0.34);
+}
+
+.request-error > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.request-error strong { color: #fecaca; }
+.request-error p { margin: 0; color: #e4e4e7; overflow-wrap: anywhere; }
+.request-error small { color: #a1a1aa; }
+
+.request-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.request-error-actions button {
+  min-height: 44px;
+  border: 1px solid #52525b;
+  border-radius: 9px;
+  background: #27272a;
+  color: #f4f4f5;
+  cursor: pointer;
+  padding: 0 13px;
 }
 
 .search-box {
@@ -761,6 +846,14 @@ a {
   }
 
   .destination-notice-actions {
+    justify-content: flex-start;
+  }
+
+  .request-error {
+    grid-template-columns: 1fr;
+  }
+
+  .request-error-actions {
     justify-content: flex-start;
   }
 

@@ -83,6 +83,7 @@ export type SearchAnswerResponse = {
 };
 
 async function requestJson<T>(route: SearchHomeContractRoute, init?: RequestInit): Promise<T> {
+  const path = route.apiPath;
   const method = (init?.method ?? "GET").toUpperCase();
   const response = await fetch(searchHomeContractUrl(route, method), {
     headers: {
@@ -104,7 +105,7 @@ async function requestJson<T>(route: SearchHomeContractRoute, init?: RequestInit
     }
     throw new Error(message);
   }
-  return (await response.json()) as T;
+  return validateResponse(path, await parseResponseJson(response, path)) as T;
 }
 
 export async function routeInput(input: string, model = ""): Promise<RouteDecision> {
@@ -175,4 +176,57 @@ export function clearRouteStateRemotely(): void {
     issued_at: issuedAt.toISOString(),
     expires_at: new Date(issuedAt.getTime() + 5 * 60 * 1000).toISOString(),
   });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function responseLabel(path: string): string {
+  if (path.endsWith("/models")) return "Model catalog";
+  if (path.endsWith("/settings")) return "Model settings";
+  if (path.endsWith("/settings/model")) return "Model preference";
+  if (path.endsWith("/route")) return "Routing service";
+  if (path.endsWith("/answer")) return "Answer service";
+  return "Search Home service";
+}
+
+async function parseResponseJson(response: Response, path: string): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    throw new Error(`${responseLabel(path)} returned malformed JSON.`);
+  }
+}
+
+function validateResponse(path: string, payload: unknown): unknown {
+  if (!isRecord(payload)) {
+    throw new Error(`${responseLabel(path)} returned malformed data.`);
+  }
+  if (path.endsWith("/models")) {
+    if (!Array.isArray(payload.models) || !payload.models.every(isRecord)) {
+      throw new Error("Model catalog returned malformed data.");
+    }
+  } else if (path.endsWith("/settings")) {
+    if (!isRecord(payload.models)) {
+      throw new Error("Model settings returned malformed data.");
+    }
+  } else if (path.endsWith("/settings/model")) {
+    if (payload.status !== "ok") {
+      throw new Error("Model preference was not saved.");
+    }
+  } else if (path.endsWith("/route")) {
+    if (
+      typeof payload.route_type !== "string"
+      || typeof payload.query !== "string"
+      || !Array.isArray(payload.target_candidates)
+    ) {
+      throw new Error("Routing service returned malformed data.");
+    }
+  } else if (path.endsWith("/answer")) {
+    if (payload.status !== "ok" && payload.status !== "error") {
+      throw new Error("Answer service returned malformed data.");
+    }
+  }
+  return payload;
 }
