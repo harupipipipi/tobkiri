@@ -2,7 +2,11 @@ name: Flutter Mobile
 
 on:
   pull_request:
-    branches: [master, soon, codex/pack-architecture-program-soon]
+    branches:
+      - master
+      - soon
+      - codex/pack-architecture-program-soon
+      - agent/add-pack-architecture-implementation-plan
     paths:
       - "tobkiri_mobile/**"
       # Generated mobile catalogs are validated against these source manifests.
@@ -35,6 +39,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: "3.38.5"
           cache: true
 
       - name: Install dependencies
