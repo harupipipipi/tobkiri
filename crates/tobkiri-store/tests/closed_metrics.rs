@@ -96,9 +96,9 @@ fn closed_guard_metrics_count_real_selects_and_restore_request_isolation() {
     .with_security_epoch(gate.epoch(&profile).unwrap())
     .with_observation(&observation)
     .unwrap();
-    // One real check_context = 3 SELECTs. The second lookup performs that same
-    // check plus the funding-owner permission SELECT: this sequence totals 7.
-    // It does NOT assert that every production allocation always performs 7.
+    // One real check_context = 2 SELECT statements (fault+epoch and Pack).
+    // The second lookup adds the funding-owner permission statement: total 5.
+    // Every guard/owner check remains; this is not a count of B-tree lookups.
     {
         let _outer = enter_sync(Some(&other));
         gate.check_context(&cx).unwrap();
@@ -115,31 +115,34 @@ fn closed_guard_metrics_count_real_selects_and_restore_request_isolation() {
     }
     let snapshot = observation.snapshot();
     assert_eq!(
-        snapshot.slots[Metric::GuardFaultSelect as usize].returned,
+        snapshot.slots[Metric::GuardFaultEpochSelect as usize].returned,
         2
     );
-    assert_eq!(
-        snapshot.slots[Metric::GuardEpochSelect as usize].returned,
-        2
-    );
+    assert_eq!(snapshot.slots[Metric::GuardFaultSelect as usize].started, 0);
     assert_eq!(
         snapshot.slots[Metric::GuardPackPermissionsSelect as usize].returned,
         3
     );
     assert_eq!(
         snapshot.slots[Metric::ApprovalDbLockWait as usize].returned,
-        7
+        5
     );
     assert_eq!(
         other.snapshot().slots[Metric::GuardEpochSelect as usize].returned,
         1
     );
-    // An inactive cx still performs the existing fault check first, then stops.
+    assert_eq!(snapshot.slots[Metric::GuardEpochSelect as usize].started, 0);
+    // The fresh joined read may observe epoch, but fault still precedes active
+    // and the epoch result can never override cancellation.
     cx.cancel().cancel();
     assert!(matches!(gate.check_context(&cx), Err(GateError::Cancelled)));
     let stopped = observation.snapshot();
-    assert_eq!(stopped.slots[Metric::GuardFaultSelect as usize].returned, 3);
-    assert_eq!(stopped.slots[Metric::GuardEpochSelect as usize].returned, 2);
+    assert_eq!(
+        stopped.slots[Metric::GuardFaultEpochSelect as usize].returned,
+        3
+    );
+    assert_eq!(stopped.slots[Metric::GuardFaultSelect as usize].started, 0);
+    assert_eq!(stopped.slots[Metric::GuardEpochSelect as usize].started, 0);
 }
 
 #[test]

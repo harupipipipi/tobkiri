@@ -28,6 +28,7 @@ values and sets `overflow`; null does not mean zero.
 | 1 | Ordinary approval wait | none |
 | 2 | Metered allocation | requested bytes, work |
 | 3 | Prepaid conversion allocation | requested bytes, work |
+| 4 | Current admission fault + epoch joined SELECT | none |
 | 5 | Current admission fault SELECT | none |
 | 6 | Current security epoch SELECT | none |
 | 7 | Current Pack permission SELECT | none |
@@ -35,6 +36,20 @@ values and sets `overflow`; null does not mean zero.
 | 9 | Selected approval DB mutex waits | none |
 | 11 | Selected audit DB mutex waits | none |
 | 12 | Existing complete audit image scan | rows, TEXT/BLOB bytes |
+
+Slot 4 counts one fresh combined statement, which still performs two singleton
+lookups. Slots 5/6 continue to count standalone or fallback statements. Consumers
+summing selected SQL statements must include 4, 5, 6, 7 and 8; they must not infer
+physical row/B-tree work from that count. A failed joined prepare/step is observed
+before the original fault -> active -> epoch read-only fallback. Fault/type
+errors and cancellation retain that priority; no authority/epoch value is cached.
+The epoch is physically observed in the joined SQL snapshot before the active
+check, rather than by a later standalone statement. This preserves decision
+priority, not every possible timing of the old two-read sequence. It does not
+make the interval from SQL completion through the subsequent guard atomic against
+a database writer. Both pre-Core-lock and in-Core-lock guard checks and all
+permission/owner checks remain. The 24-slot bank, encoder bound and request
+deadline are unchanged.
 
 Durations are inclusive and can overlap; summing them does not give request or
 CPU time. The terminal snapshot is not atomic with live descendants, and unfinished

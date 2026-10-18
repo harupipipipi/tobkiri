@@ -2061,11 +2061,7 @@ impl Gate for GateEngine {
     fn check_context(&self, cx: &CallCx) -> Result<(), GateError> {
         #[cfg(feature = "closed-request-metrics")]
         let _sync_observation = crate::closed_metrics::enter_sync(cx.observation());
-        self.require_admission(cx.profile())?;
-        cx.check_active()?;
-        if self.epoch(cx.profile())? != cx.security_epoch() {
-            return Err(GateError::StaleEpoch);
-        }
+        self.approvals.check_context_epoch(cx)?;
         let revision = cx
             .revision()
             .ok_or_else(|| GateError::Denied("missing compiled revision".into()))?;

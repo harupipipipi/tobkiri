@@ -490,6 +490,47 @@ fn now_ms() -> Result<u64, StoreError> {
 fn persistence(error: impl std::fmt::Display) -> GateError {
     GateError::Persistence(error.to_string())
 }
+// One statement, two current singleton lookups. No values survive this guard.
+// Presence columns distinguish a missing row from a corrupt present NULL.
+const CONTEXT_EPOCH_SQL: &str = "SELECT f.singleton, f.code, e.singleton, e.epoch \
+    FROM (SELECT 1) AS seed \
+    LEFT JOIN authority_fault AS f ON f.singleton=1 \
+    LEFT JOIN security_epoch AS e ON e.singleton=1";
+
+struct ContextEpochRead {
+    fault: Result<Option<Vec<u8>>, GateError>,
+    epoch: Result<u64, GateError>,
+}
+
+fn read_context_epoch(conn: &rusqlite::Connection) -> rusqlite::Result<ContextEpochRead> {
+    conn.prepare_cached(CONTEXT_EPOCH_SQL)?
+        .query_row([], |row| {
+            // Keep column failures separate: a corrupt epoch must not outrank the
+            // current fault or cancellation. Only prepare/step failures use fallback.
+            let fault = row
+                .get::<_, Option<i64>>(0)
+                .map_err(persistence)
+                .and_then(|present| {
+                    if present.is_some() {
+                        row.get::<_, Vec<u8>>(1).map(Some).map_err(persistence)
+                    } else {
+                        Ok(None)
+                    }
+                });
+            let epoch = row
+                .get::<_, Option<i64>>(2)
+                .map_err(persistence)
+                .and_then(|present| {
+                    if present.is_some() {
+                        crate::sql_u64(row, 3).map_err(persistence)
+                    } else {
+                        Err(persistence(rusqlite::Error::QueryReturnedNoRows))
+                    }
+                });
+            Ok(ContextEpochRead { fault, epoch })
+        })
+}
+
 fn status(conn: &rusqlite::Connection) -> Result<AdmissionStatus, GateError> {
     let code: Option<Vec<u8>> = tobkiri_gate::measure_closed!(
         GuardFaultSelect,
@@ -548,6 +589,47 @@ impl ApprovalStore for Approvals {
                 .and_then(|mut statement| statement.query_row([], |r| crate::sql_u64(r, 0)))
                 .map_err(persistence)
         )
+    }
+    fn check_context_epoch(&self, cx: &tobkiri_gate::CallCx) -> Result<(), GateError> {
+        self.local(cx.profile())?;
+        let joined = {
+            let conn = tobkiri_gate::measure_closed!(
+                ApprovalDbLockWait,
+                self.connection.lock().map_err(persistence)
+            )?;
+            tobkiri_gate::measure_closed!(GuardFaultEpochSelect, read_context_epoch(&conn))
+        };
+        // The private DB guard is gone before active/cancellation inspection or
+        // the caller's Gate/Core checks. No Gate/Core callback is added under it.
+        let read = match joined {
+            Ok(read) => read,
+            Err(_) => {
+                // A combined prepare/step can fail on an epoch table that the
+                // old path never reached (fault/cancel won first). Re-run only
+                // the original read path; no write, commit or effect is retried.
+                match self.admission_status(cx.profile())? {
+                    AdmissionStatus::Allowed => {}
+                    AdmissionStatus::IntegrityFault { code } => {
+                        return Err(GateError::Integrity(code));
+                    }
+                }
+                cx.check_active()?;
+                if self.security_epoch(cx.profile())? != cx.security_epoch() {
+                    return Err(GateError::StaleEpoch);
+                }
+                return Ok(());
+            }
+        };
+        if let Some(bytes) = read.fault? {
+            let code = decode(&bytes)
+                .map_err(|_| GateError::Integrity(IntegrityFaultCode::AuthorityDatabase))?;
+            return Err(GateError::Integrity(code));
+        }
+        cx.check_active()?;
+        if read.epoch? != cx.security_epoch() {
+            return Err(GateError::StaleEpoch);
+        }
+        Ok(())
     }
     fn advance_security_epoch(&self, profile: &ProfileId) -> Result<u64, GateError> {
         self.local(profile)?;
@@ -1670,3 +1752,7 @@ mod cleanup_snapshot_tests {
 #[cfg(test)]
 #[path = "approvals_cached_tests.rs"]
 mod cached_select_tests;
+
+#[cfg(test)]
+#[path = "approvals_context_epoch_tests.rs"]
+mod context_epoch_tests;

@@ -27,6 +27,7 @@ pub enum Metric {
     ApprovalWait = 1,
     AllocationMetered = 2,
     AllocationConversion = 3,
+    GuardFaultEpochSelect = 4,
     GuardFaultSelect = 5,
     GuardEpochSelect = 6,
     GuardPackPermissionsSelect = 7,

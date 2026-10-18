@@ -934,6 +934,7 @@ mod tests {
             let after = observation.snapshot();
             let count = |snapshot: &tobkiri_gate::closed_metrics::Snapshot| {
                 [
+                    Metric::GuardFaultEpochSelect,
                     Metric::GuardFaultSelect,
                     Metric::GuardEpochSelect,
                     Metric::GuardPackPermissionsSelect,
@@ -942,10 +943,10 @@ mod tests {
                 .map(|metric| snapshot.slots[*metric as usize].started)
                 .sum::<u64>()
             };
-            // This trusted Caller fixture uses capacity_limit (4 SQL), not an
-            // authenticated guest Frame (which has its own guard sequence).
-            // The two real admissions stay constant as payload size grows.
-            assert_eq!(count(&after) - count(&before), 8);
+            // This trusted Caller fixture uses capacity_limit (3 statements),
+            // not an authenticated guest Frame (with its own guard sequence).
+            // Two real admissions remain; fault+epoch share one fresh statement.
+            assert_eq!(count(&after) - count(&before), 6);
             assert_eq!(
                 after.slots[Metric::AllocationMetered as usize].started
                     - before.slots[Metric::AllocationMetered as usize].started,

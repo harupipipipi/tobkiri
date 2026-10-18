@@ -760,6 +760,21 @@ pub trait ApprovalStore: Send + Sync {
         code: IntegrityFaultCode,
     ) -> Result<(), GateError>;
     fn security_epoch(&self, profile: &ProfileId) -> Result<u64, GateError>;
+    /// Read the current admission fault and epoch for one existing context check.
+    /// The default preserves fault -> active -> epoch ordering. Implementations
+    /// may combine fresh reads, but may not cache authority, skip the active
+    /// check, or turn read failures into permission. This is not a dispatch grant.
+    fn check_context_epoch(&self, cx: &CallCx) -> Result<(), GateError> {
+        match self.admission_status(cx.profile())? {
+            AdmissionStatus::Allowed => {}
+            AdmissionStatus::IntegrityFault { code } => return Err(GateError::Integrity(code)),
+        }
+        cx.check_active()?;
+        if self.security_epoch(cx.profile())? != cx.security_epoch() {
+            return Err(GateError::StaleEpoch);
+        }
+        Ok(())
+    }
     fn advance_security_epoch(&self, profile: &ProfileId) -> Result<u64, GateError>;
     fn permissions(
         &self,
