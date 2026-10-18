@@ -14,6 +14,14 @@ Profile checks, references, evidence, individual sections, integration and
 review. Each step produces a short public decision summary. Private reasoning
 is neither requested nor recorded.
 
+Before ordinary work, a separate Goal-contract gate reviews the candidate with
+field-level evidence pointers. It allows at most two semantic reviews and one
+corrected candidate, retaining the original contract and all paid attempts.
+Existing Runs require explicit adoption at the selected revision and snapshot;
+continuation cannot reset the limits. Model approval is evidence, not a proof
+of arbitrary natural-language consistency. See the
+[Goal-contract review contract](../docs/migration/1520/deepthink-goal-contract-review.md).
+
 The Goal and checkpoint are logical artifacts in the Pack's private Core store,
 including `goal.json`, `goal.md`, drafts, accepted answers and quarantined
 candidates. These names do not grant access to arbitrary host files.
@@ -25,16 +33,18 @@ first worker step. This preserves the Core instance re-entry guard. The input
 adapter has no storage, network or secret authority.
 
 Continuation retains the original Goal, completed generations, tool receipts and
-usage. Clarification answers re-evaluate the stopped phase. A failed generation
-can be retried without discarding earlier work. A tool with an unknown outcome
-is not automatically replayed; the workflow requires reconciliation. Review
-limits still apply when resuming.
+usage. Clarification answers re-evaluate the stopped phase. An eligible,
+confirmed failed generation can be retried without discarding earlier work.
+An unknown generation, tool outcome or checkpoint commit requires reconciliation
+and never authorizes automatic paid replay. Review limits still apply when
+resuming. Each invocation completes at most one workflow phase and saves its
+paused transition atomically; explicit continuation selects the same Run.
 
 Malformed JSON and schema-invalid public responses are preserved separately from
 the successful generation cache, together with their request digest and usage.
 The rejection, error and quarantined state share one atomic checkpoint. Recovery
-after a crash at that save point creates a new generation and retains the old
-rejected response and billing receipt.
+from a confirmed saved rejection retains the old response and billing receipt.
+An unconfirmed save must be reconciled before a new generation is allowed.
 
 ## OpenRouter and usage
 
@@ -71,6 +81,11 @@ Provider-reported input, output, cached, reasoning and total tokens, plus cost,
 are retained and displayed. Missing receipts remain unknown, and partial totals
 identify unconfirmed attempts rather than reporting their usage as zero.
 
+The native `profile session` host accepts sequential typed User requests and an
+explicit close. Session/invoke protocol JSON uses stdout; Pack console display
+uses stderr. Keep the normal terminal approval path and do not treat merged
+stderr as protocol authority.
+
 ## Tools
 
 `local.harness-tools` provides nine operations:
@@ -93,21 +108,30 @@ Computer use and 3D editing software are not migrated by these Packs.
 
 ## Verification and current platform limits
 
-The input adapter has 16 transport tests, and the worker has 125 unit tests.
-The nine new tools have actual Core contract evidence for 29 cases plus five
-negative checks. Those tools cover private text artifacts and utilities; they
-do not establish execution of the 154 legacy tool definitions or model-selected
-tool use. Artifact, Profile and ABI checks must be rerun after changes to WIT,
-bindings or staged components.
+The input adapter and worker have focused transport, persistence, contract and
+review tests. The [dedicated CI for d81aaec3d](https://github.com/harupipipipi/tobkiri/actions/runs/39080716090)
+passed on Linux and Windows; the broad repository workflow was not accepted.
+The nine new tools have actual Core evidence for 20 successes, nine expected
+errors and five negative cases. Those tools cover private text artifacts and
+utilities; they do not establish execution of the 154 legacy tool definitions
+or model-selected tool use. Artifact, Profile and ABI checks must be rerun after
+changes to WIT, bindings or staged components.
 
 Actual Windows test-DATA Core sessions have exercised the SQL repository,
 provider interruption, retained progress and typed User recovery operations.
 The optimized test CLI explicitly enables the existing test-DATA constructor;
 this does not certify an ordinary production release or every supported host.
-The latest real SQL MiMo run retained a 2,025-byte prefix and confirmed 3,067
+An early real SQL MiMo run retained a 2,025-byte prefix and confirmed 3,067
 tokens, but reached the unchanged 300-second deadline before accepting its
-first phase. Provider metadata was terminal and public completion returned
-404. This is persistence and accounting evidence, not a completed workflow.
+first phase. Provider metadata was terminal and public completion returned 404.
+A later controlled Goal review returned invalid evidence pointers and missed
+an inconsistent calculation criterion, then failed during stream cleanup.
+Read-only diagnosis retained its original Goal, phases and receipts, with six
+attempts and one pending claim. Known accounting was 20,992 tokens and
+USD0.0035605272 in received receipts; tokens were incomplete and total cost was
+unknown. These observations establish retained state, not a completed workflow,
+permission to replay, or proof of earlier physical cleanup. The pointer prompt
+repair and generic cleanup/output repairs still require separate live acceptance.
 
 Control results use Core's shared 1 MiB event transport budget. The adapter
 also refuses more than 128 frames or 8 MiB examined bytes; it does not promise
