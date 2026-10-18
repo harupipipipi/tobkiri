@@ -135,6 +135,9 @@ struct NativeCleanupIntent {
     handoff: SourceHandoff,
     outcome: Option<Outcome>,
     early_close: Option<StreamCloseReason>,
+    // Publication and early-close receipt share one boundary. Separate locks
+    // permit a closer to observe no source while attach observes no cause.
+    source_control: Option<Arc<dyn StreamCloseControl>>,
     abandon_failed: bool,
 }
 struct NativeCleanupState {
@@ -144,13 +147,14 @@ struct NativeCleanupState {
     body: Arc<dyn RunTaskCompletion>,
     terminal: tokio::sync::Mutex<Option<ConsumedEntryTerminal>>,
     factory: Digest,
-    source_control: Mutex<Option<Arc<dyn StreamCloseControl>>>,
     intent: Mutex<NativeCleanupIntent>,
     receipt: Mutex<Option<CleanupReceipt>>,
     cleanup_proved: AtomicBool,
     quarantined_unknown: AtomicBool,
     ready: tokio::sync::Notify,
     cx: CallCx,
+    #[cfg(test)]
+    before_close_receipt: Mutex<Option<Box<dyn FnOnce() + Send>>>,
     _reservation: ControlReservation,
 }
 impl NativeCleanupState {
@@ -190,7 +194,9 @@ impl NativeCleanupState {
             .expect("unattached native source slot");
         assert!(slot.is_none(), "native source is attached once");
         *slot = Some(source);
-        {
+        let control = slot.as_ref().and_then(CoreStream::close_control);
+        drop(slot);
+        let early_close = {
             let mut intent = self
                 .intent
                 .lock()
@@ -199,19 +205,8 @@ impl NativeCleanupState {
                 intent.handoff == SourceHandoff::Pending,
                 "native source handoff is unique"
             );
+            intent.source_control = control.clone();
             intent.handoff = SourceHandoff::Attached;
-        }
-        let control = slot.as_ref().and_then(CoreStream::close_control);
-        drop(slot);
-        *self
-            .source_control
-            .lock()
-            .unwrap_or_else(|error| error.into_inner()) = control.clone();
-        let early_close = {
-            let intent = self
-                .intent
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
             intent.early_close
         };
         if let (Some(control), Some(reason)) = (control, early_close) {
@@ -228,20 +223,23 @@ impl NativeCleanupState {
 }
 impl StreamCloseControl for NativeCleanupState {
     fn record_close(&self, reason: StreamCloseReason) -> Result<(), StepError> {
-        let control = self
-            .source_control
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .clone();
-        {
+        let control = {
             let mut intent = self
                 .intent
                 .lock()
                 .unwrap_or_else(|error| error.into_inner());
+            let control = intent.source_control.clone();
+            // Deterministic test seam at the former split-lock window. This
+            // hook and its storage do not exist in production builds.
+            #[cfg(test)]
+            if let Some(before_receipt) = self.before_close_receipt.lock().unwrap().take() {
+                before_receipt();
+            }
             if intent.early_close.is_none() {
                 intent.early_close = Some(reason);
             }
-        }
+            control
+        };
         // The actual source selects under its own original guards. Locks are
         // released before callbacks and token notifications; none certify Join.
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -258,9 +256,10 @@ impl StreamCloseControl for NativeCleanupState {
     }
     fn record_failure(&self, error: &StepError) -> Result<(), StepError> {
         let control = self
-            .source_control
+            .intent
             .lock()
             .unwrap_or_else(|error| error.into_inner())
+            .source_control
             .clone();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             control.map_or(Ok(()), |control| control.record_failure(error))
@@ -741,11 +740,11 @@ impl TrackedStream {
             body,
             terminal: tokio::sync::Mutex::new(None),
             factory: factory.native_cleanup_identity().clone(),
-            source_control: Mutex::new(None),
             intent: Mutex::new(NativeCleanupIntent {
                 handoff: SourceHandoff::Pending,
                 outcome: None,
                 early_close: None,
+                source_control: None,
                 abandon_failed: false,
             }),
             receipt: Mutex::new(None),
@@ -753,6 +752,8 @@ impl TrackedStream {
             quarantined_unknown: AtomicBool::new(false),
             ready: tokio::sync::Notify::new(),
             cx,
+            #[cfg(test)]
+            before_close_receipt: Mutex::new(None),
             _reservation: reservation,
         });
         let owner_slot = factory.with_native_cleanup_registration(|| {
@@ -1340,6 +1341,301 @@ impl Drop for TrackedStream {
 #[cfg(test)]
 #[path = "tracked_stream_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod native_close_handoff_tests {
+    use super::*;
+    use std::{
+        sync::{Barrier, Weak},
+        time::{Duration, Instant},
+    };
+    use tobkiri_canon::ids::{ProfileId, RequestId};
+    use tobkiri_gate::{CancellationToken, CoreControl, Principal, ResourceLimits};
+
+    struct NoBody;
+    #[async_trait]
+    impl RunTaskCompletion for NoBody {
+        async fn wait(&self) -> Result<(), StepError> {
+            panic!("close-intent receipt is not physical completion")
+        }
+    }
+
+    fn state() -> Arc<NativeCleanupState> {
+        let control = CoreControl::default();
+        let cx = CallCx::try_root_with_control(
+            ProfileId::parse("prof_close_handoff").unwrap(),
+            Principal::User,
+            RequestId::parse("req_close_handoff").unwrap(),
+            CancellationToken::new_with_control(&control).unwrap(),
+            Instant::now() + Duration::from_secs(60),
+            ResourceLimits {
+                fuel_per_call: 100_000,
+                memory_mib: 8,
+                wall_ms: 60_000,
+                table_elements: 1024,
+                output_bytes: 1024,
+            },
+            control.clone(),
+        )
+        .unwrap();
+        Arc::new(NativeCleanupState {
+            source: tokio::sync::Mutex::new(None),
+            body: Arc::new(NoBody),
+            terminal: tokio::sync::Mutex::new(None),
+            factory: Digest::hash(b"close-handoff"),
+            intent: Mutex::new(NativeCleanupIntent {
+                handoff: SourceHandoff::Pending,
+                outcome: None,
+                early_close: None,
+                source_control: None,
+                abandon_failed: false,
+            }),
+            receipt: Mutex::new(None),
+            cleanup_proved: AtomicBool::new(false),
+            quarantined_unknown: AtomicBool::new(false),
+            ready: tokio::sync::Notify::new(),
+            cx,
+            before_close_receipt: Mutex::new(None),
+            _reservation: control
+                .reserve(
+                    ControlKind::Queue,
+                    4096 + size_of::<NativeCleanupState>() as u64,
+                )
+                .unwrap(),
+        })
+    }
+
+    struct Recorder {
+        state: Weak<NativeCleanupState>,
+        reasons: Mutex<Vec<StreamCloseReason>>,
+        check_unlocked: bool,
+        panic: bool,
+    }
+    impl StreamCloseControl for Recorder {
+        fn record_close(&self, reason: StreamCloseReason) -> Result<(), StepError> {
+            let Some(state) = self.state.upgrade() else {
+                // CoreStream Drop asks for Unknown once more after its owning
+                // state begins destruction; that is outside the handoff probe.
+                return Ok(());
+            };
+            // Actual source callbacks must not run under either custody lock.
+            if self.check_unlocked {
+                assert!(state.intent.try_lock().is_ok());
+                assert!(state.source.try_lock().is_ok());
+            }
+            self.reasons.lock().unwrap().push(reason);
+            assert!(!self.panic, "deterministic source callback panic");
+            Ok(())
+        }
+    }
+
+    struct Source {
+        control: Arc<Recorder>,
+        attaching: Mutex<Option<(Arc<Barrier>, Arc<Barrier>)>>,
+    }
+    #[async_trait]
+    impl StreamSource for Source {
+        async fn pull(&mut self, _: u32) -> Result<CoreValue, StepError> {
+            panic!("close-intent receipt cannot execute the source")
+        }
+        fn close_control(&self) -> Option<Arc<dyn StreamCloseControl>> {
+            let attaching = self.attaching.lock().unwrap().take();
+            if let Some((entered, resume)) = attaching {
+                entered.wait();
+                resume.wait();
+            }
+            Some(self.control.clone())
+        }
+        fn cancel(&mut self) {}
+    }
+
+    fn recorder(
+        state: &Arc<NativeCleanupState>,
+        check_unlocked: bool,
+        panic: bool,
+    ) -> Arc<Recorder> {
+        Arc::new(Recorder {
+            state: Arc::downgrade(state),
+            reasons: Mutex::new(Vec::new()),
+            check_unlocked,
+            panic,
+        })
+    }
+
+    #[test]
+    fn close_during_source_attachment_delivers_first_reason_outside_custody_locks() {
+        let state = state();
+        let control = recorder(&state, true, false);
+        let entered = Arc::new(Barrier::new(2));
+        let resume = Arc::new(Barrier::new(2));
+        let attaching = {
+            let state = state.clone();
+            let control = control.clone();
+            let entered = entered.clone();
+            let resume = resume.clone();
+            std::thread::spawn(move || {
+                state.attach(CoreStream::new(Source {
+                    control,
+                    attaching: Mutex::new(Some((entered, resume))),
+                }));
+            })
+        };
+        entered.wait();
+        state.record_close(StreamCloseReason::Deadline).unwrap();
+        state.record_close(StreamCloseReason::Shutdown).unwrap();
+        assert!(control.reasons.lock().unwrap().is_empty());
+        resume.wait();
+        attaching.join().unwrap();
+        assert_eq!(
+            *control.reasons.lock().unwrap(),
+            [StreamCloseReason::Deadline]
+        );
+        assert!(state.cx.cancel().is_cancelled());
+        assert!(!state.cleanup_proved.load(Ordering::Acquire));
+        assert!(state.receipt().is_none());
+    }
+
+    #[test]
+    fn source_snapshot_and_close_receipt_are_one_atomic_attachment_boundary() {
+        let state = state();
+        let control = recorder(&state, false, false);
+        let snapshotted = Arc::new(Barrier::new(2));
+        let accept = Arc::new(Barrier::new(2));
+        *state.before_close_receipt.lock().unwrap() = Some(Box::new({
+            let snapshotted = snapshotted.clone();
+            let accept = accept.clone();
+            move || {
+                snapshotted.wait();
+                accept.wait();
+            }
+        }));
+        let closing = {
+            let state = state.clone();
+            std::thread::spawn(move || state.record_close(StreamCloseReason::Retired).unwrap())
+        };
+        snapshotted.wait();
+        // At the exact point after observing no published source but before
+        // latching the cause, attachment must still be excluded. The old
+        // split-lock implementation allowed publication in this window.
+        let publication_excluded = state.intent.try_lock().is_err();
+        let attaching = {
+            let state = state.clone();
+            let control = control.clone();
+            std::thread::spawn(move || {
+                state.attach(CoreStream::new(Source {
+                    control,
+                    attaching: Mutex::new(None),
+                }));
+            })
+        };
+        accept.wait();
+        closing.join().unwrap();
+        attaching.join().unwrap();
+        assert!(publication_excluded);
+        assert_eq!(
+            *control.reasons.lock().unwrap(),
+            [StreamCloseReason::Retired]
+        );
+        assert!(state.receipt().is_none());
+        assert!(!state.cleanup_proved.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn concurrent_source_publication_and_close_never_lose_or_duplicate_the_cause() {
+        for reason in [
+            StreamCloseReason::Manual,
+            StreamCloseReason::Deadline,
+            StreamCloseReason::Shutdown,
+            StreamCloseReason::Retired,
+            StreamCloseReason::Unknown,
+        ] {
+            for _ in 0..32 {
+                let state = state();
+                // The other thread may legitimately own a lock while the
+                // callback runs; lock-release assertions belong to the
+                // separately barrier-ordered tests, not to this race.
+                let control = recorder(&state, false, false);
+                let start = Arc::new(Barrier::new(3));
+                let attaching = {
+                    let state = state.clone();
+                    let control = control.clone();
+                    let start = start.clone();
+                    std::thread::spawn(move || {
+                        start.wait();
+                        state.attach(CoreStream::new(Source {
+                            control,
+                            attaching: Mutex::new(None),
+                        }));
+                    })
+                };
+                let closing = {
+                    let state = state.clone();
+                    let start = start.clone();
+                    std::thread::spawn(move || {
+                        start.wait();
+                        state.record_close(reason).unwrap();
+                    })
+                };
+                start.wait();
+                attaching.join().unwrap();
+                closing.join().unwrap();
+                assert_eq!(*control.reasons.lock().unwrap(), [reason]);
+                assert_eq!(state.intent.lock().unwrap().early_close, Some(reason));
+                assert!(!state.cleanup_proved.load(Ordering::Acquire));
+            }
+        }
+    }
+
+    #[test]
+    fn attached_source_callback_panic_keeps_close_receipt_without_physical_proof() {
+        let state = state();
+        let control = recorder(&state, true, true);
+        state.attach(CoreStream::new(Source {
+            control: control.clone(),
+            attaching: Mutex::new(None),
+        }));
+        let error = state.record_close(StreamCloseReason::Retired).unwrap_err();
+        assert_eq!(error.code, "trap");
+        assert_eq!(
+            *control.reasons.lock().unwrap(),
+            [StreamCloseReason::Retired]
+        );
+        assert_eq!(
+            state.intent.lock().unwrap().early_close,
+            Some(StreamCloseReason::Retired)
+        );
+        assert!(state.cx.cancel().is_cancelled());
+        assert!(state.source.try_lock().unwrap().is_some());
+        assert!(state.receipt().is_none());
+        assert!(!state.cleanup_proved.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn early_close_callback_panic_retains_attached_source_and_first_cause() {
+        let state = state();
+        let control = recorder(&state, true, true);
+        state.record_close(StreamCloseReason::Shutdown).unwrap();
+        let attached = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            state.attach(CoreStream::new(Source {
+                control: control.clone(),
+                attaching: Mutex::new(None),
+            }));
+        }));
+        assert!(attached.is_err());
+        assert_eq!(
+            *control.reasons.lock().unwrap(),
+            [StreamCloseReason::Shutdown]
+        );
+        let intent = state.intent.lock().unwrap();
+        assert!(intent.handoff == SourceHandoff::Attached);
+        assert_eq!(intent.early_close, Some(StreamCloseReason::Shutdown));
+        assert!(intent.source_control.is_some());
+        drop(intent);
+        assert!(state.source.try_lock().unwrap().is_some());
+        assert!(state.receipt().is_none());
+        assert!(!state.cleanup_proved.load(Ordering::Acquire));
+    }
+}
 
 #[cfg(test)]
 mod cleanup_receipt_classification_tests {

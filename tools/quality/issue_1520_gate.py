@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import tomllib
@@ -154,33 +155,18 @@ def check_dependencies(root: Path) -> list[str]:
 
 
 def check_inventory(root: Path) -> list[str]:
+    """Use the same coverage and source-bound checks as the deletion gate."""
     path = root / "migration" / "inventory.json"
     if not path.exists():
         return ["migration/inventory.json missing"]
-    units = json.loads(path.read_text()).get("units", [])
-    errors: list[str] = []
-    if not units:
-        return ["migration inventory has no units"]
-    accepted = {"ported+parity", "core+vectors", "retired+approved"}
-    for unit in units:
-        name = unit["legacy_unit"]
-        if unit.get("status") not in accepted:
-            errors.append(f"{name}: unresolved migration status {unit.get('status')!r}")
-        elif not unit.get("evidence"):
-            errors.append(f"{name}: completion has no evidence")
-        elif unit["status"] == "retired+approved" and not unit.get("human_approved"):
-            errors.append(f"{name}: retirement lacks approval")
-        elif unit["status"] == "ported+parity" and not unit.get("parity_fixture"):
-            errors.append(f"{name}: replacement lacks frozen parity fixture")
-        for evidence in unit.get("evidence", []):
-            candidate = root / evidence
-            if not candidate.resolve().is_relative_to(root.resolve()) or not candidate.is_file():
-                errors.append(f"{name}: evidence file missing or outside repository: {evidence}")
-        if fixture := unit.get("parity_fixture"):
-            candidate = root / fixture
-            if not candidate.resolve().is_relative_to(root.resolve()) or not candidate.is_file():
-                errors.append(f"{name}: frozen parity fixture missing or outside repository: {fixture}")
-    return errors
+    # Load our checker, not code supplied by an alternate --root repository.
+    checker = Path(__file__).resolve().parents[2] / "migration" / "inventory.py"
+    spec = importlib.util.spec_from_file_location("issue_1520_inventory", checker)
+    if spec is None or spec.loader is None:
+        return ["migration inventory validator unavailable"]
+    inventory = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(inventory)
+    return inventory.validate(json.loads(path.read_text()), deletion=True, root=root)
 
 
 def main() -> int:

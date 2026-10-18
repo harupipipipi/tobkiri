@@ -89,14 +89,7 @@ test('native callbacks use the tested close/reopen/finite shutdown and risk cont
   // evidence of iframe origin, window events or AppKit appearance.
 });
 
-test('official Pack documents defer CSP to the bound native response header', () => {
-  for (const doc of [
-    '../../../../packs/local.harness-ui/ui/index.html',
-    '../../../../packs/native-acceptance/ui/index.html',
-  ]) {
-    const html = readFileSync(new URL(doc, import.meta.url), 'utf8');
-    assert.ok(!html.includes('Content-Security-Policy'), doc);
-  }
+test('native host serves the verified asset CSP', () => {
   const host = readFileSync(new URL('../../../src-tauri/src/core_host.rs', import.meta.url), 'utf8');
   assert.ok(host.includes('asset_with_policy'));
   assert.ok(host.includes('asset.csp'));

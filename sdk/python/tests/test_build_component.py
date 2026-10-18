@@ -172,7 +172,9 @@ class BuildPlanTests(unittest.TestCase):
             "policy.py": "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/runtime/policy.py",
             "app.py": "packs/local.shell-policy-python/python/app.py",
             "wit/pack.wit": "packs/local.shell-policy-python/wit/pack.wit",
-            "wit/deps/core.wit": "packs/local.shell-policy-python/wit/deps/core.wit",
+            # The Pack-local copy is ignored generated output; bind the fixture
+            # to the canonical checked-in WIT so clean checkouts are testable.
+            "wit/deps/core.wit": "crates/tobkiri-wit/wit/core/core.wit",
         }
         origins.update({
             f"tobkiri_sdk/{path.name}": f"sdk/python/tobkiri_sdk/{path.name}"

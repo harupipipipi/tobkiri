@@ -2,12 +2,18 @@
 //! keep one Deferred read snapshot from seq 1 through the verified tail.
 //! Append verifies, checks quotas and inserts within ONE Immediate TX.
 
-use super::audit_guest_owned::{charge_work, digest_text, OwnedAuditEvent};
-use super::{decimal_value, integrity, map_alloc, GuestAuditDispatch, GuestAuditOutput, GuestAuditRead, GuestPrepared};
+use super::audit_guest_owned::{OwnedAuditEvent, charge_work, digest_text};
+use super::{
+    GuestAuditDispatch, GuestAuditOutput, GuestAuditRead, GuestPrepared, decimal_value, integrity,
+    map_alloc,
+};
 use crate::{AuditLog, StoreError};
-use rusqlite::{types::ValueRef, Row, TransactionBehavior};
+use rusqlite::{Row, TransactionBehavior, types::ValueRef};
 use std::sync::Arc;
-use tobkiri_canon::{ids::ProfileId, AllocationBudget, AllocationError, CoreValue, Digest, MAX_BYTES, MAX_SAFE_INTEGER};
+use tobkiri_canon::{
+    AllocationBudget, AllocationError, CoreValue, Digest, MAX_BYTES, MAX_SAFE_INTEGER,
+    ids::ProfileId,
+};
 
 /// Descriptive verified head, never authority or physical-completion proof.
 pub(crate) struct AuditScanHead {
@@ -78,7 +84,9 @@ pub(super) fn append_history(
     dispatch.check_binding(log)?;
     let append = match &dispatch.prepared {
         GuestPrepared::Append(append) => append,
-        GuestPrepared::Read(_) => return Err(StoreError::Denied("audit append dispatch mismatch".into())),
+        GuestPrepared::Read(_) => {
+            return Err(StoreError::Denied("audit append dispatch mismatch".into()));
+        }
     };
     let budget = dispatch_budget(dispatch);
     let event = OwnedAuditEvent::for_append(&append.cx, &append.kind, &append.payload, &budget)?;
@@ -89,14 +97,22 @@ pub(super) fn append_history(
     }
     let writer = event.writer_key()?;
     let writer_len = u64::try_from(writer.len()).map_err(|_| StoreError::Quota)?;
-    charge_work(&budget, 1, writer_len.checked_add(1).ok_or(StoreError::Quota)?)?;
+    charge_work(
+        &budget,
+        1,
+        writer_len.checked_add(1).ok_or(StoreError::Quota)?,
+    )?;
     let writer_text = writer.as_str().map_err(map_alloc)?;
     let minute = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|_| StoreError::Invalid("system clock".into()))?
-        .as_secs() / 60;
+        .as_secs()
+        / 60;
     let minute = i64::try_from(minute).map_err(|_| StoreError::Quota)?;
-    let mut conn = log.connection.lock().map_err(|_| StoreError::Conflict("audit lock poisoned".into()))?;
+    let mut conn = log
+        .connection
+        .lock()
+        .map_err(|_| StoreError::Conflict("audit lock poisoned".into()))?;
     let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let (head, _) = scan_history(&tx, &log.profile, &budget, None)?;
     // Stack aggregates over borrowed columns avoid SUM's type coercion and
@@ -109,7 +125,11 @@ pub(super) fn append_history(
     {
         return Err(StoreError::Quota);
     }
-    let seq = head.last_seq.checked_add(1).filter(|seq| *seq <= MAX_SAFE_INTEGER).ok_or(StoreError::Quota)?;
+    let seq = head
+        .last_seq
+        .checked_add(1)
+        .filter(|seq| *seq <= MAX_SAFE_INTEGER)
+        .ok_or(StoreError::Quota)?;
     let seq_sql = i64::try_from(seq).map_err(|_| StoreError::Quota)?;
     let size_sql = i64::try_from(size).map_err(|_| StoreError::Quota)?;
     let digest = event.append_digest(seq, &head.digest, &budget)?;
@@ -143,7 +163,11 @@ fn quota_totals(
         let target_len = u64::try_from(writer.len()).map_err(|_| StoreError::Quota)?;
         // One UTF8 pass and bounded byte equality, including unequal/empty
         // spellings, are funded before reading borrowed text.
-        let work = len.checked_mul(2).and_then(|work| work.checked_add(target_len)).and_then(|work| work.checked_add(8)).ok_or(StoreError::Quota)?;
+        let work = len
+            .checked_mul(2)
+            .and_then(|work| work.checked_add(target_len))
+            .and_then(|work| work.checked_add(8))
+            .ok_or(StoreError::Quota)?;
         charge_work(budget, 1, work)?;
         let stored_writer = std::str::from_utf8(raw_writer).map_err(|_| integrity())?;
         let stored_minute = match row.get_ref(1)? {
@@ -151,7 +175,9 @@ fn quota_totals(
             _ => return Err(integrity()),
         };
         let size = match row.get_ref(2)? {
-            ValueRef::Integer(value) if value >= 0 => u64::try_from(value).map_err(|_| integrity())?,
+            ValueRef::Integer(value) if value >= 0 => {
+                u64::try_from(value).map_err(|_| integrity())?
+            }
             _ => return Err(integrity()),
         };
         total = total.checked_add(size).ok_or_else(integrity)?;
@@ -172,8 +198,8 @@ fn scan_history(
     budget: &Arc<dyn AllocationBudget>,
     read: Option<(&GuestAuditRead, usize)>,
 ) -> Result<(AuditScanHead, Option<CoreValue>), StoreError> {
-    let mut statement = conn
-        .prepare("SELECT seq,prev_digest,digest,body,event_id FROM audit ORDER BY seq")?;
+    let mut statement =
+        conn.prepare("SELECT seq,prev_digest,digest,body,event_id FROM audit ORDER BY seq")?;
     let mut rows = statement.query([])?;
     let mut prev = Digest::hash(&[]);
     let mut expected: u64 = 0;
@@ -244,7 +270,13 @@ fn scan_history(
         }
         None => None,
     };
-    Ok((AuditScanHead { last_seq: expected, digest: prev }, output))
+    Ok((
+        AuditScanHead {
+            last_seq: expected,
+            digest: prev,
+        },
+        output,
+    ))
 }
 
 fn digest_column(
@@ -282,7 +314,8 @@ fn project_row(
         match event_id {
             Some(id) => CoreValue::string(id.as_str(), budget),
             None => CoreValue::null(budget),
-        }.map(|value| ("event_id", value)),
+        }
+        .map(|value| ("event_id", value)),
         CoreValue::string(prev.as_str(), budget).map(|value| ("prev_digest", value)),
         Ok(("event", event.event.share())),
         CoreValue::string(digest.as_str(), budget).map(|value| ("digest", value)),

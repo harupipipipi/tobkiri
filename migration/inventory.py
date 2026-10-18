@@ -51,14 +51,15 @@ def native_imports(files: list[Path]) -> list[str]:
     return sorted(found)
 
 
-def row(path: Path, kind: str, files: list[Path] | None = None) -> dict[str, Any]:
+def row(path: Path, kind: str, files: list[Path] | None = None,
+        *, root: Path = ROOT) -> dict[str, Any]:
     """Create one unported row; executable legacy units default to Python wasm."""
     files = files if files is not None else source_files(path)
     executable = any(item.suffix in EXECUTABLE_SUFFIXES for item in files)
-    relative = path.relative_to(ROOT).as_posix()
+    relative = path.relative_to(root).as_posix()
     digest = hashlib.sha256()
     for source in files:
-        digest.update(source.relative_to(ROOT).as_posix().encode("utf-8"))
+        digest.update(source.relative_to(root).as_posix().encode("utf-8"))
         digest.update(b"\0")
         digest.update(hashlib.sha256(source.read_bytes()).digest())
     return {
@@ -76,26 +77,30 @@ def row(path: Path, kind: str, files: list[Path] | None = None) -> dict[str, Any
     }
 
 
-def discover() -> list[dict[str, Any]]:
+def discover(root: Path = ROOT) -> list[dict[str, Any]]:
     """Cover every ecosystem directory, Defaults domain, and Python core module."""
-    runtime = ROOT / "tobkiri_runtime"
+    runtime = root / "tobkiri_runtime"
     ecosystem = runtime / "ecosystem"
-    rows = [row(path, "ecosystem-directory") for path in sorted(ecosystem.iterdir())
+    rows = [row(path, "ecosystem-directory", root=root)
+            for path in sorted(ecosystem.iterdir() if ecosystem.is_dir() else ())
             if path.is_dir() and path.name not in IGNORED]
     defaults = ecosystem / "defaultspack"
     domain = defaults / "domain"
-    rows.extend(row(path, "defaults-domain") for path in sorted(domain.iterdir())
+    rows.extend(row(path, "defaults-domain", root=root)
+                for path in sorted(domain.iterdir() if domain.is_dir() else ())
                 if path.is_dir() and path.name not in IGNORED)
     # Domain files outside domain subdirectories are represented explicitly too.
-    rows.extend(row(path, "defaults-domain-module", [path]) for path in sorted(domain.glob("*.py")))
+    rows.extend(row(path, "defaults-domain-module", [path], root=root)
+                for path in sorted(domain.glob("*.py")))
     # The parent row remains an aggregate; other Defaults surfaces are separate
     # units so frontend/transport/blocks never disappear from the ledger.
-    rows.extend(row(path, "defaults-surface") for path in sorted(defaults.iterdir())
+    rows.extend(row(path, "defaults-surface", root=root)
+                for path in sorted(defaults.iterdir() if defaults.is_dir() else ())
                 if path.is_dir() and path.name not in IGNORED | {"domain"})
     for package in ("core_runtime", "tobkiri_host", "tobkiri_protocol"):
         for source in source_files(runtime / package):
             if source.suffix == ".py":
-                item = row(source, "runtime-module", [source])
+                item = row(source, "runtime-module", [source], root=root)
                 # Names alone cannot justify moving domain behavior into core.
                 # The generic mechanisms explicitly enumerated by Opus get a
                 # provisional Rust target; every other module keeps R11.2's
@@ -141,35 +146,61 @@ def refresh() -> dict[str, Any]:
     return result
 
 
-def validate(inventory: dict[str, Any], *, deletion: bool = False) -> list[str]:
+def validate(inventory: dict[str, Any], *, deletion: bool = False,
+             root: Path | None = None) -> list[str]:
     """Reject missing units, unsupported claims, and unevidenced deletion."""
     errors = []
-    units = inventory["units"]
+    units = inventory.get("units", [])
+    if not units:
+        return ["migration inventory has no units"]
+    repository = ROOT if root is None else root
     names = [item["legacy_unit"] for item in units]
     if len(names) != len(set(names)):
         errors.append("duplicate legacy unit")
-    expected = {item["legacy_unit"] for item in discover()}
-    for missing in sorted(expected - set(names)):
+    current = {item["legacy_unit"]: item for item in (
+        discover() if root is None else discover(repository)
+    )}
+    for missing in sorted(current.keys() - set(names)):
         errors.append(f"missing legacy unit: {missing}")
     for item in units:
         name = item["legacy_unit"]
-        if item["target"] not in TARGETS:
+        if item.get("target") not in TARGETS:
             errors.append(f"{name}: unsupported target")
-        if item["target"] == "retired" and not item.get("human_approved"):
+        if item.get("target") == "retired" and not item.get("human_approved"):
             errors.append(f"{name}: retirement needs human approval")
-        if item["status"] in TERMINAL_STATUSES and not item.get("evidence"):
+        status = item.get("status")
+        if status not in TERMINAL_STATUSES | {"todo"}:
+            errors.append(f"{name}: unsupported migration status {status!r}")
+        if status in TERMINAL_STATUSES and not item.get("evidence"):
             errors.append(f"{name}: completion needs evidence")
-        if item["status"] == "ported+parity" and not item.get("parity_fixture"):
+        # Refresh invalidates changed sources, but validation must not depend
+        # on the caller running the writer first. TODO rows may retain stale
+        # historical evidence without claiming it certifies the current bytes.
+        if (status in TERMINAL_STATUSES and name in current
+                and item.get("source_tree_sha256")
+                != current[name]["source_tree_sha256"]):
+            errors.append(f"{name}: completed source differs from recorded source_tree_sha256")
+        # Removed legacy sources intentionally keep their rows and evidence.
+        # Their absence is not fresh retirement permission, but does not undo
+        # an already evidenced replacement merely because deletion occurred.
+        if status == "ported+parity" and not item.get("parity_fixture"):
             errors.append(f"{name}: parity fixture missing")
-        if item["status"] == "core+vectors" and item["target"] != "core":
+        if status == "core+vectors" and item.get("target") != "core":
             errors.append(f"{name}: core vectors require a core target")
-        if item["status"] == "retired+approved" and not item.get("human_approved"):
+        if status == "retired+approved" and not item.get("human_approved"):
             errors.append(f"{name}: retirement approval missing")
-        if deletion and item["status"] not in TERMINAL_STATUSES:
-            errors.append(f"{name}: unresolved ({item['status']})")
+        if deletion and status not in TERMINAL_STATUSES:
+            errors.append(f"{name}: unresolved ({status})")
         for evidence in item.get("evidence", []):
-            if not (ROOT / evidence).is_file():
-                errors.append(f"{name}: evidence does not exist: {evidence}")
+            candidate = repository / evidence
+            if (not candidate.resolve().is_relative_to(repository.resolve())
+                    or not candidate.is_file()):
+                errors.append(f"{name}: evidence missing or outside repository: {evidence}")
+        if fixture := item.get("parity_fixture"):
+            candidate = repository / fixture
+            if (not candidate.resolve().is_relative_to(repository.resolve())
+                    or not candidate.is_file()):
+                errors.append(f"{name}: parity fixture missing or outside repository: {fixture}")
     return errors
 
 

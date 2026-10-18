@@ -14,20 +14,20 @@ use std::{alloc::Layout, future::Future, pin::Pin, sync::Arc, task::Poll, time::
 use tobkiri_canon::{CoreValue, LeasedShared};
 use tobkiri_flow::StepError;
 use tobkiri_gate::{
-    CallCx, CancellationFuture, ControlKind, ControlReservation, DispatchPermit,
-    EffectRequest, Gate, GateError, Grant, GrantId, Outcome, TerminalDisposition,
+    CallCx, CancellationFuture, ControlKind, ControlReservation, DispatchPermit, EffectRequest,
+    Gate, GateError, Grant, GrantId, Outcome, TerminalDisposition,
 };
 use tobkiri_store::{
-    AuditLog, GuestAuditAppend, GuestAuditAttempt, GuestAuditDelivery,
-    GuestAuditDispatch, GuestAuditOutput, GuestAuditRead, StoreError,
+    AuditLog, GuestAuditAppend, GuestAuditAttempt, GuestAuditDelivery, GuestAuditDispatch,
+    GuestAuditOutput, GuestAuditRead, StoreError,
 };
 use tokio::{sync::oneshot, time::Sleep};
-use wasmtime::{AsContextMut, StoreContextMut};
 use wasmtime::component::{
     BudgetedFuture, BudgetedVecBuilder, HostAllocationOwner, HostDeliveryCompletion,
-    HostDeliveryCompletionAuthority, HostDeliveryFinalizer, HostDeliveryKind,
-    HostDeliveryProtocol, HostDeliveryReady, Val,
+    HostDeliveryCompletionAuthority, HostDeliveryFinalizer, HostDeliveryKind, HostDeliveryProtocol,
+    HostDeliveryReady, Val,
 };
+use wasmtime::{AsContextMut, StoreContextMut};
 
 // Each endpoint and inline capture drops before its last shared metadata owner.
 type Funding = LeasedShared<(), ControlReservation>;
@@ -85,13 +85,17 @@ impl Failure {
             Self::CommitUnknown => StoreError::CommitUnknown.into(),
             Self::Cancelled => GateError::Cancelled.into(),
             Self::Deadline => GateError::Deadline.into(),
-            Self::Limit => StepError::new("limit-exceeded", "audit operation limit exceeded").into(),
+            Self::Limit => {
+                StepError::new("limit-exceeded", "audit operation limit exceeded").into()
+            }
             Self::Invalid => StepError::new("invalid", "invalid audit operation").into(),
             Self::Denied => StepError::new("denied", "audit operation denied").into(),
             Self::ApprovalRequired => GateError::ApprovalRequired.into(),
             Self::NotFound => StepError::new("not-found", "audit row not found").into(),
             Self::Conflict => StepError::new("conflict", "audit operation conflict").into(),
-            Self::Unavailable => StepError::new("unavailable", "audit operation unavailable").into(),
+            Self::Unavailable => {
+                StepError::new("unavailable", "audit operation unavailable").into()
+            }
         }
     }
 }
@@ -131,7 +135,10 @@ struct AuditOutput {
 }
 impl AuditOutput {
     fn failed(error: Failure) -> Self {
-        Self { result: Err(error), no_replay: false }
+        Self {
+            result: Err(error),
+            no_replay: false,
+        }
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -189,7 +196,11 @@ struct WaitCustody {
 impl Drop for WaitCustody {
     fn drop(&mut self) {
         if let Some(end) = self.end.take() {
-            let state = if self.returned { WaitEnd::Returned } else { WaitEnd::Abandoned };
+            let state = if self.returned {
+                WaitEnd::Returned
+            } else {
+                WaitEnd::Abandoned
+            };
             // This is destruction metadata, never an ACK or a delivery vote.
             let _ = end.send(state);
         }
@@ -204,10 +215,7 @@ struct AuditAbiWait {
 impl Future for AuditAbiWait {
     type Output = wasmtime::Result<HostDeliveryCompletion>;
 
-    fn poll(
-        self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
         let wait = &mut self.get_mut().custody;
         match Pin::new(&mut wait.complete).poll(cx) {
             Poll::Pending => Poll::Pending,
@@ -230,9 +238,15 @@ impl HostDeliveryProtocol for AuditAbiAdapter {
         &mut self,
         ready: HostDeliveryReady,
     ) -> wasmtime::Result<BudgetedFuture<'static, wasmtime::Result<HostDeliveryCompletion>>> {
-        let sender = self.ready.take().ok_or_else(|| wasmtime::Error::msg("audit ABI handoff repeated"))?;
+        let sender = self
+            .ready
+            .take()
+            .ok_or_else(|| wasmtime::Error::msg("audit ABI handoff repeated"))?;
         let wait = WaitCustody {
-            complete: self.complete.take().ok_or_else(|| wasmtime::Error::msg("audit completion missing"))?,
+            complete: self
+                .complete
+                .take()
+                .ok_or_else(|| wasmtime::Error::msg("audit completion missing"))?,
             end: self.wait_end.take(),
             returned: false,
             _funding: self.funding.clone(),
@@ -242,7 +256,9 @@ impl HostDeliveryProtocol for AuditAbiAdapter {
         let future = BudgetedFuture::new(AuditAbiWait { custody: wait }, &self.owner, 0)?;
         if sender.send(ready).is_err() {
             drop(future);
-            return Err(wasmtime::Error::msg("audit original supervisor unavailable"));
+            return Err(wasmtime::Error::msg(
+                "audit original supervisor unavailable",
+            ));
         }
         // The adapter's outer Box may now be destroyed. The distinct wait
         // owns its endpoints/funding and the accepted native job owns authority.
@@ -261,9 +277,15 @@ fn c_layout(fields: &[Layout]) -> Option<Layout> {
 }
 fn rust_layout_bound(fields: &[Layout]) -> Option<Layout> {
     let align = fields.iter().map(Layout::align).max().unwrap_or(1);
-    let bytes = fields.iter().try_fold(0usize, |n, field| n.checked_add(field.size()))?;
+    let bytes = fields
+        .iter()
+        .try_fold(0usize, |n, field| n.checked_add(field.size()))?;
     let padding = fields.len().saturating_sub(1).checked_mul(align - 1)?;
-    Some(Layout::from_size_align(bytes.checked_add(padding)?, align).ok()?.pad_to_align())
+    Some(
+        Layout::from_size_align(bytes.checked_add(padding)?, align)
+            .ok()?
+            .pad_to_align(),
+    )
 }
 fn channel_bytes<T>() -> Option<usize> {
     let inner = rust_layout_bound(&[
@@ -279,15 +301,27 @@ fn fixed_error_bytes() -> Option<usize> {
     // ConcreteError<E>: vtable, optional inline Backtrace, inline E. Including
     // Backtrace even when disabled is conservative; optional captured native
     // Backtrace backing follows the existing native diagnostic policy.
-    let prefix = [Layout::new::<*const ()>(), Layout::new::<Option<std::backtrace::Backtrace>>()];
-    let anyhow = [Layout::new::<GateError>(), Layout::new::<StepError>(), Layout::new::<StoreError>()]
-        .into_iter().try_fold(0usize, |maximum, error| {
-            Some(maximum.max(c_layout(&[prefix[0], prefix[1], error])?.size()))
-        })?;
-    let wasm = [Layout::new::<anyhow::Error>(), Layout::new::<&'static str>()]
-        .into_iter().try_fold(0usize, |maximum, error| {
-            Some(maximum.max(c_layout(&[prefix[0], prefix[1], error])?.size()))
-        })?;
+    let prefix = [
+        Layout::new::<*const ()>(),
+        Layout::new::<Option<std::backtrace::Backtrace>>(),
+    ];
+    let anyhow = [
+        Layout::new::<GateError>(),
+        Layout::new::<StepError>(),
+        Layout::new::<StoreError>(),
+    ]
+    .into_iter()
+    .try_fold(0usize, |maximum, error| {
+        Some(maximum.max(c_layout(&[prefix[0], prefix[1], error])?.size()))
+    })?;
+    let wasm = [
+        Layout::new::<anyhow::Error>(),
+        Layout::new::<&'static str>(),
+    ]
+    .into_iter()
+    .try_fold(0usize, |maximum, error| {
+        Some(maximum.max(c_layout(&[prefix[0], prefix[1], error])?.size()))
+    })?;
     // Two simultaneous closed error packets: caller conversion and native ABI
     // failure, including an Anyhow wrapper inside a Wasmtime error. Fixed public
     // code+message storage is bounded below; no backend diagnostic is imported.
@@ -312,7 +346,9 @@ fn metadata_bytes() -> Option<usize> {
         // Expected immutable outcome and the one proposal coexist during ACK.
         512,
         fixed_error_bytes()?,
-    ].into_iter().try_fold(0usize, usize::checked_add)
+    ]
+    .into_iter()
+    .try_fold(0usize, usize::checked_add)
 }
 
 #[expect(
@@ -339,10 +375,13 @@ impl Executed {
     fn output(&self) -> AuditOutput {
         match self {
             Self::Delivery(value) => AuditOutput {
-                result: value.result().map(|value| match value {
-                    GuestAuditOutput::Appended => Output::Appended,
-                    GuestAuditOutput::Rows(rows) => Output::Rows(rows.share()),
-                }).map_err(Failure::store),
+                result: value
+                    .result()
+                    .map(|value| match value {
+                        GuestAuditOutput::Appended => Output::Appended,
+                        GuestAuditOutput::Rows(rows) => Output::Rows(rows.share()),
+                    })
+                    .map_err(Failure::store),
                 no_replay: value.is_no_replay(),
             },
             Self::Refused(_, failure) => AuditOutput::failed(*failure),
@@ -356,8 +395,12 @@ impl Executed {
             Self::Delivery(value) => value.terminal_outcome(abi_prepared),
             Self::Refused(_, failure) => match failure {
                 Failure::Cancelled => Outcome::Cancelled,
-                Failure::Deadline | Failure::Limit => Outcome::Failed { code: "limit-exceeded".into() },
-                _ => Outcome::Failed { code: "unavailable".into() },
+                Failure::Deadline | Failure::Limit => Outcome::Failed {
+                    code: "limit-exceeded".into(),
+                },
+                _ => Outcome::Failed {
+                    code: "unavailable".into(),
+                },
             },
         }
     }
@@ -366,26 +409,35 @@ impl Executed {
 async fn supervise(mut custody: AuditCustody) -> std::result::Result<(), NativeWorkError> {
     // Admission/waiter construction and its first fallible poll finish before
     // consume. No refresh, new CallCx root, new grant or replacement deadline.
-    let active = custody.gate.check_context(&custody.cx)
+    let active = custody
+        .gate
+        .check_context(&custody.cx)
         .and_then(|()| custody.cx.check_active());
     let cancellation = if active.is_ok() {
-        std::future::poll_fn(|cx| Poll::Ready(match custody.cancelled.as_mut().poll(cx) {
-            Poll::Pending => Ok(()),
-            Poll::Ready(Ok(_)) => Err(GateError::Cancelled),
-            Poll::Ready(Err(_)) => Err(GateError::Unavailable),
-        })).await
+        std::future::poll_fn(|cx| {
+            Poll::Ready(match custody.cancelled.as_mut().poll(cx) {
+                Poll::Pending => Ok(()),
+                Poll::Ready(Ok(_)) => Err(GateError::Cancelled),
+                Poll::Ready(Err(_)) => Err(GateError::Unavailable),
+            })
+        })
+        .await
     } else {
         active
     };
     if let Err(error) = cancellation {
-        let _ = custody.output.send(AuditOutput::failed(Failure::gate(&error)));
+        let _ = custody
+            .output
+            .send(AuditOutput::failed(Failure::gate(&error)));
         // No consumed dispatch exists, hence no honest completion authority.
         return Err(NativeWorkError::CompletionUnknown);
     }
     let dispatch = match custody.prepared.consume(custody.grant) {
         GuestAuditAttempt::Ready(dispatch) => dispatch,
         GuestAuditAttempt::BeforeConsumed(error) => {
-            let _ = custody.output.send(AuditOutput::failed(Failure::gate(&error)));
+            let _ = custody
+                .output
+                .send(AuditOutput::failed(Failure::gate(&error)));
             return Err(NativeWorkError::CompletionUnknown);
         }
         GuestAuditAttempt::Cleanup(cleanup) => {
@@ -405,8 +457,14 @@ async fn supervise(mut custody: AuditCustody) -> std::result::Result<(), NativeW
             return Err(NativeWorkError::CompletionUnknown);
         }
     };
-    let narrowed = custody.cx.clone().narrow_limits(dispatch.limits()).cap_deadline(dispatch.deadline());
-    let watched = custody.gate.watch_lease(&narrowed, dispatch.permit())
+    let narrowed = custody
+        .cx
+        .clone()
+        .narrow_limits(dispatch.limits())
+        .cap_deadline(dispatch.deadline());
+    let watched = custody
+        .gate
+        .watch_lease(&narrowed, dispatch.permit())
         .and_then(|()| custody.gate.check_context(&narrowed))
         .and_then(|()| narrowed.check_active());
     // This one synchronous call contains all connection/TX/statement/Rows
@@ -434,14 +492,18 @@ async fn supervise(mut custody: AuditCustody) -> std::result::Result<(), NativeW
         _ = custody.cancelled.as_mut() => None,
         _ = custody.deadline.as_mut() => None,
     };
-    let live = ready.is_some() && !custody.complete.is_closed()
+    let live = ready.is_some()
+        && !custody.complete.is_closed()
         && Instant::now() < executed.deadline()
         && narrowed.check_active().is_ok();
     let outcome = executed.outcome(live && conversion == Conversion::Prepared);
     // The Gate may preserve an earlier immutable winner. Record only once,
     // then authenticate that exact winner against the SAME sealed Audit permit.
     // No parent frame terminal API is called with this nested effect.
-    let recorded = custody.gate.record_outcome(custody.id, outcome.clone()).await;
+    let recorded = custody
+        .gate
+        .record_outcome(custody.id, outcome.clone())
+        .await;
     let acknowledged = if recorded.is_ok() {
         custody.gate.acknowledged_terminal(executed.permit()).ok()
     } else {
@@ -455,13 +517,23 @@ async fn supervise(mut custody: AuditCustody) -> std::result::Result<(), NativeW
     // ACK scratch admission, outbox delivery, receipt construction and current
     // context are fallible. No vendor capability is produced on any failure.
     let completion = match ready {
-        Some(ready) if live && verified && !custody.complete.is_closed()
-            && narrowed.check_active().is_ok()
-            && Instant::now() < executed.deadline() => {
-            custody.authority.complete_after_verified_original_ack(ready)
+        Some(ready)
+            if live
+                && verified
+                && !custody.complete.is_closed()
+                && narrowed.check_active().is_ok()
+                && Instant::now() < executed.deadline() =>
+        {
+            custody
+                .authority
+                .complete_after_verified_original_ack(ready)
         }
-        _ if executed.no_replay() => Err(wasmtime::Error::from_anyhow(StoreError::CommitUnknown.into())),
-        _ => Err(wasmtime::Error::msg("audit original terminal delivery unknown")),
+        _ if executed.no_replay() => Err(wasmtime::Error::from_anyhow(
+            StoreError::CommitUnknown.into(),
+        )),
+        _ => Err(wasmtime::Error::msg(
+            "audit original terminal delivery unknown",
+        )),
     };
     let accepted = completion.is_ok();
     let sent = custody.complete.send(completion).is_ok();
@@ -489,20 +561,38 @@ pub(super) async fn invoke(
     let codec = EffectValues(owners);
     let prepared = match (operation, params) {
         ("append", [kind, payload]) => Prepared::Append(GuestAuditAppend::prepare(
-            cx, CoreValue::string(text(kind)?, owners.graph())?, codec.parse(payload)?, owners.graph(),
+            cx,
+            CoreValue::string(text(kind)?, owners.graph())?,
+            codec.parse(payload)?,
+            owners.graph(),
         )?),
         ("read", [after, max]) => Prepared::Read(GuestAuditRead::prepare(
-            cx, uint(after)?, u32::try_from(uint(max)?)?, owners.graph(),
+            cx,
+            uint(after)?,
+            u32::try_from(uint(max)?)?,
+            owners.graph(),
         )?),
         _ => return Err(StepError::new("invalid", "invalid audit operation").into()),
     };
-    let frame = store.data().data.frame.as_ref()
-        .context("audit import lacks actual provider frame")?.clone();
-    let grant = host.shared.gate.authorize(cx, prepared.request(), prepared.args().clone()).await?;
+    let frame = store
+        .data()
+        .data
+        .frame
+        .as_ref()
+        .context("audit import lacks actual provider frame")?
+        .clone();
+    let grant = host
+        .shared
+        .gate
+        .authorize(cx, prepared.request(), prepared.args().clone())
+        .await?;
     let spawner = host.native_work_spawner(&store.data().data).await?;
-    let bytes = metadata_bytes().and_then(|n| n.checked_add(grant.id().clone_storage_bytes()))
+    let bytes = metadata_bytes()
+        .and_then(|n| n.checked_add(grant.id().clone_storage_bytes()))
         .context("audit handoff size overflow")?;
-    let reservation = cx.control().reserve(ControlKind::Task, u64::try_from(bytes)?)?;
+    let reservation = cx
+        .control()
+        .reserve(ControlKind::Task, u64::try_from(bytes)?)?;
     let funding = Funding::try_new_precharged((), reservation)?;
     let id = grant.id().try_clone_precharged()?;
     let deadline = Box::pin(tokio::time::sleep_until(cx.deadline().into()));
@@ -513,47 +603,90 @@ pub(super) async fn invoke(
     let (complete_tx, complete_rx) = oneshot::channel();
     let (wait_end_tx, wait_end_rx) = oneshot::channel();
     let adapter = AuditAbiAdapter {
-        ready: Some(ready_tx), complete: Some(complete_rx), wait_end: Some(wait_end_tx),
-        owner: owners.component().clone(), funding: funding.clone(),
+        ready: Some(ready_tx),
+        complete: Some(complete_rx),
+        wait_end: Some(wait_end_tx),
+        owner: owners.component().clone(),
+        funding: funding.clone(),
     };
     let finalizer = HostDeliveryFinalizer::new(adapter, owners.component())?;
     // Real Value-kind admission validates actual callback result types and is
     // fixed BEFORE original consume/SQL. No fake Resource or runtime keeper.
-    let (_record, authority) = store.as_context_mut()
+    let (_record, authority) = store
+        .as_context_mut()
         .host_delivery_reserve(HostDeliveryKind::Value, finalizer)?;
-    let caller = CallerCustody { output: output_rx, converted: converted_tx, _funding: funding.clone() };
+    let caller = CallerCustody {
+        output: output_rx,
+        converted: converted_tx,
+        _funding: funding.clone(),
+    };
     let custody = AuditCustody {
-        prepared, grant, log: host.audit_log().clone(), gate: host.shared.gate.clone(),
-        cx: cx.clone(), id, _frame: frame, output: output_tx, converted: converted_rx,
-        ready: ready_rx, complete: complete_tx, wait_end: wait_end_rx, authority,
-        deadline, cancelled, _funding: funding,
+        prepared,
+        grant,
+        log: host.audit_log().clone(),
+        gate: host.shared.gate.clone(),
+        cx: cx.clone(),
+        id,
+        _frame: frame,
+        output: output_tx,
+        converted: converted_rx,
+        ready: ready_rx,
+        complete: complete_tx,
+        wait_end: wait_end_rx,
+        authority,
+        deadline,
+        cancelled,
+        _funding: funding,
     };
     // Rejection drops the still-unconsumed original Grant after native guards.
     spawner.bind_cancel(cx.cancel().clone())?;
     spawner.spawn(supervise(custody))?;
-    let output = caller.output.await.unwrap_or_else(|_| AuditOutput::failed(Failure::Unavailable));
-    let result = output.result.and_then(|output| {
-        let result = match output {
-            Output::Appended => codec.ok(None),
-            Output::Rows(rows) => {
-                let rows = rows.array().context("audit output is not an owned row array");
-                rows.and_then(|rows| {
-                    let mut result = BudgetedVecBuilder::new(rows.len(), owners.component(), 0)?;
-                    for row in rows.iter() {
-                        result.push(codec.string(row.as_str().context("audit output row is not JSON text")?)?)?;
-                    }
-                    codec.ok(Some(Val::List(result.finish()?)))
-                })
-            }
-        };
-        result.map_err(|error| Failure::conversion(&error))
-    }).and_then(|values| cx.check_active().map(|()| values).map_err(|error| Failure::gate(&error)));
+    let output = caller
+        .output
+        .await
+        .unwrap_or_else(|_| AuditOutput::failed(Failure::Unavailable));
+    let result = output
+        .result
+        .and_then(|output| {
+            let result = match output {
+                Output::Appended => codec.ok(None),
+                Output::Rows(rows) => {
+                    let rows = rows
+                        .array()
+                        .context("audit output is not an owned row array");
+                    rows.and_then(|rows| {
+                        let mut result =
+                            BudgetedVecBuilder::new(rows.len(), owners.component(), 0)?;
+                        for row in rows.iter() {
+                            result.push(codec.string(
+                                row.as_str().context("audit output row is not JSON text")?,
+                            )?)?;
+                        }
+                        codec.ok(Some(Val::List(result.finish()?)))
+                    })
+                }
+            };
+            result.map_err(|error| Failure::conversion(&error))
+        })
+        .and_then(|values| {
+            cx.check_active()
+                .map(|()| values)
+                .map_err(|error| Failure::gate(&error))
+        });
     // Conversion Prepared is NOT delivery evidence. Only the runtime-created
     // Ready at the last canonical boundary can permit actual terminal success.
-    let converted = if result.is_ok() { Conversion::Prepared } else { Conversion::Failed };
+    let converted = if result.is_ok() {
+        Conversion::Prepared
+    } else {
+        Conversion::Failed
+    };
     let _ = caller.converted.send(converted);
     result.map_err(|failure| {
-        if output.no_replay { StoreError::CommitUnknown.into() } else { failure.public() }
+        if output.no_replay {
+            StoreError::CommitUnknown.into()
+        } else {
+            failure.public()
+        }
     })
 }
 
@@ -568,7 +701,10 @@ mod tests {
     // frame, Ready or completion capability is fabricated by these fixtures.
     struct ComponentBudget(AtomicU64);
     impl HostAllocationBudget for ComponentBudget {
-        fn reserve(&self, request: HostAllocationRequest) -> std::result::Result<(), HostAllocationError> {
+        fn reserve(
+            &self,
+            request: HostAllocationRequest,
+        ) -> std::result::Result<(), HostAllocationError> {
             self.0.fetch_add(request.bytes, Ordering::AcqRel);
             Ok(())
         }
@@ -577,7 +713,9 @@ mod tests {
         }
     }
     fn funding(control: &CoreControl) -> Funding {
-        let reservation = control.reserve(ControlKind::Task, metadata_bytes().unwrap() as u64).unwrap();
+        let reservation = control
+            .reserve(ControlKind::Task, metadata_bytes().unwrap() as u64)
+            .unwrap();
         Funding::try_new_precharged((), reservation).unwrap()
     }
 
@@ -591,8 +729,11 @@ mod tests {
         let (complete_tx, complete_rx) = oneshot::channel();
         let (end_tx, end_rx) = oneshot::channel();
         let adapter = AuditAbiAdapter {
-            ready: Some(ready_tx), complete: Some(complete_rx), wait_end: Some(end_tx),
-            owner: owner.clone(), funding: charged.clone(),
+            ready: Some(ready_tx),
+            complete: Some(complete_rx),
+            wait_end: Some(end_tx),
+            owner: owner.clone(),
+            funding: charged.clone(),
         };
         let finalizer = HostDeliveryFinalizer::new(adapter, &owner).unwrap();
         let native_funding = charged.clone();
@@ -619,7 +760,10 @@ mod tests {
         let (complete_tx, complete_rx) = oneshot::channel();
         let (end_tx, end_rx) = oneshot::channel();
         let wait = WaitCustody {
-            complete: complete_rx, end: Some(end_tx), returned: false, _funding: charged.clone(),
+            complete: complete_rx,
+            end: Some(end_tx),
+            returned: false,
+            _funding: charged.clone(),
         };
         let future = BudgetedFuture::new(AuditAbiWait { custody: wait }, &owner, 0).unwrap();
         let native_funding = charged.clone();

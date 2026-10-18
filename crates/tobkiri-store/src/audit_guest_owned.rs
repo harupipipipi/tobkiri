@@ -9,8 +9,8 @@ use super::{integrity, map_alloc};
 use crate::StoreError;
 use std::sync::Arc;
 use tobkiri_canon::{
-    AllocationBudget, AllocationError, AllocationKind, AllocationRequest, CoreObject,
-    CoreValue, Digest, MAX_SAFE_INTEGER,
+    AllocationBudget, AllocationError, AllocationKind, AllocationRequest, CoreObject, CoreValue,
+    Digest, MAX_SAFE_INTEGER,
     ids::{InputSourceId, PackHash, PackId, ProfileId, RequestId, UiSessionId},
 };
 use tobkiri_gate::Principal;
@@ -162,10 +162,19 @@ impl IdLedger {
     fn precharge_copy(&mut self, bytes: usize, inline: u64) -> Result<(), StoreError> {
         let bytes = u64::try_from(bytes).map_err(|_| StoreError::Quota)?;
         let total = self.bytes.checked_add(bytes).ok_or(StoreError::Quota)?;
-        let work = bytes.checked_add(inline).and_then(|n| n.checked_add(1)).ok_or(StoreError::Quota)?;
-        self.budget.reserve(AllocationRequest {
-            kind: AllocationKind::String, bytes, elements: 1, depth: 0, work,
-        }).map_err(map_alloc)?;
+        let work = bytes
+            .checked_add(inline)
+            .and_then(|n| n.checked_add(1))
+            .ok_or(StoreError::Quota)?;
+        self.budget
+            .reserve(AllocationRequest {
+                kind: AllocationKind::String,
+                bytes,
+                elements: 1,
+                depth: 0,
+                work,
+            })
+            .map_err(map_alloc)?;
         self.bytes = total;
         Ok(())
     }
@@ -292,7 +301,10 @@ fn event_value(
 
 /// Exact serde Principal tags/fields, derived solely from an already typed
 /// original Core principal. No payload string can select a principal variant.
-fn principal_value(principal: &Principal, budget: &Arc<dyn AllocationBudget>) -> Result<CoreValue, AllocationError> {
+fn principal_value(
+    principal: &Principal,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<CoreValue, AllocationError> {
     match principal {
         Principal::Pack { pack, hash } => {
             let fields: [Result<(&'static str, CoreValue), AllocationError>; 3] = [
@@ -319,9 +331,8 @@ fn principal_value(principal: &Principal, budget: &Arc<dyn AllocationBudget>) ->
             CoreValue::object_shared(fields.into_iter(), budget)
         }
         Principal::User => {
-            let fields: [Result<(&'static str, CoreValue), AllocationError>; 1] = [
-                CoreValue::string("user", budget).map(|v| ("kind", v)),
-            ];
+            let fields: [Result<(&'static str, CoreValue), AllocationError>; 1] =
+                [CoreValue::string("user", budget).map(|v| ("kind", v))];
             CoreValue::object_shared(fields.into_iter(), budget)
         }
     }
@@ -351,7 +362,9 @@ impl OwnedAuditEvent {
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<Self, StoreError> {
         if kind.as_str().is_none() {
-            return Err(StoreError::Invalid("audit guest kind must be a string".into()));
+            return Err(StoreError::Invalid(
+                "audit guest kind must be a string".into(),
+            ));
         }
         // The ledger precedes ALL fallible ID locals and stays the last
         // returned field: no String can outlive the exact charge it needs.
@@ -370,23 +383,39 @@ impl OwnedAuditEvent {
         let principal_value = principal_value(&principal, budget).map_err(map_alloc)?;
         let profile_value = CoreValue::string(profile.as_str(), budget).map_err(map_alloc)?;
         let request_value = CoreValue::string(request.as_str(), budget).map_err(map_alloc)?;
-        let fields: [Result<(&'static str, CoreValue), AllocationError>; 2] = [
-            Ok(("kind", kind.share())),
-            Ok(("payload", payload.share())),
-        ];
+        let fields: [Result<(&'static str, CoreValue), AllocationError>; 2] =
+            [Ok(("kind", kind.share())), Ok(("payload", payload.share()))];
         let payload = CoreValue::object_shared(fields.into_iter(), budget).map_err(map_alloc)?;
         let outer_kind = CoreValue::string("guest-event", budget).map_err(map_alloc)?;
-        let event = event_value(outer_kind, payload, principal_value, profile_value, request_value, budget)
-            .map_err(map_alloc)?;
-        Ok(Self { event, profile, principal, request, ledger })
+        let event = event_value(
+            outer_kind,
+            payload,
+            principal_value,
+            profile_value,
+            request_value,
+            budget,
+        )
+        .map_err(map_alloc)?;
+        Ok(Self {
+            event,
+            profile,
+            principal,
+            request,
+            ledger,
+        })
     }
 
     /// Recheck the retained typed provenance against the ORIGINAL append
     /// context before SQL. Nested caller JSON remains data and cannot choose
     /// either identity. Both typed string comparisons are funded first.
     pub(crate) fn check_append_context(&self, cx: &tobkiri_gate::CallCx) -> Result<(), StoreError> {
-        let work = self.profile.as_str().len().checked_add(self.request.as_str().len())
-            .and_then(|bytes| u64::try_from(bytes).ok()).ok_or(StoreError::Quota)?;
+        let work = self
+            .profile
+            .as_str()
+            .len()
+            .checked_add(self.request.as_str().len())
+            .and_then(|bytes| u64::try_from(bytes).ok())
+            .ok_or(StoreError::Quota)?;
         charge_work(&self.ledger.budget, 2, work)?;
         if self.profile != *cx.profile() || self.request != *cx.request() {
             return Err(StoreError::Denied("audit owned provenance mismatch".into()));
@@ -399,15 +428,26 @@ impl OwnedAuditEvent {
     /// manufacturing an unused-field suppression.
     pub(crate) fn writer_key(&self) -> Result<tobkiri_canon::CoreBuffer, StoreError> {
         let budget = &self.ledger.budget;
-        budget.reserve(AllocationRequest {
-            kind: AllocationKind::String, bytes: 0, elements: 1, depth: 0, work: 8,
-        }).map_err(map_alloc)?;
+        budget
+            .reserve(AllocationRequest {
+                kind: AllocationKind::String,
+                bytes: 0,
+                elements: 1,
+                depth: 0,
+                work: 8,
+            })
+            .map_err(map_alloc)?;
         let (prefix, suffix) = match &self.principal {
-            Principal::Pack { pack, .. } | Principal::PackUi { pack, .. } => ("pack:", pack.as_str()),
+            Principal::Pack { pack, .. } | Principal::PackUi { pack, .. } => {
+                ("pack:", pack.as_str())
+            }
             Principal::Input { source } => ("input:", source.as_str()),
             Principal::User => ("user", ""),
         };
-        let len = prefix.len().checked_add(suffix.len()).ok_or(StoreError::Quota)?;
+        let len = prefix
+            .len()
+            .checked_add(suffix.len())
+            .ok_or(StoreError::Quota)?;
         let mut writer = tobkiri_canon::CoreBuffer::builder(budget, len);
         writer.append(prefix.as_bytes()).map_err(map_alloc)?;
         writer.append(suffix.as_bytes()).map_err(map_alloc)?;
@@ -431,7 +471,12 @@ impl OwnedAuditEvent {
         budget: &Arc<dyn AllocationBudget>,
         probe: Arc<LedgerProbe>,
     ) -> Result<Self, StoreError> {
-        Self::parse_ledger(body, expected_profile, budget, IdLedger::new_probed(budget, probe))
+        Self::parse_ledger(
+            body,
+            expected_profile,
+            budget,
+            IdLedger::new_probed(budget, probe),
+        )
     }
     /// Shared parse body. `ledger` arrives predeclared so a test probe can
     /// observe the drop boundary; parameters drop after locals, preserving
@@ -555,7 +600,8 @@ impl OwnedAuditEvent {
         if seq == 0 || seq > MAX_SAFE_INTEGER {
             return Err(integrity());
         }
-        self.unsigned_value(seq, prev_digest, event_id, budget).map_err(stored_fault)
+        self.unsigned_value(seq, prev_digest, event_id, budget)
+            .map_err(stored_fault)
     }
 
     fn unsigned_value(
@@ -724,8 +770,7 @@ mod tests {
             ),
         ] {
             let bytes = body(profile.as_str(), request, principal);
-            let probe =
-                Arc::new(LedgerProbe::new(track.clone()));
+            let probe = Arc::new(LedgerProbe::new(track.clone()));
             let work_before = track.work.load(Ordering::Acquire);
             assert!(matches!(
                 OwnedAuditEvent::parse_probed(&bytes, &profile, &budget, probe.clone()),

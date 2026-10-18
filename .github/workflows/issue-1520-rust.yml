@@ -58,12 +58,56 @@ jobs:
           node-version: '22.22.0'
           cache: npm
           cache-dependency-path: sdk/js/package-lock.json
+      - name: Native Pack UI source and CSP contract regression
+        run: node --experimental-vm-modules --test packs/native-acceptance/verify-source.test.mjs
       - name: Install locked JS guest SDK build dependencies
         working-directory: sdk/js
         run: npm ci --ignore-scripts
       - name: JS guest SDK contracts
         working-directory: sdk/js
         run: npm test
+
+  verified-platform-runtime:
+    # The production owner/DATA gate currently accepts only this OS family.
+    # Do not silently broaden it when GitHub updates the runner image.
+    runs-on: macos-15
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-target
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify the currently supported native proof platform
+        shell: bash
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          diskutil info "$RUNNER_TEMP" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          targets: wasm32-wasip2
+          components: rustfmt, clippy
+      - name: Build typed Wasm test guests
+        run: cargo build --manifest-path crates/test-guests/Cargo.toml --workspace --locked --target wasm32-wasip2
+      - name: Build and bind real Pack fixtures
+        run: python3 -B packs/build.py --target-dir "$CARGO_TARGET_DIR"
+      - name: Execute complete Rust workspace on the supported platform
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/supported-workspace.log" -- cargo test --workspace --locked
+      - name: Strict workspace lint
+        run: cargo clippy --workspace --all-targets --locked --no-deps -- -D warnings
+      - name: Retain actual runtime test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supported-platform-runtime
+          path: |
+            ${{ runner.temp }}/supported-workspace.log
+            ${{ runner.temp }}/supported-workspace.receipt.json
+          if-no-files-found: warn
 
   official-python-parity:
     runs-on: ubuntu-24.04
@@ -73,9 +117,10 @@ jobs:
       CARGO_INCREMENTAL: '0'
       CARGO_TERM_COLOR: never
       PYTHONDONTWRITEBYTECODE: '1'
-      TOBKIRI_TEST_PYTHON_PACK_DIR: ${{ runner.temp }}/issue-1520-python/pack
     steps:
       - uses: actions/checkout@v4
+      - name: Set the runner-local Python fixture directory
+        run: echo "TOBKIRI_TEST_PYTHON_PACK_DIR=$RUNNER_TEMP/issue-1520-python/pack" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@1.94.0
       - uses: actions/setup-python@v5
         with:
@@ -117,9 +162,10 @@ jobs:
       CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-target
       CARGO_BUILD_JOBS: '2'
       CARGO_INCREMENTAL: '0'
-      TOBKIRI_SQL_PRODUCER_DIR: ${{ runner.temp }}/sqlite-core
     steps:
       - uses: actions/checkout@v4
+      - name: Set the runner-local private SQL producer directory
+        run: echo "TOBKIRI_SQL_PRODUCER_DIR=$RUNNER_TEMP/sqlite-core" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@1.94.0
       - name: Fetch and authenticate the pinned private SQL toolchain
         shell: bash

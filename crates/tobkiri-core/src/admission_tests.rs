@@ -3,14 +3,14 @@ use async_trait::async_trait;
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{
-        atomic::{AtomicBool, Ordering},
         Mutex,
+        atomic::{AtomicBool, Ordering},
     },
     time::Instant,
 };
 use tobkiri_canon::{
-    ids::{InputSourceId, OpName, RequestId, ShapeRef},
     Digest,
+    ids::{InputSourceId, OpName, RequestId, ShapeRef},
 };
 use tobkiri_gate::{
     ApprovalAnswer, ApprovalPrompt, ApprovalStore, AuditEvent, AuditSink, CallCx, EffectRequest,
@@ -133,10 +133,11 @@ async fn consumed(
 async fn undelivered(gate: &GateEngine, sink: &Sink, profile: &ProfileId) {
     let (_, permit) = consumed(gate, profile, Duration::from_secs(1)).await;
     sink.fail.store(true, Ordering::SeqCst);
-    assert!(gate
-        .record_outcome(permit.id().clone(), Outcome::Succeeded)
-        .await
-        .is_err());
+    assert!(
+        gate.record_outcome(permit.id().clone(), Outcome::Succeeded)
+            .await
+            .is_err()
+    );
 }
 #[test]
 fn admission_without_runtime_is_unavailable_but_sync_recovery_is_allowed() {
@@ -309,13 +310,15 @@ async fn supervisor_survives_transient_persistence_and_cancels_deadlines_during_
     })
     .await
     .unwrap();
-    assert!(barrier
-        .state
-        .lock()
-        .await
-        .supervisor
-        .as_ref()
-        .is_some_and(Supervised::is_running));
+    assert!(
+        barrier
+            .state
+            .lock()
+            .await
+            .supervisor
+            .as_ref()
+            .is_some_and(Supervised::is_running)
+    );
     assert!(barrier.health_error().is_none());
     barrier.close().await.unwrap();
 }
@@ -368,13 +371,15 @@ async fn durable_integrity_fault_denies_ready_fast_path_without_stopping_existin
     })
     .await
     .unwrap();
-    assert!(barrier
-        .state
-        .lock()
-        .await
-        .supervisor
-        .as_ref()
-        .is_some_and(Supervised::is_running));
+    assert!(
+        barrier
+            .state
+            .lock()
+            .await
+            .supervisor
+            .as_ref()
+            .is_some_and(Supervised::is_running)
+    );
     assert!(matches!(
         gate.admission_status(&profile).unwrap(),
         AdmissionStatus::IntegrityFault {

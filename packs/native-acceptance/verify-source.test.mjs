@@ -554,3 +554,15 @@ test('actual staging CLI rejects non-components before creating output', () => {
   assert.match(result.stderr, /not a WebAssembly component/);
   assert.equal(existsSync(output), false);
 });
+
+// Pack-specific documents are checked alongside the Pack fixtures, not in the
+// generic host mechanism. This is source evidence, not native CSP acceptance.
+test('official Pack documents defer CSP to the bound native response header', () => {
+  for (const doc of [
+    'packs/local.harness-ui/ui/index.html',
+    'packs/native-acceptance/ui/index.html',
+  ]) {
+    const html = readFileSync(resolve(repo, doc), 'utf8');
+    assert.ok(!html.includes('Content-Security-Policy'), doc);
+  }
+});

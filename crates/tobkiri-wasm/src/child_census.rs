@@ -24,13 +24,12 @@ use std::mem::size_of;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
-use std::task::{Context, Poll, Waker};
 #[cfg(test)]
 use std::task::Wake;
+use std::task::{Context, Poll, Waker};
 
 use tobkiri_canon::{
-    Digest,
-    LeasedShared,
+    Digest, LeasedShared,
     ids::{PackHash, PackId, ProfileId},
 };
 use tobkiri_flow::{StreamCloseControl, StreamCloseReason};
@@ -391,8 +390,8 @@ impl<F> LaunchCarrier<F> {
 /// no receipt/census owns this pool or a slot containing its own actual Join.
 mod execution_owner {
     use super::*;
-    use std::sync::atomic::{AtomicU8, AtomicU64};
     use std::sync::OnceLock;
+    use std::sync::atomic::{AtomicU8, AtomicU64};
     use tokio::task::{JoinError, JoinHandle};
 
     const SLOTS: usize = 256;
@@ -415,12 +414,20 @@ mod execution_owner {
     }
     impl OwnerCell {
         const fn new() -> Self {
-            Self { value: parking_lot::RwLock::new(None), gate: AtomicU64::new(EMPTY), requested: AtomicU64::new(0) }
+            Self {
+                value: parking_lot::RwLock::new(None),
+                gate: AtomicU64::new(EMPTY),
+                requested: AtomicU64::new(0),
+            }
         }
     }
     static OWNER: [OwnerCell; SLOTS] = [const { OwnerCell::new() }; SLOTS];
-    fn encoded(id: SlotId, phase: u64) -> u64 { (id.0 << 2) | phase }
-    fn incarnation(value: u64) -> SlotId { SlotId(value >> 2) }
+    fn encoded(id: SlotId, phase: u64) -> u64 {
+        (id.0 << 2) | phase
+    }
+    fn incarnation(value: u64) -> SlotId {
+        SlotId(value >> 2)
+    }
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub(super) struct SlotId(u64);
@@ -458,9 +465,17 @@ mod execution_owner {
         finalizing: bool,
     }
     #[derive(Clone, Copy)]
-    pub(super) enum Kind { Body, Monitor }
+    pub(super) enum Kind {
+        Body,
+        Monitor,
+    }
     impl Kind {
-        fn index(self) -> usize { match self { Self::Body => 0, Self::Monitor => 1 } }
+        fn index(self) -> usize {
+            match self {
+                Self::Body => 0,
+                Self::Monitor => 1,
+            }
+        }
     }
     #[derive(Clone, Copy)]
     enum Outcome {
@@ -481,9 +496,13 @@ mod execution_owner {
         let mut preflight = tokio::task::unconstrained(std::future::ready(()));
         catch_unwind(AssertUnwindSafe(|| {
             std::pin::Pin::new(&mut preflight).poll(&mut Context::from_waker(Waker::noop()))
-        })).is_ok()
+        }))
+        .is_ok()
     }
-    fn poll_readiness<T>(join: &mut JoinHandle<T>, cx: &mut Context<'_>) -> Poll<Result<T, JoinError>> {
+    fn poll_readiness<T>(
+        join: &mut JoinHandle<T>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<T, JoinError>> {
         // One readiness poll of the SAME Join. This stack-only reference
         // wrapper excludes cooperative-budget defer/self-wake; it never
         // polls the scheduled body or loops. The pinned runtime/TLS closure
@@ -497,12 +516,16 @@ mod execution_owner {
                 Self::Body(join) => match poll_readiness(join, cx) {
                     Poll::Pending => Poll::Pending,
                     Poll::Ready(Ok(result)) => Poll::Ready((Outcome::Body(Ok(result)), None)),
-                    Poll::Ready(Err(error)) => Poll::Ready((Outcome::Body(Err(CensusError::TaskUnknown)), Some(error))),
+                    Poll::Ready(Err(error)) => {
+                        Poll::Ready((Outcome::Body(Err(CensusError::TaskUnknown)), Some(error)))
+                    }
                 },
                 Self::Monitor(join) => match poll_readiness(join, cx) {
                     Poll::Pending => Poll::Pending,
                     Poll::Ready(Ok(result)) => Poll::Ready((Outcome::Monitor(Ok(result)), None)),
-                    Poll::Ready(Err(error)) => Poll::Ready((Outcome::Monitor(Err(CensusError::TaskUnknown)), Some(error))),
+                    Poll::Ready(Err(error)) => {
+                        Poll::Ready((Outcome::Monitor(Err(CensusError::TaskUnknown)), Some(error)))
+                    }
                 },
             }
         }
@@ -517,7 +540,15 @@ mod execution_owner {
         baseline_waker: Option<Waker>,
     }
     impl JoinState {
-        fn empty() -> Self { Self { join: None, polled: false, poll_unknown: false, outcome: None, baseline_waker: None } }
+        fn empty() -> Self {
+            Self {
+                join: None,
+                polled: false,
+                poll_unknown: false,
+                outcome: None,
+                baseline_waker: None,
+            }
+        }
     }
     struct OwnerWake {
         changed: Arc<tokio::sync::Notify>,
@@ -532,7 +563,10 @@ mod execution_owner {
         #[cfg(test)]
         pause: OnceLock<Arc<WakePause>>,
     }
-    struct PollWake { owner: Arc<OwnerWake>, kind: Kind }
+    struct PollWake {
+        owner: Arc<OwnerWake>,
+        kind: Kind,
+    }
     struct WakerRelease {
         // Weak storage is destroyed before the funding companion below.
         slot: Weak<Slot>,
@@ -546,12 +580,19 @@ mod execution_owner {
             // LeasedShared has ALREADY freed the actual PollWake block.
             // A transient funded strong pin is not a Waker->Slot cycle.
             if let Some(slot) = self.slot.upgrade() {
-                let Some(control) = self._control.as_ref() else { return; };
-                let entry = FundedSlot { slot, _control: control.clone() };
+                let Some(control) = self._control.as_ref() else {
+                    return;
+                };
+                let entry = FundedSlot {
+                    slot,
+                    _control: control.clone(),
+                };
                 #[cfg(test)]
                 if let Some(pause) = entry.slot.wake.pause.get()
                     && pause.kind.index() == self.kind.index()
-                { witness = Some(pause.deallocated.clone()); }
+                {
+                    witness = Some(pause.deallocated.clone());
+                }
                 entry.slot.waker_destroyed[self.kind.index()].store(true, Ordering::Release);
                 request_finalize(&entry);
             }
@@ -560,20 +601,32 @@ mod execution_owner {
             drop(std::mem::replace(&mut self.slot, Weak::new()));
             drop(self._control.take());
             #[cfg(test)]
-            if let Some(witness) = witness { let _ = witness.send(()); }
+            if let Some(witness) = witness {
+                let _ = witness.send(());
+            }
         }
     }
     impl OwnerWake {
-        fn owes_poll(&self, kind: Kind) -> bool { self.debt[kind.index()].load(Ordering::Acquire) }
-        fn mark(&self, bits: u8) { self.duty.fetch_or(bits, Ordering::AcqRel); }
+        fn owes_poll(&self, kind: Kind) -> bool {
+            self.debt[kind.index()].load(Ordering::Acquire)
+        }
+        fn mark(&self, bits: u8) {
+            self.duty.fetch_or(bits, Ordering::AcqRel);
+        }
         // A poll-cell wake records only atomic duty while any cell/state guard
         // is live. The final raw unlock hands that duty to this outside path.
         fn flush(&self) {
-            if self.guards.load(Ordering::Acquire) != 0 { return; }
+            if self.guards.load(Ordering::Acquire) != 0 {
+                return;
+            }
             let duty = self.duty.swap(0, Ordering::AcqRel);
-            if duty == 0 { return; }
+            if duty == 0 {
+                return;
+            }
             #[cfg(test)]
-            if duty & REPOLL != 0 { self.repolls.fetch_add(1, Ordering::AcqRel); }
+            if duty & REPOLL != 0 {
+                self.repolls.fetch_add(1, Ordering::AcqRel);
+            }
             self.changed.notify_waiters();
         }
     }
@@ -586,7 +639,9 @@ mod execution_owner {
             self.owner.flush();
             #[cfg(test)]
             if let Some(pause) = self.owner.pause.get() {
-                if matches!(self.kind, Kind::Monitor) { let _ = pause.monitor_ready.send(()); }
+                if matches!(self.kind, Kind::Monitor) {
+                    let _ = pause.monitor_ready.send(());
+                }
                 if self.kind.index() == pause.kind.index() {
                     let _ = pause.entered.send(());
                     // Fixture-only: hand the current Tokio worker core and
@@ -604,18 +659,26 @@ mod execution_owner {
     // Explicit normal completion avoids thread::panicking TLS access while
     // any gate is owned. An unwinding/partial guard latches Unknown using
     // only atomics; the raw guard unlocks before the handoff field drops.
-    struct StateUnlock { entry: FundedSlot }
+    struct StateUnlock {
+        entry: FundedSlot,
+    }
     impl Drop for StateUnlock {
         fn drop(&mut self) {
             let slot = &self.entry.slot;
             slot.state_gate.store(AVAILABLE as u8, Ordering::Release);
-            if slot.wake.requests[0].swap(false, Ordering::AcqRel) { slot.wake.mark(REPOLL); }
+            if slot.wake.requests[0].swap(false, Ordering::AcqRel) {
+                slot.wake.mark(REPOLL);
+            }
             slot.wake.guards.fetch_sub(1, Ordering::AcqRel);
             slot.wake.flush();
             if slot.no_task[Kind::Body.index()].load(Ordering::Acquire)
                 && !slot.attempted[Kind::Body.index()].load(Ordering::Acquire)
-            { release_unstarted_cell(&self.entry); }
-            if slot.finalize_requested.load(Ordering::Acquire) { request_finalize(&self.entry); }
+            {
+                release_unstarted_cell(&self.entry);
+            }
+            if slot.finalize_requested.load(Ordering::Acquire) {
+                request_finalize(&self.entry);
+            }
         }
     }
     struct StateGuard<'a> {
@@ -623,46 +686,93 @@ mod execution_owner {
         _unlock: StateUnlock,
         completed: bool,
     }
-    impl StateGuard<'_> { fn complete(&mut self) { self.completed = true; } }
+    impl StateGuard<'_> {
+        fn complete(&mut self) {
+            self.completed = true;
+        }
+    }
     impl Drop for StateGuard<'_> {
         fn drop(&mut self) {
-            if !self.completed { self._unlock.entry.slot.unknown.store(true, Ordering::Release); }
+            if !self.completed {
+                self._unlock
+                    .entry
+                    .slot
+                    .unknown
+                    .store(true, Ordering::Release);
+            }
         }
     }
     impl std::ops::Deref for StateGuard<'_> {
         type Target = State;
-        fn deref(&self) -> &State { &self.guard }
+        fn deref(&self) -> &State {
+            &self.guard
+        }
     }
     impl std::ops::DerefMut for StateGuard<'_> {
-        fn deref_mut(&mut self) -> &mut State { &mut self.guard }
+        fn deref_mut(&mut self) -> &mut State {
+            &mut self.guard
+        }
     }
-    fn state_guard<'a>(entry: &'a FundedSlot,
-        guard: parking_lot::RwLockWriteGuard<'a, State>) -> StateGuard<'a>
-    {
+    fn state_guard<'a>(
+        entry: &'a FundedSlot,
+        guard: parking_lot::RwLockWriteGuard<'a, State>,
+    ) -> StateGuard<'a> {
         entry.slot.wake.guards.fetch_add(1, Ordering::AcqRel);
-        StateGuard { guard, _unlock: StateUnlock { entry: entry.clone() }, completed: false }
+        StateGuard {
+            guard,
+            _unlock: StateUnlock {
+                entry: entry.clone(),
+            },
+            completed: false,
+        }
     }
     fn try_state(entry: &FundedSlot) -> Option<StateGuard<'_>> {
         let slot = &entry.slot;
-        if slot.state_gate.compare_exchange(AVAILABLE as u8, BORROWED as u8,
-            Ordering::AcqRel, Ordering::Acquire).is_err()
+        if slot
+            .state_gate
+            .compare_exchange(
+                AVAILABLE as u8,
+                BORROWED as u8,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_err()
         {
             slot.wake.requests[0].store(true, Ordering::Release);
-            if slot.state_gate.compare_exchange(AVAILABLE as u8, BORROWED as u8,
-                Ordering::AcqRel, Ordering::Acquire).is_err() { return None; }
+            if slot
+                .state_gate
+                .compare_exchange(
+                    AVAILABLE as u8,
+                    BORROWED as u8,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                )
+                .is_err()
+            {
+                return None;
+            }
         }
         match slot.state.try_write() {
             Some(guard) => Some(state_guard(entry, guard)),
-            None => { slot.unknown.store(true, Ordering::Release); slot.state_gate.store(RETIRING as u8, Ordering::Release); None }
+            None => {
+                slot.unknown.store(true, Ordering::Release);
+                slot.state_gate.store(RETIRING as u8, Ordering::Release);
+                None
+            }
         }
     }
 
-    struct CellUnlock<'a> { slot: &'a Slot, kind: Kind }
+    struct CellUnlock<'a> {
+        slot: &'a Slot,
+        kind: Kind,
+    }
     impl Drop for CellUnlock<'_> {
         fn drop(&mut self) {
             let index = self.kind.index();
             self.slot.cell_gates[index].store(AVAILABLE as u8, Ordering::Release);
-            if self.slot.wake.requests[index + 1].swap(false, Ordering::AcqRel) { self.slot.wake.mark(REPOLL); }
+            if self.slot.wake.requests[index + 1].swap(false, Ordering::AcqRel) {
+                self.slot.wake.mark(REPOLL);
+            }
             self.slot.wake.guards.fetch_sub(1, Ordering::AcqRel);
             self.slot.wake.flush();
         }
@@ -672,34 +782,67 @@ mod execution_owner {
         _unlock: CellUnlock<'a>,
         completed: bool,
     }
-    impl CellGuard<'_> { fn complete(&mut self) { self.completed = true; } }
+    impl CellGuard<'_> {
+        fn complete(&mut self) {
+            self.completed = true;
+        }
+    }
     impl Drop for CellGuard<'_> {
         fn drop(&mut self) {
-            if !self.completed { self._unlock.slot.unknown.store(true, Ordering::Release); }
+            if !self.completed {
+                self._unlock.slot.unknown.store(true, Ordering::Release);
+            }
         }
     }
     impl std::ops::Deref for CellGuard<'_> {
         type Target = JoinState;
-        fn deref(&self) -> &JoinState { &self.guard }
+        fn deref(&self) -> &JoinState {
+            &self.guard
+        }
     }
     impl std::ops::DerefMut for CellGuard<'_> {
-        fn deref_mut(&mut self) -> &mut JoinState { &mut self.guard }
+        fn deref_mut(&mut self) -> &mut JoinState {
+            &mut self.guard
+        }
     }
     fn try_cell(slot: &Slot, kind: Kind) -> Option<CellGuard<'_>> {
         let cell = slot.cells[kind.index()].get()?;
-        if slot.cell_gates[kind.index()].compare_exchange(AVAILABLE as u8, BORROWED as u8,
-            Ordering::AcqRel, Ordering::Acquire).is_err()
+        if slot.cell_gates[kind.index()]
+            .compare_exchange(
+                AVAILABLE as u8,
+                BORROWED as u8,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_err()
         {
             slot.wake.requests[kind.index() + 1].store(true, Ordering::Release);
-            if slot.cell_gates[kind.index()].compare_exchange(AVAILABLE as u8, BORROWED as u8,
-                Ordering::AcqRel, Ordering::Acquire).is_err() { return None; }
+            if slot.cell_gates[kind.index()]
+                .compare_exchange(
+                    AVAILABLE as u8,
+                    BORROWED as u8,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                )
+                .is_err()
+            {
+                return None;
+            }
         }
         match cell.try_write() {
             Some(guard) => {
                 slot.wake.guards.fetch_add(1, Ordering::AcqRel);
-                Some(CellGuard { guard, _unlock: CellUnlock { slot, kind }, completed: false })
+                Some(CellGuard {
+                    guard,
+                    _unlock: CellUnlock { slot, kind },
+                    completed: false,
+                })
             }
-            None => { slot.unknown.store(true, Ordering::Release); slot.cell_gates[kind.index()].store(RETIRING as u8, Ordering::Release); None }
+            None => {
+                slot.unknown.store(true, Ordering::Release);
+                slot.cell_gates[kind.index()].store(RETIRING as u8, Ordering::Release);
+                None
+            }
         }
     }
 
@@ -716,22 +859,42 @@ mod execution_owner {
     }
     impl OwnerUnlock {
         fn finish(&mut self) {
-            if !self.armed { return; }
+            if !self.armed {
+                return;
+            }
             self.armed = false;
             // Raw guard field has ALREADY unlocked, on every exit/unwind.
-            self.cell.gate.store(encoded(self.id, AVAILABLE), Ordering::Release);
+            self.cell
+                .gate
+                .store(encoded(self.id, AVAILABLE), Ordering::Release);
             #[cfg(test)]
-            if let Some(pause) = &self.pause { pause.wait(1); }
-            let requested = self.cell.requested.compare_exchange(self.id.0, 0, Ordering::AcqRel, Ordering::Acquire).is_ok();
+            if let Some(pause) = &self.pause {
+                pause.wait(1);
+            }
+            let requested = self
+                .cell
+                .requested
+                .compare_exchange(self.id.0, 0, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok();
             if let Some(entry) = &self.entry {
                 if entry.slot.remove_requested.load(Ordering::Acquire)
-                    && self.cell.gate.compare_exchange(encoded(self.id, AVAILABLE),
-                        encoded(self.id, RETIRING), Ordering::AcqRel, Ordering::Acquire).is_ok()
+                    && self
+                        .cell
+                        .gate
+                        .compare_exchange(
+                            encoded(self.id, AVAILABLE),
+                            encoded(self.id, RETIRING),
+                            Ordering::AcqRel,
+                            Ordering::Acquire,
+                        )
+                        .is_ok()
                 {
                     retire(self.cell, entry);
                 }
                 #[cfg(test)]
-                if let Some(pause) = &self.pause { pause.wait(2); }
+                if let Some(pause) = &self.pause {
+                    pause.wait(2);
+                }
                 // A replacement borrower after Available either wins that
                 // CAS and inherits the same sticky request, or this dedicated
                 // retire winner excludes every new borrower.
@@ -742,7 +905,11 @@ mod execution_owner {
             }
         }
     }
-    impl Drop for OwnerUnlock { fn drop(&mut self) { self.finish(); } }
+    impl Drop for OwnerUnlock {
+        fn drop(&mut self) {
+            self.finish();
+        }
+    }
     struct OwnerGuard {
         guard: parking_lot::RwLockWriteGuard<'static, Option<FundedSlot>>,
         _unlock: OwnerUnlock,
@@ -753,25 +920,45 @@ mod execution_owner {
         fn drop(&mut self) {
             if !self.completed
                 && let Some(entry) = &self._unlock.entry
-            { entry.slot.unknown.store(true, Ordering::Release); }
+            {
+                entry.slot.unknown.store(true, Ordering::Release);
+            }
         }
     }
     impl std::ops::Deref for OwnerGuard {
         type Target = Option<FundedSlot>;
-        fn deref(&self) -> &Self::Target { &self.guard }
+        fn deref(&self) -> &Self::Target {
+            &self.guard
+        }
     }
     impl std::ops::DerefMut for OwnerGuard {
-        fn deref_mut(&mut self) -> &mut Self::Target { &mut self.guard }
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.guard
+        }
     }
-    fn owner_guard(cell: &'static OwnerCell, id: SlotId,
-        guard: parking_lot::RwLockWriteGuard<'static, Option<FundedSlot>>, poisoned: bool) -> OwnerGuard
-    {
+    fn owner_guard(
+        cell: &'static OwnerCell,
+        id: SlotId,
+        guard: parking_lot::RwLockWriteGuard<'static, Option<FundedSlot>>,
+        poisoned: bool,
+    ) -> OwnerGuard {
         let entry = guard.clone();
-        if poisoned
-            && let Some(entry) = &entry
-        { entry.slot.unknown.store(true, Ordering::Release); }
-        OwnerGuard { guard, _unlock: OwnerUnlock { cell, id, entry, armed: true,
-            #[cfg(test)] pause: None }, poisoned, completed: false }
+        if poisoned && let Some(entry) = &entry {
+            entry.slot.unknown.store(true, Ordering::Release);
+        }
+        OwnerGuard {
+            guard,
+            _unlock: OwnerUnlock {
+                cell,
+                id,
+                entry,
+                armed: true,
+                #[cfg(test)]
+                pause: None,
+            },
+            poisoned,
+            completed: false,
+        }
     }
     fn claimed_owner(cell: &'static OwnerCell, id: SlotId) -> Option<OwnerGuard> {
         // Gate ownership makes this raw lock noncontended in the actual
@@ -786,13 +973,18 @@ mod execution_owner {
         }
     }
     fn owner_cell(id: SlotId) -> Option<&'static OwnerCell> {
-        OWNER.iter().find(|cell| incarnation(cell.gate.load(Ordering::Acquire)) == id)
+        OWNER
+            .iter()
+            .find(|cell| incarnation(cell.gate.load(Ordering::Acquire)) == id)
     }
     fn try_owner(id: SlotId) -> Option<OwnerGuard> {
         let cell = owner_cell(id)?;
         let available = encoded(id, AVAILABLE);
         let borrowed = encoded(id, BORROWED);
-        match cell.gate.compare_exchange(available, borrowed, Ordering::AcqRel, Ordering::Acquire) {
+        match cell
+            .gate
+            .compare_exchange(available, borrowed, Ordering::AcqRel, Ordering::Acquire)
+        {
             Ok(_) => return claimed_owner(cell, id),
             Err(value) if incarnation(value) != id || value & PHASE_MASK == EMPTY => return None,
             Err(_) => {}
@@ -800,12 +992,19 @@ mod execution_owner {
         // Incarnations are globally monotonic: a stale old requester cannot
         // overwrite or consume a newer record's request in this reused cell.
         cell.requested.fetch_max(id.0, Ordering::AcqRel);
-        match cell.gate.compare_exchange(available, borrowed, Ordering::AcqRel, Ordering::Acquire) {
+        match cell
+            .gate
+            .compare_exchange(available, borrowed, Ordering::AcqRel, Ordering::Acquire)
+        {
             Ok(_) => claimed_owner(cell, id),
             Err(_) => None,
         }
     }
-    enum Lookup { Busy, Missing, Found(FundedSlot) }
+    enum Lookup {
+        Busy,
+        Missing,
+        Found(FundedSlot),
+    }
     fn lookup(id: SlotId) -> Lookup {
         if let Some(mut owner) = try_owner(id) {
             let result = match owner.as_ref().filter(|entry| entry.slot.id == id).cloned() {
@@ -823,16 +1022,29 @@ mod execution_owner {
     fn insert_owner(entry: &FundedSlot) -> Result<(), CensusError> {
         for cell in &OWNER {
             let previous = cell.gate.load(Ordering::Acquire);
-            if previous & PHASE_MASK != EMPTY { continue; }
-            if cell.gate.compare_exchange(previous, encoded(entry.slot.id, BORROWED),
-                Ordering::AcqRel, Ordering::Acquire).is_err() { continue; }
+            if previous & PHASE_MASK != EMPTY {
+                continue;
+            }
+            if cell
+                .gate
+                .compare_exchange(
+                    previous,
+                    encoded(entry.slot.id, BORROWED),
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                )
+                .is_err()
+            {
+                continue;
+            }
             let Some(mut owner) = claimed_owner(cell, entry.slot.id) else {
                 return Err(CensusError::StateUnavailable);
             };
             if owner.poisoned || owner.is_some() {
                 entry.slot.unknown.store(true, Ordering::Release);
                 owner._unlock.armed = false;
-                cell.gate.store(encoded(entry.slot.id, RETIRING), Ordering::Release);
+                cell.gate
+                    .store(encoded(entry.slot.id, RETIRING), Ordering::Release);
                 return Err(CensusError::StateUnavailable);
             }
             *owner = Some(entry.clone());
@@ -849,9 +1061,14 @@ mod execution_owner {
         // a normal OwnerGuard and cannot recursively trigger its Drop path.
         let removed = match cell.value.try_write() {
             Some(mut raw) => {
-                if raw.as_ref().is_some_and(|entry| entry.slot.id == pin.slot.id && removable(entry)) {
+                if raw
+                    .as_ref()
+                    .is_some_and(|entry| entry.slot.id == pin.slot.id && removable(entry))
+                {
                     raw.take()
-                } else { None }
+                } else {
+                    None
+                }
             }
             None => {
                 pin.slot.unknown.store(true, Ordering::Release);
@@ -860,8 +1077,17 @@ mod execution_owner {
         };
         // The raw guard is gone before either the gate is reusable or any
         // final funded Arc/Notify/control owner is destroyed.
-        cell.gate.store(encoded(pin.slot.id, if removed.is_some() { EMPTY } else { AVAILABLE }), Ordering::Release);
-        let requested = cell.requested.compare_exchange(pin.slot.id.0, 0, Ordering::AcqRel, Ordering::Acquire).is_ok();
+        cell.gate.store(
+            encoded(
+                pin.slot.id,
+                if removed.is_some() { EMPTY } else { AVAILABLE },
+            ),
+            Ordering::Release,
+        );
+        let requested = cell
+            .requested
+            .compare_exchange(pin.slot.id.0, 0, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok();
         if requested {
             pin.slot.wake.mark(REPOLL);
             pin.slot.wake.flush();
@@ -873,8 +1099,12 @@ mod execution_owner {
         // All private custody guards use the source-closed allocation-free
         // exclusive RwLock path. Only existing Notify needs a Darwin PAL box.
         let pal = darwin_mutex_requested_bound()?;
-        let cells = size_of::<parking_lot::RwLock<JoinState>>().checked_mul(2).ok_or(CensusError::Capacity)?;
-        let wakers = LeasedShared::<PollWake, WakerRelease>::storage_bytes().checked_mul(2).ok_or(CensusError::Capacity)?;
+        let cells = size_of::<parking_lot::RwLock<JoinState>>()
+            .checked_mul(2)
+            .ok_or(CensusError::Capacity)?;
+        let wakers = LeasedShared::<PollWake, WakerRelease>::storage_bytes()
+            .checked_mul(2)
+            .ok_or(CensusError::Capacity)?;
         arc_requested_bound::<Slot>()?
             .checked_add(arc_requested_bound::<OwnerWake>()?)
             .and_then(|bytes| bytes.checked_add(u64::try_from(wakers).ok()?))
@@ -883,64 +1113,119 @@ mod execution_owner {
             .and_then(|bytes| bytes.checked_add(pal))
             .ok_or(CensusError::Capacity)
     }
-    pub(super) struct UnpublishedAdmission { entry: FundedSlot }
+    pub(super) struct UnpublishedAdmission {
+        entry: FundedSlot,
+    }
     impl UnpublishedAdmission {
-        pub(super) fn id(&self) -> SlotId { self.entry.slot.id }
+        pub(super) fn id(&self) -> SlotId {
+            self.entry.slot.id
+        }
     }
     impl Drop for UnpublishedAdmission {
         fn drop(&mut self) {
             if !self.entry.slot.attempted[Kind::Monitor.index()].load(Ordering::Acquire) {
                 self.entry.slot.unpublished.store(true, Ordering::Release);
-                self.entry.slot.remove_requested.store(true, Ordering::Release);
+                self.entry
+                    .slot
+                    .remove_requested
+                    .store(true, Ordering::Release);
                 remove(&self.entry);
             }
         }
     }
-    pub(super) fn reserve(control: Funding, task: ControlReservation, monitor: ControlReservation,
-        physical: oneshot::Sender<PhysicalResult>, changed: Arc<tokio::sync::Notify>)
-        -> Result<UnpublishedAdmission, CensusError>
-    {
+    pub(super) fn reserve(
+        control: Funding,
+        task: ControlReservation,
+        monitor: ControlReservation,
+        physical: oneshot::Sender<PhysicalResult>,
+        changed: Arc<tokio::sync::Notify>,
+    ) -> Result<UnpublishedAdmission, CensusError> {
         let body = Box::new(parking_lot::RwLock::new(JoinState::empty()));
         let monitor_cell = Box::new(parking_lot::RwLock::new(JoinState::empty()));
-        let state = parking_lot::RwLock::new(State { prepared: [Some(body), Some(monitor_cell)],
-            controls: Some((task, monitor)), physical: Some(physical), finalizing: false });
-        let id = SlotId(NEXT_ID.fetch_update(Ordering::AcqRel, Ordering::Acquire,
-            |id| id.checked_add(1).filter(|next| *next <= MAX_INCARNATION))
-            .map_err(|_| CensusError::Capacity)?);
-        let wake = Arc::new(OwnerWake { changed, debt: [AtomicBool::new(false), AtomicBool::new(false)],
-            requests: [AtomicBool::new(false), AtomicBool::new(false), AtomicBool::new(false)],
-            guards: std::sync::atomic::AtomicUsize::new(0), duty: AtomicU8::new(0),
-            #[cfg(test)] wakes: AtomicU64::new(0), #[cfg(test)] repolls: AtomicU64::new(0),
-            #[cfg(test)] pause: OnceLock::new() });
-        let entry = FundedSlot { slot: Arc::new(Slot {
-            id, state, state_gate: AtomicU8::new(AVAILABLE as u8),
-            cells: [OnceLock::new(), OnceLock::new()],
-            cell_gates: [AtomicU8::new(AVAILABLE as u8), AtomicU8::new(AVAILABLE as u8)],
-            attempted: [AtomicBool::new(false), AtomicBool::new(false)],
-            no_task: [AtomicBool::new(false), AtomicBool::new(false)],
-            destroyed: [AtomicBool::new(false), AtomicBool::new(false)],
-            waker_destroyed: [AtomicBool::new(false), AtomicBool::new(false)],
-            monitor_result: OnceLock::new(), finalize_requested: AtomicBool::new(false),
-            unknown: AtomicBool::new(false), disposal_unknown: AtomicBool::new(false),
-            finalized: AtomicBool::new(false), unpublished: AtomicBool::new(false),
-            remove_requested: AtomicBool::new(false),
-            wake,
-            #[cfg(test)] panic_monitor: AtomicBool::new(false),
-        }), _control: control };
+        let state = parking_lot::RwLock::new(State {
+            prepared: [Some(body), Some(monitor_cell)],
+            controls: Some((task, monitor)),
+            physical: Some(physical),
+            finalizing: false,
+        });
+        let id = SlotId(
+            NEXT_ID
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |id| {
+                    id.checked_add(1).filter(|next| *next <= MAX_INCARNATION)
+                })
+                .map_err(|_| CensusError::Capacity)?,
+        );
+        let wake = Arc::new(OwnerWake {
+            changed,
+            debt: [AtomicBool::new(false), AtomicBool::new(false)],
+            requests: [
+                AtomicBool::new(false),
+                AtomicBool::new(false),
+                AtomicBool::new(false),
+            ],
+            guards: std::sync::atomic::AtomicUsize::new(0),
+            duty: AtomicU8::new(0),
+            #[cfg(test)]
+            wakes: AtomicU64::new(0),
+            #[cfg(test)]
+            repolls: AtomicU64::new(0),
+            #[cfg(test)]
+            pause: OnceLock::new(),
+        });
+        let entry = FundedSlot {
+            slot: Arc::new(Slot {
+                id,
+                state,
+                state_gate: AtomicU8::new(AVAILABLE as u8),
+                cells: [OnceLock::new(), OnceLock::new()],
+                cell_gates: [
+                    AtomicU8::new(AVAILABLE as u8),
+                    AtomicU8::new(AVAILABLE as u8),
+                ],
+                attempted: [AtomicBool::new(false), AtomicBool::new(false)],
+                no_task: [AtomicBool::new(false), AtomicBool::new(false)],
+                destroyed: [AtomicBool::new(false), AtomicBool::new(false)],
+                waker_destroyed: [AtomicBool::new(false), AtomicBool::new(false)],
+                monitor_result: OnceLock::new(),
+                finalize_requested: AtomicBool::new(false),
+                unknown: AtomicBool::new(false),
+                disposal_unknown: AtomicBool::new(false),
+                finalized: AtomicBool::new(false),
+                unpublished: AtomicBool::new(false),
+                remove_requested: AtomicBool::new(false),
+                wake,
+                #[cfg(test)]
+                panic_monitor: AtomicBool::new(false),
+            }),
+            _control: control,
+        };
         // Both blocks use the authentic LeasedShared plan. Their immutable
         // payload has no strong Slot edge; each plan holds a Weak plus the
         // same funding token through block deallocation and Weak release.
         let make_waker = |kind| {
             LeasedShared::try_new_precharged(
-                PollWake { owner: entry.slot.wake.clone(), kind },
-                WakerRelease { slot: Arc::downgrade(&entry.slot), kind, _control: Some(entry._control.clone()) },
-            ).map(LeasedShared::into_waker).map_err(|_| CensusError::Capacity)
+                PollWake {
+                    owner: entry.slot.wake.clone(),
+                    kind,
+                },
+                WakerRelease {
+                    slot: Arc::downgrade(&entry.slot),
+                    kind,
+                    _control: Some(entry._control.clone()),
+                },
+            )
+            .map(LeasedShared::into_waker)
+            .map_err(|_| CensusError::Capacity)
         };
         let baselines = [make_waker(Kind::Body)?, make_waker(Kind::Monitor)?];
         {
-            let Some(mut state) = try_state(&entry) else { return Err(CensusError::StateUnavailable); };
+            let Some(mut state) = try_state(&entry) else {
+                return Err(CensusError::StateUnavailable);
+            };
             for (cell, waker) in state.prepared.iter_mut().zip(baselines) {
-                let Some(cell) = cell.as_mut() else { return Err(CensusError::StateUnavailable); };
+                let Some(cell) = cell.as_mut() else {
+                    return Err(CensusError::StateUnavailable);
+                };
                 cell.get_mut().baseline_waker = Some(waker);
             }
             state.complete();
@@ -956,7 +1241,10 @@ mod execution_owner {
         committed: bool,
         installed: bool,
     }
-    pub(super) enum Prepared { Busy, Ready(Publication) }
+    pub(super) enum Prepared {
+        Busy,
+        Ready(Publication),
+    }
     pub(super) fn prepare(id: SlotId, kind: Kind) -> Result<Prepared, CensusError> {
         let entry = match lookup(id) {
             Lookup::Busy => return Ok(Prepared::Busy),
@@ -964,13 +1252,25 @@ mod execution_owner {
             Lookup::Found(entry) => entry,
         };
         let prepared = {
-            let Some(mut state) = try_state(&entry) else { return Ok(Prepared::Busy); };
-            if entry.slot.unknown.load(Ordering::Acquire) { return Err(CensusError::StateUnavailable); }
-            let prepared = state.prepared[kind.index()].take().ok_or(CensusError::LaunchUnknown)?;
+            let Some(mut state) = try_state(&entry) else {
+                return Ok(Prepared::Busy);
+            };
+            if entry.slot.unknown.load(Ordering::Acquire) {
+                return Err(CensusError::StateUnavailable);
+            }
+            let prepared = state.prepared[kind.index()]
+                .take()
+                .ok_or(CensusError::LaunchUnknown)?;
             state.complete();
             prepared
         };
-        Ok(Prepared::Ready(Publication { entry, kind, prepared: Some(prepared), committed: false, installed: false }))
+        Ok(Prepared::Ready(Publication {
+            entry,
+            kind,
+            prepared: Some(prepared),
+            committed: false,
+            installed: false,
+        }))
     }
     impl Publication {
         // Called under census start-linearization guard: atomic metadata only.
@@ -978,21 +1278,33 @@ mod execution_owner {
             let index = self.kind.index();
             if self.entry.slot.no_task[index].load(Ordering::Acquire)
                 || self.entry.slot.cells[index].get().is_some()
-            { return Err(CensusError::LaunchUnknown); }
-            self.entry.slot.attempted[index].compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            {
+                return Err(CensusError::LaunchUnknown);
+            }
+            self.entry.slot.attempted[index]
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
                 .map_err(|_| CensusError::LaunchUnknown)?;
             self.committed = true;
             Ok(())
         }
-        fn spawn<T>(mut self, spawn: impl FnOnce() -> JoinHandle<T>,
-            wrap: impl FnOnce(JoinHandle<T>) -> ActualJoin) -> Result<(), CensusError>
-        {
-            if !self.committed { return Err(CensusError::LaunchUnknown); }
-            let Some(mut prepared) = self.prepared.take() else { return Err(CensusError::LaunchUnknown); };
+        fn spawn<T>(
+            mut self,
+            spawn: impl FnOnce() -> JoinHandle<T>,
+            wrap: impl FnOnce(JoinHandle<T>) -> ActualJoin,
+        ) -> Result<(), CensusError> {
+            if !self.committed {
+                return Err(CensusError::LaunchUnknown);
+            }
+            let Some(mut prepared) = self.prepared.take() else {
+                return Err(CensusError::LaunchUnknown);
+            };
             // No OWNER/state/cell/census guard is held by the call sites.
             let join = match catch_unwind(AssertUnwindSafe(spawn)) {
                 Ok(join) => join,
-                Err(_) => { self.entry.slot.unknown.store(true, Ordering::Release); return Err(CensusError::LaunchUnknown); }
+                Err(_) => {
+                    self.entry.slot.unknown.store(true, Ordering::Release);
+                    return Err(CensusError::LaunchUnknown);
+                }
             };
             // No await/callback/fallible wrap/early return after original Join
             // creation. This uniquely owned prewarmed box receives that Join.
@@ -1005,10 +1317,16 @@ mod execution_owner {
             self.installed = true;
             Ok(())
         }
-        pub(super) fn spawn_monitor(self, spawn: impl FnOnce() -> JoinHandle<PhysicalResult>) -> Result<(), CensusError> {
+        pub(super) fn spawn_monitor(
+            self,
+            spawn: impl FnOnce() -> JoinHandle<PhysicalResult>,
+        ) -> Result<(), CensusError> {
             self.spawn(spawn, ActualJoin::Monitor)
         }
-        pub(super) fn spawn_body(self, spawn: impl FnOnce() -> JoinHandle<NativeWorkResult>) -> Result<(), CensusError> {
+        pub(super) fn spawn_body(
+            self,
+            spawn: impl FnOnce() -> JoinHandle<NativeWorkResult>,
+        ) -> Result<(), CensusError> {
             self.spawn(spawn, ActualJoin::Body)
         }
     }
@@ -1034,13 +1352,29 @@ mod execution_owner {
     fn release_unstarted_cell(entry: &FundedSlot) {
         if !entry.slot.no_task[Kind::Body.index()].load(Ordering::Acquire)
             || entry.slot.attempted[Kind::Body.index()].load(Ordering::Acquire)
-        { return; }
-        if entry.slot.state_gate.compare_exchange(AVAILABLE as u8, RETIRING as u8,
-            Ordering::AcqRel, Ordering::Acquire).is_err() { return; }
+        {
+            return;
+        }
+        if entry
+            .slot
+            .state_gate
+            .compare_exchange(
+                AVAILABLE as u8,
+                RETIRING as u8,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_err()
+        {
+            return;
+        }
         let prepared = match entry.slot.state.try_write() {
             Some(mut raw) => {
                 let mut prepared = raw.prepared[Kind::Body.index()].take();
-                if prepared.as_mut().is_some_and(|cell| cell.get_mut().join.is_some()) {
+                if prepared
+                    .as_mut()
+                    .is_some_and(|cell| cell.get_mut().join.is_some())
+                {
                     // An unexpected original Join is retained, never dropped
                     // merely because the NoTask proof was inconsistent.
                     raw.prepared[Kind::Body.index()] = prepared.take();
@@ -1049,9 +1383,15 @@ mod execution_owner {
                 }
                 prepared
             }
-            None => { entry.slot.unknown.store(true, Ordering::Release); return; }
+            None => {
+                entry.slot.unknown.store(true, Ordering::Release);
+                return;
+            }
         };
-        entry.slot.state_gate.store(AVAILABLE as u8, Ordering::Release);
+        entry
+            .slot
+            .state_gate
+            .store(AVAILABLE as u8, Ordering::Release);
         if entry.slot.wake.requests[0].swap(false, Ordering::AcqRel) {
             entry.slot.wake.mark(REPOLL);
             entry.slot.wake.flush();
@@ -1059,25 +1399,43 @@ mod execution_owner {
         // Fresh/no-task cell has no original Join. Its baseline Waker and
         // box deallocate only AFTER the dedicated raw State guard unlocks.
         drop(prepared);
-        if entry.slot.finalize_requested.load(Ordering::Acquire) { request_finalize(entry); }
+        if entry.slot.finalize_requested.load(Ordering::Acquire) {
+            request_finalize(entry);
+        }
     }
     pub(super) fn no_body(id: SlotId) {
-        if let Lookup::Found(entry) = lookup(id) { no_body_entry(&entry); }
+        if let Lookup::Found(entry) = lookup(id) {
+            no_body_entry(&entry);
+        }
     }
     fn poll_join(entry: &FundedSlot, kind: Kind, monitor_poll: bool) -> Option<Outcome> {
-        if !preflight_poll_thread() { return None; }
+        if !preflight_poll_thread() {
+            return None;
+        }
         let wake_pin = entry.slot.wake.clone();
         let disposal = {
             let mut cell = try_cell(&entry.slot, kind)?;
-            if let Some(outcome) = cell.outcome { cell.complete(); return Some(outcome); }
-            if cell.join.is_none() || cell.poll_unknown { cell.complete(); return None; }
+            if let Some(outcome) = cell.outcome {
+                cell.complete();
+                return Some(outcome);
+            }
+            if cell.join.is_none() || cell.poll_unknown {
+                cell.complete();
+                return None;
+            }
             #[cfg(test)]
-            if monitor_poll && matches!(kind, Kind::Body)
+            if monitor_poll
+                && matches!(kind, Kind::Body)
                 && entry.slot.panic_monitor.swap(false, Ordering::AcqRel)
-            { panic!("native monitor test panic during borrowed Join poll"); }
+            {
+                panic!("native monitor test panic during borrowed Join poll");
+            }
             #[cfg(not(test))]
             let _ = monitor_poll;
-            if cell.polled && !wake_pin.owes_poll(kind) { cell.complete(); return None; }
+            if cell.polled && !wake_pin.owes_poll(kind) {
+                cell.complete();
+                return None;
+            }
             // The baseline token predates this guard. Every private adapter
             // clone/drop and replaced Tokio trailer Waker is nonfinal while
             // that token stays in the cell OR the outer disposal tuple.
@@ -1096,12 +1454,20 @@ mod execution_owner {
                 Ok(Some(Poll::Ready((outcome, error)))) => {
                     cell.outcome = Some(outcome);
                     if let Outcome::Monitor(result) = outcome {
-                        let physical = match result { Ok(result) => result, Err(error) => Err(error) };
+                        let physical = match result {
+                            Ok(result) => result,
+                            Err(error) => Err(error),
+                        };
                         // Only the same actual Ready winner initializes this
                         // inline closed Copy result. Observers use get only.
                         let _ = entry.slot.monitor_result.set(physical);
                     }
-                    Ok(Some((cell.join.take(), error, outcome, cell.baseline_waker.take())))
+                    Ok(Some((
+                        cell.join.take(),
+                        error,
+                        outcome,
+                        cell.baseline_waker.take(),
+                    )))
                 }
                 Ok(_) => Ok(None),
                 Err(payload) => {
@@ -1123,9 +1489,15 @@ mod execution_owner {
             }
         };
         let (join, error, outcome, baseline) = disposal?;
-        let destroyed = catch_unwind(AssertUnwindSafe(|| { drop(join); drop(error); })).is_ok();
+        let destroyed = catch_unwind(AssertUnwindSafe(|| {
+            drop(join);
+            drop(error);
+        }))
+        .is_ok();
         entry.slot.destroyed[kind.index()].store(destroyed, Ordering::Release);
-        if !destroyed { entry.slot.disposal_unknown.store(true, Ordering::Release); }
+        if !destroyed {
+            entry.slot.disposal_unknown.store(true, Ordering::Release);
+        }
         // No further clone or actual poll is possible after the cached Ready.
         // Tokio's trailer may still own the sole other token. Its final block
         // deallocation, not this Join Drop, produces the second receipt.
@@ -1135,14 +1507,23 @@ mod execution_owner {
         wake_pin.flush();
         Some(outcome)
     }
-    pub(super) async fn wait_body(id: SlotId, changed: &Arc<tokio::sync::Notify>) -> Result<NativeWorkResult, CensusError> {
+    pub(super) async fn wait_body(
+        id: SlotId,
+        changed: &Arc<tokio::sync::Notify>,
+    ) -> Result<NativeWorkResult, CensusError> {
         loop {
-            if !preflight_poll_thread() { return Err(CensusError::TaskUnknown); }
+            if !preflight_poll_thread() {
+                return Err(CensusError::TaskUnknown);
+            }
             let notified = changed.clone().notified_owned();
             tokio::pin!(notified);
             notified.as_mut().enable();
             match lookup(id) {
-                Lookup::Found(entry) => if let Some(Outcome::Body(result)) = poll_join(&entry, Kind::Body, true) { return result; },
+                Lookup::Found(entry) => {
+                    if let Some(Outcome::Body(result)) = poll_join(&entry, Kind::Body, true) {
+                        return result;
+                    }
+                }
                 Lookup::Missing => return Err(CensusError::ReceiptLost),
                 Lookup::Busy => {}
             }
@@ -1155,7 +1536,10 @@ mod execution_owner {
         slot.destroyed[Kind::Monitor.index()].load(Ordering::Acquire)
             && (slot.destroyed[Kind::Body.index()].load(Ordering::Acquire)
                 || slot.no_task[Kind::Body.index()].load(Ordering::Acquire))
-            && slot.waker_destroyed.iter().all(|destroyed| destroyed.load(Ordering::Acquire))
+            && slot
+                .waker_destroyed
+                .iter()
+                .all(|destroyed| destroyed.load(Ordering::Acquire))
             && slot.monitor_result.get().is_some()
             && !slot.disposal_unknown.load(Ordering::Acquire)
     }
@@ -1166,19 +1550,46 @@ mod execution_owner {
             || (slot.finalized.load(Ordering::Acquire) && completion_resources_gone(slot))
     }
     fn request_finalize(entry: &FundedSlot) {
-        if entry.slot.finalized.load(Ordering::Acquire) { remove(entry); return; }
+        if entry.slot.finalized.load(Ordering::Acquire) {
+            remove(entry);
+            return;
+        }
         // This request is emitted ONLY after every prerequisite is monotonic
         // Ready/deallocated. A dedicated winner never chases partial events.
-        if !completion_resources_gone(&entry.slot) { return; }
+        if !completion_resources_gone(&entry.slot) {
+            return;
+        }
         entry.slot.finalize_requested.store(true, Ordering::Release);
-        if entry.slot.state_gate.compare_exchange(AVAILABLE as u8, RETIRING as u8,
-            Ordering::AcqRel, Ordering::Acquire).is_err() { return; }
+        if entry
+            .slot
+            .state_gate
+            .compare_exchange(
+                AVAILABLE as u8,
+                RETIRING as u8,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_err()
+        {
+            return;
+        }
         let finished = match entry.slot.state.try_write() {
             Some(mut raw) => {
-                if raw.finalizing { None } else {
+                if raw.finalizing {
+                    None
+                } else {
                     raw.finalizing = true;
-                    let result = entry.slot.monitor_result.get().copied().unwrap_or(Err(CensusError::TaskUnknown));
-                    let result = if entry.slot.unknown.load(Ordering::Acquire) { Err(CensusError::TaskUnknown) } else { result };
+                    let result = entry
+                        .slot
+                        .monitor_result
+                        .get()
+                        .copied()
+                        .unwrap_or(Err(CensusError::TaskUnknown));
+                    let result = if entry.slot.unknown.load(Ordering::Acquire) {
+                        Err(CensusError::TaskUnknown)
+                    } else {
+                        result
+                    };
                     Some((raw.controls.take(), raw.physical.take(), result))
                 }
             }
@@ -1191,14 +1602,19 @@ mod execution_owner {
         };
         // Dedicated finalizer has no normal StateGuard/recursive Drop path.
         // Its raw guard is gone before either the gate or callbacks release.
-        entry.slot.state_gate.store(AVAILABLE as u8, Ordering::Release);
+        entry
+            .slot
+            .state_gate
+            .store(AVAILABLE as u8, Ordering::Release);
         if entry.slot.wake.requests[0].swap(false, Ordering::AcqRel) {
             entry.slot.wake.mark(REPOLL);
             entry.slot.wake.flush();
         }
         if let Some((controls, physical, result)) = finished {
             drop(controls);
-            if let Some(physical) = physical { let _ = physical.send(result); }
+            if let Some(physical) = physical {
+                let _ = physical.send(result);
+            }
             entry.slot.finalized.store(true, Ordering::Release);
             entry.slot.wake.mark(CHANGED);
             entry.slot.wake.flush();
@@ -1207,9 +1623,18 @@ mod execution_owner {
     }
     fn remove(entry: &FundedSlot) {
         entry.slot.remove_requested.store(true, Ordering::Release);
-        let Some(cell) = owner_cell(entry.slot.id) else { return; };
-        if cell.gate.compare_exchange(encoded(entry.slot.id, AVAILABLE),
-            encoded(entry.slot.id, RETIRING), Ordering::AcqRel, Ordering::Acquire).is_ok()
+        let Some(cell) = owner_cell(entry.slot.id) else {
+            return;
+        };
+        if cell
+            .gate
+            .compare_exchange(
+                encoded(entry.slot.id, AVAILABLE),
+                encoded(entry.slot.id, RETIRING),
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_ok()
         {
             retire(cell, entry);
         }
@@ -1218,19 +1643,35 @@ mod execution_owner {
         // different incarnation means the old funded slot was detached.
     }
     pub(super) fn progress(id: SlotId) {
-        if !preflight_poll_thread() { return; }
-        let Lookup::Found(entry) = lookup(id) else { return; };
-        if entry.slot.unpublished.load(Ordering::Acquire) { remove(&entry); return; }
+        if !preflight_poll_thread() {
+            return;
+        }
+        let Lookup::Found(entry) = lookup(id) else {
+            return;
+        };
+        if entry.slot.unpublished.load(Ordering::Acquire) {
+            remove(&entry);
+            return;
+        }
         let monitor = poll_join(&entry, Kind::Monitor, false);
-        if monitor.is_some() { no_body_entry(&entry); let _ = poll_join(&entry, Kind::Body, false); }
-        if entry.slot.finalized.load(Ordering::Acquire) { remove(&entry); }
+        if monitor.is_some() {
+            no_body_entry(&entry);
+            let _ = poll_join(&entry, Kind::Body, false);
+        }
+        if entry.slot.finalized.load(Ordering::Acquire) {
+            remove(&entry);
+        }
     }
     pub(super) fn maintain(except: Option<SlotId>) {
-        if !preflight_poll_thread() { return; }
+        if !preflight_poll_thread() {
+            return;
+        }
         for cell in &OWNER {
             let gate = cell.gate.load(Ordering::Acquire);
             let id = incarnation(gate);
-            if gate & PHASE_MASK != EMPTY && Some(id) != except { progress(id); }
+            if gate & PHASE_MASK != EMPTY && Some(id) != except {
+                progress(id);
+            }
         }
     }
 
@@ -1251,27 +1692,48 @@ mod execution_owner {
     }
     #[cfg(test)]
     pub(super) fn pause_actual_trailer_wake(id: SlotId, kind: Kind) -> Option<WakePauseControl> {
-        let Lookup::Found(entry) = lookup(id) else { return None; };
+        let Lookup::Found(entry) = lookup(id) else {
+            return None;
+        };
         let (entered_tx, entered) = std::sync::mpsc::sync_channel(1);
         let (resume, resume_rx) = std::sync::mpsc::sync_channel(1);
         let (monitor_tx, monitor_ready) = std::sync::mpsc::sync_channel(1);
         let (deallocated_tx, deallocated) = std::sync::mpsc::sync_channel(1);
-        let pause = Arc::new(WakePause { kind, entered: entered_tx, resume: Mutex::new(resume_rx),
-            monitor_ready: monitor_tx, deallocated: deallocated_tx });
+        let pause = Arc::new(WakePause {
+            kind,
+            entered: entered_tx,
+            resume: Mutex::new(resume_rx),
+            monitor_ready: monitor_tx,
+            deallocated: deallocated_tx,
+        });
         entry.slot.wake.pause.set(pause).ok()?;
-        Some(WakePauseControl { entered, resume, monitor_ready, deallocated })
+        Some(WakePauseControl {
+            entered,
+            resume,
+            monitor_ready,
+            deallocated,
+        })
     }
     #[cfg(test)]
     pub(super) fn prime_original_body_pending(id: SlotId) -> bool {
-        if !preflight_poll_thread() { return false; }
-        let Lookup::Found(entry) = lookup(id) else { return false; };
+        if !preflight_poll_thread() {
+            return false;
+        }
+        let Lookup::Found(entry) = lookup(id) else {
+            return false;
+        };
         poll_join(&entry, Kind::Body, false).is_none()
     }
     #[cfg(test)]
     pub(super) fn original_monitor_is_finished(id: SlotId) -> bool {
-        let Lookup::Found(entry) = lookup(id) else { return false; };
-        let Some(mut cell) = try_cell(&entry.slot, Kind::Monitor) else { return false; };
-        let finished = matches!(cell.join.as_ref(), Some(ActualJoin::Monitor(join)) if join.is_finished());
+        let Lookup::Found(entry) = lookup(id) else {
+            return false;
+        };
+        let Some(mut cell) = try_cell(&entry.slot, Kind::Monitor) else {
+            return false;
+        };
+        let finished =
+            matches!(cell.join.as_ref(), Some(ActualJoin::Monitor(join)) if join.is_finished());
         cell.complete();
         finished
     }
@@ -1291,15 +1753,36 @@ mod execution_owner {
         }
     }
     #[cfg(test)]
-    pub(super) fn owner_pause(at: u8) -> (Arc<OwnerPause>, std::sync::mpsc::Receiver<()>, std::sync::mpsc::SyncSender<()>) {
+    pub(super) fn owner_pause(
+        at: u8,
+    ) -> (
+        Arc<OwnerPause>,
+        std::sync::mpsc::Receiver<()>,
+        std::sync::mpsc::SyncSender<()>,
+    ) {
         let (entered_tx, entered) = std::sync::mpsc::sync_channel(1);
         let (resume, resume_rx) = std::sync::mpsc::sync_channel(1);
-        (Arc::new(OwnerPause { at, entered: entered_tx, resume: Mutex::new(resume_rx) }), entered, resume)
+        (
+            Arc::new(OwnerPause {
+                at,
+                entered: entered_tx,
+                resume: Mutex::new(resume_rx),
+            }),
+            entered,
+            resume,
+        )
     }
     #[cfg(test)]
-    pub(super) fn with_actual_owner_guard<R>(id: SlotId, pause: Option<Arc<OwnerPause>>, f: impl FnOnce() -> R) -> Option<R> {
+    pub(super) fn with_actual_owner_guard<R>(
+        id: SlotId,
+        pause: Option<Arc<OwnerPause>>,
+        f: impl FnOnce() -> R,
+    ) -> Option<R> {
         let mut owner = try_owner(id)?;
-        if owner.as_ref().is_none_or(|entry| entry.slot.id != id) { owner.completed = true; return None; }
+        if owner.as_ref().is_none_or(|entry| entry.slot.id != id) {
+            owner.completed = true;
+            return None;
+        }
         owner._unlock.pause = pause;
         let result = f();
         owner.completed = true;
@@ -1317,12 +1800,16 @@ mod execution_owner {
     // cell borrow gate after its inspection guard unlocks. It never owns or
     // returns the original Join, and no alternate test-only busy flag exists.
     #[cfg(test)]
-    pub(super) struct PollLease { entry: FundedSlot, kind: Kind }
+    pub(super) struct PollLease {
+        entry: FundedSlot,
+        kind: Kind,
+    }
     #[cfg(test)]
     impl Drop for PollLease {
         fn drop(&mut self) {
             self.entry.slot.cell_gates[self.kind.index()].store(AVAILABLE as u8, Ordering::Release);
-            let requested = self.entry.slot.wake.requests[self.kind.index() + 1].swap(false, Ordering::AcqRel);
+            let requested =
+                self.entry.slot.wake.requests[self.kind.index() + 1].swap(false, Ordering::AcqRel);
             if requested || self.entry.slot.wake.owes_poll(self.kind) {
                 self.entry.slot.wake.mark(REPOLL);
                 self.entry.slot.wake.flush();
@@ -1331,10 +1818,18 @@ mod execution_owner {
     }
     #[cfg(test)]
     pub(super) fn borrow_join(id: SlotId, kind: Kind) -> Option<PollLease> {
-        let Lookup::Found(entry) = lookup(id) else { return None; };
+        let Lookup::Found(entry) = lookup(id) else {
+            return None;
+        };
         let cell = entry.slot.cells[kind.index()].get()?;
-        entry.slot.cell_gates[kind.index()].compare_exchange(AVAILABLE as u8, BORROWED as u8,
-            Ordering::AcqRel, Ordering::Acquire).ok()?;
+        entry.slot.cell_gates[kind.index()]
+            .compare_exchange(
+                AVAILABLE as u8,
+                BORROWED as u8,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .ok()?;
         let live = match cell.try_write() {
             Some(raw) => raw.join.is_some() && raw.outcome.is_none(),
             None => {
@@ -1345,7 +1840,12 @@ mod execution_owner {
         };
         // The raw lock is already gone, while the same gate remains Borrowed.
         let lease = PollLease { entry, kind };
-        if live { Some(lease) } else { drop(lease); None }
+        if live {
+            Some(lease)
+        } else {
+            drop(lease);
+            None
+        }
     }
     #[cfg(test)]
     pub(super) fn panic_monitor(id: SlotId) {
@@ -1359,14 +1859,20 @@ mod execution_owner {
     pub(super) fn try_observe_state(id: SlotId) -> bool {
         match lookup(id) {
             Lookup::Found(entry) => match try_state(&entry) {
-                Some(mut guard) => { guard.complete(); true }, None => false,
+                Some(mut guard) => {
+                    guard.complete();
+                    true
+                }
+                None => false,
             },
             _ => false,
         }
     }
     #[cfg(test)]
     pub(super) fn with_state_guard<R>(id: SlotId, f: impl FnOnce() -> R) -> Option<R> {
-        let Lookup::Found(entry) = lookup(id) else { return None; };
+        let Lookup::Found(entry) = lookup(id) else {
+            return None;
+        };
         let mut guard = try_state(&entry)?;
         let result = f();
         guard.complete();
@@ -1374,7 +1880,9 @@ mod execution_owner {
     }
     #[cfg(test)]
     pub(super) fn request_state(id: SlotId) {
-        if let Lookup::Found(entry) = lookup(id) { entry.slot.wake.requests[0].store(true, Ordering::Release); }
+        if let Lookup::Found(entry) = lookup(id) {
+            entry.slot.wake.requests[0].store(true, Ordering::Release);
+        }
     }
     #[cfg(test)]
     pub(super) fn state_requested(id: SlotId) -> bool {
@@ -1382,11 +1890,17 @@ mod execution_owner {
     }
     #[cfg(test)]
     pub(super) fn wake_count(id: SlotId) -> u64 {
-        match lookup(id) { Lookup::Found(entry) => entry.slot.wake.wakes.load(Ordering::Acquire), _ => 0 }
+        match lookup(id) {
+            Lookup::Found(entry) => entry.slot.wake.wakes.load(Ordering::Acquire),
+            _ => 0,
+        }
     }
     #[cfg(test)]
     pub(super) fn repoll_count(id: SlotId) -> u64 {
-        match lookup(id) { Lookup::Found(entry) => entry.slot.wake.repolls.load(Ordering::Acquire), _ => 0 }
+        match lookup(id) {
+            Lookup::Found(entry) => entry.slot.wake.repolls.load(Ordering::Acquire),
+            _ => 0,
+        }
     }
 }
 
@@ -1532,7 +2046,9 @@ impl GenerationChildCensus {
             .control
             .reserve(
                 ControlKind::Task,
-                TASK_CONTROL.checked_add(carrier_bytes).ok_or(CensusError::Capacity)?,
+                TASK_CONTROL
+                    .checked_add(carrier_bytes)
+                    .ok_or(CensusError::Capacity)?,
             )
             .map_err(|_| CensusError::Capacity)?;
         let monitor_control = self
@@ -1555,17 +2071,17 @@ impl GenerationChildCensus {
             changed.clone(),
         )?;
         let execution_slot = _admission.id();
-        let mut monitor_publication = match execution_owner::prepare(
-            execution_slot,
-            execution_owner::Kind::Monitor,
-        )? {
-            execution_owner::Prepared::Ready(publication) => publication,
-            execution_owner::Prepared::Busy => return Err(CensusError::StateUnavailable),
-        };
+        let mut monitor_publication =
+            match execution_owner::prepare(execution_slot, execution_owner::Kind::Monitor)? {
+                execution_owner::Prepared::Ready(publication) => publication,
+                execution_owner::Prepared::Busy => return Err(CensusError::StateUnavailable),
+            };
         let carrier_payload = Mutex::new(Some(future));
         {
             // Fresh, unshared and fully charged, before every outer guard.
-            let prewarmed = carrier_payload.try_lock().map_err(|_| CensusError::StateUnavailable)?;
+            let prewarmed = carrier_payload
+                .try_lock()
+                .map_err(|_| CensusError::StateUnavailable)?;
             drop(prewarmed);
         }
         let carrier = Arc::new(LaunchCarrier(carrier_payload));
@@ -1632,17 +2148,16 @@ impl GenerationChildCensus {
                     let changed = monitor_record.changed.clone().notified_owned();
                     tokio::pin!(changed);
                     changed.as_mut().enable();
-                    let mut publication = match execution_owner::prepare(
-                        execution_slot,
-                        execution_owner::Kind::Body,
-                    ) {
-                        Ok(execution_owner::Prepared::Busy) => {
-                            changed.await;
-                            continue;
-                        }
-                        Ok(execution_owner::Prepared::Ready(publication)) => publication,
-                        Err(error) => break Err(error),
-                    };
+                    let mut publication =
+                        match execution_owner::prepare(execution_slot, execution_owner::Kind::Body)
+                        {
+                            Ok(execution_owner::Prepared::Busy) => {
+                                changed.await;
+                                continue;
+                            }
+                            Ok(execution_owner::Prepared::Ready(publication)) => publication,
+                            Err(error) => break Err(error),
+                        };
                     let start = {
                         match monitor_inner.state.lock() {
                             Ok(state) => {
@@ -1662,24 +2177,28 @@ impl GenerationChildCensus {
                             let (task_carrier, task_close) =
                                 launch.take().expect("native work launch taken twice");
                             let body_inner = monitor_inner.clone();
-                            break publication.spawn_body(|| {
-                                monitor_inner.runtime.spawn(async move {
-                                    let body_census = GenerationChildCensus { inner: body_inner };
-                                    let _ = body_census.reap_completed_except(Some(execution_slot));
-                                    let future = {
-                                        let mut slot = task_carrier
-                                            .0
-                                            .lock()
-                                            .expect("native work carrier poisoned");
-                                        slot.take().expect("native work started twice")
-                                    };
-                                    let result = future.await;
-                                    drop(task_close);
-                                    let _ = body_census.reap_completed_except(Some(execution_slot));
-                                    result
+                            break publication
+                                .spawn_body(|| {
+                                    monitor_inner.runtime.spawn(async move {
+                                        let body_census =
+                                            GenerationChildCensus { inner: body_inner };
+                                        let _ =
+                                            body_census.reap_completed_except(Some(execution_slot));
+                                        let future = {
+                                            let mut slot = task_carrier
+                                                .0
+                                                .lock()
+                                                .expect("native work carrier poisoned");
+                                            slot.take().expect("native work started twice")
+                                        };
+                                        let result = future.await;
+                                        drop(task_close);
+                                        let _ =
+                                            body_census.reap_completed_except(Some(execution_slot));
+                                        result
+                                    })
                                 })
-                            })
-                            .map(Some);
+                                .map(Some);
                         }
                         Ok(false) => {
                             drop(publication);
@@ -1697,7 +2216,9 @@ impl GenerationChildCensus {
                         // The process owner now holds the original body Join.
                         // Payload acceptance alone never sends launch proof.
                         let _ = started_tx.send(Ok(()));
-                        match execution_owner::wait_body(execution_slot, &monitor_record.changed).await {
+                        match execution_owner::wait_body(execution_slot, &monitor_record.changed)
+                            .await
+                        {
                             Ok(Ok(())) => Ok(PhysicalCompletion::Joined),
                             Ok(Err(NativeWorkError::CompletionUnknown)) | Err(_) => {
                                 Err(CensusError::TaskUnknown)
@@ -1780,7 +2301,9 @@ impl GenerationChildCensus {
                 }
                 state.records.get(cursor).cloned()
             };
-            let Some(candidate) = candidate else { break; };
+            let Some(candidate) = candidate else {
+                break;
+            };
             // Tokio's async-mutex guard Drop can wake an original cache
             // observer. Both acquisition and release happen before taking
             // the outer census guard, including a cached/Empty fast path.
@@ -2893,12 +3416,11 @@ mod tests {
         assert!(!wait_first.is_finished() && !wait_second.is_finished());
         release.send(()).unwrap();
         drop(held);
-        let (first_result, second_result) =
-            tokio::time::timeout(Duration::from_secs(2), async {
-                tokio::join!(wait_first, wait_second)
-            })
-            .await
-            .expect("contended cache acquisition must not sleep forever");
+        let (first_result, second_result) = tokio::time::timeout(Duration::from_secs(2), async {
+            tokio::join!(wait_first, wait_second)
+        })
+        .await
+        .expect("contended cache acquisition must not sleep forever");
         first_result.unwrap().unwrap();
         second_result.unwrap().unwrap();
         // The original receiver survived; later observers share the same cache.
@@ -2957,8 +3479,12 @@ mod tests {
     async fn completed_cache_unlock_wakes_two_original_observers_without_rescue() {
         struct CountWake(AtomicUsize);
         impl Wake for CountWake {
-            fn wake(self: Arc<Self>) { self.wake_by_ref(); }
-            fn wake_by_ref(self: &Arc<Self>) { self.0.fetch_add(1, Ordering::AcqRel); }
+            fn wake(self: Arc<Self>) {
+                self.wake_by_ref();
+            }
+            fn wake_by_ref(self: &Arc<Self>) {
+                self.0.fetch_add(1, Ordering::AcqRel);
+            }
         }
 
         let control = CoreControl::default();
@@ -2985,21 +3511,45 @@ mod tests {
         // the two actual wait_joined futures, each queued on the real mutex.
         let mut first_wait = Box::pin(tokio::task::unconstrained(first.wait_joined()));
         let mut second_wait = Box::pin(tokio::task::unconstrained(second.wait_joined()));
-        assert!(first_wait.as_mut().poll(&mut Context::from_waker(&first_waker)).is_pending());
-        assert!(second_wait.as_mut().poll(&mut Context::from_waker(&second_waker)).is_pending());
+        assert!(
+            first_wait
+                .as_mut()
+                .poll(&mut Context::from_waker(&first_waker))
+                .is_pending()
+        );
+        assert!(
+            second_wait
+                .as_mut()
+                .poll(&mut Context::from_waker(&second_waker))
+                .is_pending()
+        );
         assert_eq!(first_wake.0.load(Ordering::Acquire), 0);
         assert_eq!(second_wake.0.load(Ordering::Acquire), 0);
 
         // No await, sleep, yield, explicit notification or maintenance call
         // occurs between parking both originals and proving both real wakes.
         drop(held);
-        assert!(first_wake.0.load(Ordering::Acquire) > 0,
-            "the real cache unlock must wake its first queued original");
+        assert!(
+            first_wake.0.load(Ordering::Acquire) > 0,
+            "the real cache unlock must wake its first queued original"
+        );
         assert_eq!(second_wake.0.load(Ordering::Acquire), 0);
-        assert!(matches!(first_wait.as_mut().poll(&mut Context::from_waker(&first_waker)), Poll::Ready(Ok(()))));
-        assert!(second_wake.0.load(Ordering::Acquire) > 0,
-            "the first original's real guard release must wake the second");
-        assert!(matches!(second_wait.as_mut().poll(&mut Context::from_waker(&second_waker)), Poll::Ready(Ok(()))));
+        assert!(matches!(
+            first_wait
+                .as_mut()
+                .poll(&mut Context::from_waker(&first_waker)),
+            Poll::Ready(Ok(()))
+        ));
+        assert!(
+            second_wake.0.load(Ordering::Acquire) > 0,
+            "the first original's real guard release must wake the second"
+        );
+        assert!(matches!(
+            second_wait
+                .as_mut()
+                .poll(&mut Context::from_waker(&second_waker)),
+            Poll::Ready(Ok(()))
+        ));
         drop(first_wait);
         drop(second_wait);
         completion.wait_joined().await.unwrap();
@@ -3021,36 +3571,67 @@ mod tests {
         // monitor Ready, or monitor itself remains the last Waker block.
         for kind in [execution_owner::Kind::Body, execution_owner::Kind::Monitor] {
             for crossing in 0..3 {
-                let diagnostic_kind = if matches!(kind, execution_owner::Kind::Body) { "body" } else { "monitor" };
-                eprintln!("CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=fixture_begin");
+                let diagnostic_kind = if matches!(kind, execution_owner::Kind::Body) {
+                    "body"
+                } else {
+                    "monitor"
+                };
+                eprintln!(
+                    "CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=fixture_begin"
+                );
                 let control = CoreControl::default();
                 let census = census(&control, 1);
                 let (completion, release) = blocked_child(&census, 1).await;
-                eprintln!("CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=body_started");
+                eprintln!(
+                    "CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=body_started"
+                );
                 let slot = completion.record.execution_slot;
                 let pause = execution_owner::pause_actual_trailer_wake(slot, kind).unwrap();
                 assert!(execution_owner::prime_original_body_pending(slot));
-                eprintln!("CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=body_join_pending_primed");
+                eprintln!(
+                    "CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=body_join_pending_primed"
+                );
                 let mut wait = Box::pin(tokio::task::unconstrained(completion.wait_joined()));
-                assert!(wait.as_mut().poll(&mut Context::from_waker(Waker::noop())).is_pending());
-                eprintln!("CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=original_monitor_pending_primed");
+                assert!(
+                    wait.as_mut()
+                        .poll(&mut Context::from_waker(Waker::noop()))
+                        .is_pending()
+                );
+                eprintln!(
+                    "CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=original_monitor_pending_primed"
+                );
                 release.send(()).unwrap();
-                eprintln!("CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=body_released_waiting_actual_wake");
+                eprintln!(
+                    "CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=body_released_waiting_actual_wake"
+                );
                 // These are receipts from the actual dedicated Wakers called
                 // by Tokio after its COMPLETE bit, not shadow completion bits.
                 pause.entered.recv().unwrap();
-                eprintln!("CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=actual_target_wake_entered_waiting_monitor_wake");
+                eprintln!(
+                    "CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=actual_target_wake_entered_waiting_monitor_wake"
+                );
                 pause.monitor_ready.recv().unwrap();
-                eprintln!("CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=actual_monitor_wake_entered");
+                eprintln!(
+                    "CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=actual_monitor_wake_entered"
+                );
                 assert!(execution_owner::original_monitor_is_finished(slot));
-                eprintln!("CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=actual_monitor_complete");
-                assert!(wait.as_mut().poll(&mut Context::from_waker(Waker::noop())).is_pending());
-                eprintln!("CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=original_join_ready_polled");
+                eprintln!(
+                    "CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=actual_monitor_complete"
+                );
+                assert!(
+                    wait.as_mut()
+                        .poll(&mut Context::from_waker(Waker::noop()))
+                        .is_pending()
+                );
+                eprintln!(
+                    "CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=original_join_ready_polled"
+                );
                 // Actual original Ready/Join Drop cannot refund these tasks
                 // while the real Tokio trailer still owns its last token.
                 assert_eq!(control.usage().count(ControlKind::Task), 2);
 
-                let (owner_pause, owner_at_crossing, resume_owner) = execution_owner::owner_pause(crossing);
+                let (owner_pause, owner_at_crossing, resume_owner) =
+                    execution_owner::owner_pause(crossing);
                 let (locked_tx, locked_rx) = std::sync::mpsc::sync_channel(1);
                 let (unlock_tx, unlock_rx) = std::sync::mpsc::sync_channel(1);
                 let holder = std::thread::spawn(move || {
@@ -3060,11 +3641,15 @@ mod tests {
                     })
                 });
                 locked_rx.recv().unwrap();
-                eprintln!("CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=foreign_holder_acquired");
+                eprintln!(
+                    "CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=foreign_holder_acquired"
+                );
                 drop(wait);
                 drop(completion);
                 drop(census);
-                eprintln!("CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=zero_original_observers");
+                eprintln!(
+                    "CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=zero_original_observers"
+                );
                 // From here through actual detach there are ZERO original
                 // receipt observers and ZERO progress/maintenance calls.
                 if crossing != 0 {
@@ -3074,9 +3659,13 @@ mod tests {
                 // crossing0: request before raw unlock. crossing1: after gate
                 // Available before request check. crossing2: after that check.
                 pause.resume.send(()).unwrap();
-                eprintln!("CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=actual_target_wake_resumed_waiting_dealloc");
+                eprintln!(
+                    "CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=actual_target_wake_resumed_waiting_dealloc"
+                );
                 pause.deallocated.recv().unwrap();
-                eprintln!("CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=actual_waker_deallocated");
+                eprintln!(
+                    "CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=actual_waker_deallocated"
+                );
                 assert_eq!(control.usage().count(ControlKind::Task), 0);
                 if crossing == 0 {
                     assert!(execution_owner::owner_attached(slot));
@@ -3089,7 +3678,9 @@ mod tests {
                     resume_owner.send(()).unwrap();
                 }
                 assert!(holder.join().unwrap().is_some());
-                eprintln!("CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=foreign_holder_returned");
+                eprintln!(
+                    "CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=foreign_holder_returned"
+                );
                 assert!(!execution_owner::owner_attached(slot));
                 assert_eq!(control.usage().bytes, 0);
             }
@@ -3099,7 +3690,11 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
     async fn last_actual_trailer_release_hands_finalization_to_foreign_state_holder() {
         for kind in [execution_owner::Kind::Body, execution_owner::Kind::Monitor] {
-            let diagnostic_kind = if matches!(kind, execution_owner::Kind::Body) { "body" } else { "monitor" };
+            let diagnostic_kind = if matches!(kind, execution_owner::Kind::Body) {
+                "body"
+            } else {
+                "monitor"
+            };
             eprintln!("CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=fixture_begin");
             let control = CoreControl::default();
             let census = census(&control, 1);
@@ -3108,43 +3703,77 @@ mod tests {
             let slot = completion.record.execution_slot;
             let pause = execution_owner::pause_actual_trailer_wake(slot, kind).unwrap();
             assert!(execution_owner::prime_original_body_pending(slot));
-            eprintln!("CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=body_join_pending_primed");
+            eprintln!(
+                "CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=body_join_pending_primed"
+            );
             let mut wait = Box::pin(tokio::task::unconstrained(completion.wait_joined()));
-            assert!(wait.as_mut().poll(&mut Context::from_waker(Waker::noop())).is_pending());
-            eprintln!("CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=original_monitor_pending_primed");
+            assert!(
+                wait.as_mut()
+                    .poll(&mut Context::from_waker(Waker::noop()))
+                    .is_pending()
+            );
+            eprintln!(
+                "CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=original_monitor_pending_primed"
+            );
             release.send(()).unwrap();
-            eprintln!("CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=body_released_waiting_actual_wake");
+            eprintln!(
+                "CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=body_released_waiting_actual_wake"
+            );
             pause.entered.recv().unwrap();
-            eprintln!("CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=actual_target_wake_entered_waiting_monitor_wake");
+            eprintln!(
+                "CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=actual_target_wake_entered_waiting_monitor_wake"
+            );
             pause.monitor_ready.recv().unwrap();
-            eprintln!("CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=actual_monitor_wake_entered");
+            eprintln!(
+                "CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=actual_monitor_wake_entered"
+            );
             assert!(execution_owner::original_monitor_is_finished(slot));
-            eprintln!("CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=actual_monitor_complete");
-            assert!(wait.as_mut().poll(&mut Context::from_waker(Waker::noop())).is_pending());
-            eprintln!("CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=original_join_ready_polled");
+            eprintln!(
+                "CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=actual_monitor_complete"
+            );
+            assert!(
+                wait.as_mut()
+                    .poll(&mut Context::from_waker(Waker::noop()))
+                    .is_pending()
+            );
+            eprintln!(
+                "CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=original_join_ready_polled"
+            );
             let (locked_tx, locked_rx) = std::sync::mpsc::sync_channel(1);
             let (unlock_tx, unlock_rx) = std::sync::mpsc::sync_channel(1);
-            let holder = std::thread::spawn(move || execution_owner::with_state_guard(slot, || {
-                locked_tx.send(()).unwrap();
-                unlock_rx.recv().unwrap();
-            }));
+            let holder = std::thread::spawn(move || {
+                execution_owner::with_state_guard(slot, || {
+                    locked_tx.send(()).unwrap();
+                    unlock_rx.recv().unwrap();
+                })
+            });
             locked_rx.recv().unwrap();
-            eprintln!("CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=foreign_holder_acquired");
+            eprintln!(
+                "CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=foreign_holder_acquired"
+            );
             drop(wait);
             drop(completion);
             drop(census);
-            eprintln!("CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=zero_original_observers");
+            eprintln!(
+                "CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=zero_original_observers"
+            );
             // The actual final trailer block now deallocates with no receipt
             // observer. Its request crosses a real foreign State guard.
             pause.resume.send(()).unwrap();
-            eprintln!("CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=actual_target_wake_resumed_waiting_dealloc");
+            eprintln!(
+                "CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=actual_target_wake_resumed_waiting_dealloc"
+            );
             pause.deallocated.recv().unwrap();
-            eprintln!("CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=actual_waker_deallocated");
+            eprintln!(
+                "CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=actual_waker_deallocated"
+            );
             assert!(execution_owner::owner_attached(slot));
             assert_eq!(control.usage().count(ControlKind::Task), 2);
             unlock_tx.send(()).unwrap();
             assert!(holder.join().unwrap().is_some());
-            eprintln!("CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=foreign_holder_returned");
+            eprintln!(
+                "CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=foreign_holder_returned"
+            );
             // No poll, notification rescue, timer or maintenance call occurs
             // between final block deallocation and this actual holder exit.
             assert!(!execution_owner::owner_attached(slot));

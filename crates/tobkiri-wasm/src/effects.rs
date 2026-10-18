@@ -27,12 +27,12 @@ use tobkiri_store::{
 use wasmtime::component::{LinkerInstance, Resource, ResourceAny, ResourceType, Val};
 use wasmtime::{AsContextMut, StoreContextMut};
 
+#[path = "audit_imports.rs"]
+mod audit_imports;
 #[path = "filesystem_imports.rs"]
 pub mod filesystem_imports;
 #[path = "secrets_imports.rs"]
 mod secrets_imports;
-#[path = "audit_imports.rs"]
-mod audit_imports;
 
 struct HostSecret {
     name: String,

@@ -314,14 +314,14 @@ test("ambient approval gesture requires audit event before executing approval", 
   assert.match(submitApprovalGestureSource, /await onApprovalGestureRef\.current\?\.\(decision\)/);
 });
 
-test("Viewer authenticates every dedicated Defaultspack window and rejects unsafe stale listeners", (context) => {
-  const viewerPath = resolve(REPOSITORY_ROOT, "tobkiri_launcher", "src-tauri", "src", "lib.rs");
+test("Tobkiri Launcher authenticates every dedicated Harness window and rejects unsafe stale listeners", (context) => {
+  const viewerPath = resolve(REPOSITORY_ROOT, "tobkiri_launcher", "src-tauri", "src", "legacy.rs");
   const dockPath = resolve(REPOSITORY_ROOT, "tobkiri_launcher", "src-tauri", "src", "dock_registration.rs");
   if (!existsSync(viewerPath) || !existsSync(dockPath)) {
     context.skip("Requires the sibling tobkiri_launcher repository.");
     return;
   }
-  const viewerSource = readRepositorySource("tobkiri_launcher", "src-tauri", "src", "lib.rs");
+  const viewerSource = readRepositorySource("tobkiri_launcher", "src-tauri", "src", "legacy.rs");
   const dockSource = readRepositorySource("tobkiri_launcher", "src-tauri", "src", "dock_registration.rs");
 
   // `/approval` is an auth_bootstrap mount: it only serves the page after the
@@ -346,12 +346,12 @@ test("Viewer authenticates every dedicated Defaultspack window and rejects unsaf
 });
 
 test("approval window activates the application before ordering front", (context) => {
-  const viewerPath = resolve(REPOSITORY_ROOT, "tobkiri_launcher", "src-tauri", "src", "lib.rs");
+  const viewerPath = resolve(REPOSITORY_ROOT, "tobkiri_launcher", "src-tauri", "src", "legacy.rs");
   if (!existsSync(viewerPath)) {
     context.skip("Requires the sibling tobkiri_launcher repository.");
     return;
   }
-  const viewerSource = readRepositorySource("tobkiri_launcher", "src-tauri", "src", "lib.rs");
+  const viewerSource = readRepositorySource("tobkiri_launcher", "src-tauri", "src", "legacy.rs");
 
   // AppKit warns "ordered front from a non-active application" when a window
   // is ordered front while the app is inactive, and the approval window can

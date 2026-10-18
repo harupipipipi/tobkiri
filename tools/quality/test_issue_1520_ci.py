@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import re
 import importlib.util
 from pathlib import Path
 import sys
@@ -56,6 +57,29 @@ class RustExecutionTests(unittest.TestCase):
         for candidate in (result(1), output + result(0, 1), output + result(2)):
             with self.subTest(output=candidate), self.assertRaises(ValueError):
                 ci.test_receipt(candidate, 0, expected_passed=1, python_parity=True)
+
+
+class WorkflowContextTests(unittest.TestCase):
+    """Keep runtime-dependent paths out of job-level expression evaluation."""
+
+    def test_job_environment_does_not_use_runner_context(self) -> None:
+        workflow = (ci.ROOT / ".github/workflows/issue-1520-rust.yml").read_text()
+        environments = re.findall(r"^    env:\n((?:^      .*\n)*)", workflow, re.M)
+        self.assertTrue(environments)
+        for environment in environments:
+            self.assertNotIn("runner.", environment)
+        self.assertIn('TOBKIRI_TEST_PYTHON_PACK_DIR=$RUNNER_TEMP/issue-1520-python/pack', workflow)
+        self.assertIn('TOBKIRI_SQL_PRODUCER_DIR=$RUNNER_TEMP/sqlite-core', workflow)
+
+    def test_supported_platform_job_is_explicit_and_keeps_real_execution(self) -> None:
+        workflow = (ci.ROOT / ".github/workflows/issue-1520-rust.yml").read_text()
+        job = workflow.split("  verified-platform-runtime:", 1)[1].split("  official-python-parity:", 1)[0]
+        self.assertIn("runs-on: macos-15\n", job)
+        self.assertIn('test "$(uname -m)" = arm64', job)
+        self.assertIn('test "$(uname -r)" = 24.6.0', job)
+        self.assertIn("cargo test --workspace --locked", job)
+        self.assertNotIn("--no-run", job)
+        self.assertNotIn("continue-on-error", job)
 
 
 class ProducerEvidenceTests(unittest.TestCase):

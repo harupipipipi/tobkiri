@@ -27,13 +27,12 @@ use super::AuditLog;
 use crate::StoreError;
 use std::{sync::Arc, time::Instant};
 use tobkiri_canon::{
-    AllocationBudget, AllocationError, AllocationKind, AllocationRequest,
-    CoreValue, Digest, MAX_SAFE_INTEGER,
+    AllocationBudget, AllocationError, AllocationKind, AllocationRequest, CoreValue, Digest,
+    MAX_SAFE_INTEGER,
 };
 use tobkiri_gate::{
-    CallCx, CleanupOnlyConsumption, ConsumptionAttempt, DispatchPermit,
-    EffectRequest, GateError, Grant, GrantId, IntegrityFaultCode, Outcome, ResourceLimits,
-    UnknownConsumption,
+    CallCx, CleanupOnlyConsumption, ConsumptionAttempt, DispatchPermit, EffectRequest, GateError,
+    Grant, GrantId, IntegrityFaultCode, Outcome, ResourceLimits, UnknownConsumption,
 };
 
 #[path = "audit_guest_owned.rs"]
@@ -136,7 +135,9 @@ impl GuestAuditAppend {
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<Self, StoreError> {
         if kind.as_str().is_none() {
-            return Err(StoreError::Invalid("audit guest kind must be a string".into()));
+            return Err(StoreError::Invalid(
+                "audit guest kind must be a string".into(),
+            ));
         }
         let args = owned_args([kind.share(), payload.share()], budget)?;
         Ok(Self {
@@ -319,7 +320,6 @@ impl GuestAuditDispatch {
         }
         Ok(())
     }
-
 }
 
 /// Owned result of one executed store operation. `Rows` is an owned
@@ -402,20 +402,21 @@ impl GuestAuditDelivery {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Approvals, AuditQuota, AuditRow, DataRoot, canonical};
     use async_trait::async_trait;
     use rusqlite::params;
     use std::collections::BTreeMap;
-    use tobkiri_canon::{CanonValue, Variant};
     use std::{
         sync::{
+            Mutex,
             atomic::{AtomicBool, AtomicU64, Ordering},
-            mpsc, Mutex,
+            mpsc,
         },
         time::Duration,
     };
     use tobkiri_canon::ids::{InputSourceId, PackHash, PackId, ProfileId, RequestId, UiSessionId};
+    use tobkiri_canon::{CanonValue, Variant};
     use tobkiri_gate::*;
-    use crate::{canonical, Approvals, AuditQuota, AuditRow, DataRoot};
 
     struct Deny;
     #[async_trait]
@@ -492,7 +493,9 @@ mod tests {
                 },
             )
             .unwrap();
-            approvals.set_permissions(&profile, &pack, &hash, &policy).unwrap();
+            approvals
+                .set_permissions(&profile, &pack, &hash, &policy)
+                .unwrap();
             let cx = CallCx::root(
                 profile.clone(),
                 Principal::Pack { pack, hash },
@@ -603,7 +606,12 @@ mod tests {
         let f = fixture();
         let (_track, budget) = budget();
         f.audit
-            .append(event(&f.profile, Principal::User, "req_core_row", "core-note"))
+            .append(event(
+                &f.profile,
+                Principal::User,
+                "req_core_row",
+                "core-note",
+            ))
             .unwrap();
         let other = Principal::Pack {
             pack: PackId::parse("local.other").unwrap(),
@@ -655,7 +663,11 @@ mod tests {
         assert_eq!(fields["payload"], canon);
         let grant = f
             .gate
-            .authorize(&f.cx, EffectRequest::AuditRead, AuditLog::read_digest(0, 10).unwrap())
+            .authorize(
+                &f.cx,
+                EffectRequest::AuditRead,
+                AuditLog::read_digest(0, 10).unwrap(),
+            )
             .await
             .unwrap();
         let legacy = f.audit.read(&f.cx, 0, 10, grant).unwrap();
@@ -675,7 +687,12 @@ mod tests {
         assert!(seqs.iter().all(|seq| *seq > 0));
         assert!(seqs.windows(2).all(|pair| pair[0] < pair[1]));
         for row in &rows {
-            let mut keys: Vec<_> = row.as_object().unwrap().keys().map(String::as_str).collect();
+            let mut keys: Vec<_> = row
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect();
             keys.sort();
             assert_eq!(keys, ["digest", "event", "event_id", "prev_digest", "seq"]);
         }
@@ -704,7 +721,10 @@ mod tests {
         assert!(guest["event_id"].is_null());
         assert_eq!(guest["event"]["kind"], "guest-event");
         assert_eq!(guest["event"]["payload"]["kind"], "guest.note");
-        assert_eq!(guest["event"]["payload"]["payload"]["payload"]["deep"][1], "\u{1}\n");
+        assert_eq!(
+            guest["event"]["payload"]["payload"]["payload"]["deep"][1],
+            "\u{1}\n"
+        );
         assert_eq!(guest["digest"].as_str().unwrap(), trusted.digest.as_str());
         f.audit.verify().unwrap();
     }
@@ -741,10 +761,7 @@ mod tests {
         for after in [MAX_SAFE_INTEGER + 1, i64::MAX as u64, u64::MAX] {
             let prepared = GuestAuditRead::prepare(&f.cx, after, 7, &budget).unwrap();
             let expected = tobkiri_canon::digest(
-                &CanonValue::Arr(vec![
-                    CanonValue::Str(after.to_string()),
-                    CanonValue::Int(7),
-                ]),
+                &CanonValue::Arr(vec![CanonValue::Str(after.to_string()), CanonValue::Int(7)]),
                 Variant::StrictV1,
             )
             .unwrap();
@@ -777,7 +794,12 @@ mod tests {
             GuestAuditAttempt::BeforeConsumed(GateError::Denied(_))
         ));
         assert_eq!(
-            f.approvals.terminal_delivery(&gid).unwrap().unwrap().decision.disposition,
+            f.approvals
+                .terminal_delivery(&gid)
+                .unwrap()
+                .unwrap()
+                .decision
+                .disposition,
             TerminalDisposition::AbandonedBeforeUse
         );
         let foreign = AuditLog::open(
@@ -836,7 +858,13 @@ mod tests {
             .record_outcome(id.clone(), probe_delivery.terminal_outcome(false))
             .await
             .unwrap();
-        assert!(f.approvals.terminal_delivery(&id).unwrap().unwrap().acknowledged);
+        assert!(
+            f.approvals
+                .terminal_delivery(&id)
+                .unwrap()
+                .unwrap()
+                .acknowledged
+        );
         drop(probe_delivery);
         let probe: i64 = raw
             .query_row(
@@ -847,8 +875,13 @@ mod tests {
             .unwrap();
         let overhead = probe as usize - 3;
         let fill = 64 * 1024 - overhead - 2;
-        let (_, delivery) =
-            run_append(&f, &budget, "m", format!("\"{}\"", "x".repeat(fill)).as_bytes()).await;
+        let (_, delivery) = run_append(
+            &f,
+            &budget,
+            "m",
+            format!("\"{}\"", "x".repeat(fill)).as_bytes(),
+        )
+        .await;
         assert!(delivery.is_committed());
         let size: i64 = raw
             .query_row(
@@ -858,9 +891,13 @@ mod tests {
             )
             .unwrap();
         assert_eq!(size as usize, 64 * 1024);
-        let (_, delivery) =
-            run_append(&f, &budget, "m", format!("\"{}\"", "x".repeat(fill + 1)).as_bytes())
-                .await;
+        let (_, delivery) = run_append(
+            &f,
+            &budget,
+            "m",
+            format!("\"{}\"", "x".repeat(fill + 1)).as_bytes(),
+        )
+        .await;
         assert!(matches!(delivery.result(), Err(StoreError::Quota)));
         assert!(!delivery.is_committed());
         let (_, read) = run_read(&f, &f.cx, &budget, 0, 1000).await;
@@ -873,14 +910,14 @@ mod tests {
             .unwrap()
             .get(0)
             .unwrap();
-        let cap = serde_json::to_string(first.as_str().unwrap()).unwrap().len() as u64 + 2;
-        let narrow = f
-            .cx
-            .clone()
-            .narrow_limits(&ResourceLimits {
-                output_bytes: cap,
-                ..limits()
-            });
+        let cap = serde_json::to_string(first.as_str().unwrap())
+            .unwrap()
+            .len() as u64
+            + 2;
+        let narrow = f.cx.clone().narrow_limits(&ResourceLimits {
+            output_bytes: cap,
+            ..limits()
+        });
         let (_, denied) = run_read(&f, &narrow, &budget, 0, 1000).await;
         assert!(matches!(denied.result(), Err(StoreError::Quota)));
         let (_, single) = run_read(&f, &narrow, &budget, 0, 1).await;
@@ -953,8 +990,8 @@ mod tests {
             .await
             .unwrap();
         let dispatch = ready(prepared.consume(grant));
-        let body = crate::canonical(&event(&f.profile, Principal::User, "req_bad", "meta"))
-            .unwrap();
+        let body =
+            crate::canonical(&event(&f.profile, Principal::User, "req_bad", "meta")).unwrap();
         let size = body.len() as i64;
         f.audit_raw()
             .execute(
@@ -1127,8 +1164,7 @@ mod tests {
                 assert_eq!(parsed.profile, event.profile);
                 assert_eq!(parsed.principal, event.principal);
                 assert_eq!(parsed.request, event.request);
-                for (seq, id) in [(1, None), (7, Some(&event_id)), (MAX_SAFE_INTEGER, None)]
-                {
+                for (seq, id) in [(1, None), (7, Some(&event_id)), (MAX_SAFE_INTEGER, None)] {
                     let expected = AuditRow::digest(seq, &prev, &event, id).unwrap();
                     assert_eq!(
                         parsed.unsigned_digest(seq, &prev, id, &budget).unwrap(),
@@ -1140,8 +1176,7 @@ mod tests {
                         .encode_guest(&budget)
                         .unwrap();
                     assert_eq!(Digest::hash(bytes.as_bytes()), expected);
-                    let json: serde_json::Value =
-                        serde_json::from_slice(bytes.as_bytes()).unwrap();
+                    let json: serde_json::Value = serde_json::from_slice(bytes.as_bytes()).unwrap();
                     assert_eq!(json["seq"].as_u64().unwrap(), seq);
                     match id {
                         Some(v) => {
@@ -1312,7 +1347,9 @@ mod tests {
             "persistence"
         );
         assert_eq!(
-            outcome_code(&StoreError::Integrity(IntegrityFaultCode::AuthorityDatabase)),
+            outcome_code(&StoreError::Integrity(
+                IntegrityFaultCode::AuthorityDatabase
+            )),
             "persistence"
         );
         assert_eq!(
@@ -1623,7 +1660,12 @@ mod tests {
             (prev.as_str(), bad.as_str(), good.as_slice(), None),
             (prev.as_str(), "sha256:xyz", good.as_slice(), None),
             (prev.as_str(), ok.as_str(), good.as_slice(), Some("nope")),
-            (prev.as_str(), ok.as_str(), good.as_slice(), Some(bad.as_str())),
+            (
+                prev.as_str(),
+                ok.as_str(),
+                good.as_slice(),
+                Some(bad.as_str()),
+            ),
             (prev.as_str(), bad.as_str(), b"\xff\xfe".as_slice(), None),
             (prev.as_str(), bad.as_str(), b"[1,2]".as_slice(), None),
         ] {
@@ -1661,8 +1703,14 @@ mod tests {
         raw_delete(&f, n as i64);
         // Real SQL failure keeps its own class.
         let (_gid3, dispatch3) = read_dispatch(&f, &budget, 0, 10).await;
-        f.gate.record_outcome(gid, Outcome::Cancelled).await.unwrap();
-        f.gate.record_outcome(gid2, Outcome::Cancelled).await.unwrap();
+        f.gate
+            .record_outcome(gid, Outcome::Cancelled)
+            .await
+            .unwrap();
+        f.gate
+            .record_outcome(gid2, Outcome::Cancelled)
+            .await
+            .unwrap();
         f.audit_raw().execute_batch("DROP TABLE audit").unwrap();
         assert!(matches!(
             verify_history(&dispatch3, &f.audit),
@@ -1757,10 +1805,7 @@ mod tests {
                 Ordering::Release,
             );
             match (verify_history(&dispatch, &f.audit), error) {
-                (
-                    Err(StoreError::Quota),
-                    AllocationError::Limit | AllocationError::Overflow,
-                )
+                (Err(StoreError::Quota), AllocationError::Limit | AllocationError::Overflow)
                 | (
                     Err(StoreError::Unavailable(_)),
                     AllocationError::Unavailable | AllocationError::Allocator,
@@ -1770,7 +1815,10 @@ mod tests {
             // Prepared-data baseline preserved; work never refunded.
             assert_eq!(meter.live(), baseline);
             assert!(meter.work() >= consumed);
-            f.gate.record_outcome(gid, Outcome::Cancelled).await.unwrap();
+            f.gate
+                .record_outcome(gid, Outcome::Cancelled)
+                .await
+                .unwrap();
             drop(dispatch);
             assert_eq!(meter.live(), 0);
         }
@@ -1784,7 +1832,10 @@ mod tests {
         assert_eq!(head.last_seq, tail(&f).0);
         assert_eq!(meter.live(), baseline);
         assert!(meter.work() > consumed);
-        f.gate.record_outcome(gid, Outcome::Cancelled).await.unwrap();
+        f.gate
+            .record_outcome(gid, Outcome::Cancelled)
+            .await
+            .unwrap();
         drop(dispatch);
         assert_eq!(meter.live(), 0);
     }
@@ -1797,26 +1848,48 @@ mod tests {
         let (pack, hash) = vector_pack();
         for (index, principal) in [
             Principal::User,
-            Principal::Input { source: InputSourceId::parse("src-1").unwrap() },
-            Principal::Pack { pack: pack.clone(), hash: hash.clone() },
-            Principal::PackUi { pack, hash, ui: UiSessionId::parse("ui.1").unwrap() },
-        ].into_iter().enumerate() {
+            Principal::Input {
+                source: InputSourceId::parse("src-1").unwrap(),
+            },
+            Principal::Pack {
+                pack: pack.clone(),
+                hash: hash.clone(),
+            },
+            Principal::PackUi {
+                pack,
+                hash,
+                ui: UiSessionId::parse("ui.1").unwrap(),
+            },
+        ]
+        .into_iter()
+        .enumerate()
+        {
             let event = vector_event(&f, principal);
             let (seq, prev) = tail(&f);
-            let id = (index % 2 == 1).then(|| Digest::hash(format!("owned-read-{index}").as_bytes()));
+            let id =
+                (index % 2 == 1).then(|| Digest::hash(format!("owned-read-{index}").as_bytes()));
             let digest = AuditRow::digest(seq + 1, &prev, &event, id.as_ref()).unwrap();
             let body = if index == 2 {
                 serde_json::to_string_pretty(&event).unwrap().into_bytes()
             } else {
                 canonical(&event).unwrap()
             };
-            raw_insert(&f, seq as i64 + 1, prev.as_str(), digest.as_str(), &body, id.as_ref().map(Digest::as_str));
+            raw_insert(
+                &f,
+                seq as i64 + 1,
+                prev.as_str(),
+                digest.as_str(),
+                &body,
+                id.as_ref().map(Digest::as_str),
+            );
         }
         // A trusted legacy row oracle covers EVERY row, including the real
         // authorize event, in the same committed pre-execute history.
         let expected: Vec<Vec<u8>> = {
             let conn = f.audit_raw();
-            let mut statement = conn.prepare("SELECT seq,prev_digest,digest,body,event_id FROM audit ORDER BY seq").unwrap();
+            let mut statement = conn
+                .prepare("SELECT seq,prev_digest,digest,body,event_id FROM audit ORDER BY seq")
+                .unwrap();
             let mut rows = statement.query([]).unwrap();
             let mut expected = Vec::new();
             while let Some(row) = rows.next().unwrap() {
@@ -1828,7 +1901,12 @@ mod tests {
                 let event: AuditEvent = crate::decode(&body).unwrap();
                 let typed_prev = Digest::parse(&prev).unwrap();
                 let typed_id = id.as_deref().map(Digest::parse).transpose().unwrap();
-                assert_eq!(AuditRow::digest(seq as u64, &typed_prev, &event, typed_id.as_ref()).unwrap().as_str(), digest);
+                assert_eq!(
+                    AuditRow::digest(seq as u64, &typed_prev, &event, typed_id.as_ref())
+                        .unwrap()
+                        .as_str(),
+                    digest
+                );
                 let projection = serde_json::json!({
                     "seq": seq.to_string(), "prev_digest": prev, "digest": digest,
                     "event_id": id, "event": event,
@@ -1846,8 +1924,17 @@ mod tests {
             }
         }
         assert!(!delivery.is_committed());
-        f.gate.record_outcome(gid.clone(), delivery.terminal_outcome(true)).await.unwrap();
-        assert!(f.approvals.terminal_delivery(&gid).unwrap().unwrap().acknowledged);
+        f.gate
+            .record_outcome(gid.clone(), delivery.terminal_outcome(true))
+            .await
+            .unwrap();
+        assert!(
+            f.approvals
+                .terminal_delivery(&gid)
+                .unwrap()
+                .unwrap()
+                .acknowledged
+        );
         drop(delivery);
         assert_eq!(track.live.load(Ordering::Acquire), 0);
     }
@@ -1857,25 +1944,40 @@ mod tests {
         for (after, max) in [(u64::MAX, 10), (0, 0), (0, 1)] {
             let f = fixture();
             let (track, budget) = budget();
-            f.audit_raw().execute_batch("DROP TRIGGER audit_no_delete").unwrap();
+            f.audit_raw()
+                .execute_batch("DROP TRIGGER audit_no_delete")
+                .unwrap();
             // Authorize and consume BEFORE corruption; Gate itself audits.
             let (gid, dispatch) = read_dispatch(&f, &budget, after, max).await;
             let (seq, prev) = tail(&f);
             let bad = Digest::hash(b"invalid stored schema");
             raw_insert(&f, seq as i64 + 1, prev.as_str(), bad.as_str(), b"{}", None);
             let delivery = dispatch.execute(&f.audit);
-            assert!(matches!(delivery.result(), Err(StoreError::Integrity(IntegrityFaultCode::AuditChain))));
+            assert!(matches!(
+                delivery.result(),
+                Err(StoreError::Integrity(IntegrityFaultCode::AuditChain))
+            ));
             assert!(!delivery.is_committed());
             assert_eq!(track.live.load(Ordering::Acquire), 0);
             // Restore only the deliberately injected row before real Gate
             // terminal persistence, which independently verifies its chain.
             raw_delete(&f, seq as i64 + 1);
             let outcome = delivery.terminal_outcome(false);
-            assert_eq!(outcome, Outcome::Failed { code: "persistence".into() });
+            assert_eq!(
+                outcome,
+                Outcome::Failed {
+                    code: "persistence".into()
+                }
+            );
             f.gate.record_outcome(gid.clone(), outcome).await.unwrap();
             let saved = f.approvals.terminal_delivery(&gid).unwrap().unwrap();
             assert!(saved.acknowledged);
-            assert_eq!(saved.decision.outcome, Outcome::Failed { code: "persistence".into() });
+            assert_eq!(
+                saved.decision.outcome,
+                Outcome::Failed {
+                    code: "persistence".into()
+                }
+            );
         }
     }
 
@@ -1908,7 +2010,9 @@ mod tests {
                 "INSERT INTO audit(seq,prev_digest,digest,body,writer,minute,size) VALUES(?1,?2,?3,?4,'probe',0,?5)",
                 params![seq as i64 + 1, prev.as_str(), digest.as_str(), body.as_slice(), body.len() as i64],
             ).unwrap();
-            assert!(matches!(writer.execute_batch("COMMIT"), Err(rusqlite::Error::SqliteFailure(error, _)) if error.code == rusqlite::ErrorCode::DatabaseBusy));
+            assert!(
+                matches!(writer.execute_batch("COMMIT"), Err(rusqlite::Error::SqliteFailure(error, _)) if error.code == rusqlite::ErrorCode::DatabaseBusy)
+            );
             writer.execute_batch("ROLLBACK").unwrap();
             release.send(()).unwrap();
             task.join().unwrap()
@@ -1925,13 +2029,19 @@ mod tests {
             params![seq as i64 + 1, prev.as_str(), digest.as_str(), body.as_slice(), body.len() as i64],
         ).unwrap();
         writer.execute_batch("COMMIT").unwrap();
-        f.gate.record_outcome(gid, delivery.terminal_outcome(true)).await.unwrap();
+        f.gate
+            .record_outcome(gid, delivery.terminal_outcome(true))
+            .await
+            .unwrap();
         drop(delivery);
         assert_eq!(track.live.load(Ordering::Acquire), 0);
         let (gid2, later) = run_read(&f, &f.cx, &sync_budget, seq, 1000).await;
         let later_rows = rows(&later);
         assert_eq!(later_rows.first().unwrap()["digest"], digest.as_str());
-        f.gate.record_outcome(gid2, later.terminal_outcome(true)).await.unwrap();
+        f.gate
+            .record_outcome(gid2, later.terminal_outcome(true))
+            .await
+            .unwrap();
         drop(later);
         assert_eq!(track.live.load(Ordering::Acquire), 0);
     }
@@ -1947,12 +2057,20 @@ mod tests {
         assert!(delivery.result().is_ok());
         let calls = meter.reserves.load(Ordering::Acquire) - before;
         assert!(calls > 20);
-        f.gate.record_outcome(gid, delivery.terminal_outcome(true)).await.unwrap();
+        f.gate
+            .record_outcome(gid, delivery.terminal_outcome(true))
+            .await
+            .unwrap();
         drop(delivery);
         assert_eq!(meter.live(), 0);
         // Early row/metadata, intermediate parse/hash, and the final output
         // reservations all run through the real consumed Read.execute path.
-        for error in [AllocationError::Limit, AllocationError::Unavailable, AllocationError::Overflow, AllocationError::Allocator] {
+        for error in [
+            AllocationError::Limit,
+            AllocationError::Unavailable,
+            AllocationError::Overflow,
+            AllocationError::Allocator,
+        ] {
             for offset in [1, 2, 3, 7, calls / 2, calls - 1, calls] {
                 let f = fixture();
                 let meter = FailMeter::new(error);
@@ -1960,18 +2078,36 @@ mod tests {
                 let (gid, dispatch) = read_dispatch(&f, &budget, 0, 1000).await;
                 let baseline = meter.live();
                 let work = meter.work();
-                meter.fail_at.store(meter.reserves.load(Ordering::Acquire) + offset, Ordering::Release);
+                meter.fail_at.store(
+                    meter.reserves.load(Ordering::Acquire) + offset,
+                    Ordering::Release,
+                );
                 let delivery = dispatch.execute(&f.audit);
                 match (delivery.result(), error) {
-                    (Err(StoreError::Quota), AllocationError::Limit | AllocationError::Overflow)
-                    | (Err(StoreError::Unavailable(_)), AllocationError::Unavailable | AllocationError::Allocator) => {}
+                    (
+                        Err(StoreError::Quota),
+                        AllocationError::Limit | AllocationError::Overflow,
+                    )
+                    | (
+                        Err(StoreError::Unavailable(_)),
+                        AllocationError::Unavailable | AllocationError::Allocator,
+                    ) => {}
                     _ => panic!("actual owned read lost its allocation error class"),
                 }
                 assert_eq!(meter.live(), baseline);
                 assert!(meter.work() >= work);
                 assert!(!delivery.is_committed());
-                f.gate.record_outcome(gid.clone(), delivery.terminal_outcome(false)).await.unwrap();
-                assert!(f.approvals.terminal_delivery(&gid).unwrap().unwrap().acknowledged);
+                f.gate
+                    .record_outcome(gid.clone(), delivery.terminal_outcome(false))
+                    .await
+                    .unwrap();
+                assert!(
+                    f.approvals
+                        .terminal_delivery(&gid)
+                        .unwrap()
+                        .unwrap()
+                        .acknowledged
+                );
                 drop(delivery);
                 assert_eq!(meter.live(), 0);
             }
@@ -1985,7 +2121,11 @@ mod tests {
     ) -> (GrantId, GuestAuditDispatch) {
         let kind = CoreValue::string("owned.note", budget).unwrap();
         let prepared = GuestAuditAppend::prepare(&f.cx, kind, payload, budget).unwrap();
-        let grant = f.gate.authorize(&f.cx, prepared.request(), prepared.args_digest().clone()).await.unwrap();
+        let grant = f
+            .gate
+            .authorize(&f.cx, prepared.request(), prepared.args_digest().clone())
+            .await
+            .unwrap();
         (grant.id().clone(), ready(prepared.consume(grant)))
     }
 
@@ -1996,28 +2136,65 @@ mod tests {
         let (pack, hash) = vector_pack();
         for (principal, writer) in [
             (Principal::User, "user"),
-            (Principal::Input { source: InputSourceId::parse("src-1").unwrap() }, "input:src-1"),
-            (Principal::Pack { pack: pack.clone(), hash: hash.clone() }, "pack:local.guest-audit"),
-            (Principal::PackUi { pack, hash, ui: UiSessionId::parse("ui.1").unwrap() }, "pack:local.guest-audit"),
+            (
+                Principal::Input {
+                    source: InputSourceId::parse("src-1").unwrap(),
+                },
+                "input:src-1",
+            ),
+            (
+                Principal::Pack {
+                    pack: pack.clone(),
+                    hash: hash.clone(),
+                },
+                "pack:local.guest-audit",
+            ),
+            (
+                Principal::PackUi {
+                    pack,
+                    hash,
+                    ui: UiSessionId::parse("ui.1").unwrap(),
+                },
+                "pack:local.guest-audit",
+            ),
         ] {
             // Data-schema proof only: no dispatch authority is created or
             // claimed by the constructor. Runtime tests below consume Gate.
-            let cx = CallCx::root(f.profile.clone(), principal, RequestId::parse("req_constructor").unwrap(), CancellationToken::new(), Instant::now() + Duration::from_secs(30), limits());
+            let cx = CallCx::root(
+                f.profile.clone(),
+                principal,
+                RequestId::parse("req_constructor").unwrap(),
+                CancellationToken::new(),
+                Instant::now() + Duration::from_secs(30),
+                limits(),
+            );
             let kind = CoreValue::string("", &budget).unwrap();
             let raw = br#"{"kind":"forged","profile":"forged","payload":{"deep":[1,"\u0001\n"]}}"#;
             let payload = CoreValue::parse_guest(raw, &budget).unwrap();
             let owned = OwnedAuditEvent::for_append(&cx, &kind, &payload, &budget).unwrap();
             let expected = AuditEvent {
-                profile: cx.profile().clone(), principal: cx.principal().clone(), request: cx.request().clone(), kind: "guest-event".into(),
+                profile: cx.profile().clone(),
+                principal: cx.principal().clone(),
+                request: cx.request().clone(),
+                kind: "guest-event".into(),
                 payload: CanonValue::Obj(BTreeMap::from([
                     ("kind".into(), CanonValue::Str("".into())),
-                    ("payload".into(), tobkiri_canon::parse(raw, Variant::StrictV1).unwrap()),
+                    (
+                        "payload".into(),
+                        tobkiri_canon::parse(raw, Variant::StrictV1).unwrap(),
+                    ),
                 ])),
             };
-            assert_eq!(owned.event.encode_guest(&budget).unwrap().as_bytes(), canonical(&expected).unwrap().as_slice());
+            assert_eq!(
+                owned.event.encode_guest(&budget).unwrap().as_bytes(),
+                canonical(&expected).unwrap().as_slice()
+            );
             assert_eq!(owned.writer_key().unwrap().as_str().unwrap(), writer);
             let prev = Digest::hash(b"constructor prev");
-            assert_eq!(owned.append_digest(7, &prev, &budget).unwrap(), AuditRow::digest(7, &prev, &expected, None).unwrap());
+            assert_eq!(
+                owned.append_digest(7, &prev, &budget).unwrap(),
+                AuditRow::digest(7, &prev, &expected, None).unwrap()
+            );
         }
         assert_eq!(track.live.load(Ordering::Acquire), 0);
     }
@@ -2026,32 +2203,64 @@ mod tests {
     async fn owned_append_execute_rejects_corrupt_history_before_write() {
         let f = fixture();
         let (track, budget) = budget();
-        f.audit_raw().execute_batch("DROP TRIGGER audit_no_delete").unwrap();
+        f.audit_raw()
+            .execute_batch("DROP TRIGGER audit_no_delete")
+            .unwrap();
         let payload = CoreValue::parse_guest(b"1", &budget).unwrap();
         let (gid, dispatch) = append_dispatch(&f, &budget, payload).await;
         let (seq, prev) = tail(&f);
         let event = vector_event(&f, Principal::User);
         let bad = Digest::hash(b"wrong chain digest");
-        raw_insert(&f, seq as i64 + 1, prev.as_str(), bad.as_str(), &canonical(&event).unwrap(), None);
+        raw_insert(
+            &f,
+            seq as i64 + 1,
+            prev.as_str(),
+            bad.as_str(),
+            &canonical(&event).unwrap(),
+            None,
+        );
         let before = tail(&f);
         let delivery = dispatch.execute(&f.audit);
-        assert!(matches!(delivery.result(), Err(StoreError::Integrity(IntegrityFaultCode::AuditChain))));
+        assert!(matches!(
+            delivery.result(),
+            Err(StoreError::Integrity(IntegrityFaultCode::AuditChain))
+        ));
         assert!(!delivery.is_committed());
         assert_eq!(tail(&f), before);
         assert_eq!(track.live.load(Ordering::Acquire), 0);
         raw_delete(&f, seq as i64 + 1);
         let outcome = delivery.terminal_outcome(false);
-        assert_eq!(outcome, Outcome::Failed { code: "persistence".into() });
+        assert_eq!(
+            outcome,
+            Outcome::Failed {
+                code: "persistence".into()
+            }
+        );
         f.gate.record_outcome(gid.clone(), outcome).await.unwrap();
-        assert!(f.approvals.terminal_delivery(&gid).unwrap().unwrap().acknowledged);
+        assert!(
+            f.approvals
+                .terminal_delivery(&gid)
+                .unwrap()
+                .unwrap()
+                .acknowledged
+        );
     }
 
     #[tokio::test]
     async fn owned_append_execute_preserves_configured_quotas_and_caller_depth() {
         for quota in [
-            AuditQuota { records_per_minute: 0, ..AuditQuota::default() },
-            AuditQuota { bytes_per_minute: 0, ..AuditQuota::default() },
-            AuditQuota { total_bytes: 0, ..AuditQuota::default() },
+            AuditQuota {
+                records_per_minute: 0,
+                ..AuditQuota::default()
+            },
+            AuditQuota {
+                bytes_per_minute: 0,
+                ..AuditQuota::default()
+            },
+            AuditQuota {
+                total_bytes: 0,
+                ..AuditQuota::default()
+            },
         ] {
             let f = fixture();
             // Public trusted Store quota configuration, same real profile/DB;
@@ -2066,8 +2275,17 @@ mod tests {
             assert!(!delivery.is_committed());
             assert_eq!(tail(&f), before);
             assert_eq!(track.live.load(Ordering::Acquire), 0);
-            f.gate.record_outcome(gid.clone(), delivery.terminal_outcome(false)).await.unwrap();
-            assert!(f.approvals.terminal_delivery(&gid).unwrap().unwrap().acknowledged);
+            f.gate
+                .record_outcome(gid.clone(), delivery.terminal_outcome(false))
+                .await
+                .unwrap();
+            assert!(
+                f.approvals
+                    .terminal_delivery(&gid)
+                    .unwrap()
+                    .unwrap()
+                    .acknowledged
+            );
         }
         let f = fixture();
         let (track, budget) = budget();
@@ -2082,7 +2300,10 @@ mod tests {
         assert!(!delivery.is_committed());
         assert_eq!(tail(&f), before);
         assert_eq!(track.live.load(Ordering::Acquire), 0);
-        f.gate.record_outcome(gid, delivery.terminal_outcome(false)).await.unwrap();
+        f.gate
+            .record_outcome(gid, delivery.terminal_outcome(false))
+            .await
+            .unwrap();
     }
 
     struct AppendSyncBudget {
@@ -2096,7 +2317,9 @@ mod tests {
             // Observe the existing fixed scan's first borrowed-row boundary;
             // constructor reserves occur before this. No production hook.
             let scan_row = matches!(request.kind, AllocationKind::Parse)
-                && request.bytes == 0 && request.elements == 5 && request.work == 32;
+                && request.bytes == 0
+                && request.elements == 5
+                && request.work == 32;
             let result = self.inner.reserve(request);
             if result.is_ok() && scan_row && self.armed.swap(false, Ordering::AcqRel) {
                 self.stepped.send(()).unwrap();
@@ -2104,7 +2327,9 @@ mod tests {
             }
             result
         }
-        fn release(&self, bytes: u64) { self.inner.release(bytes); }
+        fn release(&self, bytes: u64) {
+            self.inner.release(bytes);
+        }
     }
 
     #[tokio::test]
@@ -2113,7 +2338,12 @@ mod tests {
         let (track, inner) = budget();
         let (stepped, stepped_rx) = mpsc::channel();
         let (release, release_rx) = mpsc::channel();
-        let sync = Arc::new(AppendSyncBudget { inner, armed: AtomicBool::new(false), stepped, proceed: Mutex::new(release_rx) });
+        let sync = Arc::new(AppendSyncBudget {
+            inner,
+            armed: AtomicBool::new(false),
+            stepped,
+            proceed: Mutex::new(release_rx),
+        });
         let budget: Arc<dyn AllocationBudget> = sync.clone();
         let payload = CoreValue::parse_guest(b"1", &budget).unwrap();
         let (gid, dispatch) = append_dispatch(&f, &budget, payload).await;
@@ -2126,7 +2356,9 @@ mod tests {
             stepped_rx.recv().unwrap();
             // A competing writer cannot acquire a write transaction while
             // the actual append is verifying its original head and quotas.
-            assert!(matches!(writer.execute_batch("BEGIN IMMEDIATE"), Err(rusqlite::Error::SqliteFailure(error, _)) if error.code == rusqlite::ErrorCode::DatabaseBusy));
+            assert!(
+                matches!(writer.execute_batch("BEGIN IMMEDIATE"), Err(rusqlite::Error::SqliteFailure(error, _)) if error.code == rusqlite::ErrorCode::DatabaseBusy)
+            );
             release.send(()).unwrap();
             task.join().unwrap()
         });
@@ -2136,7 +2368,10 @@ mod tests {
         writer.execute_batch("BEGIN IMMEDIATE; ROLLBACK;").unwrap();
         f.audit.verify().unwrap();
         assert_eq!(track.live.load(Ordering::Acquire), 0);
-        f.gate.record_outcome(gid.clone(), delivery.terminal_outcome(true)).await.unwrap();
+        f.gate
+            .record_outcome(gid.clone(), delivery.terminal_outcome(true))
+            .await
+            .unwrap();
         let saved = f.approvals.terminal_delivery(&gid).unwrap().unwrap();
         assert!(saved.acknowledged && saved.decision.outcome == Outcome::Succeeded);
     }
@@ -2154,8 +2389,16 @@ mod tests {
         let calls = meter.reserves.load(Ordering::Acquire) - start;
         assert!(calls > 20);
         assert_eq!(meter.live(), 0);
-        f.gate.record_outcome(gid, delivery.terminal_outcome(true)).await.unwrap();
-        for error in [AllocationError::Limit, AllocationError::Unavailable, AllocationError::Overflow, AllocationError::Allocator] {
+        f.gate
+            .record_outcome(gid, delivery.terminal_outcome(true))
+            .await
+            .unwrap();
+        for error in [
+            AllocationError::Limit,
+            AllocationError::Unavailable,
+            AllocationError::Overflow,
+            AllocationError::Allocator,
+        ] {
             for offset in [1, 2, 7, calls / 2, calls - 1, calls] {
                 let f = fixture();
                 let meter = FailMeter::new(error);
@@ -2164,37 +2407,66 @@ mod tests {
                 let (gid, dispatch) = append_dispatch(&f, &budget, payload).await;
                 let before = tail(&f);
                 let work = meter.work();
-                meter.fail_at.store(meter.reserves.load(Ordering::Acquire) + offset, Ordering::Release);
+                meter.fail_at.store(
+                    meter.reserves.load(Ordering::Acquire) + offset,
+                    Ordering::Release,
+                );
                 let delivery = dispatch.execute(&f.audit);
                 match (delivery.result(), error) {
-                    (Err(StoreError::Quota), AllocationError::Limit | AllocationError::Overflow)
-                    | (Err(StoreError::Unavailable(_)), AllocationError::Unavailable | AllocationError::Allocator) => {}
+                    (
+                        Err(StoreError::Quota),
+                        AllocationError::Limit | AllocationError::Overflow,
+                    )
+                    | (
+                        Err(StoreError::Unavailable(_)),
+                        AllocationError::Unavailable | AllocationError::Allocator,
+                    ) => {}
                     _ => panic!("owned append lost its actual allocation error class"),
                 }
                 assert!(!delivery.is_committed());
                 assert_eq!(tail(&f), before);
                 assert_eq!(meter.live(), 0);
                 assert!(meter.work() >= work);
-                f.gate.record_outcome(gid.clone(), delivery.terminal_outcome(false)).await.unwrap();
-                assert!(f.approvals.terminal_delivery(&gid).unwrap().unwrap().acknowledged);
+                f.gate
+                    .record_outcome(gid.clone(), delivery.terminal_outcome(false))
+                    .await
+                    .unwrap();
+                assert!(
+                    f.approvals
+                        .terminal_delivery(&gid)
+                        .unwrap()
+                        .unwrap()
+                        .acknowledged
+                );
             }
         }
     }
 
     #[tokio::test]
     async fn owned_append_execute_rejects_bad_quota_metadata() {
-        for fault in ["writer-type", "writer-utf8", "minute", "size-negative", "size-type"] {
+        for fault in [
+            "writer-type",
+            "writer-utf8",
+            "minute",
+            "size-negative",
+            "size-type",
+        ] {
             let f = fixture();
             let (track, budget) = budget();
-            f.audit_raw().execute_batch("DROP TRIGGER audit_no_update").unwrap();
+            f.audit_raw()
+                .execute_batch("DROP TRIGGER audit_no_update")
+                .unwrap();
             let payload = CoreValue::parse_guest(b"1", &budget).unwrap();
             let (gid, dispatch) = append_dispatch(&f, &budget, payload).await;
             let before = tail(&f);
             let conn = f.audit_raw();
-            let (writer, minute, size): (String, i64, i64) = conn.query_row(
-                "SELECT writer,minute,size FROM audit WHERE seq=?1", [before.0 as i64],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            ).unwrap();
+            let (writer, minute, size): (String, i64, i64) = conn
+                .query_row(
+                    "SELECT writer,minute,size FROM audit WHERE seq=?1",
+                    [before.0 as i64],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .unwrap();
             let sql = match fault {
                 "writer-type" => "UPDATE audit SET writer=X'FF' WHERE seq=?1",
                 "writer-utf8" => "UPDATE audit SET writer=CAST(X'FF' AS TEXT) WHERE seq=?1",
@@ -2204,15 +2476,31 @@ mod tests {
             };
             conn.execute(sql, [before.0 as i64]).unwrap();
             let delivery = dispatch.execute(&f.audit);
-            assert!(matches!(delivery.result(), Err(StoreError::Integrity(IntegrityFaultCode::AuditChain))));
+            assert!(matches!(
+                delivery.result(),
+                Err(StoreError::Integrity(IntegrityFaultCode::AuditChain))
+            ));
             assert!(!delivery.is_committed());
             assert_eq!(tail(&f), before);
             assert_eq!(track.live.load(Ordering::Acquire), 0);
-            conn.execute("UPDATE audit SET writer=?1,minute=?2,size=?3 WHERE seq=?4", params![writer, minute, size, before.0 as i64]).unwrap();
+            conn.execute(
+                "UPDATE audit SET writer=?1,minute=?2,size=?3 WHERE seq=?4",
+                params![writer, minute, size, before.0 as i64],
+            )
+            .unwrap();
             // No SQLite row/statement/transaction is held across terminal work.
             drop(conn);
-            f.gate.record_outcome(gid.clone(), delivery.terminal_outcome(false)).await.unwrap();
-            assert!(f.approvals.terminal_delivery(&gid).unwrap().unwrap().acknowledged);
+            f.gate
+                .record_outcome(gid.clone(), delivery.terminal_outcome(false))
+                .await
+                .unwrap();
+            assert!(
+                f.approvals
+                    .terminal_delivery(&gid)
+                    .unwrap()
+                    .unwrap()
+                    .acknowledged
+            );
         }
     }
 }

@@ -1,5 +1,6 @@
 """Negative fixtures for the migration gate; never weaken production checks."""
 import importlib.util
+import hashlib
 import json
 import tempfile
 import unittest
@@ -11,6 +12,25 @@ spec.loader.exec_module(gate)
 
 
 class BoundaryTests(unittest.TestCase):
+    def inventory_fixture(self, root: Path) -> tuple[Path, Path]:
+        """Write an evidenced source-bound row for the final-gate tests."""
+        source = root / "tobkiri_runtime/core_runtime/canonical.py"
+        source.parent.mkdir(parents=True)
+        source.write_text("VALUE = 1\n")
+        digest = hashlib.sha256()
+        digest.update(source.relative_to(root).as_posix().encode())
+        digest.update(b"\0")
+        digest.update(hashlib.sha256(source.read_bytes()).digest())
+        (root / "proof.json").write_text("{}")
+        path = root / "migration/inventory.json"
+        path.parent.mkdir()
+        path.write_text(json.dumps({"units": [{
+            "legacy_unit": source.relative_to(root).as_posix(),
+            "source_tree_sha256": digest.hexdigest(),
+            "target": "core", "status": "core+vectors", "evidence": ["proof.json"],
+        }]}))
+        return path, source
+
     def test_test_block_cannot_hide_later_production(self):
         source = '#[cfg(test)] mod tests { let s = "}"; fn t() { } }\nPackId::parse("local.exposed");'
         self.assertNotIn('let s', gate.without_unit_tests(source))
@@ -128,6 +148,34 @@ class BoundaryTests(unittest.TestCase):
             self.assertFalse(gate.check_dependencies(root))
             path.write_text('[dependencies]\nauthority={package="tobkiri-gate",path="../tobkiri-gate"}\n')
             self.assertTrue(gate.check_dependencies(root))
+
+    def test_final_inventory_gate_rejects_stale_completed_source_and_missing_unit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, source = self.inventory_fixture(root)
+            self.assertEqual(gate.check_inventory(root), [])
+            source.write_text("VALUE = 2\n")
+            self.assertTrue(any("completed source differs" in error
+                                for error in gate.check_inventory(root)))
+            source.write_text("VALUE = 1\n")
+            source.with_name("added.py").write_text("VALUE = 3\n")
+            self.assertTrue(any("missing legacy unit:" in error
+                                for error in gate.check_inventory(root)))
+
+    def test_final_inventory_gate_preserves_checked_paths_and_uses_trusted_validator(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / "repository"
+            root.mkdir()
+            path, _ = self.inventory_fixture(root)
+            (path.parent / "inventory.py").write_text("raise AssertionError('untrusted')\n")
+            self.assertEqual(gate.check_inventory(root), [])
+            (base / "outside.json").write_text("{}")
+            document = json.loads(path.read_text())
+            document["units"][0]["evidence"] = ["../outside.json"]
+            path.write_text(json.dumps(document))
+            self.assertTrue(any("outside repository" in error
+                                for error in gate.check_inventory(root)))
 
 
 if __name__ == "__main__":

@@ -2,9 +2,14 @@
 //! Audit grants -> real last canonical Value hook. No execution/ACK fixture.
 use super::*;
 use std::{fs, time::Duration};
-use tobkiri_canon::{CanonValue, CoreBuffer, ids::{OpName, RequestId}};
+use tobkiri_canon::{
+    CanonValue, CoreBuffer,
+    ids::{OpName, RequestId},
+};
 use tobkiri_gate::{EffectRequest, Gate, GrantId, Outcome, Principal, TerminalDisposition};
-use tobkiri_manifest::{FileEntry, PackManifest, PortDeclaration, Ports, RuntimeSpec, ShapeDefinition, ShapeKind};
+use tobkiri_manifest::{
+    FileEntry, PackManifest, PortDeclaration, Ports, RuntimeSpec, ShapeDefinition, ShapeKind,
+};
 use tobkiri_store::AuditRow;
 
 const KIND: &str = "fixture-marker";
@@ -115,15 +120,43 @@ fn pack(directory: &std::path::Path, permissions: PermissionSet) -> VerifiedPack
         ("wit/port.shape.json".into(), br#"{"cardinality":"one","streams":{},"callbacks":{}}"#.to_vec()),
     ]);
     let manifest = PackManifest {
-        format: "tobkiri.pack/1".into(), id: PackId::parse("local.audit-import-fixture").unwrap(),
-        version: "1.0.0".into(), publisher_key: None,
-        runtime: RuntimeSpec::Wasm { component: "component.wasm".into(), toolchain: "wat-audit-ABI-regression/1".into(), config: None },
-        shapes: vec![ShapeDefinition { name: shape.name.clone(), version: shape.version, kind: ShapeKind::Port, wit: "wit/port.wit".into() }],
-        ports: Ports { provides: vec![PortDeclaration { shape: shape.name, version: shape.version, optional: false }], ..Default::default() },
-        inputs: vec![], flows: vec![], overlays: vec![], stores: vec![], permissions, ui: None,
-        files: files.iter().map(|(path, bytes): (&String, &Vec<u8>)| FileEntry {
-            path: path.clone(), sha256: Digest::hash(bytes), size: bytes.len() as u64,
-        }).collect(),
+        format: "tobkiri.pack/1".into(),
+        id: PackId::parse("local.audit-import-fixture").unwrap(),
+        version: "1.0.0".into(),
+        publisher_key: None,
+        runtime: RuntimeSpec::Wasm {
+            component: "component.wasm".into(),
+            toolchain: "wat-audit-ABI-regression/1".into(),
+            config: None,
+        },
+        shapes: vec![ShapeDefinition {
+            name: shape.name.clone(),
+            version: shape.version,
+            kind: ShapeKind::Port,
+            wit: "wit/port.wit".into(),
+        }],
+        ports: Ports {
+            provides: vec![PortDeclaration {
+                shape: shape.name,
+                version: shape.version,
+                optional: false,
+            }],
+            ..Default::default()
+        },
+        inputs: vec![],
+        flows: vec![],
+        overlays: vec![],
+        stores: vec![],
+        permissions,
+        ui: None,
+        files: files
+            .iter()
+            .map(|(path, bytes): (&String, &Vec<u8>)| FileEntry {
+                path: path.clone(),
+                sha256: Digest::hash(bytes),
+                size: bytes.len() as u64,
+            })
+            .collect(),
     };
     let artifact = tobkiri_manifest::build_tpk(&manifest, &files, None).unwrap();
     let verified = tobkiri_manifest::verify_tpk(&artifact, &BTreeMap::new()).unwrap();
@@ -142,7 +175,11 @@ impl Fixture {
     async fn new() -> Self {
         let temporary = tempfile::tempdir().unwrap();
         let physical = temporary.path().canonicalize().unwrap();
-        let core = Core::open(CoreConfig::for_test_data_root(physical.join("data")), Arc::new(crate::test_support::RuntimeHost)).unwrap();
+        let core = Core::open(
+            CoreConfig::for_test_data_root(physical.join("data")),
+            Arc::new(crate::test_support::RuntimeHost),
+        )
+        .unwrap();
         let mut permissions = crate::test_support::permissions(&[]);
         permissions.ports.insert(SHAPE.into());
         permissions.audit_append = true;
@@ -152,11 +189,22 @@ impl Fixture {
         permissions.wasm.wall_ms = 5000;
         permissions.loops.max_wall_ms = 5000;
         let verified = pack(&physical, permissions.clone());
-        let mut profile = crate::test_support::runtime_profile(&physical, std::slice::from_ref(&verified), permissions.clone(), false);
+        let mut profile = crate::test_support::runtime_profile(
+            &physical,
+            std::slice::from_ref(&verified),
+            permissions.clone(),
+            false,
+        );
         profile.user_permissions = Some(permissions);
         core.save_profile(profile.clone(), None).await.unwrap();
         let session = core.start(&profile.id).await.unwrap();
-        Self { session, core, profile, verified, _temporary: temporary }
+        Self {
+            session,
+            core,
+            profile,
+            verified,
+            _temporary: temporary,
+        }
     }
     async fn invoke(&self, operation: &str) -> Result<CoreBuffer, CoreError> {
         tokio::time::timeout(Duration::from_secs(10), self.session.call_user_port(
@@ -168,9 +216,25 @@ impl Fixture {
     }
     async fn rows(&self) -> Vec<AuditRow> {
         let gate = &self.session.gate;
-        let cx = self.core.user_context(&self.profile, gate).unwrap().with_revision(self.session.plan_digest().clone());
-        let log = AuditLog::open(&self.core.profiles.root, &self.profile.id, AuditQuota::default()).unwrap();
-        let grant = gate.authorize(&cx, EffectRequest::AuditRead, AuditLog::read_digest(0, 1000).unwrap()).await.unwrap();
+        let cx = self
+            .core
+            .user_context(&self.profile, gate)
+            .unwrap()
+            .with_revision(self.session.plan_digest().clone());
+        let log = AuditLog::open(
+            &self.core.profiles.root,
+            &self.profile.id,
+            AuditQuota::default(),
+        )
+        .unwrap();
+        let grant = gate
+            .authorize(
+                &cx,
+                EffectRequest::AuditRead,
+                AuditLog::read_digest(0, 1000).unwrap(),
+            )
+            .await
+            .unwrap();
         let id = grant.id().clone();
         let rows = log.read(&cx, 0, 1000, grant).unwrap();
         gate.record_outcome(id, Outcome::Succeeded).await.unwrap();
@@ -209,30 +273,68 @@ impl Fixture {
     }
 
     fn principal(&self) -> Principal {
-        Principal::Pack { pack: self.verified.manifest.id.clone(), hash: self.verified.hash.clone() }
+        Principal::Pack {
+            pack: self.verified.manifest.id.clone(),
+            hash: self.verified.hash.clone(),
+        }
     }
     fn guest_rows<'a>(&self, rows: &'a [AuditRow]) -> Vec<&'a AuditRow> {
-        rows.iter().filter(|row| row.event.kind == "guest-event" && row.event.payload.get("kind") == Some(&CanonValue::Str(KIND.into()))).collect()
+        rows.iter()
+            .filter(|row| {
+                row.event.kind == "guest-event"
+                    && row.event.payload.get("kind") == Some(&CanonValue::Str(KIND.into()))
+            })
+            .collect()
     }
     fn outcome<'a>(&self, rows: &'a [AuditRow], effect: EffectRequest) -> &'a AuditRow {
         let digest = CanonValue::Str(effect.digest().unwrap().to_string());
-        let matching = rows.iter().filter(|row| row.event.kind == "outcome" && row.event.principal == self.principal() && row.event.payload.get("effect_digest") == Some(&digest)).collect::<Vec<_>>();
-        assert_eq!(matching.len(), 1, "one immutable terminal for the original nested Audit effect");
+        let matching = rows
+            .iter()
+            .filter(|row| {
+                row.event.kind == "outcome"
+                    && row.event.principal == self.principal()
+                    && row.event.payload.get("effect_digest") == Some(&digest)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            matching.len(),
+            1,
+            "one immutable terminal for the original nested Audit effect"
+        );
         matching[0]
     }
-    fn acknowledged(&self, row: &AuditRow, effect: EffectRequest, args: &Digest) -> tobkiri_gate::TerminalDelivery {
-        let CanonValue::Str(id) = row.event.payload.get("grant").unwrap() else { panic!("actual terminal must contain its original GrantId") };
+    fn acknowledged(
+        &self,
+        row: &AuditRow,
+        effect: EffectRequest,
+        args: &Digest,
+    ) -> tobkiri_gate::TerminalDelivery {
+        let CanonValue::Str(id) = row.event.payload.get("grant").unwrap() else {
+            panic!("actual terminal must contain its original GrantId")
+        };
         // Reconstruct this descriptive ID from the actual persisted outcome;
         // serde creates no Grant, DispatchPermit or terminal authority.
         let id: GrantId = serde_json::from_value(serde_json::Value::String(id.clone())).unwrap();
         let delivery = self.approvals().terminal_delivery(&id).unwrap().unwrap();
         assert!(delivery.acknowledged);
         assert_eq!(delivery.decision.reservation.id, id);
-        assert_eq!(delivery.decision.reservation.effect, effect.digest().unwrap());
+        assert_eq!(
+            delivery.decision.reservation.effect,
+            effect.digest().unwrap()
+        );
         assert_eq!(&delivery.decision.reservation.args, args);
         assert_eq!(delivery.decision.reservation.principal, self.principal());
-        assert_eq!(delivery.decision.disposition, TerminalDisposition::Completed);
-        assert!(delivery.decision.reservation.original_expires_unix_ms.is_some());
+        assert_eq!(
+            delivery.decision.disposition,
+            TerminalDisposition::Completed
+        );
+        assert!(
+            delivery
+                .decision
+                .reservation
+                .original_expires_unix_ms
+                .is_some()
+        );
         assert_eq!(row.event_id.as_ref(), Some(&delivery.decision.event_id));
         delivery
     }
@@ -249,7 +351,11 @@ async fn verified_guest_audit_round_trip_has_original_nested_ack_and_provenance(
     let fixture = Fixture::new().await;
     let output = fixture.invoke("round-trip").await.unwrap();
     let value: u32 = output.as_str().unwrap().parse().unwrap();
-    assert_eq!(value / 1_000_000, 1, "guest read must receive exactly the one appended guest event through the real list<string> ABI");
+    assert_eq!(
+        value / 1_000_000,
+        1,
+        "guest read must receive exactly the one appended guest event through the real list<string> ABI"
+    );
     assert!(!value.is_multiple_of(1_000_000));
     let rows = fixture.rows().await;
     let guest = fixture.guest_rows(&rows);
@@ -257,10 +363,28 @@ async fn verified_guest_audit_round_trip_has_original_nested_ack_and_provenance(
     assert_eq!(guest[0].event.profile, fixture.profile.id);
     assert_eq!(guest[0].event.principal, fixture.principal());
     assert_ne!(guest[0].event.request.as_str(), "forged");
-    assert_eq!(guest[0].event.payload.get("payload"), Some(&tobkiri_canon::parse(PAYLOAD, tobkiri_canon::Variant::StrictV1).unwrap()));
-    assert_eq!(guest[0].event.payload.get("payload").and_then(|value| value.get("control")), Some(&CanonValue::Str("\u{0001}\n".into())));
-    let append = fixture.acknowledged(fixture.outcome(&rows, EffectRequest::AuditAppend), EffectRequest::AuditAppend, &append_args());
-    let read = fixture.acknowledged(fixture.outcome(&rows, EffectRequest::AuditRead), EffectRequest::AuditRead, &AuditLog::read_digest(0, 1000).unwrap());
+    assert_eq!(
+        guest[0].event.payload.get("payload"),
+        Some(&tobkiri_canon::parse(PAYLOAD, tobkiri_canon::Variant::StrictV1).unwrap())
+    );
+    assert_eq!(
+        guest[0]
+            .event
+            .payload
+            .get("payload")
+            .and_then(|value| value.get("control")),
+        Some(&CanonValue::Str("\u{0001}\n".into()))
+    );
+    let append = fixture.acknowledged(
+        fixture.outcome(&rows, EffectRequest::AuditAppend),
+        EffectRequest::AuditAppend,
+        &append_args(),
+    );
+    let read = fixture.acknowledged(
+        fixture.outcome(&rows, EffectRequest::AuditRead),
+        EffectRequest::AuditRead,
+        &AuditLog::read_digest(0, 1000).unwrap(),
+    );
     assert_eq!(append.decision.outcome, Outcome::Succeeded);
     assert_eq!(read.decision.outcome, Outcome::Succeeded);
     assert_ne!(append.decision.reservation.id, read.decision.reservation.id);
@@ -272,15 +396,41 @@ async fn verified_guest_audit_round_trip_has_original_nested_ack_and_provenance(
 #[tokio::test]
 async fn verified_guest_audit_late_canonical_bounds_failure_keeps_committed_append_once() {
     let fixture = Fixture::new().await;
-    assert!(fixture.invoke("late-append").await.is_err(), "a postcallback bounds trap cannot become normal ABI return");
+    assert!(
+        fixture.invoke("late-append").await.is_err(),
+        "a postcallback bounds trap cannot become normal ABI return"
+    );
     let rows = fixture.rows().await;
-    assert_eq!(fixture.guest_rows(&rows).len(), 1, "the real SQL append committed before the late canonical failure; no rollback or replay");
+    assert_eq!(
+        fixture.guest_rows(&rows).len(),
+        1,
+        "the real SQL append committed before the late canonical failure; no rollback or replay"
+    );
     let request = fixture.guest_rows(&rows)[0].event.request.clone();
-    let rows = fixture.rows_after_original_outcome(&request, EffectRequest::AuditAppend).await;
-    assert_eq!(fixture.guest_rows(&rows).len(), 1, "waiting for original completion cannot reappend the committed guest event");
-    let append = fixture.acknowledged(fixture.outcome(&rows, EffectRequest::AuditAppend), EffectRequest::AuditAppend, &append_args());
-    assert_eq!(append.decision.outcome, Outcome::Failed { code: "unavailable".into() });
-    let same = fixture.approvals().terminal_delivery(&append.decision.reservation.id).unwrap().unwrap();
+    let rows = fixture
+        .rows_after_original_outcome(&request, EffectRequest::AuditAppend)
+        .await;
+    assert_eq!(
+        fixture.guest_rows(&rows).len(),
+        1,
+        "waiting for original completion cannot reappend the committed guest event"
+    );
+    let append = fixture.acknowledged(
+        fixture.outcome(&rows, EffectRequest::AuditAppend),
+        EffectRequest::AuditAppend,
+        &append_args(),
+    );
+    assert_eq!(
+        append.decision.outcome,
+        Outcome::Failed {
+            code: "unavailable".into()
+        }
+    );
+    let same = fixture
+        .approvals()
+        .terminal_delivery(&append.decision.reservation.id)
+        .unwrap()
+        .unwrap();
     assert_eq!(same.decision.event_id, append.decision.event_id);
     assert_eq!(same.decision.outcome, append.decision.outcome);
     // Native/Value Unknown is not turned into a new Grant or a second append.
@@ -288,25 +438,43 @@ async fn verified_guest_audit_late_canonical_bounds_failure_keeps_committed_appe
     // it does not fabricate access to the private runtime delivery arena.
 }
 
-struct AckFault { connection: rusqlite::Connection, active: bool }
+struct AckFault {
+    connection: rusqlite::Connection,
+    active: bool,
+}
 impl AckFault {
     fn install(fixture: &Fixture) -> Self {
-        let path = fixture.core.profiles.root.path().join(tobkiri_store::DataRoot::profile_relative(&fixture.profile.id, "audit.sqlite").unwrap());
-        let connection = rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE).unwrap();
+        let path = fixture.core.profiles.root.path().join(
+            tobkiri_store::DataRoot::profile_relative(&fixture.profile.id, "audit.sqlite").unwrap(),
+        );
+        let connection = rusqlite::Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE,
+        )
+        .unwrap();
         // Only this genuine nested AuditAppend terminal delivery fails. Guest
         // append bytes and all unrelated permission/entry/PortCall rows remain.
         let digest = EffectRequest::AuditAppend.digest().unwrap();
         connection.execute_batch(&format!(r#"CREATE TRIGGER audit_guest_ack_fault BEFORE INSERT ON audit WHEN instr(CAST(NEW.body AS TEXT), '"kind":"outcome"') > 0 AND instr(CAST(NEW.body AS TEXT), '"effect_digest":"{}"') > 0 BEGIN SELECT RAISE(FAIL, 'actual Audit ACK fixture fault'); END;"#, digest.as_str())).unwrap();
-        Self { connection, active: true }
+        Self {
+            connection,
+            active: true,
+        }
     }
     fn clear(&mut self) {
-        self.connection.execute_batch("DROP TRIGGER audit_guest_ack_fault;").unwrap();
+        self.connection
+            .execute_batch("DROP TRIGGER audit_guest_ack_fault;")
+            .unwrap();
         self.active = false;
     }
 }
 impl Drop for AckFault {
     fn drop(&mut self) {
-        if self.active { let _ = self.connection.execute_batch("DROP TRIGGER IF EXISTS audit_guest_ack_fault;"); }
+        if self.active {
+            let _ = self
+                .connection
+                .execute_batch("DROP TRIGGER IF EXISTS audit_guest_ack_fault;");
+        }
     }
 }
 
@@ -314,25 +482,64 @@ impl Drop for AckFault {
 async fn verified_guest_audit_original_ack_failure_repairs_delivery_without_reappend() {
     let fixture = Fixture::new().await;
     let mut fault = AckFault::install(&fixture);
-    assert!(fixture.invoke("append-only").await.is_err(), "canonical Ready without the original terminal ACK cannot normal-return");
+    assert!(
+        fixture.invoke("append-only").await.is_err(),
+        "canonical Ready without the original terminal ACK cannot normal-return"
+    );
     let approvals = fixture.approvals();
-    let pending = approvals.pending_terminal(&fixture.profile.id, 1000).unwrap().into_iter()
-        .filter(|terminal| terminal.reservation.effect == EffectRequest::AuditAppend.digest().unwrap() && terminal.reservation.principal == fixture.principal()).collect::<Vec<_>>();
-    assert_eq!(pending.len(), 1, "the same original consumed append retains its pending immutable terminal");
+    let pending = approvals
+        .pending_terminal(&fixture.profile.id, 1000)
+        .unwrap()
+        .into_iter()
+        .filter(|terminal| {
+            terminal.reservation.effect == EffectRequest::AuditAppend.digest().unwrap()
+                && terminal.reservation.principal == fixture.principal()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        pending.len(),
+        1,
+        "the same original consumed append retains its pending immutable terminal"
+    );
     let original = &pending[0];
     assert_eq!(original.reservation.args, append_args());
     assert!(original.reservation.original_expires_unix_ms.is_some());
-    assert_eq!(original.outcome, Outcome::Succeeded, "last-ABI Ready proposed this immutable winner; delivery failure cannot relabel it");
-    let before = approvals.terminal_delivery(&original.reservation.id).unwrap().unwrap();
+    assert_eq!(
+        original.outcome,
+        Outcome::Succeeded,
+        "last-ABI Ready proposed this immutable winner; delivery failure cannot relabel it"
+    );
+    let before = approvals
+        .terminal_delivery(&original.reservation.id)
+        .unwrap()
+        .unwrap();
     assert!(!before.acknowledged);
     fault.clear();
-    fixture.session.gate.flush_outbox(&fixture.profile.id).await.unwrap();
-    let after = approvals.terminal_delivery(&original.reservation.id).unwrap().unwrap();
+    fixture
+        .session
+        .gate
+        .flush_outbox(&fixture.profile.id)
+        .await
+        .unwrap();
+    let after = approvals
+        .terminal_delivery(&original.reservation.id)
+        .unwrap()
+        .unwrap();
     assert!(after.acknowledged);
     assert_eq!(after.decision.event_id, original.event_id);
     assert_eq!(after.decision.reservation.id, original.reservation.id);
     assert_eq!(after.decision.outcome, original.outcome);
     let rows = fixture.rows().await;
-    assert_eq!(fixture.guest_rows(&rows).len(), 1, "repair only delivers the original terminal; it never re-enters append SQL");
-    assert_eq!(fixture.outcome(&rows, EffectRequest::AuditAppend).event_id.as_ref(), Some(&original.event_id));
+    assert_eq!(
+        fixture.guest_rows(&rows).len(),
+        1,
+        "repair only delivers the original terminal; it never re-enters append SQL"
+    );
+    assert_eq!(
+        fixture
+            .outcome(&rows, EffectRequest::AuditAppend)
+            .event_id
+            .as_ref(),
+        Some(&original.event_id)
+    );
 }

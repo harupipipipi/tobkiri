@@ -359,18 +359,54 @@ fn zero_result_empty_record_and_payloadless_result_keep_exact_signatures() {
 }
 
 #[test]
-fn stream_and_callback_delivery_is_explicitly_unimplemented_not_parity() {
+fn stream_and_callback_delivery_requires_exactly_one_frozen_flow_route() {
     for handle in ["stream-handle", "callback-handle"] {
-        let pack = source(
-            &format!("use tobkiri:core/types@1.0.0.{{{handle}}}; receive: func() -> {handle};"),
-            &["receive"],
-        );
-        let errors = compile(&profile(&pack, selection("receive")), &[pack]).unwrap_err();
-        assert!(errors.iter().any(|error| {
-            error.code == "startup-input-signature"
-                && error
-                    .message
-                    .contains("lifetime forwarding is unimplemented")
-        }));
+        for route_count in 0..=2 {
+            let mut pack = source(
+                &format!("use tobkiri:core/types@1.0.0.{{{handle}}}; receive: func() -> {handle};"),
+                &["receive"],
+            );
+            for index in 0..route_count {
+                let path = format!("flow-{index}.json");
+                let flow = FlowDocument {
+                    format: "tobkiri.flow/1".into(),
+                    id: format!("on-input-{index}"),
+                    implements: None,
+                    trigger: Trigger { input: view() },
+                    loop_limits: "profile-default".into(),
+                    steps: vec![],
+                    on_error: ErrorPolicy::default(),
+                };
+                let bytes = serde_json::to_vec(&flow).unwrap();
+                pack.manifest.flows.push(path.clone());
+                pack.manifest.files.push(FileEntry {
+                    path: path.clone(),
+                    sha256: Digest::hash(&bytes),
+                    size: bytes.len() as u64,
+                });
+                pack.files.insert(path, bytes);
+            }
+            let pack = verify_tpk(
+                &build_tpk(&pack.manifest, &pack.files, None).unwrap(),
+                &BTreeMap::new(),
+            )
+            .unwrap();
+            let result = compile(&profile(&pack, selection("receive")), &[pack]);
+            if route_count == 1 {
+                let compiled = result.unwrap();
+                assert_eq!(
+                    compiled.input_entries()[0].flow_routes(),
+                    &["local.physical-input/on-input-0".to_string()]
+                );
+            } else {
+                let errors = result.unwrap_err();
+                assert!(
+                    errors
+                        .iter()
+                        .any(|error| error.code == "input-handle-routes"),
+                    "{handle} with {route_count} routes: {errors:?}"
+                );
+            }
+        }
     }
 }

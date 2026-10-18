@@ -1988,16 +1988,28 @@ mod tests {
 
     #[test]
     fn prepaid_waker_clones_keep_original_block_until_last_consuming_wake() {
-        struct Payload { _value: Counted, calls: Arc<AtomicUsize> }
+        struct Payload {
+            _value: Counted,
+            calls: Arc<AtomicUsize>,
+        }
         impl LeasedWake for Payload {
-            fn wake_by_ref(&self) { self.calls.fetch_add(1, Ordering::AcqRel); }
+            fn wake_by_ref(&self) {
+                self.calls.fetch_add(1, Ordering::AcqRel);
+            }
         }
         let log = Log::default();
         let value = Counted::new(&log);
         let plan = Counted::new(&log);
         let (token, plan_token) = (value.token, plan.token);
         let calls = Arc::new(AtomicUsize::new(0));
-        let shared = LeasedShared::try_new_precharged(Payload { _value: value, calls: calls.clone() }, plan).unwrap();
+        let shared = LeasedShared::try_new_precharged(
+            Payload {
+                _value: value,
+                calls: calls.clone(),
+            },
+            plan,
+        )
+        .unwrap();
         let pin = shared.clone();
         let base = test_deallocs();
         let waker = shared.into_waker();
@@ -2022,15 +2034,21 @@ mod tests {
 
     #[test]
     fn prepaid_consuming_wake_unwind_deallocates_before_original_plan() {
-        struct Payload { _value: Counted }
+        struct Payload {
+            _value: Counted,
+        }
         impl LeasedWake for Payload {
-            fn wake_by_ref(&self) { panic!("prepaid wake callback"); }
+            fn wake_by_ref(&self) {
+                panic!("prepaid wake callback");
+            }
         }
         let log = Log::default();
         let value = Counted::new(&log);
         let plan = Counted::new(&log);
         let (token, plan_token) = (value.token, plan.token);
-        let waker = LeasedShared::try_new_precharged(Payload { _value: value }, plan).unwrap().into_waker();
+        let waker = LeasedShared::try_new_precharged(Payload { _value: value }, plan)
+            .unwrap()
+            .into_waker();
         let base = test_deallocs();
         assert!(catch_unwind(AssertUnwindSafe(|| waker.wake())).is_err());
         assert_eq!(drops(&log, token), vec![base]);
