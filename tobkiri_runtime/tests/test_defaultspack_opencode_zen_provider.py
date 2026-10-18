@@ -539,16 +539,17 @@ def test_opencode_zen_mimo_free_stream_stops_on_done_without_finish_chunk(monkey
     assert response.closed is True
 
 
-def test_opencode_zen_stream_emits_one_end_after_final_usage(monkeypatch):
+def test_opencode_zen_stream_stops_at_terminal_choice_without_waiting_for_done(
+    monkeypatch,
+):
     provider = _provider(monkeypatch)
     provider._model_inventory_cache = [{"model_id": "mimo-v2.5-free"}]
     response = _FakeSseResponse(
         [
-            b'data: {"choices":[{"delta":{"content":"OK"},"finish_reason":"stop"}]}\n\n',
-            b'data: {"choices":[{"delta":{},"finish_reason":"stop"}],'
+            b'data: {"choices":[{"delta":{"content":"OK"},"finish_reason":"stop"}],'
             b'"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3}}\n\n',
-            b"data: [DONE]\n\n",
-        ]
+        ],
+        fail_after_chunks=True,
     )
 
     with patch.object(provider, "_request_openai_stream", return_value=response):
@@ -612,8 +613,8 @@ def test_opencode_zen_stream_recovers_completed_tool_calls_outside_delta(
                 )
                 + "\n\n"
             ).encode(),
-            b"data: [DONE]\n\n",
-        ]
+        ],
+        fail_after_chunks=True,
     )
 
     with patch.object(provider, "_request_openai_stream", return_value=response):
@@ -667,8 +668,8 @@ def test_opencode_zen_stream_recovers_missing_tool_payload_with_complete_call(
                 b'"usage":{"prompt_tokens":2,"completion_tokens":1,'
                 b'"total_tokens":3}}\n\n'
             ),
-            b"data: [DONE]\n\n",
-        ]
+        ],
+        fail_after_chunks=True,
     )
     recovered = {
         "choices": [
