@@ -43,6 +43,16 @@ class TemplateRegistry:
                     ),
                     template_id=template_id,
                     source_path=str(template.source_path) if template.source_path else None,
+                    details={
+                        "existing_source_pack_id": str(
+                            existing.metadata.get("source_pack_id") or "defaultspack"
+                        ),
+                        "duplicate_source_pack_id": str(
+                            template.metadata.get("source_pack_id") or "defaultspack"
+                        ),
+                        "existing_source_path": str(existing.source_path or ""),
+                        "duplicate_source_path": str(template.source_path or ""),
+                    },
                 )
             )
             self._diagnostics[template_id].extend(diagnostics)

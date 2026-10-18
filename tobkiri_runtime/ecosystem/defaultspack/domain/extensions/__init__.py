@@ -1,7 +1,7 @@
 """Manifest-driven extension discovery and registry APIs."""
 
 from .entrypoints import import_entrypoint, import_module, normalize_module_name
-from .activation import selected_extension_pack_ids
+from .activation import selected_extension_pack_artifacts, selected_extension_pack_ids
 from .registry import (
     AgentModeRegistry,
     ChatModeRegistry,
@@ -33,5 +33,6 @@ __all__ = [
     "get_extension_registry",
     "get_extensions_root",
     "get_extensions_roots",
+    "selected_extension_pack_artifacts",
     "selected_extension_pack_ids",
 ]

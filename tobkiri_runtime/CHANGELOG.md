@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Added
+- Added verified Pack v4 sibling-template discovery with loader-owned trust,
+  lifecycle-aware catalog invalidation, and source-pack collision diagnostics.
 - Added Quick Start section to README.md for easier onboarding
 - Added Troubleshooting section to README.md with common issues and solutions
 - Added Contributing section to README.md with development workflow guidelines

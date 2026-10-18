@@ -7,9 +7,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..extensions.activation import selected_extension_pack_ids
 from ._helpers import canonical_json
-from .discovery import default_template_roots
-from .models import CURRENT_TEMPLATE_SCHEMA_VERSION
+from .discovery import TemplateRoot, default_template_roots
+from .models import CURRENT_TEMPLATE_SCHEMA_VERSION, TemplateTrustLevel
 
 
 @dataclass(frozen=True)
@@ -29,11 +30,11 @@ class TemplateCatalogProvider:
         self,
         *,
         defaultspack_root: str | Path | None = None,
-        roots: list[str | Path] | None = None,
+        roots: list[str | Path | TemplateRoot] | None = None,
         force_reload: bool = False,
     ) -> TemplateCatalogSnapshot:
         root_key = str(_default_root(defaultspack_root))
-        roots_key = tuple(str(Path(root).resolve()) for root in roots or [])
+        roots_key = tuple(_root_cache_value(root) for root in roots or [])
         cache_key = (root_key, roots_key)
         generation, source_files = _catalog_generation(
             defaultspack_root=defaultspack_root,
@@ -78,7 +79,7 @@ _PROVIDER = TemplateCatalogProvider()
 def get_template_catalog_snapshot(
     *,
     defaultspack_root: str | Path | None = None,
-    roots: list[str | Path] | None = None,
+    roots: list[str | Path | TemplateRoot] | None = None,
     force_reload: bool = False,
 ) -> TemplateCatalogSnapshot:
     return _PROVIDER.get_snapshot(
@@ -98,7 +99,7 @@ def invalidate_template_catalog(
 def current_template_catalog_generation(
     *,
     defaultspack_root: str | Path | None = None,
-    roots: list[str | Path] | None = None,
+    roots: list[str | Path | TemplateRoot] | None = None,
 ) -> str:
     return _catalog_generation(defaultspack_root=defaultspack_root, roots=roots)[0]
 
@@ -106,7 +107,7 @@ def current_template_catalog_generation(
 def _build_catalog(
     *,
     defaultspack_root: str | Path | None,
-    roots: list[str | Path] | None,
+    roots: list[str | Path | TemplateRoot] | None,
 ) -> dict[str, Any]:
     from .projectors import build_template_catalog
 
@@ -116,12 +117,26 @@ def _build_catalog(
 def _catalog_generation(
     *,
     defaultspack_root: str | Path | None,
-    roots: list[str | Path] | None,
+    roots: list[str | Path | TemplateRoot] | None,
 ) -> tuple[str, list[str]]:
-    root_paths = _template_root_paths(defaultspack_root=defaultspack_root, roots=roots)
+    descriptors = _template_root_descriptors(defaultspack_root=defaultspack_root, roots=roots)
+    root_paths = [descriptor.path for descriptor in descriptors]
     files = _template_files(root_paths)
     payload = {
-        "roots": [str(path) for path in root_paths],
+        "roots": [
+            {
+                "path": str(descriptor.path),
+                "trust_level": _trust_value(descriptor.trust_level),
+                "source_pack_id": descriptor.source_pack_id or "",
+                "source_kind": descriptor.source_kind,
+                "source_pack_artifact_digest": (descriptor.source_pack_artifact_digest),
+                "pack_manifest_sha256": _pack_manifest_sha256(descriptor),
+            }
+            for descriptor in descriptors
+        ],
+        "selected_pack_ids": sorted(
+            _selected_pack_ids_for_generation(defaultspack_root, roots, descriptors)
+        ),
         "schema_version": CURRENT_TEMPLATE_SCHEMA_VERSION,
         "files": [
             {
@@ -135,19 +150,44 @@ def _catalog_generation(
     return generation, [str(path) for path in files]
 
 
-def _template_root_paths(
+def _template_root_descriptors(
     *,
     defaultspack_root: str | Path | None,
-    roots: list[str | Path] | None,
-) -> list[Path]:
+    roots: list[str | Path | TemplateRoot] | None,
+) -> list[TemplateRoot]:
     if roots is not None:
-        return sorted({Path(root).resolve() for root in roots})
-    return sorted(
-        {
-            template_root.path.resolve()
-            for template_root in default_template_roots(defaultspack_root)
-        }
-    )
+        descriptors = [
+            root
+            if isinstance(root, TemplateRoot)
+            else TemplateRoot(Path(root), TemplateTrustLevel.USER)
+            for root in roots
+        ]
+    else:
+        descriptors = default_template_roots(defaultspack_root)
+    result: list[TemplateRoot] = []
+    seen: set[tuple[Path, str, str, str, str]] = set()
+    for descriptor in descriptors:
+        resolved = descriptor.path.resolve()
+        key = (
+            resolved,
+            _trust_value(descriptor.trust_level),
+            descriptor.source_pack_id or "",
+            descriptor.source_kind,
+            descriptor.source_pack_artifact_digest,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(
+            TemplateRoot(
+                resolved,
+                descriptor.trust_level,
+                source_pack_id=descriptor.source_pack_id,
+                source_kind=descriptor.source_kind,
+                source_pack_artifact_digest=(descriptor.source_pack_artifact_digest),
+            )
+        )
+    return result
 
 
 def _template_files(root_paths: list[Path]) -> list[Path]:
@@ -171,6 +211,27 @@ def _file_sha256(path: Path) -> str:
         return ""
 
 
+def _pack_manifest_sha256(root: TemplateRoot) -> str:
+    if root.source_kind != "selected_sibling_pack":
+        return ""
+    pack_root = root.path.parent
+    return _file_sha256(pack_root / "pack.v4.json")
+
+
+def _selected_pack_ids_for_generation(
+    defaultspack_root: str | Path | None,
+    roots: list[str | Path | TemplateRoot] | None,
+    descriptors: list[TemplateRoot],
+) -> set[str]:
+    selected = {
+        descriptor.source_pack_id for descriptor in descriptors if descriptor.source_pack_id
+    }
+    if roots is not None:
+        return selected
+    selected.update(selected_extension_pack_ids(_default_root(defaultspack_root)))
+    return selected
+
+
 def _relative_template_path(path: Path, roots: list[Path]) -> str:
     resolved = path.resolve()
     for root in roots:
@@ -187,3 +248,21 @@ def _default_root(defaultspack_root: str | Path | None) -> Path:
         if defaultspack_root is not None
         else Path(__file__).resolve().parents[2]
     )
+
+
+def _trust_value(value: TemplateTrustLevel | str) -> str:
+    return value.value if isinstance(value, TemplateTrustLevel) else str(value)
+
+
+def _root_cache_value(root: str | Path | TemplateRoot) -> str:
+    if isinstance(root, TemplateRoot):
+        return "|".join(
+            (
+                str(root.path.resolve()),
+                _trust_value(root.trust_level),
+                root.source_pack_id or "",
+                root.source_kind,
+                root.source_pack_artifact_digest,
+            )
+        )
+    return str(Path(root).resolve())
