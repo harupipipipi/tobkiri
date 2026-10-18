@@ -1,5 +1,30 @@
 import 'package:flutter/material.dart';
 
+import 'chat_accessibility.dart';
+
+enum ComposerSendDisposition { accepted, rejected, queued }
+
+@immutable
+class ComposerSendResult {
+  const ComposerSendResult._(this.disposition, this.message);
+
+  const ComposerSendResult.accepted()
+      : this._(ComposerSendDisposition.accepted, null);
+
+  const ComposerSendResult.rejected(String message)
+      : this._(ComposerSendDisposition.rejected, message);
+
+  const ComposerSendResult.queued(String message)
+      : this._(ComposerSendDisposition.queued, message);
+
+  final ComposerSendDisposition disposition;
+  final String? message;
+
+  bool get clearsDraft => disposition == ComposerSendDisposition.accepted;
+}
+
+typedef ComposerSendCallback = Future<ComposerSendResult> Function(String text);
+
 class ComposerBar extends StatefulWidget {
   const ComposerBar({
     super.key,
@@ -10,7 +35,7 @@ class ComposerBar extends StatefulWidget {
     this.hint = 'メッセージを入力...',
   });
 
-  final ValueChanged<String> onSend;
+  final ComposerSendCallback onSend;
   final VoidCallback onStop;
   final bool busy;
   final VoidCallback? onAdd;
@@ -24,6 +49,9 @@ class _ComposerBarState extends State<ComposerBar> {
   final _controller = TextEditingController();
   final _focus = FocusNode();
   bool _hasText = false;
+  bool _submitting = false;
+  String? _feedback;
+  late String _lastReportedText;
 
   @override
   void initState() {
@@ -41,7 +69,7 @@ class _ComposerBarState extends State<ComposerBar> {
     super.dispose();
   }
 
-  void _send() {
+  Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty || widget.busy) return;
     widget.onSend(text);

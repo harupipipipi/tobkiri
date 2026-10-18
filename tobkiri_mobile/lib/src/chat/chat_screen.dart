@@ -22,11 +22,31 @@ import '../settings/api_config_store.dart';
 import '../settings/settings_screen.dart';
 import 'chat_drawer.dart';
 import 'defaultspack_action_icon.dart';
+import 'canonical_conversation_client.dart';
+import 'chat_draft_store.dart';
 import 'chat_models.dart';
 import 'chat_store.dart';
 import 'composer_bar.dart';
 import 'model_selection_screen.dart';
 import 'message_view.dart';
+
+typedef ConversationClientFactory = ConversationTransport Function(
+    MobileChatConnection connection);
+
+final class _ChatSubmission {
+  _ChatSubmission({
+    required this.text,
+    required this.userId,
+    required this.assistantId,
+  });
+
+  final String text;
+  final String userId;
+  final String assistantId;
+  String? conversationId;
+  int? expectedRevision;
+  bool accepted = false;
+}
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
