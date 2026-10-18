@@ -20,7 +20,9 @@ use wasmtime::component::{BudgetedVec, BudgetedVecBuilder, Val};
 use crate::{
     ProviderFrame, ProviderOrigin, ProviderRequest,
     host::{PackHost, interface_name, step_error},
-    owned_values::{ValueOwners, core_to_val, project_val_owned, val_to_core},
+    owned_values::{
+        ValueOwners, core_to_val, project_val_and_core_owned, project_val_owned, val_to_core,
+    },
 };
 
 impl PackHost {
@@ -609,8 +611,7 @@ impl PackHost {
                 let value = match (&provider.result, &caller.result, results.as_slice()) {
                     (None, None, []) => CoreValue::null(owners.graph())?,
                     (Some(from), Some(to), [value]) => {
-                        let value = project_val_owned(value, from, to, &owners)?;
-                        let graph = val_to_core(&value, to, &owners)?;
+                        let (value, graph) = project_val_and_core_owned(value, from, to, &owners)?;
                         projected.push(value)?;
                         graph
                     }
@@ -1037,8 +1038,8 @@ fn decode_result(
     let value = match (&provider.result, &caller.result, results) {
         (None, None, []) => CoreValue::null(owners.graph())?,
         (Some(from), Some(to), [value]) => {
-            let projected = project_val_owned(value, from, to, owners)?;
-            val_to_core(&projected, to, owners)?
+            let (_, graph) = project_val_and_core_owned(value, from, to, owners)?;
+            graph
         }
         _ => bail!("component result arity/signature mismatch"),
     };

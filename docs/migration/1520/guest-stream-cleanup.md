@@ -25,7 +25,9 @@ actual source, takes it once, and runs its close future in one prepaid task.
 Aliases join that same task. The two-second observer deadline remains fixed;
 timeout or a dropped observer cannot drop the actual close future or start a
 replacement close. Source destruction and the task join precede a physical close
-receipt. A late receipt cannot change an earlier uncertain handle outcome.
+receipt. A late receipt cannot turn an earlier uncertain handle outcome into
+success; an observed filesystem or SQL no-replay error may strengthen its
+classification.
 
 Registration, task, waiter, runtime and join failures still fail closed. In
 particular, failure to admit the cell after a source was produced is not proof of

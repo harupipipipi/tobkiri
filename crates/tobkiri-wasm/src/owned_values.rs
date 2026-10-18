@@ -645,6 +645,30 @@ pub(crate) fn project_val_owned(
     val_to_core(value, from, owners)?;
     project(value, from, to, owners, 0)
 }
+/// Return the projected component value and its validated immutable graph.
+/// Equal authoritative types need one graph construction: projection still
+/// performs its existing traversal charge and current producing-frame admission.
+/// Different types retain the original validation/projection/reparse sequence.
+pub(crate) fn project_val_and_core_owned(
+    value: &Val,
+    from: &WitType,
+    to: &WitType,
+    owners: &ValueOwners,
+) -> Result<(Val, CoreValue)> {
+    // These are immutable compiled shape descriptions, not guest value data.
+    if from == to {
+        let graph = val_to_core(value, from, owners)?;
+        let projected = project(value, from, to, owners, 0)?;
+        // Preserve the old second conversion's root work charge and fresh
+        // current-frame admission before returning the validated graph.
+        precharge_traversal(owners, val_width(&projected), type_width(to), 0)?;
+        return Ok((projected, graph));
+    }
+    let projected = project_val_owned(value, from, to, owners)?;
+    let graph = val_to_core(&projected, to, owners)?;
+    Ok((projected, graph))
+}
+
 fn project(
     value: &Val,
     from: &WitType,
@@ -919,18 +943,26 @@ mod tests {
     use wasmtime::component::{HostAllocationBudget, HostAllocationError, HostAllocationRequest};
     struct Meter {
         live: AtomicU64,
+        calls: AtomicU64,
+        deny_at: AtomicU64,
         work_limit: u64,
     }
     impl Meter {
         fn new(work_limit: u64) -> Arc<Self> {
             Arc::new(Self {
                 live: AtomicU64::new(0),
+                calls: AtomicU64::new(0),
+                deny_at: AtomicU64::new(u64::MAX),
                 work_limit,
             })
         }
     }
     impl AllocationBudget for Meter {
         fn reserve(&self, request: AllocationRequest) -> Result<(), AllocationError> {
+            let call = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+            if call == self.deny_at.load(Ordering::SeqCst) {
+                return Err(AllocationError::Unavailable);
+            }
             if request.work > self.work_limit {
                 return Err(AllocationError::Limit);
             }
@@ -1053,5 +1085,219 @@ mod tests {
         ]);
         assert!(core_to_val(&input, &ty, &owners).is_err());
         assert_eq!(destination.live.load(Ordering::SeqCst), 0);
+    }
+
+    fn public_json_result(owners: &ValueOwners) -> (Val, WitType) {
+        let json = r#"{"phase":"goal_intake","known":true,"usage":{"input":2022,"output":649},"ids":["gen-public","run-public"],"large":"18446744073709551615","text":"公開\n要約"}"#;
+        let payload = Val::String(BudgetedString::copy_from(json, owners.component(), 0).unwrap());
+        let value = Val::Result(Ok(Some(
+            BudgetedBox::new(payload, owners.component(), 0).unwrap(),
+        )));
+        let ty = WitType::Result {
+            ok: Some(Box::new(WitType::Json)),
+            err: None,
+        };
+        (value, ty)
+    }
+
+    #[test]
+    fn same_type_result_reuses_one_graph_with_identical_public_bytes() {
+        let source_meter = Meter::new(u64::MAX);
+        let source = owners(&source_meter);
+        let (raw, ty) = public_json_result(&source);
+
+        let validation_meter = Meter::new(u64::MAX);
+        let validation = owners(&validation_meter);
+        drop(val_to_core(&raw, &ty, &validation).unwrap());
+        let validation_calls = validation_meter.calls.load(Ordering::SeqCst);
+        assert!(validation_calls > 1);
+        assert_eq!(validation_meter.live.load(Ordering::SeqCst), 0);
+
+        let original_meter = Meter::new(u64::MAX);
+        let original = owners(&original_meter);
+        let old_projected = project_val_owned(&raw, &ty, &ty, &original).unwrap();
+        let old_graph = val_to_core(&old_projected, &ty, &original).unwrap();
+        let old_calls = original_meter.calls.load(Ordering::SeqCst);
+
+        let reused_meter = Meter::new(u64::MAX);
+        let reused = owners(&reused_meter);
+        let (new_projected, new_graph) =
+            project_val_and_core_owned(&raw, &ty, &ty, &reused).unwrap();
+        let new_calls = reused_meter.calls.load(Ordering::SeqCst);
+        assert_eq!(new_calls, validation_calls + 2);
+        assert_eq!(old_calls, new_calls + validation_calls - 1);
+        let old_encoded = old_graph.encode_guest(source.graph()).unwrap();
+        let new_encoded = new_graph.encode_guest(source.graph()).unwrap();
+        assert_eq!(new_encoded.as_bytes(), old_encoded.as_bytes());
+        assert!(matches!(old_projected, Val::Result(Ok(Some(_)))));
+        assert!(matches!(new_projected, Val::Result(Ok(Some(_)))));
+
+        drop((old_graph, new_graph, old_projected, new_projected));
+        assert_eq!(original_meter.live.load(Ordering::SeqCst), 0);
+        assert_eq!(reused_meter.live.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn same_type_result_still_checks_projection_admission_after_validation() {
+        let source_meter = Meter::new(u64::MAX);
+        let source = owners(&source_meter);
+        let (raw, ty) = public_json_result(&source);
+        let probe_meter = Meter::new(u64::MAX);
+        let probe = owners(&probe_meter);
+        drop(val_to_core(&raw, &ty, &probe).unwrap());
+        let validation_calls = probe_meter.calls.load(Ordering::SeqCst);
+
+        for denied_call in [validation_calls + 1, validation_calls + 2] {
+            let denied_meter = Meter::new(u64::MAX);
+            denied_meter.deny_at.store(denied_call, Ordering::SeqCst);
+            let denied = owners(&denied_meter);
+            let error = project_val_and_core_owned(&raw, &ty, &ty, &denied)
+                .err()
+                .expect("both current-frame admissions remain required");
+            assert!(matches!(
+                error.downcast_ref::<AllocationError>(),
+                Some(AllocationError::Unavailable)
+            ));
+            assert_eq!(denied_meter.calls.load(Ordering::SeqCst), denied_call);
+            assert_eq!(denied_meter.live.load(Ordering::SeqCst), 0);
+        }
+    }
+
+    #[test]
+    fn same_type_result_rejects_malformed_json_nonfinite_and_missing_payload() {
+        let source_meter = Meter::new(u64::MAX);
+        let source = owners(&source_meter);
+        let malformed = Val::String(
+            BudgetedString::copy_from(r#"{"same":1,"same":2}"#, source.component(), 0).unwrap(),
+        );
+        let missing = WitType::Result {
+            ok: Some(Box::new(WitType::U8)),
+            err: None,
+        };
+        for (raw, ty) in [
+            (malformed, WitType::Json),
+            (Val::Float64(f64::NAN), WitType::F64),
+            (Val::Result(Ok(None)), missing),
+        ] {
+            let meter = Meter::new(u64::MAX);
+            let owners = owners(&meter);
+            assert!(project_val_and_core_owned(&raw, &ty, &ty, &owners).is_err());
+            assert_eq!(meter.live.load(Ordering::SeqCst), 0);
+        }
+    }
+
+    #[test]
+    fn different_type_result_keeps_original_projection_and_reparse_charges() {
+        let source_meter = Meter::new(u64::MAX);
+        let source = owners(&source_meter);
+        let raw = Val::Record(
+            BudgetedVec::from_iter(
+                [(
+                    BudgetedString::copy_from("value", source.component(), 0).unwrap(),
+                    Val::S32(42),
+                )]
+                .into_iter(),
+                source.component(),
+                0,
+            )
+            .unwrap(),
+        );
+        let from = WitType::Record(vec![tobkiri_manifest::WitField {
+            name: "value".into(),
+            ty: WitType::S32,
+        }]);
+        let to = WitType::Record(vec![
+            tobkiri_manifest::WitField {
+                name: "value".into(),
+                ty: WitType::S32,
+            },
+            tobkiri_manifest::WitField {
+                name: "extra".into(),
+                ty: WitType::Option(Box::new(WitType::String)),
+            },
+        ]);
+        let old_meter = Meter::new(u64::MAX);
+        let old = owners(&old_meter);
+        let old_projected = project_val_owned(&raw, &from, &to, &old).unwrap();
+        let old_graph = val_to_core(&old_projected, &to, &old).unwrap();
+        let old_calls = old_meter.calls.load(Ordering::SeqCst);
+        let new_meter = Meter::new(u64::MAX);
+        let new = owners(&new_meter);
+        let (new_projected, new_graph) =
+            project_val_and_core_owned(&raw, &from, &to, &new).unwrap();
+        assert_eq!(new_meter.calls.load(Ordering::SeqCst), old_calls);
+        assert_eq!(
+            new_meter.live.load(Ordering::SeqCst),
+            old_meter.live.load(Ordering::SeqCst)
+        );
+        let old_encoded = old_graph.encode_guest(source.graph()).unwrap();
+        let new_encoded = new_graph.encode_guest(source.graph()).unwrap();
+        assert_eq!(new_encoded.as_bytes(), old_encoded.as_bytes());
+        assert!(matches!(
+            new_graph.get_key("extra").unwrap().inspect(),
+            CoreRef::Null
+        ));
+        drop((old_graph, new_graph, old_projected, new_projected));
+        assert_eq!(old_meter.live.load(Ordering::SeqCst), 0);
+        assert_eq!(new_meter.live.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn same_type_result_retains_both_original_payload_and_graph_owners() {
+        let source_meter = Meter::new(u64::MAX);
+        let source_weak = Arc::downgrade(&source_meter);
+        let source = owners(&source_meter);
+        let (raw, ty) = public_json_result(&source);
+        let graph_meter = Meter::new(u64::MAX);
+        let graph_weak = Arc::downgrade(&graph_meter);
+        let graph_owner = owners(&graph_meter);
+        let (projected, graph) = project_val_and_core_owned(&raw, &ty, &ty, &graph_owner).unwrap();
+        drop((raw, source, source_meter, graph_owner, graph_meter));
+        assert!(source_weak.upgrade().is_some());
+        assert!(graph_weak.upgrade().is_some());
+        assert!(graph.get_key("val").unwrap().get_key("known").is_some());
+        drop(projected);
+        assert!(source_weak.upgrade().is_none());
+        assert!(graph_weak.upgrade().is_some());
+        drop(graph);
+        assert!(graph_weak.upgrade().is_none());
+    }
+
+    #[test]
+    fn same_type_result_preserves_exact_handle_shape_without_minting_authority() {
+        let source_meter = Meter::new(u64::MAX);
+        let source = owners(&source_meter);
+        for ty in [WitType::StreamHandle, WitType::CallbackHandle] {
+            let raw = Val::Record(
+                BudgetedVec::from_iter(
+                    [(
+                        BudgetedString::copy_from("id", source.component(), 0).unwrap(),
+                        Val::U64(u64::MAX),
+                    )]
+                    .into_iter(),
+                    source.component(),
+                    0,
+                )
+                .unwrap(),
+            );
+            let meter = Meter::new(u64::MAX);
+            let owners = owners(&meter);
+            let (projected, graph) = project_val_and_core_owned(&raw, &ty, &ty, &owners).unwrap();
+            let Val::Record(fields) = &projected else {
+                panic!("handle representation changed");
+            };
+            assert!(matches!(fields[0].1, Val::U64(u64::MAX)));
+            assert_eq!(
+                graph.get_key("id").unwrap().as_str(),
+                Some("18446744073709551615")
+            );
+            drop((projected, graph));
+            assert_eq!(meter.live.load(Ordering::SeqCst), 0);
+            let malformed = Val::Record(
+                BudgetedVec::from_iter(std::iter::empty(), source.component(), 0).unwrap(),
+            );
+            assert!(project_val_and_core_owned(&malformed, &ty, &ty, &owners).is_err());
+            assert_eq!(meter.live.load(Ordering::SeqCst), 0);
+        }
     }
 }

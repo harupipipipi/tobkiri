@@ -493,13 +493,10 @@ fn persistence(error: impl std::fmt::Display) -> GateError {
 fn status(conn: &rusqlite::Connection) -> Result<AdmissionStatus, GateError> {
     let code: Option<Vec<u8>> = tobkiri_gate::measure_closed!(
         GuardFaultSelect,
-        conn.query_row(
-            "SELECT code FROM authority_fault WHERE singleton=1",
-            [],
-            |r| r.get(0),
-        )
-        .optional()
-        .map_err(persistence)
+        conn.prepare_cached("SELECT code FROM authority_fault WHERE singleton=1")
+            .and_then(|mut statement| statement.query_row([], |r| r.get(0)))
+            .optional()
+            .map_err(persistence)
     )?;
     code.map_or(Ok(AdmissionStatus::Allowed), |bytes| {
         Ok(AdmissionStatus::IntegrityFault {
@@ -547,12 +544,9 @@ impl ApprovalStore for Approvals {
         )?;
         tobkiri_gate::measure_closed!(
             GuardEpochSelect,
-            conn.query_row(
-                "SELECT epoch FROM security_epoch WHERE singleton=1",
-                [],
-                |r| crate::sql_u64(r, 0),
-            )
-            .map_err(persistence)
+            conn.prepare_cached("SELECT epoch FROM security_epoch WHERE singleton=1")
+                .and_then(|mut statement| statement.query_row([], |r| crate::sql_u64(r, 0)))
+                .map_err(persistence)
         )
     }
     fn advance_security_epoch(&self, profile: &ProfileId) -> Result<u64, GateError> {
@@ -590,13 +584,12 @@ impl ApprovalStore for Approvals {
         )?;
         let body: Option<Vec<u8>> = tobkiri_gate::measure_closed!(
             GuardPackPermissionsSelect,
-            conn.query_row(
-                "SELECT body FROM permissions WHERE pack=?1 AND hash=?2",
-                params![pack.as_str(), hash.as_str()],
-                |r| r.get(0),
-            )
-            .optional()
-            .map_err(persistence)
+            conn.prepare_cached("SELECT body FROM permissions WHERE pack=?1 AND hash=?2")
+                .and_then(|mut statement| {
+                    statement.query_row(params![pack.as_str(), hash.as_str()], |r| r.get(0))
+                })
+                .optional()
+                .map_err(persistence)
         )?;
         body.map(|b| decode(&b).map_err(persistence)).transpose()
     }
@@ -626,7 +619,19 @@ impl ApprovalStore for Approvals {
             ApprovalDbLockWait,
             self.connection.lock().map_err(persistence)
         )?;
-        let body: Option<Vec<u8>> = tobkiri_gate::measure_closed!(GuardUserPermissionsSelect, conn.query_row("SELECT body FROM user_approvals WHERE profile_hash=?1 AND revision=?2 AND epoch=?3", params![profile_hash.as_str(),revision.as_str(),i64::try_from(epoch).map_err(persistence)?], |r|r.get(0)).optional().map_err(persistence))?;
+        let body: Option<Vec<u8>> = tobkiri_gate::measure_closed!(GuardUserPermissionsSelect, {
+            // As before, reject an out-of-range parameter before preparing SQL.
+            let query_epoch = i64::try_from(epoch).map_err(persistence)?;
+            conn.prepare_cached("SELECT body FROM user_approvals WHERE profile_hash=?1 AND revision=?2 AND epoch=?3")
+                .and_then(|mut statement| {
+                    statement.query_row(
+                        params![profile_hash.as_str(), revision.as_str(), query_epoch],
+                        |r| r.get(0),
+                    )
+                })
+                .optional()
+                .map_err(persistence)
+        })?;
         body.map(|bytes| decode(&bytes).map_err(persistence))
             .transpose()
     }
@@ -1661,3 +1666,7 @@ mod cleanup_snapshot_tests {
         connection.execute_batch("ROLLBACK").unwrap();
     }
 }
+
+#[cfg(test)]
+#[path = "approvals_cached_tests.rs"]
+mod cached_select_tests;

@@ -5,8 +5,11 @@ diagnostics in `profile session`. The feature is off by default; one-shot
 `profile invoke` output and the normal session protocol remain unchanged.
 The same ordinary Core authorization, deadline, admission and audit paths apply.
 
-After each `request_finished`, this build emits one `request_metrics` row with
-format `tobkiri.closed-request-metrics/1`. The fixed 24-slot bank and 8 KiB encoder
+When the observation bank was admitted and terminal output succeeds, this build
+emits one `request_metrics` row after `request_finished`, with format
+`tobkiri.closed-request-metrics/1`. Bank admission or output failure can leave no
+metrics row; absence is not zero-cost or success evidence. The fixed 24-slot bank
+and 8 KiB encoder
 scratch are prepaid from the request's Core control account. Descendants retain
 the same bank and its funding through their actual lifetimes. Observing a bank
 does not grant authority. Synchronous Store hooks receive a scoped observation;
