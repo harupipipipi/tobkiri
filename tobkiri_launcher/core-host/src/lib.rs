@@ -2,12 +2,14 @@
 
 #[path = "../../src-tauri/src/core_host_commands.rs"]
 mod commands;
+mod debug_scope;
 mod isolation;
 mod native_contract;
 mod runtime;
 mod transport;
 
 pub use commands::CORE_HOST_COMMANDS;
+pub use debug_scope::{DebugScope, DebugScopeError};
 pub use isolation::{
     HostCaller, HostError, PACK_UI_CSP, PackAssetPath, PackAssetRequest, trusted_host_origin,
 };
@@ -16,7 +18,8 @@ pub use native_contract::{
     preserve_primary_close, restore_primary, startup_ui_embedding, trusted_review,
 };
 pub use runtime::{
-    LauncherCore, UiFrame, UiOperationRegistration, UiTransportResponse, UiTransportTicket,
+    LauncherCore, PackAsset, UiFrame, UiOperationRegistration, UiRoute, UiTransportResponse,
+    UiTransportTicket,
 };
 pub use transport::{
     TRUSTED_HOST_RECEIVER, TicketReservation, TransportTickets, copy_final_host_payload,

@@ -104,8 +104,10 @@ pub(crate) fn link_core_and_ports(
                                             &cx,
                                             &shape,
                                             &op,
-                                            admitted.as_deref().unwrap_or(params),
-                                            &signature,
+                                            crate::dispatch::TypedProxyInput {
+                                                params: admitted.as_deref().unwrap_or(params),
+                                                function: &signature,
+                                            },
                                             &owners,
                                             &frame,
                                         )
@@ -281,15 +283,15 @@ async fn finish_handle(
 ) -> Result<()> {
     entry.lease.begin_close();
     let mut receipt = entry.lease.close.lock().await;
-    if entry
-        .lease
-        .permit
-        .as_ref()
-        .is_some_and(|permit| std::time::Instant::now() >= permit.deadline())
-    {
-        receipt.deadline_settlement = true;
-    }
     if receipt.outcome.is_none() {
+        if entry
+            .lease
+            .permit
+            .as_ref()
+            .is_some_and(|permit| std::time::Instant::now() >= permit.deadline())
+        {
+            receipt.deadline_settlement = true;
+        }
         receipt.outcome = Some(outcome);
     }
     if !receipt.delivered {
@@ -336,26 +338,92 @@ async fn finish_handle(
             frame
                 .terminal_acknowledged(&acknowledged)
                 .map_err(anyhow::Error::new)?;
+            receipt.outcome = Some(acknowledged.outcome().clone());
         }
         receipt.delivered = true;
     }
     Ok(())
 }
 
-async fn release_stream_once(host: &PackHost, entry: &crate::HandleEntry) -> Result<()> {
+struct StreamRelease {
+    source_report: Option<tobkiri_flow::StreamCloseReport>,
+    // The first observer moves the original error. Only bounded closed codes
+    // remain cached in HandleCloseReceipt for an abandoned/repeated observer.
+    source_error: Option<tobkiri_flow::StepError>,
+}
+impl StreamRelease {
+    fn complete() -> Self {
+        Self {
+            source_report: None,
+            source_error: None,
+        }
+    }
+    fn result(self) -> Result<()> {
+        match self.source_error {
+            Some(error) => Err(error.into()),
+            None => Ok(()),
+        }
+    }
+}
+async fn release_stream_once(host: &PackHost, entry: &crate::HandleEntry) -> Result<StreamRelease> {
     entry.lease.begin_close();
     let mut receipt = entry.lease.close.lock().await;
     if !receipt.cleanup_started {
         receipt.cleanup_started = true;
-        let result = release_stream(host, entry).await;
-        receipt.cleanup_done = result.is_ok();
-        receipt.cleanup_error = result.err().map(|_| "stream cleanup completion unknown");
+        match release_stream(host, entry).await {
+            Ok(released) => {
+                receipt.cleanup_done = true;
+                receipt.source_report = released.source_report;
+                return Ok(released);
+            }
+            Err(_) => {
+                receipt.cleanup_error = Some("stream cleanup completion unknown");
+            }
+        }
     }
     if !receipt.cleanup_done {
         bail!(
             receipt
                 .cleanup_error
                 .unwrap_or("stream cleanup attempt was interrupted")
+        )
+    }
+    Ok(StreamRelease {
+        source_report: receipt.source_report,
+        source_error: receipt
+            .source_report
+            .and_then(|report| report.cached_error()),
+    })
+}
+
+async fn release_callback_once(host: &PackHost, entry: &crate::HandleEntry) -> Result<()> {
+    entry.lease.begin_close();
+    let mut receipt = entry.lease.close.lock().await;
+    if !receipt.cleanup_started {
+        receipt.cleanup_started = true;
+        let cleanup = match entry.owner.principal().pack() {
+            Some(_) => host.discard_handle_source(entry).await,
+            None => Err(anyhow::anyhow!("callback physical owner missing")),
+        }
+        .and_then(|()| {
+            if entry.operation.is_none()
+                && entry
+                    .native_children
+                    .as_ref()
+                    .is_some_and(|children| children.load(std::sync::atomic::Ordering::Acquire))
+            {
+                bail!("callback Store ended but registered native child completion is unknown")
+            }
+            Ok(())
+        });
+        receipt.cleanup_done = cleanup.is_ok();
+        receipt.cleanup_error = cleanup.err().map(|_| "callback cleanup completion unknown");
+    }
+    if !receipt.cleanup_done {
+        bail!(
+            receipt
+                .cleanup_error
+                .unwrap_or("callback cleanup attempt was interrupted")
         )
     }
     Ok(())
@@ -367,8 +435,11 @@ pub(crate) async fn finish_stream_eof(
     id: u64,
     entry: &crate::HandleEntry,
 ) -> Result<()> {
-    release_stream_once(host, entry).await?;
-    finish_handle(host, entry, Outcome::Succeeded).await?;
+    let released = release_stream_once(host, entry).await?;
+    let outcome = released
+        .source_report
+        .map_or(Outcome::Succeeded, |report| report.outcome());
+    finish_handle(host, entry, outcome).await?;
     if entry.lease.close.lock().await.outcome.as_ref() != Some(&Outcome::Succeeded)
         && entry.lease.grant.is_some()
     {
@@ -379,29 +450,207 @@ pub(crate) async fn finish_stream_eof(
         .lock()
         .map_err(|_| anyhow::anyhow!("handle table poisoned"))?
         .remove_captured(id, cx, entry)?;
-    Ok(())
+    {
+        let mut receipt = entry.lease.close.lock().await;
+        receipt.close_report_confirmed = receipt.cleanup_done && receipt.delivered;
+    }
+    released.result()
 }
 
-fn cancellation_outcome(entry: &crate::HandleEntry, reason: ExpiryReason, proven: bool) -> Outcome {
-    if matches!(reason, ExpiryReason::Deadline)
-        || std::time::Instant::now() >= entry.owner.deadline()
-    {
-        Outcome::Failed {
-            code: "deadline-failure-unknown".into(),
+fn close_reason(reason: ExpiryReason) -> tobkiri_flow::StreamCloseReason {
+    match reason {
+        ExpiryReason::Deadline => tobkiri_flow::StreamCloseReason::Deadline,
+        ExpiryReason::UserCancel => tobkiri_flow::StreamCloseReason::Manual,
+        ExpiryReason::Retired => tobkiri_flow::StreamCloseReason::Retired,
+        ExpiryReason::Revoked | ExpiryReason::Unknown => tobkiri_flow::StreamCloseReason::Unknown,
+    }
+}
+fn record_cleanup_cause(entry: &crate::HandleEntry, reason: ExpiryReason) -> Result<()> {
+    if let Some(control) = &entry.close_control {
+        control
+            .record_close(close_reason(reason))
+            .map_err(anyhow::Error::new)?;
+    }
+    Ok(())
+}
+/// Internal observation of the immutable selected-cause slot. `Pending`
+/// means the slot was transiently unobservable or an authenticated busy
+/// retry is still outstanding — the same cleanup owner must retry rather
+/// than treating the slot as a settled "unknown". `Uncertain` marks a
+/// poisoned slot: unconfirmed and never retryable as busy.
+pub(crate) enum CauseObservation {
+    Observed(Option<crate::handles::SelectedCloseCause>),
+    Pending,
+    Uncertain,
+}
+pub(crate) fn observe_cause(entry: &crate::HandleEntry) -> CauseObservation {
+    match entry.lease.cause.try_lock() {
+        Ok(cause) => CauseObservation::Observed(cause.clone()),
+        // WouldBlock is a positive transient signal; poison is not.
+        Err(std::sync::TryLockError::WouldBlock) => CauseObservation::Pending,
+        Err(std::sync::TryLockError::Poisoned(_)) => CauseObservation::Uncertain,
+    }
+}
+/// Bounded re-observation for the original async cleanup owner only. An
+/// empty slot is reported absent only when no authenticated busy retry is
+/// outstanding; transient contention and outstanding intent both wait inside
+/// the lease's original cleanup episode rather than committing "unknown".
+/// No cause is ever manufactured here and uncertainty is never cleared.
+pub(crate) async fn observe_cause_bounded(entry: &crate::HandleEntry) -> CauseObservation {
+    let bound = entry.lease.cleanup_episode_bound(entry.owner.deadline());
+    let mut backoff = std::time::Duration::from_millis(1);
+    loop {
+        match observe_cause(entry) {
+            CauseObservation::Observed(None)
+                if entry
+                    .lease
+                    .cause_pending
+                    .load(std::sync::atomic::Ordering::Acquire) =>
+            {
+                // An authenticated busy retry is still outstanding: the
+                // empty slot is unconfirmed, not a settled unknown.
+            }
+            CauseObservation::Pending => {}
+            observed => return observed,
         }
-    } else if matches!(reason, ExpiryReason::UserCancel) && proven {
-        Outcome::Cancelled
-    } else {
-        Outcome::Failed {
-            code: "cleanup-unknown".into(),
+        let now = std::time::Instant::now();
+        if now >= bound {
+            return CauseObservation::Pending;
+        }
+        tokio::time::sleep(backoff.min(bound.saturating_duration_since(now))).await;
+        backoff = (backoff * 2).min(std::time::Duration::from_millis(32));
+    }
+}
+/// The existing async cleanup owner's single bounded selection episode.
+/// Authenticated pre-callback busy retries with backoff strictly OUTSIDE all
+/// Core/generation/DB/cause guards; the window is the original two-second
+/// cleanup episode initialized once per lease and narrowed by the original
+/// effect deadline. Exhaustion leaves the cause unselected — it is never
+/// committed as a proven cancellation and uncertainty is never cleared.
+async fn select_cleanup_cause_bounded(
+    entry: &crate::HandleEntry,
+    reason: ExpiryReason,
+) -> Result<()> {
+    use crate::host::CleanupSelection;
+    let Some(selector) = entry.close_selector.clone() else {
+        return record_cleanup_cause(entry, reason);
+    };
+    let bound = entry.lease.cleanup_episode_bound(entry.owner.deadline());
+    let mut backoff = std::time::Duration::from_millis(4);
+    loop {
+        // One synchronous attempt each turn; the stored original intent is
+        // republished idempotently, never rewritten.
+        match selector.select_typed(close_reason(reason), None) {
+            CleanupSelection::Selected => return Ok(()),
+            CleanupSelection::Uncertain(error) => return Err(error.into()),
+            CleanupSelection::Vacant | CleanupSelection::Busy => {
+                let now = std::time::Instant::now();
+                if now >= bound {
+                    return Err(anyhow::anyhow!("cleanup cause observation remained busy"));
+                }
+                tokio::time::sleep(backoff.min(bound.saturating_duration_since(now))).await;
+                backoff = (backoff * 2).min(std::time::Duration::from_millis(64));
+            }
         }
     }
 }
+async fn cancellation_outcome(
+    entry: &crate::HandleEntry,
+    _reason: ExpiryReason,
+    proven: bool,
+) -> Outcome {
+    use crate::handles::SelectedCloseCause as Cause;
+    // A manual intent is not a terminal reservation. A deadline may still win
+    // before physical completion, and Gate's CAS rechecks it at settlement.
+    // A transiently busy or pending cause slot is never a settled unknown.
+    if proven && entry.lease.grant.is_none() {
+        let receipt = entry.lease.close.lock().await;
+        if let Some(report) = receipt.source_report {
+            return report.outcome();
+        }
+    }
+    let selected = observe_cause_bounded(entry).await;
+    if let CauseObservation::Observed(Some(Cause::Terminal(outcome))) = &selected {
+        return outcome.clone();
+    }
+    if std::time::Instant::now() >= entry.owner.deadline() {
+        return Outcome::Failed {
+            code: "deadline-failure-unknown".into(),
+        };
+    }
+    match selected {
+        // Cancelled is the shared cancellation disposition. The independently
+        // observed Revoked cause remains immutable; it is never relabelled as
+        // manual intent and still requires actual physical completion.
+        CauseObservation::Observed(Some(Cause::Manual | Cause::Shutdown | Cause::Revoked))
+            if proven
+                && !entry
+                    .lease
+                    .cause_uncertain
+                    .load(std::sync::atomic::Ordering::Acquire) =>
+        {
+            Outcome::Cancelled
+        }
+        CauseObservation::Observed(Some(Cause::ProducerFailure(code))) if proven => {
+            Outcome::Failed { code: code.into() }
+        }
+        CauseObservation::Observed(Some(Cause::Deadline)) => Outcome::Failed {
+            code: "deadline-failure-unknown".into(),
+        },
+        _ => Outcome::Failed {
+            code: "cleanup-unknown".into(),
+        },
+    }
+}
+fn cleanup_cause_confirmed(
+    entry: &crate::HandleEntry,
+    receipt: &crate::handles::HandleCloseReceipt,
+    observed: CauseObservation,
+) -> bool {
+    use crate::handles::SelectedCloseCause as Cause;
+    if receipt.deadline_settlement
+        || matches!(&receipt.outcome, Some(Outcome::Failed { code }) if matches!(code.as_str(), "cleanup-unknown" | "deadline-failure-unknown" | "source-retired"))
+    {
+        return false;
+    }
+    if entry
+        .lease
+        .cause_uncertain
+        .load(std::sync::atomic::Ordering::Acquire)
+    {
+        return false;
+    }
+    if let Some(report) = receipt.source_report
+        && !receipt
+            .outcome
+            .as_ref()
+            .is_some_and(|outcome| report.matches_outcome(outcome))
+    {
+        return false;
+    }
+    match observed {
+        CauseObservation::Observed(Some(
+            Cause::Manual | Cause::Shutdown | Cause::Revoked | Cause::ProducerFailure(_),
+        )) => true,
+        CauseObservation::Observed(Some(Cause::Terminal(
+            Outcome::Succeeded | Outcome::Cancelled,
+        ))) => true,
+        CauseObservation::Observed(Some(Cause::Terminal(Outcome::Failed { code }))) => !matches!(
+            code.as_str(),
+            "cleanup-unknown" | "deadline-failure-unknown" | "source-retired"
+        ),
+        CauseObservation::Observed(None) if entry.lease.grant.is_none() => true,
+        _ => false,
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(crate) enum ExpiryReason {
     Deadline,
     Revoked,
     UserCancel,
+    Retired,
+    Unknown,
 }
 
 pub(crate) async fn pull_stream(
@@ -451,13 +700,17 @@ pub(crate) async fn pull_stream(
     }.await;
     match &result {
         Ok(events) if events.array().is_some_and(|events| events.is_empty()) => {
-            release_stream_once(host, &entry).await?;
-            finish_handle(host, &entry, Outcome::Succeeded).await?;
+            let released = release_stream_once(host, &entry).await?;
+            let outcome = released
+                .source_report
+                .map_or(Outcome::Succeeded, |report| report.outcome());
+            finish_handle(host, &entry, outcome).await?;
             host.shared
                 .handles
                 .lock()
                 .map_err(|_| anyhow::anyhow!("handle table poisoned"))?
                 .remove(id, HandleKind::Stream, cx)?;
+            released.result()?;
         }
         Err(_) => {
             // Release the provider on a malformed batch or trap, then record
@@ -466,10 +719,17 @@ pub(crate) async fn pull_stream(
             finish_handle(
                 host,
                 &entry,
-                if std::time::Instant::now() >= entry.owner.deadline() {
-                    cancellation_outcome(&entry, ExpiryReason::Deadline, false)
+                if let Some(report) = cleanup
+                    .as_ref()
+                    .ok()
+                    .and_then(|released| released.source_report)
+                    .filter(|_| entry.lease.grant.is_none())
+                {
+                    report.outcome()
+                } else if std::time::Instant::now() >= entry.owner.deadline() {
+                    cancellation_outcome(&entry, ExpiryReason::Deadline, false).await
                 } else if cx.cancel().is_cancelled() {
-                    cancellation_outcome(&entry, ExpiryReason::Revoked, cleanup.is_ok())
+                    cancellation_outcome(&entry, ExpiryReason::Revoked, cleanup.is_ok()).await
                 } else {
                     Outcome::Failed {
                         code: "stream-pull".into(),
@@ -567,14 +827,33 @@ pub(crate) async fn pull_guest_source(
         .reserve_output(encoded.len() as u64, entry.owner.limits().output_bytes)?;
     Ok((events, final_output.then_some(encoded)))
 }
-async fn release_stream(host: &PackHost, entry: &crate::HandleEntry) -> Result<()> {
+async fn release_stream(host: &PackHost, entry: &crate::HandleEntry) -> Result<StreamRelease> {
     if let Some(source) = &entry.source {
-        match tokio::time::timeout(std::time::Duration::from_secs(2), async {
-            source.lock().await.close().await
+        return match tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            let mut source = source.lock().await;
+            let physical = source
+                .physical_completion()
+                .context("core source physical receipt is unavailable")?;
+            let closed = source.close().await;
+            physical.wait().await.map_err(anyhow::Error::new)?;
+            let report = source.close_report();
+            if closed.is_err()
+                && !report.is_some_and(|report| {
+                    report.business_error().is_some() || report.audit_error().is_some()
+                })
+            {
+                // Physical completion alone does not classify an authority or
+                // terminal-integrity failure as a harmless business error.
+                bail!("core source close classification remains unknown")
+            }
+            Ok(StreamRelease {
+                source_report: report,
+                source_error: closed.err(),
+            })
         })
         .await
         {
-            Ok(result) => result.map_err(anyhow::Error::new)?,
+            Ok(result) => result,
             Err(_) => {
                 // A pull holds this mutex while awaiting the run. Revoke its
                 // original request after the grace bound so cleanup cannot wait
@@ -582,60 +861,86 @@ async fn release_stream(host: &PackHost, entry: &crate::HandleEntry) -> Result<(
                 entry.owner.cancel().cancel();
                 bail!("core stream cleanup exceeded its cancellation grace")
             }
-        }
-        return Ok(());
+        };
     }
-    host.check_handle_generation(entry)?;
+    if entry
+        .store_disposal
+        .as_ref()
+        .is_some_and(|receipt| receipt.is_complete())
+    {
+        host.discard_handle_source(entry).await?;
+        if entry.operation.is_none()
+            && entry
+                .native_children
+                .as_ref()
+                .is_some_and(|children| children.load(std::sync::atomic::Ordering::Acquire))
+        {
+            bail!("component Store ended but registered native child completion is unknown")
+        }
+        return Ok(StreamRelease::complete());
+    }
+    // An already-retiring source may have an owned disposal task. Skip guest
+    // cleanup and observe that exact generation instead of a replacement VM.
+    let generation_live = host.check_handle_generation(entry).is_ok();
     let (owner, _) = entry
         .owner
         .principal()
         .pack()
         .context("stream owner is not a Pack")?;
     let mut cancel_acknowledged = false;
-    if host.shared.gate.check_context(&entry.owner).is_ok() {
-        if let (Some(frame), Some(version)) = (&entry.source_frame, entry.source_version) {
-            let call = async {
-                let cx = frame.context();
-                let owners = host.allocation_owners_for_frame(
-                    cx,
-                    frame
-                        .allocation_scope(tobkiri_gate::AllocationReason::RuntimeValue)
-                        .map_err(anyhow::Error::new)?,
-                )?;
-                host.export_call_owned(
-                    owner,
-                    cx,
-                    &format!("tobkiri:core/stream-source@{version}"),
-                    "cancel",
-                    &[Val::U64(entry.local_id)],
-                    entry.generation,
-                    &owners,
-                    frame.clone(),
-                    frame
-                        .allocation_scope(tobkiri_gate::AllocationReason::RuntimeValue)
-                        .map_err(anyhow::Error::new)?,
-                )
-                .await
-            };
-            cancel_acknowledged = matches!(
-                tokio::time::timeout(std::time::Duration::from_secs(2), call).await,
-                Ok(Ok((ref values, _))) if void_source_cancel_ack(values.as_slice())
-            );
-        }
+    if generation_live
+        && host.shared.gate.check_context(&entry.owner).is_ok()
+        && let (Some(frame), Some(version)) = (&entry.source_frame, entry.source_version)
+    {
+        let call = async {
+            let cx = frame.context();
+            let owners = host.allocation_owners_for_frame(
+                cx,
+                frame
+                    .allocation_scope(tobkiri_gate::AllocationReason::RuntimeValue)
+                    .map_err(anyhow::Error::new)?,
+            )?;
+            host.export_call_owned(
+                owner,
+                cx,
+                &format!("tobkiri:core/stream-source@{version}"),
+                "cancel",
+                &[Val::U64(entry.local_id)],
+                entry.generation,
+                &owners,
+                frame.clone(),
+                frame
+                    .allocation_scope(tobkiri_gate::AllocationReason::RuntimeValue)
+                    .map_err(anyhow::Error::new)?,
+            )
+            .await
+        };
+        cancel_acknowledged = matches!(
+            tokio::time::timeout(std::time::Duration::from_secs(2), call).await,
+            Ok(Ok((ref values, _))) if void_source_cancel_ack(values.as_slice())
+        );
     }
     // The frozen source cancel operation returns void. Its ACK is not proof
     // that an untrusted guest dropped every native response/resource it owns.
     // Until per-stream native resource custody exists, ALWAYS await destruction
     // of this Store, including after a valid ACK. Revoked/expired contexts never
     // execute fresh guest cleanup. Native tasks retain their own actual leases.
-    host.discard_instance(owner)
+    host.discard_handle_source(entry)
         .await
         .context(if cancel_acknowledged {
             "physical stream cleanup incomplete after void cancel acknowledgement"
         } else {
             "physical stream cleanup incomplete without cancel acknowledgement"
         })?;
-    Ok(())
+    if entry.operation.is_none()
+        && entry
+            .native_children
+            .as_ref()
+            .is_some_and(|children| children.load(std::sync::atomic::Ordering::Acquire))
+    {
+        bail!("component Store ended but registered native child completion is unknown")
+    }
+    Ok(StreamRelease::complete())
 }
 fn void_source_cancel_ack(values: &[Val]) -> bool {
     values.is_empty()
@@ -675,17 +980,37 @@ async fn cancel_captured_stream_reason(
     if entry.kind != HandleKind::Stream || !entry.recipient_matches(cx) {
         bail!("captured stream outside the recipient scope")
     }
-    {
+    let selection = select_cleanup_cause_bounded(entry, reason).await;
+    let completed = {
         let receipt = entry.lease.close.lock().await;
-        if receipt.cleanup_done && receipt.delivered {
-            return Ok(());
+        receipt.cleanup_done && receipt.delivered
+    };
+    if completed {
+        // A later observer failure cannot revoke the same entry's already
+        // completed cleanup and acknowledged terminal. Reobserve its exact
+        // immutable cause/receipt — a transiently busy or pending slot is
+        // never a settled unknown — so uncertainty, deadline and retirement
+        // checks remain authoritative even when this observer lost. No fresh
+        // grant or effect is minted on this branch.
+        let observed = observe_cause_bounded(entry).await;
+        let mut receipt = entry.lease.close.lock().await;
+        if !cleanup_cause_confirmed(entry, &receipt, observed) {
+            bail!("earlier stream cleanup outcome remains uncertain or failed")
         }
+        receipt.close_report_confirmed = true;
+        return match receipt
+            .source_report
+            .and_then(|report| report.cached_error())
+        {
+            Some(error) => Err(error.into()),
+            None => Ok(()),
+        };
     }
-    let result = release_stream_once(host, &entry).await;
+    let result = release_stream_once(host, entry).await;
     finish_handle(
         host,
-        &entry,
-        cancellation_outcome(&entry, reason, result.is_ok()),
+        entry,
+        cancellation_outcome(entry, reason, result.is_ok() && selection.is_ok()).await,
     )
     .await?;
     if result.is_ok() {
@@ -695,7 +1020,17 @@ async fn cancel_captured_stream_reason(
             .map_err(|_| anyhow::anyhow!("handle table poisoned"))?
             .remove_captured(id, cx, entry)?;
     }
-    result
+    let released = result?;
+    selection?;
+    let observed = observe_cause_bounded(entry).await;
+    {
+        let mut receipt = entry.lease.close.lock().await;
+        if !cleanup_cause_confirmed(entry, &receipt, observed) {
+            bail!("stream cleanup outcome is uncertain or failed")
+        }
+        receipt.close_report_confirmed = true;
+    }
+    released.result()
 }
 pub(crate) async fn expire_handle(
     host: &PackHost,
@@ -713,15 +1048,12 @@ pub(crate) async fn expire_handle(
         .lock()
         .map_err(|_| anyhow::anyhow!("handle table poisoned"))?
         .resolve_cleanup(id, kind, cx)?;
-    entry.lease.begin_close();
-    let cleanup = match entry.owner.principal().pack() {
-        Some((pack, _)) => host.discard_instance(pack).await,
-        None => Err(anyhow::anyhow!("callback physical owner missing")),
-    };
+    let selection = select_cleanup_cause_bounded(&entry, reason).await;
+    let cleanup = release_callback_once(host, &entry).await;
     finish_handle(
         host,
         &entry,
-        cancellation_outcome(&entry, reason, cleanup.is_ok()),
+        cancellation_outcome(&entry, reason, cleanup.is_ok() && selection.is_ok()).await,
     )
     .await?;
     if cleanup.is_ok() {
@@ -731,7 +1063,13 @@ pub(crate) async fn expire_handle(
             .map_err(|_| anyhow::anyhow!("handle table poisoned"))?
             .remove(id, kind, cx)?;
     }
-    cleanup
+    cleanup?;
+    selection?;
+    let observed = observe_cause_bounded(&entry).await;
+    if !cleanup_cause_confirmed(&entry, &*entry.lease.close.lock().await, observed) {
+        bail!("callback cleanup outcome is uncertain or failed")
+    }
+    Ok(())
 }
 async fn close_retired_handle(
     host: &PackHost,
@@ -745,6 +1083,7 @@ async fn close_retired_handle(
         .lock()
         .map_err(|_| anyhow::anyhow!("handle table poisoned"))?
         .resolve_cleanup(id, kind, cx)?;
+    let _ = record_cleanup_cause(&entry, ExpiryReason::Retired);
     finish_handle(
         host,
         &entry,
@@ -821,8 +1160,18 @@ async fn admit_argument_handles(
             host.check_handle_generation(&entry)?;
             id
         } else {
-            host.register_guest_handle(kind, cx, id, cx, authority, None, frame)
-                .await?
+            host.register_guest_handle(
+                kind,
+                id,
+                None,
+                crate::handle_transfer::HandleSourceContext {
+                    owner: cx,
+                    recipient: cx,
+                    authority,
+                    provider: frame,
+                },
+            )
+            .await?
         };
         mapped.push((kind, id, mapped_id));
     }

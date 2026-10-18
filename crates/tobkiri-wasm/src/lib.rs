@@ -2,6 +2,7 @@
 
 mod abi;
 mod allocation;
+mod child_census;
 mod core_imports;
 mod dispatch;
 mod effect_values;
@@ -9,11 +10,15 @@ mod effects;
 mod engine;
 mod entry;
 pub mod filesystem;
+pub use effects::filesystem_imports::FilesystemAccess;
 mod handle_transfer;
+mod input_forwarding;
+pub use input_forwarding::NativeInputHandles;
 mod handles;
 mod host;
 mod imports;
 mod instance_capacity;
+mod native_preparation;
 mod network;
 mod output;
 mod owned_values;
@@ -22,14 +27,16 @@ mod values;
 mod wasi;
 mod wasi_effects;
 
+pub use child_census::NativeExecutionId;
 pub use engine::{InvocationState, WasmEngine};
 pub use entry::{
-    FlowUserInvocation, FlowUserInvocationPreparation, HandleSourceRequest, NativeInputPreparation,
+    CleanupLifecycle, CleanupLifecycleAttempt, FlowUserInvocation, FlowUserInvocationPreparation,
+    HandleSourceRequest, NativeIdAttempt, NativeInputPreparation, ProviderBindAttempt,
     ProviderEntryBridge, ProviderFrame, ProviderOrigin, ProviderRequest, UiInvocation,
     UiInvocationPreparation,
 };
 pub use handles::{HandleEntry, HandleKind, HandleTable};
-pub use host::PackHost;
+pub use host::{PackHost, ProviderOperationScope};
 pub use imports::{WASI_SUBSET, validate_imports};
 pub use owned_values::ValueOwners as AllocationOwners;
 pub use values::{core_to_val, val_to_core};

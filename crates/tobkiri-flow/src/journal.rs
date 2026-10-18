@@ -169,10 +169,10 @@ impl RunEvent {
         let kind = match kind_tag.as_str() {
             "started" => RunEventKind::Started,
             "step_started" => RunEventKind::StepStarted {
-                step: string_field(&kind_value, "step")?.into(),
+                step: string_field(&kind_value, "step")?,
             },
             "step_value" => RunEventKind::StepValue {
-                step: string_field(&kind_value, "step")?.into(),
+                step: string_field(&kind_value, "step")?,
                 value: kind_value.get_key("value").ok_or_else(invalid_frame)?,
             },
             "emitted" => RunEventKind::Emitted {
@@ -181,7 +181,7 @@ impl RunEvent {
                 value: kind_value.get_key("value").ok_or_else(invalid_frame)?,
             },
             "step_failed" => RunEventKind::StepFailed {
-                step: string_field(&kind_value, "step")?.into(),
+                step: string_field(&kind_value, "step")?,
                 error: parse_error(&kind_value)?,
                 continued: bool_field(&kind_value, "continued")?,
             },

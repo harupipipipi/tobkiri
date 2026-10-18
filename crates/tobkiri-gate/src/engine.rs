@@ -64,12 +64,13 @@ impl PackPolicy {
 
 /// Non-forgeable, non-cloneable one-time dispatch authority.
 pub struct Grant {
-    reservation: Reservation,
-    request: EffectRequest,
-    limits: ResourceLimits,
-    approvals: Arc<dyn ApprovalStore>,
-    audit: Arc<dyn AuditSink>,
-    consumed: bool,
+    pub(crate) reservation: Reservation,
+    pub(crate) request: EffectRequest,
+    pub(crate) limits: ResourceLimits,
+    pub(crate) approvals: Arc<dyn ApprovalStore>,
+    pub(crate) audit: Arc<dyn AuditSink>,
+    pub(crate) consumed: std::sync::atomic::AtomicBool,
+    pub(crate) consumption_attempted: std::sync::atomic::AtomicBool,
 }
 impl std::fmt::Debug for Grant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -96,38 +97,22 @@ impl Grant {
     }
     /// Consumes the durable reservation atomically before an effect can execute.
     pub fn consume(
-        mut self,
+        self,
         cx: &CallCx,
         request: &EffectRequest,
         args: &Digest,
     ) -> Result<DispatchPermit, GateError> {
-        cx.check_active()?;
-        if self.reservation.profile != *cx.profile()
-            || self.reservation.principal != *cx.principal()
-            || self.reservation.request != *cx.request()
-            || self.reservation.revision.as_ref() != cx.revision()
-            || self.request != *request
-            || self.reservation.effect != request.digest()?
-            || self.reservation.args != *args
-        {
-            return Err(GateError::Denied("grant binding mismatch".into()));
-        }
-        let epoch = self.approvals.security_epoch(cx.profile())?;
-        if epoch != self.reservation.epoch || epoch != cx.security_epoch() {
-            return Err(GateError::StaleEpoch);
-        }
-        let mut deadline = cx.deadline_for_limits(&cx.limits().intersect(&self.limits));
-        self.reservation = self
-            .approvals
-            .consume_with_deadline(&self.reservation, deadline_unix_ms(deadline)?)?;
-        deadline = instant_expiry_bound(self.reservation.expires_unix_ms, deadline)?;
-        self.consumed = true;
-        Ok(DispatchPermit {
-            reservation: self.reservation.clone(),
-            request: self.request.clone(),
-            limits: self.limits.clone(),
-            deadline,
-        })
+        self.consume_owned(cx, request, args).into_legacy_result()
+    }
+    /// Native ownership-preserving consumption. An error from the durable
+    /// store is not proof that its transaction did not commit.
+    pub fn consume_owned(
+        self,
+        cx: &CallCx,
+        request: &EffectRequest,
+        args: &Digest,
+    ) -> ConsumptionAttempt {
+        crate::consumption::consume(self, cx, request, args)
     }
 }
 fn deadline_unix_ms(deadline: std::time::Instant) -> Result<u64, GateError> {
@@ -187,7 +172,9 @@ impl Drop for PendingReservation<'_> {
 }
 impl Drop for Grant {
     fn drop(&mut self) {
-        if !self.consumed {
+        if !self.consumed.load(Ordering::Acquire)
+            && !self.consumption_attempted.load(Ordering::Acquire)
+        {
             abandon_reservation(
                 self.approvals.as_ref(),
                 self.audit.as_ref(),
@@ -199,10 +186,13 @@ impl Drop for Grant {
 /// Proof that a single reservation has been consumed. Its constructor is private.
 #[derive(Debug)]
 pub struct DispatchPermit {
-    reservation: Reservation,
-    request: EffectRequest,
-    limits: ResourceLimits,
-    deadline: std::time::Instant,
+    pub(crate) reservation: Reservation,
+    pub(crate) request: EffectRequest,
+    pub(crate) limits: ResourceLimits,
+    pub(crate) deadline: std::time::Instant,
+    // On successful handoff the bounded process slot is immediately reusable.
+    // Original store/context custody moves with the existing consumed permit.
+    pub(crate) _consumption_owner: crate::consumption::SuccessfulConsumption,
 }
 /// Immutable descriptive provenance copied only after first-entry funding.
 /// This is NOT a permit: it cannot consume, dispatch, settle or own an outcome.
@@ -361,6 +351,41 @@ type UserPolicies = BTreeMap<(String, Digest, u64), UserPolicy>;
 type OperationViews = BTreeMap<(String, Digest), BTreeMap<ShapeRef, BTreeSet<OpName>>>;
 type LeaseCancellations = BTreeMap<GrantId, (ProfileId, CancellationToken, std::time::Instant)>;
 type RevisionBudgets = BTreeMap<(String, Digest), BTreeMap<(PackId, PackHash), ResourceLimits>>;
+
+/// Typed failure of the admission supervisor's metadata-only delivery pass
+/// over one profile's existing outbox. The audit sink's own `Unavailable`
+/// answer at the idempotent append boundary is the only failure given a
+/// dedicated origin tag; every other failure retains the original typed
+/// `GateError`.
+#[derive(Debug)]
+pub enum DeliveryFault {
+    /// `AuditSink::append_idempotent` returned `GateError::Unavailable`
+    /// while delivering an existing immutable terminal record — the known
+    /// metadata-sink origin that admission supervision may treat as
+    /// transient and resolve by a later durable delivery.
+    SinkUnavailable,
+    /// Recovery, pending-scan, acknowledgement, admission or any other
+    /// failure observed with its original typed error.
+    Gate(GateError),
+}
+impl DeliveryFault {
+    /// Stable machine code for supervision health reporting. The tagged sink
+    /// outage keeps the `unavailable` code it surfaced with.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::SinkUnavailable => GateError::Unavailable.code(),
+            Self::Gate(error) => error.code(),
+        }
+    }
+    /// The original gate error when the failure is not the tagged sink
+    /// boundary; `None` for `SinkUnavailable`.
+    pub fn gate_error(&self) -> Option<&GateError> {
+        match self {
+            Self::Gate(error) => Some(error),
+            Self::SinkUnavailable => None,
+        }
+    }
+}
 
 /// The core gate cannot be replaced by a mediator or an untrusted Pack.
 pub struct GateEngine {
@@ -557,6 +582,63 @@ impl GateEngine {
             _reservation: reservation,
         })
     }
+    fn cleanup_snapshot_guard(
+        &self,
+        permit: &DispatchPermit,
+    ) -> Result<crate::ControlReservation, GateError> {
+        if permit.request.digest()? != permit.reservation.effect
+            || permit.reservation.original_expires_unix_ms.is_none()
+        {
+            return Err(GateError::Denied(
+                "cleanup requires an exact consumed permit".into(),
+            ));
+        }
+        // Bounded native scratch for the Store's bounded reservation/terminal
+        // records and validation copies. No guest execution allowance is used.
+        Ok(self
+            .control
+            .reserve(ControlKind::Frame, CLEANUP_SNAPSHOT_CONTROL_BYTES)?)
+    }
+    fn cleanup_snapshot_inspect<'a>(
+        state: &'a mut CleanupSnapshotInspection,
+        permit: &'a DispatchPermit,
+        inspect: &'a mut dyn FnMut(CleanupSnapshot<'_>) -> Result<(), GateError>,
+    ) -> impl FnMut(CleanupAuthoritySnapshot<'_>) -> Result<(), GateError> + 'a {
+        move |authority| {
+            if state.entered {
+                state.failed = true;
+                return Err(GateError::Unavailable);
+            }
+            // Entry itself consumes the adapter's single callback opportunity,
+            // even when its supplied binding fails validation below. A later
+            // busy result cannot turn that failed inspection into a safe retry.
+            state.entered = true;
+            if !cleanup_reservation_matches_permit(authority.reservation, permit)
+                || authority.terminal.is_some_and(|terminal| {
+                    !cleanup_reservation_matches_permit(&terminal.decision.reservation, permit)
+                        || matches!(
+                            terminal.decision.disposition,
+                            TerminalDisposition::AbandonedBeforeUse
+                                | TerminalDisposition::ExpiredBeforeUse
+                        )
+                })
+            {
+                state.failed = true;
+                return Err(GateError::Denied(
+                    "cleanup snapshot differs from consumed permit".into(),
+                ));
+            }
+            state.invoked = true;
+            let result = inspect(CleanupSnapshot {
+                authority,
+                limits: permit.limits(),
+                original_deadline: permit.deadline(),
+                observed_at: std::time::Instant::now(),
+            });
+            state.failed |= result.is_err();
+            result
+        }
+    }
     /// Observe one sealed consumed permit without ordinary admission or
     /// cancellation checks. Caller-held lifecycle/generation/selection guards
     /// precede this call; `inspect` may only select native metadata, with no
@@ -567,50 +649,46 @@ impl GateEngine {
         permit: &DispatchPermit,
         inspect: &mut dyn FnMut(CleanupSnapshot<'_>) -> Result<(), GateError>,
     ) -> Result<(), GateError> {
-        if permit.request.digest()? != permit.reservation.effect
-            || permit.reservation.original_expires_unix_ms.is_none()
-        {
-            return Err(GateError::Denied(
-                "cleanup requires an exact consumed permit".into(),
-            ));
-        }
-        // Bounded native scratch for the Store's bounded reservation/terminal
-        // records and validation copies. No guest execution allowance is used.
-        let _scratch = self
-            .control
-            .reserve(ControlKind::Frame, CLEANUP_SNAPSHOT_CONTROL_BYTES)?;
-        let mut invoked = false;
-        let result = self
-            .approvals
-            .with_cleanup_snapshot(&permit.reservation, &mut |authority| {
-                if invoked {
-                    return Err(GateError::Unavailable);
-                }
-                if !cleanup_reservation_matches_permit(authority.reservation, permit)
-                    || authority.terminal.is_some_and(|terminal| {
-                        !cleanup_reservation_matches_permit(&terminal.decision.reservation, permit)
-                            || matches!(
-                                terminal.decision.disposition,
-                                TerminalDisposition::AbandonedBeforeUse
-                                    | TerminalDisposition::ExpiredBeforeUse
-                            )
-                    })
-                {
-                    return Err(GateError::Denied(
-                        "cleanup snapshot differs from consumed permit".into(),
-                    ));
-                }
-                invoked = true;
-                inspect(CleanupSnapshot {
-                    authority,
-                    limits: permit.limits(),
-                    original_deadline: permit.deadline(),
-                    observed_at: std::time::Instant::now(),
-                })
-            });
+        let _scratch = self.cleanup_snapshot_guard(permit)?;
+        let mut state = CleanupSnapshotInspection::default();
+        let result = self.approvals.with_cleanup_snapshot(
+            &permit.reservation,
+            &mut Self::cleanup_snapshot_inspect(&mut state, permit, inspect),
+        );
         match result {
-            Ok(()) if !invoked => Err(GateError::Unavailable),
+            Ok(()) if !state.invoked || state.failed => Err(GateError::Unavailable),
             result => result,
+        }
+    }
+    /// Typed attempt variant of `with_cleanup_snapshot`. The same consumed
+    /// permit validation, bounded scratch, exact reservation/terminal
+    /// binding and at-most-once `inspect` rules apply. A reported
+    /// `RetryableBusyBeforeCallback` is defensively rejected if `inspect`
+    /// was entered, including entry rejected by binding validation: busy is
+    /// authentic only before the adapter calls back. Ignored callback errors
+    /// and repeated entries cannot produce `Selected`.
+    pub fn try_cleanup_snapshot(
+        &self,
+        permit: &DispatchPermit,
+        inspect: &mut dyn FnMut(CleanupSnapshot<'_>) -> Result<(), GateError>,
+    ) -> CleanupSnapshotAttempt {
+        let _scratch = match self.cleanup_snapshot_guard(permit) {
+            Ok(scratch) => scratch,
+            Err(error) => return CleanupSnapshotAttempt::Uncertain(error),
+        };
+        let mut state = CleanupSnapshotInspection::default();
+        let attempt = self.approvals.try_cleanup_snapshot(
+            &permit.reservation,
+            &mut Self::cleanup_snapshot_inspect(&mut state, permit, inspect),
+        );
+        match attempt {
+            CleanupSnapshotAttempt::Selected if !state.invoked || state.failed => {
+                CleanupSnapshotAttempt::Uncertain(GateError::Unavailable)
+            }
+            CleanupSnapshotAttempt::RetryableBusyBeforeCallback if state.entered => {
+                CleanupSnapshotAttempt::Uncertain(GateError::Unavailable)
+            }
+            attempt => attempt,
         }
     }
     pub fn register_operation_views(
@@ -643,16 +721,22 @@ impl GateEngine {
     ) -> Result<u64, GateError> {
         self.cancel_due_leases(profile)?;
         let expired = self.approvals.expire_terminal(profile, now_unix_ms)?;
+        for decision in &expired {
+            let removed = {
+                let mut leases = self.lease_cancellations.lock().map_err(|_| {
+                    GateError::Persistence("lease cancellation lock poisoned".into())
+                })?;
+                leases.remove(&decision.reservation.id)
+            };
+            if let Some((_, token, _)) = removed {
+                token.notify_deadline();
+            }
+        }
         let local = {
-            let mut leases = self
+            let leases = self
                 .lease_cancellations
                 .lock()
                 .map_err(|_| GateError::Persistence("lease cancellation lock poisoned".into()))?;
-            for decision in &expired {
-                if let Some((_, token, _)) = leases.remove(&decision.reservation.id) {
-                    token.notify_deadline();
-                }
-            }
             leases
                 .iter()
                 .filter(|(_, (p, _, _))| p == profile)
@@ -674,17 +758,21 @@ impl GateEngine {
                 ));
             }
         }
-        let mut leases = self
-            .lease_cancellations
-            .lock()
-            .map_err(|_| GateError::Persistence("lease cancellation lock poisoned".into()))?;
         for (id, expired) in completed {
-            if leases.get(&id).is_some_and(|(p, _, _)| p == profile) {
-                if let Some((_, token, _)) = leases.remove(&id) {
-                    if expired {
-                        token.notify_deadline();
-                    }
+            let removed = {
+                let mut leases = self.lease_cancellations.lock().map_err(|_| {
+                    GateError::Persistence("lease cancellation lock poisoned".into())
+                })?;
+                if leases.get(&id).is_some_and(|(p, _, _)| p == profile) {
+                    leases.remove(&id)
+                } else {
+                    None
                 }
+            };
+            if let Some((_, token, _)) = removed
+                && expired
+            {
+                token.notify_deadline();
             }
         }
         self.require_admission(profile)?;
@@ -735,6 +823,66 @@ impl GateEngine {
                 tokio::task::yield_now().await;
             }
         }
+    }
+    /// The admission supervisor's bounded metadata-only pass over the
+    /// profile's existing leases and outbox: the same work, in the same
+    /// order, as `recover_profile` + `flush_outbox` + the admission check,
+    /// but the audit sink's own `Unavailable` at the idempotent append
+    /// boundary is reported with its real origin instead of an
+    /// indistinguishable `GateError`. It retries delivery of existing
+    /// immutable terminal records only — never an effect re-run, a new
+    /// grant, a terminal overwrite or a physical-cleanup claim.
+    pub async fn supervised_metadata_delivery(
+        &self,
+        profile: &ProfileId,
+    ) -> Result<(), DeliveryFault> {
+        self.recover_profile(profile).map_err(DeliveryFault::Gate)?;
+        loop {
+            let batch = self
+                .approvals
+                .pending_terminal(profile, 256)
+                .map_err(DeliveryFault::Gate)?;
+            if batch.is_empty() {
+                self.require_admission(profile)
+                    .map_err(DeliveryFault::Gate)?;
+                return Ok(());
+            }
+            for decision in batch {
+                self.deliver_terminal_for_supervision(&TerminalDelivery {
+                    decision,
+                    acknowledged: false,
+                })?;
+                tokio::task::yield_now().await;
+            }
+        }
+    }
+    /// `deliver_terminal` with the failure's real origin preserved: the
+    /// sink's literal `Unavailable` at the append boundary is tagged
+    /// `SinkUnavailable`; every other failure keeps its original error.
+    fn deliver_terminal_for_supervision(
+        &self,
+        delivery: &TerminalDelivery,
+    ) -> Result<(), DeliveryFault> {
+        if delivery.acknowledged {
+            return Ok(());
+        }
+        let decision = &delivery.decision;
+        if let Err(error) = self
+            .audit
+            .append_idempotent(&decision.event_id, decision.event.clone())
+        {
+            // A failed integrity notice keeps its own persistence origin;
+            // only the sink's literal Unavailable is re-tagged.
+            self.notice_integrity(&decision.reservation.profile, &error)
+                .map_err(DeliveryFault::Gate)?;
+            return Err(match error {
+                GateError::Unavailable => DeliveryFault::SinkUnavailable,
+                other => DeliveryFault::Gate(other),
+            });
+        }
+        self.approvals
+            .acknowledge_terminal(&decision.event_id, &decision.event)
+            .map_err(DeliveryFault::Gate)
     }
     pub fn epoch(&self, profile: &ProfileId) -> Result<u64, GateError> {
         self.approvals.security_epoch(profile)
@@ -1776,9 +1924,75 @@ impl GateEngine {
         args: Digest,
         ingress: Option<&CoreIngressPolicy>,
     ) -> Result<Grant, GateError> {
+        self.authorize_shared_inner(cx, request, args, ingress, None)
+            .await
+    }
+    /// Dedicated committed-launch authorization. `check_context` supplies the
+    /// admission/liveness/epoch/revision/frozen-budget checks; the binding
+    /// must exactly match the Proc/Pty request before any reservation,
+    /// mediator or prompt work begins. Gate derives the durable args digest
+    /// only from the binding and never sees a caller key, raw argv/env or
+    /// native identity. The binding is data consistency only, never a proven
+    /// FD capability or live caller frame.
+    pub(crate) async fn authorize_process_launch_inner(
+        &self,
+        cx: &CallCx,
+        request: EffectRequest,
+        binding: &crate::ProcessLaunchBinding,
+    ) -> Result<Grant, GateError> {
+        self.check_context(cx)?;
+        let program = match &request {
+            EffectRequest::Proc { program } if binding.pty().is_none() => program,
+            EffectRequest::Pty { program } if binding.pty().is_some() => program,
+            _ => {
+                return Err(GateError::Denied(
+                    "request does not match the committed launch kind".into(),
+                ));
+            }
+        };
+        if program.as_str() != binding.program_id() {
+            return Err(GateError::Denied(
+                "launch program differs from the committed binding".into(),
+            ));
+        }
+        self.authorize_shared_inner(
+            cx,
+            request,
+            binding.args_digest().clone(),
+            None,
+            Some(binding),
+        )
+        .await
+    }
+    /// Shared reservation/mediation/approval/dispatch pipeline. Proc/Pty
+    /// effects cannot enter it without a committed binding: a bare request
+    /// fails closed before any fresh reservation, mediator or prompt.
+    async fn authorize_shared_inner(
+        &self,
+        cx: &CallCx,
+        request: EffectRequest,
+        args: Digest,
+        ingress: Option<&CoreIngressPolicy>,
+        binding: Option<&crate::ProcessLaunchBinding>,
+    ) -> Result<Grant, GateError> {
         cx.check_active()?;
         if self.epoch(cx.profile())? != cx.security_epoch() {
             return Err(GateError::StaleEpoch);
+        }
+        if matches!(
+            &request,
+            EffectRequest::Proc { .. } | EffectRequest::Pty { .. }
+        ) {
+            let Some(binding) = binding else {
+                return Err(GateError::Denied(
+                    "process launch requires a committed binding".into(),
+                ));
+            };
+            if !binding.limits().is_subset_of(cx.limits()) {
+                return Err(GateError::Denied(
+                    "committed launch exceeds live context limits".into(),
+                ));
+            }
         }
         let effective = self.effective_permissions(cx)?;
         match &request {
@@ -1853,6 +2067,13 @@ impl GateEngine {
                 "effect exceeds effective permissions".into(),
             ));
         }
+        if let Some(binding) = binding
+            && !binding.limits().is_subset_of(&effective.wasm)
+        {
+            return Err(GateError::Denied(
+                "committed launch exceeds approved limits".into(),
+            ));
+        }
         let reservation = self.reservation(cx, &request, args)?;
         let mut pending = PendingReservation {
             approvals: self.approvals.as_ref(),
@@ -1860,16 +2081,35 @@ impl GateEngine {
             id: reservation.id.clone(),
             armed: true,
         };
-        let prompt = self.prompt_for(
-            cx,
-            request.clone(),
-            &reservation,
-            format!("{} effect ({})", request.kind(), reservation.effect),
-        );
+        let prompt = match binding {
+            Some(binding) => {
+                // The committed binding is the trusted summary source; its
+                // explicit unsandboxed Dangerous fact overrides the generic
+                // elevated risk before mediators and trusted consent see the
+                // prompt.
+                let mut prompt =
+                    self.prompt_for(cx, request.clone(), &reservation, launch_summary(binding));
+                prompt.risk = binding.risk();
+                prompt
+            }
+            None => self.prompt_for(
+                cx,
+                request.clone(),
+                &reservation,
+                format!("{} effect ({})", request.kind(), reservation.effect),
+            ),
+        };
         let effective = self.mediate(&prompt, effective, cx).await?;
         if !allowed(&effective) {
             return Err(GateError::Denied(
                 "mediator narrowed away the effect".into(),
+            ));
+        }
+        if let Some(binding) = binding
+            && !binding.limits().is_subset_of(&effective.wasm)
+        {
+            return Err(GateError::Denied(
+                "committed launch exceeds mediated limits".into(),
             ));
         }
         let first_public_write = match &request {
@@ -1943,16 +2183,29 @@ impl GateEngine {
         Ok(Grant {
             reservation,
             request,
-            limits: effective.wasm.intersect(cx.limits()),
+            // A committed launch grants exactly its committed limits, even
+            // when the surrounding context and ceilings are wider.
+            limits: match binding {
+                Some(binding) => binding.limits().clone(),
+                None => effective.wasm.intersect(cx.limits()),
+            },
             approvals: self.approvals.clone(),
             audit: self.audit.clone(),
-            consumed: false,
+            consumed: std::sync::atomic::AtomicBool::new(false),
+            consumption_attempted: std::sync::atomic::AtomicBool::new(false),
         })
     }
 }
 
 const ACKNOWLEDGED_TERMINAL_CONTROL_BYTES: u64 = 4096;
 const CLEANUP_SNAPSHOT_CONTROL_BYTES: u64 = 32 * 1024;
+
+#[derive(Default)]
+struct CleanupSnapshotInspection {
+    entered: bool,
+    invoked: bool,
+    failed: bool,
+}
 
 fn cleanup_reservation_matches_permit(reservation: &Reservation, permit: &DispatchPermit) -> bool {
     let expected = &permit.reservation;
@@ -1984,6 +2237,38 @@ fn terminal_matches_permit(reservation: &Reservation, permit: &DispatchPermit) -
         && reservation.authority == expected.authority
 }
 
+/// Finite redacted launch summary built only from immutable binding getters
+/// plus fixed text: committed program/catalog/cwd display identities,
+/// argv/env counts, PTY presence/geometry, all limits, versions, key
+/// identity and the full args digest, plus the explicit unsandboxed
+/// Dangerous warning. Raw argv/env values, env names and native-identity
+/// payloads never enter Gate.
+fn launch_summary(binding: &crate::ProcessLaunchBinding) -> String {
+    let pty = match binding.pty() {
+        Some(pty) => format!("{}x{}", pty.cols(), pty.rows()),
+        None => String::from("none"),
+    };
+    let limits = binding.limits();
+    format!(
+        "DANGEROUS unsandboxed process launch: program={} catalog={} cwd={} argv={} env={} pty={} limits=fuel:{},mem_mib:{},wall_ms:{},table:{},out:{} encoding=v{} key_version=v{} key_id={} args_digest={}",
+        binding.program_id(),
+        binding.catalog_label(),
+        binding.cwd_label(),
+        binding.argv_count(),
+        binding.env_count(),
+        pty,
+        limits.fuel_per_call,
+        limits.memory_mib,
+        limits.wall_ms,
+        limits.table_elements,
+        limits.output_bytes,
+        binding.encoding_version(),
+        binding.key_version(),
+        binding.key_identity(),
+        binding.args_digest().hex(),
+    )
+}
+
 #[async_trait]
 impl Gate for GateEngine {
     /// Object-safe delegation to the tested inherent cleanup snapshot. The
@@ -1995,6 +2280,15 @@ impl Gate for GateEngine {
         inspect: &mut dyn FnMut(CleanupSnapshot<'_>) -> Result<(), GateError>,
     ) -> Result<(), GateError> {
         GateEngine::with_cleanup_snapshot(self, permit, inspect)
+    }
+
+    /// Object-safe delegation to the tested inherent typed attempt.
+    fn try_cleanup_snapshot(
+        &self,
+        permit: &DispatchPermit,
+        inspect: &mut dyn FnMut(CleanupSnapshot<'_>) -> Result<(), GateError>,
+    ) -> CleanupSnapshotAttempt {
+        GateEngine::try_cleanup_snapshot(self, permit, inspect)
     }
 
     fn acknowledged_terminal(
@@ -2081,6 +2375,21 @@ impl Gate for GateEngine {
     ) -> Result<Grant, GateError> {
         let kind = request.kind();
         let result = self.authorize_inner(cx, request, args).await;
+        self.audit_denial_result(cx, kind, result).await
+    }
+    /// Committed-launch entry: the same denial-audited pipeline; the binding
+    /// supplies the full HMAC args digest and the exact committed limits.
+    /// Bare Proc/Pty requests through `authorize` still fail closed.
+    async fn authorize_process_launch(
+        &self,
+        cx: &CallCx,
+        request: EffectRequest,
+        binding: &crate::ProcessLaunchBinding,
+    ) -> Result<Grant, GateError> {
+        let kind = request.kind();
+        let result = self
+            .authorize_process_launch_inner(cx, request, binding)
+            .await;
         self.audit_denial_result(cx, kind, result).await
     }
     async fn record_denial(
@@ -2202,16 +2511,28 @@ impl Gate for GateEngine {
     }
     fn cancel_due_leases(&self, profile: &ProfileId) -> Result<u64, GateError> {
         let now = std::time::Instant::now();
-        let leases = self
-            .lease_cancellations
-            .lock()
-            .map_err(|_| GateError::Persistence("lease cancellation lock poisoned".into()))?;
         let mut count = 0;
-        for (owner, token, deadline) in leases.values() {
-            if owner == profile && now >= *deadline && !token.is_cancelled() {
-                token.notify_deadline();
-                count += 1;
-            }
+        // watch_lease admits at most 4096 hooks. Retain one existing funded
+        // node at a time without allocating or removing its original hook.
+        for _ in 0..4096 {
+            let token = {
+                let leases = self.lease_cancellations.lock().map_err(|_| {
+                    GateError::Persistence("lease cancellation lock poisoned".into())
+                })?;
+                leases.values().find_map(|(owner, token, deadline)| {
+                    (owner == profile && now >= *deadline && !token.is_cancelled())
+                        .then(|| token.clone())
+                })
+            };
+            let Some(token) = token else {
+                break;
+            };
+            // Tokio can synchronously wake and drop user Wakers. Both the
+            // notification and this owning retain's Drop precede the next
+            // lock acquisition, so those callbacks may reenter this Gate.
+            token.notify_deadline();
+            count += 1;
+            drop(token);
         }
         // Keep every hook until its durable terminal decision exists. Repeated
         // ticks never renew its deadline or imply successful physical cleanup.
@@ -2242,18 +2563,18 @@ impl Gate for GateEngine {
             });
         }
         if let Some(terminal) = self.approvals.terminal_delivery(permit.id())? {
-            let token = self
-                .lease_cancellations
-                .lock()
-                .map_err(|_| GateError::Persistence("lease cancellation lock poisoned".into()))?
-                .remove(permit.id());
+            let token = {
+                let mut leases = self.lease_cancellations.lock().map_err(|_| {
+                    GateError::Persistence("lease cancellation lock poisoned".into())
+                })?;
+                leases.remove(permit.id())
+            };
             if matches!(
                 terminal.decision.disposition,
                 TerminalDisposition::ExpiredCleanupUnknown | TerminalDisposition::ExpiredBeforeUse
-            ) {
-                if let Some((_, token, _)) = token {
-                    token.notify_deadline();
-                }
+            ) && let Some((_, token, _)) = token
+            {
+                token.notify_deadline();
             }
             return Err(GateError::Consumed);
         }
@@ -2261,10 +2582,14 @@ impl Gate for GateEngine {
     }
     async fn record_outcome(&self, grant: GrantId, outcome: Outcome) -> Result<(), GateError> {
         let terminal = self.approvals.finish_terminal(&grant, &outcome)?;
-        self.lease_cancellations
-            .lock()
-            .map_err(|_| GateError::Persistence("lease cancellation lock poisoned".into()))?
-            .remove(&grant);
+        let removed = {
+            let mut leases = self
+                .lease_cancellations
+                .lock()
+                .map_err(|_| GateError::Persistence("lease cancellation lock poisoned".into()))?;
+            leases.remove(&grant)
+        };
+        drop(removed);
         self.deliver_terminal(&terminal)?;
         if terminal.decision.outcome != outcome {
             return Err(GateError::Deadline);
@@ -2292,18 +2617,20 @@ impl Gate for GateEngine {
             permit.reservation.clone()
         };
         let terminal = self.approvals.settle_deadline(&reservation)?;
-        if let Some((_, token, _)) = self
-            .lease_cancellations
-            .lock()
-            .map_err(|_| GateError::Persistence("lease cancellation lock poisoned".into()))?
-            .remove(permit.id())
-        {
-            if matches!(
+        let removed = {
+            let mut leases = self
+                .lease_cancellations
+                .lock()
+                .map_err(|_| GateError::Persistence("lease cancellation lock poisoned".into()))?;
+            leases.remove(permit.id())
+        };
+        if let Some((_, token, _)) = removed
+            && matches!(
                 terminal.decision.disposition,
                 TerminalDisposition::ExpiredBeforeUse | TerminalDisposition::ExpiredCleanupUnknown
-            ) {
-                token.notify_deadline();
-            }
+            )
+        {
+            token.notify_deadline();
         }
         self.deliver_terminal(&terminal)?;
         Ok(TerminalDelivery {
@@ -2342,5 +2669,876 @@ impl Gate for GateEngine {
             *bound = (*bound).min(deadline);
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod cleanup_snapshot_attempt_tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    fn authority_snapshot(
+        reservation: &Reservation,
+        now_unix_ms: u64,
+    ) -> CleanupAuthoritySnapshot<'_> {
+        CleanupAuthoritySnapshot {
+            current_epoch: 0,
+            reservation,
+            now_unix_ms,
+            terminal: None,
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    enum Fault {
+        None,
+        DoubleCallback,
+        IgnoreCallbackError,
+        BusyAfterCallback,
+        BusyAfterInvalidBinding,
+        SelectedWithoutCallback,
+        BusyBeforeCallback,
+        UnavailableBeforeCallback,
+        PersistenceBeforeCallback,
+        PersistenceAfterCallback,
+    }
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Phase {
+        Reserved,
+        Dispatched,
+        Consumed,
+    }
+
+    struct NativeRow {
+        reservation: Reservation,
+        phase: Phase,
+    }
+
+    #[derive(Default)]
+    struct NativeState {
+        sequence: u64,
+        row: Option<NativeRow>,
+    }
+
+    // Only snapshot delivery is fault-injected. The reservation is created
+    // from Gate's fresh request, dispatched, and consumed by the real Grant.
+    struct NativeStore {
+        state: Mutex<NativeState>,
+        fault: Fault,
+        permissions: PermissionSet,
+    }
+
+    impl NativeStore {
+        fn reserve_fresh(&self, request: &ReservationRequest) -> Result<Reservation, GateError> {
+            let mut state = self.state.lock().unwrap();
+            if state.row.is_some() {
+                return Err(GateError::Consumed);
+            }
+            state.sequence += 1;
+            let reservation = request.bind(
+                Digest::hash(b"cleanup-snapshot-test-authority"),
+                1,
+                state.sequence,
+            )?;
+            state.row = Some(NativeRow {
+                reservation: reservation.clone(),
+                phase: Phase::Reserved,
+            });
+            Ok(reservation)
+        }
+
+        fn dispatch(&self, id: &GrantId) -> Result<(), GateError> {
+            let mut state = self.state.lock().unwrap();
+            let row = state.row.as_mut().ok_or(GateError::Unavailable)?;
+            if row.reservation.id != *id || row.phase != Phase::Reserved {
+                return Err(GateError::Consumed);
+            }
+            row.phase = Phase::Dispatched;
+            Ok(())
+        }
+
+        fn consume_with_deadline(
+            &self,
+            expected: &Reservation,
+            expires: u64,
+        ) -> Result<Reservation, GateError> {
+            let mut state = self.state.lock().unwrap();
+            let row = state.row.as_mut().ok_or(GateError::Unavailable)?;
+            if row.phase != Phase::Dispatched
+                || strict_bytes(&row.reservation)? != strict_bytes(expected)?
+            {
+                return Err(GateError::Consumed);
+            }
+            row.reservation.expires_unix_ms = row.reservation.expires_unix_ms.min(expires);
+            row.phase = Phase::Consumed;
+            Ok(row.reservation.clone())
+        }
+
+        fn snapshot(
+            &self,
+            expected: &Reservation,
+            inspect: &mut dyn FnMut(CleanupAuthoritySnapshot<'_>) -> Result<(), GateError>,
+        ) -> CleanupSnapshotAttempt {
+            let state = self.state.lock().unwrap();
+            let row = state.row.as_ref().unwrap();
+            assert!(row.phase == Phase::Consumed);
+            assert_eq!(
+                strict_bytes(&row.reservation).unwrap(),
+                strict_bytes(expected).unwrap()
+            );
+            let now_unix_ms = unix_now_ms().unwrap();
+            match self.fault {
+                Fault::None => match inspect(authority_snapshot(&row.reservation, now_unix_ms)) {
+                    Ok(()) => CleanupSnapshotAttempt::Selected,
+                    Err(error) => CleanupSnapshotAttempt::Uncertain(error),
+                },
+                Fault::DoubleCallback => {
+                    let _ = inspect(authority_snapshot(&row.reservation, now_unix_ms));
+                    let _ = inspect(authority_snapshot(&row.reservation, now_unix_ms));
+                    CleanupSnapshotAttempt::Selected
+                }
+                Fault::IgnoreCallbackError => {
+                    let _ = inspect(authority_snapshot(&row.reservation, now_unix_ms));
+                    CleanupSnapshotAttempt::Selected
+                }
+                Fault::BusyAfterCallback => {
+                    let _ = inspect(authority_snapshot(&row.reservation, now_unix_ms));
+                    CleanupSnapshotAttempt::RetryableBusyBeforeCallback
+                }
+                Fault::BusyAfterInvalidBinding => {
+                    let mut wrong_binding = row.reservation.clone();
+                    wrong_binding.args = Digest::hash(b"different-arguments");
+                    let _ = inspect(authority_snapshot(&wrong_binding, now_unix_ms));
+                    CleanupSnapshotAttempt::RetryableBusyBeforeCallback
+                }
+                Fault::SelectedWithoutCallback => CleanupSnapshotAttempt::Selected,
+                Fault::BusyBeforeCallback => CleanupSnapshotAttempt::RetryableBusyBeforeCallback,
+                Fault::UnavailableBeforeCallback => {
+                    CleanupSnapshotAttempt::Uncertain(GateError::Unavailable)
+                }
+                Fault::PersistenceBeforeCallback => CleanupSnapshotAttempt::Uncertain(
+                    GateError::Persistence("snapshot acquisition failed".into()),
+                ),
+                Fault::PersistenceAfterCallback => {
+                    let _ = inspect(authority_snapshot(&row.reservation, now_unix_ms));
+                    CleanupSnapshotAttempt::Uncertain(GateError::Persistence(
+                        "snapshot teardown failed".into(),
+                    ))
+                }
+            }
+        }
+    }
+
+    struct LegacyAdapter {
+        native: Arc<NativeStore>,
+    }
+
+    struct TypedAdapter {
+        native: Arc<NativeStore>,
+    }
+
+    // Both adapters use the same honest native reservation transitions. The
+    // legacy adapter deliberately uses ApprovalStore's actual default typed
+    // bridge; only TypedAdapter can report a native pre-callback busy result.
+    macro_rules! impl_snapshot_adapter {
+        ($adapter:ty $(, $typed:item)?) => {
+            impl ApprovalStore for $adapter {
+                fn admission_status(&self, _: &ProfileId) -> Result<AdmissionStatus, GateError> {
+                    Ok(AdmissionStatus::Allowed)
+                }
+                fn latch_integrity(
+                    &self,
+                    _: &ProfileId,
+                    _: IntegrityFaultCode,
+                ) -> Result<(), GateError> {
+                    Err(GateError::Unavailable)
+                }
+                fn security_epoch(&self, _: &ProfileId) -> Result<u64, GateError> {
+                    Ok(0)
+                }
+                fn advance_security_epoch(&self, _: &ProfileId) -> Result<u64, GateError> {
+                    Err(GateError::Unavailable)
+                }
+                fn permissions(
+                    &self,
+                    _: &ProfileId,
+                    _: &PackId,
+                    _: &PackHash,
+                ) -> Result<Option<PermissionSet>, GateError> {
+                    Ok(Some(self.native.permissions.clone()))
+                }
+                fn set_permissions(
+                    &self,
+                    _: &ProfileId,
+                    _: &PackId,
+                    _: &PackHash,
+                    _: &PermissionSet,
+                ) -> Result<(), GateError> {
+                    Err(GateError::Unavailable)
+                }
+                fn user_permissions(
+                    &self,
+                    _: &ProfileId,
+                    _: &Digest,
+                    _: &Digest,
+                    _: u64,
+                ) -> Result<Option<PermissionSet>, GateError> {
+                    Err(GateError::Unavailable)
+                }
+                fn set_user_permissions(
+                    &self,
+                    _: &ProfileId,
+                    _: &Digest,
+                    _: &Digest,
+                    _: u64,
+                    _: &PermissionSet,
+                ) -> Result<(), GateError> {
+                    Err(GateError::Unavailable)
+                }
+                fn reserve(&self, _: &Reservation) -> Result<(), GateError> {
+                    Err(GateError::Unavailable)
+                }
+                fn reserve_fresh(
+                    &self,
+                    request: &ReservationRequest,
+                ) -> Result<Reservation, GateError> {
+                    self.native.reserve_fresh(request)
+                }
+                fn dispatch(&self, id: &GrantId) -> Result<(), GateError> {
+                    self.native.dispatch(id)
+                }
+                fn dispatch_public_write(
+                    &self,
+                    _: &Reservation,
+                    _: &PublicWriteApproval,
+                ) -> Result<(), GateError> {
+                    Err(GateError::Unavailable)
+                }
+                fn abandon(&self, _: &GrantId) -> Result<Option<Reservation>, GateError> {
+                    Err(GateError::Unavailable)
+                }
+                fn sweep_expired(&self, _: &ProfileId, _: u64) -> Result<u64, GateError> {
+                    Err(GateError::Unavailable)
+                }
+                fn consume(&self, _: &Reservation) -> Result<(), GateError> {
+                    Err(GateError::Unavailable)
+                }
+                fn consume_with_deadline(
+                    &self,
+                    reservation: &Reservation,
+                    expires: u64,
+                ) -> Result<Reservation, GateError> {
+                    self.native.consume_with_deadline(reservation, expires)
+                }
+                fn with_cleanup_snapshot(
+                    &self,
+                    expected: &Reservation,
+                    inspect: &mut dyn FnMut(CleanupAuthoritySnapshot<'_>) -> Result<(), GateError>,
+                ) -> Result<(), GateError> {
+                    match self.native.snapshot(expected, inspect) {
+                        CleanupSnapshotAttempt::Selected => Ok(()),
+                        CleanupSnapshotAttempt::RetryableBusyBeforeCallback => {
+                            Err(GateError::Unavailable)
+                        }
+                        CleanupSnapshotAttempt::Uncertain(error) => Err(error),
+                    }
+                }
+                $($typed)?
+                fn finish(&self, _: &GrantId, _: &Outcome) -> Result<Reservation, GateError> {
+                    Err(GateError::Unavailable)
+                }
+                fn terminal_delivery(
+                    &self,
+                    _: &GrantId,
+                ) -> Result<Option<TerminalDelivery>, GateError> {
+                    Ok(None)
+                }
+                fn finish_terminal(
+                    &self,
+                    _: &GrantId,
+                    _: &Outcome,
+                ) -> Result<TerminalDelivery, GateError> {
+                    Err(GateError::Unavailable)
+                }
+                fn abandon_terminal(
+                    &self,
+                    _: &GrantId,
+                ) -> Result<Option<TerminalDelivery>, GateError> {
+                    Err(GateError::Unavailable)
+                }
+                fn expire_terminal(
+                    &self,
+                    _: &ProfileId,
+                    _: u64,
+                ) -> Result<Vec<TerminalDecision>, GateError> {
+                    Ok(Vec::new())
+                }
+                fn pending_terminal(
+                    &self,
+                    _: &ProfileId,
+                    _: u32,
+                ) -> Result<Vec<TerminalDecision>, GateError> {
+                    Ok(Vec::new())
+                }
+                fn terminal_watermark(&self, _: &ProfileId) -> Result<u64, GateError> {
+                    Ok(0)
+                }
+                fn pending_terminal_through(
+                    &self,
+                    _: &ProfileId,
+                    _: u32,
+                    _: u64,
+                ) -> Result<Vec<TerminalDecision>, GateError> {
+                    Ok(Vec::new())
+                }
+                fn acknowledge_terminal(&self, _: &Digest, _: &AuditEvent) -> Result<(), GateError> {
+                    Err(GateError::Unavailable)
+                }
+                fn public_write_approved(
+                    &self,
+                    _: &ProfileId,
+                    _: &PackId,
+                    _: &PackId,
+                    _: &str,
+                ) -> Result<bool, GateError> {
+                    Ok(false)
+                }
+                fn approve_public_write(
+                    &self,
+                    _: &ProfileId,
+                    _: &PackId,
+                    _: &PackId,
+                    _: &str,
+                ) -> Result<(), GateError> {
+                    Err(GateError::Unavailable)
+                }
+                fn paired_device_key(
+                    &self,
+                    _: &ProfileId,
+                    _: &str,
+                ) -> Result<Option<[u8; 32]>, GateError> {
+                    Ok(None)
+                }
+                fn claim_attestation(
+                    &self,
+                    _: &ProfileId,
+                    _: &str,
+                    _: &str,
+                    _: u64,
+                ) -> Result<bool, GateError> {
+                    Err(GateError::Unavailable)
+                }
+            }
+        };
+    }
+
+    impl_snapshot_adapter!(LegacyAdapter);
+    impl_snapshot_adapter!(
+        TypedAdapter,
+        fn try_cleanup_snapshot(
+            &self,
+            expected: &Reservation,
+            inspect: &mut dyn FnMut(CleanupAuthoritySnapshot<'_>) -> Result<(), GateError>,
+        ) -> CleanupSnapshotAttempt {
+            self.native.snapshot(expected, inspect)
+        }
+    );
+
+    #[derive(Default)]
+    struct NativeAudit {
+        dispatches: Mutex<Vec<AuditEvent>>,
+    }
+
+    impl AuditSink for NativeAudit {
+        fn append(&self, event: AuditEvent) -> Result<(), GateError> {
+            self.dispatches.lock().unwrap().push(event);
+            Ok(())
+        }
+    }
+
+    struct NoPrompt;
+
+    #[async_trait]
+    impl TrustedPrompt for NoPrompt {
+        async fn prompt_approval(&self, _: ApprovalPrompt) -> ApprovalAnswer {
+            panic!("native Clock dispatch must not require an interactive approval")
+        }
+    }
+
+    async fn consumed_permit(fault: Fault, typed: bool) -> (GateEngine, DispatchPermit) {
+        let control = CoreControl::default();
+        let limits = ResourceLimits {
+            fuel_per_call: 1_000,
+            memory_mib: 1,
+            wall_ms: 60_000,
+            table_elements: 16,
+            output_bytes: 1_024,
+        };
+        let permissions = PermissionSet {
+            wasm: limits.clone(),
+            ..PermissionSet::default()
+        };
+        let native = Arc::new(NativeStore {
+            state: Mutex::new(NativeState::default()),
+            fault,
+            permissions: permissions.clone(),
+        });
+        let approvals: Arc<dyn ApprovalStore> = if typed {
+            Arc::new(TypedAdapter {
+                native: native.clone(),
+            })
+        } else {
+            Arc::new(LegacyAdapter {
+                native: native.clone(),
+            })
+        };
+        let audit = Arc::new(NativeAudit::default());
+        let gate = GateEngine::new_with_control(
+            approvals,
+            audit.clone(),
+            Arc::new(NoPrompt),
+            MediatorChain::default(),
+            control.clone(),
+        );
+        let profile = ProfileId::new("cleanup-snapshot-tests").unwrap();
+        let pack = PackId::new("fixture.cleanup").unwrap();
+        let hash = PackHash::new(Digest::hash(b"cleanup-snapshot-test-pack"));
+        gate.register_pack(
+            &profile,
+            &pack,
+            &hash,
+            PackPolicy {
+                declaration: permissions.clone(),
+                ceiling: permissions.clone(),
+                pack_limits: permissions,
+            },
+        )
+        .unwrap();
+        let cx = CallCx::try_root_with_control(
+            profile,
+            Principal::Pack { pack, hash },
+            RequestId::new("cleanup-snapshot-request").unwrap(),
+            CancellationToken::new_with_control(&control).unwrap(),
+            Instant::now() + Duration::from_secs(60),
+            limits,
+            control,
+        )
+        .unwrap();
+        let request = EffectRequest::Clock;
+        let args = Digest::hash(b"cleanup-snapshot-clock-arguments");
+        let grant = gate
+            .authorize(&cx, request.clone(), args.clone())
+            .await
+            .unwrap();
+        let permit = grant.consume(&cx, &request, &args).unwrap();
+        assert!(permit.matches_context(&cx));
+        assert!(permit.reservation.authority.is_some());
+        assert!(permit.reservation.original_expires_unix_ms.is_some());
+        assert!(native.state.lock().unwrap().row.as_ref().unwrap().phase == Phase::Consumed);
+        let events = audit.dispatches.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, "dispatch");
+        drop(events);
+        (gate, permit)
+    }
+
+    fn assert_unavailable(attempt: CleanupSnapshotAttempt) {
+        assert!(matches!(
+            attempt,
+            CleanupSnapshotAttempt::Uncertain(GateError::Unavailable)
+        ));
+    }
+
+    #[tokio::test]
+    async fn typed_selected_requires_one_successful_exact_callback() {
+        for typed in [false, true] {
+            let (gate, permit) = consumed_permit(Fault::None, typed).await;
+            let mut calls = 0;
+            let attempt = gate.try_cleanup_snapshot(&permit, &mut |snapshot| {
+                calls += 1;
+                assert_eq!(snapshot.authority.current_epoch, 0);
+                assert_eq!(
+                    strict_bytes(snapshot.authority.reservation).unwrap(),
+                    strict_bytes(&permit.reservation).unwrap()
+                );
+                assert!(snapshot.authority.terminal.is_none());
+                assert_eq!(snapshot.limits, permit.limits());
+                assert_eq!(snapshot.original_deadline, permit.deadline());
+                assert!(snapshot.observed_at <= Instant::now());
+                Ok(())
+            });
+            assert!(matches!(attempt, CleanupSnapshotAttempt::Selected));
+            assert_eq!(calls, 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn ignored_second_callback_cannot_report_selected() {
+        for typed in [false, true] {
+            let (gate, permit) = consumed_permit(Fault::DoubleCallback, typed).await;
+            let mut calls = 0;
+            let attempt = gate.try_cleanup_snapshot(&permit, &mut |_| {
+                calls += 1;
+                Ok(())
+            });
+            assert_unavailable(attempt);
+            assert_eq!(calls, 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn ignored_callback_error_cannot_report_selected() {
+        for typed in [false, true] {
+            let (gate, permit) = consumed_permit(Fault::IgnoreCallbackError, typed).await;
+            let mut calls = 0;
+            let attempt = gate.try_cleanup_snapshot(&permit, &mut |_| {
+                calls += 1;
+                Err(GateError::Cancelled)
+            });
+            assert_unavailable(attempt);
+            assert_eq!(calls, 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn typed_busy_is_valid_only_before_any_callback_entry() {
+        for (fault, expected_calls) in [
+            (Fault::BusyAfterCallback, 1),
+            (Fault::BusyAfterInvalidBinding, 0),
+        ] {
+            let (gate, permit) = consumed_permit(fault, true).await;
+            let mut calls = 0;
+            let attempt = gate.try_cleanup_snapshot(&permit, &mut |_| {
+                calls += 1;
+                Ok(())
+            });
+            assert_unavailable(attempt);
+            assert_eq!(calls, expected_calls);
+        }
+        let (gate, permit) = consumed_permit(Fault::BusyBeforeCallback, true).await;
+        let mut calls = 0;
+        let attempt = gate.try_cleanup_snapshot(&permit, &mut |_| {
+            calls += 1;
+            Ok(())
+        });
+        assert!(matches!(
+            attempt,
+            CleanupSnapshotAttempt::RetryableBusyBeforeCallback
+        ));
+        assert_eq!(calls, 0);
+    }
+
+    #[tokio::test]
+    async fn selected_without_callback_is_uncertain() {
+        for typed in [false, true] {
+            let (gate, permit) = consumed_permit(Fault::SelectedWithoutCallback, typed).await;
+            let mut calls = 0;
+            let attempt = gate.try_cleanup_snapshot(&permit, &mut |_| {
+                calls += 1;
+                Ok(())
+            });
+            assert_unavailable(attempt);
+            assert_eq!(calls, 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn default_legacy_errors_never_become_busy() {
+        for fault in [
+            Fault::UnavailableBeforeCallback,
+            Fault::PersistenceBeforeCallback,
+        ] {
+            let (gate, permit) = consumed_permit(fault, false).await;
+            let mut calls = 0;
+            let attempt = gate.try_cleanup_snapshot(&permit, &mut |_| {
+                calls += 1;
+                Ok(())
+            });
+            match fault {
+                Fault::UnavailableBeforeCallback => assert_unavailable(attempt),
+                Fault::PersistenceBeforeCallback => assert!(matches!(
+                    attempt,
+                    CleanupSnapshotAttempt::Uncertain(GateError::Persistence(message))
+                        if message == "snapshot acquisition failed"
+                )),
+                _ => unreachable!(),
+            }
+            assert_eq!(calls, 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn typed_callback_and_teardown_errors_preserve_outer_uncertainty() {
+        for typed in [false, true] {
+            let (gate, permit) = consumed_permit(Fault::None, typed).await;
+            let mut calls = 0;
+            let attempt = gate.try_cleanup_snapshot(&permit, &mut |_| {
+                calls += 1;
+                Err(GateError::Cancelled)
+            });
+            assert!(matches!(
+                attempt,
+                CleanupSnapshotAttempt::Uncertain(GateError::Cancelled)
+            ));
+            assert_eq!(calls, 1);
+
+            let (gate, permit) = consumed_permit(Fault::PersistenceAfterCallback, typed).await;
+            let mut calls = 0;
+            let attempt = gate.try_cleanup_snapshot(&permit, &mut |_| {
+                calls += 1;
+                Err(GateError::Cancelled)
+            });
+            assert!(matches!(
+                attempt,
+                CleanupSnapshotAttempt::Uncertain(GateError::Persistence(message))
+                    if message == "snapshot teardown failed"
+            ));
+            assert_eq!(calls, 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn legacy_api_preserves_propagated_callback_and_teardown_errors() {
+        let (gate, permit) = consumed_permit(Fault::None, false).await;
+        let error = gate
+            .with_cleanup_snapshot(&permit, &mut |_| Err(GateError::Cancelled))
+            .unwrap_err();
+        assert!(matches!(error, GateError::Cancelled));
+
+        let (gate, permit) = consumed_permit(Fault::PersistenceAfterCallback, false).await;
+        let mut calls = 0;
+        let error = gate
+            .with_cleanup_snapshot(&permit, &mut |_| {
+                calls += 1;
+                Ok(())
+            })
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            GateError::Persistence(message) if message == "snapshot teardown failed"
+        ));
+        assert_eq!(calls, 1);
+    }
+
+    #[tokio::test]
+    async fn legacy_api_rejects_ignored_callback_failures_and_missing_callback() {
+        for fault in [
+            Fault::DoubleCallback,
+            Fault::IgnoreCallbackError,
+            Fault::SelectedWithoutCallback,
+        ] {
+            let (gate, permit) = consumed_permit(fault, false).await;
+            let mut calls = 0;
+            let result = gate.with_cleanup_snapshot(&permit, &mut |_| {
+                calls += 1;
+                if matches!(fault, Fault::IgnoreCallbackError) {
+                    Err(GateError::Cancelled)
+                } else {
+                    Ok(())
+                }
+            });
+            assert!(matches!(result, Err(GateError::Unavailable)));
+            assert_eq!(
+                calls,
+                usize::from(!matches!(fault, Fault::SelectedWithoutCallback))
+            );
+        }
+    }
+
+    mod lease_cancellation_tests {
+        use super::*;
+        use std::{
+            future::Future,
+            sync::{
+                Weak,
+                atomic::{AtomicUsize, Ordering},
+            },
+            task::{Context, Poll, Wake, Waker},
+        };
+
+        #[derive(Default)]
+        struct Observation {
+            wakes: AtomicUsize,
+            drops: AtomicUsize,
+            reentered: AtomicUsize,
+            blocked: AtomicUsize,
+        }
+
+        struct ReentrantWake {
+            gate: Weak<GateEngine>,
+            profile: ProfileId,
+            observation: Arc<Observation>,
+        }
+
+        impl ReentrantWake {
+            fn reenter(&self) {
+                let Some(gate) = self.gate.upgrade() else {
+                    self.observation.blocked.fetch_add(1, Ordering::AcqRel);
+                    return;
+                };
+                // A try-lock makes the old under-lock implementation fail an
+                // assertion instead of hanging the entire test process.
+                let unlocked = match gate.lease_cancellations.try_lock() {
+                    Ok(guard) => {
+                        drop(guard);
+                        true
+                    }
+                    Err(_) => false,
+                };
+                if unlocked && matches!(gate.cancel_due_leases(&self.profile), Ok(0)) {
+                    self.observation.reentered.fetch_add(1, Ordering::AcqRel);
+                } else {
+                    self.observation.blocked.fetch_add(1, Ordering::AcqRel);
+                }
+            }
+        }
+
+        impl Wake for ReentrantWake {
+            fn wake(self: Arc<Self>) {
+                self.observation.wakes.fetch_add(1, Ordering::AcqRel);
+                self.reenter();
+            }
+
+            fn wake_by_ref(self: &Arc<Self>) {
+                self.observation.wakes.fetch_add(1, Ordering::AcqRel);
+                self.reenter();
+            }
+        }
+
+        impl Drop for ReentrantWake {
+            fn drop(&mut self) {
+                self.observation.drops.fetch_add(1, Ordering::AcqRel);
+                self.reenter();
+            }
+        }
+
+        async fn watched_lease() -> (Arc<GateEngine>, CallCx, DispatchPermit) {
+            let control = CoreControl::default();
+            let limits = ResourceLimits {
+                fuel_per_call: 1_000,
+                memory_mib: 1,
+                wall_ms: 60_000,
+                table_elements: 16,
+                output_bytes: 1_024,
+            };
+            let permissions = PermissionSet {
+                wasm: limits.clone(),
+                ..PermissionSet::default()
+            };
+            let native = Arc::new(NativeStore {
+                state: Mutex::new(NativeState::default()),
+                fault: Fault::None,
+                permissions: permissions.clone(),
+            });
+            let gate = Arc::new(GateEngine::new_with_control(
+                Arc::new(LegacyAdapter { native }),
+                Arc::new(NativeAudit::default()),
+                Arc::new(NoPrompt),
+                MediatorChain::default(),
+                control.clone(),
+            ));
+            let profile = ProfileId::new("lease-wake-tests").unwrap();
+            let pack = PackId::new("fixture.lease-wake").unwrap();
+            let hash = PackHash::new(Digest::hash(b"lease-wake-test-pack"));
+            gate.register_pack(
+                &profile,
+                &pack,
+                &hash,
+                PackPolicy {
+                    declaration: permissions.clone(),
+                    ceiling: permissions.clone(),
+                    pack_limits: permissions,
+                },
+            )
+            .unwrap();
+            let cx = CallCx::try_root_with_control(
+                profile,
+                Principal::Pack { pack, hash },
+                RequestId::new("lease-wake-request").unwrap(),
+                CancellationToken::new_with_control(&control).unwrap(),
+                Instant::now() + Duration::from_secs(60),
+                limits,
+                control,
+            )
+            .unwrap();
+            let request = EffectRequest::Clock;
+            let args = Digest::hash(b"lease-wake-clock-arguments");
+            let grant = gate
+                .authorize(&cx, request.clone(), args.clone())
+                .await
+                .unwrap();
+            let permit = grant.consume(&cx, &request, &args).unwrap();
+            gate.watch_lease(&cx, &permit).unwrap();
+            (gate, cx, permit)
+        }
+
+        #[tokio::test]
+        async fn due_wake_and_last_waker_drop_reenter_without_retiring_original_hook() {
+            let (gate, cx, permit) = watched_lease().await;
+            assert_eq!(gate.cancel_due_leases(cx.profile()).unwrap(), 0);
+            let due = Instant::now();
+            {
+                let mut leases = gate.lease_cancellations.lock().unwrap();
+                let (_, token, deadline) = leases.get_mut(permit.id()).unwrap();
+                assert!(token.same_node(cx.cancel()));
+                // Only the private wake hook's scheduling instant is made
+                // due. The real consumed permit and durable row stay exact;
+                // notifying a deadline never selects a terminal disposition.
+                *deadline = due;
+            }
+            assert_eq!(
+                gate.cancel_due_leases(&ProfileId::new("another-profile").unwrap())
+                    .unwrap(),
+                0
+            );
+            assert!(!cx.cancel().is_cancelled());
+            let observation = Arc::new(Observation::default());
+            let waker = Waker::from(Arc::new(ReentrantWake {
+                gate: Arc::downgrade(&gate),
+                profile: cx.profile().clone(),
+                observation: observation.clone(),
+            }));
+            let mut waiter = std::pin::pin!(cx.cancel().cancelled());
+            {
+                let mut task = Context::from_waker(&waker);
+                assert!(waiter.as_mut().poll(&mut task).is_pending());
+            }
+            // Only the actual registered Tokio waiter retains this Waker.
+            // Its final Drop must occur during notification, before repoll.
+            drop(waker);
+            assert_eq!(observation.drops.load(Ordering::Acquire), 0);
+            assert_eq!(gate.cancel_due_leases(cx.profile()).unwrap(), 1);
+            assert_eq!(observation.wakes.load(Ordering::Acquire), 1);
+            assert_eq!(observation.drops.load(Ordering::Acquire), 1);
+            assert_eq!(observation.reentered.load(Ordering::Acquire), 2);
+            assert_eq!(observation.blocked.load(Ordering::Acquire), 0);
+            assert_eq!(gate.cancel_due_leases(cx.profile()).unwrap(), 0);
+            assert_eq!(cx.cancel().cause(), Some(CancellationCause::Deadline));
+            {
+                let leases = gate.lease_cancellations.lock().unwrap();
+                let (owner, token, deadline) = leases.get(permit.id()).unwrap();
+                assert_eq!(owner, cx.profile());
+                assert!(token.same_node(cx.cancel()));
+                assert_eq!(*deadline, due);
+                assert_eq!(leases.len(), 1);
+            }
+            gate.with_cleanup_snapshot(&permit, &mut |snapshot| {
+                assert!(snapshot.authority.terminal.is_none());
+                assert_eq!(snapshot.authority.reservation.id, *permit.id());
+                assert_eq!(
+                    snapshot.authority.reservation.expires_unix_ms,
+                    permit.reservation.expires_unix_ms
+                );
+                Ok(())
+            })
+            .unwrap();
+            let noop = Waker::noop();
+            let mut task = Context::from_waker(noop);
+            assert!(matches!(
+                waiter.as_mut().poll(&mut task),
+                Poll::Ready(Ok(CancellationCause::Deadline))
+            ));
+        }
     }
 }

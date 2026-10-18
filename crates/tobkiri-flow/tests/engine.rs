@@ -17,7 +17,8 @@ use tobkiri_canon::{
 };
 use tobkiri_flow::{
     ActiveCodeFrame, CoreStream, FlowEngine, FlowRunner, PortInvoker, ReachedNode, RunEvent,
-    RunEventKind, RunJournal, StepError, StepOutput, StreamSource,
+    RunEventKind, RunJournal, StepError, StepOutput, StreamCloseControl, StreamCloseReason,
+    StreamSource,
 };
 use tobkiri_gate::{CallCx, ChargeKind, ControlKind, LoopLimits, Principal};
 use tobkiri_profile::*;
@@ -285,12 +286,26 @@ struct Fake {
     max_active: AtomicUsize,
     stream_cancelled: Arc<AtomicUsize>,
     stream_closed: Arc<AtomicUsize>,
+    stream_pending_entered: Arc<tokio::sync::Notify>,
+    stream_pending_finished: Arc<AtomicUsize>,
     stream_close_gate: Option<Arc<StreamCloseGate>>,
 }
 #[derive(Default)]
 struct StreamCloseGate {
     entered: tokio::sync::Notify,
     release: tokio::sync::Notify,
+}
+#[derive(Default)]
+struct SourcePullClose {
+    cancelled: tokio_util::sync::CancellationToken,
+}
+impl StreamCloseControl for SourcePullClose {
+    fn record_close(&self, _: StreamCloseReason) -> Result<(), StepError> {
+        // This companion belongs to exactly one Source. It wakes its retained
+        // pull; it neither closes that source nor certifies physical cleanup.
+        self.cancelled.cancel();
+        Ok(())
+    }
 }
 struct Source {
     values: Vec<CoreValue>,
@@ -300,12 +315,21 @@ struct Source {
     pending: bool,
     fail_close: bool,
     close_gate: Option<Arc<StreamCloseGate>>,
+    pull_close: Arc<SourcePullClose>,
+    pending_entered: Arc<tokio::sync::Notify>,
+    pending_finished: Arc<AtomicUsize>,
 }
 #[async_trait]
 impl StreamSource for Source {
     async fn pull(&mut self, max: u32) -> Result<CoreValue, StepError> {
         if self.pending && self.position > 0 {
-            std::future::pending::<()>().await;
+            self.pending_entered.notify_one();
+            self.pull_close.cancelled.cancelled().await;
+            self.pending_finished.fetch_add(1, Ordering::SeqCst);
+            return Err(StepError::new(
+                "cancelled",
+                "fixture pending pull was closed",
+            ));
         }
         let end = (self.position + max.min(1) as usize).min(self.values.len());
         let mut batch = CoreValue::array_builder(&support::budget(), end - self.position)
@@ -322,6 +346,10 @@ impl StreamSource for Source {
     }
     fn cancel(&mut self) {
         self.cancelled.fetch_add(1, Ordering::SeqCst);
+        self.pull_close.cancelled.cancel();
+    }
+    fn close_control(&self) -> Option<Arc<dyn StreamCloseControl>> {
+        Some(self.pull_close.clone())
     }
     async fn close(&mut self) -> Result<(), StepError> {
         self.closed.fetch_add(1, Ordering::SeqCst);
@@ -398,6 +426,9 @@ impl PortInvoker for Fake {
                     pending: op.as_str() == "pending-stream",
                     fail_close: op.as_str() == "cleanup-fails",
                     close_gate: self.stream_close_gate.clone(),
+                    pull_close: Arc::new(SourcePullClose::default()),
+                    pending_entered: self.stream_pending_entered.clone(),
+                    pending_finished: self.stream_pending_finished.clone(),
                 })))
             }
             _ => Ok(StepOutput::Value(args)),
@@ -646,7 +677,9 @@ async fn collection_growth_denial_awaits_actual_close_without_replaying_producer
         .await
         .expect("growth denial reached the producer's real close operation");
     assert!(futures::poll!(&mut result).is_pending());
-    assert_eq!(control.usage().count(ControlKind::Task), 1);
+    // Both the interpreter and its owning actual-Join monitor are scheduled
+    // tasks, independently admitted before either can start.
+    assert_eq!(control.usage().count(ControlKind::Task), 2);
     assert!(control.usage().count(ControlKind::Frame) > 0);
     assert_eq!(allocation.denied.load(Ordering::SeqCst), 1);
     assert_eq!(fake.calls.lock().unwrap().len(), 1);
@@ -955,6 +988,12 @@ async fn cancellation_releases_pending_stream_and_records_reason() {
         .unwrap();
     while let Some(event) = run.events.recv().await {
         if matches!(event.kind, RunEventKind::Emitted { .. }) {
+            tokio::time::timeout(
+                Duration::from_secs(1),
+                fake.stream_pending_entered.notified(),
+            )
+            .await
+            .expect("same source entered its retained pending pull");
             run.cancel.cancel();
             break;
         }
@@ -962,6 +1001,8 @@ async fn cancellation_releases_pending_stream_and_records_reason() {
     let (result, events) = finish(Ok(run)).await;
     assert_eq!(result.unwrap_err().code, "cancelled");
     assert!(fake.stream_cancelled.load(Ordering::SeqCst) > 0);
+    assert_eq!(fake.stream_pending_finished.load(Ordering::SeqCst), 1);
+    assert_eq!(fake.stream_closed.load(Ordering::SeqCst), 1);
     assert!(
         events
             .iter()
@@ -995,18 +1036,26 @@ async fn cancelled_run_stream_close_retains_completion_after_abandoned_wait() {
         }
     }
 
+    tokio::time::timeout(
+        Duration::from_secs(1),
+        fake.stream_pending_entered.notified(),
+    )
+    .await
+    .expect("same source entered its retained pending pull");
     let mut stream = run.into_stream();
     stream.cancel();
     tokio::time::timeout(Duration::from_secs(1), journal.entered.notified())
         .await
         .expect("cancelled interpreter reached its actual terminal journal");
-    assert_eq!(control.usage().count(ControlKind::Task), 1);
+    // The blocked interpreter and its actual-Join monitor remain funded even
+    // when a close observer is abandoned.
+    assert_eq!(control.usage().count(ControlKind::Task), 2);
     assert!(control.usage().count(ControlKind::Frame) > 0);
 
     let mut close = Box::pin(stream.close());
     assert!(futures::poll!(&mut close).is_pending());
     drop(close);
-    assert_eq!(control.usage().count(ControlKind::Task), 1);
+    assert_eq!(control.usage().count(ControlKind::Task), 2);
     assert_eq!(journal.terminal_appends.load(Ordering::SeqCst), 0);
 
     let mut close = Box::pin(stream.close());
@@ -1025,6 +1074,8 @@ async fn cancelled_run_stream_close_retains_completion_after_abandoned_wait() {
     assert_eq!(journal.terminal_appends.load(Ordering::SeqCst), 1);
     assert_eq!(fake.calls.lock().unwrap().len(), 1);
     assert!(fake.stream_cancelled.load(Ordering::SeqCst) > 0);
+    assert_eq!(fake.stream_pending_finished.load(Ordering::SeqCst), 1);
+    assert_eq!(fake.stream_closed.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1060,7 +1111,9 @@ async fn run_stream_completion_follows_actual_execution_custody_drop() {
         .await
         .expect("interpreter reached destruction of its real RunState")
         .unwrap();
-    assert_eq!(control.usage().count(ControlKind::Task), 1);
+    // Execution destruction has not finished; retain both the interpreter's
+    // Task reservation and the monitor that owns that exact Join.
+    assert_eq!(control.usage().count(ControlKind::Task), 2);
     assert!(futures::poll!(&mut close).is_pending());
     release.0.send(()).unwrap();
     tokio::time::timeout(Duration::from_secs(1), close)

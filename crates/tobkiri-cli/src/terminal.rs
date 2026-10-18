@@ -4,9 +4,9 @@ use std::{
     path::PathBuf,
     sync::Arc,
 };
-use tobkiri_core::{
-    AllocationBudget, AllocationError, CanonValue, CoreBuffer, CoreValue, ids::UiSessionId,
-};
+#[cfg(test)]
+use tobkiri_core::CoreValue;
+use tobkiri_core::{AllocationBudget, AllocationError, CanonValue, CoreBuffer, ids::UiSessionId};
 use tobkiri_core::{ApprovalAnswer, ApprovalPrompt, HostError, HostIo, TrustedPrompt, UiEmbed};
 
 /// The approval surface belongs to the native terminal host. Piped input and
@@ -94,6 +94,16 @@ fn render_approval(prompt: &ApprovalPrompt) -> Result<String, HostError> {
     ))
 }
 fn effect_preview(effect: &tobkiri_core::EffectRequest) -> Result<String, HostError> {
+    // A committed launch is presented through its trusted summary; the raw
+    // program string is never serialized into the terminal's effect view.
+    if let tobkiri_core::EffectRequest::Proc { .. } | tobkiri_core::EffectRequest::Pty { .. } =
+        effect
+    {
+        return Ok(format!(
+            "{{\"kind\":\"{}\",\"program\":\"[redacted; see committed launch summary]\"}}",
+            effect.kind()
+        ));
+    }
     let mut value = serde_json::to_value(effect)
         .map_err(|_| HostError("approval effect cannot be rendered".into()))?;
     // The exact bound URL remains in the grant's digest, while query/path data
@@ -232,20 +242,89 @@ impl HostIo for TerminalHost {
 struct Input {
     fd: tokio::io::unix::AsyncFd<std::os::fd::OwnedFd>,
     buffer: tokio::sync::Mutex<Vec<u8>>,
-    original_flags: i32,
+    original_flags: Option<i32>,
 }
 #[cfg(unix)]
 impl Input {
     fn new() -> Result<Self, HostError> {
-        use std::os::fd::FromRawFd;
-        // SAFETY: dup returns a fresh owned descriptor; fcntl changes only its
-        // nonblocking flag, which is restored when the terminal host is dropped.
+        use std::os::fd::{BorrowedFd, FromRawFd};
+        // SAFETY: stdin remains borrowed; the terminal constructor never owns
+        // or changes its flags. dup would share status flags with stdout/stderr
+        // when the launcher connected all three to the same PTY description.
+        if unsafe { libc::isatty(libc::STDIN_FILENO) } == 1 {
+            let stdin = unsafe { BorrowedFd::borrow_raw(libc::STDIN_FILENO) };
+            return Self::tty(stdin);
+        }
+        // Preserve the existing non-TTY pipe reader. It cannot approve a
+        // request because TerminalHost::trusted_tty rejects piped approval.
         let raw = unsafe { libc::dup(libc::STDIN_FILENO) };
         if raw < 0 {
             return Err(HostError(std::io::Error::last_os_error().to_string()));
         }
         let fd = unsafe { std::os::fd::OwnedFd::from_raw_fd(raw) };
         Self::owned(fd, true)
+    }
+    fn tty(source: std::os::fd::BorrowedFd<'_>) -> Result<Self, HostError> {
+        use std::os::fd::{AsFd, AsRawFd, FromRawFd};
+        fn snapshot(fd: std::os::fd::BorrowedFd<'_>) -> Result<libc::stat, HostError> {
+            let mut value = std::mem::MaybeUninit::<libc::stat>::uninit();
+            // SAFETY: fstat initializes this correctly sized output on success.
+            if unsafe { libc::fstat(fd.as_raw_fd(), value.as_mut_ptr()) } != 0 {
+                return Err(io_error(std::io::Error::last_os_error()));
+            }
+            Ok(unsafe { value.assume_init() })
+        }
+        fn same_node(before: &libc::stat, after: &libc::stat) -> bool {
+            before.st_dev == after.st_dev
+                && before.st_ino == after.st_ino
+                && before.st_rdev == after.st_rdev
+                && before.st_mode == after.st_mode
+        }
+        let before = snapshot(source)?;
+        if before.st_mode & libc::S_IFMT != libc::S_IFCHR
+            || unsafe { libc::isatty(source.as_raw_fd()) } != 1
+        {
+            return Err(HostError("terminal input is not a TTY".into()));
+        }
+        let mut name = [0u8; 4096];
+        // SAFETY: the fixed buffer is writable for exactly its declared size.
+        let status =
+            unsafe { libc::ttyname_r(source.as_raw_fd(), name.as_mut_ptr().cast(), name.len()) };
+        if status != 0 {
+            return Err(io_error(std::io::Error::from_raw_os_error(status)));
+        }
+        let name = std::ffi::CStr::from_bytes_until_nul(&name)
+            .map_err(|_| HostError("terminal input name is not terminated".into()))?;
+        if !name.to_bytes().starts_with(b"/") {
+            return Err(HostError("terminal input name is not absolute".into()));
+        }
+        // A fresh open creates an independent description. Never fall back to
+        // /dev/tty, which could select a different terminal from actual stdin.
+        let raw = unsafe {
+            libc::open(
+                name.as_ptr(),
+                libc::O_RDONLY
+                    | libc::O_NONBLOCK
+                    | libc::O_CLOEXEC
+                    | libc::O_NOFOLLOW
+                    | libc::O_NOCTTY,
+            )
+        };
+        if raw < 0 {
+            return Err(io_error(std::io::Error::last_os_error()));
+        }
+        // SAFETY: the successful open returned this one owned descriptor.
+        let fd = unsafe { std::os::fd::OwnedFd::from_raw_fd(raw) };
+        let original = snapshot(source)?;
+        let reopened = snapshot(fd.as_fd())?;
+        if !same_node(&before, &original)
+            || !same_node(&before, &reopened)
+            || unsafe { libc::isatty(source.as_raw_fd()) } != 1
+            || unsafe { libc::isatty(fd.as_raw_fd()) } != 1
+        {
+            return Err(HostError("terminal input identity changed".into()));
+        }
+        Self::register(fd, None, false)
     }
     fn owned(fd: std::os::fd::OwnedFd, restore_stdin_on_error: bool) -> Result<Self, HostError> {
         use std::os::fd::AsRawFd;
@@ -261,13 +340,20 @@ impl Input {
         {
             return Err(HostError(std::io::Error::last_os_error().to_string()));
         }
+        Self::register(fd, Some(original_flags), restore_stdin_on_error)
+    }
+    fn register(
+        fd: std::os::fd::OwnedFd,
+        original_flags: Option<i32>,
+        restore_stdin_on_error: bool,
+    ) -> Result<Self, HostError> {
         let fd = match unsafe { tokio::io::unix::AsyncFd::register(fd) } {
             Ok(fd) => fd,
             Err(error) => {
                 // AsyncFd registration consumes the owned descriptor on error.
-                // The stdin constructor's shared open-file-description flags
-                // are restored there; test/private pipes have no shared stdin.
-                if restore_stdin_on_error {
+                // The pipe stdin constructor's shared description flags are
+                // restored there; the fresh TTY path never changes stdio flags.
+                if restore_stdin_on_error && let Some(original_flags) = original_flags {
                     unsafe { libc::fcntl(libc::STDIN_FILENO, libc::F_SETFL, original_flags) };
                 }
                 return Err(HostError(error.to_string()));
@@ -406,13 +492,9 @@ impl Input {
 impl Drop for Input {
     fn drop(&mut self) {
         use std::os::fd::AsRawFd;
-        unsafe {
-            libc::fcntl(
-                self.fd.get_ref().as_raw_fd(),
-                libc::F_SETFL,
-                self.original_flags,
-            )
-        };
+        if let Some(original_flags) = self.original_flags {
+            unsafe { libc::fcntl(self.fd.get_ref().as_raw_fd(), libc::F_SETFL, original_flags) };
+        }
     }
 }
 
@@ -471,6 +553,7 @@ fn write_text(out: &mut impl Write, text: &str) -> std::io::Result<()> {
     }
     Ok(())
 }
+#[cfg(test)]
 fn write_json_string(out: &mut impl Write, text: &str) -> std::io::Result<()> {
     out.write_all(b"\"")?;
     for ch in text.chars() {
@@ -483,6 +566,7 @@ fn write_json_string(out: &mut impl Write, text: &str) -> std::io::Result<()> {
     }
     out.write_all(b"\"")
 }
+#[cfg(test)]
 fn write_value(out: &mut impl Write, value: &CoreValue, depth: usize) -> std::io::Result<()> {
     use tobkiri_core::CoreRef;
     if depth > 256 {
@@ -572,6 +656,113 @@ mod tests {
             bytes.len() as isize
         );
         (Input::owned(read, false).unwrap(), write)
+    }
+    #[cfg(unix)]
+    fn private_pty() -> (std::os::fd::OwnedFd, std::os::fd::OwnedFd) {
+        use std::os::fd::{AsRawFd, FromRawFd};
+        let mut master = -1;
+        let mut slave = -1;
+        assert_eq!(
+            unsafe {
+                libc::openpty(
+                    &mut master,
+                    &mut slave,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            },
+            0
+        );
+        let master = unsafe { std::os::fd::OwnedFd::from_raw_fd(master) };
+        let slave = unsafe { std::os::fd::OwnedFd::from_raw_fd(slave) };
+        let mut attributes = std::mem::MaybeUninit::<libc::termios>::uninit();
+        assert_eq!(
+            unsafe { libc::tcgetattr(slave.as_raw_fd(), attributes.as_mut_ptr()) },
+            0
+        );
+        let mut attributes = unsafe { attributes.assume_init() };
+        attributes.c_lflag = (attributes.c_lflag | libc::ICANON) & !libc::ECHO;
+        assert_eq!(
+            unsafe { libc::tcsetattr(slave.as_raw_fd(), libc::TCSANOW, &attributes) },
+            0
+        );
+        (master, slave)
+    }
+    #[cfg(unix)]
+    fn descriptor_flags(fd: &impl std::os::fd::AsRawFd) -> i32 {
+        let flags = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_GETFL) };
+        assert!(flags >= 0);
+        flags
+    }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn tty_input_has_independent_flags_and_preserves_two_approval_turns() {
+        use std::io::Read;
+        use std::os::fd::{AsFd, AsRawFd, FromRawFd};
+        let (master, source) = private_pty();
+        let initial_flags = descriptor_flags(&source);
+        assert_eq!(initial_flags & libc::O_NONBLOCK, 0);
+        // This is the launcher's problematic topology: input and prompt output
+        // share one open file description, despite being different descriptors.
+        let output = unsafe { libc::dup(source.as_raw_fd()) };
+        assert!(output >= 0);
+        let output = unsafe { std::os::fd::OwnedFd::from_raw_fd(output) };
+        let mut output = std::fs::File::from(output);
+        let mut master = std::fs::File::from(master);
+        // Darwin records FWASWRITTEN (0x00010000) on the first write; that
+        // bookkeeping transition is unrelated to Input or O_NONBLOCK. Prime
+        // and drain only this private PTY before taking the exact flag baseline.
+        let warmup = b"PTY baseline";
+        output.write_all(warmup).unwrap();
+        output.flush().unwrap();
+        let mut observed = [0u8; 32];
+        master.read_exact(&mut observed[..warmup.len()]).unwrap();
+        assert_eq!(&observed[..warmup.len()], warmup);
+        let original_flags = descriptor_flags(&source);
+        assert_eq!(
+            original_flags & libc::O_NONBLOCK,
+            initial_flags & libc::O_NONBLOCK
+        );
+        assert_eq!(descriptor_flags(&output), original_flags);
+        let input = Input::tty(source.as_fd()).unwrap();
+        assert_eq!(descriptor_flags(&source), original_flags);
+        assert_eq!(descriptor_flags(&output), original_flags);
+        assert_ne!(descriptor_flags(input.fd.get_ref()) & libc::O_NONBLOCK, 0);
+        assert_ne!(
+            unsafe { libc::fcntl(input.fd.get_ref().as_raw_fd(), libc::F_GETFD) }
+                & libc::FD_CLOEXEC,
+            0
+        );
+        for prompt in [
+            b"first approval> ".as_slice(),
+            b"second approval> ".as_slice(),
+        ] {
+            output.write_all(prompt).unwrap();
+            output.flush().unwrap();
+            let mut observed = [0u8; 32];
+            master.read_exact(&mut observed[..prompt.len()]).unwrap();
+            assert_eq!(&observed[..prompt.len()], prompt);
+            master.write_all(b"approve\n").unwrap();
+            assert_eq!(input.line().await.unwrap(), "approve");
+            assert_eq!(descriptor_flags(&source), original_flags);
+            assert_eq!(descriptor_flags(&output), original_flags);
+        }
+        drop(input);
+        assert_eq!(descriptor_flags(&source), original_flags);
+        assert_eq!(descriptor_flags(&output), original_flags);
+    }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn tty_constructor_rejects_pipe_without_changing_its_flags() {
+        use std::os::fd::{AsFd, FromRawFd};
+        let mut pair = [-1; 2];
+        assert_eq!(unsafe { libc::pipe(pair.as_mut_ptr()) }, 0);
+        let source = unsafe { std::os::fd::OwnedFd::from_raw_fd(pair[0]) };
+        let _writer = unsafe { std::os::fd::OwnedFd::from_raw_fd(pair[1]) };
+        let flags = descriptor_flags(&source);
+        assert!(Input::tty(source.as_fd()).is_err());
+        assert_eq!(descriptor_flags(&source), flags);
     }
     #[tokio::test]
     async fn noninteractive_terminal_cannot_approve() {
@@ -713,5 +904,39 @@ mod approval_tests {
         assert!(!text.contains('\u{1b}'));
         assert!(text.contains("\\u001b"));
         assert!(text.contains("\\nDANGER hidden"));
+    }
+    fn launch_prompt(kind: &str, program: &str) -> ApprovalPrompt {
+        approval_prompt(
+            serde_json::json!({"kind": kind, "program": program}),
+            "dangerous",
+        )
+    }
+    #[test]
+    fn process_launch_review_redacts_program_and_preserves_trusted_context() {
+        for (kind, sentinel) in [
+            ("proc", "RAW-PROC-SENTINEL-cli"),
+            ("pty", "RAW-PTY-SENTINEL-cli"),
+        ] {
+            let prompt = launch_prompt(kind, sentinel);
+            let effect_digest = prompt.effect.digest().unwrap();
+            let args_digest = prompt.args_digest.clone();
+            let text = render_approval(&prompt).unwrap();
+            assert!(!text.contains(sentinel), "raw program leaked for {kind}");
+            for field in [
+                "DANGEROUS approval",
+                "DANGER:",
+                "grant_fixture",
+                "req_fixture",
+                "Security epoch: 7",
+                "[redacted; see committed launch summary]",
+                "trusted review",
+            ] {
+                assert!(text.contains(field), "{field}");
+            }
+            assert!(text.contains(kind));
+            assert!(text.contains(&args_digest.to_string()));
+            assert_eq!(prompt.effect.digest().unwrap(), effect_digest);
+            assert_eq!(prompt.args_digest, args_digest);
+        }
     }
 }

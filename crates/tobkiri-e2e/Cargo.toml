@@ -19,6 +19,7 @@ tobkiri-profile.workspace = true
 tobkiri-flow.workspace = true
 tobkiri-manifest.workspace = true
 tobkiri-wasm.workspace = true
+tobkiri-launcher-core-host = { path = "../../tobkiri_launcher/core-host" }
 sha2.workspace = true
 hex.workspace = true
 reqwest.workspace = true

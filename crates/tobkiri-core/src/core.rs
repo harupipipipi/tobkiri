@@ -46,6 +46,12 @@ pub struct Core {
     /// One bounded native-control account shared by all Profile Gates,
     /// contexts, retained catalogs and execution records owned by this Core.
     control: CoreControl,
+    filesystem: Option<Arc<crate::filesystem_registry::CoreFilesystem>>,
+    /// Per-Core trusted process descriptor catalog: one bounded owner holding
+    /// the append-only entry slots, the move-only launch key and every
+    /// retained descriptor. Absent when initialization or the platform fails
+    /// closed; its absence never weakens other Core services.
+    processes: Option<crate::process_catalog::ProcessCatalog>,
     recovery: BTreeMap<ProfileId, ProfileRecoveryStatus>,
 }
 
@@ -92,9 +98,17 @@ impl Core {
             config.test_data_root.as_ref().unwrap_or(&default),
         )?);
         let capacity = crate::capacity::shared(&root)?;
+        let control = CoreControl::default();
+        let filesystem =
+            crate::filesystem_registry::CoreFilesystem::new(&root, control.clone()).ok();
+        // The process owner shares THIS SAME CoreControl account; entropy or
+        // platform failure leaves the component absent without weakening Core.
+        let processes = crate::process_catalog::ProcessCatalog::new(control.clone()).ok();
         let mut core = Self {
             capacity,
-            control: CoreControl::default(),
+            control,
+            filesystem,
+            processes,
             host,
             profiles: Profiles { root },
             admissions: crate::admission::Admissions::default(),
@@ -137,6 +151,56 @@ impl Core {
             core.recovery.insert(profile, status);
         }
         Ok(core)
+    }
+
+    /// Register a trusted already-open directory for explicit configuration.
+    /// This creates only an identity and rights ceiling, never an approval.
+    /// Configure and approve that exact ID in the Profile before guest use.
+    /// Native directory-selection/configuration UI is a separate host concern.
+    pub fn register_filesystem_root(
+        &self,
+        directory: std::fs::File,
+        rights: crate::FilesystemRights,
+    ) -> Result<crate::FilesystemRoot, CoreError> {
+        self.filesystem
+            .as_ref()
+            .ok_or(tobkiri_gate::GateError::Unavailable)?
+            .register(directory, rights)
+            .map_err(|error| CoreError::Runtime(error.to_string()))
+    }
+
+    /// Register a trusted already-open executable descriptor and a separate
+    /// already-open working-directory descriptor under a bounded program id.
+    /// Registration retains the original `File` objects, derives stat facts
+    /// and a bounded streamed SHA-256 checked against the required expected
+    /// digest, then re-observes both descriptors for drift.
+    ///
+    /// This records catalog facts only - never a launch, approval, jail, or
+    /// exec-readiness proof. Descriptor custody, digest equality and a
+    /// before/after sample do not prove immutable bytes, freedom from
+    /// concurrent writers, effective access, caller liveness, current policy,
+    /// or format/interpreter support. An absent cwd is not representable and
+    /// is never substituted; `proc`/`pty` remain `Unavailable`.
+    pub fn register_process_catalog_entry(
+        &self,
+        program_id: &str,
+        executable: std::fs::File,
+        expected_executable_digest: &Digest,
+        catalog_label: &str,
+        cwd: std::fs::File,
+        cwd_label: &str,
+    ) -> Result<(), crate::ProcessRegistrationError> {
+        self.processes
+            .as_ref()
+            .ok_or(crate::ProcessRegistrationError::Unavailable)?
+            .register(
+                program_id,
+                executable,
+                expected_executable_digest,
+                catalog_label,
+                cwd,
+                cwd_label,
+            )
     }
 
     fn authority(&self, profile: &Profile) -> Result<(Arc<GateEngine>, Arc<AuditLog>), CoreError> {
@@ -550,25 +614,37 @@ impl Core {
             .await
             .map_err(|error| CoreError::Runtime(error.to_string()))?,
         );
+        if let Some(filesystem) = &self.filesystem {
+            pack_host
+                .set_filesystem_access(
+                    filesystem
+                        .for_gate(gate.clone())
+                        .map_err(|error| CoreError::Runtime(error.to_string()))?,
+                )
+                .map_err(|error| CoreError::Runtime(error.to_string()))?;
+        }
         let invoker: Arc<dyn tobkiri_flow::PortInvoker> = pack_host.clone();
         let execution_factory = crate::execution_frames::ExecutionFactory::new(
             compiled.clone(),
             gate.clone(),
             invoker.clone(),
         )?;
-        let provider_bridge = crate::session::provider_entry::CoreProviderEntryBridge::new(
-            execution_factory.provider_authority(),
-            cx.control(),
-        )?;
+        let provider_bridge =
+            crate::session::provider_entry::CoreProviderEntryBridge::allocate_shared(
+                execution_factory.provider_authority(),
+                cx.control(),
+            )?;
         pack_host
             .set_provider_entry_bridge(provider_bridge.clone())
             .map_err(|error| CoreError::Runtime(error.to_string()))?;
         let session = Session::new_with_ingress(
-            compiled,
-            gate,
-            invoker.clone(),
-            Arc::new(AuditRunJournal(audit)),
-            self.host.clone(),
+            crate::session::SessionServices {
+                compiled,
+                gate,
+                invoker: invoker.clone(),
+                journal: Arc::new(AuditRunJournal(audit)),
+                host: self.host.clone(),
+            },
             epoch,
             head.clone(),
             cx.cancel().clone(),
@@ -699,3 +775,15 @@ fn register_views(
 #[cfg(test)]
 #[path = "core_tests.rs"]
 mod tests;
+
+#[cfg(all(test, unix))]
+#[path = "filesystem_registry_tests.rs"]
+mod filesystem_registry_tests;
+
+#[cfg(all(test, unix))]
+#[path = "filesystem_guest_tests.rs"]
+mod filesystem_guest_tests;
+
+#[cfg(test)]
+#[path = "audit_guest_tests.rs"]
+mod audit_guest_tests;

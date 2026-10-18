@@ -576,13 +576,12 @@ impl Drop for ReleasePlan {
             // while the final record's bookkeeping is still funded.
             drop(std::mem::take(&mut locked.records));
         }
-        if let Some(record) = removed {
-            if let Some(used) = locked
+        if let Some(record) = removed
+            && let Some(used) = locked
                 .used
                 .checked_sub(record.allocated + RESERVATION_BOOKKEEP_BYTES)
-            {
-                locked.used = used;
-            }
+        {
+            locked.used = used;
         }
         if locked.records.is_empty() && locked.used == 0 && locked.preparations.is_empty() {
             owners.retain(|_, other| !Arc::ptr_eq(other, &state));

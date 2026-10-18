@@ -12,8 +12,8 @@
     },
     {
       "path": "ui/index.html",
-      "sha256": "sha256:7dbb79adde795466a11c040b2627c08251074f4d391f44b0b15189342ec4a31c",
-      "size": 931
+      "sha256": "sha256:8280e2010d6d3372ae5954abece385f385ef49b85c99ea7f15a09ae72bd76e22",
+      "size": 763
     },
     {
       "path": "ui/ports.js",

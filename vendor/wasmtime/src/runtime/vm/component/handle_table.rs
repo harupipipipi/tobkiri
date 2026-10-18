@@ -1,4 +1,4 @@
-use super::{TypedResource, TypedResourceIndex};
+use super::{PendingOwnerKey, PendingOwnTicket, TypedResource, TypedResourceIndex};
 use crate::component::{FundedVec, HostAllocationError, HostAllocationOwner};
 use crate::{Result, bail};
 use core::mem;
@@ -56,9 +56,15 @@ enum Slot {
     ///
     /// The `lend_count` tracks how many times this has been lent out as a
     /// `borrow` and if nonzero this can't be removed.
+    ///
+    /// The `pending` field, when `Some`, marks this entry as a provisional
+    /// ("pending") own that was inserted by a record-authorized operation
+    /// and has not been activated yet. While it is set every ordinary
+    /// accessor below rejects the entry and `lend_count` stays at zero.
     ResourceOwn {
         resource: TypedResource,
         lend_count: u32,
+        pending: Option<PendingOwnerKey>,
     },
 
     /// Represents a borrowed resource handle connected to the `scope`
@@ -204,7 +210,125 @@ impl HandleTable {
         self.insert(Slot::ResourceOwn {
             resource,
             lend_count: 0,
+            pending: None,
         })
+    }
+
+    /// Inserts a new pending `own` resource into this table whose type/rep
+    /// are specified by `resource` and whose provisional owner record is
+    /// `owner`.
+    ///
+    /// The entry is provisional: every ordinary accessor rejects it until a
+    /// prepared activation flips it active, and `lend_count` remains at zero
+    /// while pending. Returns the freshly minted custody ticket, which is
+    /// the only authority able to roll the entry back, transfer it, or
+    /// prepare its activation.
+    #[allow(dead_code)]
+    pub(crate) fn resource_own_insert_pending(
+        &mut self,
+        resource: TypedResource,
+        owner: PendingOwnerKey,
+    ) -> Result<PendingOwnTicket> {
+        let rep = resource.untyped_rep();
+        let component_ty = match &resource {
+            TypedResource::Component { ty, .. } => Some(*ty),
+            TypedResource::Host(_) => None,
+        };
+        let handle = self.insert(Slot::ResourceOwn {
+            resource,
+            lend_count: 0,
+            pending: Some(owner),
+        })?;
+        let index = match component_ty {
+            Some(ty) => TypedResourceIndex::Component { index: handle, ty },
+            None => TypedResourceIndex::Host(handle),
+        };
+        Ok(PendingOwnTicket::new(owner, index, rep))
+    }
+
+    /// Validates that `ticket` is the exact custody token for a pending `own`
+    /// entry in this table: the slot must be a pending own whose owner key,
+    /// typed index, and representation all match `ticket`, and it must not
+    /// have been lent out.
+    fn validate_pending_slot(&mut self, ticket: &PendingOwnTicket) -> Result<()> {
+        let index = ticket.index();
+        match self.get_mut(index.raw_index())? {
+            Slot::ResourceOwn {
+                resource,
+                lend_count,
+                pending,
+            } => {
+                match pending {
+                    Some(owner) if *owner == ticket.owner() => {}
+                    Some(_) => bail!("pending resource has a different owner record"),
+                    None => bail!("index {} is not a pending resource", index.raw_index()),
+                }
+                if resource.rep(&index)? != ticket.rep() {
+                    bail!("pending resource representation mismatch");
+                }
+                if *lend_count != 0 {
+                    bail!("pending resource has a nonzero lend count");
+                }
+                Ok(())
+            }
+            _ => bail!("index {} is not a resource", index.raw_index()),
+        }
+    }
+
+    /// Validates `ticket` against the live slot without mutating anything.
+    #[allow(dead_code)]
+    pub(crate) fn resource_pending_validate(&mut self, ticket: &PendingOwnTicket) -> Result<()> {
+        self.validate_pending_slot(ticket)
+    }
+
+    /// Returns an error when `idx` names an `own` resource whose activation
+    /// is still pending; every other slot returns `Ok(())`.
+    ///
+    /// This performs no mutation and exists so callers can reject pending
+    /// entries before running their own removal or generation bookkeeping.
+    pub(crate) fn resource_reject_pending(&mut self, idx: u32) -> Result<()> {
+        match self.get_mut(idx)? {
+            Slot::ResourceOwn {
+                pending: Some(_), ..
+            } => bail!("index {idx} is a resource pending activation"),
+            _ => Ok(()),
+        }
+    }
+
+    /// Record-authorized rollback of a pending `own` entry.
+    ///
+    /// Validates `ticket` completely before mutating, then removes the
+    /// entry. No destructor is dispatched and no borrow bookkeeping is
+    /// touched. Returns the representation recorded in `ticket`.
+    #[allow(dead_code)]
+    pub(crate) fn resource_pending_remove(&mut self, ticket: &PendingOwnTicket) -> Result<u32> {
+        self.validate_pending_slot(ticket)?;
+        self.remove(ticket.index().raw_index())?;
+        Ok(ticket.rep())
+    }
+
+    /// Validates `ticket` and returns an exclusive activation guard for the
+    /// pending entry.
+    ///
+    /// All fallible checks happen here; the returned guard performs only the
+    /// already-prepared pending-to-active state flip and can never fail,
+    /// allocate, await, or revalidate. Dropping it without calling
+    /// `activate` leaves the entry pending and charged.
+    #[allow(dead_code)]
+    pub(crate) fn resource_pending_prepare(
+        &mut self,
+        ticket: &PendingOwnTicket,
+    ) -> Result<PendingActivation<'_>> {
+        self.validate_pending_slot(ticket)?;
+        let slot = self.get_mut(ticket.index().raw_index())?;
+        debug_assert!(matches!(
+            slot,
+            Slot::ResourceOwn {
+                pending: Some(_),
+                ..
+            }
+        ));
+        Ok(PendingActivation { slot })
     }
 
     /// Inserts a new `borrow` resource into this table whose type/rep are
@@ -220,6 +344,10 @@ impl HandleTable {
     /// resource of the appropriate type.
     pub fn resource_rep(&mut self, idx: TypedResourceIndex) -> Result<u32> {
         match self.get_mut(idx.raw_index())? {
+            // Provisional entries reject before any rep disclosure.
+            Slot::ResourceOwn { pending: Some(_), .. } => {
+                bail!("index {} is a resource pending activation", idx.raw_index())
+            }
             Slot::ResourceOwn { resource, .. } | Slot::ResourceBorrow { resource, .. } => {
                 resource.rep(&idx)
             }
@@ -237,9 +365,14 @@ impl HandleTable {
     /// `own` handle.
     pub fn resource_lend(&mut self, idx: TypedResourceIndex) -> Result<(u32, bool)> {
         match self.get_mut(idx.raw_index())? {
+            // Provisional entries reject before any lend bookkeeping.
+            Slot::ResourceOwn { pending: Some(_), .. } => {
+                bail!("index {} is a resource pending activation", idx.raw_index())
+            }
             Slot::ResourceOwn {
                 resource,
                 lend_count,
+                ..
             } => {
                 let rep = resource.rep(&idx)?;
                 *lend_count = lend_count.checked_add(1).unwrap();
@@ -254,6 +387,10 @@ impl HandleTable {
     /// lending operation.
     pub fn resource_undo_lend(&mut self, idx: TypedResourceIndex) -> Result<()> {
         match self.get_mut(idx.raw_index())? {
+            // Provisional entries reject before touching `lend_count`.
+            Slot::ResourceOwn { pending: Some(_), .. } => {
+                bail!("index {} is a resource pending activation", idx.raw_index())
+            }
             Slot::ResourceOwn { lend_count, .. } => {
                 *lend_count -= 1;
                 Ok(())
@@ -268,9 +405,14 @@ impl HandleTable {
     /// borrowed resource, or points to a resource of the wrong type.
     pub fn remove_resource(&mut self, idx: TypedResourceIndex) -> Result<RemovedResource> {
         let ret = match self.get_mut(idx.raw_index())? {
+            // Provisional entries reject before any removal happens.
+            Slot::ResourceOwn { pending: Some(_), .. } => {
+                bail!("index {} is a resource pending activation", idx.raw_index())
+            }
             Slot::ResourceOwn {
                 resource,
                 lend_count,
+                ..
             } => {
                 if *lend_count != 0 {
                     bail!("cannot remove owned resource while borrowed")
@@ -587,6 +729,37 @@ impl HandleTable {
             Slot::Future { rep, .. } => Ok((*rep, Waitable::Future)),
             Slot::Stream { rep, .. } => Ok((*rep, Waitable::Stream)),
             _ => bail!("handle is not a waitable"),
+        }
+    }
+}
+
+/// Exclusive activation permit for a single pending `own` entry.
+///
+/// Returned by [`HandleTable::resource_pending_prepare`] after all fallible
+/// validation has completed; it borrows the target slot exclusively for its
+/// lifetime. [`PendingActivation::activate`] performs only the
+/// already-prepared state flip — no allocation, reservation, callback,
+/// await, destructor, or revalidation — and dropping the guard without
+/// activating leaves the entry pending and charged.
+///
+/// This is only an internal state primitive: it does not authenticate an
+/// acknowledgement and no production caller activates through it yet.
+#[allow(dead_code)]
+pub(crate) struct PendingActivation<'a> {
+    slot: &'a mut Slot,
+}
+
+#[allow(dead_code)]
+impl PendingActivation<'_> {
+    /// Performs the already-prepared pending-to-active state flip.
+    ///
+    /// Infallible by construction: validation happened when the guard was
+    /// prepared and the guard holds the slot exclusively, so the state
+    /// could not have changed since.
+    pub(crate) fn activate(self) {
+        if let Slot::ResourceOwn { pending, .. } = self.slot {
+            debug_assert!(pending.is_some());
+            *pending = None;
         }
     }
 }

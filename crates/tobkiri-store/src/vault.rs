@@ -9,6 +9,10 @@ use tobkiri_canon::{Digest, ids::ProfileId};
 use tobkiri_gate::{CallCx, DispatchPermit, EffectRequest, Grant, Principal};
 use zeroize::{Zeroize, Zeroizing};
 
+#[path = "vault_secret_work.rs"]
+mod vault_secret_work;
+pub use vault_secret_work::*;
+
 const MAGIC: &[u8; 8] = b"TBKVLT01";
 /// Key custody belongs to core; Packs never receive a key-provider object.
 pub trait VaultKeyProvider: Send + Sync {

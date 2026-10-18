@@ -34,7 +34,7 @@ impl CoreProviderEntryBridge {
     /// Reserve the single native registration before creating the shared Arc
     /// used by PackHost and Session. The account is CoreControl, never a guest
     /// CodeOwner budget or target-selected sponsor.
-    pub(crate) fn new(
+    pub(crate) fn allocate_shared(
         authority: ControlHandle<CoreProviderAuthority>,
         control: &CoreControl,
     ) -> Result<Arc<dyn ProviderEntryBridge>, GateError> {
@@ -54,6 +54,15 @@ impl CoreProviderEntryBridge {
 }
 
 impl ProviderEntryBridge for CoreProviderEntryBridge {
+    fn native_input_argument(
+        &self,
+        provider: &Arc<dyn ProviderFrame>,
+        kind: tobkiri_wasm::HandleKind,
+        id: u64,
+    ) -> Result<Option<ControlHandle<tobkiri_wasm::NativeInputHandles>>, StepError> {
+        self.authority.native_input_argument(provider, kind, id)
+    }
+
     fn prepare_native_input(
         &self,
         control: &dyn PortInvoker,

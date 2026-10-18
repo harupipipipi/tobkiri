@@ -589,18 +589,20 @@ impl RuntimeFixture {
             invoker.clone(),
         )
         .unwrap();
-        let bridge = crate::session::provider_entry::CoreProviderEntryBridge::new(
+        let bridge = crate::session::provider_entry::CoreProviderEntryBridge::allocate_shared(
             factory.provider_authority(),
             cx.control(),
         )
         .unwrap();
         pack_host.set_provider_entry_bridge(bridge.clone()).unwrap();
         let session = crate::Session::new_with_ingress(
-            compiled,
-            gate,
-            invoker,
-            Arc::new(crate::AuditRunJournal(audit)),
-            host,
+            crate::session::SessionServices {
+                compiled,
+                gate,
+                invoker,
+                journal: Arc::new(crate::AuditRunJournal(audit)),
+                host,
+            },
             epoch,
             head,
             cx.cancel().clone(),

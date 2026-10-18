@@ -551,6 +551,13 @@ pub struct StoreOpaque {
     /// enabled, so the key-space is unique for each store.)
     #[cfg(feature = "debug")]
     frame_data_cache: FrameDataCache,
+
+    // This runtime participant is destroyed after every preceding runtime
+    // field, including component tables and cached fiber storage. Data and
+    // typed-extracted payloads retain independent participants; into_data does
+    // not turn runtime teardown into payload destruction or a success ACK.
+    #[cfg(feature = "component-model")]
+    pub(crate) component_delivery_keeper: Option<crate::component::ResourceDeliveryAttachment>,
 }
 
 /// Self-pointer to `StoreInner<T>` from within a `StoreOpaque` which is chiefly
@@ -769,6 +776,8 @@ impl<T> Store<T> {
             breakpoints: Default::default(),
             #[cfg(feature = "debug")]
             frame_data_cache: FrameDataCache::new(),
+            #[cfg(feature = "component-model")]
+            component_delivery_keeper: None,
         };
         let mut inner = try_new::<Box<_>>(StoreInner {
             inner,

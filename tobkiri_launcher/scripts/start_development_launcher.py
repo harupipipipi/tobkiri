@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and run the complete Apple Silicon development desktop without Docker."""
+"""Build and run the Core desktop, or explicitly select the legacy desktop."""
 
 from __future__ import annotations
 
@@ -12,7 +12,64 @@ from pathlib import Path
 from prepare_viewer_runtime import REPO_ROOT, host_target, run_command
 
 
-def build_development_launcher(repo_root: Path) -> Path:
+def build_core_development_launcher(repo_root: Path) -> Path:
+    """Build and verify the in-process Core development app without VM resources."""
+    target = host_target()
+    if target != "aarch64-apple-darwin":
+        raise RuntimeError("The development desktop requires Apple Silicon macOS")
+    if os.environ.get("CARGO_TARGET_DIR"):
+        raise RuntimeError(
+            "Use the checkout's default Cargo target directory for desktop development"
+        )
+    launcher = repo_root / "tobkiri_launcher"
+    run_command(
+        [
+            "npm",
+            "exec",
+            "--prefix",
+            "frontend",
+            "--",
+            "tauri",
+            "build",
+            "--debug",
+            "--features",
+            "core-host",
+            "--target",
+            target,
+            "--config",
+            "src-tauri/tauri.core-host.macos.dev.conf.json",
+            "--bundles",
+            "app",
+            "--ci",
+            "--",
+            "--no-default-features",
+        ],
+        cwd=launcher,
+    )
+    app = (
+        launcher
+        / "src-tauri/target"
+        / target
+        / "debug/bundle/macos"
+        / "Tobkiri Launcher.app"
+    )
+    executable = app / "Contents/MacOS/tobkiri-launcher"
+    if not executable.is_file():
+        raise RuntimeError(f"Core development Launcher was not produced: {executable}")
+    run_command(
+        ["/usr/bin/codesign", "--verify", "--strict", "--all-architectures", app]
+    )
+    return executable
+
+
+def build_development_launcher(repo_root: Path, *, legacy: bool = False) -> Path:
+    """Select Core normally; use the compatibility desktop only when requested."""
+    if legacy:
+        return build_legacy_development_launcher(repo_root)
+    return build_core_development_launcher(repo_root)
+
+
+def build_legacy_development_launcher(repo_root: Path) -> Path:
     """Build the checkout Launcher and verify its signed native PackVM helper."""
     target = host_target()
     if target != "aarch64-apple-darwin":
@@ -45,6 +102,8 @@ def build_development_launcher(repo_root: Path) -> Path:
             "--bundles",
             "app",
             "--ci",
+            "--",
+            "--no-default-features",
         ],
         cwd=launcher,
     )
@@ -127,17 +186,33 @@ def build_development_launcher(repo_root: Path) -> Path:
     return executable
 
 
-def main() -> int:
-    """Start the verified local desktop, or only build it when requested."""
+def main(argv: list[str] | None = None) -> int:
+    """Start the selected local desktop, or only build it when requested."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-only", action="store_true")
-    args = parser.parse_args()
+    parser.add_argument(
+        "--legacy",
+        action="store_true",
+        help="Use the legacy desktop and its full Python/PackVM verification path",
+    )
+    args = parser.parse_args(argv)
     try:
-        executable = build_development_launcher(REPO_ROOT)
-        print(f"Verified Tobkiri development desktop: {executable}", flush=True)
+        executable = build_development_launcher(REPO_ROOT, legacy=args.legacy)
+        route = "legacy" if args.legacy else "Core"
+        print(f"Verified Tobkiri {route} development desktop: {executable}", flush=True)
+        if not args.legacy:
+            print(
+                "Select a reviewed local Profile ID in the desktop. To create or "
+                "import one, use the CLI from the repository root:\n"
+                "  cargo run --locked -p tobkiri-cli -- profile create "
+                "--name NAME --definition FILE\n"
+                "  cargo run --locked -p tobkiri-cli -- profile import FILE --name NAME\n"
+                "Complete the CLI's ordinary verification and approval, then enter "
+                "the returned Profile ID. Opening the desktop does not require "
+                "a cloud key or configure a provider.",
+                flush=True,
+            )
         if not args.build_only:
-            # Launch the enclosing .app's executable so the existing Launcher
-            # binding can discover and authenticate its own PackVM resources.
             run_command([executable], cwd=REPO_ROOT)
     except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
         print(f"Tobkiri development desktop failed: {error}", file=sys.stderr)

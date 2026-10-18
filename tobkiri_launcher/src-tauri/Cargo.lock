@@ -5528,6 +5528,7 @@ dependencies = [
  "getrandom 0.3.4",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.21",
  "tobkiri-canon",
  "tobkiri-flow",
@@ -5565,6 +5566,7 @@ dependencies = [
  "ed25519-dalek",
  "getrandom 0.3.4",
  "hex",
+ "hmac",
  "serde",
  "serde_json",
  "sha2",
@@ -5573,6 +5575,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "url",
+ "zeroize",
 ]
 
 [[package]]
@@ -5692,6 +5695,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.3.4",
  "libc",
+ "parking_lot",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

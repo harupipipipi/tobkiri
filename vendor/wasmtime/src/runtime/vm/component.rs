@@ -42,9 +42,13 @@ mod handle_table;
 mod libcalls;
 mod resources;
 
+pub(crate) use self::handle_table::PendingActivation;
 pub use self::handle_table::{HandleTable, RemovedResource};
 #[cfg(feature = "component-model-async")]
 pub use self::handle_table::{ThreadHandleTable, TransmitLocalState, Waitable};
+pub(crate) use self::resources::{
+    PendingOwnerKey, PendingOwnTicket, PendingTransferError, PendingTransferStage,
+};
 pub use self::resources::{CallContext, ResourceTables, TypedResource, TypedResourceIndex};
 
 /// Represents the state of a (sub-)component instance.

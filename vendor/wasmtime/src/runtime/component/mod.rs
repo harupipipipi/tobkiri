@@ -103,6 +103,18 @@
 )]
 
 mod allocation;
+mod delivery;
+pub use delivery::ResourceDeliveryAttachment;
+pub use delivery::HostDeliveryKind;
+#[cfg(feature = "async")]
+pub use delivery::{HostDeliveryCompletion, HostDeliveryCompletionAuthority,
+    HostDeliveryFinalizer, HostDeliveryProtocol, HostDeliveryReady, HostDeliveryReservation};
+#[cfg(feature = "async")]
+pub use delivery::{
+    ResourceDeliveryCompletion, ResourceDeliveryCompletionAuthority,
+    ResourceDeliveryFinalizer, ResourceDeliveryReady, ResourceDeliveryReservation,
+    ResourceDeliverySecretProtocol,
+};
 #[cfg(feature = "async")]
 pub use allocation::BudgetedFuture;
 mod component;

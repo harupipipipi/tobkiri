@@ -6,11 +6,15 @@
 //! no node, active registration, runtime-value budget or guest control pool.
 
 use crate::CoreError;
+#[path = "input_handle_forwarding.rs"]
+mod input_forwarding;
+use crate::funded_arc::{FundedArc, FundedWeak, Funding, new_funding};
+use input_forwarding::NativeInputForwarding;
 use std::{
     collections::{BTreeMap, BTreeSet},
     ptr,
     sync::{
-        Arc, Mutex, Weak,
+        Arc, Mutex, MutexGuard, OnceLock, TryLockError, Weak,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::Instant,
@@ -22,8 +26,8 @@ use tobkiri_canon::{
 use tobkiri_flow::{
     ActiveCodeFrame, FlowNodeKind, FlowNodePosition,
     FlowUserInvocationPreparation as FlowUserPreparation, FrameContinuation, GuestFlowFrame,
-    OverlayPosition, OverlayTransition, PortInvoker, ReachedNode, StepError,
-    UiInvocationPreparation as FlowUiPreparation,
+    OverlayPosition, OverlayTransition, PortInvoker, ReachedNode, RunTaskExecution, RunTaskSpawner,
+    StepError, StreamCloseControl, StreamCloseReason, UiInvocationPreparation as FlowUiPreparation,
 };
 use tobkiri_gate::{
     AcknowledgedTerminal, ActiveFrameMetadata, ActiveFrameVerifier, AllocationFrameScope,
@@ -61,6 +65,9 @@ struct FactoryAuth {
     ui_preparations: Mutex<BTreeMap<usize, Weak<CoreUiInvocationPreparation>>>,
     user_preparations: Mutex<BTreeMap<usize, Weak<CoreUserInvocationPreparation>>>,
     live_provider_frames: Mutex<BTreeMap<usize, Weak<CoreProviderFrame>>>,
+    cleanup_operations: Mutex<BTreeMap<tobkiri_canon::ids::RequestId, UiOperationWeak>>,
+    cleanup_request: Mutex<Option<StreamCloseReason>>,
+    notifications: FundedWeak<crate::ui_operation_delivery::UiDeliveryAnchor>,
 }
 impl FactoryAuth {
     /// Publish only while this factory and any still-required caller are live.
@@ -92,6 +99,286 @@ impl FactoryAuth {
         Ok(())
     }
 }
+/// Typed result of a single retained-candidate Weak publication attempt.
+pub enum UiOperationPublishAttempt {
+    Published,
+    /// Only this factory's own admission/index WouldBlock before mutation.
+    Busy,
+    Uncertain(GateError),
+}
+
+/// Index metadata shares the original charge through Weak destruction;
+/// a missed best-effort index removal cannot refund a still-allocated node.
+struct UiOperationWeak {
+    control: FundedWeak<UiOperationCloseControl>,
+}
+impl UiOperationWeak {
+    fn upgrade(&self) -> Option<UiOperationCloseHandle> {
+        self.control
+            .upgrade()
+            .map(|storage| UiOperationCloseHandle { storage })
+    }
+    fn strong_count(&self) -> usize {
+        self.control.strong_count()
+    }
+}
+
+/// Closed strong storage carrier. Cloning preserves the original funding;
+/// no raw Arc/Weak or owned state extraction is exposed to native callers.
+#[derive(Clone)]
+pub struct UiOperationCloseHandle {
+    storage: FundedArc<UiOperationCloseControl>,
+}
+impl std::ops::Deref for UiOperationCloseHandle {
+    type Target = UiOperationCloseControl;
+    fn deref(&self) -> &Self::Target {
+        self.storage.get()
+    }
+}
+impl UiOperationCloseHandle {
+    pub fn publish(&self) -> UiOperationPublishAttempt {
+        UiOperationCloseControl::publish(self)
+    }
+    fn registration(&self) -> UiOperationWeak {
+        UiOperationWeak {
+            control: self.storage.downgrade(),
+        }
+    }
+}
+
+/// The actual operation owns its candidate once; notification custody is
+/// independently pre-pinned in the existing process cleanup owner.
+pub struct UiOperationCloseControl {
+    pub(crate) request: tobkiri_canon::ids::RequestId,
+    pub(crate) ui: tobkiri_canon::ids::UiSessionId,
+    generation: Option<u64>,
+    pub(crate) token: tobkiri_gate::CancellationToken,
+    provider: ControlHandle<CoreProviderAuthority>,
+    delivery: FundedArc<crate::ui_operation_delivery::UiDelivery>,
+    claimed: AtomicBool,
+    published: AtomicBool,
+}
+impl UiOperationCloseControl {
+    pub(crate) fn new_handle(
+        provider: ControlHandle<CoreProviderAuthority>,
+        ui: &tobkiri_canon::ids::UiSessionId,
+        generation: Option<u64>,
+        scope: Option<FundedArc<crate::ui_operation_delivery::UiScopeRetirement>>,
+        token: tobkiri_gate::CancellationToken,
+        external: tokio_util::sync::CancellationToken,
+    ) -> Result<UiOperationCloseHandle, GateError> {
+        let control = Self::allocate(provider, ui, generation, scope, token, external)?;
+        match control.publish() {
+            UiOperationPublishAttempt::Published => Ok(control),
+            UiOperationPublishAttempt::Busy => Err(GateError::Unavailable),
+            UiOperationPublishAttempt::Uncertain(error) => Err(error),
+        }
+    }
+    pub(crate) fn allocate(
+        provider: ControlHandle<CoreProviderAuthority>,
+        ui: &tobkiri_canon::ids::UiSessionId,
+        generation: Option<u64>,
+        scope: Option<FundedArc<crate::ui_operation_delivery::UiScopeRetirement>>,
+        token: tobkiri_gate::CancellationToken,
+        external: tokio_util::sync::CancellationToken,
+    ) -> Result<UiOperationCloseHandle, GateError> {
+        let anchor = provider
+            .auth
+            .notifications
+            .upgrade()
+            .ok_or(GateError::Unavailable)?;
+        let control_arc = crate::ui_operation_delivery::arc_owned_bytes::<Self>()?;
+        let funding_block = Funding::storage_bytes();
+        let metadata = ui
+            .clone_storage_bytes()
+            .checked_mul(2)
+            .and_then(|bytes| bytes.checked_add(control_arc))
+            .and_then(|bytes| bytes.checked_add(funding_block))
+            // Request String + index-key clone and their construction overlap;
+            // Weak/Arc index cells are inside the funded BTree node bound.
+            .and_then(|bytes| bytes.checked_add(1024))
+            .and_then(|bytes| u64::try_from(bytes).ok())
+            .ok_or(GateError::Unavailable)?;
+        let bytes = crate::ui_operation_delivery::UiDelivery::storage_bytes()?
+            .checked_add(metadata)
+            .ok_or(GateError::Unavailable)?;
+        let funding = new_funding(provider.control.reserve(ControlKind::Frame, bytes)?)?;
+        let request = tobkiri_canon::ids::RequestId::new(format!("req_{}", ulid::Ulid::new()))
+            .map_err(|_| GateError::Unavailable)?;
+        // Admission owns no source or cause until its funded record is pinned.
+        let delivery = anchor.admit(ui.clone(), scope, token.clone(), external, funding.clone())?;
+        Ok(UiOperationCloseHandle {
+            storage: FundedArc::new(
+                Self {
+                    request,
+                    ui: ui.clone(),
+                    generation,
+                    token,
+                    provider,
+                    delivery,
+                    claimed: AtomicBool::new(false),
+                    published: AtomicBool::new(false),
+                },
+                funding,
+            ),
+        })
+    }
+    fn publish(control: &UiOperationCloseHandle) -> UiOperationPublishAttempt {
+        if control.published.load(Ordering::Acquire) {
+            return UiOperationPublishAttempt::Published;
+        }
+        let auth = &control.provider.auth;
+        if auth.closing.load(Ordering::Acquire)
+            || (control.accepted().0.is_some() || control.accepted().1)
+            || control.token.is_cancelled()
+            || control.delivery.external.is_cancelled()
+        {
+            return UiOperationPublishAttempt::Uncertain(GateError::Unavailable);
+        }
+        let _admission = match auth.admission.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::WouldBlock) => return UiOperationPublishAttempt::Busy,
+            Err(TryLockError::Poisoned(_)) => {
+                return UiOperationPublishAttempt::Uncertain(GateError::Unavailable);
+            }
+        };
+        if control.published.load(Ordering::Acquire) {
+            return UiOperationPublishAttempt::Published;
+        }
+        if auth.closing.load(Ordering::Acquire)
+            || (control.accepted().0.is_some() || control.accepted().1)
+            || control.token.is_cancelled()
+            || control.delivery.external.is_cancelled()
+        {
+            return UiOperationPublishAttempt::Uncertain(GateError::Unavailable);
+        }
+        let mut operations = match auth.cleanup_operations.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::WouldBlock) => return UiOperationPublishAttempt::Busy,
+            Err(TryLockError::Poisoned(_)) => {
+                return UiOperationPublishAttempt::Uncertain(GateError::Unavailable);
+            }
+        };
+        operations.retain(|_, operation| operation.strong_count() != 0);
+        if operations.len() >= 1024 {
+            return UiOperationPublishAttempt::Uncertain(GateError::Unavailable);
+        }
+        operations.insert(control.request.clone(), control.registration());
+        control.published.store(true, Ordering::Release);
+        UiOperationPublishAttempt::Published
+    }
+    pub(crate) fn bind(
+        &self,
+        source: &Arc<dyn StreamCloseControl>,
+    ) -> Result<crate::ui_operation_delivery::UiOperationBind, StepError> {
+        self.delivery.bind(source)
+    }
+    pub(crate) fn accepted(&self) -> (Option<StreamCloseReason>, bool) {
+        self.delivery.accepted()
+    }
+    pub(crate) fn claim(
+        &self,
+        provider: &ControlHandle<CoreProviderAuthority>,
+        ui: &tobkiri_canon::ids::UiSessionId,
+        generation: u64,
+    ) -> Result<(), GateError> {
+        if &self.ui != ui
+            || self.generation != Some(generation)
+            || !ControlHandle::ptr_eq(&self.provider, provider)
+            || !self.published.load(Ordering::Acquire)
+            || self.provider.auth.closing.load(Ordering::Acquire)
+            || (self.accepted().0.is_some() || self.accepted().1)
+            || self.token.is_cancelled()
+            || self.delivery.external.is_cancelled()
+            || self.claimed.swap(true, Ordering::AcqRel)
+        {
+            return Err(GateError::Unavailable);
+        }
+        // A close accepted between the initial checks and the one claim is
+        // observed before returning; the spent claim is never reset/revived.
+        if (self.accepted().0.is_some() || self.accepted().1)
+            || self.token.is_cancelled()
+            || self.delivery.external.is_cancelled()
+            || self.provider.auth.closing.load(Ordering::Acquire)
+        {
+            return Err(GateError::Unavailable);
+        }
+        Ok(())
+    }
+    /// Verify that the spent one-use claim still names this exact provider,
+    /// UI and generation without consuming or reviving that claim.
+    pub(crate) fn verify_claimed(
+        &self,
+        provider: &ControlHandle<CoreProviderAuthority>,
+        ui: &tobkiri_canon::ids::UiSessionId,
+        generation: u64,
+    ) -> Result<(), GateError> {
+        if &self.ui != ui
+            || self.generation != Some(generation)
+            || !ControlHandle::ptr_eq(&self.provider, provider)
+            || !self.published.load(Ordering::Acquire)
+            || !self.claimed.load(Ordering::Acquire)
+            || self.provider.auth.closing.load(Ordering::Acquire)
+            || (self.accepted().0.is_some() || self.accepted().1)
+            || self.token.is_cancelled()
+            || self.delivery.external.is_cancelled()
+        {
+            return Err(GateError::Unavailable);
+        }
+        Ok(())
+    }
+    /// One-use claim against this candidate's own retained provider, UI and
+    /// generation identity: atomics only, so callers may hold outer guards.
+    pub(crate) fn claim_registered(&self, generation: u64) -> Result<(), GateError> {
+        let provider = self.provider.clone();
+        self.claim(&provider, &self.ui, generation)
+    }
+    pub(crate) fn external_token(&self) -> tokio_util::sync::CancellationToken {
+        self.delivery.external.clone()
+    }
+    /// Receipt only. This can run under a guard: no callbacks or wakes occur.
+    pub(crate) fn record(&self, reason: StreamCloseReason) {
+        self.delivery.accept(reason);
+    }
+    /// Explicit outside-all-guards delivery; a failure stays owned and charged.
+    pub(crate) fn flush(&self) -> Result<(), StepError> {
+        self.delivery.flush()
+    }
+    fn wake(&self) {
+        // Route through the same durable wake-duty claim so a direct wake can
+        // never duplicate an in-flight or Unknown attempted wake.
+        self.delivery.deliver_wake();
+    }
+    /// Trusted callers must hold no outer guard while delivering or waking.
+    pub fn cancel(&self) {
+        self.record(StreamCloseReason::Manual);
+        let _ = self.flush();
+        self.wake();
+    }
+    pub fn retire(&self) {
+        self.record(StreamCloseReason::Retired);
+        let _ = self.flush();
+        self.wake();
+    }
+    pub(crate) fn shutdown(&self) {
+        self.record(StreamCloseReason::Shutdown);
+        self.wake();
+    }
+}
+impl Drop for UiOperationCloseControl {
+    fn drop(&mut self) {
+        // Never call a source from Drop: this may be the last transport record
+        // dropped under an outer registry guard. The process owner retains all
+        // unattempted/in-flight/Unknown sources and their original funding.
+        self.delivery.release();
+        if self.published.load(Ordering::Acquire)
+            && let Ok(mut operations) = self.provider.auth.cleanup_operations.try_lock()
+        {
+            operations.remove(&self.request);
+        }
+    }
+}
+
 /// Only the interpreter's execution guard keeps a node active. Allocation proof
 /// and retained-value owners keep its physical storage, never its liveness.
 struct NodeLifecycle {
@@ -120,6 +407,13 @@ struct ReachedState {
     context: CallCx,
     entry_context: CallCx,
     entry_evidence: Option<ControlHandle<tobkiri_gate::ExecutionEntryEvidence>>,
+    // Physical lifetime only. A private reached activation inherits the actual
+    // source-Wasm task scope; this supplies no authority or allocation proof.
+    task_spawner: Option<Arc<dyn RunTaskSpawner>>,
+    // Original guest operation inherited only through private Flow ancestry.
+    // It links actual provider descendants, never grants entry authority.
+    provider_operation: Option<tobkiri_wasm::ProviderOperationScope>,
+    input_forwarding: Option<ControlHandle<NativeInputForwarding>>,
     /// Exact key into the immutable canonical catalog. Retaining this bounded
     /// key never copies or independently owns compiler AST storage.
     flow_key: String,
@@ -140,6 +434,10 @@ struct ReachedState {
     // Full prepaid control inventory, not merely sizeof an erased handle.
     retained_bytes: u64,
 }
+// Actual provenance/lease carriers stay inline in the prepaid ReachedState
+// control allocation. Boxing a variant would add a separately allocated owner
+// and funding lifetime beyond the reserved complete state.
+#[allow(clippy::large_enum_variant)]
 enum ReachedOrigin {
     Flow,
     NativeArguments(NativeInputStateData),
@@ -187,10 +485,7 @@ struct UserInvocationStateData {
 struct HandleSourceStateData {
     kind: tobkiri_wasm::HandleKind,
     local_id: u64,
-    authority: ShapeRef,
     generation: u64,
-    parent_frame: Digest,
-    parent_path: Digest,
 }
 struct AllocationProof {
     node: ControlHandle<ReachedState>,
@@ -301,10 +596,6 @@ impl PreparedGuestFlow<'_> {
         &self.target
     }
 
-    pub(crate) fn requested_shape(&self) -> &ShapeRef {
-        self.requested_shape
-    }
-
     pub(crate) fn arguments_digest(&self) -> &Digest {
         self.arguments_digest
     }
@@ -312,11 +603,195 @@ impl PreparedGuestFlow<'_> {
 struct CoreProviderFrame {
     state: ControlHandle<ReachedState>,
     _retirement: ControlHandle<NodeExecutionGuard>,
+    cleanup: Mutex<Option<Weak<dyn StreamCloseControl>>>,
+    // Host-minted lifetime inventory only. A source activation inherits this
+    // exact original operation; no descriptor or principal can reconstruct it.
+    operation: OnceLock<tobkiri_wasm::ProviderOperationScope>,
+    operation_parent: Option<tobkiri_wasm::ProviderOperationScope>,
     _reservation: ControlReservation,
 }
 impl GuestFlowFrame for CoreProviderFrame {
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+}
+
+enum CoreCleanupLifecycleError {
+    BusyBeforeCallback,
+    Uncertain(StepError),
+}
+
+fn cleanup_lifecycle_lock<T>(
+    lock: &Mutex<T>,
+) -> Result<MutexGuard<'_, T>, CoreCleanupLifecycleError> {
+    lock.try_lock().map_err(|error| match error {
+        TryLockError::WouldBlock => CoreCleanupLifecycleError::BusyBeforeCallback,
+        TryLockError::Poisoned(_) => {
+            CoreCleanupLifecycleError::Uncertain(step(GateError::Unavailable))
+        }
+    })
+}
+
+enum CorePreparationError {
+    /// Own admission/node mutex contention proven before any mutation,
+    /// callback or identity publication.
+    BusyBeforeMutation,
+    Uncertain(StepError),
+}
+
+fn preparation_lock<T>(lock: &Mutex<T>) -> Result<MutexGuard<'_, T>, CorePreparationError> {
+    lock.try_lock().map_err(|error| match error {
+        TryLockError::WouldBlock => CorePreparationError::BusyBeforeMutation,
+        TryLockError::Poisoned(_) => CorePreparationError::Uncertain(step(GateError::Unavailable)),
+    })
+}
+
+enum CoreBindRejection {
+    BusyBeforeCommit(tobkiri_wasm::ProviderOperationScope),
+    Uncertain(StepError),
+}
+
+fn bind_attempt_lock<'a, T>(
+    lock: &'a Mutex<T>,
+    candidate: &mut Option<tobkiri_wasm::ProviderOperationScope>,
+) -> Result<MutexGuard<'a, T>, CoreBindRejection> {
+    match lock.try_lock() {
+        Ok(guard) => Ok(guard),
+        Err(TryLockError::WouldBlock) => Err(CoreBindRejection::BusyBeforeCommit(
+            candidate.take().expect("provider operation candidate"),
+        )),
+        Err(TryLockError::Poisoned(_)) => {
+            Err(CoreBindRejection::Uncertain(step(GateError::Unavailable)))
+        }
+    }
+}
+
+impl CoreProviderFrame {
+    fn inspect_cleanup_lifecycle(
+        &self,
+        select: &mut dyn FnMut(tobkiri_wasm::CleanupLifecycle) -> Result<(), StepError>,
+    ) -> Result<(), CoreCleanupLifecycleError> {
+        // The immutable private origin cannot become a source by retrying.
+        if !matches!(self.state.origin, ReachedOrigin::HandleSource(_)) {
+            return Err(CoreCleanupLifecycleError::Uncertain(step(
+                GateError::Unavailable,
+            )));
+        }
+        // Declare the retained delivery before every authority guard so its
+        // source/capture destructor cannot run while those guards remain held.
+        let operation;
+        let auth = &self.state.auth;
+        let _admission = cleanup_lifecycle_lock(&auth.admission)?;
+        let lifecycle = cleanup_lifecycle_lock(&self.state.state)?;
+        let global = *cleanup_lifecycle_lock(&auth.cleanup_request)?;
+        operation = auth
+            .notifications
+            .upgrade()
+            .ok_or_else(|| CoreCleanupLifecycleError::Uncertain(step(GateError::Unavailable)))?
+            .find(self.state.context.cancel())
+            .map_err(|error| CoreCleanupLifecycleError::Uncertain(step(error)))?;
+        let (requested, retired) = operation.as_ref().map_or((global, false), |operation| {
+            let (requested, retired) = operation.accepted();
+            (requested.or(global), retired)
+        });
+        // All Core-owned fallible lock attempts precede this ONE callback.
+        // Host generation/cause contention inside it is separate typed Host
+        // state; its normal return is not an authoritative cause selection.
+        select(tobkiri_wasm::CleanupLifecycle {
+            live: lifecycle.live && !lifecycle.acknowledged,
+            closing: auth.closing.load(Ordering::Acquire) || global.is_some() || retired,
+            requested,
+        })
+        .map_err(CoreCleanupLifecycleError::Uncertain)
+    }
+
+    fn derive_native_execution_id(&self) -> Result<tobkiri_wasm::NativeExecutionId, StepError> {
+        Ok(tobkiri_wasm::NativeExecutionId {
+            frame: self.state.frame.clone(),
+            request: identity(&[
+                b"native-execution-request-v1",
+                self.state.context.request().as_str().as_bytes(),
+            ])
+            .map_err(step)?,
+            activation: self.state.activation,
+        })
+    }
+
+    /// Nonblocking identity attempt: own WouldBlock is the only Busy and is
+    /// proven before any identity publication.
+    fn inspect_native_execution_id(
+        &self,
+    ) -> Result<tobkiri_wasm::NativeExecutionId, CorePreparationError> {
+        let _admission = preparation_lock(&self.state.auth.admission)?;
+        let lifecycle = preparation_lock(&self.state.state)?;
+        if self.state.auth.closing.load(Ordering::Acquire)
+            || !lifecycle.live
+            || lifecycle.acknowledged
+        {
+            return Err(CorePreparationError::Uncertain(step(
+                GateError::Unavailable,
+            )));
+        }
+        self.derive_native_execution_id()
+            .map_err(CorePreparationError::Uncertain)
+    }
+
+    /// One guarded pre-commit bind attempt: every fallible lock and the
+    /// identity/origin/lifecycle validation precede OnceLock.set, the sole
+    /// commit, and Busy is returned only for own WouldBlock before mutation.
+    fn inspect_bind_provider_operation(
+        &self,
+        operation: tobkiri_wasm::ProviderOperationScope,
+    ) -> Result<(), CoreBindRejection> {
+        // The candidate stays outside the guarded scope; a rejected token's
+        // final Drop runs only after these guards have been released.
+        let mut candidate = Some(operation);
+        let bound = {
+            let _admission = bind_attempt_lock(&self.state.auth.admission, &mut candidate)?;
+            let lifecycle = bind_attempt_lock(&self.state.state, &mut candidate)?;
+            // Deriving the expected identity under the already held guards
+            // keeps this attempt from hiding another unbudgeted
+            // native_execution_id call or a second lock acquisition.
+            let expected = self
+                .derive_native_execution_id()
+                .map_err(CoreBindRejection::Uncertain)?;
+            if self.state.auth.closing.load(Ordering::Acquire)
+                || !lifecycle.live
+                || lifecycle.acknowledged
+            {
+                return Err(CoreBindRejection::Uncertain(step(GateError::Unavailable)));
+            }
+            if candidate
+                .as_ref()
+                .expect("provider operation candidate")
+                .execution_id()
+                != &expected
+            {
+                return Err(CoreBindRejection::Uncertain(step(denied(
+                    "provider operation differs from its actual Core activation",
+                ))));
+            }
+            if !matches!(&self.state.origin, ReachedOrigin::Provider(_))
+                || !lifecycle.claimed
+                || self.operation.get().is_some()
+            {
+                return Err(CoreBindRejection::Uncertain(step(denied(
+                    "provider operation cannot bind after source entry or retirement",
+                ))));
+            }
+            match self
+                .operation
+                .set(candidate.take().expect("provider operation candidate"))
+            {
+                Ok(()) => Ok(()),
+                Err(rejected) => {
+                    candidate = Some(rejected);
+                    Err(CoreBindRejection::Uncertain(step(GateError::Unavailable)))
+                }
+            }
+        };
+        drop(candidate);
+        bound
     }
 }
 struct PreparedNativeEntry<'a> {
@@ -364,6 +839,19 @@ struct ParentFlowCall<'a> {
     flow_key: &'a str,
     args: &'a Digest,
     target: &'a FrozenFlowTarget,
+}
+/// Borrow only the caller's exact selected Flow and original terminal. This
+/// carrier supplies no authority; entry validates every original binding.
+pub(crate) struct FlowEntryInvocation<'a> {
+    pub(crate) flow_key: &'a str,
+    pub(crate) actual_args: &'a Digest,
+    pub(crate) terminal: &'a crate::session::ConsumedEntryTerminal,
+}
+struct FlowEntryOrigin<'a> {
+    mode: FlowEntryMode,
+    parent: Option<ParentFlowCall<'a>>,
+    native: Option<NativeFlowCall<'a>>,
+    guest: Option<GuestFlowCall<'a>>,
 }
 #[derive(Clone, Copy)]
 struct GuestFlowCall<'a> {
@@ -417,6 +905,54 @@ pub(crate) struct CoreProviderAuthority {
 }
 impl CoreProviderAuthority {
     pub(crate) fn close(&self) {
+        let snapshot = (|| {
+            let _admission = self.auth.admission.try_lock().ok()?;
+            *self.auth.cleanup_request.try_lock().ok()? = Some(StreamCloseReason::Shutdown);
+            let frames = self.auth.live_provider_frames.try_lock().ok()?;
+            let operations = self.auth.cleanup_operations.try_lock().ok()?;
+            let bytes = frames
+                .len()
+                .checked_add(operations.len())?
+                .checked_mul(
+                    4usize.checked_mul(
+                        std::mem::size_of::<UiOperationCloseHandle>()
+                            .max(std::mem::size_of::<Arc<CoreProviderFrame>>()),
+                    )?,
+                )?
+                .checked_add(1024)?;
+            let reservation = self
+                .control
+                .reserve(ControlKind::Frame, u64::try_from(bytes).ok()?)
+                .ok()?;
+            // Keep upgraded carriers alive until admission/registry guards end:
+            // their retirement destructors also acquire admission.
+            Some((
+                reservation,
+                frames
+                    .values()
+                    .filter_map(Weak::upgrade)
+                    .collect::<Vec<_>>(),
+                operations
+                    .values()
+                    .filter_map(UiOperationWeak::upgrade)
+                    .collect::<Vec<_>>(),
+            ))
+        })();
+        if let Some((_reservation, frames, operations)) = snapshot {
+            for operation in &operations {
+                operation.record(StreamCloseReason::Shutdown);
+            }
+            for frame in frames {
+                let control = frame
+                    .cleanup
+                    .try_lock()
+                    .ok()
+                    .and_then(|control| control.as_ref().and_then(Weak::upgrade));
+                if let Some(control) = control {
+                    let _ = control.record_close(StreamCloseReason::Shutdown);
+                }
+            }
+        }
         let (native, ui, user, providers) = if let Ok(_admission) = self.auth.admission.lock() {
             self.auth.closing.store(true, Ordering::Release);
             let native = self
@@ -715,6 +1251,9 @@ impl CoreProviderAuthority {
                                 .try_clone_precharged()
                                 .map_err(|_| GateError::Unavailable)?,
                             entry_evidence: None,
+                            task_spawner: None,
+                            provider_operation: None,
+                            input_forwarding: None,
                             flow_key: String::new(),
                             code: None,
                             step_address: None,
@@ -970,6 +1509,9 @@ impl CoreProviderAuthority {
                                 .try_clone_precharged()
                                 .map_err(|_| GateError::Unavailable)?,
                             entry_evidence: None,
+                            task_spawner: None,
+                            provider_operation: None,
+                            input_forwarding: None,
                             flow_key: String::new(),
                             code: None,
                             step_address: None,
@@ -1184,6 +1726,9 @@ impl CoreProviderAuthority {
                                 .try_clone_precharged()
                                 .map_err(|_| GateError::Unavailable)?,
                             entry_evidence: None,
+                            task_spawner: None,
+                            provider_operation: None,
+                            input_forwarding: None,
                             flow_key: String::new(),
                             code: None,
                             step_address: None,
@@ -1684,187 +2229,209 @@ impl CoreProviderAuthority {
                 "consumed provider dispatch differs from its request",
             )));
         }
-        let (native_frame, ui_frame, user_frame, call_path, live_caller) = match request.origin {
-            ProviderOrigin::Reached { frame: _, node } => {
-                let reached = node
-                    .core_proof::<ReachedActivationProof>()
-                    .ok_or_else(|| step(GateError::Unavailable))?;
-                let state = reached.node.clone();
-                let _admission = self
-                    .auth
-                    .admission
-                    .lock()
-                    .map_err(|_| step(GateError::Unavailable))?;
-                if self.auth.closing.load(Ordering::Acquire) {
-                    return Err(step(GateError::Unavailable));
+        let (native_frame, ui_frame, user_frame, call_path, live_caller, operation_parent) =
+            match request.origin {
+                ProviderOrigin::Reached { frame: _, node } => {
+                    let reached = node
+                        .core_proof::<ReachedActivationProof>()
+                        .ok_or_else(|| step(GateError::Unavailable))?;
+                    let state = reached.node.clone();
+                    let _admission = self
+                        .auth
+                        .admission
+                        .lock()
+                        .map_err(|_| step(GateError::Unavailable))?;
+                    if self.auth.closing.load(Ordering::Acquire) {
+                        return Err(step(GateError::Unavailable));
+                    }
+                    let lifecycle = state
+                        .state
+                        .lock()
+                        .map_err(|_| step(GateError::Unavailable))?;
+                    if !lifecycle.live || !lifecycle.claimed {
+                        return Err(step(denied("compiled provider dispatch was not claimed")));
+                    }
+                    drop(lifecycle);
+                    drop(_admission);
+                    if state.task_spawner.is_some() && state.provider_operation.is_none() {
+                        return Err(step(GateError::Unavailable));
+                    }
+                    let operation_parent = state.provider_operation.clone();
+                    (
+                        None,
+                        None,
+                        None,
+                        state.path.clone(),
+                        Some(state),
+                        operation_parent,
+                    )
                 }
-                let lifecycle = state
-                    .state
-                    .lock()
-                    .map_err(|_| step(GateError::Unavailable))?;
-                if !lifecycle.live || !lifecycle.claimed {
-                    return Err(step(denied("compiled provider dispatch was not claimed")));
+                ProviderOrigin::NativeInput { preparation, .. } => {
+                    let key = Arc::as_ptr(preparation) as *const () as usize;
+                    let preparation = self
+                        .auth
+                        .native_preparations
+                        .lock()
+                        .map_err(|_| step(GateError::Unavailable))?
+                        .remove(&key)
+                        .and_then(|preparation| preparation.upgrade())
+                        .ok_or_else(|| step(denied("native preparation was already consumed")))?;
+                    let frame = preparation.frame.clone();
+                    let state = frame.state.clone();
+                    if !matches!(&state.origin, ReachedOrigin::NativeArguments(_)) {
+                        return Err(step(GateError::Unavailable));
+                    }
+                    let _admission = self
+                        .auth
+                        .admission
+                        .lock()
+                        .map_err(|_| step(GateError::Unavailable))?;
+                    if self.auth.closing.load(Ordering::Acquire) {
+                        return Err(step(GateError::Unavailable));
+                    }
+                    let mut lifecycle = state
+                        .state
+                        .lock()
+                        .map_err(|_| step(GateError::Unavailable))?;
+                    if !lifecycle.live
+                        || lifecycle.claimed
+                        || lifecycle.expected_args.as_ref() != Some(request.args_digest)
+                    {
+                        return Err(step(denied(
+                            "native source read is not the exact claimed input",
+                        )));
+                    }
+                    lifecycle.claimed = true;
+                    lifecycle.live = false;
+                    lifecycle.expected_args = None;
+                    lifecycle.args_control.take();
+                    drop(lifecycle);
+                    drop(_admission);
+                    (Some(frame), None, None, state.path.clone(), None, None)
                 }
-                drop(lifecycle);
-                (None, None, None, state.path.clone(), Some(state))
-            }
-            ProviderOrigin::NativeInput { preparation, .. } => {
-                let key = Arc::as_ptr(preparation) as *const () as usize;
-                let preparation = self
-                    .auth
-                    .native_preparations
-                    .lock()
-                    .map_err(|_| step(GateError::Unavailable))?
-                    .remove(&key)
-                    .and_then(|preparation| preparation.upgrade())
-                    .ok_or_else(|| step(denied("native preparation was already consumed")))?;
-                let frame = preparation.frame.clone();
-                let state = frame.state.clone();
-                if !matches!(&state.origin, ReachedOrigin::NativeArguments(_)) {
-                    return Err(step(GateError::Unavailable));
+                ProviderOrigin::UiInvocation { preparation, .. } => {
+                    let key = Arc::as_ptr(preparation) as *const () as usize;
+                    let preparation = self
+                        .auth
+                        .ui_preparations
+                        .lock()
+                        .map_err(|_| step(GateError::Unavailable))?
+                        .remove(&key)
+                        .and_then(|preparation| preparation.upgrade())
+                        .ok_or_else(|| step(denied("UI preparation was already consumed")))?;
+                    let state = preparation.state.clone();
+                    if !matches!(&state.origin, ReachedOrigin::UiArguments(_)) {
+                        return Err(step(GateError::Unavailable));
+                    }
+                    let _admission = self
+                        .auth
+                        .admission
+                        .lock()
+                        .map_err(|_| step(GateError::Unavailable))?;
+                    if self.auth.closing.load(Ordering::Acquire) {
+                        return Err(step(GateError::Unavailable));
+                    }
+                    let mut lifecycle = state
+                        .state
+                        .lock()
+                        .map_err(|_| step(GateError::Unavailable))?;
+                    if !lifecycle.live
+                        || lifecycle.claimed
+                        || lifecycle.acknowledged
+                        || !lifecycle.compiled_prepared
+                        || lifecycle.expected_args.as_ref() != Some(request.args_digest)
+                    {
+                        return Err(step(denied(
+                            "UI argument phase was not sealed for this exact dispatch",
+                        )));
+                    }
+                    lifecycle.claimed = true;
+                    lifecycle.live = false;
+                    lifecycle.expected_args = None;
+                    lifecycle.args_control.take();
+                    drop(lifecycle);
+                    drop(_admission);
+                    let frame = state;
+                    let path = frame.path.clone();
+                    (None, Some(frame), None, path, None, None)
                 }
-                let _admission = self
-                    .auth
-                    .admission
-                    .lock()
-                    .map_err(|_| step(GateError::Unavailable))?;
-                if self.auth.closing.load(Ordering::Acquire) {
-                    return Err(step(GateError::Unavailable));
+                ProviderOrigin::UserInvocation { preparation, .. } => {
+                    let key = Arc::as_ptr(preparation) as *const () as usize;
+                    let preparation = self
+                        .auth
+                        .user_preparations
+                        .lock()
+                        .map_err(|_| step(GateError::Unavailable))?
+                        .remove(&key)
+                        .and_then(|preparation| preparation.upgrade())
+                        .ok_or_else(|| step(denied("User preparation was already consumed")))?;
+                    let state = preparation.state.clone();
+                    if !matches!(&state.origin, ReachedOrigin::UserArguments(_)) {
+                        return Err(step(GateError::Unavailable));
+                    }
+                    let _admission = self
+                        .auth
+                        .admission
+                        .lock()
+                        .map_err(|_| step(GateError::Unavailable))?;
+                    if self.auth.closing.load(Ordering::Acquire) {
+                        return Err(step(GateError::Unavailable));
+                    }
+                    let mut lifecycle = state
+                        .state
+                        .lock()
+                        .map_err(|_| step(GateError::Unavailable))?;
+                    if !lifecycle.live
+                        || lifecycle.claimed
+                        || lifecycle.acknowledged
+                        || !lifecycle.compiled_prepared
+                        || lifecycle.expected_args.as_ref() != Some(request.args_digest)
+                    {
+                        return Err(step(denied(
+                            "User argument phase was not sealed for this exact dispatch",
+                        )));
+                    }
+                    lifecycle.claimed = true;
+                    lifecycle.live = false;
+                    lifecycle.expected_args = None;
+                    lifecycle.args_control.take();
+                    drop(lifecycle);
+                    drop(_admission);
+                    let path = state.path.clone();
+                    (None, None, Some(state), path, None, None)
                 }
-                let mut lifecycle = state
-                    .state
-                    .lock()
-                    .map_err(|_| step(GateError::Unavailable))?;
-                if !lifecycle.live
-                    || lifecycle.claimed
-                    || lifecycle.expected_args.as_ref() != Some(request.args_digest)
-                {
-                    return Err(step(denied(
-                        "native source read is not the exact claimed input",
-                    )));
+                ProviderOrigin::Guest { frame } => {
+                    let key = Arc::as_ptr(frame) as *const () as usize;
+                    let provider_frame = self
+                        .auth
+                        .live_provider_frames
+                        .lock()
+                        .map_err(|_| step(GateError::Unavailable))?
+                        .get(&key)
+                        .cloned()
+                        .and_then(|frame| frame.upgrade())
+                        .ok_or_else(|| {
+                            step(denied("dynamic call lost its live provider caller"))
+                        })?;
+                    (
+                        None,
+                        None,
+                        None,
+                        provider_frame.state.path.clone(),
+                        Some(provider_frame.state.clone()),
+                        Some(
+                            provider_frame
+                                .operation
+                                .get()
+                                .cloned()
+                                .ok_or_else(|| step(GateError::Unavailable))?,
+                        ),
+                    )
                 }
-                lifecycle.claimed = true;
-                lifecycle.live = false;
-                lifecycle.expected_args = None;
-                lifecycle.args_control.take();
-                drop(lifecycle);
-                drop(_admission);
-                (Some(frame), None, None, state.path.clone(), None)
-            }
-            ProviderOrigin::UiInvocation { preparation, .. } => {
-                let key = Arc::as_ptr(preparation) as *const () as usize;
-                let preparation = self
-                    .auth
-                    .ui_preparations
-                    .lock()
-                    .map_err(|_| step(GateError::Unavailable))?
-                    .remove(&key)
-                    .and_then(|preparation| preparation.upgrade())
-                    .ok_or_else(|| step(denied("UI preparation was already consumed")))?;
-                let state = preparation.state.clone();
-                if !matches!(&state.origin, ReachedOrigin::UiArguments(_)) {
-                    return Err(step(GateError::Unavailable));
+                ProviderOrigin::Direct => {
+                    return Err(step(denied("direct provider entry is unavailable")));
                 }
-                let _admission = self
-                    .auth
-                    .admission
-                    .lock()
-                    .map_err(|_| step(GateError::Unavailable))?;
-                if self.auth.closing.load(Ordering::Acquire) {
-                    return Err(step(GateError::Unavailable));
-                }
-                let mut lifecycle = state
-                    .state
-                    .lock()
-                    .map_err(|_| step(GateError::Unavailable))?;
-                if !lifecycle.live
-                    || lifecycle.claimed
-                    || lifecycle.acknowledged
-                    || !lifecycle.compiled_prepared
-                    || lifecycle.expected_args.as_ref() != Some(request.args_digest)
-                {
-                    return Err(step(denied(
-                        "UI argument phase was not sealed for this exact dispatch",
-                    )));
-                }
-                lifecycle.claimed = true;
-                lifecycle.live = false;
-                lifecycle.expected_args = None;
-                lifecycle.args_control.take();
-                drop(lifecycle);
-                drop(_admission);
-                let frame = state;
-                let path = frame.path.clone();
-                (None, Some(frame), None, path, None)
-            }
-            ProviderOrigin::UserInvocation { preparation, .. } => {
-                let key = Arc::as_ptr(preparation) as *const () as usize;
-                let preparation = self
-                    .auth
-                    .user_preparations
-                    .lock()
-                    .map_err(|_| step(GateError::Unavailable))?
-                    .remove(&key)
-                    .and_then(|preparation| preparation.upgrade())
-                    .ok_or_else(|| step(denied("User preparation was already consumed")))?;
-                let state = preparation.state.clone();
-                if !matches!(&state.origin, ReachedOrigin::UserArguments(_)) {
-                    return Err(step(GateError::Unavailable));
-                }
-                let _admission = self
-                    .auth
-                    .admission
-                    .lock()
-                    .map_err(|_| step(GateError::Unavailable))?;
-                if self.auth.closing.load(Ordering::Acquire) {
-                    return Err(step(GateError::Unavailable));
-                }
-                let mut lifecycle = state
-                    .state
-                    .lock()
-                    .map_err(|_| step(GateError::Unavailable))?;
-                if !lifecycle.live
-                    || lifecycle.claimed
-                    || lifecycle.acknowledged
-                    || !lifecycle.compiled_prepared
-                    || lifecycle.expected_args.as_ref() != Some(request.args_digest)
-                {
-                    return Err(step(denied(
-                        "User argument phase was not sealed for this exact dispatch",
-                    )));
-                }
-                lifecycle.claimed = true;
-                lifecycle.live = false;
-                lifecycle.expected_args = None;
-                lifecycle.args_control.take();
-                drop(lifecycle);
-                drop(_admission);
-                let path = state.path.clone();
-                (None, None, Some(state), path, None)
-            }
-            ProviderOrigin::Guest { frame } => {
-                let key = Arc::as_ptr(frame) as *const () as usize;
-                let provider_frame = self
-                    .auth
-                    .live_provider_frames
-                    .lock()
-                    .map_err(|_| step(GateError::Unavailable))?
-                    .get(&key)
-                    .cloned()
-                    .and_then(|frame| frame.upgrade())
-                    .ok_or_else(|| step(denied("dynamic call lost its live provider caller")))?;
-                (
-                    None,
-                    None,
-                    None,
-                    provider_frame.state.path.clone(),
-                    Some(provider_frame.state.clone()),
-                )
-            }
-            ProviderOrigin::Direct => {
-                return Err(step(denied("direct provider entry is unavailable")));
-            }
-        };
+            };
         let _ = actual_args;
         let owner_limits = self
             .gate
@@ -2020,6 +2587,13 @@ impl CoreProviderAuthority {
             .map(clone_user_invocation_data_precharged)
             .transpose()
             .map_err(step)?;
+        let input_forwarding = if matches!(request.origin, ProviderOrigin::Reached { .. }) {
+            live_caller
+                .as_ref()
+                .and_then(|caller| caller.input_forwarding.clone())
+        } else {
+            None
+        };
         let state = ControlHandle::try_new_precharged(
             ReachedState {
                 auth: self.auth.clone(),
@@ -2027,6 +2601,9 @@ impl CoreProviderAuthority {
                 context,
                 entry_context,
                 entry_evidence: Some(evidence),
+                task_spawner: None,
+                provider_operation: None,
+                input_forwarding,
                 flow_key: String::new(),
                 code: None,
                 step_address: None,
@@ -2089,6 +2666,9 @@ impl CoreProviderAuthority {
             .map_err(|error| step(GateError::from(error)))?;
         let provider_frame = Arc::new(CoreProviderFrame {
             state: state.clone(),
+            cleanup: Mutex::new(None),
+            operation: OnceLock::new(),
+            operation_parent,
             _retirement: retirement,
             _reservation: frame_reservation,
         });
@@ -2202,6 +2782,16 @@ impl CoreProviderAuthority {
         // is held. Publication below rechecks both parent and factory liveness.
         drop(_admission);
 
+        // The parent was resolved from this factory's PRIVATE live registry
+        // and checked against the exact consumed source-open permit above.
+        // Clone the original immutable Host token only after releasing guards;
+        // publication below rechecks the same parent's current liveness.
+        let operation = parent_frame
+            .operation
+            .get()
+            .cloned()
+            .ok_or_else(|| step(GateError::Unavailable))?;
+
         let activation = next_sequence(&self.auth.activation).map_err(step)?;
         let frame = identity(&[
             b"tobkiri.core-handle-source-frame/1\0",
@@ -2245,8 +2835,7 @@ impl CoreProviderAuthority {
             .and_then(|bytes| u64::try_from(bytes).ok())
             .ok_or_else(|| step(GateError::Unavailable))?;
         let source_dynamic = std::mem::size_of::<HandleSourceStateData>()
-            .checked_add(request.authority.clone_storage_bytes())
-            .and_then(|bytes| bytes.checked_add(128))
+            .checked_add(128)
             .ok_or_else(|| step(GateError::Unavailable))?;
         let metadata_dynamic = request
             .owner
@@ -2341,6 +2930,9 @@ impl CoreProviderAuthority {
                 context,
                 entry_context,
                 entry_evidence: Some(evidence),
+                task_spawner: None,
+                provider_operation: None,
+                input_forwarding: None,
                 flow_key: String::new(),
                 code: None,
                 step_address: None,
@@ -2355,13 +2947,7 @@ impl CoreProviderAuthority {
                 origin: ReachedOrigin::HandleSource(HandleSourceStateData {
                     kind: request.kind,
                     local_id: request.local_id,
-                    authority: request
-                        .authority
-                        .try_clone_precharged()
-                        .map_err(|_| step(GateError::Unavailable))?,
                     generation: request.generation,
-                    parent_frame: parent.frame.clone(),
-                    parent_path: parent.path.clone(),
                 }),
                 state: Mutex::new(NodeLifecycle {
                     live: true,
@@ -2392,6 +2978,9 @@ impl CoreProviderAuthority {
         .map_err(step)?;
         let provider_frame = Arc::new(CoreProviderFrame {
             state: state.clone(),
+            cleanup: Mutex::new(None),
+            operation: OnceLock::from(operation),
+            operation_parent: parent_frame.operation_parent.clone(),
             _retirement: retirement,
             _reservation: frame_reservation,
         });
@@ -2413,9 +3002,9 @@ impl Drop for CoreProviderAuthority {
     }
 }
 
-/// One actual root or formal-callee Flow invocation. The catalog and owner
-/// stay frozen; each `reach_node` below must borrow the actual AST object used
-/// by the interpreter. This frame has no new grant, cost or terminal custody.
+/// One actual Native Input or formal-callee Flow invocation. The catalog and
+/// owner stay frozen; each `reach_node` below must borrow the actual AST object
+/// used by the interpreter. This frame has no new grant, cost or terminal custody.
 struct ActiveFlowFrame {
     auth: ControlHandle<FactoryAuth>,
     provider: ControlHandle<CoreProviderAuthority>,
@@ -2435,6 +3024,11 @@ struct ActiveFlowFrame {
     /// A dynamic guest Flow remains a child of its actual provider activation.
     /// Cloning this shared guard does not mint another retirement capability.
     guest_parent: Option<ControlHandle<NodeExecutionGuard>>,
+    // Bound after entry verification and outside every Gate/Core guard,
+    // before the interpreter can start. Clones/overlays preserve this scope.
+    task_spawner: OnceLock<Arc<dyn RunTaskSpawner>>,
+    provider_operation: Option<tobkiri_wasm::ProviderOperationScope>,
+    input_forwarding: Option<ControlHandle<NativeInputForwarding>>,
 }
 
 /// Core's continuation binds the one exact overlay activation to the captured
@@ -2456,13 +3050,6 @@ fn allocation_proof(
                 .downcast_ref::<CompletedReadProof>()
                 .map(|p| p.allocation.get())
         })
-        .ok_or(GateError::Unavailable)
-}
-fn reached_proof(
-    proof: &(dyn std::any::Any + Send + Sync),
-) -> Result<&ReachedActivationProof, GateError> {
-    proof
-        .downcast_ref::<ReachedActivationProof>()
         .ok_or(GateError::Unavailable)
 }
 impl CoreVerifier {
@@ -3476,6 +4063,15 @@ impl ActiveCodeFrame for ActiveFlowFrame {
         self.frame.clone()
     }
 
+    fn task_spawner(&self) -> Option<Arc<dyn RunTaskSpawner>> {
+        self.task_spawner.get().cloned()
+    }
+
+    fn task_execution(&self) -> Option<RunTaskExecution> {
+        self.task_spawner.get()?;
+        self.run_task_execution().ok()
+    }
+
     fn reach_node(
         &self,
         cx: &CallCx,
@@ -3523,7 +4119,7 @@ impl ActiveCodeFrame for ActiveFlowFrame {
                     .get(id)
                     .and_then(|chain| chain.get(index))
                     .ok_or_else(|| step(denied("overlay index is outside the frozen chain")))?;
-                if !code_matches_overlay(&position.code, selected)
+                if !code_matches_overlay(position.code, selected)
                     || !code_owner_matches(&self.owner, flow, Some(selected))
                 {
                     return Err(step(denied("overlay code owner or location changed")));
@@ -3709,11 +4305,13 @@ impl ActiveCodeFrame for ActiveFlowFrame {
                     .try_clone_precharged()
                     .map_err(|_| step(GateError::Unavailable))?,
                 entry_evidence: Some(self.entry_evidence.clone()),
+                task_spawner: self.task_spawner.get().cloned(),
+                provider_operation: self.provider_operation.clone(),
+                input_forwarding: self.input_forwarding.clone(),
                 flow_key: try_owned_string(&self.flow_key)
                     .map_err(|_| step(GateError::Unavailable))?,
                 code: Some(
-                    clone_code_location(&position.code)
-                        .map_err(|_| step(GateError::Unavailable))?,
+                    clone_code_location(position.code).map_err(|_| step(GateError::Unavailable))?,
                 ),
                 step_address,
                 overlay_base_address: self.overlay_base_address,
@@ -4032,6 +4630,9 @@ impl ActiveCodeFrame for ActiveFlowFrame {
                 path: overlay_path.clone(),
                 activation: next_sequence(&self.auth.activation).map_err(step)?,
                 guest_parent: self.guest_parent.clone(),
+                task_spawner: self.task_spawner.clone(),
+                provider_operation: self.provider_operation.clone(),
+                input_forwarding: self.input_forwarding.clone(),
             },
             frame_reservation,
         )
@@ -4110,6 +4711,18 @@ impl ActiveCodeFrame for ActiveFlowFrame {
 }
 
 impl ActiveFlowFrame {
+    fn run_task_execution(&self) -> Result<RunTaskExecution, StepError> {
+        Ok(RunTaskExecution {
+            frame: self.frame.clone(),
+            request: identity(&[
+                b"native-execution-request-v1",
+                self.context.request().as_str().as_bytes(),
+            ])
+            .map_err(step)?,
+            activation: self.activation,
+        })
+    }
+
     fn clone_frame_precharged(&self) -> Result<ControlHandle<Self>, GateError> {
         let dynamic = code_owner_storage_bytes(&self.owner)
             .checked_add(self.flow_key.len())
@@ -4145,6 +4758,9 @@ impl ActiveFlowFrame {
                 path: self.path.clone(),
                 activation: self.activation,
                 guest_parent: self.guest_parent.clone(),
+                task_spawner: self.task_spawner.clone(),
+                provider_operation: self.provider_operation.clone(),
+                input_forwarding: self.input_forwarding.clone(),
             },
             reservation,
         )
@@ -4387,6 +5003,137 @@ impl Drop for CoreNativeInputPreparation {
 }
 
 impl ProviderFrame for CoreProviderFrame {
+    fn bind_provider_operation(
+        &self,
+        operation: tobkiri_wasm::ProviderOperationScope,
+    ) -> Result<(), StepError> {
+        match self.inspect_bind_provider_operation(operation) {
+            Ok(()) => Ok(()),
+            Err(CoreBindRejection::BusyBeforeCommit(_)) => Err(step(GateError::Unavailable)),
+            Err(CoreBindRejection::Uncertain(error)) => Err(error),
+        }
+    }
+
+    fn try_bind_provider_operation(
+        &self,
+        operation: tobkiri_wasm::ProviderOperationScope,
+    ) -> tobkiri_wasm::ProviderBindAttempt {
+        match self.inspect_bind_provider_operation(operation) {
+            Ok(()) => tobkiri_wasm::ProviderBindAttempt::Bound,
+            Err(CoreBindRejection::BusyBeforeCommit(candidate)) => {
+                tobkiri_wasm::ProviderBindAttempt::Busy(candidate)
+            }
+            Err(CoreBindRejection::Uncertain(error)) => {
+                tobkiri_wasm::ProviderBindAttempt::Uncertain(error)
+            }
+        }
+    }
+
+    fn provider_operation(&self) -> Result<tobkiri_wasm::ProviderOperationScope, StepError> {
+        // Cleanup inventory remains readable after ACK/retirement. Merely
+        // holding this already-bound token restores no frame/entry authority.
+        self.operation
+            .get()
+            .cloned()
+            .ok_or_else(|| step(GateError::Unavailable))
+    }
+
+    fn provider_operation_parent(&self) -> Option<tobkiri_wasm::ProviderOperationScope> {
+        // Populated from this factory's validated private caller, never from
+        // the public trait object's identity or a principal/descriptor label.
+        self.operation_parent.clone()
+    }
+
+    fn native_execution_id(&self) -> Result<tobkiri_wasm::NativeExecutionId, StepError> {
+        match self.inspect_native_execution_id() {
+            Ok(id) => Ok(id),
+            Err(CorePreparationError::BusyBeforeMutation) => Err(step(GateError::Unavailable)),
+            Err(CorePreparationError::Uncertain(error)) => Err(error),
+        }
+    }
+    fn try_native_execution_id(&self) -> tobkiri_wasm::NativeIdAttempt {
+        match self.inspect_native_execution_id() {
+            Ok(id) => tobkiri_wasm::NativeIdAttempt::Ready(id),
+            Err(CorePreparationError::BusyBeforeMutation) => tobkiri_wasm::NativeIdAttempt::Busy,
+            Err(CorePreparationError::Uncertain(error)) => {
+                tobkiri_wasm::NativeIdAttempt::Uncertain(error)
+            }
+        }
+    }
+    fn cleanup_control(&self) -> Option<Arc<dyn StreamCloseControl>> {
+        self.cleanup.try_lock().ok()?.as_ref()?.upgrade()
+    }
+    fn with_cleanup_lifecycle(
+        &self,
+        select: &mut dyn FnMut(tobkiri_wasm::CleanupLifecycle) -> Result<(), StepError>,
+    ) -> Result<(), StepError> {
+        self.inspect_cleanup_lifecycle(select)
+            .map_err(|error| match error {
+                CoreCleanupLifecycleError::BusyBeforeCallback => step(GateError::Unavailable),
+                CoreCleanupLifecycleError::Uncertain(error) => error,
+            })
+    }
+    fn try_cleanup_lifecycle(
+        &self,
+        select: &mut dyn FnMut(tobkiri_wasm::CleanupLifecycle) -> Result<(), StepError>,
+    ) -> tobkiri_wasm::CleanupLifecycleAttempt {
+        match self.inspect_cleanup_lifecycle(select) {
+            Ok(()) => tobkiri_wasm::CleanupLifecycleAttempt::Selected,
+            Err(CoreCleanupLifecycleError::BusyBeforeCallback) => {
+                tobkiri_wasm::CleanupLifecycleAttempt::RetryableBusyBeforeCallback
+            }
+            Err(CoreCleanupLifecycleError::Uncertain(error)) => {
+                tobkiri_wasm::CleanupLifecycleAttempt::Uncertain(error)
+            }
+        }
+    }
+    fn bind_cleanup_control(&self, control: &Arc<dyn StreamCloseControl>) -> Result<(), StepError> {
+        // Source ownership is already pinned by the operation anchor. There is
+        // no extracted batch to lose if any earlier fallible lookup fails.
+        let operation;
+        let (bound, global) = {
+            let auth = &self.state.auth;
+            let _admission = auth
+                .admission
+                .try_lock()
+                .map_err(|_| step(GateError::Unavailable))?;
+            let lifecycle = self
+                .state
+                .state
+                .try_lock()
+                .map_err(|_| step(GateError::Unavailable))?;
+            if !lifecycle.live || lifecycle.acknowledged {
+                return Err(step(GateError::Unavailable));
+            }
+            let global = *auth
+                .cleanup_request
+                .try_lock()
+                .map_err(|_| step(GateError::Unavailable))?;
+            operation = auth
+                .notifications
+                .upgrade()
+                .ok_or_else(|| step(GateError::Unavailable))?
+                .find(self.state.context.cancel())
+                .map_err(step)?;
+            let mut cleanup = self
+                .cleanup
+                .try_lock()
+                .map_err(|_| step(GateError::Unavailable))?;
+            let bound = operation
+                .as_ref()
+                .map(|operation| operation.bind(control))
+                .transpose()?;
+            *cleanup = Some(Arc::downgrade(control));
+            if let (Some(operation), Some(reason)) = (&operation, global) {
+                operation.accept(reason);
+            }
+            (bound, global)
+        };
+        match bound {
+            Some(bound) => bound.flush(),
+            None => global.map_or(Ok(()), |reason| control.record_close(reason)),
+        }
+    }
     fn context(&self) -> &CallCx {
         &self.state.context
     }
@@ -4559,12 +5306,17 @@ impl ProviderFrame for CoreProviderFrame {
         let retire = !native_success;
         drop(lifecycle);
         drop(_admission);
-        if retire {
-            if let Ok(mut live) = auth.live_provider_frames.lock() {
-                live.remove(&(self as *const Self as usize));
-            }
+        if retire && let Ok(mut live) = auth.live_provider_frames.lock() {
+            live.remove(&(self as *const Self as usize));
         }
         Ok(())
+    }
+
+    fn seal_native_input_handles(
+        &self,
+        handles: ControlHandle<tobkiri_wasm::NativeInputHandles>,
+    ) -> Result<ControlHandle<dyn std::any::Any + Send + Sync>, StepError> {
+        self.seal_input_forwarding(handles)
     }
 
     fn take_source_read_receipt(&self) -> Result<tobkiri_gate::SourceReadReceipt, StepError> {
@@ -4671,7 +5423,7 @@ impl ProviderFrame for CoreProviderFrame {
                     digest,
                 )
             })
-            .map_err(|error| step(GateError::from(error)))?;
+            .map_err(step)?;
         let auth = &self.state.auth;
         let _admission = auth
             .admission
@@ -5477,7 +6229,7 @@ impl std::io::Write for JsonByteCount {
         self.0 = self
             .0
             .checked_add(bytes.len())
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "JSON size overflow"))?;
+            .ok_or_else(|| std::io::Error::other("JSON size overflow"))?;
         Ok(bytes.len())
     }
 
@@ -5490,13 +6242,17 @@ fn build_provider_authority(
     compiled: Arc<CompiledProfile>,
     gate: Arc<GateEngine>,
     identity: Digest,
+    notifications: FundedWeak<crate::ui_operation_delivery::UiDeliveryAnchor>,
 ) -> Result<ControlHandle<CoreProviderAuthority>, GateError> {
     let control = gate.control().clone();
     let catalog = funded_handle(&control, ControlKind::Catalog, 0, compiled.clone())?;
     let auth = funded_handle(
         &control,
         ControlKind::Registration,
-        0,
+        // The bounded Weak index can retain one empty leaf after its last
+        // entry releases its reservation. Fund that leaf for Auth's lifetime.
+        // Rust 1.94's 11-KV leaf for these key/value types is <=512 bytes.
+        512,
         FactoryAuth {
             identity: identity.clone(),
             compiled: catalog,
@@ -5507,6 +6263,9 @@ fn build_provider_authority(
             ui_preparations: Mutex::new(BTreeMap::new()),
             user_preparations: Mutex::new(BTreeMap::new()),
             live_provider_frames: Mutex::new(BTreeMap::new()),
+            cleanup_operations: Mutex::new(BTreeMap::new()),
+            cleanup_request: Mutex::new(None),
+            notifications,
         },
     )?;
 
@@ -5586,8 +6345,39 @@ pub(crate) struct ExecutionFactory {
     invoker: Arc<dyn PortInvoker>,
     identity: Digest,
     provider: ControlHandle<CoreProviderAuthority>,
+    notifications: crate::ui_operation_delivery::UiDeliveryOwner,
+}
+impl Drop for ExecutionFactory {
+    fn drop(&mut self) {
+        // Retire provenance before invoker/catalog fields are released. No
+        // callback, wake, allocation or physical/terminal proof occurs here.
+        self.retire();
+    }
 }
 impl ExecutionFactory {
+    /// Lifetime inventory only; this is never an authority or entry proof.
+    pub(crate) fn native_cleanup_identity(&self) -> &Digest {
+        &self.identity
+    }
+
+    pub(crate) fn with_native_cleanup_registration<T>(
+        &self,
+        publish: impl FnOnce() -> Result<T, StepError>,
+    ) -> Result<T, StepError> {
+        let _admission = self
+            .provider
+            .auth
+            .admission
+            .lock()
+            .map_err(|_| step(GateError::Unavailable))?;
+        if self.provider.auth.closing.load(Ordering::Acquire) {
+            return Err(step(GateError::Unavailable));
+        }
+        // Only a bounded Core-private slot insertion may run here. No Host
+        // callback, task submission, resource drop, notification or await.
+        publish()
+    }
+
     pub(crate) fn new(
         compiled: Arc<CompiledProfile>,
         gate: Arc<GateEngine>,
@@ -5623,13 +6413,21 @@ impl ExecutionFactory {
             frozen.plan_digest.as_str().as_bytes(),
             &entropy,
         ])?;
-        let provider = build_provider_authority(compiled.clone(), gate.clone(), identity.clone())?;
+        let notifications =
+            crate::ui_operation_delivery::UiDeliveryOwner::new(&identity, gate.control())?;
+        let provider = build_provider_authority(
+            compiled.clone(),
+            gate.clone(),
+            identity.clone(),
+            notifications.weak(),
+        )?;
         Ok(Self {
             compiled,
             gate,
             invoker,
             identity,
             provider,
+            notifications,
         })
     }
 
@@ -5652,10 +6450,22 @@ impl ExecutionFactory {
         Ok(())
     }
 
+    pub(crate) fn retire_ui_operations(&self, ui: &tobkiri_canon::ids::UiSessionId) {
+        self.notifications.retire_ui(ui);
+    }
+
+    /// Callback-free final-owner handoff. The existing process owner retains
+    /// every pending source/capture/charge until outside-guard maintenance.
+    pub(crate) fn retire(&self) {
+        self.provider.auth.closing.store(true, Ordering::Release);
+        self.notifications.retire();
+    }
     /// Synchronously closes this factory's registration before Session
-    /// releases its catalog and other execution state.
+    /// releases its catalog and other execution state. Caller holds no outer
+    /// guard: source callbacks and notification delivery occur here.
     pub(crate) fn close(&self) {
         self.provider.close();
+        self.notifications.close();
     }
 
     /// Borrow the actual immutable compiler value by exact catalog key. The
@@ -5770,12 +6580,12 @@ impl ExecutionFactory {
 
         let mut selected = None;
         for (key, flow) in &self.compiled.flows {
-            if flow.document.implements.as_ref() == Some(requested_shape) {
-                if selected.replace((key.as_str(), flow)).is_some() {
-                    return Err(step(denied(
-                        "guest Flow endpoint selects multiple canonical targets",
-                    )));
-                }
+            if flow.document.implements.as_ref() == Some(requested_shape)
+                && selected.replace((key.as_str(), flow)).is_some()
+            {
+                return Err(step(denied(
+                    "guest Flow endpoint selects multiple canonical targets",
+                )));
             }
         }
         let (flow_key, flow) = selected.ok_or_else(|| {
@@ -5849,6 +6659,7 @@ impl ExecutionFactory {
         &self,
         prepared: &PreparedGuestFlow<'_>,
         terminal: &crate::session::ConsumedEntryTerminal,
+        task_spawner: Option<Arc<dyn RunTaskSpawner>>,
     ) -> Result<ControlHandle<dyn ActiveCodeFrame>, StepError> {
         if prepared
             .used
@@ -5888,12 +6699,14 @@ impl ExecutionFactory {
             prepared.arguments_digest,
             terminal.permit(),
             &prepared.target,
-            FlowEntryMode::Guest,
-            None,
-            None,
-            Some(guest),
+            FlowEntryOrigin {
+                mode: FlowEntryMode::Guest,
+                parent: None,
+                native: None,
+                guest: Some(guest),
+            },
         )?;
-        self.activate_flow_entry(entry)
+        self.activate_flow_entry(entry, task_spawner, None)
     }
 
     /// Prepare the actual Launcher-bound UI receive before argument
@@ -6051,32 +6864,6 @@ impl ExecutionFactory {
         })
     }
 
-    /// Build the actual root Flow activation from the permit already consumed
-    /// by the caller. Core borrows it synchronously and retains only immutable
-    /// evidence; `ConsumedEntryTerminal` remains the sole outcome owner.
-    pub(crate) fn enter_root_flow(
-        &self,
-        caller: &CallCx,
-        flow_key: &str,
-        actual_args: &Digest,
-        terminal: &crate::session::ConsumedEntryTerminal,
-    ) -> Result<ControlHandle<dyn ActiveCodeFrame>, StepError> {
-        let flow = self.frozen_flow(flow_key)?;
-        let target = self.frozen_flow_target(caller, flow_key)?;
-        let prepared = self.prepare_flow_entry(
-            caller,
-            flow,
-            actual_args,
-            terminal.permit(),
-            &target,
-            FlowEntryMode::Root,
-            None,
-            None,
-            None,
-        )?;
-        self.activate_flow_entry(prepared)
-    }
-
     /// Enter the exact selected Flow only from its live actual FlowRun step.
     /// The parent's node is claimed once only after the new bounded Core frame
     /// has been built; the supplied terminal retains its own grant.
@@ -6086,10 +6873,14 @@ impl ExecutionFactory {
         caller_frame: &ControlHandle<dyn ActiveCodeFrame>,
         caller_node: &ReachedNode,
         exact_target: &FrozenFlowTarget,
-        flow_key: &str,
-        actual_args: &Digest,
-        terminal: &crate::session::ConsumedEntryTerminal,
+        entry: FlowEntryInvocation<'_>,
+        expected_parent: Option<&Arc<dyn RunTaskSpawner>>,
     ) -> Result<ControlHandle<dyn ActiveCodeFrame>, StepError> {
+        let FlowEntryInvocation {
+            flow_key,
+            actual_args,
+            terminal,
+        } = entry;
         let flow = self.frozen_flow(flow_key)?;
         let target = self.frozen_flow_target(caller, flow_key)?;
         let implements = flow
@@ -6120,12 +6911,30 @@ impl ExecutionFactory {
             actual_args,
             terminal.permit(),
             &target,
-            FlowEntryMode::Provided,
-            Some(parent),
-            None,
-            None,
+            FlowEntryOrigin {
+                mode: FlowEntryMode::Provided,
+                parent: Some(parent),
+                native: None,
+                guest: None,
+            },
         )?;
-        self.activate_flow_entry(prepared)
+        // Native lifetime is advisory custody only. Match it to the already
+        // validated PRIVATE reached-node carrier, never public frame metadata
+        // or a principal label. The existing activation/permit checks remain.
+        prepared.verify(caller).map_err(step)?;
+        let actual_parent = caller_node
+            .core_proof::<ReachedActivationProof>()
+            .and_then(|reached| reached.node.task_spawner.as_ref());
+        if !match (actual_parent, expected_parent) {
+            (None, None) => true,
+            (Some(actual), Some(expected)) => Arc::ptr_eq(actual, expected),
+            _ => false,
+        } {
+            return Err(step(denied(
+                "provided Flow task lifetime differs from its actual parent",
+            )));
+        }
+        self.activate_flow_entry(prepared, None, None)
     }
 
     /// Enter one exact frozen Input-trigger Flow route. The virtual-input
@@ -6138,10 +6947,14 @@ impl ExecutionFactory {
         routing_terminal: &crate::session::ConsumedEntryTerminal,
         receipt: &SourceReadReceipt,
         route: &IngressRoute,
-        flow_key: &str,
-        actual_args: &Digest,
-        flow_terminal: &crate::session::ConsumedEntryTerminal,
+        custody: Option<&ControlHandle<dyn std::any::Any + Send + Sync>>,
+        entry: FlowEntryInvocation<'_>,
     ) -> Result<ControlHandle<dyn ActiveCodeFrame>, StepError> {
+        let FlowEntryInvocation {
+            flow_key,
+            actual_args,
+            terminal: flow_terminal,
+        } = entry;
         let flow = self.frozen_flow(flow_key)?;
         let target = self.frozen_flow_target(caller, flow_key)?;
         if target != route.target {
@@ -6161,18 +6974,32 @@ impl ExecutionFactory {
             actual_args,
             flow_terminal.permit(),
             &target,
-            FlowEntryMode::NativeInput,
-            None,
-            Some(native),
-            None,
+            FlowEntryOrigin {
+                mode: FlowEntryMode::NativeInput,
+                parent: None,
+                native: Some(native),
+                guest: None,
+            },
         )?;
-        self.activate_flow_entry(prepared)
+        let forwarding = self.authenticate_input_forwarding(custody, caller, receipt, flow_key)?;
+        self.activate_flow_entry(prepared, None, forwarding)
     }
 
     fn activate_flow_entry(
         &self,
         prepared: PreparedFlowEntry<'_>,
+        guest_spawner: Option<Arc<dyn RunTaskSpawner>>,
+        native_forwarding: Option<ControlHandle<NativeInputForwarding>>,
     ) -> Result<ControlHandle<dyn ActiveCodeFrame>, StepError> {
+        let input_forwarding = match prepared.mode {
+            FlowEntryMode::NativeInput => native_forwarding,
+            FlowEntryMode::Provided => prepared
+                .parent
+                .as_ref()
+                .and_then(|parent| parent.node.core_proof::<ReachedActivationProof>())
+                .and_then(|reached| reached.node.input_forwarding.clone()),
+            FlowEntryMode::Guest => None,
+        };
         let flow = prepared.flow;
         let flow_key = prepared.flow_key();
         // The consumed lease can be earlier than the original caller deadline
@@ -6222,9 +7049,6 @@ impl ExecutionFactory {
                         ControlHandle::try_new_precharged(evidence, evidence_reservation)
                             .map_err(|_| GateError::Unavailable)?;
                     let context = match prepared.mode {
-                        FlowEntryMode::Root => admitted_caller
-                            .try_clone_precharged()
-                            .map_err(|_| GateError::Unavailable)?,
                         FlowEntryMode::Provided | FlowEntryMode::Guest => {
                             let limits = self.gate.code_owner_execution_limits(
                                 &admitted_caller,
@@ -6297,19 +7121,70 @@ impl ExecutionFactory {
                             .guest
                             .as_ref()
                             .map(|guest| guest.provider_frame._retirement.clone()),
+                        task_spawner: OnceLock::new(),
+                        input_forwarding: input_forwarding.clone(),
+                        provider_operation: match prepared.mode {
+                            FlowEntryMode::Guest => Some(
+                                prepared
+                                    .guest
+                                    .as_ref()
+                                    .and_then(|guest| guest.provider_frame.operation.get())
+                                    .cloned()
+                                    .ok_or(GateError::Unavailable)?,
+                            ),
+                            FlowEntryMode::Provided => prepared
+                                .parent
+                                .as_ref()
+                                .and_then(|parent| {
+                                    parent.node.core_proof::<ReachedActivationProof>()
+                                })
+                                .ok_or(GateError::Unavailable)?
+                                .node
+                                .provider_operation
+                                .clone(),
+                            FlowEntryMode::NativeInput => None,
+                        },
                     };
                     let handle = ControlHandle::try_new_precharged(frame, frame_reservation)
                         .map_err(|_| GateError::Unavailable)?;
                     if funding.limit == 0 {
                         return Err(GateError::Unavailable);
                     }
-                    result = Some(handle.project(|frame| frame as &dyn ActiveCodeFrame));
+                    result = Some(handle);
                     Ok(())
                 },
             )
             .map_err(step)?;
         prepared.transfer().map_err(step)?;
-        result.ok_or_else(|| step(GateError::Unavailable))
+        let frame = result.ok_or_else(|| step(GateError::Unavailable))?;
+        // Provenance and the parent's one-shot claim are already verified.
+        // Never call the native spawner while a factory, node, Gate funding or
+        // generation guard is held; child admission can notify cancellation.
+        let task_spawner = match prepared.mode {
+            FlowEntryMode::Guest => guest_spawner,
+            FlowEntryMode::Provided => {
+                let reached = prepared
+                    .parent
+                    .as_ref()
+                    .and_then(|parent| parent.node.core_proof::<ReachedActivationProof>())
+                    .ok_or_else(|| step(GateError::Unavailable))?;
+                match reached.node.task_spawner.as_ref() {
+                    Some(parent) => Some(
+                        parent
+                            .child(frame.run_task_execution()?, frame.context.cancel().clone())?,
+                    ),
+                    None => None,
+                }
+            }
+            FlowEntryMode::NativeInput => None,
+        };
+        if let Some(spawner) = task_spawner {
+            frame
+                .task_spawner
+                .set(spawner)
+                .map_err(|_| StepError::new("conflict", "Flow task lifetime is already bound"))?;
+        }
+        Ok(frame.project(|frame| frame as &dyn ActiveCodeFrame))
     }
 
     fn prepare_flow_entry<'a>(
@@ -6319,17 +7194,19 @@ impl ExecutionFactory {
         actual_args: &'a Digest,
         consumed: &'a DispatchPermit,
         target: &'a FrozenFlowTarget,
-        mode: FlowEntryMode,
-        parent: Option<ParentFlowCall<'a>>,
-        native: Option<NativeFlowCall<'a>>,
-        guest: Option<GuestFlowCall<'a>>,
+        origin: FlowEntryOrigin<'a>,
     ) -> Result<PreparedFlowEntry<'a>, StepError> {
+        let FlowEntryOrigin {
+            mode,
+            parent,
+            native,
+            guest,
+        } = origin;
         check_context(self.compiled.as_ref(), caller).map_err(step)?;
         self.gate.check_context(caller).map_err(step)?;
         let origin_is_exact = matches!(
             (mode, parent.is_some(), native.is_some(), guest.is_some()),
-            (FlowEntryMode::Root, false, false, false)
-                | (FlowEntryMode::Provided, true, false, false)
+            (FlowEntryMode::Provided, true, false, false)
                 | (FlowEntryMode::NativeInput, false, true, false)
                 | (FlowEntryMode::Guest, false, false, true)
         );
@@ -6374,7 +7251,6 @@ impl ExecutionFactory {
             consumed.id().as_str().as_bytes(),
             actual_args.as_str().as_bytes(),
             match mode {
-                FlowEntryMode::Root => b"root",
                 FlowEntryMode::Provided => b"provided",
                 FlowEntryMode::NativeInput => b"native-input",
                 FlowEntryMode::Guest => b"guest",
@@ -6445,7 +7321,6 @@ impl ExecutionFactory {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FlowEntryMode {
-    Root,
     Provided,
     NativeInput,
     Guest,
@@ -6543,7 +7418,7 @@ impl PreparedFlowEntry<'_> {
                 .budget()
                 .ok_or_else(|| denied("nested Flow has no inherited budget"))?
                 .charge(ChargeKind::SubFlow)?;
-        } else if self.mode != FlowEntryMode::Root {
+        } else {
             return Err(denied(
                 "nested Flow mode lacks its actual invocation origin",
             ));
@@ -6579,7 +7454,6 @@ impl PreparedFlowEntry<'_> {
         // The mode is sealed by the actual Core entry method; neither a caller
         // principal name nor possession of a registered owner chooses it.
         match (self.mode, &self.parent, &self.native, &self.guest) {
-            (FlowEntryMode::Root, None, None, None) => Ok(()),
             (FlowEntryMode::NativeInput, None, Some(_), None) => self.verify_native_origin(),
             (FlowEntryMode::Guest, None, None, Some(_)) => {
                 self.verify_guest_origin_under_admission()
@@ -6752,10 +7626,9 @@ impl PreparedFlowEntry<'_> {
                 && entry.source_hash() == &receipt.target.hash
                 && entry.exact_input_view() == &receipt.view
                 && entry.operation() == &receipt.op
+                && exact_entry.replace(entry).is_some()
             {
-                if exact_entry.replace(entry).is_some() {
-                    return Err(denied("native route matches multiple frozen Input records"));
-                }
+                return Err(denied("native route matches multiple frozen Input records"));
             }
         }
         let exact_entry = exact_entry
@@ -6839,7 +7712,7 @@ impl PreparedFrameVerifier for PreparedNativeEntry<'_> {
             .lock()
             .map_err(|_| GateError::Unavailable)?;
         if self.provider.auth.closing.load(Ordering::Acquire)
-            || !check_same_context(self.caller, cx).is_ok()
+            || check_same_context(self.caller, cx).is_err()
             || self.entry.profile_revision() != &self.provider.auth.compiled.get().plan_digest
             || self
                 .provider
@@ -6924,7 +7797,7 @@ impl PreparedFrameVerifier for PreparedUiEntry<'_, '_> {
             }
         };
         if self.provider.auth.closing.load(Ordering::Acquire)
-            || !check_same_context(self.caller, cx).is_ok()
+            || check_same_context(self.caller, cx).is_err()
             || self.caller.revision() != Some(&compiled.plan_digest)
             || self.entry.generation == 0
             || ui != self.entry.session
@@ -7187,6 +8060,54 @@ fn step(error: GateError) -> StepError {
 #[cfg(test)]
 mod control_admission_tests {
     use super::*;
+
+    #[test]
+    fn cleanup_contention_requires_actual_own_mutex_would_block() {
+        let lock = Mutex::new(());
+        let guard = lock.lock().unwrap();
+        assert!(matches!(
+            cleanup_lifecycle_lock(&lock),
+            Err(CoreCleanupLifecycleError::BusyBeforeCallback)
+        ));
+        drop(guard);
+        assert!(cleanup_lifecycle_lock(&lock).is_ok());
+    }
+
+    #[test]
+    fn poisoned_cleanup_mutex_is_uncertain_never_retryable_busy() {
+        let lock = Mutex::new(());
+        let poisoned = std::panic::catch_unwind(|| {
+            let _guard = lock.lock().unwrap();
+            panic!("fixture cleanup mutex poison");
+        });
+        assert!(poisoned.is_err());
+        assert!(
+            matches!(cleanup_lifecycle_lock(&lock), Err(CoreCleanupLifecycleError::Uncertain(error)) if error.code == "unavailable")
+        );
+    }
+
+    #[test]
+    fn preparation_lock_classifies_only_actual_own_mutex_contention() {
+        let lock = Mutex::new(());
+        let guard = lock.lock().unwrap();
+        assert!(matches!(
+            preparation_lock(&lock),
+            Err(CorePreparationError::BusyBeforeMutation)
+        ));
+        drop(guard);
+        assert!(preparation_lock(&lock).is_ok());
+        let poisoned = Mutex::new(());
+        assert!(
+            std::panic::catch_unwind(|| {
+                let _guard = poisoned.lock().unwrap();
+                panic!("fixture preparation mutex poison");
+            })
+            .is_err()
+        );
+        assert!(
+            matches!(preparation_lock(&poisoned), Err(CorePreparationError::Uncertain(error)) if error.code == "unavailable")
+        );
+    }
     use tobkiri_canon::ids::ProfileId;
     use tobkiri_gate::{CoreControlError, CoreControlLimits, PermissionSet};
 
@@ -7250,6 +8171,243 @@ mod control_admission_tests {
             entry,
             &target,
         )
+    }
+
+    use tobkiri_wasm::NativeIdAttempt;
+
+    fn new_factory(session: &crate::Session) -> Arc<ExecutionFactory> {
+        Arc::new(
+            ExecutionFactory::new(
+                session.compiled.clone(),
+                session.gate.clone(),
+                session.invoker.clone(),
+            )
+            .unwrap(),
+        )
+    }
+
+    /// Admit and enter one real native provider frame through the same
+    /// Gate/bridge sequence as read_native_input_owned.
+    async fn admit_native_frame(
+        factory: &ExecutionFactory,
+        request: &str,
+    ) -> (Arc<dyn ProviderFrame>, DispatchPermit, Digest) {
+        let caller = source_context(factory, factory.gate.control(), request);
+        let entry = &factory.compiled.input_entries()[0];
+        let view = entry.exact_input_view();
+        let op = entry.operation();
+        let target = factory
+            .gate
+            .resolve_frozen_target(&caller, view, op)
+            .unwrap();
+        let preparation = prepare_source(factory, &caller).unwrap();
+        let budget = factory
+            .invoker
+            .allocation_budget_for_frame(&caller, preparation.argument_scope().unwrap())
+            .unwrap();
+        let args = CoreValue::try_from_borrowed(entry.arguments(), &budget).unwrap();
+        let args_digest = args.digest_guest(&budget).unwrap();
+        let admission = factory
+            .gate
+            .admit_port(
+                &caller,
+                view.clone(),
+                op.clone(),
+                args_digest.clone(),
+                target.clone(),
+            )
+            .await
+            .unwrap();
+        let provider_request = ProviderRequest {
+            control: factory.invoker.as_ref(),
+            caller: &caller,
+            view,
+            op,
+            target: &target,
+            args_digest: &args_digest,
+            origin: ProviderOrigin::NativeInput {
+                entry,
+                preparation: &preparation,
+            },
+        };
+        factory
+            .provider
+            .validate_prepare(&provider_request)
+            .unwrap();
+        let mut permit = factory
+            .gate
+            .claim_port(&caller, admission, view, op, &args_digest, &target)
+            .await
+            .unwrap()
+            .into_permit();
+        factory.gate.watch_lease(&caller, &permit).unwrap();
+        let frame = factory
+            .provider
+            .enter_provider_with_handle(factory.provider.clone(), &provider_request, &permit, &args)
+            .unwrap();
+        let bounded = caller.clone().cap_deadline(frame.context().deadline());
+        factory
+            .gate
+            .narrow_lease(&mut permit, &bounded)
+            .await
+            .unwrap();
+        factory.gate.watch_lease(&bounded, &permit).unwrap();
+        (frame, permit, args_digest)
+    }
+
+    fn core_frame(frame: &Arc<dyn ProviderFrame>) -> &CoreProviderFrame {
+        frame.as_any().downcast_ref::<CoreProviderFrame>().unwrap()
+    }
+
+    fn assert_live_provider_frame(
+        frame: &CoreProviderFrame,
+        auth: &ControlHandle<FactoryAuth>,
+        args_digest: &Digest,
+    ) {
+        assert!(matches!(&frame.state.origin, ReachedOrigin::Provider(_)));
+        assert!(ControlHandle::ptr_eq(&frame.state.auth, auth));
+        assert!(frame.operation.get().is_none());
+        let lifecycle = frame.state.state.lock().unwrap();
+        assert!(lifecycle.live && lifecycle.claimed && !lifecycle.acknowledged);
+        assert_eq!(lifecycle.expected_args.as_ref(), Some(args_digest));
+    }
+
+    /// Settle the sole consumed permit with a real failed outcome and deliver
+    /// its actual Gate terminal receipt to Core.
+    async fn finish_native_frame(
+        factory: &ExecutionFactory,
+        frame: &Arc<dyn ProviderFrame>,
+        permit: &DispatchPermit,
+    ) -> Result<(), StepError> {
+        factory
+            .gate
+            .record_outcome(
+                permit.id().clone(),
+                tobkiri_gate::Outcome::Failed {
+                    code: "unavailable".into(),
+                },
+            )
+            .await
+            .unwrap();
+        let receipt = factory.gate.acknowledged_terminal(permit).unwrap();
+        frame.terminal_acknowledged(&receipt)
+    }
+
+    fn ready_id(frame: &Arc<dyn ProviderFrame>) -> tobkiri_wasm::NativeExecutionId {
+        match frame.try_native_execution_id() {
+            NativeIdAttempt::Ready(id) => id,
+            _ => panic!("live provider frame must publish a Ready identity"),
+        }
+    }
+
+    fn assert_busy_id(frame: &Arc<dyn ProviderFrame>) {
+        assert!(matches!(
+            frame.try_native_execution_id(),
+            NativeIdAttempt::Busy
+        ));
+    }
+
+    fn assert_unavailable_id(frame: &Arc<dyn ProviderFrame>) {
+        match frame.try_native_execution_id() {
+            NativeIdAttempt::Uncertain(error) => assert_eq!(error.code, "unavailable"),
+            _ => panic!("native identity must be Uncertain, not Busy/Ready"),
+        }
+    }
+
+    #[tokio::test]
+    async fn actual_core_native_id_busy_is_own_contention_and_recovers() {
+        let fixture = crate::test_support::RuntimeFixture::new(&["fixture"], false).await;
+        let session = fixture.session().await;
+        let factory = new_factory(&session);
+        let (frame, permit, args_digest) =
+            admit_native_frame(&factory, "actual-native-id-busy").await;
+        let core = core_frame(&frame);
+        assert_live_provider_frame(core, &factory.provider.auth, &args_digest);
+        let id = ready_id(&frame);
+        let admission = core.state.auth.admission.lock().unwrap();
+        assert_busy_id(&frame);
+        drop(admission);
+        assert_eq!(ready_id(&frame), id);
+        let state = core.state.state.lock().unwrap();
+        assert_busy_id(&frame);
+        assert!(core.state.auth.admission.try_lock().is_ok());
+        drop(state);
+        assert_eq!(ready_id(&frame), id);
+        assert_eq!(id.activation, core.state.activation);
+        assert_live_provider_frame(core, &factory.provider.auth, &args_digest);
+        finish_native_frame(&factory, &frame, &permit)
+            .await
+            .unwrap();
+        drop(frame);
+        factory.close();
+        session.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn actual_core_native_id_poison_is_uncertain() {
+        fn poison<T>(mutex: &Mutex<T>) {
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let _guard = mutex.lock().unwrap();
+                panic!("deterministic native identity poison");
+            }));
+            assert!(mutex.is_poisoned());
+        }
+        let fixture = crate::test_support::RuntimeFixture::new(&["fixture"], false).await;
+        let session = fixture.session().await;
+        for (request, admission) in [
+            ("actual-native-id-poison-admission", true),
+            ("actual-native-id-poison-state", false),
+        ] {
+            let factory = new_factory(&session);
+            let (frame, permit, args_digest) = admit_native_frame(&factory, request).await;
+            let core = core_frame(&frame);
+            assert_live_provider_frame(core, &factory.provider.auth, &args_digest);
+            let _ = ready_id(&frame);
+            if admission {
+                poison(&core.state.auth.admission);
+            } else {
+                poison(&core.state.state);
+            }
+            assert_unavailable_id(&frame);
+            let result = finish_native_frame(&factory, &frame, &permit).await;
+            assert_eq!(result.unwrap_err().code, "unavailable");
+            drop(frame);
+            factory.close();
+        }
+        session.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn actual_core_native_id_closed_and_retired_are_uncertain() {
+        let fixture = crate::test_support::RuntimeFixture::new(&["fixture"], false).await;
+        let session = fixture.session().await;
+        let factory = new_factory(&session);
+        let (frame, permit, _) = admit_native_frame(&factory, "actual-native-id-closed").await;
+        let core = core_frame(&frame);
+        let _ = ready_id(&frame);
+        factory.close();
+        assert!(core.state.auth.closing.load(Ordering::Acquire));
+        assert_unavailable_id(&frame);
+        finish_native_frame(&factory, &frame, &permit)
+            .await
+            .unwrap();
+        drop(frame);
+        drop(factory);
+        let factory = new_factory(&session);
+        let (frame, permit, _) = admit_native_frame(&factory, "actual-native-id-retired").await;
+        let core = core_frame(&frame);
+        let _ = ready_id(&frame);
+        finish_native_frame(&factory, &frame, &permit)
+            .await
+            .unwrap();
+        {
+            let lifecycle = core.state.state.lock().unwrap();
+            assert!(!lifecycle.live && lifecycle.acknowledged);
+        }
+        assert_unavailable_id(&frame);
+        drop(frame);
+        factory.close();
+        session.close().await.unwrap();
     }
 
     #[tokio::test]
@@ -7509,5 +8667,805 @@ mod control_admission_tests {
         ));
         assert_eq!(control.usage().bytes, 0);
         assert_eq!(control.usage().count(ControlKind::Catalog), 0);
+    }
+}
+
+#[cfg(test)]
+mod operation_intent_tests {
+    use super::*;
+    use crate::CanonValue;
+    use crate::ui_operation_preparation::UiOperationTermination;
+
+    fn require_send<T: Send>(value: T) -> T {
+        value
+    }
+
+    async fn candidate(
+        _label: &str,
+    ) -> (
+        crate::test_support::RuntimeFixture,
+        crate::Session,
+        Arc<ExecutionFactory>,
+        UiOperationCloseHandle,
+    ) {
+        let fixture = crate::test_support::RuntimeFixture::new(&["fixture"], true).await;
+        let session = fixture.session().await;
+        session.bind_ui_generation(7).unwrap();
+        let ui = session
+            .ui_attachments()
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap()
+            .session;
+        let factory = session.operation_intent_factory_for_test();
+        let control = session
+            .ui_operation_close_candidate(&ui, None, tokio_util::sync::CancellationToken::new())
+            .unwrap();
+        (fixture, session, factory, control)
+    }
+
+    async fn prepared() -> (
+        crate::test_support::RuntimeFixture,
+        crate::Session,
+        Arc<ExecutionFactory>,
+        crate::UiAttachment,
+        crate::ui_operation_preparation::UiOperationPreparation,
+    ) {
+        let fixture = crate::test_support::RuntimeFixture::new(&["fixture"], true).await;
+        let session = fixture.session().await;
+        session.bind_ui_generation(7).unwrap();
+        let attachment = session
+            .ui_attachments()
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
+        let factory = session.operation_intent_factory_for_test();
+        let preparation = session
+            .ui_operation_preparation(
+                &attachment.session,
+                &attachment.host_session,
+                7,
+                &attachment.receiver,
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .unwrap();
+        (fixture, session, factory, attachment, preparation)
+    }
+
+    #[tokio::test]
+    async fn prepared_publish_retries_own_busy_then_claims_once() {
+        let (_f, _s, factory, _a, mut preparation) = prepared().await;
+        let handle = preparation.close_handle();
+        let held = factory.provider.get().auth.clone();
+        let auth = factory.provider.get().auth.clone();
+        let (held_send, held_receive) = std::sync::mpsc::channel();
+        let (release_send, release_receive) = std::sync::mpsc::channel();
+        let (dropped_send, dropped_receive) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let guard = held.get().admission.lock().unwrap();
+            held_send.send(()).unwrap();
+            release_receive.recv().unwrap();
+            drop(guard);
+            dropped_send.send(()).unwrap();
+        });
+        held_receive.recv().unwrap();
+        // The actual prepared publication future must stay Send for B1.
+        drop(require_send(preparation.publish()));
+        {
+            let mut publish = std::pin::pin!(preparation.publish());
+            let first =
+                std::future::poll_fn(|cx| std::task::Poll::Ready(publish.as_mut().poll(cx))).await;
+            assert!(first.is_pending());
+            // Own Busy must not mutate the index; no entry was inserted.
+            assert!(auth.get().cleanup_operations.lock().unwrap().is_empty());
+            release_send.send(()).unwrap();
+            dropped_receive.recv().unwrap();
+            publish.await.unwrap();
+        }
+        holder.join().unwrap();
+        assert!(preparation.attempts() >= 1 && preparation.attempts() <= 8);
+        assert!(
+            auth.get()
+                .cleanup_operations
+                .lock()
+                .unwrap()
+                .get(&handle.request)
+                .is_some_and(|entry| entry.strong_count() >= 1)
+        );
+        preparation.claim().unwrap();
+        assert!(preparation.claim().is_err());
+    }
+
+    #[tokio::test]
+    async fn prepared_publish_never_retries_uncertain() {
+        let (_f, _s, _f2, _a, mut preparation) = prepared().await;
+        // An accepted cause turns admission into Uncertain: one attempt, no
+        // wait, no retry.
+        preparation.accept(UiOperationTermination::Manual);
+        assert!(preparation.publish().await.is_err());
+        assert_eq!(preparation.attempts(), 1);
+        let (_f, _s, _f2, _a, mut preparation) = prepared().await;
+        preparation.external_token().cancel();
+        assert!(preparation.publish().await.is_err());
+        assert_eq!(preparation.attempts(), 0);
+    }
+
+    #[tokio::test]
+    async fn prepared_wait_races_external_cancel_and_deadline() {
+        let (_f, _s, factory, _a, mut preparation) = prepared().await;
+        let held = factory.provider.get().auth.clone();
+        let auth = factory.provider.get().auth.clone();
+        let (held_send, held_receive) = std::sync::mpsc::channel();
+        let (release_send, release_receive) = std::sync::mpsc::channel();
+        let (dropped_send, dropped_receive) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let guard = held.get().admission.lock().unwrap();
+            held_send.send(()).unwrap();
+            release_receive.recv().unwrap();
+            drop(guard);
+            dropped_send.send(()).unwrap();
+        });
+        held_receive.recv().unwrap();
+        let external = preparation.external_token();
+        {
+            let mut publish = std::pin::pin!(preparation.publish());
+            let first =
+                std::future::poll_fn(|cx| std::task::Poll::Ready(publish.as_mut().poll(cx))).await;
+            assert!(first.is_pending());
+            external.cancel();
+            assert!(publish.await.is_err());
+        }
+        release_send.send(()).unwrap();
+        dropped_receive.recv().unwrap();
+        holder.join().unwrap();
+        assert!(auth.get().cleanup_operations.lock().unwrap().is_empty());
+        assert!(preparation.attempts() < 8);
+        // Tightening the original real deadline also terminates preparation.
+        preparation.tighten_deadline_for_test(Instant::now());
+        assert!(preparation.publish().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn prepared_busy_exhaustion_retains_candidate_and_context() {
+        let (_f, _s, factory, _a, mut preparation) = prepared().await;
+        let handle = preparation.close_handle();
+        let deadline = preparation.deadline();
+        let auth = factory.provider.get().auth.clone();
+        let held = factory.provider.get().auth.clone();
+        let (held_send, held_receive) = std::sync::mpsc::channel();
+        let (release_send, release_receive) = std::sync::mpsc::channel();
+        let (dropped_send, dropped_receive) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let guard = held.get().admission.lock().unwrap();
+            held_send.send(()).unwrap();
+            release_receive.recv().unwrap();
+            drop(guard);
+            dropped_send.send(()).unwrap();
+        });
+        held_receive.recv().unwrap();
+        assert!(preparation.publish().await.is_err());
+        assert_eq!(preparation.attempts(), 8);
+        assert!(auth.get().cleanup_operations.lock().unwrap().is_empty());
+        let (cx, _retained, claimed) = preparation.into_invoke();
+        assert!(!claimed);
+        assert_eq!(cx.deadline(), deadline);
+        assert_eq!(cx.request().as_str(), handle.request.as_str());
+        assert!(matches!(handle.publish(), UiOperationPublishAttempt::Busy));
+        release_send.send(()).unwrap();
+        dropped_receive.recv().unwrap();
+        holder.join().unwrap();
+        assert!(matches!(
+            handle.publish(),
+            UiOperationPublishAttempt::Published
+        ));
+    }
+
+    #[tokio::test]
+    async fn guard_safe_acceptance_publishes_durable_wake_duty() {
+        let (_f, _s, factory, control) = candidate("wake").await;
+        let auth = factory.provider.get().auth.clone();
+        let token = control.token.clone();
+        let external = control.external_token();
+        let _admission = auth.get().admission.lock().unwrap();
+        let _operations = auth.get().cleanup_operations.lock().unwrap();
+        control.record(StreamCloseReason::Manual);
+        control.record(StreamCloseReason::Retired);
+        // Guard-safe acceptance is finite atomics only: no wake fires here.
+        assert!(!token.is_cancelled());
+        assert!(!external.is_cancelled());
+        drop(_operations);
+        drop(_admission);
+        let (reason, retired) = control.accepted();
+        assert!(matches!(reason, Some(StreamCloseReason::Manual)) && retired);
+        let anchor = auth.get().notifications.upgrade().unwrap();
+        // Dropping the control cannot lose the pending wake: the same funded
+        // record and existing process owner still owe it.
+        drop(control);
+        anchor.retire();
+        assert!(!anchor.notifications_settled());
+        assert!(!anchor.removable());
+        anchor.flush().unwrap();
+        assert!(token.is_cancelled());
+        assert!(external.is_cancelled());
+        assert!(anchor.notifications_settled());
+        assert!(anchor.removable());
+    }
+
+    #[tokio::test]
+    async fn prepared_invoke_consumes_original_context_once() {
+        let (_f, session, _f2, attachment, _unused) = prepared().await;
+        let shape = ShapeRef::parse("local.fixture.missing@1.0").unwrap();
+        let op = tobkiri_canon::ids::OpName::parse("missing").unwrap();
+        let args = CanonValue::Obj(BTreeMap::new());
+        let unpublished = session
+            .ui_operation_preparation(
+                &attachment.session,
+                &attachment.host_session,
+                7,
+                &attachment.receiver,
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .unwrap();
+        let error = session
+            .ui_invoke_prepared(
+                crate::UiInvokeRequest {
+                    session: &attachment.session,
+                    host_session: &attachment.host_session,
+                    generation: 7,
+                    receiver: &attachment.receiver,
+                    shape: shape.clone(),
+                    op: op.clone(),
+                    args: &args,
+                },
+                unpublished,
+            )
+            .await
+            .err()
+            .unwrap();
+        assert!(matches!(error, CoreError::Gate(GateError::Unavailable)));
+        let mut closed = session
+            .ui_operation_preparation(
+                &attachment.session,
+                &attachment.host_session,
+                7,
+                &attachment.receiver,
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .unwrap();
+        closed.publish().await.unwrap();
+        closed.accept(UiOperationTermination::Manual);
+        let error = session
+            .ui_invoke_prepared(
+                crate::UiInvokeRequest {
+                    session: &attachment.session,
+                    host_session: &attachment.host_session,
+                    generation: 7,
+                    receiver: &attachment.receiver,
+                    shape: shape.clone(),
+                    op: op.clone(),
+                    args: &args,
+                },
+                closed,
+            )
+            .await
+            .err()
+            .unwrap();
+        assert!(matches!(error, CoreError::Gate(GateError::Unavailable)));
+        let mut live = session
+            .ui_operation_preparation(
+                &attachment.session,
+                &attachment.host_session,
+                7,
+                &attachment.receiver,
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .unwrap();
+        live.publish().await.unwrap();
+        live.claim().unwrap();
+        assert!(live.claim().is_err());
+        let error = session
+            .ui_invoke_prepared(
+                crate::UiInvokeRequest {
+                    session: &attachment.session,
+                    host_session: &attachment.host_session,
+                    generation: 7,
+                    receiver: &attachment.receiver,
+                    shape,
+                    op,
+                    args: &args,
+                },
+                live,
+            )
+            .await
+            .err()
+            .unwrap();
+        // The bogus shape fails the actual attachment check, proving the
+        // original minted context carried dispatch into real validation.
+        assert!(matches!(error, CoreError::Invalid(_)));
+    }
+
+    #[tokio::test]
+    async fn prepared_invoke_dispatches_stream_sharing_original_context() {
+        let (_f, session, _f2, attachment, mut preparation) = prepared().await;
+        let deadline = preparation.deadline();
+        let request = preparation.close_handle().request.clone();
+        let cx = preparation.context().clone();
+        preparation.publish().await.unwrap();
+        preparation.claim().unwrap();
+        let envelope = session
+            .ui_invoke_prepared(
+                crate::UiInvokeRequest {
+                    session: &attachment.session,
+                    host_session: &attachment.host_session,
+                    generation: 7,
+                    receiver: &attachment.receiver,
+                    shape: ShapeRef::parse("local.fixture.input@1.0").unwrap(),
+                    op: tobkiri_canon::ids::OpName::parse("stream").unwrap(),
+                    args: &CanonValue::Obj(BTreeMap::new()),
+                },
+                preparation,
+            )
+            .await
+            .unwrap();
+        let handle =
+            serde_json::from_slice::<serde_json::Value>(envelope.as_bytes()).unwrap()["handle"]
+                .as_u64()
+                .unwrap();
+        let entry_cx = session
+            .ui_stream_entry_cx(&attachment.session, handle)
+            .expect("registered stream entry context");
+        // The real stored entry context is the same originally minted owner:
+        // identical deadline/request and the same execution ledger.
+        assert_eq!(entry_cx.deadline(), deadline);
+        assert_eq!(entry_cx.request().as_str(), request.as_str());
+        assert!(
+            entry_cx
+                .budget()
+                .unwrap()
+                .same_execution(cx.budget().unwrap())
+        );
+        session.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn claim_rejects_fresh_cancel_deadline_and_accepted_owners() {
+        // Fresh owner: expired original deadline rejects the final claim.
+        let (_f1, _s1, _fa, _a1, mut expired) = prepared().await;
+        expired.publish().await.unwrap();
+        expired.tighten_deadline_for_test(Instant::now());
+        assert!(expired.claim().is_err());
+        // Fresh owner: external cancellation rejects while its own token is
+        // still active.
+        let (_f2, _s2, _fb, _a2, mut cancelled) = prepared().await;
+        cancelled.publish().await.unwrap();
+        cancelled.external_token().cancel();
+        assert!(cancelled.claim().is_err());
+        // Fresh owner: original context cancellation rejects the claim.
+        let (_f3, _s3, _fc, _a3, mut cx_cancelled) = prepared().await;
+        let token = cx_cancelled.context().cancel().clone();
+        cx_cancelled.publish().await.unwrap();
+        token.cancel();
+        assert!(cx_cancelled.claim().is_err());
+        // Fresh owner: an accepted first cause (delivery still delayed) must
+        // still reject the final claim.
+        let (_f4, _s4, _fd, _a4, mut accepted) = prepared().await;
+        accepted.publish().await.unwrap();
+        accepted.accept(UiOperationTermination::Retired);
+        assert!(accepted.claim().is_err());
+    }
+
+    #[tokio::test]
+    async fn busy_retains_candidate_and_publication_claims_once() {
+        let (_fixture, session, factory, control) = candidate("ui_busy").await;
+        let provider = factory.provider_authority();
+        assert!(control.claim(&provider, &control.ui, 7).is_err());
+        assert!(!control.claimed.load(Ordering::Acquire));
+        let request = control.request.clone();
+        let admission = factory.provider.auth.admission.lock().unwrap();
+        assert!(matches!(control.publish(), UiOperationPublishAttempt::Busy));
+        assert!(matches!(control.publish(), UiOperationPublishAttempt::Busy));
+        assert!(
+            factory
+                .provider
+                .auth
+                .cleanup_operations
+                .lock()
+                .unwrap()
+                .is_empty()
+        );
+        drop(admission);
+        {
+            let index = factory.provider.auth.cleanup_operations.lock().unwrap();
+            assert!(matches!(control.publish(), UiOperationPublishAttempt::Busy));
+            assert!(index.is_empty());
+            drop(index);
+        }
+        assert!(matches!(
+            control.publish(),
+            UiOperationPublishAttempt::Published
+        ));
+        assert!(matches!(
+            control.publish(),
+            UiOperationPublishAttempt::Published
+        ));
+        assert_eq!(control.request, request);
+        {
+            let operations = factory.provider.auth.cleanup_operations.lock().unwrap();
+            assert_eq!(operations.len(), 1);
+            assert!(FundedArc::ptr_eq(
+                &operations.get(&request).unwrap().upgrade().unwrap().storage,
+                &control.storage
+            ));
+            drop(operations);
+        }
+        assert!(control.claim(&provider, &control.ui, 7).is_ok());
+        assert!(control.claim(&provider, &control.ui, 7).is_err());
+        drop(control);
+        factory.close();
+        session.close().await.unwrap();
+    }
+    #[tokio::test]
+    async fn cancelled_and_closed_candidates_do_not_publish_or_claim() {
+        let (_fixture, session, factory, control) = candidate("ui_cancel").await;
+        let external = control.external_token();
+        assert!(!external.is_cancelled());
+        control.cancel();
+        assert!(external.is_cancelled());
+        assert_eq!(control.accepted(), (Some(StreamCloseReason::Manual), false));
+        assert!(matches!(
+            control.publish(),
+            UiOperationPublishAttempt::Uncertain(_)
+        ));
+        assert!(
+            control
+                .claim(&factory.provider_authority(), &control.ui, 7)
+                .is_err()
+        );
+        assert!(!control.claimed.load(Ordering::Acquire));
+        assert!(
+            factory
+                .provider
+                .auth
+                .cleanup_operations
+                .lock()
+                .unwrap()
+                .is_empty()
+        );
+        drop(control);
+        factory.close();
+        session.close().await.unwrap();
+    }
+    #[tokio::test]
+    async fn source_callback_is_not_run_by_last_control_drop() {
+        struct Sink {
+            calls: std::sync::atomic::AtomicUsize,
+        }
+        impl StreamCloseControl for Sink {
+            fn record_close(&self, _: StreamCloseReason) -> Result<(), StepError> {
+                self.calls.fetch_add(1, Ordering::AcqRel);
+                Ok(())
+            }
+        }
+        let (_fixture, session, factory, control) = candidate("ui_drop").await;
+        let sink = Arc::new(Sink {
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        });
+        let source: Arc<dyn StreamCloseControl> = sink.clone();
+        let handoff = control.bind(&source).unwrap();
+        drop(handoff); // early error/unwind cannot extract or abandon the batch
+        control.record(StreamCloseReason::Manual);
+        let outer = factory.provider.auth.admission.lock().unwrap();
+        drop(control);
+        assert_eq!(sink.calls.load(Ordering::Acquire), 0);
+        drop(outer);
+        factory.close();
+        assert_eq!(sink.calls.load(Ordering::Acquire), 1);
+        session.close().await.unwrap();
+    }
+    #[tokio::test]
+    async fn actual_principal_retirement_is_received_under_admission_contention_before_claim() {
+        let (_fixture, session, factory, control) = candidate("ui_detach").await;
+        control.record(StreamCloseReason::Manual);
+        let auth = factory.provider.auth.clone();
+        let (held_tx, held_rx) = std::sync::mpsc::sync_channel(1);
+        let (release_tx, release_rx) = std::sync::mpsc::sync_channel(1);
+        let worker = std::thread::spawn(move || {
+            let _admission = auth.admission.lock().unwrap();
+            held_tx.send(()).unwrap();
+            let _ = release_rx.recv();
+        });
+        held_rx.recv().unwrap();
+        assert!(matches!(
+            control.publish(),
+            UiOperationPublishAttempt::Uncertain(_)
+        ));
+        session.detach_ui(&control.ui).await.unwrap();
+        assert_eq!(control.accepted(), (Some(StreamCloseReason::Manual), true));
+        assert!(
+            control
+                .claim(&factory.provider_authority(), &control.ui, 7)
+                .is_err()
+        );
+        assert!(!control.claimed.load(Ordering::Acquire));
+        assert!(
+            factory
+                .provider
+                .auth
+                .cleanup_operations
+                .lock()
+                .unwrap()
+                .is_empty()
+        );
+        release_tx.send(()).unwrap();
+        worker.join().unwrap();
+        drop(control);
+        session.close().await.unwrap();
+    }
+    #[tokio::test]
+    async fn actual_principal_constructor_reserve_failure_is_unpublished() {
+        let (_fixture, session, factory, control) = candidate("ui_reserve").await;
+        let attachment = session
+            .ui_attachments()
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
+        let account = session.gate.control();
+        let mut held = Vec::new();
+        for _ in 0..tobkiri_gate::CoreControlLimits::default().max_registrations {
+            match account.reserve(ControlKind::Registration, 1) {
+                Ok(reservation) => held.push(reservation),
+                Err(_) => break,
+            }
+        }
+        let before = account.usage();
+        let ui = tobkiri_canon::ids::UiSessionId::parse("ui_reserve_failure").unwrap();
+        assert!(
+            session
+                .register_ui(
+                    ui.clone(),
+                    attachment.host_session,
+                    attachment.pack,
+                    attachment.hash,
+                    BTreeSet::new()
+                )
+                .is_err()
+        );
+        assert!(
+            session
+                .ui_attachments()
+                .unwrap()
+                .iter()
+                .all(|attachment| attachment.session != ui)
+        );
+        assert_eq!(account.usage(), before);
+        drop(held);
+        drop(control);
+        factory.close();
+        session.close().await.unwrap();
+    }
+    #[tokio::test]
+    async fn actual_later_registration_generation_does_not_share_retirement() {
+        let (fixture, first, factory, control) = candidate("ui_first").await;
+        let second = fixture.session().await;
+        second.bind_ui_generation(8).unwrap();
+        let ui = second
+            .ui_attachments()
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap()
+            .session;
+        let other = second
+            .ui_operation_close_candidate(&ui, None, tokio_util::sync::CancellationToken::new())
+            .unwrap();
+        first.detach_ui(&control.ui).await.unwrap();
+        assert!(control.accepted().1);
+        assert_eq!(other.accepted(), (None, false));
+        assert!(matches!(
+            other.publish(),
+            UiOperationPublishAttempt::Published
+        ));
+        assert!(other.claim(&other.provider, &ui, 7).is_err());
+        assert!(!other.claimed.load(Ordering::Acquire));
+        assert!(other.claim(&other.provider, &ui, 8).is_ok());
+        drop(other);
+        drop(control);
+        factory.close();
+        first.close().await.unwrap();
+        second.close().await.unwrap();
+    }
+    #[tokio::test]
+    async fn poison_closing_and_capacity_never_report_typed_busy() {
+        let (_fixture, session, factory, control) = candidate("ui_capacity").await;
+        let funding = session
+            .gate
+            .control()
+            .reserve(ControlKind::Frame, 1024 * 1024)
+            .unwrap();
+        {
+            let mut operations = factory.provider.auth.cleanup_operations.lock().unwrap();
+            for index in 0..1024 {
+                let id =
+                    tobkiri_canon::ids::RequestId::parse(&format!("req_capacity_{index}")).unwrap();
+                operations.insert(id, control.registration());
+            }
+        }
+        assert!(matches!(
+            control.publish(),
+            UiOperationPublishAttempt::Uncertain(_)
+        ));
+        assert!(!control.published.load(Ordering::Acquire));
+        factory
+            .provider
+            .auth
+            .cleanup_operations
+            .lock()
+            .unwrap()
+            .clear();
+        drop(funding);
+        let auth = factory.provider.auth.clone();
+        assert!(
+            std::thread::spawn(move || {
+                let _guard = auth.admission.lock().unwrap();
+                panic!("deterministic admission poison");
+            })
+            .join()
+            .is_err()
+        );
+        assert!(matches!(
+            control.publish(),
+            UiOperationPublishAttempt::Uncertain(_)
+        ));
+        assert!(!control.published.load(Ordering::Acquire));
+        drop(control);
+        factory.close();
+        session.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn actual_detach_keeps_pending_cause_after_last_control_and_weak_index_owner() {
+        struct Refusal {
+            calls: std::sync::atomic::AtomicUsize,
+            _reservation: ControlReservation,
+        }
+        impl StreamCloseControl for Refusal {
+            fn record_close(&self, _: StreamCloseReason) -> Result<(), StepError> {
+                self.calls.fetch_add(1, Ordering::AcqRel);
+                Err(StepError::new(
+                    "unavailable",
+                    "deterministic notification refusal",
+                ))
+            }
+        }
+        let (_fixture, session, factory, control) = candidate("ui_pending_detach").await;
+        let reservation = session
+            .gate
+            .control()
+            .reserve(ControlKind::Frame, 1024)
+            .unwrap();
+        let sink = Arc::new(Refusal {
+            calls: std::sync::atomic::AtomicUsize::new(0),
+            _reservation: reservation,
+        });
+        let source: Arc<dyn StreamCloseControl> = sink.clone();
+        drop(control.bind(&source).unwrap());
+        control.record(StreamCloseReason::Manual);
+        let ui = control.ui.clone();
+        let weak_control = control.storage.downgrade();
+        let record = control.delivery.clone();
+        let retained = Arc::downgrade(&sink);
+        drop(source);
+        drop(sink);
+        drop(control);
+        assert!(weak_control.upgrade().is_none());
+        session.detach_ui(&ui).await.unwrap();
+        assert_eq!(record.accepted(), (Some(StreamCloseReason::Manual), true));
+        assert_eq!(retained.upgrade().unwrap().calls.load(Ordering::Acquire), 1);
+        assert!(record.flush().is_err());
+        assert_eq!(retained.upgrade().unwrap().calls.load(Ordering::Acquire), 1);
+        drop(record);
+        factory.close();
+        assert!(session.close().await.is_err());
+        assert!(retained.upgrade().is_some());
+    }
+    #[tokio::test]
+    async fn actual_other_ui_in_same_generation_has_distinct_retirement_carrier() {
+        let fixture = crate::test_support::RuntimeFixture::new(&["fixture"], true).await;
+        let session = fixture.session().await;
+        // Read the actual unbound registration inside the existing test-only
+        // Session module. The normal Launcher binds the generation once,
+        // after both ordinary UI registrations have been installed.
+        let (primary, pack, hash, ports) = session.operation_intent_ui_registration_for_test();
+        let ui = tobkiri_canon::ids::UiSessionId::parse("ui_other_scope").unwrap();
+        session
+            .register_ui(
+                ui.clone(),
+                tobkiri_canon::ids::UiSessionId::parse("host_other_scope").unwrap(),
+                pack,
+                hash,
+                ports,
+            )
+            .unwrap();
+        session.bind_ui_generation(7).unwrap();
+        let first = session
+            .ui_operation_close_candidate(
+                &primary,
+                None,
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .unwrap();
+        let other = session
+            .ui_operation_close_candidate(&ui, None, tokio_util::sync::CancellationToken::new())
+            .unwrap();
+        session.detach_ui(&primary).await.unwrap();
+        assert!(first.accepted().1);
+        assert_eq!(other.accepted(), (None, false));
+        assert!(matches!(
+            other.publish(),
+            UiOperationPublishAttempt::Published
+        ));
+        assert!(other.claim(&other.provider, &ui, 7).is_ok());
+        drop(first);
+        drop(other);
+        session.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn settled_live_control_metadata_stays_charged_without_failing_cleanup() {
+        struct Sink {
+            calls: std::sync::atomic::AtomicUsize,
+            _reservation: ControlReservation,
+        }
+        impl StreamCloseControl for Sink {
+            fn record_close(&self, _: StreamCloseReason) -> Result<(), StepError> {
+                self.calls.fetch_add(1, Ordering::AcqRel);
+                Ok(())
+            }
+        }
+        let (_fixture, session, factory, control) = candidate("ui_settled_live").await;
+        assert!(matches!(
+            control.publish(),
+            UiOperationPublishAttempt::Published
+        ));
+        let reservation = session
+            .gate
+            .control()
+            .reserve(ControlKind::Frame, 1024)
+            .unwrap();
+        let sink = Arc::new(Sink {
+            calls: std::sync::atomic::AtomicUsize::new(0),
+            _reservation: reservation,
+        });
+        let source: Arc<dyn StreamCloseControl> = sink.clone();
+        drop(control.bind(&source).unwrap());
+        control.cancel();
+        factory.close();
+        assert!(control.delivery.settled());
+        let anchor = factory.notifications.weak().upgrade().unwrap();
+        assert!(anchor.notifications_settled());
+        assert!(!anchor.removable());
+        let funded = session.gate.control().usage();
+        crate::tracked_stream::TrackedStream::check_native_cleanup(
+            factory.native_cleanup_identity(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(session.gate.control().usage(), funded);
+        assert!(!anchor.removable());
+        assert_eq!(sink.calls.load(Ordering::Acquire), 1);
+        drop(control);
+        factory.close();
+        assert!(anchor.removable());
+        assert!(session.gate.control().usage().bytes < funded.bytes);
+        crate::tracked_stream::TrackedStream::check_native_cleanup(
+            factory.native_cleanup_identity(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(sink.calls.load(Ordering::Acquire), 1);
+        session.close().await.unwrap();
     }
 }

@@ -20,6 +20,7 @@ jobs:
       CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-target
       CARGO_BUILD_JOBS: '2'
       CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.94.0
@@ -28,6 +29,8 @@ jobs:
           components: rustfmt, clippy
       - name: Boundary checker regression
         run: python3 tools/quality/test_issue_1520_gate.py
+      - name: CI execution and producer receipt regression
+        run: python3 -B tools/quality/test_issue_1520_ci.py
       - name: Core and host boundaries
         run: python3 tools/quality/issue_1520_gate.py --stage foundation
       - name: Verify migration inventory coverage
@@ -43,7 +46,9 @@ jobs:
           cargo tree --locked -p tobkiri-flow > flow-dependencies.txt
           if rg 'wasmtime|rusqlite|reqwest' flow-dependencies.txt; then exit 1; fi
       - name: Rust unit and integration checks
-        run: cargo test --workspace --locked
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/rust-workspace.log" -- cargo test --workspace --locked
       - name: Strict Rust lint
         run: cargo clippy --workspace --all-targets --locked --no-deps -- -D warnings
       - name: Python guest SDK contracts
@@ -59,6 +64,51 @@ jobs:
       - name: JS guest SDK contracts
         working-directory: sdk/js
         run: npm test
+
+  official-python-parity:
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-target
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
+      PYTHONDONTWRITEBYTECODE: '1'
+      TOBKIRI_TEST_PYTHON_PACK_DIR: ${{ runner.temp }}/issue-1520-python/pack
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch the pinned official Linux WAC executable
+        run: >-
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 3
+          --max-filesize 22922992 --output "$RUNNER_TEMP/wac-cli"
+          https://github.com/bytecodealliance/wac/releases/download/v0.12.0/wac-cli-x86_64-unknown-linux-musl
+      - name: Produce and bind the current official Python component
+        run: |
+          chmod +x "$RUNNER_TEMP/wac-cli"
+          python3 -B tools/quality/issue_1520_ci.py prepare-python \
+            --work-dir "$RUNNER_TEMP/issue-1520-python" --composer "$RUNNER_TEMP/wac-cli"
+      - name: Replay the original 91 cases through actual Rust Core
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/python-parity.log" --expected-passed 1 --python-parity --
+          cargo test --locked -p tobkiri-e2e --test parity
+          shell_policy_frozen_inputs_replay_through_the_real_rust_host
+          -- --ignored --exact --nocapture --test-threads=1
+      - name: Retain actual Python producer and replay receipts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-python-parity-receipts
+          path: |
+            ${{ runner.temp }}/issue-1520-python/python-fixture.receipt.json
+            ${{ runner.temp }}/issue-1520-python/shell-policy.build.json
+            ${{ runner.temp }}/issue-1520-python/pack/pack.json
+            ${{ runner.temp }}/python-parity.log
+            ${{ runner.temp }}/python-parity.receipt.json
+          if-no-files-found: error
 
   optional-private-sqlite-experiment:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.private_sqlite_experiment }}
@@ -104,7 +154,7 @@ jobs:
           --sdk "$RUNNER_TEMP/sdk34/wasi-sdk-34.0-x86_64-linux"
           --out "$TOBKIRI_SQL_PRODUCER_DIR"
           --disk-floor-bytes 5905580032
-      - name: Verify optional private SQLite experiment provenance
+      - name: Compile optional private SQLite experiment with verified producer inputs
         run: cargo check -p tobkiri-wasm --features private-sqlite-experiment --locked
 
   migration-completion:

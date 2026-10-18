@@ -4,7 +4,7 @@ use std::{
     sync::mpsc::{Receiver, RecvTimeoutError},
     time::Duration,
 };
-use tobkiri_core::{ApprovalPrompt, HostError as IoError, Risk};
+use tobkiri_core::{ApprovalPrompt, EffectRequest, HostError as IoError, Risk};
 
 /// Guest UI is unavailable until Core supplies a real attachment lifecycle.
 /// This slot guard supplements, and does not prove, caller provenance.
@@ -81,10 +81,7 @@ pub struct TrustedReview {
 }
 
 pub fn trusted_review(prompt: &ApprovalPrompt) -> Result<TrustedReview, IoError> {
-    // Serialize the complete trusted effect/context, not a host summary or an
-    // opaque request id standing in for the operation under review.
-    let detail = serde_json::to_string_pretty(prompt)
-        .map_err(|_| IoError("native review unavailable".into()))?;
+    let detail = review_detail(prompt)?;
     if detail.len() > 512 * 1024 {
         return Err(IoError("native review exceeds its display limit".into()));
     }
@@ -108,6 +105,51 @@ pub fn trusted_review(prompt: &ApprovalPrompt) -> Result<TrustedReview, IoError>
         dangerous,
         detail,
     })
+}
+
+/// Serialize one already-trusted field for the display projection.
+fn review_field<T: serde::Serialize + ?Sized>(value: &T) -> Result<serde_json::Value, IoError> {
+    serde_json::to_value(value).map_err(|_| IoError("native review unavailable".into()))
+}
+
+/// Display-only detail text. A committed Proc/Pty launch keeps the full
+/// trusted context — reservation, profile, principal, request, epoch, the
+/// full args digest and the committed summary — but its effect renders as a
+/// bounded kind plus a fixed redaction marker; the raw program string is
+/// never serialized into this surface. Every other effect keeps the
+/// complete serde representation.
+fn review_detail(prompt: &ApprovalPrompt) -> Result<String, IoError> {
+    let launch = matches!(
+        prompt.effect,
+        EffectRequest::Proc { .. } | EffectRequest::Pty { .. }
+    );
+    if !launch {
+        // Serialize the complete trusted effect/context, not a host summary
+        // or an opaque request id standing in for the operation under review.
+        return serde_json::to_string_pretty(prompt)
+            .map_err(|_| IoError("native review unavailable".into()));
+    }
+    let mut projected = serde_json::Map::new();
+    projected.insert("reservation".into(), review_field(&prompt.reservation)?);
+    projected.insert("profile".into(), review_field(&prompt.profile)?);
+    projected.insert("principal".into(), review_field(&prompt.principal)?);
+    projected.insert("request".into(), review_field(&prompt.request)?);
+    projected.insert(
+        "effect".into(),
+        serde_json::json!({
+            "kind": prompt.effect.kind(),
+            "program": "[redacted; see committed launch summary]",
+        }),
+    );
+    projected.insert("args_digest".into(), review_field(&prompt.args_digest)?);
+    projected.insert(
+        "security_epoch".into(),
+        review_field(&prompt.security_epoch)?,
+    );
+    projected.insert("risk".into(), review_field(&prompt.risk)?);
+    projected.insert("summary".into(), review_field(&prompt.summary)?);
+    serde_json::to_string_pretty(&serde_json::Value::Object(projected))
+        .map_err(|_| IoError("native review unavailable".into()))
 }
 
 #[cfg(test)]
@@ -238,5 +280,55 @@ mod tests {
         assert_ne!(normal.explanation, review.explanation);
         prompt.summary = "x".repeat(512 * 1024);
         assert!(trusted_review(&prompt).is_err());
+    }
+
+    fn make_launch_prompt(kind: &str, program: &str) -> ApprovalPrompt {
+        serde_json::from_value(serde_json::json!({
+            "reservation":"grant_launch_review", "profile":"test-profile",
+            "principal":{"kind":"user"}, "request":"req_review",
+            "effect":{"kind":kind,"program":program},
+            "args_digest":format!("sha256:{}","c".repeat(64)),
+            "security_epoch":7, "risk":"dangerous",
+            "summary":"committed launch summary"
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn process_launch_review_redacts_program_and_preserves_trusted_context() {
+        for (kind, sentinel) in [
+            ("proc", "RAW-PROC-SENTINEL-native"),
+            ("pty", "RAW-PTY-SENTINEL-native"),
+        ] {
+            let prompt = make_launch_prompt(kind, sentinel);
+            let effect_digest = prompt.effect.digest().unwrap();
+            let args_digest = prompt.args_digest.clone();
+            let review = trusted_review(&prompt).unwrap();
+            assert!(!review.detail.contains(sentinel), "raw program leaked");
+            let shown: serde_json::Value = serde_json::from_str(&review.detail).unwrap();
+            assert_eq!(shown["effect"]["kind"], serde_json::json!(kind));
+            assert_eq!(
+                shown["reservation"],
+                serde_json::json!("grant_launch_review")
+            );
+            assert_eq!(shown["profile"], serde_json::json!("test-profile"));
+            assert_eq!(shown["request"], serde_json::json!("req_review"));
+            assert_eq!(shown["security_epoch"], serde_json::json!(7));
+            assert_eq!(shown["risk"], serde_json::json!("dangerous"));
+            assert_eq!(
+                shown["summary"],
+                serde_json::json!("committed launch summary")
+            );
+            assert_eq!(
+                shown["args_digest"],
+                serde_json::to_value(&args_digest).unwrap()
+            );
+            assert!(review.dangerous);
+            assert_eq!(review.title, "Dangerous Tobkiri request");
+            assert!(review.explanation.starts_with("Special warning:"));
+            assert_eq!(review.accept, "Approve dangerous request");
+            assert_eq!(prompt.effect.digest().unwrap(), effect_digest);
+            assert_eq!(prompt.args_digest, args_digest);
+        }
     }
 }

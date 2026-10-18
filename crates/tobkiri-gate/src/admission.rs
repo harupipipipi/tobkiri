@@ -373,17 +373,15 @@ impl CompiledExecution {
         Err(GateError::Unavailable)
     }
 }
-enum AdmissionOrigin {
-    Ordinary,
-    Compiled(CompiledActivation),
-}
 /// Keeps the original unconsumed Grant through UI outer checks and final
 /// dispatch. It is deliberately noncloneable and has no payload constructor.
 pub struct PortAdmission {
     grant: Grant,
     binding: ContextBinding,
     target: FrozenPortTarget,
-    origin: AdmissionOrigin,
+    // Only Some carries the same sealed compiled activation; None remains
+    // ordinary dynamic admission. The proof stays in the existing envelope.
+    origin: Option<CompiledActivation>,
 }
 impl std::fmt::Debug for PortAdmission {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -408,7 +406,7 @@ impl PortAdmission {
     /// False only for the sealed, reached compiled descriptor. Callee contexts
     /// and guest imports never inherit this structural exception.
     pub fn requires_dynamic_consumes(&self) -> bool {
-        matches!(self.origin, AdmissionOrigin::Ordinary)
+        self.origin.is_none()
     }
 }
 /// Final dispatcher owns this one consumed dispatch and its one terminal result.
@@ -974,7 +972,7 @@ impl GateEngine {
             grant,
             binding,
             target,
-            origin: AdmissionOrigin::Ordinary,
+            origin: None,
         })
     }
     pub(crate) async fn admit_compiled_inner(
@@ -1014,7 +1012,7 @@ impl GateEngine {
             grant,
             binding,
             target,
-            origin: AdmissionOrigin::Compiled(activation),
+            origin: Some(activation),
         })
     }
     pub(crate) async fn claim_port_inner(
@@ -1041,7 +1039,7 @@ impl GateEngine {
             ));
         }
         self.check_port_target(cx, shape, target)?;
-        if let AdmissionOrigin::Compiled(activation) = &admission.origin {
+        if let Some(activation) = &admission.origin {
             activation.binding.check(cx)?;
             let metadata = self.authenticate_frame_scope(cx, &activation.frame_scope)?;
             self.check_scope(&activation.scope, cx)?;

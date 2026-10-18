@@ -1,9 +1,20 @@
-use crate::session::ConsumedEntryTerminal;
+use crate::funded_arc::FundedArc;
+use crate::{execution_frames::ExecutionFactory, session::ConsumedEntryTerminal};
 use async_trait::async_trait;
-use std::sync::Arc;
-use tobkiri_canon::{CoreBuffer, CoreValue};
-use tobkiri_flow::{CoreStream, RunEvent, RunEventKind, StepError, StreamSource, StreamTerminal};
-use tobkiri_gate::{CallCx, Gate, GateEngine, GrantId, Outcome};
+use std::{
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    task::{Context, Poll, Waker},
+};
+use tobkiri_canon::{ControlHandle, CoreBuffer, CoreValue, Digest};
+use tobkiri_flow::{
+    ActiveCodeFrame, CoreStream, RunEvent, RunEventKind, RunTask, RunTaskCompletion,
+    RunTaskPhysicalError, RunTaskPhysicalResult, StepError, StreamCloseControl, StreamCloseReason,
+    StreamSource, StreamTerminal,
+};
+use tobkiri_gate::{CallCx, ControlKind, ControlReservation, Gate, GateEngine, GrantId, Outcome};
 use tokio::{runtime::Handle, task::JoinHandle};
 
 /// Retains the FlowRun grant until cleanup is completed on its owning runtime.
@@ -22,13 +33,566 @@ pub(crate) struct TrackedStream {
     end_batch: Option<CoreValue>,
     end_buffer: Option<CoreBuffer>,
     closed: bool,
+    native_cleanup: Option<NativeCleanup>,
 }
 /// The terminal proposal is chosen after the single physical cleanup attempt.
 /// A delivery retry never chooses a different outcome or runs guest code again.
+#[derive(Clone)]
 struct CleanupReceipt {
     outcome: Outcome,
     physical_error: Option<StepError>,
+    business_error: Option<StepError>,
     delivery_error: Option<StepError>,
+}
+
+// This process-lifetime Core owner deliberately lives outside any Session,
+// frame, Host or census. An unresolved source may retain those shorter-lived
+// objects, but none of them retains this registry. No unknown slot is evicted.
+const NATIVE_CLEANUP_SLOTS: usize = 256;
+static NATIVE_CLEANUP_OWNER: Mutex<[Option<NativeCleanupEntry>; NATIVE_CLEANUP_SLOTS]> =
+    Mutex::new([const { None }; NATIVE_CLEANUP_SLOTS]);
+
+enum NativeCleanupEntry {
+    Physical(NativePhysicalEntry),
+    Notifications(FundedArc<crate::ui_operation_delivery::UiDeliveryAnchor>),
+}
+struct NativePhysicalEntry {
+    state: Arc<NativeCleanupState>,
+    completion: Option<Arc<dyn RunTaskCompletion>>,
+    quarantined_unknown: bool,
+}
+fn vacant_cleanup_slot(
+    owner: &[Option<NativeCleanupEntry>; NATIVE_CLEANUP_SLOTS],
+) -> Option<usize> {
+    owner.iter().position(Option::is_none)
+}
+fn insert_ui_notifications(
+    owner: &mut [Option<NativeCleanupEntry>; NATIVE_CLEANUP_SLOTS],
+    anchor: &FundedArc<crate::ui_operation_delivery::UiDeliveryAnchor>,
+) -> Result<(), tobkiri_gate::GateError> {
+    let index = vacant_cleanup_slot(owner)
+        .ok_or_else(|| tobkiri_gate::GateError::Limit("Core cleanup quarantine is full".into()))?;
+    owner[index] = Some(NativeCleanupEntry::Notifications(anchor.clone()));
+    Ok(())
+}
+/// Called only during Factory construction, before the Factory or any
+/// notification candidate is public. Funding precedes this slot pin.
+/// This uses the existing 256 slots and never evicts physical/unknown work.
+pub(crate) fn register_ui_notifications(
+    anchor: FundedArc<crate::ui_operation_delivery::UiDeliveryAnchor>,
+) -> Result<(), tobkiri_gate::GateError> {
+    // Reuse only retired, completely empty notification metadata. No source,
+    // callback or physical entry is touched by this admission maintenance.
+    for index in 0..NATIVE_CLEANUP_SLOTS {
+        let removed = {
+            let mut owner = NATIVE_CLEANUP_OWNER
+                .try_lock()
+                .map_err(|_| tobkiri_gate::GateError::Unavailable)?;
+            match owner[index].as_ref() {
+                Some(NativeCleanupEntry::Notifications(value)) if value.removable() => {
+                    owner[index].take()
+                }
+                _ => None,
+            }
+        };
+        drop(removed);
+    }
+    let mut owner = NATIVE_CLEANUP_OWNER
+        .try_lock()
+        .map_err(|_| tobkiri_gate::GateError::Unavailable)?;
+    insert_ui_notifications(&mut owner, &anchor)
+}
+fn observe_ui_notifications(
+    index: usize,
+    anchor: &FundedArc<crate::ui_operation_delivery::UiDeliveryAnchor>,
+) {
+    if !anchor.removable() {
+        return;
+    }
+    let removed = {
+        let mut owner = NATIVE_CLEANUP_OWNER
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        match owner[index].as_ref() {
+            Some(NativeCleanupEntry::Notifications(current))
+                if FundedArc::ptr_eq(current, anchor) && anchor.removable() =>
+            {
+                owner[index].take()
+            }
+            _ => None,
+        }
+    };
+    drop(removed);
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SourceHandoff {
+    Pending,
+    Attached,
+    NoSource,
+}
+struct NativeCleanupIntent {
+    handoff: SourceHandoff,
+    outcome: Option<Outcome>,
+    early_close: Option<StreamCloseReason>,
+    abandon_failed: bool,
+}
+struct NativeCleanupState {
+    // These are independently owned BEFORE a supervisor can panic. Neither the
+    // unique source nor the terminal is moved into task-local custody at await.
+    source: tokio::sync::Mutex<Option<CoreStream>>,
+    body: Arc<dyn RunTaskCompletion>,
+    terminal: tokio::sync::Mutex<Option<ConsumedEntryTerminal>>,
+    factory: Digest,
+    source_control: Mutex<Option<Arc<dyn StreamCloseControl>>>,
+    intent: Mutex<NativeCleanupIntent>,
+    receipt: Mutex<Option<CleanupReceipt>>,
+    cleanup_proved: AtomicBool,
+    quarantined_unknown: AtomicBool,
+    ready: tokio::sync::Notify,
+    cx: CallCx,
+    _reservation: ControlReservation,
+}
+impl NativeCleanupState {
+    fn request_close(&self, outcome: Outcome) {
+        let mut intent = self
+            .intent
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if intent.outcome.is_none() {
+            intent.outcome = Some(outcome);
+        }
+        drop(intent);
+        self.ready.notify_one();
+    }
+    fn no_source(&self, outcome: Outcome, abandon_failed: bool) {
+        let mut intent = self
+            .intent
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if intent.handoff == SourceHandoff::Pending {
+            intent.handoff = SourceHandoff::NoSource;
+        }
+        if intent.outcome.is_none() {
+            intent.outcome = Some(outcome);
+        }
+        intent.abandon_failed |= abandon_failed;
+        drop(intent);
+        self.ready.notify_one();
+    }
+    fn attach(&self, source: CoreStream) {
+        // There is no await between the interpreter returning its actual
+        // source and this owner-held installation. The supervisor waits for
+        // Attached/NoSource; an early seal cannot race it into the wrong branch.
+        let mut slot = self
+            .source
+            .try_lock()
+            .expect("unattached native source slot");
+        assert!(slot.is_none(), "native source is attached once");
+        *slot = Some(source);
+        {
+            let mut intent = self
+                .intent
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            assert!(
+                intent.handoff == SourceHandoff::Pending,
+                "native source handoff is unique"
+            );
+            intent.handoff = SourceHandoff::Attached;
+        }
+        let control = slot.as_ref().and_then(CoreStream::close_control);
+        drop(slot);
+        *self
+            .source_control
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = control.clone();
+        let early_close = {
+            let intent = self
+                .intent
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            intent.early_close
+        };
+        if let (Some(control), Some(reason)) = (control, early_close) {
+            let _ = control.record_close(reason);
+        }
+        self.ready.notify_one();
+    }
+    fn receipt(&self) -> Option<CleanupReceipt> {
+        self.receipt
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone()
+    }
+}
+impl StreamCloseControl for NativeCleanupState {
+    fn record_close(&self, reason: StreamCloseReason) -> Result<(), StepError> {
+        let control = self
+            .source_control
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        {
+            let mut intent = self
+                .intent
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            if intent.early_close.is_none() {
+                intent.early_close = Some(reason);
+            }
+        }
+        // The actual source selects under its own original guards. Locks are
+        // released before callbacks and token notifications; none certify Join.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            control.map_or(Ok(()), |control| control.record_close(reason))
+        }))
+        .unwrap_or_else(|_| Err(StepError::new("trap", "Flow close control trapped")));
+        if reason == StreamCloseReason::Deadline {
+            self.cx.cancel().notify_deadline();
+        } else {
+            self.cx.cancel().cancel();
+        }
+        self.request_close(Outcome::Cancelled);
+        result
+    }
+    fn record_failure(&self, error: &StepError) -> Result<(), StepError> {
+        let control = self
+            .source_control
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            control.map_or(Ok(()), |control| control.record_failure(error))
+        }))
+        .unwrap_or_else(|_| Err(StepError::new("trap", "Flow failure control trapped")));
+        self.request_close(Outcome::Failed {
+            code: error.audit_code().into(),
+        });
+        result
+    }
+}
+struct NativeCleanup {
+    state: Arc<NativeCleanupState>,
+    completion: Arc<dyn RunTaskCompletion>,
+    owner_slot: usize,
+    observed: bool,
+}
+struct NativeCleanupRun {
+    state: Arc<NativeCleanupState>,
+    completed: bool,
+}
+impl NativeCleanupRun {
+    async fn execute(mut self) -> RunTaskPhysicalResult {
+        let result = supervise_native_cleanup(self.state.clone()).await;
+        self.completed = result.is_ok();
+        result
+    }
+}
+impl Drop for NativeCleanupRun {
+    fn drop(&mut self) {
+        if !self.completed {
+            // This guard is captured BEFORE task publication, so even an
+            // unpolled task drop/panic marks the independently held slot before
+            // its actual monitor can report Unknown. No custody moves here.
+            self.state
+                .quarantined_unknown
+                .store(true, Ordering::Release);
+        }
+    }
+}
+
+fn observe_native_cleanup(
+    index: usize,
+    state: &Arc<NativeCleanupState>,
+    result: &Result<(), StepError>,
+) {
+    let removed = {
+        let mut owner = NATIVE_CLEANUP_OWNER
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        match owner[index].as_mut() {
+            Some(NativeCleanupEntry::Physical(entry)) if Arc::ptr_eq(&entry.state, state) => {
+                if result.is_ok() && state.cleanup_proved.load(Ordering::Acquire) {
+                    owner[index].take()
+                } else {
+                    entry.quarantined_unknown = true;
+                    state.quarantined_unknown.store(true, Ordering::Release);
+                    None
+                }
+            }
+            _ => None,
+        }
+    };
+    // Source/terminal/control release is never performed under the owner lock.
+    drop(removed);
+}
+
+fn poll_native_cleanup_owner() {
+    // Called outside all caller guards. Each variant retains its own original
+    // custody and proof; notification ACK never certifies physical cleanup.
+    for index in 0..NATIVE_CLEANUP_SLOTS {
+        let (physical, notifications) = {
+            let owner = NATIVE_CLEANUP_OWNER
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            match owner[index].as_ref() {
+                Some(NativeCleanupEntry::Physical(entry)) if !entry.quarantined_unknown => (
+                    entry
+                        .completion
+                        .as_ref()
+                        .map(|completion| (entry.state.clone(), completion.clone())),
+                    None,
+                ),
+                Some(NativeCleanupEntry::Notifications(anchor)) => (None, Some(anchor.clone())),
+                _ => (None, None),
+            }
+        };
+        if let Some(anchor) = notifications {
+            let _ = anchor.flush();
+            observe_ui_notifications(index, &anchor);
+        }
+        if let Some((state, completion)) = physical {
+            let Ok(_waiter) = state.cx.control().reserve(ControlKind::Waiter, 512) else {
+                continue;
+            };
+            let mut future = completion.wait();
+            let mut context = Context::from_waker(Waker::noop());
+            if let Poll::Ready(result) = future.as_mut().poll(&mut context) {
+                observe_native_cleanup(index, &state, &result);
+            }
+        }
+    }
+}
+
+/// The cleanup task and its real Join are published before the interpreter.
+/// Dropping this plan before source attachment delivers the exact terminal to
+/// that already-owned task; no late post-seal task needs to be created.
+pub(crate) struct PreparedNativeCleanup {
+    native: Option<NativeCleanup>,
+    body_spawner: Option<Arc<dyn tobkiri_flow::RunTaskSpawner>>,
+    armed: bool,
+}
+impl PreparedNativeCleanup {
+    fn no_source(&mut self, outcome: Outcome) {
+        let abandoned = self.body_spawner.as_ref().map_or(Ok(()), |spawner| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| spawner.abandon_unstarted()))
+                .unwrap_or_else(|_| Err(StepError::new("trap", "Flow mailbox abandonment trapped")))
+        });
+        if let Some(native) = &self.native {
+            // Only notification: never supply an effect, cause or physical
+            // assertion from a task-start failure or an abandoned caller.
+            native.state.cx.cancel().cancel();
+            native.state.no_source(outcome, abandoned.is_err());
+        }
+        self.body_spawner.take();
+    }
+    pub(crate) async fn wait_started(&self) -> Result<(), StepError> {
+        self.native
+            .as_ref()
+            .expect("prepared native cleanup")
+            .completion
+            .wait_started()
+            .await
+    }
+    pub(crate) fn fail(mut self, outcome: Outcome) {
+        self.no_source(outcome);
+        self.armed = false;
+    }
+    pub(crate) fn attach(
+        mut self,
+        source: CoreStream,
+        gate: Arc<GateEngine>,
+        cx: CallCx,
+        runtime: Handle,
+    ) -> TrackedStream {
+        // Install in the independent owner before constructing the wrapper.
+        // Neither boxing nor an abandoned caller future can drop sole custody.
+        self.native
+            .as_ref()
+            .expect("prepared native cleanup")
+            .state
+            .attach(source);
+        let native = self.native.take().expect("prepared native cleanup");
+        self.body_spawner.take();
+        let tracked = TrackedStream {
+            source: None,
+            gate,
+            cx,
+            grant: None,
+            entry_terminal: None,
+            terminal: None,
+            runtime,
+            cleanup: None,
+            receipt: None,
+            cleanup_error: None,
+            end_batch: None,
+            end_buffer: None,
+            closed: false,
+            native_cleanup: Some(native),
+        };
+        self.armed = false;
+        tracked
+    }
+}
+impl Drop for PreparedNativeCleanup {
+    fn drop(&mut self) {
+        if self.armed {
+            self.no_source(Outcome::Cancelled);
+        }
+    }
+}
+
+async fn supervise_native_cleanup(state: Arc<NativeCleanupState>) -> RunTaskPhysicalResult {
+    let mut cancelled = false;
+    let mut deadline_seen = false;
+    let (handoff, proposed, abandon_failed) = loop {
+        let notified = state.ready.notified();
+        let ready = {
+            let intent = state
+                .intent
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            if intent.handoff != SourceHandoff::Pending {
+                intent
+                    .outcome
+                    .clone()
+                    .map(|outcome| (intent.handoff, outcome, intent.abandon_failed))
+            } else {
+                None
+            }
+        };
+        if let Some(ready) = ready {
+            break ready;
+        }
+        tokio::select! {
+            _ = notified => {}
+            _ = state.cx.cancel().cancelled(), if !cancelled => {
+                cancelled = true;
+                // A wake requests physical cleanup; it never infers a cause
+                // such as revocation from the token alone.
+                state.request_close(Outcome::Cancelled);
+            }
+            _ = tokio::time::sleep_until(state.cx.deadline().into()), if !deadline_seen => {
+                deadline_seen = true;
+                let _ = state.record_close(StreamCloseReason::Deadline);
+            }
+        }
+    };
+    let (cleanup, physical, producer_terminal) = if handoff == SourceHandoff::Attached {
+        let mut slot = state.source.lock().await;
+        match slot.as_mut() {
+            Some(source) => {
+                let physical = source.physical_completion();
+                let closed = source.close().await;
+                let producer_terminal = source.terminal_outcome().map(|terminal| match terminal {
+                    StreamTerminal::Succeeded => Outcome::Succeeded,
+                    StreamTerminal::Cancelled => Outcome::Cancelled,
+                    StreamTerminal::Failed(code) => Outcome::Failed { code: code.into() },
+                });
+                let mut physical = match physical {
+                    Some(physical) => physical.wait().await,
+                    None => Err(StepError::new(
+                        "unavailable",
+                        "Flow source physical custody is unavailable",
+                    )),
+                };
+                if physical.is_ok() {
+                    // Only an actual source/body receipt permits destruction.
+                    // A failed destructor is uncertainty; remaining terminal
+                    // custody/charges still stay in the independent owner.
+                    if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(slot.take())))
+                        .is_err()
+                    {
+                        physical = Err(StepError::new("trap", "Flow source destruction trapped"));
+                    }
+                }
+                (closed, physical, producer_terminal)
+            }
+            None => (
+                Err(StepError::new("internal", "Flow source custody is missing")),
+                Err(StepError::new(
+                    "component",
+                    "Flow source physical completion is unknown",
+                )),
+                None,
+            ),
+        }
+    } else {
+        // Interpreter start failed or was abandoned. Only the original body
+        // receipt can prove its physical status; no terminal substitutes for it.
+        let physical = if abandon_failed {
+            Err(StepError::new(
+                "component",
+                "Flow unsubmitted mailbox custody remains unknown",
+            ))
+        } else {
+            state.body.wait().await
+        };
+        (Ok(()), physical, None)
+    };
+    let mut outcome = match &cleanup {
+        Ok(()) if matches!(&proposed, Outcome::Failed { .. }) => proposed,
+        Ok(()) => producer_terminal.unwrap_or(proposed),
+        Err(error) => Outcome::Failed {
+            code: error.audit_code().into(),
+        },
+    };
+    let mut terminal_slot = state.terminal.lock().await;
+    let (delivery_error, handed_off) = match terminal_slot.as_mut() {
+        Some(terminal) => {
+            let delivery =
+                terminal.finish(outcome.clone()).await.err().map(|error| {
+                    StepError::new(error.code(), "Flow outcome could not be recorded")
+                });
+            // An Err alone cannot distinguish pre-commit failure from an
+            // already committed pending-ACK outbox record. Inspect exact sealed
+            // custody; the existing Gate supervisor/startup recovery owns retry.
+            match terminal.durable_handoff() {
+                Ok(winner) => {
+                    outcome = winner;
+                    (delivery, true)
+                }
+                Err(error) => (
+                    delivery.or_else(|| {
+                        Some(StepError::new(
+                            error.code(),
+                            "Flow terminal custody remains unknown",
+                        ))
+                    }),
+                    false,
+                ),
+            }
+        }
+        None => (
+            Some(StepError::new(
+                "internal",
+                "Flow terminal custody is missing",
+            )),
+            false,
+        ),
+    };
+    drop(terminal_slot);
+    let physical_proved = physical.is_ok();
+    *state
+        .receipt
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = Some(CleanupReceipt {
+        outcome,
+        physical_error: physical.err(),
+        business_error: cleanup.err(),
+        delivery_error,
+    });
+    if physical_proved && handed_off {
+        // This flag alone cannot release custody. The owner separately observes
+        // THIS supervisor's original actual Join before removing the entry.
+        state.cleanup_proved.store(true, Ordering::Release);
+        Ok(())
+    } else {
+        // The supervisor may end, but original source/terminal/proposal and
+        // charges survive in the independently owned quarantine entry.
+        Err(RunTaskPhysicalError::CompletionUnknown)
+    }
 }
 impl CleanupReceipt {
     fn result(&self) -> Result<(), StepError> {
@@ -36,6 +600,7 @@ impl CleanupReceipt {
             .physical_error
             .as_ref()
             .or(self.delivery_error.as_ref())
+            .or(self.business_error.as_ref())
         {
             Some(error) => Err(error.clone()),
             None => Ok(()),
@@ -43,6 +608,226 @@ impl CleanupReceipt {
     }
 }
 impl TrackedStream {
+    /// Drain only this exact factory's already registered cleanup work. The
+    /// total wait is bounded and borrows the original receipts; cancellation or
+    /// timeout leaves original custody and charges in the process owner.
+    pub(crate) async fn check_native_cleanup(factory: &Digest) -> Result<(), StepError> {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+        for index in 0..NATIVE_CLEANUP_SLOTS {
+            let (candidate, notifications) = {
+                let owner = NATIVE_CLEANUP_OWNER
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                match owner[index].as_ref() {
+                    Some(NativeCleanupEntry::Physical(entry))
+                        if &entry.state.factory == factory =>
+                    {
+                        (Some((entry.state.clone(), entry.completion.clone())), None)
+                    }
+                    Some(NativeCleanupEntry::Notifications(anchor))
+                        if &anchor.factory == factory =>
+                    {
+                        (None, Some(anchor.clone()))
+                    }
+                    _ => (None, None),
+                }
+            };
+            if let Some(anchor) = notifications {
+                anchor.retire();
+                anchor.flush()?;
+                observe_ui_notifications(index, &anchor);
+            }
+            if let Some((state, completion)) = candidate {
+                let _ = state.record_close(StreamCloseReason::Shutdown);
+                let completion = completion.ok_or_else(|| {
+                    StepError::new("unavailable", "Flow cleanup submission remains unknown")
+                })?;
+                let _waiter = state
+                    .cx
+                    .control()
+                    .reserve(ControlKind::Waiter, 512)
+                    .map_err(|_| {
+                        StepError::new("limit-exceeded", "Flow cleanup waiter capacity exhausted")
+                    })?;
+                let joined = tokio::time::timeout_at(deadline, completion.wait())
+                    .await
+                    .map_err(|_| {
+                        StepError::new("unavailable", "Flow cleanup remains physically unresolved")
+                    })?;
+                observe_native_cleanup(index, &state, &joined);
+                joined?;
+            }
+        }
+        let mut unresolved = false;
+        for index in 0..NATIVE_CLEANUP_SLOTS {
+            let (physical, notifications) = {
+                let owner = NATIVE_CLEANUP_OWNER
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                match owner[index].as_ref() {
+                    Some(NativeCleanupEntry::Physical(entry)) => {
+                        (&entry.state.factory == factory, None)
+                    }
+                    Some(NativeCleanupEntry::Notifications(anchor))
+                        if &anchor.factory == factory =>
+                    {
+                        (false, Some(anchor.clone()))
+                    }
+                    _ => (false, None),
+                }
+            };
+            // Do not inspect/drop notification captures under the process
+            // owner guard. Settled live metadata stays charged and pinned;
+            // removal still requires the original released/drained proof.
+            if physical
+                || notifications
+                    .as_ref()
+                    .is_some_and(|anchor| !anchor.notifications_settled())
+            {
+                unresolved = true;
+                break;
+            }
+        }
+        if unresolved {
+            Err(StepError::new(
+                "unavailable",
+                "Flow cleanup quarantine remains charged",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Prepare the source's actual cleanup sibling before starting a
+    /// generation-bound interpreter. Pure Flow has no native lifetime scope.
+    pub(crate) fn prepare_native_cleanup(
+        frame: &ControlHandle<dyn ActiveCodeFrame>,
+        factory: &ExecutionFactory,
+        terminal: &mut Option<ConsumedEntryTerminal>,
+    ) -> Result<Option<PreparedNativeCleanup>, StepError> {
+        let Some(spawner) = frame.task_spawner() else {
+            return Ok(None);
+        };
+        if terminal.is_none() {
+            return Err(StepError::new(
+                "internal",
+                "Flow terminal custody is missing",
+            ));
+        }
+        let execution = frame.task_execution().ok_or_else(|| {
+            StepError::new("unavailable", "Flow task lifetime identity is unavailable")
+        })?;
+        let body = spawner.completion()?;
+        let control = frame.context().control();
+        let bytes = (std::mem::size_of::<NativeCleanupState>()
+            + std::mem::size_of::<NativeCleanupEntry>()
+            + 4096)
+            .checked_add(frame.context().clone_storage_bytes().map_err(|_| {
+                StepError::new("limit-exceeded", "Flow cleanup context bound overflow")
+            })?)
+            .and_then(|bytes| u64::try_from(bytes).ok())
+            .ok_or_else(|| {
+                StepError::new("limit-exceeded", "Flow cleanup custody bound overflow")
+            })?;
+        poll_native_cleanup_owner();
+        let reservation = control.reserve(ControlKind::Queue, bytes).map_err(|_| {
+            StepError::new("limit-exceeded", "Flow cleanup custody capacity exhausted")
+        })?;
+        let cx = frame.context().try_clone_precharged().map_err(|_| {
+            StepError::new("limit-exceeded", "Flow cleanup context allocation failed")
+        })?;
+        let state = Arc::new(NativeCleanupState {
+            source: tokio::sync::Mutex::new(None),
+            body,
+            terminal: tokio::sync::Mutex::new(None),
+            factory: factory.native_cleanup_identity().clone(),
+            source_control: Mutex::new(None),
+            intent: Mutex::new(NativeCleanupIntent {
+                handoff: SourceHandoff::Pending,
+                outcome: None,
+                early_close: None,
+                abandon_failed: false,
+            }),
+            receipt: Mutex::new(None),
+            cleanup_proved: AtomicBool::new(false),
+            quarantined_unknown: AtomicBool::new(false),
+            ready: tokio::sync::Notify::new(),
+            cx,
+            _reservation: reservation,
+        });
+        let owner_slot = factory.with_native_cleanup_registration(|| {
+            let mut owner = NATIVE_CLEANUP_OWNER
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let index = vacant_cleanup_slot(&owner).ok_or_else(|| {
+                StepError::new("limit-exceeded", "Core cleanup quarantine is full")
+            })?;
+            owner[index] = Some(NativeCleanupEntry::Physical(NativePhysicalEntry {
+                state: state.clone(),
+                completion: None,
+                quarantined_unknown: false,
+            }));
+            Ok(index)
+        })?;
+        *state.terminal.try_lock().expect("new native terminal slot") = terminal.take();
+        let prepared = (|| {
+            let cleanup = spawner.cleanup_child(execution, frame.context().cancel().clone())?;
+            let completion = cleanup.completion()?;
+            {
+                let mut owner = NATIVE_CLEANUP_OWNER
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                match owner[owner_slot].as_mut() {
+                    Some(NativeCleanupEntry::Physical(entry))
+                        if Arc::ptr_eq(&entry.state, &state) =>
+                    {
+                        entry.completion = Some(completion.clone());
+                    }
+                    _ => return Err(StepError::new("internal", "Flow cleanup custody mismatch")),
+                }
+            }
+            let run = NativeCleanupRun {
+                state: state.clone(),
+                completed: false,
+            };
+            let task = RunTask::cleanup(run.execute(), control)?;
+            cleanup.spawn(task, state.clone())?;
+            Ok(PreparedNativeCleanup {
+                native: Some(NativeCleanup {
+                    state: state.clone(),
+                    completion,
+                    owner_slot,
+                    observed: false,
+                }),
+                body_spawner: Some(spawner.clone()),
+                armed: true,
+            })
+        })();
+        if prepared.is_err() {
+            // Host guarantees Err means the task payload was never accepted.
+            // No source exists and the supervisor cannot pass Pending handoff.
+            *terminal = state
+                .terminal
+                .try_lock()
+                .expect("unstarted native terminal slot")
+                .take();
+            let removed = {
+                let mut owner = NATIVE_CLEANUP_OWNER
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                match owner[owner_slot].as_ref() {
+                    Some(NativeCleanupEntry::Physical(entry))
+                        if Arc::ptr_eq(&entry.state, &state) =>
+                    {
+                        owner[owner_slot].take()
+                    }
+                    _ => None,
+                }
+            };
+            drop(removed);
+        }
+        prepared.map(Some)
+    }
     #[cfg(test)]
     pub fn new(
         source: CoreStream,
@@ -65,6 +850,7 @@ impl TrackedStream {
             end_batch: None,
             end_buffer: None,
             closed: false,
+            native_cleanup: None,
         }
     }
     /// Wrap a nested canonical Flow whose exact consumed permit remains in
@@ -91,6 +877,7 @@ impl TrackedStream {
             end_batch: None,
             end_buffer: None,
             closed: false,
+            native_cleanup: None,
         }
     }
     fn begin_close(&mut self, outcome: Outcome) {
@@ -98,6 +885,10 @@ impl TrackedStream {
             return;
         }
         self.closed = true;
+        if let Some(native) = &self.native_cleanup {
+            native.state.request_close(outcome);
+            return;
+        }
         let mut source = self.source.take().expect("live tracked source");
         // Stop the run immediately; asynchronous guest/audit cleanup follows on
         // the captured runtime even when this call comes from a native thread.
@@ -137,6 +928,7 @@ impl TrackedStream {
             CleanupReceipt {
                 outcome,
                 physical_error: cleanup.err(),
+                business_error: None,
                 delivery_error,
             }
         };
@@ -151,6 +943,61 @@ impl TrackedStream {
         }
     }
     async fn await_cleanup(&mut self) -> Result<(), StepError> {
+        if let Some(native) = self.native_cleanup.as_mut() {
+            if !native.observed {
+                let joined = native.completion.wait().await;
+                observe_native_cleanup(native.owner_slot, &native.state, &joined);
+                self.cleanup_error = joined.as_ref().err().cloned();
+                native.observed = true;
+                self.receipt = native.state.receipt();
+                if let Some(receipt) = &self.receipt {
+                    // Preserve the original business/audit error even when an
+                    // exact durable handoff lets physical cleanup complete.
+                    receipt.result()?;
+                }
+                joined?;
+                return Ok(());
+            }
+            if self
+                .receipt
+                .as_ref()
+                .is_some_and(|receipt| receipt.delivery_error.is_some())
+            {
+                let mut receipt = self.receipt.clone().expect("known native cleanup receipt");
+                let mut terminal = native.state.terminal.lock().await;
+                receipt.delivery_error = match terminal.as_mut() {
+                    Some(terminal) => {
+                        terminal
+                            .finish(receipt.outcome.clone())
+                            .await
+                            .err()
+                            .map(|error| {
+                                StepError::new(error.code(), "Flow outcome could not be recorded")
+                            })
+                    }
+                    None => Some(StepError::new(
+                        "internal",
+                        "Flow terminal custody is missing",
+                    )),
+                };
+                // This only retries the same stored terminal/ACK. It cannot
+                // rewrite a cached physical Unknown or rerun any source work.
+                self.receipt = Some(receipt);
+            }
+            self.receipt.as_ref().map_or_else(
+                || {
+                    Err(StepError::new(
+                        "component",
+                        "Flow cleanup physical completion is unknown",
+                    ))
+                },
+                CleanupReceipt::result,
+            )?;
+            return self
+                .cleanup_error
+                .as_ref()
+                .map_or(Ok(()), |error| Err(error.clone()));
+        }
         // Retain the task across an abandoned close future. Joining a cancelled
         // owning runtime yields an error; it does not certify physical cleanup.
         if let Some(cleanup) = self.cleanup.as_mut() {
@@ -253,11 +1100,27 @@ impl StreamSource for TrackedStream {
             self.finish(Outcome::Cancelled).await?;
             return Err(StepError::new("cancelled", "Flow stream authority expired"));
         }
-        let source = self.source.as_mut().expect("live tracked source");
-        let result = tokio::select! {
-            _=self.cx.cancel().cancelled()=>Err(StepError::new("cancelled","Flow stream cancelled")),
-            _=tokio::time::sleep_until(self.cx.deadline().into())=>Err(StepError::new("cancelled","original Flow deadline expired")),
-            result=source.pull(max)=>result,
+        let result = if let Some(native) = &self.native_cleanup {
+            let mut source = native.state.source.lock().await;
+            if let Some(source) = source.as_mut() {
+                tokio::select! {
+                    _=self.cx.cancel().cancelled()=>Err(StepError::new("cancelled","Flow stream cancelled")),
+                    _=tokio::time::sleep_until(self.cx.deadline().into())=>Err(StepError::new("cancelled","original Flow deadline expired")),
+                    result=source.pull(max)=>result,
+                }
+            } else {
+                Err(StepError::new(
+                    "cancelled",
+                    "Flow source has completed cleanup",
+                ))
+            }
+        } else {
+            let source = self.source.as_mut().expect("live tracked source");
+            tokio::select! {
+                _=self.cx.cancel().cancelled()=>Err(StepError::new("cancelled","Flow stream cancelled")),
+                _=tokio::time::sleep_until(self.cx.deadline().into())=>Err(StepError::new("cancelled","original Flow deadline expired")),
+                result=source.pull(max)=>result,
+            }
         };
         match &result {
             Ok(values) => {
@@ -344,13 +1207,33 @@ impl StreamSource for TrackedStream {
             self.finish(Outcome::Cancelled).await?;
             return Err(StepError::new("cancelled", "Flow stream authority expired"));
         }
-        let source = self.source.as_mut().expect("live tracked source");
-        let result = tokio::select! {
-            _=self.cx.cancel().cancelled()=>Err(StepError::new("cancelled","Flow stream cancelled")),
-            _=tokio::time::sleep_until(self.cx.deadline().into())=>Err(StepError::new("cancelled","original Flow deadline expired")),
-            result=source.pull_final(max)=>result,
+        let (result, producer_terminal) = if let Some(native) = &self.native_cleanup {
+            let mut source = native.state.source.lock().await;
+            if let Some(source) = source.as_mut() {
+                let result = tokio::select! {
+                    _=self.cx.cancel().cancelled()=>Err(StepError::new("cancelled","Flow stream cancelled")),
+                    _=tokio::time::sleep_until(self.cx.deadline().into())=>Err(StepError::new("cancelled","original Flow deadline expired")),
+                    result=source.pull_final(max)=>result,
+                };
+                (result, source.terminal_outcome())
+            } else {
+                (
+                    Err(StepError::new(
+                        "cancelled",
+                        "Flow source has completed cleanup",
+                    )),
+                    None,
+                )
+            }
+        } else {
+            let source = self.source.as_mut().expect("live tracked source");
+            let result = tokio::select! {
+                _=self.cx.cancel().cancelled()=>Err(StepError::new("cancelled","Flow stream cancelled")),
+                _=tokio::time::sleep_until(self.cx.deadline().into())=>Err(StepError::new("cancelled","original Flow deadline expired")),
+                result=source.pull_final(max)=>result,
+            };
+            (result, source.terminal_outcome())
         };
-        let producer_terminal = self.source.as_ref().and_then(CoreStream::terminal_outcome);
         match result {
             Ok(buffer) => {
                 if let Some(terminal) = producer_terminal {
@@ -394,8 +1277,51 @@ impl StreamSource for TrackedStream {
     }
 
     fn cancel(&mut self) {
+        if !self.closed
+            && let Some(native) = &self.native_cleanup
+        {
+            let _ = native.state.record_close(StreamCloseReason::Unknown);
+        }
         let outcome = self.terminal.take().unwrap_or(Outcome::Cancelled);
         self.begin_close(outcome);
+    }
+    fn close_report(&self) -> Option<tobkiri_flow::StreamCloseReport> {
+        let native = self.native_cleanup.as_ref()?;
+        if !native.observed
+            || self.cleanup_error.is_some()
+            || !native.state.cleanup_proved.load(Ordering::Acquire)
+            || native.state.quarantined_unknown.load(Ordering::Acquire)
+        {
+            return None;
+        }
+        let receipt = self.receipt.as_ref()?;
+        if receipt.physical_error.is_some() {
+            return None;
+        }
+        // prepare_native_cleanup/attach install only the actual interpreter
+        // source from this factory's original frame. cleanup_proved records its
+        // real destruction/body receipt plus the same sealed terminal handoff;
+        // observed independently certifies this supervisor's original Join.
+        tobkiri_flow::StreamCloseReport::observed(
+            &receipt.outcome,
+            receipt.business_error.as_ref(),
+            receipt.delivery_error.as_ref(),
+            if receipt.delivery_error.is_some() {
+                tobkiri_flow::StreamCloseDelivery::DurablyHandedOff
+            } else {
+                tobkiri_flow::StreamCloseDelivery::Acknowledged
+            },
+        )
+    }
+    fn close_control(&self) -> Option<Arc<dyn StreamCloseControl>> {
+        self.native_cleanup
+            .as_ref()
+            .map(|native| native.state.clone() as Arc<dyn StreamCloseControl>)
+    }
+    fn physical_completion(&self) -> Option<tobkiri_flow::StreamPhysicalCompletion> {
+        self.native_cleanup.as_ref().map(|native| {
+            tobkiri_flow::StreamPhysicalCompletion::from_task(native.completion.clone())
+        })
     }
     async fn close(&mut self) -> Result<(), StepError> {
         self.cancel();
@@ -403,6 +1329,65 @@ impl StreamSource for TrackedStream {
     }
 }
 
+impl Drop for TrackedStream {
+    fn drop(&mut self) {
+        if self.native_cleanup.is_some() && !self.closed {
+            self.cancel();
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "tracked_stream_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod cleanup_receipt_classification_tests {
+    use super::*;
+
+    #[test]
+    fn physical_unknown_dominates_without_discarding_business_or_audit_failure() {
+        let mut receipt = CleanupReceipt {
+            outcome: Outcome::Failed {
+                code: "unavailable".into(),
+            },
+            physical_error: Some(StepError::new("component", "original physical unknown")),
+            business_error: Some(StepError::new("unavailable", "original business error")),
+            delivery_error: Some(StepError::new("persistence", "original audit error")),
+        };
+        assert_eq!(receipt.result().unwrap_err().code, "component");
+        assert!(receipt.business_error.is_some());
+        assert!(receipt.delivery_error.is_some());
+        receipt.physical_error = None;
+        assert_eq!(receipt.result().unwrap_err().code, "persistence");
+        receipt.delivery_error = None;
+        assert_eq!(receipt.result().unwrap_err().code, "unavailable");
+    }
+}
+
+#[cfg(test)]
+mod notification_slot_tests {
+    use super::*;
+    #[test]
+    fn full_existing_256_slots_reject_before_notification_receipt_without_eviction() {
+        let control = tobkiri_gate::CoreControl::default();
+        let owner = crate::ui_operation_delivery::UiDeliveryOwner::new(
+            &Digest::hash(b"full-owner"),
+            &control,
+        )
+        .unwrap();
+        let anchor = owner.weak().upgrade().unwrap();
+        let mut local =
+            std::array::from_fn(|_| Some(NativeCleanupEntry::Notifications(anchor.clone())));
+        let before = anchor.strong_count();
+        assert!(matches!(
+            insert_ui_notifications(&mut local, &anchor),
+            Err(tobkiri_gate::GateError::Limit(_))
+        ));
+        assert_eq!(anchor.strong_count(), before);
+        assert!(local.iter().all(|entry| matches!(entry,
+            Some(NativeCleanupEntry::Notifications(current)) if FundedArc::ptr_eq(current, &anchor))));
+        assert!(vacant_cleanup_slot(&local).is_none());
+        owner.close();
+    }
+}

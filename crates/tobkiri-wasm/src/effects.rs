@@ -21,10 +21,18 @@ use tobkiri_gate::{
     CallCx, ControlKind, ControlReservation, EffectRequest, Gate, GrantId, Outcome,
 };
 use tobkiri_store::{
-    FixedDataRequest, NativeSqlTransaction, SecretRef, StoreHandle, UserGlobalStore, Vault,
+    FixedDataRequest, NativeSqlTransaction, SecretRef, SecretWorkResult, StoreHandle,
+    UserGlobalStore, Vault,
 };
 use wasmtime::component::{LinkerInstance, Resource, ResourceAny, ResourceType, Val};
 use wasmtime::{AsContextMut, StoreContextMut};
+
+#[path = "filesystem_imports.rs"]
+pub mod filesystem_imports;
+#[path = "secrets_imports.rs"]
+mod secrets_imports;
+#[path = "audit_imports.rs"]
+mod audit_imports;
 
 struct HostSecret {
     name: String,
@@ -173,7 +181,7 @@ impl HostStore {
         }
     }
 }
-struct UnavailableDirectory;
+type HostDirectory = crate::filesystem::FsDirectory;
 struct UnavailableProcess;
 struct UnavailableTerminal;
 /// Same-package aliases share this exact Rust identity. Different package
@@ -223,7 +231,7 @@ pub(crate) fn link_resource(
         ("secrets" | "network", "secret") => link!(HostSecret),
         ("network", "response") => link!(HostResponse),
         ("storage", "store") => link!(HostStore),
-        ("fs" | "proc" | "pty", "dir") => link!(UnavailableDirectory),
+        ("fs" | "proc" | "pty", "dir") => link!(HostDirectory),
         ("proc", "process") => link!(UnavailableProcess),
         ("pty", "terminal") => link!(UnavailableTerminal),
         ("storage", "sql-transaction") if version == "1.1.0" => link!(Arc<NativeSqlTransaction>),
@@ -364,6 +372,7 @@ fn effect_outcome<T>(result: &Result<T>, cx: &CallCx) -> Outcome {
         }
     }
 }
+#[cfg(test)]
 fn commit_unknown(error: &anyhow::Error) -> bool {
     matches!(
         error.downcast_ref::<tobkiri_store::StoreError>(),
@@ -449,7 +458,9 @@ pub(crate) async fn invoke(
                         codec.ok(Some(codec.json(&value)?))
                     }
                     StepOutput::Stream(stream) if operation == "call-port-stream" => {
-                        let id = host.register_core_stream(&cx, shape, stream).await?;
+                        let id = host
+                            .register_core_stream(&cx, shape, stream, &frame)
+                            .await?;
                         codec.ok(Some(codec.record([("id", Val::U64(id))].into_iter())?))
                     }
                     StepOutput::Stream(mut stream) => {
@@ -557,10 +568,22 @@ pub(crate) async fn invoke(
                     .get()
                     .and_then(std::sync::Weak::upgrade)
                     .context("Core guest Flow runner is not installed")?;
+                // Actual Store-installed frame, before the Core runner may
+                // start its interpreter task. Closing registration fails shut.
+                let native = host.native_work_spawner(&store.data().data).await?;
                 let stream = runner
-                    .run_guest_flow(&cx, frame.as_ref(), &shape, &digest, input)
+                    .run_guest_flow_with_spawner(
+                        &cx,
+                        frame.as_ref(),
+                        &shape,
+                        &digest,
+                        input,
+                        Arc::new(native.clone()),
+                    )
                     .await?;
-                let id = host.register_core_stream(&cx, shape, stream).await?;
+                let id = host
+                    .register_core_stream_with_native(&cx, shape, stream, Some(&native))
+                    .await?;
                 codec.ok(Some(codec.record([("id", Val::U64(id))].into_iter())?))
             }
             _ => bail!("unknown generic Flow operation"),
@@ -629,7 +652,7 @@ pub(crate) async fn invoke(
                 "terminal-write"=>{let value=text(&params[0])?;if value.len()as u64>cx.limits().output_bytes{bail!("terminal output limit exceeded")};let buffer=CoreBuffer::copy_from(value.as_bytes(),owners.graph())?;host.shared.io.terminal_write_budgeted(&buffer)?;codec.ok(None)},
                 "terminal-read-line"=>{let max=usize::try_from(cx.limits().output_bytes.min(1024*1024))?;let line=tokio::select!{_=cx.cancel().cancelled()=>bail!("terminal input cancelled"),_=tokio::time::sleep_until(cx.deadline().into())=>bail!("terminal input deadline elapsed"),line=host.shared.io.terminal_read_line_budgeted(text(&params[0])?,max,owners.graph().clone())=>line?};if line.len()>max{bail!("terminal input exceeds its bound")};codec.ok(Some(codec.string(line.as_str()?)?))},
                 "request-ui-embed"=>Err(StepError::new("unavailable","guest UI embedding requires the Core Session registration bridge").into()),
-                "pick-directory"=>Err(StepError::new("unavailable","directory selection requires a registered filesystem grant root").into()),
+                "pick-directory"=>filesystem_imports::pick_directory(&host,&cx,text(&params[0])?,&owners).await,
                 _=>bail!("unknown host I/O operation"),
             }}.await;
             outcome(&host, id, &result, &cx).await?;
@@ -640,7 +663,6 @@ pub(crate) async fn invoke(
                 bail!("unknown secret operation")
             };
             let name = bounded_name(&params[0])?;
-            let vault = host.vault()?;
             let request = EffectRequest::Secret {
                 name: name.into(),
                 reveal: operation == "reveal",
@@ -650,41 +672,36 @@ pub(crate) async fn invoke(
                 .gate
                 .authorize(&cx, request, Vault::secret_digest(name)?)
                 .await?;
-            let id = grant.id().clone();
-            let result = (|| {
-                if operation == "get" {
-                    let secret = vault.get(&cx, name, grant)?;
-                    codec.ok(Some(push(
+            let spawner = host.native_work_spawner(&store.data().data).await?;
+            secrets_imports::call(&host, &cx, spawner, grant, |secret, output_bytes| {
+                match (operation, secret) {
+                    ("get", SecretWorkResult::Opaque(secret)) => codec.ok(Some(push(
                         store,
                         version,
                         HostSecret {
                             name: name.into(),
                             _secret: secret,
                         },
-                    )?))
-                } else {
-                    let mut bytes = vault.reveal(&cx, name, grant)?;
-                    let result = (|| {
-                        if bytes.len() as u64 > cx.limits().output_bytes {
+                    )?)),
+                    ("reveal", SecretWorkResult::Revealed(bytes)) => {
+                        if bytes.bytes().len() as u64 > output_bytes {
                             bail!("secret output exceeds its bound")
-                        };
-                        codec.ok(Some(codec.string(std::str::from_utf8(&bytes)?)?))
-                    })();
-                    bytes.fill(0);
-                    result
+                        }
+                        // The Stage A owner zeroizes on every conversion exit.
+                        codec.ok(Some(codec.string(std::str::from_utf8(bytes.bytes())?)?))
+                    }
+                    _ => Err(StepError::new("invalid", "secret result mode mismatch").into()),
                 }
-            })();
-            outcome(&host, id, &result, &cx).await?;
-            result
+            })
+            .await
         }
         "network" => network(store, &host, &cx, version, operation, params, &owners).await,
         "storage" => storage(store, &host, &cx, version, operation, params, &owners).await,
-        "audit" => Err(StepError::new(
-            "unavailable",
-            "guest audit payload adapter is not yet connected to bounded values",
-        )
-        .into()),
-        "fs" | "proc" | "pty" | "approvals" => Err(StepError::new(
+        "audit" => audit_imports::invoke(store, &host, &cx, operation, params, &owners).await,
+        "fs" => {
+            filesystem_imports::invoke(store, &host, &cx, version, operation, params, &owners).await
+        }
+        "proc" | "pty" | "approvals" => Err(StepError::new(
             "unavailable",
             "generic effect backend unavailable for this operation",
         )
@@ -880,29 +897,30 @@ async fn network(
                 .gate
                 .authorize(cx, secret_request, Vault::secret_digest(name)?)
                 .await?;
-            let secret_id = secret_grant.id().clone();
-            let vault = host.vault()?;
-            let secret = vault
-                .get(cx, name, secret_grant)
-                .map_err(anyhow::Error::new);
-            outcome(host, secret_id, &secret, cx).await?;
-            let secret = secret?;
-            let value = secret.with_network_value(
-                cx,
-                client.permit(),
-                text(field(descriptor, "prefix")?)?,
-                |value| -> Result<Val> { codec.string(std::str::from_utf8(value)?) },
-            )??;
-            let name = text(field(descriptor, "name")?)?;
-            let value_len = text(&value)?.len();
-            header_bytes = header_bytes
-                .checked_add(name.len())
-                .and_then(|n| n.checked_add(value_len))
-                .context("secret header size overflow")?;
-            if name.len() > 256 || value_len > 16384 || header_bytes > 65536 {
-                bail!("network headers exceed their bound")
-            };
-            headers.push(codec.tuple([codec.string(name)?, value].into_iter())?)?;
+            let spawner = host.native_work_spawner(&store.data().data).await?;
+            secrets_imports::call(host, cx, spawner, secret_grant, |secret, _| {
+                let SecretWorkResult::Opaque(secret) = secret else {
+                    return Err(StepError::new("invalid", "secret result mode mismatch").into());
+                };
+                let value = secret.with_network_value(
+                    cx,
+                    client.permit(),
+                    text(field(descriptor, "prefix")?)?,
+                    |value| -> Result<Val> { codec.string(std::str::from_utf8(value)?) },
+                )??;
+                let name = text(field(descriptor, "name")?)?;
+                let value_len = text(&value)?.len();
+                header_bytes = header_bytes
+                    .checked_add(name.len())
+                    .and_then(|n| n.checked_add(value_len))
+                    .context("secret header size overflow")?;
+                if name.len() > 256 || value_len > 16384 || header_bytes > 65536 {
+                    bail!("network headers exceed their bound")
+                }
+                headers.push(codec.tuple([codec.string(name)?, value].into_iter())?)?;
+                Ok(())
+            })
+            .await?;
         }
         // HTTP adapter still owns bounded native transport buffers; request body
         // is copied only by its owner-retaining bounded body bridge below.

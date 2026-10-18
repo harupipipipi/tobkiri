@@ -66,23 +66,59 @@ impl HostCaller<'_> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PackAssetPath(String);
 
+/// Canonical per-platform Pack scheme admitted by the request parser. The
+/// https Windows form still parses for compatibility but is never the
+/// canonical representation `packUiUrl` emits, so it earns no positive
+/// policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PackScheme {
+    Native,
+    WindowsHttp,
+    WindowsHttps,
+}
+
 /// Platform-mapped custom protocol URL. Parsing retains the raw path so a URL
 /// library cannot silently normalize traversal into an admitted map key.
 pub struct PackAssetRequest {
     pub hash_hex: String,
     pub path: PackAssetPath,
+    scheme: PackScheme,
 }
 
 impl PackAssetRequest {
+    /// Per-response CSP bound to this exact verified Pack request. The
+    /// sandboxed document's opaque origin makes `'self'` unusable for
+    /// `script-src`/`style-src`, so both directives pin the exact
+    /// lowercase-hash Pack source with its trailing-slash boundary. Every
+    /// other directive and the parent frame-ancestors allowlist stay
+    /// identical to [`PACK_UI_CSP`]. Noncanonical representations earn no
+    /// positive policy.
+    pub(crate) fn pack_ui_policy(&self) -> Result<String, HostError> {
+        let source = match self.scheme {
+            PackScheme::Native => format!("tobkiri-pack://{}/", self.hash_hex),
+            PackScheme::WindowsHttp => {
+                format!("http://tobkiri-pack.localhost/{}/", self.hash_hex)
+            }
+            PackScheme::WindowsHttps => return Err(HostError::AssetPath),
+        };
+        Ok(PACK_UI_CSP
+            .replacen("script-src 'self'", &format!("script-src {source}"), 1)
+            .replacen("style-src 'self'", &format!("style-src {source}"), 1))
+    }
+
     pub fn parse(uri: &str) -> Result<Self, HostError> {
         if uri.len() > 16_384 {
             return Err(HostError::AssetPath);
         }
-        let tail = uri
-            .strip_prefix("tobkiri-pack://")
-            .or_else(|| uri.strip_prefix("http://tobkiri-pack.localhost/"))
-            .or_else(|| uri.strip_prefix("https://tobkiri-pack.localhost/"))
-            .ok_or(HostError::AssetPath)?;
+        let (scheme, tail) = if let Some(tail) = uri.strip_prefix("tobkiri-pack://") {
+            (PackScheme::Native, tail)
+        } else if let Some(tail) = uri.strip_prefix("http://tobkiri-pack.localhost/") {
+            (PackScheme::WindowsHttp, tail)
+        } else if let Some(tail) = uri.strip_prefix("https://tobkiri-pack.localhost/") {
+            (PackScheme::WindowsHttps, tail)
+        } else {
+            return Err(HostError::AssetPath);
+        };
         let (hash, path) = tail.split_once('/').ok_or(HostError::AssetPath)?;
         if hash.len() != 64
             || !hash
@@ -121,6 +157,7 @@ impl PackAssetRequest {
             // Decode once, then use the exact verified map key. Encoded slashes,
             // traversal and invalid UTF-8 never become a normalized path.
             path: PackAssetPath::parse(&decoded.join("/"))?,
+            scheme,
         })
     }
 }
@@ -249,5 +286,90 @@ mod tests {
             PackAssetRequest::parse(&format!("tobkiri-pack://{hash}/ui/%252e%252e.js")).unwrap();
         assert_eq!(literal.path.as_str(), "ui/%2e%2e.js");
         assert!(PackAssetRequest::parse(&format!("tobkiri-pack://{hash}/ui/a%2fb.js")).is_err());
+    }
+
+    #[test]
+    fn pack_policy_pins_exact_verified_source_per_canonical_scheme() {
+        let hash = "0123456789abcdef".repeat(4);
+        let native = PackAssetRequest::parse(&format!("tobkiri-pack://{hash}/ui/app.js")).unwrap();
+        let windows =
+            PackAssetRequest::parse(&format!("http://tobkiri-pack.localhost/{hash}/ui/app.js"))
+                .unwrap();
+        let https =
+            PackAssetRequest::parse(&format!("https://tobkiri-pack.localhost/{hash}/ui/app.js"))
+                .unwrap();
+        for (request, expected_source) in [
+            (&native, format!("tobkiri-pack://{hash}/")),
+            (&windows, format!("http://tobkiri-pack.localhost/{hash}/")),
+        ] {
+            let policy = request.pack_ui_policy().unwrap();
+            let mut directives = std::collections::BTreeMap::new();
+            for directive in policy.split(';').map(str::trim) {
+                let mut words = directive.split_whitespace();
+                let name = words.next().expect("nonempty CSP directive");
+                assert!(
+                    directives.insert(name, words.collect::<Vec<_>>()).is_none(),
+                    "duplicate CSP directive"
+                );
+            }
+            // Independent intended policy, rather than production's replacen
+            // algorithm or PACK_UI_CSP as the expected-value oracle.
+            for name in ["script-src", "style-src"] {
+                let sources = directives.remove(name).expect("executable asset directive");
+                assert_eq!(sources, [expected_source.as_str()]);
+                assert!(sources[0].ends_with('/'));
+                assert!(!sources[0].contains('*'));
+                assert!(!sources[0].contains(&"b".repeat(64)));
+            }
+            assert_eq!(
+                directives,
+                std::collections::BTreeMap::from([
+                    ("default-src", vec!["'self'"]),
+                    ("img-src", vec!["'self'", "data:"]),
+                    ("font-src", vec!["'self'"]),
+                    ("connect-src", vec!["'none'"]),
+                    ("frame-src", vec!["'none'"]),
+                    ("worker-src", vec!["'none'"]),
+                    ("object-src", vec!["'none'"]),
+                    ("base-uri", vec!["'none'"]),
+                    ("form-action", vec!["'none'"]),
+                    (
+                        "frame-ancestors",
+                        vec![
+                            "tauri://localhost",
+                            "http://tauri.localhost",
+                            "https://tauri.localhost"
+                        ],
+                    ),
+                ])
+            );
+            assert!(!policy.contains("'unsafe-inline'"));
+            assert!(!policy.contains("'unsafe-eval'"));
+        }
+        // packUiUrl never emits the https Windows form; noncanonical input
+        // earns no positive policy.
+        assert!(https.pack_ui_policy().is_err());
+        // The trailing-slash source binds this exact hash only.
+        let other =
+            PackAssetRequest::parse(&format!("tobkiri-pack://{}/ui/app.js", "b".repeat(64)))
+                .unwrap();
+        assert!(!other.pack_ui_policy().unwrap().contains(hash.as_str()));
+    }
+
+    #[test]
+    fn parser_still_denies_ambiguous_authority_and_path_forms() {
+        let hash = "a".repeat(64);
+        for uri in [
+            format!("tobkiri-pack://user@{hash}/ui/index.html"),
+            format!("tobkiri-pack://{hash}:443/ui/index.html"),
+            format!("tobkiri-pack://{}/ui/index.html", hash.to_uppercase()),
+            format!("http://user:pw@tobkiri-pack.localhost/{hash}/ui/index.html"),
+            format!("http://tobkiri-pack.localhost:8080/{hash}/ui/index.html"),
+            format!("http://{hash}.tobkiri-pack.localhost/ui/index.html"),
+            format!("http://tobkiri-pack.localhost/{hash}/ui/index.html?x=1"),
+            format!("http://tobkiri-pack.localhost/{hash}/ui/index.html#f"),
+        ] {
+            assert!(PackAssetRequest::parse(&uri).is_err(), "{uri}");
+        }
     }
 }

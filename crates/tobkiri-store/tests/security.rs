@@ -1319,7 +1319,7 @@ async fn expiry_sweeps_unconsumed_grants_and_attestation_nonces_are_bounded() {
             .unwrap()
             .as_millis() as u64
     };
-    let expiry = now() + 20;
+    let expiry = now() + 60_000;
     assert!(
         f.approvals
             .claim_attestation(&f.profile, "phone", "nonce", expiry)
@@ -1330,23 +1330,43 @@ async fn expiry_sweeps_unconsumed_grants_and_attestation_nonces_are_bounded() {
             .claim_attestation(&f.profile, "phone", "nonce", expiry)
             .unwrap()
     );
-    tokio::time::sleep(Duration::from_millis(30)).await;
-    assert!(
-        f.approvals
-            .claim_attestation(&f.profile, "phone", "nonce", now() + 60_000)
-            .unwrap()
-    );
-    assert!(
-        f.approvals
-            .claim_attestation(&f.profile, "phone", "expired", now() - 1)
-            .is_err()
-    );
     let mut db = rusqlite::Connection::open(
         f.root
             .path()
             .join(format!("profiles/{}/approvals.sqlite", f.profile)),
     )
     .unwrap();
+    let expired = now() - 1;
+    // Advance this private fixture's persisted row to an expired state without
+    // requiring the host to complete two SQLite transactions within 20ms.
+    assert_eq!(
+        db.execute(
+            "UPDATE attestation_nonces SET expires=?1 WHERE device=?2 AND nonce=?3 AND expires=?4",
+            rusqlite::params![expired as i64, "phone", "nonce", expiry as i64],
+        )
+        .unwrap(),
+        1
+    );
+    let reused_expiry = now() + 60_000;
+    assert!(
+        f.approvals
+            .claim_attestation(&f.profile, "phone", "nonce", reused_expiry)
+            .unwrap()
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT expires FROM attestation_nonces WHERE device=?1 AND nonce=?2",
+            rusqlite::params!["phone", "nonce"],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap(),
+        reused_expiry as i64
+    );
+    assert!(
+        f.approvals
+            .claim_attestation(&f.profile, "phone", "expired", now() - 1)
+            .is_err()
+    );
     let tx = db.transaction().unwrap();
     {
         let mut stmt = tx

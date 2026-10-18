@@ -253,7 +253,7 @@ impl TieredStore {
             tx.commit()?;
             Ok(())
         })();
-        let restore_authorizer = restrict(&connection);
+        let restore_authorizer = restrict(connection);
         seed_result?;
         restore_authorizer?;
         // Catalog hash update follows the idempotent physical seed transaction.
@@ -2378,18 +2378,24 @@ impl Drop for NativeDatabase {
                 directory.retain_connection(connection);
             }
         }
-        if let Some(identity) = &self._global_identity {
-            if let Ok(mut registry) = user_global_registry().lock() {
-                // A newer native connection may have replaced this dying weak
-                // while the old connection was finishing its physical close.
-                if registry
-                    .get(identity)
-                    .is_some_and(|current| current.strong_count() == 0)
-                {
-                    registry.remove(identity);
-                }
+        let retired = if let Some(identity) = &self._global_identity
+            && let Ok(mut registry) = user_global_registry().lock()
+        {
+            // A newer native connection may have replaced this dying weak
+            // while the old connection was finishing its physical close.
+            if registry
+                .get(identity)
+                .is_some_and(|current| current.strong_count() == 0)
+            {
+                registry.remove(identity)
+            } else {
+                None
             }
-        }
+        } else {
+            None
+        };
+        // Keep even weak/control teardown outside the registry guard.
+        drop(retired);
     }
 }
 #[derive(Clone)]
@@ -2556,7 +2562,7 @@ impl StoreHandle {
             params![self.owner.as_str(), self.name],
             |r| r.get(0),
         )?;
-        if PathBuf::from(path) != self.path {
+        if std::path::Path::new(&path) != self.path {
             return Err(StoreError::Denied("store path changed".into()));
         }
         if let Some(cx) = cx {
@@ -3000,10 +3006,10 @@ impl TransactionOperation<'_> {
 impl Drop for TransactionOperation<'_> {
     fn drop(&mut self) {
         if !self.finished {
-            if let Ok(mut state) = self.state.lock() {
-                if *state == crate::SqlTransactionState::Active {
-                    *state = crate::SqlTransactionState::RollbackOnly;
-                }
+            if let Ok(mut state) = self.state.lock()
+                && *state == crate::SqlTransactionState::Active
+            {
+                *state = crate::SqlTransactionState::RollbackOnly;
             }
             self.in_flight.store(false, Ordering::Release);
         }
@@ -3082,13 +3088,13 @@ async fn begin_sql_transaction(
                 })
             },
         );
-        if result.is_err() {
-            if let Err(error) = rollback_native_transaction(target.native(), &connection) {
-                // The BEGIN may have succeeded before its activity or handler
-                // cleanup failed. Keep this occupied until cleanup is proven.
-                begin_slot.committed = true;
-                return Err(error);
-            }
+        if result.is_err()
+            && let Err(error) = rollback_native_transaction(target.native(), &connection)
+        {
+            // The BEGIN may have succeeded before its activity or handler
+            // cleanup failed. Keep this occupied until cleanup is proven.
+            begin_slot.committed = true;
+            return Err(error);
         }
         result
     })();
@@ -3279,18 +3285,20 @@ async fn execute_store_sql(
     };
     let result = execute_authorized_typed_sql(
         target,
-        cx,
-        &statement,
-        &params,
-        &first_fingerprint,
-        admission_tier,
-        policy,
-        statement.max_rows(),
-        output_limit,
-        &output_budget,
-        permit.deadline(),
-        permit.limits().fuel_per_call,
-        in_transaction,
+        TypedSqlExecution {
+            cx,
+            statement: &statement,
+            params: &params,
+            expected_fingerprint: &first_fingerprint,
+            admitted_tier: admission_tier,
+            policy,
+            max_rows: statement.max_rows(),
+            output_limit,
+            output_budget: &output_budget,
+            deadline: permit.deadline(),
+            fuel_limit: permit.limits().fuel_per_call,
+            in_transaction,
+        },
     );
     match result {
         Ok(mut result) => {
@@ -3405,21 +3413,42 @@ fn classify_typed_sql(
     Ok(fingerprint)
 }
 
-fn execute_authorized_typed_sql(
-    target: &NativeSqlTarget,
-    cx: &CallCx,
-    statement: &crate::OwnedSqlStatement,
-    params: &[Value],
-    expected_fingerprint: &SqlFingerprint,
+/// Borrowed inputs and copied bounds for one already-consumed SQL operation.
+/// This creates no new authority or funding owner and retains no connection
+/// guard across the caller's Gate awaits.
+struct TypedSqlExecution<'a> {
+    cx: &'a CallCx,
+    statement: &'a crate::OwnedSqlStatement,
+    params: &'a [Value],
+    expected_fingerprint: &'a SqlFingerprint,
     admitted_tier: Option<StoreTier>,
     policy: Option<crate::SqlResultPolicy>,
     max_rows: u32,
     output_limit: usize,
-    output_budget: &Arc<dyn AllocationBudget>,
+    output_budget: &'a Arc<dyn AllocationBudget>,
     deadline: std::time::Instant,
     fuel_limit: u64,
     in_transaction: bool,
+}
+
+fn execute_authorized_typed_sql(
+    target: &NativeSqlTarget,
+    execution: TypedSqlExecution<'_>,
 ) -> Result<crate::OwnedSqlResult, StoreError> {
+    let TypedSqlExecution {
+        cx,
+        statement,
+        params,
+        expected_fingerprint,
+        admitted_tier,
+        policy,
+        max_rows,
+        output_limit,
+        output_budget,
+        deadline,
+        fuel_limit,
+        in_transaction,
+    } = execution;
     let database = target.native();
     if database.active_transaction.load(Ordering::Acquire) != in_transaction {
         return Err(StoreError::Conflict(
@@ -3589,6 +3618,119 @@ fn owned_sql_params(statement: &crate::OwnedSqlStatement) -> Result<Vec<Value>, 
     Ok(values)
 }
 
+/// The envelope includes both arrays and every key, colon and separator.
+/// Metadata values are added below; no temporary serialization is allocated.
+const SQL_RESULT_ENVELOPE_BYTES: usize =
+    br#"{"affected-rows":,"columns":[],"last-insert-rowid":,"rows":[]}"#.len();
+
+struct SqlWireSize {
+    bytes: usize,
+    limit: usize,
+}
+impl SqlWireSize {
+    fn new(limit: usize, metadata_minimum: usize) -> Result<Self, StoreError> {
+        let mut size = Self { bytes: 0, limit };
+        size.add(SQL_RESULT_ENVELOPE_BYTES)?;
+        size.add(metadata_minimum)?;
+        Ok(size)
+    }
+    fn add(&mut self, bytes: usize) -> Result<(), StoreError> {
+        self.bytes = self
+            .bytes
+            .checked_add(bytes)
+            .filter(|total| *total <= self.limit)
+            .ok_or(StoreError::Quota)?;
+        Ok(())
+    }
+}
+
+/// serde_json and StrictV1 use the same JSON string escaping. Count its actual
+/// bytes without allocating an encoded buffer. Charge the extra traversal to
+/// the same invoking payload owner before visiting guest text.
+fn sql_json_string_size(
+    text: &str,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<usize, StoreError> {
+    charge_sql_measurement(budget, text.len())?;
+    struct Counter(usize);
+    impl std::io::Write for Counter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 = self
+                .0
+                .checked_add(bytes.len())
+                .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::OutOfMemory))?;
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut count = Counter(0);
+    serde_json::to_writer(&mut count, text).map_err(|_| StoreError::Quota)?;
+    Ok(count.0)
+}
+
+fn charge_sql_measurement(
+    budget: &Arc<dyn AllocationBudget>,
+    elements: usize,
+) -> Result<(), StoreError> {
+    let elements = u64::try_from(elements).map_err(|_| StoreError::Quota)?;
+    budget
+        .reserve(AllocationRequest {
+            kind: AllocationKind::Encode,
+            bytes: 0,
+            elements,
+            depth: 1,
+            work: elements.checked_add(1).ok_or(StoreError::Quota)?,
+        })
+        .map_err(|_| StoreError::Quota)
+}
+
+/// All SQLite integers and finite f64 scientific strings fit this fixed scratch
+/// buffer. Keep measurement and construction on the same native formatter.
+struct SqlNumberText {
+    bytes: [u8; 64],
+    length: usize,
+}
+impl SqlNumberText {
+    fn format(args: std::fmt::Arguments<'_>) -> Result<Self, StoreError> {
+        let mut text = Self {
+            bytes: [0; 64],
+            length: 0,
+        };
+        std::fmt::write(&mut text, args).map_err(|_| StoreError::Quota)?;
+        Ok(text)
+    }
+    fn real(value: f64) -> Result<Self, StoreError> {
+        if !value.is_finite() {
+            return Err(StoreError::Invalid("nonfinite SQL real".into()));
+        }
+        Self::format(format_args!("{value:e}"))
+    }
+    fn as_str(&self) -> &str {
+        std::str::from_utf8(&self.bytes[..self.length])
+            .expect("native numeric formatter produces UTF-8")
+    }
+    fn json_size(&self) -> Result<usize, StoreError> {
+        self.length.checked_add(2).ok_or(StoreError::Quota)
+    }
+}
+impl std::fmt::Write for SqlNumberText {
+    fn write_str(&mut self, value: &str) -> std::fmt::Result {
+        let end = self
+            .length
+            .checked_add(value.len())
+            .ok_or(std::fmt::Error)?;
+        let target = self
+            .bytes
+            .get_mut(self.length..end)
+            .ok_or(std::fmt::Error)?;
+        target.copy_from_slice(value.as_bytes());
+        self.length = end;
+        Ok(())
+    }
+}
+
 fn step_typed(
     connection: &rusqlite::Connection,
     statement: &mut rusqlite::Statement<'_>,
@@ -3598,16 +3740,23 @@ fn step_typed(
     output_limit: usize,
     budget: &Arc<dyn AllocationBudget>,
 ) -> Result<crate::OwnedSqlResult, StoreError> {
-    let mut output_bytes = 0usize;
+    // Result-bearing reads have null/null metadata. An empty-column operation
+    // reports changes even if SQLite classifies it read-only. Reserve the exact
+    // known nulls and minimum quoted numbers, then add the remainder after the
+    // one execution, before constructing the metadata values.
+    let metadata_minimum = match (fingerprint.readonly, fingerprint.columns.is_empty()) {
+        (true, false) => 8,
+        (true, true) => 7,
+        (false, _) => 6,
+    };
+    let mut output_size = SqlWireSize::new(output_limit, metadata_minimum)?;
+    for (index, column) in fingerprint.columns.iter().enumerate() {
+        output_size.add(usize::from(index > 0))?;
+        output_size.add(sql_json_string_size(column, budget)?)?;
+    }
     let mut columns = CoreValue::array_builder(budget, fingerprint.columns.len())
         .map_err(|_| StoreError::Quota)?;
     for column in &fingerprint.columns {
-        output_bytes = output_bytes
-            .checked_add(column.len().saturating_mul(6).saturating_add(3))
-            .ok_or(StoreError::Quota)?;
-        if output_bytes > output_limit {
-            return Err(StoreError::Quota);
-        }
         columns
             .push(CoreValue::string(column, budget).map_err(|_| StoreError::Quota)?)
             .map_err(|_| StoreError::Quota)?;
@@ -3624,18 +3773,16 @@ fn step_typed(
             if row_values.len() >= usize::try_from(max_rows).map_err(|_| StoreError::Quota)? {
                 return Err(StoreError::Quota);
             }
+            // Inspect this same SQLite row before allocating its output cells.
+            // Re-reading borrowed columns does not step or replay the statement.
+            output_size.add(2 + usize::from(!row_values.is_empty()))?;
+            for index in 0..fingerprint.columns.len() {
+                output_size.add(usize::from(index > 0))?;
+                output_size.add(typed_cell_size(row.get_ref(index)?, budget)?)?;
+            }
             let mut cells = Vec::with_capacity(fingerprint.columns.len());
             for index in 0..fingerprint.columns.len() {
-                let value = row.get_ref(index)?;
-                let cell_bytes = typed_cell_size(value)?;
-                output_bytes = output_bytes
-                    .checked_add(cell_bytes)
-                    .ok_or(StoreError::Quota)?;
-                if output_bytes > output_limit {
-                    return Err(StoreError::Quota);
-                }
-                let (cell, _) = typed_cell(value, budget)?;
-                cells.push(cell);
+                cells.push(typed_cell(row.get_ref(index)?, budget)?);
             }
             row_values.push(
                 CoreValue::array_shared(
@@ -3654,6 +3801,31 @@ fn step_typed(
     if policy == Some(crate::SqlResultPolicy::ForbidRows) && !row_values.is_empty() {
         return Err(StoreError::Denied("SQL exec returned rows".into()));
     }
+    let affected_text = affected
+        .map(|value| SqlNumberText::format(format_args!("{value}")))
+        .transpose()?;
+    let last_insert_text = if fingerprint.readonly {
+        None
+    } else {
+        Some(SqlNumberText::format(format_args!(
+            "{}",
+            connection.last_insert_rowid()
+        ))?)
+    };
+    let metadata_size = affected_text
+        .as_ref()
+        .map_or(Ok(4usize), SqlNumberText::json_size)?
+        .checked_add(
+            last_insert_text
+                .as_ref()
+                .map_or(Ok(4usize), SqlNumberText::json_size)?,
+        )
+        .ok_or(StoreError::Quota)?;
+    output_size.add(
+        metadata_size
+            .checked_sub(metadata_minimum)
+            .ok_or(StoreError::Quota)?,
+    )?;
     let rows = CoreValue::array_shared(
         row_values
             .into_iter()
@@ -3661,15 +3833,14 @@ fn step_typed(
         budget,
     )
     .map_err(|_| StoreError::Quota)?;
-    let affected = match affected {
-        Some(value) => CoreValue::string(&value.to_string(), budget),
+    let affected = match affected_text {
+        Some(text) => CoreValue::string(text.as_str(), budget),
         None => CoreValue::null(budget),
     }
     .map_err(|_| StoreError::Quota)?;
-    let last_insert = if fingerprint.readonly {
-        CoreValue::null(budget)
-    } else {
-        CoreValue::string(&connection.last_insert_rowid().to_string(), budget)
+    let last_insert = match last_insert_text {
+        Some(text) => CoreValue::string(text.as_str(), budget),
+        None => CoreValue::null(budget),
     }
     .map_err(|_| StoreError::Quota)?;
     let result = CoreValue::object_shared(
@@ -3689,33 +3860,23 @@ fn step_typed(
 fn typed_cell(
     value: ValueRef<'_>,
     budget: &Arc<dyn AllocationBudget>,
-) -> Result<(CoreValue, usize), StoreError> {
-    let (kind, cell, size) = match value {
-        ValueRef::Null => ("null", CoreValue::null(budget), 8),
-        ValueRef::Integer(value) => ("integer", CoreValue::string(&value.to_string(), budget), 24),
+) -> Result<CoreValue, StoreError> {
+    let (kind, cell) = match value {
+        ValueRef::Null => ("null", CoreValue::null(budget)),
+        ValueRef::Integer(value) => {
+            let text = SqlNumberText::format(format_args!("{value}"))?;
+            ("integer", CoreValue::string(text.as_str(), budget))
+        }
         ValueRef::Real(value) => {
-            let value = crate::SqlReal::new(value)?;
-            (
-                "real",
-                CoreValue::string(value.as_str(), budget),
-                value.as_str().len() + 16,
-            )
+            let text = SqlNumberText::real(value)?;
+            ("real", CoreValue::string(text.as_str(), budget))
         }
         ValueRef::Text(bytes) => {
             let text = std::str::from_utf8(bytes)
                 .map_err(|_| StoreError::Invalid("SQLite returned non-UTF8 text".into()))?;
-            (
-                "text",
-                CoreValue::string(text, budget),
-                text.len().saturating_mul(6).saturating_add(16),
-            )
+            ("text", CoreValue::string(text, budget))
         }
         ValueRef::Blob(bytes) => {
-            let encoded = bytes
-                .len()
-                .checked_mul(4)
-                .and_then(|size| size.checked_add(16))
-                .ok_or(StoreError::Quota)?;
             if bytes.len() > MAX_DATA_VALUE_BYTES {
                 return Err(StoreError::Quota);
             }
@@ -3726,11 +3887,11 @@ fn typed_cell(
                     .push(CoreValue::int(i64::from(*byte), budget).map_err(|_| StoreError::Quota)?)
                     .map_err(|_| StoreError::Quota)?;
             }
-            ("blob", array.finish(), encoded)
+            ("blob", array.finish())
         }
     };
     let cell = cell.map_err(|_| StoreError::Quota)?;
-    let tagged = CoreValue::object_shared(
+    CoreValue::object_shared(
         [
             Ok((
                 "type",
@@ -3741,28 +3902,54 @@ fn typed_cell(
         .into_iter(),
         budget,
     )
-    .map_err(|_| StoreError::Quota)?;
-    Ok((tagged, size))
+    .map_err(|_| StoreError::Quota)
 }
 
-fn typed_cell_size(value: ValueRef<'_>) -> Result<usize, StoreError> {
-    match value {
-        ValueRef::Null => Ok(8),
-        ValueRef::Integer(_) | ValueRef::Real(_) => Ok(40),
+fn typed_cell_size(
+    value: ValueRef<'_>,
+    budget: &Arc<dyn AllocationBudget>,
+) -> Result<usize, StoreError> {
+    charge_sql_measurement(budget, 1)?;
+    let (kind, size) = match value {
+        ValueRef::Null => ("null", 4usize),
+        ValueRef::Integer(value) => (
+            "integer",
+            SqlNumberText::format(format_args!("{value}"))?.json_size()?,
+        ),
+        ValueRef::Real(value) => ("real", SqlNumberText::real(value)?.json_size()?),
         ValueRef::Text(bytes) => {
             let text = std::str::from_utf8(bytes)
                 .map_err(|_| StoreError::Invalid("SQLite returned non-UTF8 text".into()))?;
-            text.len()
-                .checked_mul(6)
-                .and_then(|size| size.checked_add(16))
-                .ok_or(StoreError::Quota)
+            ("text", sql_json_string_size(text, budget)?)
         }
-        ValueRef::Blob(bytes) => bytes
-            .len()
-            .checked_mul(4)
-            .and_then(|size| size.checked_add(16))
-            .ok_or(StoreError::Quota),
-    }
+        ValueRef::Blob(bytes) => {
+            if bytes.len() > MAX_DATA_VALUE_BYTES {
+                return Err(StoreError::Quota);
+            }
+            charge_sql_measurement(budget, bytes.len())?;
+            let mut size = 2usize;
+            for (index, byte) in bytes.iter().enumerate() {
+                let digits = if *byte < 10 {
+                    1
+                } else if *byte < 100 {
+                    2
+                } else {
+                    3
+                };
+                size = size
+                    .checked_add(usize::from(index > 0))
+                    .and_then(|size| size.checked_add(digits))
+                    .ok_or(StoreError::Quota)?;
+            }
+            ("blob", size)
+        }
+    };
+    br#"{"type":,"value":}"#
+        .len()
+        .checked_add(kind.len())
+        .and_then(|bytes| bytes.checked_add(2))
+        .and_then(|bytes| bytes.checked_add(size))
+        .ok_or(StoreError::Quota)
 }
 
 #[cfg(all(test, unix))]
@@ -3823,6 +4010,259 @@ mod native_review_tests {
             process_id: std::process::id(),
         };
         (temp, root, database)
+    }
+
+    #[derive(Default)]
+    struct SqlResultBudget {
+        bytes: AtomicU64,
+        large_string_allocations: AtomicU64,
+    }
+    impl AllocationBudget for SqlResultBudget {
+        fn reserve(&self, request: AllocationRequest) -> Result<(), AllocationError> {
+            self.bytes
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |bytes| {
+                    bytes
+                        .checked_add(request.bytes)
+                        .filter(|bytes| *bytes <= 8 * 1024 * 1024)
+                })
+                .map_err(|_| AllocationError::Limit)?;
+            if request.kind == AllocationKind::String && request.bytes >= 1024 {
+                self.large_string_allocations.fetch_add(1, Ordering::AcqRel);
+            }
+            Ok(())
+        }
+        fn release(&self, bytes: u64) {
+            self.bytes
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |live| {
+                    live.checked_sub(bytes)
+                })
+                .expect("SQL output allocation must remain charged until actual release");
+        }
+    }
+
+    fn measured_sql_result(
+        database: &NativeDatabase,
+        connection: &rusqlite::Connection,
+        sql: &str,
+        params: &[Value],
+        output_limit: usize,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<crate::OwnedSqlResult, StoreError> {
+        let control = CoreControl::default();
+        let cx = CallCx::try_root_with_control(
+            ProfileId::parse("prof_sql_output").unwrap(),
+            Principal::User,
+            RequestId::parse("req_sql_output").unwrap(),
+            CancellationToken::new_with_control(&control).unwrap(),
+            std::time::Instant::now() + Duration::from_secs(30),
+            ResourceLimits::unlimited(),
+            control,
+        )
+        .unwrap();
+        let mut prepared = prepare_typed(connection, sql, params)?;
+        let fingerprint = sql_fingerprint(&prepared)?;
+        with_native_operation(
+            database,
+            connection,
+            &cx,
+            cx.deadline(),
+            cx.limits().fuel_per_call,
+            !fingerprint.readonly,
+            || {
+                step_typed(
+                    connection,
+                    &mut prepared,
+                    &fingerprint,
+                    Some(crate::SqlResultPolicy::AllowRows),
+                    MAX_LIST_ROWS,
+                    output_limit,
+                    budget,
+                )
+            },
+        )
+    }
+
+    #[test]
+    fn typed_sql_two_large_ascii_rows_fit_the_actual_four_mib_output_bound() {
+        let (_temp, _root, database) = database();
+        let connection = database.try_lock_connection().unwrap();
+        connection
+            .execute_batch("CREATE TABLE payload(id INTEGER PRIMARY KEY, value TEXT);")
+            .unwrap();
+        let text = "x".repeat(600 * 1024);
+        connection
+            .execute("INSERT INTO payload VALUES(1,?1),(2,?1)", [&text])
+            .unwrap();
+        let meter = Arc::new(SqlResultBudget::default());
+        let budget: Arc<dyn AllocationBudget> = meter.clone();
+        let result = measured_sql_result(
+            &database,
+            &connection,
+            "SELECT value FROM payload ORDER BY id",
+            &[],
+            4 * 1024 * 1024,
+            &budget,
+        )
+        .unwrap();
+        assert_eq!(
+            result
+                .value()
+                .get_key("rows")
+                .unwrap()
+                .array()
+                .unwrap()
+                .len(),
+            2
+        );
+        let encoded = result.value().encode_guest(&budget).unwrap();
+        assert!(encoded.len() > 1024 * 1024);
+        assert!(encoded.len() < 4 * 1024 * 1024);
+        assert_eq!(meter.large_string_allocations.load(Ordering::Acquire), 2);
+        drop(encoded);
+        drop(result);
+        assert_eq!(meter.bytes.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn typed_sql_escaped_cells_and_all_envelopes_match_the_encoder_at_the_boundary() {
+        let (_temp, _root, database) = database();
+        let connection = database.try_lock_connection().unwrap();
+        let unit: String = (0u8..=31)
+            .map(char::from)
+            .chain(['"', '\\', '雪', '\u{2028}'])
+            .collect();
+        let text = unit.repeat(32);
+        let params = [
+            Value::Text(text),
+            Value::Integer(i64::MIN),
+            Value::Real(-0.0),
+            Value::Blob(vec![0, 9, 10, 99, 100, 255]),
+        ];
+        let sql = r#"SELECT ?1 AS "quo""te", NULL AS n, ?2 AS i, ?3 AS r, ?4 AS b"#;
+        let meter = Arc::new(SqlResultBudget::default());
+        let budget: Arc<dyn AllocationBudget> = meter.clone();
+        let result = measured_sql_result(
+            &database,
+            &connection,
+            sql,
+            &params,
+            4 * 1024 * 1024,
+            &budget,
+        )
+        .unwrap();
+        let encoded = result.value().encode_guest(&budget).unwrap();
+        let exact_size = encoded.len();
+        assert!(encoded.as_str().unwrap().contains(r#"\u0000"#));
+        assert!(encoded.as_str().unwrap().contains('雪'));
+        drop(encoded);
+        drop(result);
+        assert_eq!(meter.bytes.load(Ordering::Acquire), 0);
+
+        let exact =
+            measured_sql_result(&database, &connection, sql, &params, exact_size, &budget).unwrap();
+        assert_eq!(
+            exact.value().encode_guest(&budget).unwrap().len(),
+            exact_size
+        );
+        drop(exact);
+        assert_eq!(meter.bytes.load(Ordering::Acquire), 0);
+
+        let denied_meter = Arc::new(SqlResultBudget::default());
+        let denied_budget: Arc<dyn AllocationBudget> = denied_meter.clone();
+        assert!(matches!(
+            measured_sql_result(
+                &database,
+                &connection,
+                sql,
+                &params,
+                exact_size - 1,
+                &denied_budget,
+            ),
+            Err(StoreError::Quota)
+        ));
+        // The entire borrowed row is measured before allocating its text cells.
+        assert_eq!(
+            denied_meter
+                .large_string_allocations
+                .load(Ordering::Acquire),
+            0
+        );
+        assert_eq!(denied_meter.bytes.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn typed_sql_returning_is_not_replayed_and_metadata_overflow_rolls_back() {
+        let (_temp, _root, database) = database();
+        let connection = database.try_lock_connection().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE payload(id INTEGER PRIMARY KEY, value TEXT);
+                 INSERT INTO payload VALUES(999,'seed');",
+            )
+            .unwrap();
+        let meter = Arc::new(SqlResultBudget::default());
+        let budget: Arc<dyn AllocationBudget> = meter.clone();
+        let sql = "INSERT INTO payload(value) VALUES(?1) RETURNING value";
+        let params = [Value::Text("actual returned value".into())];
+        let first = measured_sql_result(
+            &database,
+            &connection,
+            sql,
+            &params,
+            4 * 1024 * 1024,
+            &budget,
+        )
+        .unwrap();
+        let encoded = first.value().encode_guest(&budget).unwrap();
+        let exact_size = encoded.len();
+        assert_eq!(
+            first.value().get_key("affected-rows").unwrap().as_str(),
+            Some("1")
+        );
+        assert_eq!(
+            first.value().get_key("last-insert-rowid").unwrap().as_str(),
+            Some("1000")
+        );
+        drop(encoded);
+        drop(first);
+        let second =
+            measured_sql_result(&database, &connection, sql, &params, exact_size, &budget).unwrap();
+        assert_eq!(
+            second.value().encode_guest(&budget).unwrap().len(),
+            exact_size
+        );
+        drop(second);
+        assert!(matches!(
+            measured_sql_result(
+                &database,
+                &connection,
+                sql,
+                &params,
+                exact_size - 1,
+                &budget,
+            ),
+            Err(StoreError::Quota)
+        ));
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*),max(id) FROM payload", [], |row| {
+                    Ok((row.get::<_, u32>(0)?, row.get::<_, u32>(1)?))
+                })
+                .unwrap(),
+            (3, 1001)
+        );
+        assert!(connection.is_autocommit());
+        assert!(!database.quarantined.load(Ordering::Acquire));
+        assert_eq!(meter.bytes.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn typed_sql_output_size_checked_add_rejects_overflow() {
+        let mut size = SqlWireSize {
+            bytes: usize::MAX,
+            limit: usize::MAX,
+        };
+        assert!(matches!(size.add(1), Err(StoreError::Quota)));
     }
 
     #[test]

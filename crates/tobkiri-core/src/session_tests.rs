@@ -228,6 +228,9 @@ fn install_source(
     external_cancel: TokioCancellationToken,
 ) -> u64 {
     let handle = session.next_stream.fetch_add(1, Ordering::SeqCst);
+    let close_control = session
+        .ui_operation_close_control(ui, None, external_cancel.clone())
+        .unwrap();
     let principal = session.ui.lock().unwrap();
     let principal = principal.get(ui).unwrap();
     let cx = CallCx::try_root_with_control(
@@ -237,11 +240,8 @@ fn install_source(
             hash: principal.hash.clone(),
             ui: ui.clone(),
         },
-        RequestId::parse("req_fixture_stream").unwrap(),
-        principal
-            .cancel
-            .child_with_control(session.gate.control())
-            .unwrap(),
+        close_control.request.clone(),
+        close_control.token.clone(),
         deadline_after(1000).unwrap(),
         session.compiled.profile.ceiling.wasm.clone(),
         session.gate.control().clone(),
@@ -249,18 +249,33 @@ fn install_source(
     .unwrap()
     .with_security_epoch(session.epoch)
     .with_revision(session.compiled.plan_digest.clone());
+    let control_reservation = Arc::new(
+        session
+            .gate
+            .control()
+            .reserve(
+                ControlKind::Registration,
+                super::ui::ui_stream_entry_control_bytes(ui).unwrap(),
+            )
+            .unwrap(),
+    );
     session.streams.lock().unwrap().insert(
         handle,
-        Arc::new(UiStreamEntry {
-            ui: ui.clone(),
-            cx,
-            external_cancel,
-            state: tokio::sync::Mutex::new(Some(UiStreamState {
-                stream: CoreStream::new(source),
-                output_bytes: 0,
-                pending_buffer: None,
-            })),
-        }),
+        UiStreamEntryLease::new(
+            Arc::new(UiStreamEntry {
+                ui: ui.clone(),
+                cx,
+                external_cancel,
+                close_control,
+                source_control: None,
+                state: tokio::sync::Mutex::new(Some(UiStreamState {
+                    stream: CoreStream::new(source),
+                    output_bytes: 0,
+                    pending_buffer: None,
+                })),
+            }),
+            control_reservation,
+        ),
     );
     handle
 }
@@ -506,6 +521,85 @@ async fn ui_handle_capacity_and_session_close_are_bounded() {
             .await
             .is_err()
     );
+}
+
+#[tokio::test]
+async fn scalar_invoke_still_succeeds_at_full_stream_capacity() {
+    let mut permissions = crate::test_support::permissions(&["fixture"]);
+    // Scalar operations reserve no stream slot and must keep working while
+    // every per-frame handle is occupied by a live stream.
+    permissions.wasm.wall_ms = 30_000;
+    permissions.loops.max_wall_ms = 30_000;
+    let (_fixture, session, attachment) = setup_with_permissions(permissions).await;
+    for _ in 0..UI_STREAMS_PER_FRAME {
+        open_stream(
+            &session,
+            &attachment.session,
+            "stream",
+            TokioCancellationToken::new(),
+        )
+        .await;
+    }
+    assert_eq!(session.streams.lock().unwrap().len(), UI_STREAMS_PER_FRAME);
+    assert_eq!(
+        invoke(&session, &attachment, input_shape(), "read", &empty_args())
+            .await
+            .unwrap()
+            .as_bytes(),
+        br#"{"kind":"value","value":42}"#
+    );
+    assert!(
+        invoke(
+            &session,
+            &attachment,
+            input_shape(),
+            "stream",
+            &empty_args()
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(session.streams.lock().unwrap().len(), UI_STREAMS_PER_FRAME);
+    session.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn completed_scalar_provider_entries_reuse_generation_operation_index() {
+    let mut permissions = crate::test_support::permissions(&["fixture"]);
+    permissions.wasm.wall_ms = 30_000;
+    permissions.loops.max_wall_ms = 30_000;
+    let (_fixture, session, attachment) = setup_with_permissions(permissions).await;
+    let expected = br#"{"kind":"value","value":42}"#;
+    let warmup = invoke(&session, &attachment, input_shape(), "read", &empty_args())
+        .await
+        .unwrap();
+    assert_eq!(warmup.as_bytes(), expected);
+    drop(warmup);
+    let registrations = session
+        .gate
+        .control()
+        .usage()
+        .count(tobkiri_gate::ControlKind::Registration);
+
+    // Each call enters the actual component in the same live Store. Completed
+    // scalar entries must not turn its bounded weak index into a history quota.
+    for _ in 0..257 {
+        let output = invoke(&session, &attachment, input_shape(), "read", &empty_args())
+            .await
+            .unwrap();
+        assert_eq!(output.as_bytes(), expected);
+        drop(output);
+        assert_eq!(
+            session
+                .gate
+                .control()
+                .usage()
+                .count(tobkiri_gate::ControlKind::Registration),
+            registrations,
+        );
+    }
+    assert!(session.streams.lock().unwrap().is_empty());
+    session.close().await.unwrap();
 }
 
 #[tokio::test]
@@ -895,4 +989,29 @@ async fn stream_uses_own_entry_mediator_budget_across_multiple_pulls() {
         br#"{"kind":"value","value":42}"#
     );
     session.close().await.unwrap();
+}
+
+// Sibling cleanup tests borrow the actual verified Session fixture. Keep
+// private-field access inside this existing cfg(test) child module; these
+// helpers create no authority, replacement owner or production API.
+impl Session {
+    pub(crate) fn operation_intent_factory_for_test(&self) -> Arc<ExecutionFactory> {
+        self.execution_factory
+            .as_ref()
+            .expect("real fixture execution factory")
+            .clone()
+    }
+
+    pub(crate) fn operation_intent_ui_registration_for_test(
+        &self,
+    ) -> (UiSessionId, PackId, PackHash, BTreeSet<ShapeRef>) {
+        let sessions = self.ui.lock().expect("real fixture UI registry");
+        let (ui, principal) = sessions.iter().next().expect("real fixture UI principal");
+        (
+            ui.clone(),
+            principal.pack.clone(),
+            principal.hash.clone(),
+            principal.ports.clone(),
+        )
+    }
 }

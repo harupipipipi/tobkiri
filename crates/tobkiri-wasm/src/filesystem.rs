@@ -29,8 +29,9 @@ use std::{
 };
 use tobkiri_canon::{AllocationBudget, AllocationError, CoreBuffer, CoreValue, Digest};
 use tobkiri_gate::{
-    CallCx, ControlKind, ControlReservation, CoreControl, DispatchPermit, EffectRequest,
-    FsOperation, Gate, GateError, Grant,
+    CallCx, CleanupOnlyConsumption, ConsumptionAttempt, ControlKind, ControlReservation,
+    CoreControl, DispatchPermit, EffectRequest, FsOperation, Gate, GateError, Grant,
+    UnknownConsumption,
 };
 
 const MAX_ROOTS: usize = 64;
@@ -209,8 +210,8 @@ impl FsRegistry {
         })
     }
 
-    /// Trusted registration only: `directory` must come from Core's explicit
-    /// persisted root configuration ceremony, never from guest supplied paths.
+    /// Trusted registration only: `directory` comes from Core's native File
+    /// capability/configuration boundary, never from guest supplied paths.
     /// Root IDs are newly issued and never reconstructed from dev/inode alone.
     /// Adding/changing configured roots requires fresh policy/hash approval.
     pub fn register_root(&self, directory: File, rights: FsRights) -> Result<FsRootIdentity> {
@@ -239,6 +240,7 @@ impl FsRegistry {
             rights,
             _reservation: reservation,
         });
+        native::check_registered_root(&root, &state.protected)?;
         state.roots.push(root.clone());
         Ok(FsRootIdentity { root })
     }
@@ -400,6 +402,45 @@ impl PreparedFsOpen {
             _reservation: reservation,
         })
     }
+
+    /// Owned-phase variant of `consume` for the native-supervised guest path.
+    /// The original grant enters the Gate-owned attempt; every returned phase
+    /// keeps truthful consumption evidence and this prepared open's real
+    /// receipt, FD and control custody beside the typed Gate attempt.
+    pub fn consume_owned(self, grant: Grant, cx: &CallCx) -> FsOpenConsumption {
+        if Instant::now() >= self.token.expiry || !same_scope(&self.token.cx, cx) {
+            // This local denial precedes every consumption attempt. Preserve
+            // prepared-before-grant destruction and known unconsumed
+            // abandonment without retaining a large Grant in the result.
+            drop(self);
+            drop(grant);
+            return FsConsumption::NotConsumed(FsError::Denied(
+                "expired or foreign filesystem open token",
+            ));
+        }
+        match grant.consume_owned(cx, &self.request, &self.args) {
+            ConsumptionAttempt::BeforeConsumed(error) => {
+                FsConsumption::NotConsumed(FsError::Gate(error))
+            }
+            ConsumptionAttempt::Consumed(attempt) => {
+                let cx = attempt.context().clone();
+                match attempt.into_dispatch() {
+                    Ok(permit) => FsConsumption::Ready(FsDispatchedOpen {
+                        prepared: self,
+                        permit: FsDispatchedPermit { permit, cx },
+                    }),
+                    Err(attempt) => FsConsumption::Cleanup(FsOpenPhase {
+                        prepared: self,
+                        attempt,
+                    }),
+                }
+            }
+            ConsumptionAttempt::CommitUnknown(attempt) => FsConsumption::Unknown(FsOpenPhase {
+                prepared: self,
+                attempt,
+            }),
+        }
+    }
 }
 
 /// Retain this receipt until `open-grant` resource conversion and terminal
@@ -465,7 +506,9 @@ impl FsDirectory {
             call,
             request,
             args,
-            _reservation: Some(reservation),
+            #[cfg(test)]
+            forced_test_post_install_failure: None,
+            _reservation: Arc::new(reservation),
         })
     }
 }
@@ -618,8 +661,31 @@ pub struct PreparedFsCall {
     call: OwnedCall,
     request: EffectRequest,
     args: Digest,
-    _reservation: Option<ControlReservation>,
+    /// Inline closed armament for a forced test-only native post-install
+    /// failure. `None` is the only production value; it rides inside this
+    /// owned prepared call through the original consume_owned/into_work
+    /// moves. No global hook, callback, heap entry, extra task or new
+    /// authority is added.
+    #[cfg(test)]
+    forced_test_post_install_failure: Option<ForcedTestPostInstallFailure>,
+    _reservation: Arc<ControlReservation>,
 }
+/// The single closed variant of the forced test-only native post-install
+/// failure seam: once the real `renameat` has installed the overwrite
+/// target and `installed` is set, return exactly one fixed
+/// `FsError::Unavailable` before `Committed`. This is not a real kernel
+/// failure and proves nothing about syscalls or natural faults.
+#[cfg(test)]
+#[derive(Clone, Copy)]
+enum ForcedTestPostInstallFailure {
+    AfterOverwriteInstalled,
+}
+
+// Source-bound check keeping the inline arm flag tiny so the fixed Task
+// precharge in `prepare` continues to cover the original call metadata.
+#[cfg(test)]
+const _: () = assert!(std::mem::size_of::<Option<ForcedTestPostInstallFailure>>() <= 8);
+
 impl PreparedFsCall {
     pub fn request(&self) -> &EffectRequest {
         &self.request
@@ -627,8 +693,20 @@ impl PreparedFsCall {
     pub fn args_digest(&self) -> &Digest {
         &self.args
     }
+    /// Arm this original prepared call's forced test-only native
+    /// post-install failure BEFORE consumption. The consuming setter keeps
+    /// the flag inside the same owned prepared value moving through
+    /// consume_owned, narrowing, into_work and supervise_io into the one
+    /// original native body; it cannot be armed after consumption and
+    /// exists in no non-test build.
+    #[cfg(test)]
+    pub(crate) fn force_test_only_native_post_install_failure(mut self) -> Self {
+        self.forced_test_post_install_failure =
+            Some(ForcedTestPostInstallFailure::AfterOverwriteInstalled);
+        self
+    }
     pub async fn consume(
-        mut self,
+        self,
         grant: Grant,
         cx: &CallCx,
         gate: Arc<dyn Gate>,
@@ -650,7 +728,7 @@ impl PreparedFsCall {
                 "filesystem operation exceeds lease byte limit",
             ));
         }
-        let reservation = self._reservation.take().ok_or(FsError::Unavailable)?;
+        let reservation = self._reservation.clone();
         Ok(FsWork {
             prepared: self,
             permit,
@@ -659,6 +737,53 @@ impl PreparedFsCall {
             budget,
             _reservation: reservation,
         })
+    }
+
+    /// Owned-phase consumption for the native-supervised guest path. The
+    /// original grant enters the Gate-owned attempt; every returned phase
+    /// carries truthful consumption evidence and keeps this prepared
+    /// operation, its control charge and the output budget beside the typed
+    /// Gate attempt instead of stripping custody before the terminal.
+    pub fn consume_owned(
+        self,
+        grant: Grant,
+        cx: &CallCx,
+        budget: Arc<dyn AllocationBudget>,
+    ) -> FsIoConsumption {
+        if !same_scope(&self.directory.cx, cx) {
+            // No Store consume was called. Both original owners can drop
+            // here, outside registry/Gate guards, through pre-use abandonment.
+            drop(self);
+            drop(grant);
+            return FsConsumption::NotConsumed(FsError::Denied(
+                "filesystem directory has foreign or stale scope",
+            ));
+        }
+        match grant.consume_owned(cx, &self.request, &self.args) {
+            ConsumptionAttempt::BeforeConsumed(error) => {
+                FsConsumption::NotConsumed(FsError::Gate(error))
+            }
+            ConsumptionAttempt::Consumed(attempt) => {
+                let cx = attempt.context().clone();
+                match attempt.into_dispatch() {
+                    Ok(permit) => FsConsumption::Ready(FsDispatchedCall {
+                        prepared: self,
+                        permit: FsDispatchedPermit { permit, cx },
+                        budget,
+                    }),
+                    Err(attempt) => FsConsumption::Cleanup(FsCallPhase {
+                        prepared: self,
+                        budget,
+                        attempt,
+                    }),
+                }
+            }
+            ConsumptionAttempt::CommitUnknown(attempt) => FsConsumption::Unknown(FsCallPhase {
+                prepared: self,
+                budget,
+                attempt,
+            }),
+        }
     }
 }
 async fn consume(
@@ -681,6 +806,189 @@ async fn consume(
     Ok((permit, cx))
 }
 
+/// Owned consumption phases for a supervised filesystem operation. Local
+/// pre-store proofs and `BeforeConsumed` keep the original grant on the
+/// known unconsumed-abandonment path; every other phase keeps the original
+/// prepared operation and the typed Gate attempt side by side.
+pub enum FsConsumption<R, C, U> {
+    /// Local pre-store checks or the Gate positively proved this attempt never
+    /// consumed the grant. The original grant already dropped through known
+    /// unconsumed abandonment, leaving only the business error.
+    NotConsumed(FsError),
+    /// Genuinely consumed and dispatched: the original authority narrowing
+    /// still runs on the owned state before any execution.
+    Ready(R),
+    /// Consumed but not dispatchable. `settle_failure` on the original gate
+    /// is the only terminal path; execution is forbidden.
+    Cleanup(C),
+    /// Consumption unresolved. Retain until `reconcile` proves the same
+    /// identity ack or Drop transfers process ownership; execution and
+    /// settling are both forbidden.
+    Unknown(U),
+}
+
+/// Consume-phase custody for the call path: the original prepared call and
+/// output budget stay owned beside the typed Gate attempt through
+/// settle/reconcile or owner drop. Declared field order is the drop order.
+pub struct FsCallPhase<T> {
+    /// Original prepared call retained through the phase.
+    pub prepared: PreparedFsCall,
+    /// Original output budget retained through the phase.
+    pub budget: Arc<dyn AllocationBudget>,
+    /// Typed Gate attempt retained last; its durable phase is the
+    /// process-level custody that outlives the prepared entries.
+    pub attempt: T,
+}
+
+/// Consume-phase custody for the open path: the original prepared open
+/// (token receipt, root FD and context) stays owned beside the typed Gate
+/// attempt through settle/reconcile or owner drop. Declared field order is
+/// the drop order.
+pub struct FsOpenPhase<T> {
+    /// Original prepared open retained through the phase.
+    pub prepared: PreparedFsOpen,
+    /// Typed Gate attempt retained last; its durable phase is the
+    /// process-level custody that outlives the prepared entries.
+    pub attempt: T,
+}
+
+/// Owned consumed evidence returned by `into_dispatch`: the genuine permit
+/// and the returned original context. The original authority narrowing and
+/// lease watching from `consume` run here verbatim while the whole owned
+/// state is retained through every fallible await and check; the context is
+/// replaced only by the actual narrowed one on success.
+struct FsDispatchedPermit {
+    permit: DispatchPermit,
+    cx: CallCx,
+}
+impl FsDispatchedPermit {
+    fn context(&self) -> &CallCx {
+        &self.cx
+    }
+    async fn narrow(&mut self, gate: &dyn Gate) -> Result<()> {
+        let narrowed = self.cx.clone().narrow_limits(self.permit.limits());
+        gate.narrow_lease(&mut self.permit, &narrowed).await?;
+        gate.watch_lease(&narrowed, &self.permit)?;
+        gate.check_context(&narrowed)?;
+        narrowed.check_active()?;
+        if Instant::now() >= self.permit.deadline() {
+            return Err(FsError::Gate(GateError::Deadline));
+        }
+        self.cx = narrowed;
+        Ok(())
+    }
+}
+
+/// A genuinely consumed and dispatched call. The whole owned state stays
+/// retained through every fallible narrowing await and check, and through
+/// the caller's same-ID terminal handling when a check denies.
+pub struct FsDispatchedCall {
+    prepared: PreparedFsCall,
+    permit: FsDispatchedPermit,
+    budget: Arc<dyn AllocationBudget>,
+}
+impl FsDispatchedCall {
+    pub fn context(&self) -> &CallCx {
+        self.permit.context()
+    }
+    /// The original authority narrowing and lease watching, verbatim from
+    /// `consume`, retained wholly on every failure.
+    pub async fn narrow(&mut self, gate: &dyn Gate) -> Result<()> {
+        self.permit.narrow(gate).await
+    }
+    /// The narrowed lease byte limit applies only after the actual narrowed
+    /// context exists; a failure keeps this whole owned state for the
+    /// caller's terminal.
+    pub fn check_lease(&self) -> Result<()> {
+        let count = match &self.prepared.call {
+            OwnedCall::Read { len, .. } => u64::from(*len),
+            OwnedCall::Write { data, .. } => data.len() as u64,
+            _ => 0,
+        };
+        if count > self.permit.context().limits().output_bytes {
+            return Err(FsError::Denied(
+                "filesystem operation exceeds lease byte limit",
+            ));
+        }
+        Ok(())
+    }
+    /// Assemble the executable work; the prepared operation's own control
+    /// charge stays shared inside the returned work custody.
+    pub fn into_work(self, gate: Arc<dyn Gate>) -> FsWork {
+        let Self {
+            prepared,
+            permit,
+            budget,
+        } = self;
+        let FsDispatchedPermit { permit, cx } = permit;
+        let reservation = prepared._reservation.clone();
+        FsWork {
+            prepared,
+            permit,
+            cx,
+            gate,
+            budget,
+            _reservation: reservation,
+        }
+    }
+}
+
+/// A genuinely consumed and dispatched open. The whole owned state stays
+/// retained through the same narrowing sequence before the real Open
+/// completion is assembled with the actual narrowed context.
+pub struct FsDispatchedOpen {
+    prepared: PreparedFsOpen,
+    permit: FsDispatchedPermit,
+}
+impl FsDispatchedOpen {
+    pub fn context(&self) -> &CallCx {
+        self.permit.context()
+    }
+    /// The original authority narrowing and lease watching, verbatim from
+    /// `consume`, retained wholly on every failure.
+    pub async fn narrow(&mut self, gate: &dyn Gate) -> Result<()> {
+        self.permit.narrow(gate).await
+    }
+    /// Assemble the real Open completion with the actual narrowed context:
+    /// the directory, permit and receipt contexts all become narrowed ones.
+    pub fn into_completion(self) -> FsOpenCompletion {
+        let Self { prepared, permit } = self;
+        let FsDispatchedPermit { permit, cx } = permit;
+        let PreparedFsOpen {
+            registry,
+            token,
+            _reservation,
+            ..
+        } = prepared;
+        let reservation = Arc::new(_reservation);
+        let directory = FsDirectory {
+            registry,
+            root: token.root,
+            rights: token.rights,
+            cx: cx.clone(),
+            _reservation: reservation.clone(),
+        };
+        FsOpenCompletion {
+            directory,
+            permit,
+            cx,
+            _token_reservation: token._reservation,
+            _reservation: reservation,
+        }
+    }
+}
+
+pub type FsIoConsumption = FsConsumption<
+    FsDispatchedCall,
+    FsCallPhase<CleanupOnlyConsumption>,
+    FsCallPhase<UnknownConsumption>,
+>;
+pub type FsOpenConsumption = FsConsumption<
+    FsDispatchedOpen,
+    FsOpenPhase<CleanupOnlyConsumption>,
+    FsOpenPhase<UnknownConsumption>,
+>;
+
 /// Move-only custody of one genuinely consumed operation. The supervisor owns
 /// this until the blocking OS operation has actually stopped, even if delivery
 /// was cancelled. No API permits extracting input or dispatching it twice.
@@ -692,7 +1000,7 @@ pub struct FsWork {
     budget: Arc<dyn AllocationBudget>,
     // Last: all actual inputs, permit/cx metadata, FDs and outputs in the
     // enclosing completion are destroyed before native control is released.
-    _reservation: ControlReservation,
+    _reservation: Arc<ControlReservation>,
 }
 impl FsWork {
     pub fn permit(&self) -> &DispatchPermit {
@@ -719,14 +1027,29 @@ impl FsWork {
                 root: &self.prepared.directory.root,
                 protected: &state.protected,
             };
-            native::execute(
+            // The closed flag is read from the SAME original prepared call
+            // moved into this work; the forced test-only native
+            // post-install failure entry shares the one native body below.
+            #[cfg(test)]
+            let output = native::execute_for_test(
                 &access,
                 &self.prepared.call,
                 &self.budget,
                 self.cx.limits().output_bytes,
                 &|| self.check_active(),
                 &mut disposition,
-            )
+                self.prepared.forced_test_post_install_failure,
+            );
+            #[cfg(not(test))]
+            let output = native::execute(
+                &access,
+                &self.prepared.call,
+                &self.budget,
+                self.cx.limits().output_bytes,
+                &|| self.check_active(),
+                &mut disposition,
+            );
+            output
         })();
         let result = match result {
             Err(_) if disposition != FsDisposition::Clean => Err(FsError::CommitUnknown),
@@ -928,6 +1251,9 @@ struct NativeAccess<'a> {
 #[cfg(not(unix))]
 mod native {
     use super::*;
+    pub(super) fn check_registered_root(_: &RegisteredRoot, _: &[ProtectedRoot]) -> Result<()> {
+        Err(FsError::Unavailable)
+    }
     pub(super) fn directory_id(_: &File) -> Result<ObjectId> {
         Err(FsError::Unavailable)
     }
@@ -938,6 +1264,21 @@ mod native {
         _: u64,
         _: &dyn Fn() -> Result<()>,
         _: &mut FsDisposition,
+    ) -> Result<FsOutput> {
+        Err(FsError::Unavailable)
+    }
+    /// Forced test-only native post-install failure entry. The non-Unix
+    /// stub never performs I/O, so the closed flag is accepted and ignored
+    /// while the supervised caller compiles identically under cfg(test).
+    #[cfg(test)]
+    pub(super) fn execute_for_test(
+        _: &NativeAccess<'_>,
+        _: &OwnedCall,
+        _: &Arc<dyn AllocationBudget>,
+        _: u64,
+        _: &dyn Fn() -> Result<()>,
+        _: &mut FsDisposition,
+        _: Option<ForcedTestPostInstallFailure>,
     ) -> Result<FsOutput> {
         Err(FsError::Unavailable)
     }
@@ -989,6 +1330,17 @@ mod native {
     fn open_dir(parent: &File, value: &str) -> Result<File> {
         open_at(parent, value, libc::O_RDONLY | libc::O_DIRECTORY, 0)
     }
+    fn checked_stat_identity(status: &libc::stat) -> Result<ObjectId> {
+        fn field<T: TryInto<u64>>(value: T) -> Result<u64> {
+            value
+                .try_into()
+                .map_err(|_| FsError::Denied("filesystem identity outside supported range"))
+        }
+        Ok(ObjectId {
+            device: field(status.st_dev)?,
+            inode: field(status.st_ino)?,
+        })
+    }
     /// Inspect without opening a device/FIFO/socket. The descriptor opened
     /// afterwards is checked again; post-validation external editor races are
     /// outside the malicious-guest boundary documented above.
@@ -1025,7 +1377,7 @@ mod native {
             0,
         )?;
         let metadata = file.metadata()?;
-        if metadata.dev() != status.st_dev as u64 || metadata.ino() != status.st_ino as u64 {
+        if id(&metadata) != checked_stat_identity(&status)? {
             return Err(FsError::Denied(
                 "filesystem endpoint changed during validation",
             ));
@@ -1078,6 +1430,12 @@ mod native {
             }
         }
         Ok(())
+    }
+    pub(super) fn check_registered_root(
+        root: &RegisteredRoot,
+        protected: &[ProtectedRoot],
+    ) -> Result<()> {
+        check_directory(&NativeAccess { root, protected }, &root.file, false)
     }
     fn check_object(
         access: &NativeAccess<'_>,
@@ -1149,6 +1507,54 @@ mod native {
         active: &dyn Fn() -> Result<()>,
         disposition: &mut FsDisposition,
     ) -> Result<FsOutput> {
+        #[cfg(test)]
+        return execute_inner(
+            access,
+            call,
+            budget,
+            output_limit,
+            active,
+            disposition,
+            None,
+        );
+        #[cfg(not(test))]
+        execute_inner(access, call, budget, output_limit, active, disposition)
+    }
+
+    /// Forced test-only native post-install failure entry point: the SAME
+    /// original native body, additionally handed the closed inline flag
+    /// carried inside the consumed prepared call. Not an alternate
+    /// supervisor, backend or syscall implementation.
+    #[cfg(test)]
+    pub(super) fn execute_for_test(
+        access: &NativeAccess<'_>,
+        call: &OwnedCall,
+        budget: &Arc<dyn AllocationBudget>,
+        output_limit: u64,
+        active: &dyn Fn() -> Result<()>,
+        disposition: &mut FsDisposition,
+        forced_test_post_install_failure: Option<ForcedTestPostInstallFailure>,
+    ) -> Result<FsOutput> {
+        execute_inner(
+            access,
+            call,
+            budget,
+            output_limit,
+            active,
+            disposition,
+            forced_test_post_install_failure,
+        )
+    }
+
+    fn execute_inner(
+        access: &NativeAccess<'_>,
+        call: &OwnedCall,
+        budget: &Arc<dyn AllocationBudget>,
+        output_limit: u64,
+        active: &dyn Fn() -> Result<()>,
+        disposition: &mut FsDisposition,
+        #[cfg(test)] forced_test_post_install_failure: Option<ForcedTestPostInstallFailure>,
+    ) -> Result<FsOutput> {
         active()?;
         match call {
             OwnedCall::Open => Err(FsError::Invalid("Open is not a native I/O operation")),
@@ -1188,7 +1594,15 @@ mod native {
                 if *append {
                     append_file(access, path, data.as_bytes(), active, disposition)?;
                 } else {
-                    atomic_write(access, path, data.as_bytes(), active, disposition)?;
+                    atomic_write(
+                        access,
+                        path,
+                        data.as_bytes(),
+                        active,
+                        disposition,
+                        #[cfg(test)]
+                        forced_test_post_install_failure,
+                    )?;
                 }
                 Ok(FsOutput::Unit)
             }
@@ -1275,9 +1689,63 @@ mod native {
         active: &dyn Fn() -> Result<()>,
     ) -> Result<FsOutput> {
         let directory = directory(access, path)?;
+        // Reject an oversized result BEFORE constructing up to MAX_LIST
+        // separately funded guest graphs. Both scans remain inside the same
+        // FsWork namespace/registry guards and original execution deadline.
+        // No candidate names/metadata are retained between these passes.
+        scan_list(access, &directory, output_limit, active, |_, _| Ok(()))?;
+        let mut values = CoreValue::array_builder(budget, MAX_LIST)?;
+        scan_list(
+            access,
+            &directory,
+            output_limit,
+            active,
+            |value, metadata| {
+                let mut digits = [0u8; 20];
+                let mut number = metadata.len();
+                let mut start = digits.len();
+                loop {
+                    start -= 1;
+                    digits[start] = b'0' + (number % 10) as u8;
+                    number /= 10;
+                    if number == 0 {
+                        break;
+                    }
+                }
+                let size =
+                    std::str::from_utf8(&digits[start..]).map_err(|_| FsError::Unavailable)?;
+                values.push(CoreValue::object_shared(
+                    [
+                        Ok(("name", CoreValue::string(value, budget)?)),
+                        Ok(("is-dir", CoreValue::bool(metadata.is_dir(), budget)?)),
+                        Ok(("size", CoreValue::string(size, budget)?)),
+                    ]
+                    .into_iter(),
+                    budget,
+                )?)?;
+                Ok(())
+            },
+        )?;
+        active()?;
+        Ok(FsOutput::Entries(values.finish()?))
+    }
+
+    /// Scan exactly the entries the public list would expose. Preflight and
+    /// output use the SAME checks: an external directory change between scans
+    /// cannot bypass the second pass's bounds or descriptor protection.
+    fn scan_list(
+        access: &NativeAccess<'_>,
+        directory: &File,
+        output_limit: u64,
+        active: &dyn Fn() -> Result<()>,
+        mut publish: impl FnMut(&str, &std::fs::Metadata) -> Result<()>,
+    ) -> Result<()> {
+        active()?;
+        check_directory(access, directory, false)?;
         // A fresh open description, not dup(): repeated list calls must not
-        // share an advanced readdir offset with the pinned root descriptor.
-        let scan = open_dir(&directory, ".")?;
+        // share a cursor. Reopen ONLY from this original pinned directory FD,
+        // including the output pass; never resolve the guest path again.
+        let scan = open_dir(directory, ".")?;
         let fd = scan.into_raw_fd();
         let pointer = unsafe { libc::fdopendir(fd) };
         if pointer.is_null() {
@@ -1295,7 +1763,7 @@ mod native {
             }
         }
         let stream = Stream(pointer);
-        let mut values = CoreValue::array_builder(budget, MAX_LIST)?;
+        let mut count = 0usize;
         let mut bytes = 0usize;
         loop {
             active()?;
@@ -1310,7 +1778,10 @@ mod native {
                 }
                 break;
             }
-            let value = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) }
+            // The borrowed name is consumed synchronously before readdir can
+            // replace its storage. No uncharged candidate Vec/String exists.
+            let entry_name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
+            let value = entry_name
                 .to_str()
                 .map_err(|_| FsError::Invalid("non-UTF8 filesystem entry"))?;
             if value == "." || value == ".." || value.starts_with(PRIVATE_PREFIX) {
@@ -1319,7 +1790,7 @@ mod native {
             validate_path(value, false)?;
             // Protected children are omitted; accessing their names through a
             // guessed path is independently denied using the actual object.
-            let child = open_child(&directory, &name(value)?)?
+            let child = open_child(directory, entry_name)?
                 .ok_or_else(|| FsError::Io(io::Error::from(io::ErrorKind::NotFound)))?;
             let metadata = match check_object(access, &child, false) {
                 Err(FsError::Denied("filesystem operation intersects a live Core subtree")) => {
@@ -1327,36 +1798,24 @@ mod native {
                 }
                 result => result?,
             };
-            bytes = bytes
-                .checked_add(value.len() + 32)
+            let entry_bytes = value
+                .len()
+                .checked_add(32)
                 .ok_or(FsError::Invalid("filesystem list overflow"))?;
-            if bytes > MAX_LIST_BYTES || bytes as u64 > output_limit || values.len() == MAX_LIST {
+            bytes = bytes
+                .checked_add(entry_bytes)
+                .ok_or(FsError::Invalid("filesystem list overflow"))?;
+            count = count
+                .checked_add(1)
+                .ok_or(FsError::Invalid("filesystem list overflow"))?;
+            if bytes > MAX_LIST_BYTES || bytes as u64 > output_limit || count > MAX_LIST {
                 return Err(FsError::Denied("filesystem list exceeds bound"));
             }
-            let mut digits = [0u8; 20];
-            let mut number = metadata.len();
-            let mut start = digits.len();
-            loop {
-                start -= 1;
-                digits[start] = b'0' + (number % 10) as u8;
-                number /= 10;
-                if number == 0 {
-                    break;
-                }
-            }
-            let size = std::str::from_utf8(&digits[start..]).map_err(|_| FsError::Unavailable)?;
-            values.push(CoreValue::object_shared(
-                [
-                    Ok(("name", CoreValue::string(value, budget)?)),
-                    Ok(("is-dir", CoreValue::bool(metadata.is_dir(), budget)?)),
-                    Ok(("size", CoreValue::string(size, budget)?)),
-                ]
-                .into_iter(),
-                budget,
-            )?)?;
+            active()?;
+            publish(value, &metadata)?;
         }
         active()?;
-        Ok(FsOutput::Entries(values.finish()?))
+        Ok(())
     }
     #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
     fn set_errno(value: i32) {
@@ -1486,6 +1945,7 @@ mod native {
         bytes: &[u8],
         active: &dyn Fn() -> Result<()>,
         disposition: &mut FsDisposition,
+        #[cfg(test)] forced_test_post_install_failure: Option<ForcedTestPostInstallFailure>,
     ) -> Result<()> {
         let (parent, leaf) = parent(access, path)?;
         let prior = optional_child(access, &parent, &leaf, true)?;
@@ -1536,6 +1996,18 @@ mod native {
                 return Err(FsError::CommitUnknown);
             }
             temp.installed = true;
+            // Forced test-only native post-install failure checkpoint: the
+            // real renameat already installed the overwrite target and
+            // `installed` forbids any cleanup unlink or replay. The armed
+            // closed flag returns exactly one fixed Unavailable while the
+            // disposition keeps the actual PartialUnknown set before the
+            // rename; this is not a real kernel failure.
+            #[cfg(test)]
+            if let Some(ForcedTestPostInstallFailure::AfterOverwriteInstalled) =
+                forced_test_post_install_failure
+            {
+                return Err(FsError::Unavailable);
+            }
             *disposition = FsDisposition::Committed;
             Ok(())
         })();

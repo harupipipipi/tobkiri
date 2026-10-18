@@ -367,15 +367,6 @@ async fn pack(command: PackCommand) -> Result<()> {
     Ok(())
 }
 
-fn select<T>(explicit: Option<T>, mut values: Vec<T>, name: &str) -> Result<T> {
-    if let Some(value) = explicit {
-        return Ok(value);
-    }
-    if values.len() != 1 {
-        bail!("select {name} explicitly because the Profile does not have exactly one");
-    }
-    Ok(values.remove(0))
-}
 fn bounded_read(path: &Path, max: usize) -> Result<Vec<u8>> {
     if std::fs::metadata(path)?.len() > max as u64 {
         bail!("file exceeds the allowed input size: {}", path.display());

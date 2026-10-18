@@ -6,9 +6,10 @@ use tobkiri_canon::{
     ids::{PackHash, PackId, ProfileId},
 };
 use tobkiri_gate::{
-    AdmissionStatus, ApprovalStore, AuditEvent, CleanupAuthoritySnapshot, GateError, GrantId,
-    IntegrityFaultCode, Outcome, PermissionEffect, PermissionSet, PublicWriteApproval, Reservation,
-    ReservationRequest, TerminalDecision, TerminalDelivery, TerminalDisposition,
+    AdmissionStatus, ApprovalStore, AuditEvent, CleanupAuthoritySnapshot, CleanupSnapshotAttempt,
+    GateError, GrantId, IntegrityFaultCode, Outcome, PermissionEffect, PermissionSet,
+    PublicWriteApproval, Reservation, ReservationRequest, TerminalDecision, TerminalDelivery,
+    TerminalDisposition,
 };
 
 const MAX_TERMINAL_BYTES: i64 = 100 * 1024 * 1024;
@@ -239,16 +240,15 @@ impl Approvals {
         outcome: Outcome,
         disposition: TerminalDisposition,
     ) -> Result<TerminalDecision, GateError> {
-        if let Outcome::Failed { code } = &outcome {
-            if code.len() > 128
+        if let Outcome::Failed { code } = &outcome
+            && (code.len() > 128
                 || !code
                     .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
-            {
-                return Err(GateError::Invalid(
-                    "terminal outcome requires a bounded machine code".into(),
-                ));
-            }
+                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b)))
+        {
+            return Err(GateError::Invalid(
+                "terminal outcome requires a bounded machine code".into(),
+            ));
         }
         let decision = TerminalDecision::new(reservation, outcome, disposition)?;
         let body = canonical(&decision).map_err(persistence)?;
@@ -464,6 +464,175 @@ impl Drop for CleanupBusyTimeout<'_> {
         if !self.restored {
             let _ = self.connection.busy_timeout(self.previous);
         }
+    }
+}
+/// Private typed attempt classification for the concrete Store. `Busy` is
+/// only authenticated pre-callback contention — this connection's mutex
+/// held, or BEGIN IMMEDIATE reporting SQLITE_BUSY/SQLITE_LOCKED — and it
+/// carries the original legacy error so the untyped API remains
+/// observationally identical.
+enum CleanupAttempt {
+    Selected,
+    Busy(GateError),
+    Uncertain(GateError),
+}
+impl CleanupAttempt {
+    fn complete(result: Result<(), GateError>) -> Self {
+        match result {
+            Ok(()) => Self::Selected,
+            Err(error) => Self::Uncertain(error),
+        }
+    }
+}
+fn cleanup_snapshot_attempt(
+    approvals: &Approvals,
+    expected: &Reservation,
+    inspect: &mut dyn FnMut(CleanupAuthoritySnapshot<'_>) -> Result<(), GateError>,
+) -> CleanupAttempt {
+    let valid = approvals
+        .local(&expected.profile)
+        .and_then(|()| validate_reservation_identity(expected))
+        .and_then(|()| {
+            if expected.original_expires_unix_ms.is_none() {
+                Err(GateError::Denied(
+                    "cleanup requires consumed lease evidence".into(),
+                ))
+            } else {
+                Ok(())
+            }
+        });
+    if let Err(error) = valid {
+        return CleanupAttempt::Uncertain(error);
+    }
+    // Callers may hold native lifecycle guards. Never wait for this
+    // connection, or for a different SQLite writer, while selecting cause.
+    let conn = match approvals.connection.try_lock() {
+        Ok(conn) => conn,
+        // Authenticated pre-callback contention: the connection mutex itself
+        // is held, so no transaction began and inspect provably never ran.
+        Err(std::sync::TryLockError::WouldBlock) => {
+            return CleanupAttempt::Busy(GateError::Unavailable);
+        }
+        Err(std::sync::TryLockError::Poisoned(_)) => {
+            return CleanupAttempt::Uncertain(persistence("approval lock poisoned"));
+        }
+    };
+    let previous_ms = match conn
+        .pragma_query_value(None, "busy_timeout", |row| crate::sql_u64(row, 0))
+        .map_err(persistence)
+    {
+        Ok(previous_ms) => previous_ms,
+        Err(error) => return CleanupAttempt::Uncertain(error),
+    };
+    if let Err(error) = conn
+        .busy_timeout(std::time::Duration::ZERO)
+        .map_err(persistence)
+    {
+        return CleanupAttempt::Uncertain(error);
+    }
+    let busy_timeout = CleanupBusyTimeout {
+        connection: &conn,
+        previous: std::time::Duration::from_millis(previous_ms),
+        restored: false,
+    };
+    let result = (|| {
+        // The enclosing mutex excludes nested use of this connection.
+        // IMMEDIATE also excludes writers through other connections while
+        // the synchronous native callback selects its one-time record.
+        let tx = match rusqlite::Transaction::new_unchecked(
+            &conn,
+            rusqlite::TransactionBehavior::Immediate,
+        ) {
+            Ok(tx) => tx,
+            Err(error) => {
+                // Authenticated pre-callback contention only when the BEGIN
+                // itself lost to another writer; inspect provably never ran.
+                let busy = matches!(
+                    &error,
+                    rusqlite::Error::SqliteFailure(inner, _)
+                        if matches!(
+                            inner.code,
+                            rusqlite::ErrorCode::DatabaseBusy
+                                | rusqlite::ErrorCode::DatabaseLocked
+                        )
+                );
+                return if busy {
+                    CleanupAttempt::Busy(persistence(error))
+                } else {
+                    CleanupAttempt::Uncertain(persistence(error))
+                };
+            }
+        };
+        CleanupAttempt::complete((|| {
+            deny_faulted(&tx)?;
+            let current_epoch = tx
+                .query_row(
+                    "SELECT epoch FROM security_epoch WHERE singleton=1",
+                    [],
+                    |row| crate::sql_u64(row, 0),
+                )
+                .map_err(persistence)?;
+            let terminal = Approvals::terminal(&tx, &approvals.profile, &expected.id)?;
+            let consumed = if terminal.is_none() {
+                let (body, expires): (Vec<u8>, u64) = tx
+                    .query_row(
+                        "SELECT CASE WHEN length(body)<=4096 THEN body ELSE x'' END,expires FROM reservations WHERE id=?1 AND state='consumed'",
+                        [expected.id.as_str()],
+                        |row| Ok((row.get(0)?, crate::sql_u64(row, 1)?)),
+                    )
+                    .optional()
+                    .map_err(persistence)?
+                    .ok_or(GateError::Consumed)?;
+                let current =
+                    validated_reservation(&approvals.profile, expected.id.as_str(), &body)?;
+                if current.expires_unix_ms != expires {
+                    return Err(GateError::Integrity(IntegrityFaultCode::ReservationRecord));
+                }
+                Some(current)
+            } else {
+                None
+            };
+            let current = match &terminal {
+                Some(terminal) => {
+                    if matches!(
+                        terminal.decision.disposition,
+                        TerminalDisposition::AbandonedBeforeUse
+                            | TerminalDisposition::ExpiredBeforeUse
+                    ) {
+                        return Err(GateError::Consumed);
+                    }
+                    &terminal.decision.reservation
+                }
+                None => consumed.as_ref().ok_or(GateError::Consumed)?,
+            };
+            cleanup_binding(current, expected)?;
+            // No ordinary admission check: changed epochs and due deadlines
+            // are the facts being observed, not grounds for hiding the lease.
+            let inspected = inspect(CleanupAuthoritySnapshot {
+                current_epoch,
+                reservation: current,
+                now_unix_ms: now_ms().map_err(persistence)?,
+                terminal: terminal.as_ref(),
+            });
+            // There were no SQL writes. Explicit teardown still reports loss
+            // of certainty, without rolling back an already-selected native
+            // cause or rerunning the callback.
+            let teardown = tx.rollback().map_err(persistence);
+            inspected.and(teardown)
+        })())
+    })();
+    match busy_timeout.restore() {
+        // Restoration failure is uncertain even when an earlier BEGIN was
+        // busy: this connection's busy policy can no longer be verified.
+        Err(error) => match result {
+            // Preserve the legacy result.and(restored) error precedence while
+            // still removing retryability when restoration is unverifiable.
+            CleanupAttempt::Selected => CleanupAttempt::Uncertain(error),
+            CleanupAttempt::Busy(original) | CleanupAttempt::Uncertain(original) => {
+                CleanupAttempt::Uncertain(original)
+            }
+        },
+        Ok(()) => result,
     }
 }
 fn now_ms() -> Result<u64, StoreError> {
@@ -834,96 +1003,29 @@ impl ApprovalStore for Approvals {
         expected: &Reservation,
         inspect: &mut dyn FnMut(CleanupAuthoritySnapshot<'_>) -> Result<(), GateError>,
     ) -> Result<(), GateError> {
-        self.local(&expected.profile)?;
-        validate_reservation_identity(expected)?;
-        if expected.original_expires_unix_ms.is_none() {
-            return Err(GateError::Denied(
-                "cleanup requires consumed lease evidence".into(),
-            ));
+        match cleanup_snapshot_attempt(self, expected, inspect) {
+            // The original legacy error is preserved unchanged: connection
+            // contention stays `Unavailable` and BEGIN contention stays
+            // `Persistence`; nothing rewrites failure classes.
+            CleanupAttempt::Selected => Ok(()),
+            CleanupAttempt::Busy(error) | CleanupAttempt::Uncertain(error) => Err(error),
         }
-        // Callers may hold native lifecycle guards. Never wait for this
-        // connection, or for a different SQLite writer, while selecting cause.
-        let conn = self.connection.try_lock().map_err(|error| match error {
-            std::sync::TryLockError::WouldBlock => GateError::Unavailable,
-            std::sync::TryLockError::Poisoned(_) => persistence("approval lock poisoned"),
-        })?;
-        let previous_ms = conn
-            .pragma_query_value(None, "busy_timeout", |row| crate::sql_u64(row, 0))
-            .map_err(persistence)?;
-        conn.busy_timeout(std::time::Duration::ZERO)
-            .map_err(persistence)?;
-        let busy_timeout = CleanupBusyTimeout {
-            connection: &conn,
-            previous: std::time::Duration::from_millis(previous_ms),
-            restored: false,
-        };
-        let result = (|| {
-            // The enclosing mutex excludes nested use of this connection.
-            // IMMEDIATE also excludes writers through other connections while
-            // the synchronous native callback selects its one-time record.
-            let tx = rusqlite::Transaction::new_unchecked(
-                &conn,
-                rusqlite::TransactionBehavior::Immediate,
-            )
-            .map_err(persistence)?;
-            deny_faulted(&tx)?;
-            let current_epoch = tx
-                .query_row(
-                    "SELECT epoch FROM security_epoch WHERE singleton=1",
-                    [],
-                    |row| crate::sql_u64(row, 0),
-                )
-                .map_err(persistence)?;
-            let terminal = Self::terminal(&tx, &self.profile, &expected.id)?;
-            let consumed = if terminal.is_none() {
-                let (body, expires): (Vec<u8>, u64) = tx
-                    .query_row(
-                        "SELECT CASE WHEN length(body)<=4096 THEN body ELSE x'' END,expires FROM reservations WHERE id=?1 AND state='consumed'",
-                        [expected.id.as_str()],
-                        |row| Ok((row.get(0)?, crate::sql_u64(row, 1)?)),
-                    )
-                    .optional()
-                    .map_err(persistence)?
-                    .ok_or(GateError::Consumed)?;
-                let current = validated_reservation(&self.profile, expected.id.as_str(), &body)?;
-                if current.expires_unix_ms != expires {
-                    return Err(GateError::Integrity(IntegrityFaultCode::ReservationRecord));
-                }
-                Some(current)
-            } else {
-                None
-            };
-            let current = match &terminal {
-                Some(terminal) => {
-                    if matches!(
-                        terminal.decision.disposition,
-                        TerminalDisposition::AbandonedBeforeUse
-                            | TerminalDisposition::ExpiredBeforeUse
-                    ) {
-                        return Err(GateError::Consumed);
-                    }
-                    &terminal.decision.reservation
-                }
-                None => consumed.as_ref().ok_or(GateError::Consumed)?,
-            };
-            cleanup_binding(current, expected)?;
-            // No ordinary admission check: changed epochs and due deadlines
-            // are the facts being observed, not grounds for hiding the lease.
-            let inspected = inspect(CleanupAuthoritySnapshot {
-                current_epoch,
-                reservation: current,
-                now_unix_ms: now_ms().map_err(persistence)?,
-                terminal: terminal.as_ref(),
-            });
-            // There were no SQL writes. Explicit teardown still reports loss
-            // of certainty, without rolling back an already-selected native
-            // cause or rerunning the callback.
-            let teardown = tx.rollback().map_err(persistence);
-            inspected.and(teardown)
-        })();
-        let restored = busy_timeout.restore();
-        // This path performs no durable writes, including integrity latching.
-        result.and(restored)
+    }
+    /// Typed attempt variant used by the native cleanup owner. `Busy` is
+    /// reported only for authenticated pre-callback contention: this
+    /// connection's `try_lock` `WouldBlock`, or BEGIN IMMEDIATE returning
+    /// `DatabaseBusy`/`DatabaseLocked`, both with `inspect` provably never
+    /// invoked and the busy policy verified restored.
+    fn try_cleanup_snapshot(
+        &self,
+        expected: &Reservation,
+        inspect: &mut dyn FnMut(CleanupAuthoritySnapshot<'_>) -> Result<(), GateError>,
+    ) -> CleanupSnapshotAttempt {
+        match cleanup_snapshot_attempt(self, expected, inspect) {
+            CleanupAttempt::Selected => CleanupSnapshotAttempt::Selected,
+            CleanupAttempt::Busy(_) => CleanupSnapshotAttempt::RetryableBusyBeforeCallback,
+            CleanupAttempt::Uncertain(error) => CleanupSnapshotAttempt::Uncertain(error),
+        }
     }
     fn settle_deadline(&self, r: &Reservation) -> Result<TerminalDelivery, GateError> {
         self.local(&r.profile)?;
@@ -1598,6 +1700,125 @@ mod cleanup_snapshot_tests {
             .pragma_query_value(None, "busy_timeout", |row| crate::sql_u64(row, 0))
             .unwrap();
         assert_eq!(busy_after, busy_before);
+        connection
+            .authorizer(None::<fn(AuthContext<'_>) -> Authorization>)
+            .unwrap();
+        connection.execute_batch("ROLLBACK").unwrap();
+    }
+
+    #[test]
+    fn cleanup_snapshot_typed_attempt_reports_busy_only_before_callback() {
+        let (_temp, approvals, reservation) = consumed();
+        // Deterministic connection-mutex contention is authenticated busy:
+        // the callback provably never ran and the slot stays retryable.
+        let connection = approvals.connection.lock().unwrap();
+        let mut calls = 0;
+        assert!(matches!(
+            approvals.try_cleanup_snapshot(&reservation, &mut |_| {
+                calls += 1;
+                Ok(())
+            }),
+            CleanupSnapshotAttempt::RetryableBusyBeforeCallback
+        ));
+        assert_eq!(calls, 0);
+        // The same contention through the legacy API keeps its original
+        // Unavailable error and still does not inspect.
+        assert!(matches!(
+            approvals.with_cleanup_snapshot(&reservation, &mut |_| {
+                calls += 1;
+                Ok(())
+            }),
+            Err(GateError::Unavailable)
+        ));
+        assert_eq!(calls, 0);
+        drop(connection);
+        assert!(matches!(
+            approvals.try_cleanup_snapshot(&reservation, &mut |_| {
+                calls += 1;
+                Ok(())
+            }),
+            CleanupSnapshotAttempt::Selected
+        ));
+        assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn cleanup_snapshot_typed_attempt_reports_writer_busy_then_same_winner() {
+        let (_temp, approvals, reservation) = consumed();
+        // A real second connection holding an IMMEDIATE write transaction
+        // makes this store's BEGIN IMMEDIATE return SQLITE_BUSY before the
+        // callback could run.
+        let path: String = {
+            let connection = approvals.connection.lock().unwrap();
+            connection
+                .pragma_query_value(None, "database_list", |row| row.get(2))
+                .unwrap()
+        };
+        let mut writer = rusqlite::Connection::open(path).unwrap();
+        writer.busy_timeout(std::time::Duration::ZERO).unwrap();
+        {
+            let tx = writer
+                .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                .unwrap();
+            let mut calls = 0;
+            assert!(matches!(
+                approvals.try_cleanup_snapshot(&reservation, &mut |_| {
+                    calls += 1;
+                    Ok(())
+                }),
+                CleanupSnapshotAttempt::RetryableBusyBeforeCallback
+            ));
+            assert_eq!(calls, 0);
+            assert!(matches!(
+                approvals.with_cleanup_snapshot(&reservation, &mut |_| {
+                    calls += 1;
+                    Ok(())
+                }),
+                Err(GateError::Persistence(_))
+            ));
+            assert_eq!(calls, 0);
+            tx.rollback().unwrap();
+        }
+        let mut calls = 0;
+        assert!(matches!(
+            approvals.try_cleanup_snapshot(&reservation, &mut |_| {
+                calls += 1;
+                Ok(())
+            }),
+            CleanupSnapshotAttempt::Selected
+        ));
+        assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn cleanup_snapshot_typed_attempt_keeps_teardown_fault_uncertain() {
+        let (_temp, approvals, reservation) = consumed();
+        {
+            let connection = approvals.connection.lock().unwrap();
+            connection
+                .authorizer(Some(|context: AuthContext<'_>| match context.action {
+                    AuthAction::Transaction {
+                        operation: TransactionOperation::Rollback,
+                    } => Authorization::Deny,
+                    _ => Authorization::Allow,
+                }))
+                .unwrap();
+        }
+        // Post-callback teardown loss is never reclassified busy: the
+        // callback ran and its native selection is retained as uncertain.
+        let mut calls = 0;
+        let mut native_selected = false;
+        assert!(matches!(
+            approvals.try_cleanup_snapshot(&reservation, &mut |_| {
+                calls += 1;
+                native_selected = true;
+                Ok(())
+            }),
+            CleanupSnapshotAttempt::Uncertain(_)
+        ));
+        assert_eq!(calls, 1);
+        assert!(native_selected);
+        let connection = approvals.connection.lock().unwrap();
         connection
             .authorizer(None::<fn(AuthContext<'_>) -> Authorization>)
             .unwrap();

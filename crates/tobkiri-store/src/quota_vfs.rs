@@ -501,8 +501,14 @@ impl QuotaDomain {
                         }
                     }
                     let original = [
-                        self.stat(0)?.map(FileIdentity::from),
-                        self.stat(1)?.map(FileIdentity::from),
+                        self.stat(0)?
+                            .map(FileIdentity::try_from)
+                            .transpose()
+                            .map_err(|_| SQLITE_IOERR_FSTAT)?,
+                        self.stat(1)?
+                            .map(FileIdentity::try_from)
+                            .transpose()
+                            .map_err(|_| SQLITE_IOERR_FSTAT)?,
                     ];
                     if original[0].is_none() {
                         return Err(SQLITE_CANTOPEN);
@@ -570,12 +576,12 @@ struct FileIdentity {
     device: u64,
     inode: u64,
 }
-impl From<libc::stat> for FileIdentity {
-    fn from(stat: libc::stat) -> Self {
-        Self {
-            device: stat.st_dev as u64,
-            inode: stat.st_ino as u64,
-        }
+impl TryFrom<libc::stat> for FileIdentity {
+    type Error = StoreError;
+
+    fn try_from(stat: libc::stat) -> Result<Self, Self::Error> {
+        let (device, inode) = crate::secure::checked_file_identity(&stat)?;
+        Ok(Self { device, inode })
     }
 }
 /// The two admitted DELETE-mode files, under both physical locks and all four
@@ -597,12 +603,14 @@ impl TransferFiles<'_> {
             .source
             .stat(kind)
             .map_err(store_error)?
-            .map(FileIdentity::from);
+            .map(FileIdentity::try_from)
+            .transpose()?;
         let target = self
             .target
             .stat(kind)
             .map_err(store_error)?
-            .map(FileIdentity::from);
+            .map(FileIdentity::try_from)
+            .transpose()?;
         Ok(if moved {
             source.is_none() && target == self.original[kind]
         } else {

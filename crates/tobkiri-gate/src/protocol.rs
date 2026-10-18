@@ -693,6 +693,24 @@ pub struct CleanupSnapshot<'a> {
     pub original_deadline: std::time::Instant,
     pub observed_at: std::time::Instant,
 }
+/// Typed result of one native cleanup-snapshot attempt. Only an
+/// implementation that can authenticate its own pre-callback contention may
+/// report `RetryableBusyBeforeCallback`; every other failure remains
+/// `Uncertain` and retains its original error. Generic `Unavailable` or
+/// `Persistence` results are never busy proof, a callback that already ran
+/// can never be relabelled retryable, and no guest/WIT/JSON metadata is
+/// consulted.
+#[derive(Debug)]
+pub enum CleanupSnapshotAttempt {
+    /// The coherent snapshot ran and `inspect` was invoked exactly once.
+    Selected,
+    /// Authenticated contention before `inspect` ran; the same caller may
+    /// retry within its original bounded cleanup window.
+    RetryableBusyBeforeCallback,
+    /// Any other failure: validation, lock poison, SQL, integrity, teardown
+    /// or restoration faults, or a callback-reported error.
+    Uncertain(GateError),
+}
 /// Opaque proof that Gate read and acknowledged the immutable terminal winner
 /// for one actual consumed dispatch permit. This receipt cannot settle, retry,
 /// replace or otherwise exercise the permit.
@@ -831,6 +849,21 @@ pub trait ApprovalStore: Send + Sync {
     ) -> Result<(), GateError> {
         Err(GateError::Unavailable)
     }
+    /// Typed attempt variant of `with_cleanup_snapshot` under the identical
+    /// single-coherent-snapshot contract. The default maps the legacy
+    /// result: success is `Selected`; every error — including generic
+    /// `Unavailable` and `Persistence` or a callback that never ran — is
+    /// `Uncertain`, never inferred busy.
+    fn try_cleanup_snapshot(
+        &self,
+        expected: &Reservation,
+        inspect: &mut dyn FnMut(CleanupAuthoritySnapshot<'_>) -> Result<(), GateError>,
+    ) -> CleanupSnapshotAttempt {
+        match self.with_cleanup_snapshot(expected, inspect) {
+            Ok(()) => CleanupSnapshotAttempt::Selected,
+            Err(error) => CleanupSnapshotAttempt::Uncertain(error),
+        }
+    }
     fn settle_deadline(&self, _reservation: &Reservation) -> Result<TerminalDelivery, GateError> {
         Err(GateError::Unavailable)
     }
@@ -967,6 +1000,20 @@ pub trait Gate: Send + Sync {
     ) -> Result<(), GateError> {
         Err(GateError::Unavailable)
     }
+    /// Typed attempt variant of `with_cleanup_snapshot` for trusted Core
+    /// cleanup owners. The default maps the legacy result and never infers
+    /// busy from generic `Unavailable`/`Persistence` or a missing callback;
+    /// busy is only meaningful before `inspect` ran.
+    fn try_cleanup_snapshot(
+        &self,
+        _permit: &crate::DispatchPermit,
+        _inspect: &mut dyn FnMut(CleanupSnapshot<'_>) -> Result<(), GateError>,
+    ) -> CleanupSnapshotAttempt {
+        match self.with_cleanup_snapshot(_permit, _inspect) {
+            Ok(()) => CleanupSnapshotAttempt::Selected,
+            Err(error) => CleanupSnapshotAttempt::Uncertain(error),
+        }
+    }
     fn admission_status(&self, _profile: &ProfileId) -> Result<AdmissionStatus, GateError> {
         Err(GateError::Unavailable)
     }
@@ -1010,6 +1057,23 @@ pub trait Gate: Send + Sync {
         request: EffectRequest,
         args: Digest,
     ) -> Result<crate::Grant, GateError>;
+    /// Native-only committed process-launch authorization. `request` must be
+    /// a Proc/Pty effect exactly matching `binding`; the durable args digest
+    /// comes only from `binding.args_digest()` — never from caller-supplied
+    /// arguments, a caller key, raw argv/env or a caller identity/summary.
+    /// The binding is committed data consistency only: it is not a proven FD
+    /// capability, a live caller frame or an authority refresh. Implementations
+    /// keep the normal context, permission, mediation, trusted per-effect
+    /// consent and dispatch/audit pipeline. The default fails closed; there
+    /// is no generic `authorize` fallback for launch effects.
+    async fn authorize_process_launch(
+        &self,
+        _cx: &CallCx,
+        _request: EffectRequest,
+        _binding: &crate::ProcessLaunchBinding,
+    ) -> Result<crate::Grant, GateError> {
+        Err(GateError::Unavailable)
+    }
     /// Fresh authority check for the stable Pack's physical capacity ledger.
     /// Trusted Core inspection only: these limits do not sponsor an allocation
     /// or establish entry. Actual funding still requires authenticated frame

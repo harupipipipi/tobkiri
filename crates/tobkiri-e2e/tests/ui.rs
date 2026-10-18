@@ -247,16 +247,35 @@ async fn oversized_real_flow_event_closes_the_received_ui_stream() -> Result<()>
     let [attachment] = attachments.as_slice() else {
         anyhow::bail!("oversized UI fixture requires one actual attachment");
     };
-    // Each real UI append stays below the 1 MiB argument bound. Their combined
-    // persisted context makes the actual store Pack's load StepValue exceed
-    // the UI transport cap, without exceeding the 256 KiB Pack config bound.
-    for index in 0..2 {
+    // The journal accepts the 999,820-byte load value. Its enclosing actual
+    // RunEvent batch adds 205 bytes, crossing the native transport's existing
+    // 1,000,000-element allocation bound (before the separate 1 MiB UI copy cap).
+    // The configured prompt adds 160 bytes, so that later value also stays
+    // below the journal bound. Both appends retain the original argument/config bounds.
+    const SOURCE_VALUE_BYTES: usize = 999_820;
+    let fixed_context = canon(&serde_json::json!({
+        "conversation":"e2e",
+        "messages":[
+            {"role":"user","content":"Stored turn 0"},
+            {"role":"assistant","content":""},
+            {"role":"user","content":"Stored turn 1"},
+            {"role":"assistant","content":""},
+        ],
+    }))?;
+    let fixed_bytes =
+        tobkiri_canon::encode(&fixed_context, tobkiri_canon::Variant::StrictV1)?.len();
+    assert_eq!(fixed_bytes, 187);
+    let stored_text_lengths = [499_816, 499_817];
+    let source_value_bytes = fixed_bytes + stored_text_lengths.iter().sum::<usize>();
+    assert_eq!(source_value_bytes, SOURCE_VALUE_BYTES);
+    assert!(source_value_bytes <= 1_000_000);
+    for (index, text_bytes) in stored_text_lengths.into_iter().enumerate() {
         let args = canon(&serde_json::json!({
             "conversation":"e2e",
             "input":{"conversation":"e2e","text":format!("Stored turn {index}")},
             "events":[{
                 "kind":"done",
-                "text":"x".repeat(600 * 1024),
+                "text":"x".repeat(text_bytes),
                 "prompt-tokens":null,
                 "completion-tokens":null,
             }],
@@ -301,6 +320,7 @@ async fn oversized_real_flow_event_closes_the_received_ui_stream() -> Result<()>
         .context("UI phase=submit")?;
     let handle = stream_handle(&opened).context("UI phase=submit handle")?;
     let mut pulls = 0u64;
+    let mut checked_transport_boundary = false;
     let error = loop {
         pulls += 1;
         match tokio::time::timeout(
@@ -326,12 +346,48 @@ async fn oversized_real_flow_event_closes_the_received_ui_stream() -> Result<()>
                         .all(|frame| event_kind(frame) != Some("completed")),
                     "oversized event was silently delivered"
                 );
+                if !checked_transport_boundary {
+                    let first = &frames[0];
+                    let request = first
+                        .get("request")
+                        .and_then(CanonValue::as_str)
+                        .context("actual Flow event request missing")?;
+                    let plan_digest = first
+                        .get("plan_digest")
+                        .and_then(CanonValue::as_str)
+                        .context("actual Flow event plan digest missing")?;
+                    // The guest Flow callee has req_ plus 32 hex entropy digits.
+                    assert_eq!(request.len(), 36);
+                    assert_eq!(plan_digest.len(), 71);
+                    let envelope = canon(&serde_json::json!([{
+                        "request":request,
+                        "plan_digest":plan_digest,
+                        "sequence":3,
+                        "kind":{"kind":"step_value","step":"load","value":null},
+                    }]))?;
+                    let envelope_bytes =
+                        tobkiri_canon::encode(&envelope, tobkiri_canon::Variant::StrictV1)?
+                            .len()
+                            .checked_sub(b"null".len())
+                            .context("actual Flow event envelope size underflow")?;
+                    assert_eq!(envelope_bytes, 205);
+                    assert_eq!(SOURCE_VALUE_BYTES + envelope_bytes, 1_000_025);
+                    checked_transport_boundary = true;
+                }
             }
             Err(error) => break error,
         }
     };
     assert!(
-        matches!(&error, CoreError::Step(step) if step.code == "batch-too-large"),
+        checked_transport_boundary,
+        "actual Flow transport was never observed"
+    );
+    let original = match &error {
+        CoreError::Cleanup { original, .. } => original.as_ref(),
+        error => error,
+    };
+    assert!(
+        matches!(original, CoreError::Step(step) if step.code == "batch-too-large"),
         "expected the real oversized transport failure: {error}"
     );
     let repeated = session

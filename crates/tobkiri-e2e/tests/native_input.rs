@@ -11,10 +11,59 @@ use tobkiri_core::{NativeInputRouteStatus, NativeInputRunHandle, NativeInputStat
 use tobkiri_flow::{RunEvent, RunEventKind};
 use tobkiri_gate::{EffectRequest, Outcome};
 
+fn native_fanout_source(fixture: &mut Fixture) -> Result<()> {
+    let pin = fixture
+        .profile
+        .packs
+        .iter_mut()
+        .find(|pin| pin.id.as_str() == fixture.input.as_str())
+        .context("fanout Input Pack missing")?;
+    let source = Path::new(
+        pin.source
+            .strip_prefix("file:")
+            .context("fanout Input fixture is not local")?,
+    )
+    .canonicalize()?;
+    anyhow::ensure!(source.starts_with(fixture.temp.path().canonicalize()?));
+    let previous = tobkiri_manifest::verify_directory(&source, &Default::default())?;
+    anyhow::ensure!(previous.hash == pin.sha256, "fanout Input pin was stale");
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(source.join("pack.json"))?)?;
+    let consumes = manifest["ports"]["consumes"]
+        .as_array_mut()
+        .context("fanout Input consumes missing")?;
+    let dynamic = consumes
+        .iter()
+        .enumerate()
+        .filter(|(_, port)| {
+            port["shape"] == "local.echo-chat.turn-flow" && port["version"] == "1.0"
+        })
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let [index] = dynamic.as_slice() else {
+        anyhow::bail!("fanout fixture requires exactly one dynamic Flow consume");
+    };
+    // These tests invoke read, then route its receipt through Core's exact
+    // frozen Flow keys. They never invoke the guest's shape-only submit path,
+    // whose consume must resolve uniquely. Keep its Flow permission ceiling
+    // intact so the actual NativeInput routes still need that authorization.
+    consumes.remove(*index);
+    std::fs::write(
+        source.join("pack.json"),
+        serde_json::to_vec_pretty(&manifest)?,
+    )?;
+    let verified = tobkiri_manifest::verify_directory(&source, &Default::default())?;
+    assert_eq!(verified.manifest.id, pin.id);
+    assert_eq!(verified.manifest.version, pin.version);
+    pin.sha256 = verified.hash;
+    Ok(())
+}
+
 /// Two actual manifest-declared Flows share an existing implements view. The
 /// normal verifier/compiler creates both targets; this test mints no witness.
 fn fanout_fixture(first_fails: bool) -> Result<Fixture> {
     let mut fixture = Fixture::new("echo", None)?;
+    native_fanout_source(&mut fixture)?;
     let pin = fixture
         .profile
         .packs

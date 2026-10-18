@@ -129,15 +129,19 @@ struct OutputGuard {
 }
 impl Drop for OutputGuard {
     fn drop(&mut self) {
-        if let Ok(mut state) = self.pipe.0.lock() {
-            if state
+        let retired = if let Ok(mut state) = self.pipe.0.lock()
+            && state
                 .active
                 .as_ref()
                 .is_some_and(|active| active.generation == self.generation)
-            {
-                state.active.take();
-            }
-        }
+        {
+            state.active.take()
+        } else {
+            None
+        };
+        // Context/budget teardown can release custody or wake waiters; it must
+        // run only after the pipe mutex guard has left scope.
+        drop(retired);
         // Stored chunks retain their original owner independently of activation.
     }
 }

@@ -13,12 +13,13 @@ use std::{
 };
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 use tobkiri_launcher_core_host::{
-    HostCaller, HostError, LauncherCore, PACK_UI_CSP, ShutdownCompletion, ShutdownObservation,
-    TRUSTED_HOST_RECEIVER, TransportTickets, UiFrame, UiOperationRegistration, UiTransportResponse,
-    UiTransportTicket, copy_final_host_payload,
+    DebugScope, HostCaller, HostError, LauncherCore, PACK_UI_CSP, ShutdownCompletion,
+    ShutdownObservation, TRUSTED_HOST_RECEIVER, TransportTickets, UiFrame, UiOperationRegistration,
+    UiRoute, UiTransportResponse, UiTransportTicket, copy_final_host_payload,
     core::{
         AllocationBudget, ApprovalAnswer, ApprovalPrompt, CanonValue, CoreBuffer, HostIo,
-        TrustedPrompt, UiEmbed, ids::UiSessionId,
+        TrustedPrompt, UiEmbed,
+        ids::{ProfileId, UiSessionId},
     },
     observe_shutdown, preserve_primary_close, restore_primary, startup_ui_embedding,
     trusted_host_origin, trusted_review,
@@ -81,6 +82,7 @@ struct NativeHost {
     generation_transition: tokio::sync::Mutex<()>,
     host_page_loaded: AtomicBool,
     tickets: TransportTickets,
+    debug_scope: Option<DebugScope>,
 }
 
 struct PendingTerminal {
@@ -149,7 +151,7 @@ impl NativeHost {
             .emit_to(
                 "core-host",
                 "tobkiri-core-output",
-                HostOutputEvent {
+                &HostOutputEvent {
                     namespace: self.tickets.namespace(),
                     generation,
                     receiver: TRUSTED_HOST_RECEIVER,
@@ -464,6 +466,12 @@ async fn core_start_profile(
     profile: String,
 ) -> Result<CoreStartResult, UiError> {
     let (label, url) = caller(&window)?;
+    if let Some(scope) = &host.debug_scope {
+        let requested = ProfileId::parse(&profile).map_err(|_| HostError::Invalid)?;
+        if !scope.allows_profile(&requested) {
+            return Err(HostError::Invalid.into());
+        }
+    }
     let _transition = host.generation_transition.lock().await;
     let attachments = core
         .start(
@@ -583,9 +591,11 @@ fn pack_ui_register(
             label: &label,
             url: &url,
         },
-        &namespace,
-        generation,
-        &ui_session_id,
+        UiRoute {
+            namespace: &namespace,
+            generation,
+            receiver: &ui_session_id,
+        },
         id,
         &kind,
         handle,
@@ -610,9 +620,11 @@ fn pack_ui_cancel(
             label: &label,
             url: &url,
         },
-        &namespace,
-        generation,
-        &ui_session_id,
+        UiRoute {
+            namespace: &namespace,
+            generation,
+            receiver: &ui_session_id,
+        },
         id,
         &kind,
         handle,
@@ -679,9 +691,11 @@ async fn pack_ui_stream_pull(
             label: &label,
             url: &url,
         },
-        &namespace,
-        generation,
-        &ui_session_id,
+        UiRoute {
+            namespace: &namespace,
+            generation,
+            receiver: &ui_session_id,
+        },
         id,
         handle,
         max,
@@ -706,9 +720,11 @@ async fn pack_ui_stream_cancel(
             label: &label,
             url: &url,
         },
-        &namespace,
-        generation,
-        &ui_session_id,
+        UiRoute {
+            namespace: &namespace,
+            generation,
+            receiver: &ui_session_id,
+        },
         id,
         handle,
         abort_pull,
@@ -761,6 +777,22 @@ fn show_primary(app: &AppHandle) -> Result<(), String> {
 }
 
 pub(crate) fn run() {
+    // A malformed scope, or any debug variable in a release build, fails
+    // closed before plugins, windows, or Core can touch normal user data.
+    let debug_scope = DebugScope::from_env().expect("invalid Tobkiri Core debug scope");
+    let mut context = tauri::generate_context!("tauri.core-host.conf.json");
+    if let Some(scope) = &debug_scope {
+        let config = context.config_mut();
+        config.identifier = scope.identifier().to_owned();
+        let window = config
+            .app
+            .windows
+            .iter_mut()
+            .find(|window| window.label == "core-host")
+            .expect("core-host window configuration required for a debug scope");
+        window.title = scope.window_title().to_owned();
+        window.incognito = true;
+    }
     let builder = tauri::Builder::default();
     #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -816,21 +848,25 @@ pub(crate) fn run() {
                 let value = if label == "core-host" && request.method() == tauri::http::Method::GET
                 {
                     if let Some(core) = app.try_state::<Arc<LauncherCore>>() {
-                        core.asset(&request.uri().to_string()).await.ok()
+                        core.asset_with_policy(&request.uri().to_string())
+                            .await
+                            .ok()
                     } else {
                         None
                     }
                 } else {
                     None
                 };
-                let (status, body, mime) = match value {
-                    Some((bytes, mime)) => (200, bytes, mime),
-                    None => (403, Vec::new(), "text/plain"),
+                let (status, body, mime, csp) = match value {
+                    Some(asset) => (200, asset.bytes, asset.mime, asset.csp),
+                    // Denials keep the closed static policy; a failed lookup
+                    // never carries a fabricated per-Pack source.
+                    None => (403, Vec::new(), "text/plain", PACK_UI_CSP.to_string()),
                 };
                 let response = tauri::http::Response::builder()
                     .status(status)
                     .header("Content-Type", mime)
-                    .header("Content-Security-Policy", PACK_UI_CSP)
+                    .header("Content-Security-Policy", csp)
                     // Opaque-origin frames use CORS for module scripts. These
                     // bytes are public immutable Pack files, never host data;
                     // credentials and IPC remain unavailable to the frame.
@@ -844,7 +880,7 @@ pub(crate) fn run() {
                 responder.respond(response);
             });
         })
-        .setup(|app| {
+        .setup(move |app| {
             let tickets = TransportTickets::new()?;
             let host = Arc::new(NativeHost {
                 app: app.handle().clone(),
@@ -854,7 +890,21 @@ pub(crate) fn run() {
                 generation_transition: tokio::sync::Mutex::new(()),
                 host_page_loaded: AtomicBool::new(false),
                 tickets: tickets.clone(),
+                debug_scope: debug_scope.clone(),
             });
+            #[cfg(debug_assertions)]
+            let core = {
+                use tobkiri_launcher_core_host::core::CoreConfig;
+                Arc::new(match &debug_scope {
+                    Some(scope) => LauncherCore::open_with_config_and_tickets(
+                        host.clone(),
+                        CoreConfig::for_test_data_root(scope.data_root().to_owned()),
+                        tickets,
+                    )?,
+                    None => LauncherCore::open_with_tickets(host.clone(), tickets)?,
+                })
+            };
+            #[cfg(not(debug_assertions))]
             let core = Arc::new(LauncherCore::open_with_tickets(host.clone(), tickets)?);
             app.manage(host);
             app.manage(core);
@@ -898,7 +948,7 @@ pub(crate) fn run() {
             pack_ui_stream_cancel,
             core_terminal_reply
         ])
-        .build(tauri::generate_context!("tauri.core-host.conf.json"))
+        .build(context)
         .expect("failed to create generic Core host");
     let shutdown = Arc::new(AtomicU8::new(0));
     app.run(move |app, event| {

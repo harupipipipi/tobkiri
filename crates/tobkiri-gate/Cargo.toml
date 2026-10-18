@@ -21,3 +21,5 @@ ed25519-dalek.workspace = true
 hex.workspace = true
 url.workspace = true
 getrandom.workspace = true
+hmac.workspace = true
+zeroize.workspace = true

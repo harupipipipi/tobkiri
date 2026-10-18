@@ -29,23 +29,33 @@ mod completion;
 mod core;
 mod error;
 mod execution_frames;
+mod filesystem_registry;
+mod funded_arc;
 mod housekeeping;
 mod inputs;
 mod journal;
 mod outcomes;
 #[cfg(test)]
 mod policy_tests;
+mod process_catalog;
 mod profiles;
 mod session;
 #[cfg(test)]
 mod test_support;
 mod tracked_stream;
+mod ui_operation_delivery;
+mod ui_operation_preparation;
 
 pub use core::{Core, CoreConfig, ProfileRecoveryStatus};
 pub use error::CoreError;
+pub use execution_frames::UiOperationPublishAttempt;
+pub use filesystem_registry::{FilesystemRights, FilesystemRoot};
 pub use journal::AuditRunJournal;
+pub use process_catalog::ProcessRegistrationError;
 pub use session::{
     NativeInput, NativeInputCompletion, NativeInputEvent, NativeInputRouteResult,
     NativeInputRouteStatus, NativeInputRunHandle, NativeInputStatus, Session, UI_STREAM_MAX_BATCH,
-    UiAttachment, UiCallResult,
+    UiAttachment, UiCallResult, UiInvokeRequest, UiOperationCloseControl, UiOperationCloseHandle,
+    UiStreamCleanupControl, UiStreamCleanupOwner,
 };
+pub use ui_operation_preparation::{UiOperationPreparation, UiOperationTermination};

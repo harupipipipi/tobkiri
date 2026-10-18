@@ -28,6 +28,10 @@
   },
   "bundle": {
     "active": false,
-    "resources": null
+    "resources": null,
+    "macOS": {
+      "hardenedRuntime": true,
+      "entitlements": "Entitlements.core-host.plist"
+    }
   }
 }

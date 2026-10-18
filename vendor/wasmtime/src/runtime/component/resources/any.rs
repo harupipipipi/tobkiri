@@ -50,11 +50,21 @@ pub struct ResourceAny {
     idx: HostResourceIndex,
     ty: ResourceType,
     owned: bool,
+    delivery: Option<crate::component::delivery::DeliveryRecordId>,
 }
 
 impl ResourceAny {
     pub(crate) fn new(idx: HostResourceIndex, ty: ResourceType, owned: bool) -> ResourceAny {
-        ResourceAny { idx, ty, owned }
+        ResourceAny { idx, ty, owned, delivery: None }
+    }
+
+    #[cfg(feature = "async")]
+    pub(crate) fn new_pending(
+        idx: HostResourceIndex,
+        ty: ResourceType,
+        id: crate::component::delivery::DeliveryRecordId,
+    ) -> Self {
+        Self { idx, ty, owned: true, delivery: Some(id) }
     }
 
     /// Attempts to convert an imported [`Resource`] into [`ResourceAny`].
@@ -110,7 +120,7 @@ impl ResourceAny {
     {
         let store = store.as_context_mut();
         let mut tables = HostResourceTables::new_host(store.0)?;
-        let ResourceAny { idx, ty, owned } = self;
+        let ResourceAny { idx, ty, owned, .. } = self;
         let ty = T::typecheck(ty).ok_or_else(|| crate::format_err!("resource type mismatch"))?;
         if owned {
             let rep = tables.host_resource_lift_own(idx)?;
@@ -246,6 +256,23 @@ impl ResourceAny {
     }
 
     fn lower_to_index<U>(&self, cx: &mut LowerContext<'_, U>, ty: InterfaceType) -> Result<u32> {
+        if let Some(id) = self.delivery {
+            let InterfaceType::Own(table) = ty else {
+                return Err(crate::component::HostAllocationError::Invalid.into());
+            };
+            if !self.owned || cx.resource_type(table) != self.ty {
+                return Err(crate::component::HostAllocationError::Invalid.into());
+            }
+            #[cfg(feature = "async")]
+            {
+                let instance = cx.instance_handle();
+                return cx.store.0.resource_delivery_lower_pending(
+                    id, self.idx, self.ty, instance, table,
+                );
+            }
+            #[cfg(not(feature = "async"))]
+            { let _ = id; return Err(crate::component::HostAllocationError::Unavailable.into()); }
+        }
         match ty {
             InterfaceType::Own(t) => {
                 if cx.resource_type(t) != self.ty {
@@ -275,6 +302,7 @@ impl ResourceAny {
                     idx,
                     ty,
                     owned: true,
+                    delivery: None,
                 })
             }
             InterfaceType::Borrow(t) => {
@@ -285,6 +313,7 @@ impl ResourceAny {
                     idx,
                     ty,
                     owned: false,
+                    delivery: None,
                 })
             }
             _ => bad_type_info(),

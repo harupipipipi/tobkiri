@@ -537,7 +537,19 @@ async fn expiry_and_completion_race_has_one_immutable_winner_across_connections(
 #[tokio::test]
 async fn live_future_expiry_is_preserved_and_watermark_does_not_swallow_later_delivery() {
     let f = Fixture::new();
-    let (first, expiry, _) = f.consumed().await;
+    let (first, original_expiry, permit) = f.consumed().await;
+    let mut consumed_expiry = None;
+    f.gate
+        .with_cleanup_snapshot(&permit, &mut |snapshot| {
+            assert!(snapshot.authority.terminal.is_none());
+            consumed_expiry = Some(snapshot.authority.reservation.expires_unix_ms);
+            Ok(())
+        })
+        .unwrap();
+    // Consumption may narrow the original grant deadline. Test the actual
+    // persisted consumed deadline, without advancing it or adding an epsilon.
+    let expiry = consumed_expiry.unwrap();
+    assert!(expiry <= original_expiry);
     assert_eq!(
         f.gate.recover_profile_at(&f.profile, expiry - 1).unwrap(),
         0

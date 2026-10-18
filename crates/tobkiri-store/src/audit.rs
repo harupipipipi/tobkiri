@@ -8,6 +8,10 @@ use std::{
 use tobkiri_canon::{Digest, ids::ProfileId};
 use tobkiri_gate::{AuditEvent, AuditSink, CallCx, EffectRequest, GateError, Grant};
 
+#[path = "audit_guest.rs"]
+mod audit_guest;
+pub use audit_guest::*;
+
 #[derive(Clone, Debug)]
 pub struct AuditQuota {
     pub records_per_minute: u64,

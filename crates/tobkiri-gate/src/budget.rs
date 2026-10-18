@@ -173,7 +173,7 @@ impl BudgetContext {
         if !limits.validate() || !limits.is_subset_of(&self.scopes[0].limits) {
             return Err(BudgetError::InvalidLimits);
         }
-        if self.scopes.len() - 1 >= MAX_ACTIVE_LOOP_SCOPES {
+        if self.scopes.len() > MAX_ACTIVE_LOOP_SCOPES {
             return Err(BudgetError::ScopeDepth);
         }
         let _guard = self.ledger.lock.lock().map_err(|_| BudgetError::Poisoned)?;

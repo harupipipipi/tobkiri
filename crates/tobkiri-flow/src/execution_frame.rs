@@ -139,6 +139,16 @@ pub trait ActiveCodeFrame: Send + Sync {
     /// Actual verified producer of allocations for this frame.
     fn code_owner(&self) -> &CodeOwner;
 
+    /// Lifetime-only child custody inherited from the actual private frame.
+    /// This metadata grants neither an entry nor an allocation capability.
+    fn task_spawner(&self) -> Option<Arc<dyn crate::RunTaskSpawner>> {
+        None
+    }
+
+    fn task_execution(&self) -> Option<crate::RunTaskExecution> {
+        None
+    }
+
     /// Mint a fresh activation only after verifying the borrowed frozen AST node.
     fn reach_node(
         &self,

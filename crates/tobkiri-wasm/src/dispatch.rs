@@ -11,7 +11,7 @@ use tobkiri_flow::{
 };
 use tobkiri_gate::{
     AcknowledgedTerminal, AllocationReason, CallCx, DispatchPermit, EffectRequest,
-    FrozenPortTarget, Gate, GateError, Outcome, PortAdmission, Principal, SourceReadReceipt,
+    FrozenPortTarget, Gate, GateError, Outcome, PortAdmission, Principal,
 };
 use tobkiri_manifest::{WitBindingDirection, WitFunction, WitType};
 use tobkiri_profile::{CallNodeKind, CompiledInputEntry};
@@ -19,9 +19,23 @@ use wasmtime::component::{BudgetedVec, BudgetedVecBuilder, Val};
 
 use crate::{
     ProviderFrame, ProviderOrigin, ProviderRequest,
-    host::{PackHost, interface_name, step_error},
+    host::{PackHost, interface_name, step_audit_code, step_error},
     owned_values::{ValueOwners, core_to_val, project_val_owned, val_to_core},
 };
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ResultMode {
+    Intermediate,
+    Typed,
+    PhysicalInput,
+}
+
+/// Borrowed actual guest arguments and their exact frozen caller signature.
+/// The enclosing call keeps the original Val owners and provider frame live.
+pub(crate) struct TypedProxyInput<'a> {
+    pub(crate) params: &'a [Val],
+    pub(crate) function: &'a WitFunction,
+}
 
 impl PackHost {
     pub(crate) async fn call_reached_owned(
@@ -232,11 +246,11 @@ impl PackHost {
         cx: &CallCx,
         shape: &ShapeRef,
         op: &OpName,
-        params: &[Val],
-        function: &WitFunction,
+        input: TypedProxyInput<'_>,
         owners: &ValueOwners,
         frame: &Arc<dyn ProviderFrame>,
     ) -> Result<BudgetedVec<Val>> {
+        let TypedProxyInput { params, function } = input;
         if self
             .shared
             .views
@@ -423,7 +437,11 @@ impl PackHost {
                 &args,
                 &digest,
                 final_output,
-                typed,
+                if typed {
+                    ResultMode::Typed
+                } else {
+                    ResultMode::Intermediate
+                },
                 nominal_core_error,
             )
             .await;
@@ -437,9 +455,7 @@ impl PackHost {
             },
             Err(_) if frame.context().cancel().is_cancelled() => Outcome::Cancelled,
             Err(error) => Outcome::Failed {
-                code: step_error(anyhow::anyhow!(error.to_string()))
-                    .audit_code()
-                    .into(),
+                code: step_audit_code(error).into(),
             },
         };
         let receipt = terminal.finish(outcome).await?;
@@ -528,7 +544,7 @@ impl PackHost {
         args: &CoreValue,
         digest: &Digest,
         final_output: Option<FinalOutputKind>,
-        typed: bool,
+        result_mode: ResultMode,
         nominal_core_error: bool,
     ) -> Result<DispatchOutput> {
         let cx = frame.context();
@@ -553,7 +569,8 @@ impl PackHost {
             let source = object.get(name).context("port parameter missing")?;
             let typed = core_to_val(&source, from, &owners)?;
             let value = project_val_owned(&typed, from, to, &owners)?;
-            params.push(self.transfer_argument_handles(&value, to, recipient, cx, &owners)?)?;
+            params
+                .push(self.transfer_argument_handles(&value, to, recipient, cx, &owners, frame)?)?;
         }
         let params = params.finish()?;
         let (results, generation) = self
@@ -575,7 +592,16 @@ impl PackHost {
             (Some(ty), [value]) if has_handle(ty) => BudgetedVec::from_iter(
                 [self
                     .transfer_result_handles(
-                        value, ty, cx, recipient, provided, generation, frame, &owners,
+                        value,
+                        ty,
+                        generation,
+                        crate::handle_transfer::HandleSourceContext {
+                            owner: cx,
+                            recipient,
+                            authority: provided,
+                            provider: frame,
+                        },
+                        &owners,
                     )
                     .await?]
                 .into_iter(),
@@ -584,7 +610,7 @@ impl PackHost {
             )?,
             _ => results,
         };
-        if typed {
+        if result_mode == ResultMode::Typed {
             let mut projected = BudgetedVecBuilder::new(results.len(), owners.component(), 0)?;
             let value = match (&provider.result, &caller.result, results.as_slice()) {
                 (None, None, []) => CoreValue::null(owners.graph())?,
@@ -616,7 +642,7 @@ impl PackHost {
             .views
             .get(provided)
             .is_some_and(|shape| shape.streams.contains_key(op.as_str()));
-        if returns_stream {
+        if returns_stream && result_mode != ResultMode::PhysicalInput {
             let id = value
                 .get_key("id")
                 .context("stream facade result has no handle")?;
@@ -685,7 +711,7 @@ impl PackHost {
         &self,
         cx: &CallCx,
         entry: &CompiledInputEntry,
-    ) -> Result<(CoreValue, SourceReadReceipt)> {
+    ) -> Result<tobkiri_flow::NativeInputRead> {
         self.shared.gate.check_context(cx)?;
         if !matches!(cx.principal(), Principal::Input { .. })
             || cx.revision() != Some(entry.profile_revision())
@@ -815,7 +841,7 @@ impl PackHost {
                 &args,
                 &args_digest,
                 None,
-                false,
+                ResultMode::PhysicalInput,
                 self.nominal_core_error(
                     cx,
                     entry.exact_input_view(),
@@ -827,6 +853,48 @@ impl PackHost {
             .await;
         match result {
             Ok(DispatchOutput::Value(value)) => {
+                let forwarding = (|| {
+                    let payload_type = match entry.function().result.as_ref() {
+                        Some(WitType::Result { ok, .. }) => ok.as_deref(),
+                        value => value,
+                    };
+                    if !payload_type.is_some_and(has_handle) {
+                        return Ok(None);
+                    }
+                    // The argument preparation has transferred and retired.
+                    // Charge actual typed output traversal to its still-live
+                    // producing provider, before acknowledging that provider.
+                    let output_owners = self.allocation_owners_for_frame(
+                        frame.context(),
+                        frame
+                            .allocation_scope(AllocationReason::RuntimeValue)
+                            .map_err(anyhow::Error::new)?,
+                    )?;
+                    self.capture_native_input_handles(cx, &value, entry.function(), &output_owners)
+                        .and_then(|inventory| {
+                            inventory
+                                .map(|inventory| {
+                                    frame
+                                        .seal_native_input_handles(inventory)
+                                        .map_err(anyhow::Error::new)
+                                })
+                                .transpose()
+                        })
+                })();
+                let custody = match forwarding {
+                    Ok(custody) => custody,
+                    Err(error) => {
+                        let receipt = terminal
+                            .finish(Outcome::Failed {
+                                code: "input-forwarding".into(),
+                            })
+                            .await?;
+                        frame
+                            .terminal_acknowledged(&receipt)
+                            .map_err(anyhow::Error::new)?;
+                        return Err(error);
+                    }
+                };
                 let terminal_receipt = terminal.finish(Outcome::Succeeded).await?;
                 frame
                     .terminal_acknowledged(&terminal_receipt)
@@ -841,7 +909,11 @@ impl PackHost {
                 let source_receipt = frame
                     .take_source_read_receipt()
                     .map_err(anyhow::Error::new)?;
-                Ok((value, source_receipt))
+                Ok(tobkiri_flow::NativeInputRead {
+                    payload: value,
+                    receipt: source_receipt,
+                    custody,
+                })
             }
             Ok(DispatchOutput::Final(_) | DispatchOutput::Typed { .. }) => {
                 unreachable!("physical source read is intermediate")
@@ -1060,7 +1132,7 @@ fn public_provider_error(value: &CoreValue, nominal_core_error: bool) -> StepErr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
     use tobkiri_canon::{AllocationKind, CoreRef};
     use wasmtime::component::{
         BudgetedBox, BudgetedVec, HostAllocationBudget, HostAllocationError, HostAllocationRequest,
@@ -1294,5 +1366,77 @@ mod tests {
         work.reserve(request).unwrap();
         work.release(0);
         assert_eq!(work.reserve(request), Err(AllocationError::Limit));
+    }
+
+    #[test]
+    fn audit_classifier_borrows_typed_causes_without_formatting() {
+        struct PrivateDiagnostic(Arc<AtomicUsize>);
+        impl std::fmt::Display for PrivateDiagnostic {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                formatter.write_str("PRIVATE DIAGNOSTIC")
+            }
+        }
+        impl std::fmt::Debug for PrivateDiagnostic {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                formatter.write_str("PRIVATE DIAGNOSTIC")
+            }
+        }
+        impl std::error::Error for PrivateDiagnostic {}
+        for code in [
+            "denied",
+            "approval-required",
+            "cancelled",
+            "deadline",
+            "not-found",
+            "invalid",
+            "limit-exceeded",
+            "conflict",
+            "unavailable",
+            "trap",
+            "blocked",
+        ] {
+            let error = anyhow::Error::new(StepError::new(code, "PRIVATE message"));
+            assert_eq!(crate::host::step_audit_code(&error), code);
+        }
+        let wrapped = anyhow::Error::new(StepError::new("unavailable", "PRIVATE message"))
+            .context("PRIVATE outer context");
+        assert_eq!(crate::host::step_audit_code(&wrapped), "unavailable");
+        let arbitrary = anyhow::Error::new(StepError::new("guest-private-code", "PRIVATE"));
+        assert_eq!(crate::host::step_audit_code(&arbitrary), "internal");
+        let accesses = Arc::new(AtomicUsize::new(0));
+        let generic = anyhow::Error::new(PrivateDiagnostic(accesses.clone()))
+            .context("PRIVATE outer context");
+        assert_eq!(crate::host::step_audit_code(&generic), "internal");
+        // The classifier borrows the typed cause and never formats or copies
+        // the private diagnostic for audit metadata.
+        assert_eq!(accesses.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn audit_classifier_preserves_gate_mapping_and_sealed_storage_codes() {
+        for (error, expected) in [
+            (GateError::Limit("PRIVATE".into()), "limit-exceeded"),
+            (GateError::Deadline, "limit-exceeded"),
+            (GateError::Cancelled, "cancelled"),
+            (GateError::ApprovalRequired, "approval-required"),
+            (GateError::Denied("PRIVATE".into()), "denied"),
+            // These variants intentionally differ from GateError::code().
+            (GateError::Unavailable, "denied"),
+            (GateError::StaleEpoch, "denied"),
+        ] {
+            assert_eq!(
+                crate::host::step_audit_code(&anyhow::Error::new(error)),
+                expected
+            );
+        }
+        for sealed in [
+            tobkiri_store::StoreError::CommitUnknown,
+            tobkiri_store::StoreError::PendingDataMove,
+        ] {
+            let error = anyhow::Error::new(sealed).context("PRIVATE sql detail");
+            assert_eq!(crate::host::step_audit_code(&error), "internal");
+        }
     }
 }

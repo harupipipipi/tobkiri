@@ -9,6 +9,7 @@ edition = "2024"
 private-sqlite-experiment = []
 
 [dependencies]
+parking_lot = { version = "=0.12.5", default-features = false }
 anyhow.workspace = true
 async-trait.workspace = true
 base64.workspace = true
@@ -33,6 +34,7 @@ tobkiri-flow = { path = "../tobkiri-flow" }
 tobkiri-wit = { path = "../tobkiri-wit" }
 
 [dev-dependencies]
+rusqlite.workspace = true
 wat.workspace = true
 tempfile.workspace = true
 tobkiri-core.workspace = true

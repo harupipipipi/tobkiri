@@ -344,9 +344,6 @@ fn ordered(
     candidates: &[ResolvedOverlay],
     explicit: Option<&[String]>,
 ) -> Result<Vec<ResolvedOverlay>, String> {
-    if candidates.len() < 2 {
-        return Ok(candidates.to_vec());
-    }
     let count = candidates.len();
     let mut edges = vec![BTreeSet::new(); count];
     for (i, overlay) in candidates.iter().enumerate() {
@@ -907,6 +904,19 @@ pub fn compile(
                         ));
                         continue;
                     }
+                    if owner != &flow.owner
+                        && !flow.document.implements.as_ref().is_some_and(|reference| {
+                            shape(reference, &shapes)
+                                .is_some_and(|shape| shape.kind == ShapeKind::Flow)
+                        })
+                    {
+                        errors.push(conflict(
+                            "overlay-private-flow",
+                            "foreign Pack overlay requires a published Flow shape",
+                            vec![owner.to_string()],
+                        ));
+                        continue;
+                    }
                 }
                 let mut body = overlay.document.body.clone();
                 assign_ids(&mut body, "overlay-");
@@ -1201,21 +1211,35 @@ pub fn compile(
     let native_inputs = input_functions
         .into_iter()
         .map(|(selection, source_hash, function, arguments)| {
-            let flow_routes = flows
+            let flow_routes: Vec<_> = flows
                 .iter()
                 .filter(|(_, flow)| flow.document.trigger.input == selection.exact_input_view)
                 .map(|(key, _)| key.clone())
                 .collect();
-            CompiledInputEntry {
+            // The first physical handle-forwarding slice preserves one typed
+            // graph and one shared source cursor through exactly one Flow.
+            // Scalars retain the existing zero/multiple-route behavior.
+            let payload = match function.result.as_ref() {
+                Some(WitType::Result { ok, .. }) => ok.as_deref(),
+                result => result,
+            };
+            if payload.is_some_and(contains_input_handle) && flow_routes.len() != 1 {
+                return Err(vec![conflict(
+                    "input-handle-routes",
+                    "physical Input stream/callback delivery requires exactly one frozen Flow route",
+                    vec![selection.source_pack.to_string()],
+                )]);
+            }
+            Ok(CompiledInputEntry {
                 selection,
                 source_hash,
                 profile_revision: plan_digest.clone(),
                 function,
                 arguments,
                 flow_routes,
-            }
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, Vec<Conflict>>>()?;
     Ok(CompiledProfile {
         profile: profile.clone(),
         native_inputs,
@@ -1358,16 +1382,6 @@ fn input_arguments(function: &WitFunction) -> Result<CanonValue, String> {
     }
     // None, empty records, and result<_, E> remain distinct in function.result.
     // This compiler never creates an ingress payload or normalizes those cases.
-    let payload = match function.result.as_ref() {
-        Some(WitType::Result { ok, .. }) => ok.as_deref(),
-        result => result,
-    };
-    if payload.is_some_and(contains_input_handle) {
-        return Err(
-            "physical Input stream/callback delivery is unavailable: lifetime forwarding is unimplemented"
-                .into(),
-        );
-    }
     Ok(CanonValue::Obj(arguments))
 }
 fn contains_input_handle(ty: &WitType) -> bool {

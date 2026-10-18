@@ -9,7 +9,7 @@ use tobkiri_canon::{
     ids::{PackHash, RequestId},
 };
 use tobkiri_gate::{
-    ApprovalStore, CallCx, EffectRequest, FlowEndpointRegistration, Gate, GateEngine,
+    ApprovalStore, CallCx, CoreControl, EffectRequest, FlowEndpointRegistration, Gate, GateEngine,
     MediatorChain, Principal,
 };
 use tobkiri_profile::CompiledProfile;
@@ -96,11 +96,13 @@ fn fixture_checked(missing: Option<&str>) -> Result<Fixture, StaticRejection> {
         .join(DataRoot::profile_relative(&profile.id, "audit.sqlite").unwrap());
     let approvals = Arc::new(Approvals::open(&root, &profile.id).unwrap());
     let audit = Arc::new(AuditLog::open(&root, &profile.id, AuditQuota::default()).unwrap());
-    let gate = Arc::new(GateEngine::new(
+    let control = CoreControl::default();
+    let gate = Arc::new(GateEngine::new_with_control(
         approvals.clone(),
         audit,
         Arc::new(crate::test_support::RuntimeHost),
         MediatorChain::default(),
+        control.clone(),
     ));
     for (index, pack) in packs.iter().enumerate() {
         let mut approved = permission.clone();
@@ -185,14 +187,16 @@ fn fixture_checked(missing: Option<&str>) -> Result<Fixture, StaticRejection> {
         )
         .unwrap();
     let endpoints = crate::execution_frames::register_flow_endpoints(&compiled, &gate).unwrap();
-    let cx = CallCx::root(
+    let cx = CallCx::try_root_with_control(
         profile.id.clone(),
         Principal::User,
         RequestId::parse("req_projection").unwrap(),
-        tobkiri_gate::CancellationToken::new(),
+        tobkiri_gate::CancellationToken::new_with_control(&control).unwrap(),
         Instant::now() + Duration::from_secs(1),
         permission.wasm.clone(),
+        control,
     )
+    .unwrap()
     .with_security_epoch(epoch)
     .with_revision(compiled.plan_digest.clone());
     Ok(Fixture {
@@ -508,14 +512,17 @@ fn source_hash_pin_and_revision_cannot_be_substituted() {
         )
         .is_err()
     );
-    let wrong = CallCx::root(
+    let control = fixture.cx.control().clone();
+    let wrong = CallCx::try_root_with_control(
         fixture.compiled.profile.id.clone(),
         Principal::User,
         RequestId::parse("req_wrong").unwrap(),
-        tobkiri_gate::CancellationToken::new(),
+        tobkiri_gate::CancellationToken::new_with_control(&control).unwrap(),
         Instant::now() + Duration::from_secs(1),
         fixture.compiled.profile.ceiling.wasm.clone(),
+        control,
     )
+    .unwrap()
     .with_revision(Digest::hash(b"different"));
     assert!(register_inputs(&fixture.gate, &fixture.compiled, &fixture.packs, &wrong).is_err());
 }

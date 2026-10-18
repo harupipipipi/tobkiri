@@ -52,6 +52,12 @@ impl TestBudget {
     }
 }
 
+impl Default for TestBudget {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AllocationBudget for TestBudget {
     fn reserve(&self, request: AllocationRequest) -> Result<(), AllocationError> {
         if request.elements > TEST_ALLOCATION_ELEMENTS || request.work > TEST_ALLOCATION_WORK {
@@ -444,10 +450,11 @@ impl ActiveCodeFrame for TestActiveCodeFrame {
     }
 
     fn retire_node(&self, node: &ReachedNode) {
-        if let Some(proof) = node.core_proof::<TestNodeProof>() {
-            if proof.frame_identity == self.identity && proof.flow_address == self.flow_address {
-                proof.retired.store(true, Ordering::Release);
-            }
+        if let Some(proof) = node.core_proof::<TestNodeProof>()
+            && proof.frame_identity == self.identity
+            && proof.flow_address == self.flow_address
+        {
+            proof.retired.store(true, Ordering::Release);
         }
     }
 

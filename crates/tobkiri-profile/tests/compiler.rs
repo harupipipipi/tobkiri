@@ -425,6 +425,76 @@ fn overlapping_overlays_need_total_order_and_cycles_fail() {
     p.user_overlays[0].order.after.push("user:b".into());
     has_error(compile(&p, &packs), "overlay-order");
 }
+fn singleton_overlay_fixture() -> (Vec<VerifiedPack>, Profile, OverlayTarget) {
+    let packs = vec![
+        contracts(),
+        provider("local.provider"),
+        flow_pack(&flow(vec![call("query")])),
+    ];
+    let mut p = profile(&packs);
+    let target = OverlayTarget::Step {
+        flow: "local.flow/turn".into(),
+        step: "query".into(),
+    };
+    p.user_overlays.push(overlay(
+        "only",
+        target.clone(),
+        vec![Step::new(
+            "next",
+            StepKind::Next(Next {
+                args: "$args".into(),
+            }),
+        )],
+    ));
+    (packs, p, target)
+}
+#[test]
+fn singleton_explicit_overlay_order_rejects_unknown_label() {
+    let (packs, mut p, target) = singleton_overlay_fixture();
+    p.overlay_order.push(OverlayOrder {
+        target,
+        order: vec!["user:missing".into()],
+    });
+    let errors = compile(&p, &packs).unwrap_err();
+    assert!(errors.iter().any(|e| {
+        e.code == "overlay-order"
+            && e.message == "Profile overlay order label is absent or ambiguous"
+    }));
+}
+#[test]
+fn singleton_explicit_overlay_order_rejects_duplicate_label() {
+    let (packs, mut p, target) = singleton_overlay_fixture();
+    p.overlay_order.push(OverlayOrder {
+        target,
+        order: vec!["user:only".into(), "user:only".into()],
+    });
+    let errors = compile(&p, &packs).unwrap_err();
+    assert!(errors.iter().any(|e| {
+        e.code == "overlay-order" && e.message == "Profile overlay order duplicates overlay"
+    }));
+}
+#[test]
+fn singleton_explicit_overlay_order_accepts_one_valid_label() {
+    let (packs, mut p, target) = singleton_overlay_fixture();
+    p.overlay_order.push(OverlayOrder {
+        target,
+        order: vec!["user:only".into()],
+    });
+    let compiled = compile(&p, &packs).unwrap();
+    let overlays = &compiled.flows["local.flow/turn"].ordered_overlays["query"];
+    assert_eq!(overlays.len(), 1);
+    assert_eq!(overlays[0].document.id, "only");
+    assert!(overlays[0].owner.is_none());
+}
+#[test]
+fn singleton_overlay_without_explicit_order_is_retained() {
+    let (packs, p, _) = singleton_overlay_fixture();
+    let compiled = compile(&p, &packs).unwrap();
+    let overlays = &compiled.flows["local.flow/turn"].ordered_overlays["query"];
+    assert_eq!(overlays.len(), 1);
+    assert_eq!(overlays[0].document.id, "only");
+    assert!(overlays[0].owner.is_none());
+}
 #[test]
 fn deleting_used_output_and_repeated_next_fail_closed() {
     let mut consumer = call("consume");
@@ -920,10 +990,12 @@ fn structural_role_admission_does_not_require_a_callable_operation() {
         vec![],
         vec!["wrap.json".into()],
     );
+    let mut document = flow(vec![call("query")]);
+    document.implements = Some(reference("workflow"));
     let packs = vec![
         contracts,
         provider("local.provider"),
-        flow_pack(&flow(vec![call("query")])),
+        flow_pack(&document),
         overlay,
     ];
     let compiled = compile(&profile(&packs), &packs).unwrap();
@@ -966,10 +1038,12 @@ fn overlay_effects_and_next_keep_separate_original_pack_authority() {
         vec![],
         vec!["wrap.json".into()],
     );
+    let mut document = flow(vec![call("query")]);
+    document.implements = Some(reference("workflow"));
     let packs = vec![
         contracts(),
         provider("local.provider"),
-        flow_pack(&flow(vec![call("query")])),
+        flow_pack(&document),
         overlay,
     ];
     let p = profile(&packs);
@@ -1351,10 +1425,14 @@ fn pack_and_user_overlay_witnesses_reuse_their_resolved_ast_hash() {
                 ),
             ],
         );
+        let mut document = flow(vec![call("query")]);
+        if !user {
+            document.implements = Some(reference("workflow"));
+        }
         let mut packs = vec![
             contracts(),
             provider("local.provider"),
-            flow_pack(&flow(vec![call("query")])),
+            flow_pack(&document),
         ];
         if !user {
             packs.push(pack(
@@ -1571,4 +1649,124 @@ fn dynamic_flow_consume_never_widens_to_another_minor() {
     // implements exactly 1.0; runtime resolution never accepts the minor.
     let packs = vec![contracts, endpoint, consumer];
     has_error(compile(&profile(&packs), &packs), "required-flow");
+}
+
+fn publication_overlay(target: OverlayTarget) -> OverlayDocument {
+    overlay(
+        "wrap",
+        target,
+        vec![Step::new(
+            "next",
+            StepKind::Next(Next {
+                args: "$args".into(),
+            }),
+        )],
+    )
+}
+
+fn foreign_overlay_publication_fixture(implements: Option<ShapeRef>) -> Vec<VerifiedPack> {
+    let mut document = flow(vec![call("query")]);
+    document.implements = implements;
+    let overlay = publication_overlay(OverlayTarget::Role {
+        role: reference("role"),
+    });
+    vec![
+        contracts(),
+        provider("local.provider"),
+        flow_pack(&document),
+        pack(
+            "local.overlay",
+            BTreeMap::from([("wrap.json".into(), serde_json::to_vec(&overlay).unwrap())]),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec!["wrap.json".into()],
+        ),
+    ]
+}
+
+#[test]
+fn foreign_pack_overlay_requires_published_flow_shape() {
+    let packs = foreign_overlay_publication_fixture(None);
+    let errors = compile(&profile(&packs), &packs).unwrap_err();
+    assert_eq!(errors.len(), 1);
+    assert_eq!(errors[0].code, "overlay-private-flow");
+}
+
+#[test]
+fn foreign_pack_overlay_accepts_known_flow_shape_without_shape_permission() {
+    let packs = foreign_overlay_publication_fixture(Some(reference("workflow")));
+    let p = profile(&packs);
+    let foreign = packs
+        .iter()
+        .find(|pack| pack.manifest.id.as_str() == "local.overlay")
+        .unwrap();
+    let workflow = reference("workflow").to_string();
+    assert!(!p.ceiling.ports.contains(&workflow));
+    assert!(!foreign.manifest.permissions.ports.contains(&workflow));
+    assert!(
+        !p.pack_limits[&foreign.manifest.id]
+            .ports
+            .contains(&workflow)
+    );
+    let compiled = compile(&p, &packs).unwrap();
+    let flow = &compiled.flows["local.flow/turn"];
+    assert_eq!(flow.document.implements, Some(reference("workflow")));
+    let overlays = &flow.ordered_overlays["query"];
+    assert_eq!(overlays.len(), 1);
+    assert_eq!(
+        overlays[0].owner.as_ref().unwrap().as_str(),
+        "local.overlay"
+    );
+}
+
+#[test]
+fn user_overlay_can_override_private_closed_flow() {
+    let mut target = call("query");
+    target.overlay = OverlayAccess::Closed;
+    let packs = vec![
+        contracts(),
+        provider("local.provider"),
+        flow_pack(&flow(vec![target])),
+    ];
+    let mut p = profile(&packs);
+    p.user_overlays
+        .push(publication_overlay(OverlayTarget::Step {
+            flow: "local.flow/turn".into(),
+            step: "query".into(),
+        }));
+    let compiled = compile(&p, &packs).unwrap();
+    let flow = &compiled.flows["local.flow/turn"];
+    assert!(flow.document.implements.is_none());
+    let overlays = &flow.ordered_overlays["query"];
+    assert_eq!(overlays.len(), 1);
+    assert!(overlays[0].owner.is_none());
+}
+
+#[test]
+fn own_pack_overlay_retains_private_flow_compatibility() {
+    let document = flow(vec![call("query")]);
+    let overlay = publication_overlay(OverlayTarget::Role {
+        role: reference("role"),
+    });
+    let owner = pack(
+        "local.flow",
+        BTreeMap::from([
+            ("turn.json".into(), serde_json::to_vec(&document).unwrap()),
+            ("wrap.json".into(), serde_json::to_vec(&overlay).unwrap()),
+        ]),
+        vec![],
+        vec![],
+        vec![port("query", false)],
+        vec!["turn.json".into()],
+        vec!["wrap.json".into()],
+    );
+    let packs = vec![contracts(), provider("local.provider"), owner];
+    let compiled = compile(&profile(&packs), &packs).unwrap();
+    let flow = &compiled.flows["local.flow/turn"];
+    assert!(flow.document.implements.is_none());
+    let overlays = &flow.ordered_overlays["query"];
+    assert_eq!(overlays.len(), 1);
+    assert_eq!(overlays[0].owner.as_ref().unwrap(), &flow.owner);
 }

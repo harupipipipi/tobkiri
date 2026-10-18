@@ -1,11 +1,11 @@
 use crate::engine::RunCompletion;
 use crate::{
-    CoreStream, RunEvent, RunEventKind, RunHandle, StepError, StreamSource, StreamTerminal,
+    CoreStream, RunEvent, RunEventKind, RunHandle, RunTaskCompletion, StepError,
+    StreamCloseControl, StreamCloseReason, StreamSource, StreamTerminal,
 };
 use async_trait::async_trait;
 use std::sync::Arc;
 use tobkiri_canon::{AllocationBudget, AllocationError, CoreBuffer, CoreRef, CoreValue};
-use tobkiri_gate::CancellationToken;
 use tokio::sync::{mpsc, oneshot};
 
 impl RunHandle {
@@ -15,7 +15,10 @@ impl RunHandle {
             events: self.events,
             result: Some(self.result.into_receiver()),
             completion: None,
-            cancel: self.cancel,
+            task_completion: self.task_completion,
+            generation_bound: self.generation_bound,
+            physical_completion: None,
+            close_control: self.close_control,
             stream_budget: self.stream_budget,
             event_budget: self.event_budget,
             max_batch_bytes: self.max_batch_bytes,
@@ -33,7 +36,10 @@ struct RunStream {
     events: mpsc::Receiver<RunEvent>,
     result: Option<oneshot::Receiver<Result<RunCompletion, StepError>>>,
     completion: Option<Result<(), StepError>>,
-    cancel: CancellationToken,
+    task_completion: Arc<dyn RunTaskCompletion>,
+    generation_bound: bool,
+    physical_completion: Option<Result<(), StepError>>,
+    close_control: Arc<dyn StreamCloseControl>,
     stream_budget: Arc<dyn AllocationBudget>,
     event_budget: Arc<dyn AllocationBudget>,
     max_batch_bytes: u64,
@@ -72,10 +78,8 @@ impl StreamSource for RunStream {
         }
         let batch = self.next_batch(max).await?;
         let is_end = matches!(batch.inspect(), CoreRef::Arr(values) if values.is_empty());
-        if is_end {
-            if let Some(buffer) = &self.empty_buffer {
-                return Ok(buffer.share());
-            }
+        if is_end && let Some(buffer) = &self.empty_buffer {
+            return Ok(buffer.share());
         }
         let buffer = match batch.encode_guest(&self.stream_budget) {
             Ok(buffer) => buffer,
@@ -102,10 +106,8 @@ impl StreamSource for RunStream {
     }
 
     fn cancel(&mut self) {
-        if !self.ended && !self.terminal_seen {
-            self.cancel.cancel();
-        }
         self.events.close();
+        let _ = self.close_control.record_close(StreamCloseReason::Unknown);
         self.ended = true;
         self.pending_batch = None;
         self.pending_event = None;
@@ -113,6 +115,16 @@ impl StreamSource for RunStream {
 
     fn terminal_outcome(&self) -> Option<StreamTerminal> {
         self.terminal_outcome
+    }
+
+    fn close_control(&self) -> Option<Arc<dyn StreamCloseControl>> {
+        Some(self.close_control.clone())
+    }
+
+    fn physical_completion(&self) -> Option<crate::StreamPhysicalCompletion> {
+        Some(crate::StreamPhysicalCompletion::from_task(
+            self.task_completion.clone(),
+        ))
     }
 
     async fn close(&mut self) -> Result<(), StepError> {
@@ -128,20 +140,38 @@ impl StreamSource for RunStream {
 
 impl RunStream {
     async fn await_completion(&mut self) -> Result<(), StepError> {
-        if let Some(completion) = &self.completion {
-            return completion.clone();
-        }
-        // Borrow the receiver until it resolves. An abandoned close/pull
-        // future must leave this exact completion proof available for retry.
-        let completion = match self.result.as_mut() {
-            Some(result) => result
-                .await
-                .map_err(|_| StepError::new("internal", "Flow completion channel closed"))
-                .and_then(|completion| completion.map(|_| ())),
-            None => Err(StepError::new("internal", "Flow completion proof missing")),
+        let completion = match &self.completion {
+            Some(completion) => completion.clone(),
+            None => {
+                // Keep the original receiver through an abandoned await.
+                let result = match self.result.as_mut() {
+                    Some(result) => result
+                        .await
+                        .map_err(|_| StepError::new("internal", "Flow completion channel closed"))
+                        .and_then(|completion| completion.map(|_| ())),
+                    None => Err(StepError::new("internal", "Flow completion proof missing")),
+                };
+                self.result.take();
+                self.completion = Some(result.clone());
+                result
+            }
         };
-        self.result.take();
-        self.completion = Some(completion.clone());
+        // A terminal event/RunResult is not physical completion. Always await
+        // the SAME real task receipt, including after EOF or a prior close.
+        let physical = match &self.physical_completion {
+            Some(result) => result.clone(),
+            None => {
+                let result = self.task_completion.wait().await;
+                self.physical_completion = Some(result.clone());
+                result
+            }
+        };
+        // Ordinary native callers retain business-close compatibility, while
+        // their independent receipt still reports physical uncertainty. A
+        // generation-bound caller must surface that uncertainty from close.
+        if self.generation_bound {
+            physical?;
+        }
         completion
     }
 

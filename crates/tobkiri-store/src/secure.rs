@@ -13,6 +13,18 @@ use std::{
 use tobkiri_canon::{Digest, ids::ProfileId};
 use tobkiri_gate::ApprovalStore;
 
+/// Native stat fields differ in width and signedness across supported Unix
+/// platforms. Reject an unrepresentable field instead of truncating identity.
+#[cfg(unix)]
+pub(crate) fn checked_file_identity(stat: &libc::stat) -> Result<(u64, u64), StoreError> {
+    fn field<T: TryInto<u64>>(value: T) -> Result<u64, StoreError> {
+        value
+            .try_into()
+            .map_err(|_| StoreError::Invalid("file identity outside supported range".into()))
+    }
+    Ok((field(stat.st_dev)?, field(stat.st_ino)?))
+}
+
 /// Reject traversal, absolute paths, NULs and platform separator ambiguities.
 pub fn validate_relative(path: &Path) -> Result<Vec<String>, StoreError> {
     let mut parts = Vec::new();
@@ -119,6 +131,20 @@ impl DataRoot {
     /// Path for diagnostics only; effect paths use the pinned directory capability.
     pub fn path(&self) -> &Path {
         &self.path
+    }
+    /// Duplicate the original pinned directory for trusted Core filesystem
+    /// protection. This is not a guest root or a pathname-based reopen.
+    pub fn filesystem_protection_handle(&self) -> Result<File, StoreError> {
+        #[cfg(unix)]
+        {
+            Ok(self.directory.try_clone()?)
+        }
+        #[cfg(not(unix))]
+        {
+            Err(StoreError::Unavailable(
+                "descriptor-relative filesystem protection is unsupported".into(),
+            ))
+        }
     }
     /// Stable identity tuple for bounded registries keyed to this pinned root.
     /// It carries no descriptor and does not grant filesystem access.
@@ -488,7 +514,7 @@ impl DataRoot {
                     "move source is not a regular file or directory".into(),
                 ));
             }
-            Ok(Some((stat.st_dev as u64, stat.st_ino as u64)))
+            Ok(Some(checked_file_identity(&stat)?))
         }
         #[cfg(not(unix))]
         {

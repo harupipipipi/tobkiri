@@ -341,7 +341,7 @@
     },
     {
       "id": "local.harness-ui",
-      "sha256": "sha256:927ac09e973c36a6fc33c55990be2aa2e1b4fa9e66eb2523eb1e640a8eae4da1",
+      "sha256": "sha256:6d6bfc4dcfb8bf2fd7e6af68ae988546937698e2cbc6ab4fe69912af5253fe71",
       "source": "file:../local.harness-ui",
       "version": "0.1.0"
     }

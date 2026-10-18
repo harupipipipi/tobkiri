@@ -112,8 +112,44 @@ impl Drop for FreeBlock {
         unsafe {
             dealloc(self.ptr.as_ptr(), self.layout);
         }
+        // Observed by tests only after the real dealloc; a production no-op.
+        note_test_dealloc();
     }
 }
+
+// Test-only instrumentation: a thread-local one-shot denial consumed before
+// each fallible block allocation, plus a counter bumped strictly after a real
+// `dealloc` returns. Neither can mislabel, retain, or corrupt live storage.
+#[cfg(test)]
+thread_local! {
+    static TEST_DENY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static TEST_DEALLOCS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+#[cfg(test)]
+fn deny_next_test_allocation() {
+    TEST_DENY.with(|flag| flag.set(true));
+}
+#[cfg(test)]
+fn take_test_denial() -> bool {
+    TEST_DENY.with(|flag| flag.replace(false))
+}
+#[cfg(not(test))]
+#[inline]
+const fn take_test_denial() -> bool {
+    false
+}
+#[cfg(test)]
+fn note_test_dealloc() {
+    TEST_DEALLOCS.with(|count| count.set(count.get() + 1));
+}
+#[cfg(not(test))]
+#[inline]
+const fn note_test_dealloc() {}
+#[cfg(test)]
+fn test_deallocs() -> usize {
+    TEST_DEALLOCS.with(std::cell::Cell::get)
+}
+
 /// Immutable shared storage for a trusted, externally prepaid release plan.
 /// This primitive grants no authority. Capacity factories must reserve the exact
 /// `storage_bytes()` before construction, including their bounded metadata.
@@ -147,13 +183,35 @@ impl<T, R> LeasedShared<T, R> {
     /// Allocates only after a trusted factory has prepaid `storage_bytes()`.
     /// If allocation fails, payload destruction precedes release-plan drop.
     pub fn try_new_precharged(value: T, release_plan: R) -> Result<Self, AllocationError> {
+        Self::try_new_precharged_recover(value, release_plan).map_err(
+            |(error, value, release_plan)| {
+                // Exact old custody: destroy payload before dropping the plan.
+                drop(value);
+                drop(release_plan);
+                error
+            },
+        )
+    }
+    /// Same single prepaid block, but every layout/arithmetic/allocation
+    /// rejection returns the identical moved payload and plan, undropped,
+    /// unrefunded, and never initialized into a block. `Layout::new` for
+    /// `Block<T, R>` is already statically valid for valid Rust types, so
+    /// no dynamic fallible-layout branch exists; `take_test_denial` is the
+    /// only deterministic rejection seam and never touches live storage.
+    fn try_new_precharged_recover(
+        value: T,
+        release_plan: R,
+    ) -> Result<Self, (AllocationError, T, R)> {
         let layout = Layout::new::<Block<T, R>>();
+        // Rejects BEFORE allocation in test builds only; production never
+        // denies and always performs exactly one real `alloc` below.
+        if take_test_denial() {
+            return Err((AllocationError::Allocator, value, release_plan));
+        }
         // SAFETY: layout is nonzero/aligned; null is handled without initialization.
         let raw = unsafe { alloc(layout) }.cast::<Block<T, R>>();
         let Some(ptr) = NonNull::new(raw) else {
-            drop(value);
-            drop(release_plan);
-            return Err(AllocationError::Allocator);
+            return Err((AllocationError::Allocator, value, release_plan));
         };
         // SAFETY: newly allocated storage is exclusively owned and correctly sized.
         unsafe {
@@ -208,6 +266,72 @@ impl<T, R> Drop for LeasedShared<T, R> {
 // SAFETY: contents are immutable; atomic ownership protects their lifetime.
 unsafe impl<T: Send + Sync, R: Send + Sync> Send for LeasedShared<T, R> {}
 unsafe impl<T: Send + Sync, R: Send + Sync> Sync for LeasedShared<T, R> {}
+
+/// Immutable prepaid wake payload. A Waker owns a reference to the same
+/// LeasedShared block; its final release still deallocates that block before
+/// the original release plan runs. This trait adds no owned/raw extraction.
+pub trait LeasedWake: Send + Sync + 'static {
+    fn wake_by_ref(&self);
+}
+
+impl<T: LeasedWake, R: Send + Sync + 'static> LeasedShared<T, R> {
+    /// Transfers this exact prepaid reference into a standard Waker without
+    /// allocating another block or exposing its raw pointer. Clone/wake/drop
+    /// keep the primitive's original atomic reference accounting and plan.
+    pub fn into_waker(self) -> std::task::Waker {
+        // SAFETY: only the private adapter creates data for this vtable. Its
+        // four operations retain/consume exactly the reference they receive;
+        // T and R satisfy Waker's cross-thread Send/Sync lifetime contract.
+        unsafe { std::task::Waker::from_raw(self.into_raw_waker()) }
+    }
+
+    const WAKER_VTABLE: std::task::RawWakerVTable = std::task::RawWakerVTable::new(
+        Self::waker_clone,
+        Self::waker_wake,
+        Self::waker_wake_by_ref,
+        Self::waker_drop,
+    );
+
+    fn into_raw_waker(self) -> std::task::RawWaker {
+        let owner = ManuallyDrop::new(self);
+        // The raw token, rather than a second Rust handle, now owns this one
+        // existing count. No public API can create/borrow/recover that token.
+        std::task::RawWaker::new(owner.ptr.as_ptr().cast(), &Self::WAKER_VTABLE)
+    }
+
+    unsafe fn waker_clone(data: *const ()) -> std::task::RawWaker {
+        // SAFETY: the Waker caller retains a live token for this clone call.
+        // ManuallyDrop borrows that count; Clone creates exactly one new one.
+        let borrowed = ManuallyDrop::new(Self {
+            ptr: unsafe { NonNull::new_unchecked(data.cast_mut().cast::<Block<T, R>>()) },
+        });
+        Self::clone(&borrowed).into_raw_waker()
+    }
+
+    unsafe fn waker_wake(data: *const ()) {
+        // SAFETY: wake consumes exactly its owned raw token. The ordinary
+        // owner releases that count on return OR callback unwinding.
+        let owner = Self {
+            ptr: unsafe { NonNull::new_unchecked(data.cast_mut().cast::<Block<T, R>>()) },
+        };
+        owner.get().wake_by_ref();
+    }
+
+    unsafe fn waker_wake_by_ref(data: *const ()) {
+        // SAFETY: the caller retains its live token throughout this borrow;
+        // no temporary owned reference is created or decremented.
+        let block = unsafe { &*data.cast::<Block<T, R>>() };
+        block.value.wake_by_ref();
+    }
+
+    unsafe fn waker_drop(data: *const ()) {
+        // SAFETY: drop consumes exactly its one owned raw token and uses the
+        // original payload -> actual deallocation -> release-plan sequence.
+        drop(Self {
+            ptr: unsafe { NonNull::new_unchecked(data.cast_mut().cast::<Block<T, R>>()) },
+        });
+    }
+}
 
 /// A fallible prepaid immutable control allocation with borrowed type erasure.
 /// Erasure retains the existing LeasedShared block, destructor and release plan;
@@ -264,6 +388,27 @@ impl<T: Send + Sync + 'static> ControlHandle<T> {
         R: Send + Sync + 'static,
     {
         let shared = LeasedShared::try_new_precharged(value, release_plan)?;
+        let value = NonNull::from(shared.get());
+        let storage = ErasedStorage {
+            block: shared.ptr.cast(),
+            clone: clone_control::<T, R>,
+            drop: drop_control::<T, R>,
+        };
+        std::mem::forget(shared);
+        Ok(Self { storage, value })
+    }
+    /// Same custody and single physical allocation as `try_new_precharged`,
+    /// but any recoverable rejection returns the identical owned payload and
+    /// release plan in the error tuple: undropped, unrefunded, never cloned,
+    /// and never initialized into a block, so the caller keeps full custody.
+    pub fn try_new_precharged_recover<R>(
+        value: T,
+        release_plan: R,
+    ) -> Result<Self, (AllocationError, T, R)>
+    where
+        R: Send + Sync + 'static,
+    {
+        let shared = LeasedShared::try_new_precharged_recover(value, release_plan)?;
         let value = NonNull::from(shared.get());
         let storage = ErasedStorage {
             block: shared.ptr.cast(),
@@ -1627,5 +1772,269 @@ fn equal_nodes(left: &Node, right: &Node) -> bool {
         }
         // The complete precheck already rejects legacy floats and BigInt.
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    use std::sync::Mutex;
+
+    /// Drop-order log: each entry is (token, deallocs seen at drop time).
+    type Log = Arc<Mutex<Vec<(usize, usize)>>>;
+    static NEXT_TOKEN: AtomicUsize = AtomicUsize::new(1);
+
+    /// Move-only fixture; each drop logs (token, observed dealloc count).
+    struct Counted {
+        token: usize,
+        log: Log,
+    }
+    impl Counted {
+        fn new(log: &Log) -> Self {
+            Self {
+                token: NEXT_TOKEN.fetch_add(1, Ordering::Relaxed),
+                log: log.clone(),
+            }
+        }
+    }
+    impl Drop for Counted {
+        fn drop(&mut self) {
+            self.log
+                .lock()
+                .expect("test log")
+                .push((self.token, test_deallocs()));
+        }
+    }
+    fn drops(log: &Log, token: usize) -> Vec<usize> {
+        log.lock()
+            .expect("test log")
+            .iter()
+            .filter(|&&(t, _)| t == token)
+            .map(|&(_, d)| d)
+            .collect()
+    }
+    fn tokens(log: &Log) -> Vec<usize> {
+        log.lock()
+            .expect("test log")
+            .iter()
+            .map(|&(t, _)| t)
+            .collect()
+    }
+
+    #[test]
+    fn recover_success_shares_one_block() {
+        let log = Log::default();
+        let value = Counted::new(&log);
+        let plan = Counted::new(&log);
+        let (token, plan_token) = (value.token, plan.token);
+        let Ok(handle) = ControlHandle::try_new_precharged_recover(value, plan) else {
+            panic!("prepaid allocation must succeed")
+        };
+        assert_eq!(handle.get().token, token);
+        // Erasure keeps the identical Block layout and reference counter.
+        assert_eq!(
+            ControlHandle::<Counted>::storage_bytes::<Counted>(),
+            size_of::<Block<Counted, Counted>>()
+        );
+        let projected = handle.project(|payload| &payload.token);
+        assert_eq!(*projected.get(), token);
+        drop(handle.clone());
+        drop(handle);
+        // The projection still owns the single original block.
+        assert!(tokens(&log).is_empty());
+        let base = test_deallocs();
+        drop(projected);
+        // Last reference: payload once before dealloc, plan once after.
+        assert_eq!(drops(&log, token), vec![base]);
+        assert_eq!(drops(&log, plan_token), vec![base + 1]);
+        assert_eq!(test_deallocs(), base + 1);
+    }
+
+    #[test]
+    fn recover_over_aligned_and_zst() {
+        #[repr(align(64))]
+        struct Wide(Counted);
+        let log = Log::default();
+        let value = Wide(Counted::new(&log));
+        let plan = Counted::new(&log);
+        let (token, plan_token) = (value.0.token, plan.token);
+        let Ok(handle) = ControlHandle::try_new_precharged_recover(value, plan) else {
+            panic!("prepaid allocation must succeed")
+        };
+        assert_eq!(handle.get().0.token, token);
+        assert_eq!(
+            ControlHandle::<Wide>::storage_bytes::<Counted>(),
+            size_of::<Block<Wide, Counted>>()
+        );
+        assert_eq!(size_of::<Block<Wide, Counted>>() % align_of::<Wide>(), 0);
+        // Block<ZST, ZST> stays nonzero: the refcount alone has size.
+        assert_eq!(
+            ControlHandle::<()>::storage_bytes::<()>(),
+            size_of::<Block<(), ()>>()
+        );
+        assert!(size_of::<Block<(), ()>>() > 0);
+        let Ok(zst) = ControlHandle::try_new_precharged_recover((), ()) else {
+            panic!("prepaid allocation must succeed")
+        };
+        assert_eq!(*zst.get(), ());
+        drop(zst);
+        drop(handle);
+        assert_eq!(drops(&log, token).len(), 1);
+        assert_eq!(drops(&log, plan_token).len(), 1);
+    }
+
+    #[test]
+    fn recover_denial_returns_same_values_undropped() {
+        let log = Log::default();
+        let value = Counted::new(&log);
+        let plan = Counted::new(&log);
+        let (token, plan_token) = (value.token, plan.token);
+        deny_next_test_allocation();
+        let (error, value, plan) =
+            ControlHandle::try_new_precharged_recover(value, plan).unwrap_err();
+        assert_eq!(error, AllocationError::Allocator);
+        // Identical owned custody came back undropped and unrefunded: no
+        // replacement, re-reserve, or hidden destructor ran on failure.
+        assert_eq!((value.token, plan.token), (token, plan_token));
+        assert!(tokens(&log).is_empty());
+        drop(value);
+        drop(plan);
+        assert_eq!(tokens(&log), vec![token, plan_token]);
+    }
+
+    #[test]
+    fn recovered_values_construct_once_after_denial() {
+        let log = Log::default();
+        let value = Counted::new(&log);
+        let plan = Counted::new(&log);
+        let (token, plan_token) = (value.token, plan.token);
+        deny_next_test_allocation();
+        let (error, value, plan) =
+            ControlHandle::try_new_precharged_recover(value, plan).unwrap_err();
+        assert_eq!(error, AllocationError::Allocator);
+        // Identical recovered custody constructs once, without any
+        // re-reservation or retry inside the primitive.
+        let Ok(handle) = ControlHandle::try_new_precharged_recover(value, plan) else {
+            panic!("second construction must succeed")
+        };
+        let base = test_deallocs();
+        drop(handle);
+        assert_eq!(drops(&log, token), vec![base]);
+        assert_eq!(drops(&log, plan_token), vec![base + 1]);
+    }
+
+    #[test]
+    fn consuming_apis_drop_payload_before_plan() {
+        // Both old constructors keep the identical rejection mapping and
+        // custody: the payload is destroyed before the plan, once each.
+        let log = Log::default();
+        let value = Counted::new(&log);
+        let plan = Counted::new(&log);
+        let (token, plan_token) = (value.token, plan.token);
+        deny_next_test_allocation();
+        assert_eq!(
+            ControlHandle::try_new_precharged(value, plan).unwrap_err(),
+            AllocationError::Allocator
+        );
+        assert_eq!(tokens(&log), vec![token, plan_token]);
+
+        let log = Log::default();
+        let value = Counted::new(&log);
+        let plan = Counted::new(&log);
+        let (token, plan_token) = (value.token, plan.token);
+        deny_next_test_allocation();
+        assert_eq!(
+            LeasedShared::try_new_precharged(value, plan).unwrap_err(),
+            AllocationError::Allocator
+        );
+        assert_eq!(tokens(&log), vec![token, plan_token]);
+    }
+
+    #[test]
+    fn payload_drop_panic_still_frees_block_before_plan() {
+        struct PanicDrop {
+            token: usize,
+            log: Log,
+        }
+        impl Drop for PanicDrop {
+            fn drop(&mut self) {
+                self.log
+                    .lock()
+                    .expect("test log")
+                    .push((self.token, test_deallocs()));
+                panic!("payload drop");
+            }
+        }
+        let log = Log::default();
+        let value = PanicDrop {
+            token: NEXT_TOKEN.fetch_add(1, Ordering::Relaxed),
+            log: log.clone(),
+        };
+        let plan = Counted::new(&log);
+        let (token, plan_token) = (value.token, plan.token);
+        let Ok(handle) = ControlHandle::try_new_precharged_recover(value, plan) else {
+            panic!("prepaid allocation must succeed")
+        };
+        let base = test_deallocs();
+        let caught = catch_unwind(AssertUnwindSafe(|| drop(handle)));
+        assert!(caught.is_err());
+        // The unwind guard ran the real dealloc after the payload panic and
+        // before the plan drop: payload saw `base`, plan saw `base + 1`.
+        assert_eq!(drops(&log, token), vec![base]);
+        assert_eq!(drops(&log, plan_token), vec![base + 1]);
+        assert_eq!(test_deallocs(), base + 1);
+    }
+
+    #[test]
+    fn prepaid_waker_clones_keep_original_block_until_last_consuming_wake() {
+        struct Payload { _value: Counted, calls: Arc<AtomicUsize> }
+        impl LeasedWake for Payload {
+            fn wake_by_ref(&self) { self.calls.fetch_add(1, Ordering::AcqRel); }
+        }
+        let log = Log::default();
+        let value = Counted::new(&log);
+        let plan = Counted::new(&log);
+        let (token, plan_token) = (value.token, plan.token);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let shared = LeasedShared::try_new_precharged(Payload { _value: value, calls: calls.clone() }, plan).unwrap();
+        let pin = shared.clone();
+        let base = test_deallocs();
+        let waker = shared.into_waker();
+        let first = waker.clone();
+        let last = first.clone();
+        waker.wake_by_ref();
+        first.wake();
+        drop(waker);
+        assert_eq!(calls.load(Ordering::Acquire), 2);
+        assert!(tokens(&log).is_empty());
+        assert_eq!(test_deallocs(), base);
+        drop(pin);
+        // The sole remaining standard Waker owns the authentic prepaid
+        // allocation, and no Rust LeasedShared handle remains to rescue it.
+        assert!(tokens(&log).is_empty());
+        last.wake();
+        assert_eq!(calls.load(Ordering::Acquire), 3);
+        assert_eq!(drops(&log, token), vec![base]);
+        assert_eq!(drops(&log, plan_token), vec![base + 1]);
+        assert_eq!(test_deallocs(), base + 1);
+    }
+
+    #[test]
+    fn prepaid_consuming_wake_unwind_deallocates_before_original_plan() {
+        struct Payload { _value: Counted }
+        impl LeasedWake for Payload {
+            fn wake_by_ref(&self) { panic!("prepaid wake callback"); }
+        }
+        let log = Log::default();
+        let value = Counted::new(&log);
+        let plan = Counted::new(&log);
+        let (token, plan_token) = (value.token, plan.token);
+        let waker = LeasedShared::try_new_precharged(Payload { _value: value }, plan).unwrap().into_waker();
+        let base = test_deallocs();
+        assert!(catch_unwind(AssertUnwindSafe(|| waker.wake())).is_err());
+        assert_eq!(drops(&log, token), vec![base]);
+        assert_eq!(drops(&log, plan_token), vec![base + 1]);
+        assert_eq!(test_deallocs(), base + 1);
     }
 }

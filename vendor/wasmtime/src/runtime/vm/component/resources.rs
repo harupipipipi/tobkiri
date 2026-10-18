@@ -20,14 +20,16 @@
 //! about ABI details can be found in lifting/lowering throughout Wasmtime,
 //! namely in the `Resource<T>` and `ResourceAny` types.
 
-use super::{HandleTable, InstanceState, RemovedResource};
+use super::{HandleTable, InstanceState, PendingActivation, RemovedResource};
 use crate::bail_bug;
 use crate::component::store::ComponentTaskState;
 use crate::component::{FundedVec, HostAllocationOwner};
 use crate::prelude::*;
+use crate::store::StoreId;
 use core::error::Error;
 use core::fmt;
 use core::mem;
+use core::num::NonZeroU64;
 use wasmtime_environ::component::{
     ComponentTypes, RuntimeComponentInstanceIndex, TypeResourceTableIndex,
 };
@@ -111,6 +113,17 @@ pub enum TypedResource {
 }
 
 impl TypedResource {
+    /// The raw `rep` carried by this resource, without a type check.
+    ///
+    /// Provisional operations use this only after identity has been
+    /// established by the slot itself.
+    #[allow(dead_code)]
+    pub(super) fn untyped_rep(&self) -> u32 {
+        match self {
+            Self::Host(rep) | Self::Component { rep, .. } => *rep,
+        }
+    }
+
     pub(super) fn rep(&self, access_ty: &TypedResourceIndex) -> Result<u32> {
         match (self, access_ty) {
             (Self::Host(rep), TypedResourceIndex::Host(_)) => Ok(*rep),
@@ -159,7 +172,7 @@ pub enum TypedResourceIndex {
 }
 
 impl TypedResourceIndex {
-    pub(super) fn raw_index(&self) -> u32 {
+    pub(crate) fn raw_index(&self) -> u32 {
         match self {
             Self::Host(index) | Self::Component { index, .. } => *index,
         }
@@ -172,6 +185,142 @@ impl TypedResourceIndex {
         }
     }
 }
+
+/// Identity of the reserved store-side record that provisionally owns a
+/// pending `own` resource entry.
+///
+/// A key is a descriptive identity only: it names the actual `StoreId` and
+/// the nonzero serial of the reserved record the entry belongs to. Copying
+/// a key does not grant or duplicate ownership; ownership is exercised
+/// through [`PendingOwnTicket`] custody minted by table insertion.
+///
+/// The future `Store` record factory is the intended sole production
+/// minting boundary for these keys; this stage only exposes the trusted
+/// construction seam below.
+#[allow(dead_code)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(crate) struct PendingOwnerKey {
+    store: StoreId,
+    serial: NonZeroU64,
+}
+
+#[allow(dead_code)]
+impl PendingOwnerKey {
+    /// Trusted crate-private construction seam for provisional owners.
+    ///
+    /// `store` must be an actual `StoreId` and `serial` must be a fresh,
+    /// nonzero reserved-record serial minted for that store. Exercised with
+    /// `StoreId::allocate` in tests until the real `Store` record allocator
+    /// exists; a zero serial is a closed error.
+    pub(crate) fn new_stage_a_seam(store: StoreId, serial: u64) -> Result<Self> {
+        match NonZeroU64::new(serial) {
+            Some(serial) => Ok(Self { store, serial }),
+            None => bail!("pending owner record serial must be nonzero"),
+        }
+    }
+}
+
+/// Custody token authorizing provisional operations on exactly one pending
+/// `own` entry.
+///
+/// A ticket binds the provisional owner key, the exact typed index, and the
+/// representation recorded when the entry was inserted. Every authorized
+/// operation revalidates all of these against the live slot before
+/// mutating, so a stale, foreign, or mismatched ticket is a closed error.
+///
+/// Tickets are deliberately not `Copy` or `Clone`: they carry rollback
+/// custody of a specific table entry. Dropping a ticket abandons custody
+/// only — it never removes, activates, or releases the entry, which stays
+/// pending and funded until an authorized operation or physical table
+/// destruction.
+#[allow(dead_code)]
+#[derive(Debug)]
+pub(crate) struct PendingOwnTicket {
+    owner: PendingOwnerKey,
+    index: TypedResourceIndex,
+    rep: u32,
+}
+
+#[allow(dead_code)]
+impl PendingOwnTicket {
+    /// Trusted crate-private constructor; the table insertion paths are the
+    /// sole production callers.
+    ///
+    /// A forged ticket cannot mutate anything: authorized operations always
+    /// revalidate owner, index, type, and representation against the live
+    /// slot before touching it.
+    pub(crate) fn new(owner: PendingOwnerKey, index: TypedResourceIndex, rep: u32) -> Self {
+        Self {
+            owner,
+            index,
+            rep,
+        }
+    }
+
+    /// The provisional owner record this entry belongs to.
+    pub(crate) fn owner(&self) -> PendingOwnerKey {
+        self.owner
+    }
+
+    /// The exact typed index this entry occupies.
+    pub(crate) fn index(&self) -> TypedResourceIndex {
+        self.index
+    }
+
+    /// The representation recorded at insertion.
+    pub(crate) fn rep(&self) -> u32 {
+        self.rep
+    }
+}
+
+/// Stage reached by [`ResourceTables::resource_pending_transfer_own`] when
+/// it failed.
+#[allow(dead_code)]
+#[derive(Debug, Copy, Clone)]
+pub(crate) enum PendingTransferStage {
+    /// Validating the source identity failed; nothing was mutated.
+    SourceValidation,
+    /// Inserting the funded destination pending entry failed; the confirmed
+    /// source entry remains pending and occupied.
+    DestinationInsert,
+    /// Removing the confirmed source failed after the destination was
+    /// inserted; the inserted destination was rolled back and only the
+    /// source remains pending.
+    SourceRemove,
+    /// Removing the confirmed source failed and rolling back the inserted
+    /// destination failed too; both entries remain pending and the
+    /// destination's ticket is returned for custody.
+    DestinationRollback,
+}
+
+/// Bounded failure custody returned by a failed pending transfer.
+///
+/// `error` preserves the original error, including downcastable
+/// `HostAllocationError` values from funding denial. `destination` is only
+/// `Some` at stage `DestinationRollback` and carries custody of the
+/// inserted destination entry that could not be rolled back.
+#[allow(dead_code)]
+#[derive(Debug)]
+pub(crate) struct PendingTransferError {
+    /// The first error encountered.
+    pub error: crate::Error,
+    /// The stage at which the transfer stopped.
+    pub stage: PendingTransferStage,
+    /// Custody of a still-pending inserted destination entry, if any.
+    pub destination: Option<PendingOwnTicket>,
+}
+
+impl fmt::Display for PendingTransferError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "pending resource transfer failed at stage {:?}: {}",
+            self.stage, self.error
+        )
+    }
+}
+
+impl Error for PendingTransferError {}
 
 /// State related to borrows for a specific call.
 #[derive(Default)]
@@ -342,6 +491,123 @@ impl ResourceTables<'_> {
                 .unwrap();
         }
         Ok(())
+    }
+
+    /// Inserts a new provisional `own` resource into the table selected by
+    /// `resource`.
+    ///
+    /// The entry is pending: every ordinary accessor rejects it until a
+    /// prepared activation flips it active. Returns the custody ticket
+    /// minted by the table; `owner` identifies the reserved store record
+    /// authorized to roll back, transfer, or activate the entry.
+    #[allow(dead_code)]
+    pub(crate) fn resource_pending_own_insert(
+        &mut self,
+        resource: TypedResource,
+        owner: PendingOwnerKey,
+    ) -> Result<PendingOwnTicket> {
+        self.table_for_resource(&resource)
+            .resource_own_insert_pending(resource, owner)
+    }
+
+    /// Rejects `index` when it points at a pending `own` entry.
+    ///
+    /// This performs no mutation and exists so callers can fail before
+    /// running their own removal or generation bookkeeping.
+    pub(crate) fn resource_reject_pending(&mut self, index: TypedResourceIndex) -> Result<()> {
+        self.table_for_index(&index)
+            .resource_reject_pending(index.raw_index())
+    }
+
+    /// Validates `ticket` against the live slot without mutating anything.
+    ///
+    /// The owner key, typed index, and representation must all match the
+    /// pending entry exactly.
+    #[allow(dead_code)]
+    pub(crate) fn resource_pending_validate(&mut self, ticket: &PendingOwnTicket) -> Result<()> {
+        self.table_for_index(&ticket.index())
+            .resource_pending_validate(ticket)
+    }
+
+    /// Record-authorized rollback of a pending `own` entry.
+    ///
+    /// Removes the entry only if `ticket` exactly identifies it. No
+    /// destructor is dispatched and no borrow bookkeeping is touched;
+    /// pending entries always have a zero lend count.
+    #[allow(dead_code)]
+    pub(crate) fn resource_pending_remove(&mut self, ticket: &PendingOwnTicket) -> Result<u32> {
+        self.table_for_index(&ticket.index())
+            .resource_pending_remove(ticket)
+    }
+
+    /// Validates `ticket` and returns an exclusive activation guard.
+    ///
+    /// The returned guard performs only the already-prepared
+    /// pending-to-active state flip — no allocation, callback, await, or
+    /// revalidation. Dropping it leaves the entry pending and charged. This
+    /// does not authenticate any acknowledgement; later stages are
+    /// responsible for invoking it only after a real same-permit ACK.
+    #[allow(dead_code)]
+    pub(crate) fn resource_pending_prepare(
+        &mut self,
+        ticket: &PendingOwnTicket,
+    ) -> Result<PendingActivation<'_>> {
+        self.table_for_index(&ticket.index())
+            .resource_pending_prepare(ticket)
+    }
+
+    /// Transfers a pending `own` entry identified by `ticket` into `dst`'s
+    /// table, preserving its pending state, representation, and owner.
+    ///
+    /// Transactional: the source identity is fully validated first, the
+    /// funded destination pending entry is inserted before the confirmed
+    /// source is removed, and every failure returns bounded custody via
+    /// [`PendingTransferError`] describing the exact stage reached.
+    #[allow(dead_code)]
+    pub(crate) fn resource_pending_transfer_own(
+        &mut self,
+        ticket: &PendingOwnTicket,
+        dst: TypedResource,
+    ) -> Result<PendingOwnTicket, PendingTransferError> {
+        if dst.untyped_rep() != ticket.rep() {
+            return Err(PendingTransferError {
+                error: crate::Error::msg("pending transfer representation mismatch"),
+                stage: PendingTransferStage::SourceValidation,
+                destination: None,
+            });
+        }
+        if let Err(error) = self.resource_pending_validate(ticket) {
+            return Err(PendingTransferError {
+                error,
+                stage: PendingTransferStage::SourceValidation,
+                destination: None,
+            });
+        }
+        let destination = match self.resource_pending_own_insert(dst, ticket.owner()) {
+            Ok(ticket) => ticket,
+            Err(error) => {
+                return Err(PendingTransferError {
+                    error,
+                    stage: PendingTransferStage::DestinationInsert,
+                    destination: None,
+                });
+            }
+        };
+        if let Err(error) = self.resource_pending_remove(ticket) {
+            return match self.resource_pending_remove(&destination) {
+                Ok(_) => Err(PendingTransferError {
+                    error,
+                    stage: PendingTransferStage::SourceRemove,
+                    destination: None,
+                }),
+                Err(_) => Err(PendingTransferError {
+                    error,
+                    stage: PendingTransferStage::DestinationRollback,
+                    destination: Some(destination),
+                }),
+            };
+        }
+        Ok(destination)
     }
 }
 

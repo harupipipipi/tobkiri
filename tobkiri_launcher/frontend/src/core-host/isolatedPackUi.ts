@@ -105,6 +105,7 @@ export function mountPackUi(
   const frame = container.ownerDocument.createElement('iframe');
   frame.setAttribute('sandbox', 'allow-scripts');
   frame.setAttribute('referrerpolicy', 'no-referrer');
+  frame.className = 'pack-ui-frame';
   frame.title = 'Tobkiri Pack';
   const pending = new Map<number, AbortController>();
   const queue = sharedQueue;

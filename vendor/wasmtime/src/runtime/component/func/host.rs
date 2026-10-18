@@ -320,7 +320,7 @@ impl HostFunc {
                         Err(error) => Err(error.into()),
                     });
                 HostResult::Done(result.map(move |()| values))
-            }),
+            }).with_native_async_delivery(),
             owner,
         )
     }
@@ -352,7 +352,7 @@ impl HostFunc {
                     cx.block_on(Pin::from(func(store, ty, args, results)))
                 });
                 HostResult::Done(result.and_then(|result| result).map(move |()| values))
-            }),
+            }).with_native_async_delivery(),
         )
     }
 
@@ -424,6 +424,10 @@ where
     /// component model.
     const ASYNC: bool;
 
+    /// Actual registration profile, independent of component-model ASYNC.
+    /// Ordinary func_new_async[_owned] is DynamicHostFn<_, false> on a fiber.
+    fn resource_delivery_native_async(&self) -> bool { false }
+
     /// Performs a type-check to ensure that this host function can be imported
     /// with the provided signature that a component is using.
     fn typecheck(ty: TypeFuncIndex, types: &InstanceType<'_>) -> Result<()>;
@@ -491,7 +495,7 @@ where
     /// arguments are translated to Rust types.
     fn entrypoint(
         &self,
-        mut store: StoreContextMut<'_, T>,
+        store: StoreContextMut<'_, T>,
         instance: Instance,
         ty: TypeFuncIndex,
         options: OptionsIndex,
@@ -499,6 +503,11 @@ where
     ) -> Result<()> {
         let vminstance = instance.id().get(store.0);
         let async_ = vminstance.component().env_component().options[options].async_;
+
+        let mut delivery = crate::component::delivery::DeliveryCallbackScope::enter(
+            store, instance, ty, !async_ && self.resource_delivery_native_async(),
+        )?;
+        let store = delivery.store();
 
         // If this is a synchronous-lower of a host-async function, then the
         // guest is blocking. Test, in the context of the guest task, if that's
@@ -534,7 +543,10 @@ where
             store.0.host_task_delete(host_task)?;
         }
 
-        Ok(())
+        // Last fallible supported ABI operation. ReturningFromHost call-hooks
+        // are explicitly unsupported for this opt-in protocol at reservation.
+        // All result storage, scope/reentry and task work is complete here.
+        delivery.finish()
     }
 
     /// Implementation of the "sync" ABI.
@@ -817,7 +829,7 @@ where
 ///
 /// This is intended for more-dynamic use cases than `StaticHostFn` above such
 /// as demos, gluing things together quickly, and `wast` testing.
-struct DynamicHostFn<F, const ASYNC: bool>(F);
+struct DynamicHostFn<F, const ASYNC: bool>(F, bool);
 
 impl<F, const ASYNC: bool> DynamicHostFn<F, ASYNC> {
     fn new<T>(func: F) -> Self
@@ -830,7 +842,12 @@ impl<F, const ASYNC: bool> DynamicHostFn<F, ASYNC> {
             usize,
         ) -> HostResult<BudgetedVec<Val>>,
     {
-        Self(func)
+        Self(func, false)
+    }
+
+    fn with_native_async_delivery(mut self) -> Self {
+        self.1 = true;
+        self
     }
 }
 
@@ -846,6 +863,8 @@ where
     ) -> HostResult<BudgetedVec<Val>>,
 {
     const ASYNC: bool = ASYNC;
+
+    fn resource_delivery_native_async(&self) -> bool { self.1 }
 
     /// This function performs dynamic type checks on its parameters and
     /// results and subsequently does not need to perform up-front type

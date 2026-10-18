@@ -2,6 +2,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { appendBoundedHistory, HOST_MAX_BODY_BYTES, HOST_MAX_INFLIGHT, HostOutputWatermark, UiTransportQueue, utf8ByteLength } from './boundedTransport';
 import { mountPackUi, type IsolatedFrame, type UiAttachment, type UiRequest } from './isolatedPackUi';
+import { ProfileStopController } from './profileStop';
+import './style.css';
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const status = element('status');
@@ -95,9 +97,25 @@ terminalForm.addEventListener('submit', (event) => {
   input.value = '';
 });
 
+const profileStop = new ProfileStopController(status, element<HTMLButtonElement>('stop'), {
+  getGeneration: () => generation,
+  advanceGeneration: () => ++generation,
+  prepareStop: () => {
+    closeFrames();
+    activeCoreGeneration = 0;
+    activeTransportNamespace = '';
+    coreStartPending = false;
+    pendingHostOutput = null;
+    terminalRequest = null;
+    terminalForm.hidden = true;
+  },
+  invokeStop: () => invoke('core_stop_session'),
+});
+
 element<HTMLFormElement>('profile-form').addEventListener('submit', (event) => {
   event.preventDefault();
   const current = ++generation;
+  profileStop.resetForStart();
   closeFrames();
   activeCoreGeneration = 0;
   activeTransportNamespace = '';
@@ -258,22 +276,5 @@ element<HTMLFormElement>('profile-form').addEventListener('submit', (event) => {
   });
 });
 
-element('stop').addEventListener('click', () => {
-  generation++;
-  closeFrames();
-  activeCoreGeneration = 0;
-  activeTransportNamespace = '';
-  coreStartPending = false;
-  pendingHostOutput = null;
-  terminalRequest = null;
-  terminalForm.hidden = true;
-  void invoke('core_stop_session').then(() => { status.textContent = 'Profile stopped.'; });
-});
-window.addEventListener('pagehide', () => {
-  closeFrames();
-  activeCoreGeneration = 0;
-  activeTransportNamespace = '';
-  coreStartPending = false;
-  pendingHostOutput = null;
-  void invoke('core_stop_session').catch(() => {});
-}, { once: true });
+element('stop').addEventListener('click', profileStop.stop);
+window.addEventListener('pagehide', profileStop.stop, { once: true });

@@ -27,11 +27,17 @@ pub use execution_frame::{
 };
 pub use tobkiri_gate::AllocationReason;
 
-pub use engine::{FlowEngine, PreparedRun, RunHandle, RunResult};
+pub use engine::{
+    FlowEngine, PreparedRun, RunHandle, RunResult, RunTask, RunTaskCompletion, RunTaskExecution,
+    RunTaskPhysicalError, RunTaskPhysicalResult, RunTaskSpawner,
+};
 pub use expression::{Environment, evaluate};
 pub use journal::{RunEvent, RunEventKind, RunJournal};
 pub use owned_expression::{RuntimeEnvironment, evaluate_owned};
-pub use stream::{CoreStream, StreamSource, StreamTerminal};
+pub use stream::{
+    CoreStream, StreamCloseControl, StreamCloseDelivery, StreamCloseReason, StreamCloseReport,
+    StreamPhysicalCompletion, StreamSource, StreamTerminal,
+};
 
 /// Stable errors returned by providers and by the Flow interpreter.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, thiserror::Error)]
@@ -313,12 +319,33 @@ pub trait PortInvoker: Send + Sync {
         &self,
         _cx: &CallCx,
         _entry: &CompiledInputEntry,
-    ) -> Result<(CoreValue, tobkiri_gate::SourceReadReceipt), StepError> {
+    ) -> Result<NativeInputRead, StepError> {
         Err(StepError::new(
             "unavailable",
             "sealed native Input source admission is unavailable",
         ))
     }
+}
+
+/// One actual physical Input result. The opaque custody is meaningful only to
+/// the private Core factory that sealed it; it cannot replace its read receipt.
+pub struct NativeInputRead {
+    /// Original immutable typed graph; source handle IDs are unchanged.
+    pub payload: CoreValue,
+    /// Successful same-original physical read evidence, independent of custody.
+    pub receipt: tobkiri_gate::SourceReadReceipt,
+    /// Private source inventory kept until route/alias custody is acquired.
+    pub custody: Option<tobkiri_canon::ControlHandle<dyn std::any::Any + Send + Sync>>,
+}
+
+/// Existing payload and parent task custody for one canonical child call.
+/// This carrier grants no authority; Core still validates the actual caller
+/// and private reached-node proof against this exact parent.
+pub struct ProvidedFlowInput {
+    /// Drop the guest payload before releasing its retained parent custody.
+    pub input: CoreValue,
+    /// The already-held parent; constructing this carrier does not clone it.
+    pub parent: std::sync::Arc<dyn RunTaskSpawner>,
 }
 
 /// The one compiled Flow runner used by native subflow steps and guest calls.
@@ -362,6 +389,26 @@ pub trait FlowRunner: Send + Sync {
         ))
     }
 
+    /// Canonical entry with exact parent task custody. Core must compare this
+    /// parent with the lifetime retained by the validated private reached-node
+    /// proof, then register the fresh child and its paired cleanup before body
+    /// publication. A returned business error must not abandon admitted work.
+    /// Implementations may not fall back to the unregistered entry above.
+    async fn run_provided_flow_canonical_with_spawner(
+        &self,
+        _cx: &CallCx,
+        _caller: &tobkiri_canon::ControlHandle<dyn ActiveCodeFrame>,
+        _node: &ReachedNode,
+        _flow_key: &str,
+        _args_digest: &tobkiri_canon::Digest,
+        _input: ProvidedFlowInput,
+    ) -> Result<CoreStream, StepError> {
+        Err(StepError::new(
+            "unavailable",
+            "registered canonical provided-Flow entry is unavailable",
+        ))
+    }
+
     /// Dynamically enter one Flow from an actual guest provider host call.
     /// The opaque provider frame is a Core-issued activation carrier; it is
     /// deliberately separate from AST `ReachedNode` evidence because this
@@ -377,6 +424,24 @@ pub trait FlowRunner: Send + Sync {
         Err(StepError::new(
             "unavailable",
             "dynamic guest Flow entry is unavailable",
+        ))
+    }
+
+    /// Same actual guest entry, with a pre-admitted exact-generation native
+    /// task spawner. Implementations must forward this to the real interpreter
+    /// task; substituting the result/terminal channel does not prove cleanup.
+    async fn run_guest_flow_with_spawner(
+        &self,
+        _cx: &CallCx,
+        _provider: &dyn GuestFlowFrame,
+        _requested_shape: &ShapeRef,
+        _arguments_digest: &Digest,
+        _input: CoreValue,
+        _spawner: std::sync::Arc<dyn RunTaskSpawner>,
+    ) -> Result<CoreStream, StepError> {
+        Err(StepError::new(
+            "unavailable",
+            "registered guest Flow entry is unavailable",
         ))
     }
 }

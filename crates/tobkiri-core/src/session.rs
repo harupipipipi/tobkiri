@@ -28,6 +28,7 @@ use tobkiri_profile::{CompiledInputEntry, CompiledProfile, ResolvedFlow};
 use tokio_util::sync::CancellationToken as TokioCancellationToken;
 
 use crate::CoreError;
+pub use crate::execution_frames::{UiOperationCloseControl, UiOperationCloseHandle};
 
 /// The serialized result for a channel bound to a Core UI session.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -48,6 +49,7 @@ pub struct NativeInput {
     context: CallCx,
     payload: CoreValue,
     receipt: tobkiri_gate::SourceReadReceipt,
+    custody: Option<ControlHandle<dyn std::any::Any + Send + Sync>>,
 }
 
 /// Progress from one destination in a frozen NativeInput trigger plan.
@@ -150,7 +152,7 @@ struct NativeInputTransportBudget {
     _reservation: ControlReservation,
 }
 impl NativeInputTransportBudget {
-    fn new(
+    fn allocate_shared(
         control: &tobkiri_gate::CoreControl,
         max_buffer_bytes: usize,
     ) -> Result<Arc<dyn AllocationBudget>, CoreError> {
@@ -256,6 +258,27 @@ impl ConsumedEntryTerminal {
         self.finished = true;
         Ok(())
     }
+
+    /// Read-only transfer to the existing durable terminal outbox/recovery
+    /// owner. Exclusive custody of this sealed permit is retained throughout;
+    /// this selects no native cause, performs no notification and creates no
+    /// reservation, effect or terminal. Pending audit ACK is allowed.
+    pub(crate) fn durable_handoff(&mut self) -> Result<Outcome, GateError> {
+        let mut winner = None;
+        self.gate.with_cleanup_snapshot(&self.permit, &mut |snapshot| {
+            let terminal = snapshot.authority.terminal.ok_or(GateError::Unavailable)?;
+            if matches!(&terminal.decision.outcome, Outcome::Failed { code } if code.len() > 128) {
+                return Err(GateError::Unavailable);
+            }
+            // Gate has validated the exact original consumed reservation,
+            // effect, args, revision, epoch and retained terminal identity.
+            winner = Some(terminal.decision.outcome.clone());
+            Ok(())
+        })?;
+        let winner = winner.ok_or(GateError::Unavailable)?;
+        self.proposal = Some(winner.clone());
+        Ok(winner)
+    }
 }
 /// Maximum number of events accepted by one UI stream pull.
 pub const UI_STREAM_MAX_BATCH: u32 = 32;
@@ -266,7 +289,35 @@ struct UiStreamEntry {
     ui: UiSessionId,
     cx: CallCx,
     external_cancel: TokioCancellationToken,
+    close_control: UiOperationCloseHandle,
+    source_control: Option<Arc<dyn tobkiri_flow::StreamCloseControl>>,
     state: tokio::sync::Mutex<Option<UiStreamState>>,
+}
+/// Shared funded custody of one registered UI stream handle. Every registry
+/// owner — the map, a pending reservation guard, and stream_entry callers —
+/// holds this lease so no bare entry Arc escapes. Cloning clones both the
+/// entry and its shared control charge. Fields drop in declaration order:
+/// the entry allocation is fully dropped and deallocated before its funding
+/// reservation refunds.
+#[derive(Clone)]
+struct UiStreamEntryLease {
+    entry: Arc<UiStreamEntry>,
+    reservation: Arc<ControlReservation>,
+}
+impl UiStreamEntryLease {
+    fn new(entry: Arc<UiStreamEntry>, reservation: Arc<ControlReservation>) -> Self {
+        Self { entry, reservation }
+    }
+    /// Exact entry identity; compares only the inner entry allocation.
+    fn ptr_eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.entry, &other.entry)
+    }
+}
+impl std::ops::Deref for UiStreamEntryLease {
+    type Target = UiStreamEntry;
+    fn deref(&self) -> &Self::Target {
+        &self.entry
+    }
 }
 struct UiStreamState {
     stream: CoreStream,
@@ -291,6 +342,9 @@ struct UiPrincipal {
     /// attachment binding, never a caller-selected principal or authority.
     receiver: Digest,
     cancel: CancellationToken,
+    // Minted and funded before this actual principal is published. Never reset
+    // or shared with another UI registration or a later generation.
+    retirement: crate::funded_arc::FundedArc<crate::ui_operation_delivery::UiScopeRetirement>,
 }
 
 pub(crate) mod provider_entry;
@@ -298,6 +352,7 @@ pub(crate) mod provider_entry;
 #[path = "session_tests.rs"]
 mod tests;
 mod ui;
+pub use ui::{UiInvokeRequest, UiStreamCleanupControl, UiStreamCleanupOwner};
 
 /// A Core-minted invocation token paired with the trusted host's rendered frame.
 #[derive(Clone, Debug)]
@@ -333,6 +388,23 @@ pub struct Session {
     state: Arc<SessionState>,
     runner: Arc<dyn FlowRunner>,
 }
+/// Existing owned Session services, moved together without cloning their
+/// catalogs, runtime authority or custody. Field order matches the original
+/// constructor arguments.
+pub(crate) struct SessionServices {
+    pub(crate) compiled: Arc<CompiledProfile>,
+    pub(crate) gate: Arc<GateEngine>,
+    pub(crate) invoker: Arc<dyn PortInvoker>,
+    pub(crate) journal: Arc<dyn RunJournal>,
+    pub(crate) host: Arc<dyn HostIo>,
+}
+
+/// Actual provided input and its optional independently retained native parent.
+/// This carries lifetime ownership only; factory proofs still admit the entry.
+struct CanonicalFlowInput {
+    input: CoreValue,
+    parent: Option<Arc<dyn tobkiri_flow::RunTaskSpawner>>,
+}
 #[doc(hidden)]
 pub struct SessionState {
     pub(crate) compiled: Arc<CompiledProfile>,
@@ -353,7 +425,7 @@ pub struct SessionState {
     epoch: u64,
     shutdown: CancellationToken,
     materials: Mutex<BTreeMap<(PackId, PackHash), UiMaterial>>,
-    streams: Mutex<BTreeMap<u64, Arc<UiStreamEntry>>>,
+    streams: Mutex<BTreeMap<u64, UiStreamEntryLease>>,
     next_stream: AtomicU64,
     runtime: tokio::runtime::Handle,
     admission: crate::admission::Barrier,
@@ -393,6 +465,30 @@ impl FlowRunner for Session {
             .await
     }
 
+    async fn run_provided_flow_canonical_with_spawner(
+        &self,
+        cx: &CallCx,
+        caller: &ControlHandle<dyn tobkiri_flow::ActiveCodeFrame>,
+        node: &tobkiri_flow::ReachedNode,
+        flow_key: &str,
+        args_digest: &Digest,
+        input: tobkiri_flow::ProvidedFlowInput,
+    ) -> Result<CoreStream, StepError> {
+        self.state
+            .run_provided_flow_canonical_inner(
+                cx,
+                caller,
+                node,
+                flow_key,
+                args_digest,
+                CanonicalFlowInput {
+                    input: input.input,
+                    parent: Some(input.parent),
+                },
+            )
+            .await
+    }
+
     async fn run_guest_flow(
         &self,
         cx: &CallCx,
@@ -403,6 +499,26 @@ impl FlowRunner for Session {
     ) -> Result<CoreStream, StepError> {
         self.state
             .run_guest_flow(cx, provider, requested_shape, arguments_digest, input)
+            .await
+    }
+    async fn run_guest_flow_with_spawner(
+        &self,
+        cx: &CallCx,
+        provider: &dyn GuestFlowFrame,
+        requested_shape: &ShapeRef,
+        arguments_digest: &Digest,
+        input: CoreValue,
+        spawner: Arc<dyn tobkiri_flow::RunTaskSpawner>,
+    ) -> Result<CoreStream, StepError> {
+        self.state
+            .run_guest_flow_inner(
+                cx,
+                provider,
+                requested_shape,
+                arguments_digest,
+                input,
+                Some(spawner),
+            )
             .await
     }
 }
@@ -445,6 +561,34 @@ impl FlowRunner for SessionRunner {
             .await
     }
 
+    async fn run_provided_flow_canonical_with_spawner(
+        &self,
+        cx: &CallCx,
+        caller: &ControlHandle<dyn tobkiri_flow::ActiveCodeFrame>,
+        node: &tobkiri_flow::ReachedNode,
+        flow_key: &str,
+        args_digest: &Digest,
+        input: tobkiri_flow::ProvidedFlowInput,
+    ) -> Result<CoreStream, StepError> {
+        let state = self
+            .0
+            .upgrade()
+            .ok_or_else(|| StepError::new("unavailable", "Session closed"))?;
+        state
+            .run_provided_flow_canonical_inner(
+                cx,
+                caller,
+                node,
+                flow_key,
+                args_digest,
+                CanonicalFlowInput {
+                    input: input.input,
+                    parent: Some(input.parent),
+                },
+            )
+            .await
+    }
+
     async fn run_guest_flow(
         &self,
         cx: &CallCx,
@@ -459,6 +603,30 @@ impl FlowRunner for SessionRunner {
             .ok_or_else(|| StepError::new("unavailable", "Session closed"))?;
         state
             .run_guest_flow(cx, provider, requested_shape, arguments_digest, input)
+            .await
+    }
+    async fn run_guest_flow_with_spawner(
+        &self,
+        cx: &CallCx,
+        provider: &dyn GuestFlowFrame,
+        requested_shape: &ShapeRef,
+        arguments_digest: &Digest,
+        input: CoreValue,
+        spawner: Arc<dyn tobkiri_flow::RunTaskSpawner>,
+    ) -> Result<CoreStream, StepError> {
+        let state = self
+            .0
+            .upgrade()
+            .ok_or_else(|| StepError::new("unavailable", "Session closed"))?;
+        state
+            .run_guest_flow_inner(
+                cx,
+                provider,
+                requested_shape,
+                arguments_digest,
+                input,
+                Some(spawner),
+            )
             .await
     }
 }
@@ -574,7 +742,11 @@ impl Session {
             // provider cleanup and terminal receipt are not abandoned.
             None => (&mut read).await,
         };
-        let (payload, receipt) = read_result.map_err(CoreError::from)?;
+        let tobkiri_flow::NativeInputRead {
+            payload,
+            receipt,
+            custody,
+        } = read_result.map_err(CoreError::from)?;
         // The future borrows `cx`; release that borrow before storing `cx`
         // in the returned NativeInput. It has already completed (including
         // cancellation cleanup) at this point.
@@ -592,14 +764,11 @@ impl Session {
             context: cx,
             payload,
             receipt,
+            custody,
         })
     }
     pub(crate) fn new_with_ingress(
-        compiled: Arc<CompiledProfile>,
-        gate: Arc<GateEngine>,
-        invoker: Arc<dyn PortInvoker>,
-        journal: Arc<dyn RunJournal>,
-        host: Arc<dyn HostIo>,
+        services: SessionServices,
         epoch: u64,
         user_document: Digest,
         shutdown: CancellationToken,
@@ -608,11 +777,7 @@ impl Session {
         provider_bridge: Arc<dyn tobkiri_wasm::ProviderEntryBridge>,
     ) -> Self {
         Self::new_inner(
-            compiled,
-            gate,
-            invoker,
-            journal,
-            host,
+            services,
             epoch,
             Some(user_document),
             shutdown,
@@ -623,11 +788,7 @@ impl Session {
     }
 
     fn new_inner(
-        compiled: Arc<CompiledProfile>,
-        gate: Arc<GateEngine>,
-        invoker: Arc<dyn PortInvoker>,
-        journal: Arc<dyn RunJournal>,
-        host: Arc<dyn HostIo>,
+        services: SessionServices,
         epoch: u64,
         user_document: Option<Digest>,
         shutdown: CancellationToken,
@@ -635,6 +796,13 @@ impl Session {
         execution_factory: Option<ExecutionFactory>,
         provider_bridge: Option<Arc<dyn tobkiri_wasm::ProviderEntryBridge>>,
     ) -> Self {
+        let SessionServices {
+            compiled,
+            gate,
+            invoker,
+            journal,
+            host,
+        } = services;
         let outcomes = Arc::new(Mutex::new(BTreeMap::new()));
         let journal = Arc::new(crate::completion::CompletionJournal {
             inner: journal,
@@ -1030,20 +1198,38 @@ fn native_stop_reason(
     }
 }
 
-async fn run_native_fanout(
+/// Owned inputs of the same pre-admitted fanout task. Declaration order is the
+/// original argument order; the task immediately unpacks the actual owners.
+struct NativeFanout {
     compiled: Arc<CompiledProfile>,
     gate: Arc<GateEngine>,
     engine: Arc<FlowEngine>,
     execution_factory: Option<Arc<ExecutionFactory>>,
     source_pack: PackId,
     input: NativeInput,
-    mut routing_terminal: ConsumedEntryTerminal,
+    routing_terminal: ConsumedEntryTerminal,
     control: Arc<NativeInputRunControl>,
-    mut summaries: Vec<NativeInputRouteResult>,
-    mut outputs: Vec<Option<CoreBuffer>>,
+    summaries: Vec<NativeInputRouteResult>,
+    outputs: Vec<Option<CoreBuffer>>,
     event_tx: tokio::sync::mpsc::Sender<NativeInputEvent>,
     cancel: CancellationToken,
-) -> Result<NativeInputCompletion, StepError> {
+}
+
+async fn run_native_fanout(fanout: NativeFanout) -> Result<NativeInputCompletion, StepError> {
+    let NativeFanout {
+        compiled,
+        gate,
+        engine,
+        execution_factory,
+        source_pack,
+        input,
+        mut routing_terminal,
+        control,
+        mut summaries,
+        mut outputs,
+        event_tx,
+        cancel,
+    } = fanout;
     let entry = match compiled.input_entry(&source_pack, &input.view, &input.operation) {
         Some(entry) => entry,
         None => {
@@ -1231,9 +1417,12 @@ async fn run_native_fanout(
                 &routing_terminal,
                 &input.receipt,
                 route,
-                flow_key,
-                &args_digest,
-                &terminal,
+                input.custody.as_ref(),
+                crate::execution_frames::FlowEntryInvocation {
+                    flow_key,
+                    actual_args: &args_digest,
+                    terminal: &terminal,
+                },
             ),
             None => Err(StepError::new(
                 "unavailable",
@@ -1491,7 +1680,8 @@ impl SessionState {
             control.reserve(ControlKind::Queue, NATIVE_INPUT_RETAINED_OUTPUT_MAX as u64)?;
         let waiter_reservation = control.reserve(ControlKind::Waiter, 1024)?;
         let task_reservation = control.reserve(ControlKind::Task, 8192)?;
-        let transport_budget = NativeInputTransportBudget::new(control, NATIVE_INPUT_ENVELOPE_MAX)?;
+        let transport_budget =
+            NativeInputTransportBudget::allocate_shared(control, NATIVE_INPUT_ENVELOPE_MAX)?;
 
         let mut summaries = Vec::new();
         summaries
@@ -1561,23 +1751,24 @@ impl SessionState {
             context: input.context,
             payload: input.payload,
             receipt,
+            custody: input.custody,
         };
         let runtime = self.runtime.clone();
         runtime.spawn(async move {
-            let result = run_native_fanout(
+            let result = run_native_fanout(NativeFanout {
                 compiled,
                 gate,
                 engine,
                 execution_factory,
                 source_pack,
-                task_input,
+                input: task_input,
                 routing_terminal,
-                task_control,
+                control: task_control,
                 summaries,
                 outputs,
                 event_tx,
-                task_cancel,
-            )
+                cancel: task_cancel,
+            })
             .await;
             let _ = result_tx.send(result);
         });
@@ -1588,6 +1779,83 @@ impl SessionState {
             result: NativeInputRunResult(result_rx),
             control: run_control,
         })
+    }
+
+    async fn start_tracked_flow(
+        &self,
+        cx: &CallCx,
+        frame: ControlHandle<dyn tobkiri_flow::ActiveCodeFrame>,
+        flow_key: &str,
+        input: CoreValue,
+        terminal: ConsumedEntryTerminal,
+    ) -> Result<CoreStream, StepError> {
+        use crate::tracked_stream::TrackedStream;
+        let mut terminal = Some(terminal);
+        let Some(factory) = self.execution_factory.as_ref() else {
+            let error = StepError::new("unavailable", "Session execution factory is unavailable");
+            finish_terminal_retry(
+                terminal.as_mut().expect("consumed terminal"),
+                step_outcome(&error),
+            )
+            .await;
+            return Err(error);
+        };
+        let native = match TrackedStream::prepare_native_cleanup(&frame, factory, &mut terminal) {
+            Ok(native) => native,
+            Err(error) => {
+                if let Some(terminal) = terminal.as_mut() {
+                    finish_terminal_retry(terminal, step_outcome(&error)).await;
+                }
+                return Err(error);
+            }
+        };
+        if let Some(native) = &native {
+            // The cleanup payload must have an actual independently owned Join
+            // before its paired interpreter is allowed to start. Cancellation
+            // drops the armed plan into the same pre-existing owner slot.
+            native.wait_started().await?;
+        }
+        let started = match frame.task_spawner() {
+            Some(spawner) => self.engine.run_canonical_intermediate_with_spawner(
+                frame,
+                flow_key,
+                input,
+                self.compiled.profile.ceiling.loops.clone(),
+                spawner,
+            ),
+            None => self.engine.run_canonical_intermediate(
+                frame,
+                flow_key,
+                input,
+                self.compiled.profile.ceiling.loops.clone(),
+            ),
+        };
+        let stream = match started {
+            Ok(stream) => stream,
+            Err(error) => {
+                if let Some(native) = native {
+                    native.fail(step_outcome(&error));
+                } else if let Some(terminal) = terminal.as_mut() {
+                    finish_terminal_retry(terminal, step_outcome(&error)).await;
+                }
+                return Err(error);
+            }
+        };
+        // No await separates the actual interpreter source from installation
+        // into the independently retained cleanup owner.
+        let tracked = match native {
+            Some(native) => {
+                native.attach(stream, self.gate.clone(), cx.clone(), self.runtime.clone())
+            }
+            None => TrackedStream::new_with_terminal(
+                stream,
+                self.gate.clone(),
+                cx.clone(),
+                terminal.expect("ordinary Flow terminal"),
+                self.runtime.clone(),
+            ),
+        };
+        Ok(CoreStream::new(tracked))
     }
 
     async fn run_provided_flow(
@@ -1614,6 +1882,30 @@ impl SessionState {
         args_digest: &tobkiri_canon::Digest,
         input: CoreValue,
     ) -> Result<CoreStream, StepError> {
+        self.run_provided_flow_canonical_inner(
+            cx,
+            caller,
+            node,
+            flow_key,
+            args_digest,
+            CanonicalFlowInput {
+                input,
+                parent: None,
+            },
+        )
+        .await
+    }
+
+    async fn run_provided_flow_canonical_inner(
+        &self,
+        cx: &CallCx,
+        caller: &ControlHandle<dyn tobkiri_flow::ActiveCodeFrame>,
+        node: &tobkiri_flow::ReachedNode,
+        flow_key: &str,
+        args_digest: &Digest,
+        input: CanonicalFlowInput,
+    ) -> Result<CoreStream, StepError> {
+        let CanonicalFlowInput { input, parent } = input;
         cx.check_active().map_err(gate_step_error)?;
         if cx.revision() != Some(&self.compiled.plan_digest)
             || self.gate.epoch(cx.profile()).map_err(gate_step_error)? != cx.security_epoch()
@@ -1682,9 +1974,12 @@ impl SessionState {
             caller,
             node,
             &target,
-            flow_key,
-            args_digest,
-            &terminal,
+            crate::execution_frames::FlowEntryInvocation {
+                flow_key,
+                actual_args: args_digest,
+                terminal: &terminal,
+            },
+            parent.as_ref(),
         ) {
             Ok(frame) => frame,
             Err(error) => {
@@ -1692,27 +1987,8 @@ impl SessionState {
                 return Err(error);
             }
         };
-        let stream = match self.engine.run_canonical_intermediate(
-            frame,
-            flow_key,
-            input,
-            self.compiled.profile.ceiling.loops.clone(),
-        ) {
-            Ok(stream) => stream,
-            Err(error) => {
-                finish_terminal_retry(&mut terminal, step_outcome(&error)).await;
-                return Err(error);
-            }
-        };
-        Ok(CoreStream::new(
-            crate::tracked_stream::TrackedStream::new_with_terminal(
-                stream,
-                self.gate.clone(),
-                cx.clone(),
-                terminal,
-                self.runtime.clone(),
-            ),
-        ))
+        self.start_tracked_flow(cx, frame, flow_key, input, terminal)
+            .await
     }
 
     async fn run_guest_flow(
@@ -1722,6 +1998,19 @@ impl SessionState {
         requested_shape: &ShapeRef,
         arguments_digest: &Digest,
         input: CoreValue,
+    ) -> Result<CoreStream, StepError> {
+        self.run_guest_flow_inner(cx, provider, requested_shape, arguments_digest, input, None)
+            .await
+    }
+
+    async fn run_guest_flow_inner(
+        &self,
+        cx: &CallCx,
+        provider: &dyn GuestFlowFrame,
+        requested_shape: &ShapeRef,
+        arguments_digest: &Digest,
+        input: CoreValue,
+        spawner: Option<Arc<dyn tobkiri_flow::RunTaskSpawner>>,
     ) -> Result<CoreStream, StepError> {
         let Some(factory) = self.execution_factory.as_ref() else {
             return Err(StepError::new(
@@ -1754,49 +2043,31 @@ impl SessionState {
             finish_terminal_retry(&mut terminal, step_outcome(&mapped)).await;
             return Err(mapped);
         }
-        let frame = match factory.enter_guest_flow(&prepared, &terminal) {
+        let frame = match factory.enter_guest_flow(&prepared, &terminal, spawner) {
             Ok(frame) => frame,
             Err(error) => {
                 finish_terminal_retry(&mut terminal, step_outcome(&error)).await;
                 return Err(error);
             }
         };
-        let stream = match self.engine.run_canonical_intermediate(
-            frame,
-            flow_key,
-            input,
-            self.compiled.profile.ceiling.loops.clone(),
-        ) {
-            Ok(stream) => stream,
-            Err(error) => {
-                finish_terminal_retry(&mut terminal, step_outcome(&error)).await;
-                return Err(error);
-            }
-        };
-        Ok(CoreStream::new(
-            crate::tracked_stream::TrackedStream::new_with_terminal(
-                stream,
-                self.gate.clone(),
-                cx.clone(),
-                terminal,
-                self.runtime.clone(),
-            ),
-        ))
+        self.start_tracked_flow(cx, frame, flow_key, input, terminal)
+            .await
     }
 }
 
 impl Drop for SessionState {
     fn drop(&mut self) {
-        self.shutdown.cancel();
         if let Some(factory) = &self.execution_factory {
-            factory.close();
+            factory.retire();
         }
+        self.shutdown.cancel();
         let entries = self
             .streams
             .get_mut()
             .map(std::mem::take)
             .unwrap_or_default();
         for (_, entry) in entries {
+            entry.close_control.shutdown();
             entry.cx.cancel().cancel();
             // Drop has no Result channel. Cleanup still runs on the Session's
             // owning runtime; explicit Session.close is the observable path.
@@ -1815,3 +2086,11 @@ impl Drop for SessionState {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "port_proxy_compat_tests.rs"]
+mod port_proxy_compat_tests;
+
+#[cfg(test)]
+#[path = "input_forwarding_guest_tests.rs"]
+mod input_forwarding_guest_tests;

@@ -146,14 +146,15 @@ async fn wasm_external_provider_streams_real_sse_through_flow_and_persistence() 
         vec!["Hello", " ", "猫", " is", " streamed", "."]
     );
     assert_eq!(fixture.host.output_text()?.trim(), "Hello 猫 is streamed.");
-    let requests = server.requests.lock().unwrap();
-    assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0]["stream"], true);
-    assert_eq!(requests[0]["model"], "gemma3-1b-local");
-    assert!(events.iter().any(
-        |event| matches!(&event.kind,tobkiri_flow::RunEventKind::StepValue{step,..} if step=="save")
-    ));
-    drop(requests);
+    {
+        let requests = server.requests.lock().unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0]["stream"], true);
+        assert_eq!(requests[0]["model"], "gemma3-1b-local");
+        assert!(events.iter().any(
+            |event| matches!(&event.kind,tobkiri_flow::RunEventKind::StepValue{step,..} if step=="save")
+        ));
+    }
     let second = fixture.turn(&session, "Check saved conversation").await?;
     assert_eq!(loaded_message_count(&second), Some(2));
     assert_eq!(

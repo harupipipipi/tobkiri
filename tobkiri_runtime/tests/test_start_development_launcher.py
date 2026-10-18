@@ -55,10 +55,12 @@ def test_desktop_build_verifies_helper_and_bundle_before_returning(
         return subprocess.CompletedProcess(command, 0)
 
     monkeypatch.setattr(launcher_script, "run_command", run)
-    assert launcher_script.build_development_launcher(tmp_path) == executable
+    assert launcher_script.build_development_launcher(tmp_path, legacy=True) == executable
     assert commands[0][:6] == ["npm", "exec", "--prefix", "frontend", "--", "tauri"]
     assert "src-tauri/tauri.macos.dev.conf.json" in commands[0]
     assert "--debug" in commands[0]
+    assert commands[0][-2:] == ["--", "--no-default-features"]
+    assert "--no-default-features" not in commands[0][commands[0].index("tauri") + 1:-2]
     assert "build_packvm_vz_helper.sh" in commands[1][1]
     assert "--entitlements" in commands[2]
     assert "--strict" in commands[3]
@@ -84,7 +86,7 @@ def test_failed_helper_verification_stops_before_attesting_the_bundle(
 
     monkeypatch.setattr(launcher_script, "run_command", run)
     with pytest.raises(subprocess.CalledProcessError):
-        launcher_script.build_development_launcher(tmp_path)
+        launcher_script.build_development_launcher(tmp_path, legacy=True)
     assert len(commands) == 4
     assert not any("write-packvm-bundle-manifest" in parts for parts in commands)
 
@@ -96,7 +98,7 @@ def test_missing_launcher_output_is_not_treated_as_success(
     executable.unlink()
     monkeypatch.setattr(launcher_script, "run_command", lambda *args, **kwargs: None)
     with pytest.raises(RuntimeError, match="was not produced"):
-        launcher_script.build_development_launcher(tmp_path)
+        launcher_script.build_development_launcher(tmp_path, legacy=True)
 
 
 def test_desktop_rejects_a_target_directory_outside_its_binding(
@@ -104,7 +106,7 @@ def test_desktop_rejects_a_target_directory_outside_its_binding(
 ) -> None:
     monkeypatch.setenv("CARGO_TARGET_DIR", str(tmp_path / "external"))
     with pytest.raises(RuntimeError, match="default Cargo target"):
-        launcher_script.build_development_launcher(tmp_path)
+        launcher_script.build_development_launcher(tmp_path, legacy=True)
 
 
 def test_local_build_uses_dev_preparation_and_preserves_release_preparation() -> None:

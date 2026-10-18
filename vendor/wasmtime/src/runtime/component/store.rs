@@ -57,6 +57,10 @@ pub struct ComponentStoreData {
     /// Caps the size of the allocations made on the host to this amount
     /// effectively.
     hostcall_fuel: usize,
+
+    // Arena storage is funded independently of the runtime keeper. Its slots
+    // hold identities/tickets only, so no arena/keeper/payload cycle exists.
+    pub(crate) delivery_records: super::delivery::DeliveryRecords,
 }
 
 /// State tracking for tasks within components.
@@ -105,6 +109,7 @@ impl ComponentStoreData {
                 ComponentTaskState::NotConcurrent(Default::default())
             },
             hostcall_fuel: DEFAULT_HOSTCALL_FUEL,
+            delivery_records: Default::default(),
         }
     }
 
@@ -420,6 +425,42 @@ impl StoreOpaque {
                 current_scope_id,
             },
             &mut data.host_resource_data,
+        ))
+    }
+
+    /// Split borrow of exact runtime tables and the Store-owned delivery arena.
+    /// Tickets never leave that arena across fallible table operations.
+    pub(crate) fn component_delivery_tables_and_records(
+        &mut self,
+        instance: Option<Instance>,
+    ) -> Result<(
+        super::resources::HostResourceTables<'_>,
+        &mut super::delivery::DeliveryRecords,
+    )> {
+        let allocation_owner = self.host_allocation_owner()?;
+        let current_scope_id = self.current_scope_id()?;
+        let store_id = self.id();
+        if instance.is_some_and(|i| i.id().store_id() != store_id) {
+            return Err(super::HostAllocationError::Invalid.into());
+        }
+        let data = self.component_data_mut();
+        let guest = instance.map(|i| {
+            data.instances[i.id().instance()]
+                .as_mut()
+                .unwrap()
+                .get_mut()
+                .instance_states()
+        });
+        let tables = vm::component::ResourceTables {
+            allocation_owner,
+            host_table: &mut data.component_host_table,
+            task_state: &mut data.task_state,
+            guest,
+            current_scope_id,
+        };
+        Ok((
+            super::resources::HostResourceTables::from_parts(tables, &mut data.host_resource_data),
+            &mut data.delivery_records,
         ))
     }
 

@@ -3,14 +3,14 @@ use async_trait::async_trait;
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{
-        Mutex,
         atomic::{AtomicBool, Ordering},
+        Mutex,
     },
     time::Instant,
 };
 use tobkiri_canon::{
-    Digest,
     ids::{InputSourceId, OpName, RequestId, ShapeRef},
+    Digest,
 };
 use tobkiri_gate::{
     ApprovalAnswer, ApprovalPrompt, ApprovalStore, AuditEvent, AuditSink, CallCx, EffectRequest,
@@ -29,6 +29,11 @@ impl TrustedPrompt for Prompt {
 struct Sink {
     fail: AtomicBool,
     fail_once: AtomicBool,
+    // A real blocked append: the in-flight delivery job's outcome stays
+    // genuinely unknown past the supervisor's bounded stop wait. Bounded so
+    // an abandoned job always finishes before the runtime tears down.
+    stall: AtomicBool,
+    stall_entered: AtomicBool,
     one_shot_seen: AtomicBool,
     events: Mutex<BTreeMap<Digest, Vec<u8>>>,
 }
@@ -39,6 +44,15 @@ impl AuditSink for Sink {
     fn append_idempotent(&self, id: &Digest, event: AuditEvent) -> Result<(), GateError> {
         if self.fail.load(Ordering::SeqCst) {
             return Err(GateError::Unavailable);
+        }
+        if self.stall.load(Ordering::SeqCst) {
+            self.stall_entered.store(true, Ordering::SeqCst);
+            for _ in 0..400 {
+                if !self.stall.load(Ordering::SeqCst) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
         }
         if self.fail_once.swap(false, Ordering::SeqCst) {
             self.one_shot_seen.store(true, Ordering::SeqCst);
@@ -119,11 +133,10 @@ async fn consumed(
 async fn undelivered(gate: &GateEngine, sink: &Sink, profile: &ProfileId) {
     let (_, permit) = consumed(gate, profile, Duration::from_secs(1)).await;
     sink.fail.store(true, Ordering::SeqCst);
-    assert!(
-        gate.record_outcome(permit.id().clone(), Outcome::Succeeded)
-            .await
-            .is_err()
-    );
+    assert!(gate
+        .record_outcome(permit.id().clone(), Outcome::Succeeded)
+        .await
+        .is_err());
 }
 #[test]
 fn admission_without_runtime_is_unavailable_but_sync_recovery_is_allowed() {
@@ -161,7 +174,10 @@ async fn an_ended_supervisor_requires_a_fresh_barrier_drain() {
     let (gate, sink, profile, _dir) = setup();
     let barrier = Barrier::new(profile.clone(), gate.clone(), CancellationToken::new());
     barrier.ensure_ready().await.unwrap();
-    let task = barrier.state.lock().await.supervisor.take().unwrap();
+    let task = match barrier.state.lock().await.supervisor.take().unwrap() {
+        Supervised::Pending(task) => task,
+        _ => panic!("supervisor must still be pending"),
+    };
     task.abort();
     let _ = task.await;
     undelivered(&gate, &sink, &profile).await;
@@ -169,6 +185,55 @@ async fn an_ended_supervisor_requires_a_fresh_barrier_drain() {
     sink.fail.store(false, Ordering::SeqCst);
     barrier.ensure_ready().await.unwrap();
     assert_eq!(gate.flush_outbox(&profile).await.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn an_aborted_supervisor_whose_join_is_retained_is_latched_not_replaced() {
+    let (gate, _sink, profile, _dir) = setup();
+    let barrier = Barrier::new(profile.clone(), gate.clone(), CancellationToken::new());
+    barrier.ensure_ready().await.unwrap();
+    // Abort the actual supervisor while its original Join stays owned by the
+    // Barrier: the handle is only borrowed under the state lock, never taken.
+    match barrier.state.lock().await.supervisor.as_ref() {
+        Some(Supervised::Pending(task)) => task.abort(),
+        _ => panic!("supervisor must still be pending"),
+    }
+    // The abort must be observable on the retained Join itself before the
+    // regression assertion runs.
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if matches!(
+                barrier.state.lock().await.supervisor.as_ref(),
+                Some(Supervised::Pending(task)) if task.is_finished()
+            ) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    // ensure_ready observes the finished Join by borrow, latches the lost
+    // outcome, and rejects instead of silently spawning a fresh supervisor
+    // over the unobserved evidence.
+    assert!(matches!(
+        barrier.ensure_ready().await,
+        Err(CoreError::Gate(GateError::Unavailable))
+    ));
+    assert!(matches!(
+        barrier.state.lock().await.supervisor.as_ref(),
+        Some(Supervised::Lost)
+    ));
+    // A repeated ensure_ready can never overwrite the latched loss with a
+    // new healthy supervisor.
+    assert!(barrier.ensure_ready().await.is_err());
+    assert!(matches!(
+        barrier.state.lock().await.supervisor.as_ref(),
+        Some(Supervised::Lost)
+    ));
+    // Close and repeated close reject on the same latched outcome.
+    assert!(barrier.close().await.is_err());
+    assert!(barrier.close().await.is_err());
 }
 #[tokio::test]
 async fn stopped_session_does_not_restart_its_supervisor() {
@@ -244,15 +309,13 @@ async fn supervisor_survives_transient_persistence_and_cancels_deadlines_during_
     })
     .await
     .unwrap();
-    assert!(
-        barrier
-            .state
-            .lock()
-            .await
-            .supervisor
-            .as_ref()
-            .is_some_and(|task| !task.is_finished())
-    );
+    assert!(barrier
+        .state
+        .lock()
+        .await
+        .supervisor
+        .as_ref()
+        .is_some_and(Supervised::is_running));
     assert!(barrier.health_error().is_none());
     barrier.close().await.unwrap();
 }
@@ -305,20 +368,184 @@ async fn durable_integrity_fault_denies_ready_fast_path_without_stopping_existin
     })
     .await
     .unwrap();
-    assert!(
-        barrier
-            .state
-            .lock()
-            .await
-            .supervisor
-            .as_ref()
-            .is_some_and(|task| !task.is_finished())
-    );
+    assert!(barrier
+        .state
+        .lock()
+        .await
+        .supervisor
+        .as_ref()
+        .is_some_and(Supervised::is_running));
     assert!(matches!(
         gate.admission_status(&profile).unwrap(),
         AdmissionStatus::IntegrityFault {
             code: IntegrityFaultCode::AuditIdentityConflict
         }
     ));
+    assert!(barrier.close().await.is_err());
+}
+
+#[test]
+fn delivery_fault_classification_is_typed_not_message_matched() {
+    for (fault, expected) in [
+        // Only the tagged sink-boundary Unavailable is a known transient
+        // metadata-sink origin.
+        (DeliveryFault::SinkUnavailable, FaultClass::Transient),
+        (
+            DeliveryFault::Gate(GateError::Persistence("sink".into())),
+            FaultClass::Transient,
+        ),
+        (
+            DeliveryFault::Gate(GateError::Limit("audit quota".into())),
+            FaultClass::Transient,
+        ),
+        (
+            DeliveryFault::Gate(GateError::Denied("rights".into())),
+            FaultClass::Terminal,
+        ),
+        (
+            DeliveryFault::Gate(GateError::Cancelled),
+            FaultClass::Terminal,
+        ),
+        (
+            DeliveryFault::Gate(GateError::StaleEpoch),
+            FaultClass::Terminal,
+        ),
+        // An Unavailable that did not come from the tagged sink boundary is
+        // an unclassified origin and is never reconciled.
+        (
+            DeliveryFault::Gate(GateError::Unavailable),
+            FaultClass::Unknown,
+        ),
+        (
+            DeliveryFault::Gate(GateError::Integrity(IntegrityFaultCode::AuditChain)),
+            FaultClass::Integrity,
+        ),
+        (
+            DeliveryFault::Gate(GateError::AuditFailure {
+                denial: Box::new(GateError::Persistence("denial".into())),
+                audit: Box::new(GateError::Persistence("audit".into())),
+            }),
+            FaultClass::Transient,
+        ),
+        // A transient audit retry can never launder a rights fault or an
+        // unclassified origin into a clearable observation.
+        (
+            DeliveryFault::Gate(GateError::AuditFailure {
+                denial: Box::new(GateError::Denied("rights".into())),
+                audit: Box::new(GateError::Persistence("audit".into())),
+            }),
+            FaultClass::Terminal,
+        ),
+        (
+            DeliveryFault::Gate(GateError::AuditFailure {
+                denial: Box::new(GateError::Unavailable),
+                audit: Box::new(GateError::Persistence("audit".into())),
+            }),
+            FaultClass::Unknown,
+        ),
+    ] {
+        assert_eq!(FaultClass::of_delivery(&fault), expected, "{fault:?}");
+    }
+}
+
+#[tokio::test]
+async fn close_reconciles_stale_transient_sink_fault_after_same_outbox_is_durable() {
+    let (gate, sink, profile, _dir) = setup();
+    undelivered(&gate, &sink, &profile).await;
+    let barrier = Barrier::new(profile.clone(), gate.clone(), CancellationToken::new());
+    // The startup drain fails on the physical sink outage; the spawned
+    // supervisor keeps bounded recovery ownership for the same profile and
+    // latches the typed transient sink fault.
+    assert!(barrier.ensure_ready().await.is_err());
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while barrier.health_error().is_none() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    // The identical pending record is durably delivered before the
+    // supervisor's next bounded retry can observe it.
+    sink.fail.store(false, Ordering::SeqCst);
+    gate.flush_outbox(&profile).await.unwrap();
+    assert_eq!(sink.events.lock().unwrap().len(), 1);
+    // The actual Join succeeds first; the same-profile reconciliation then
+    // resolves the stale transient observation instead of reporting it as a
+    // close failure.
+    barrier.close().await.unwrap();
+    assert!(barrier.health_error().is_none());
+}
+
+#[tokio::test]
+async fn abandoned_close_wait_preserves_the_actual_supervisor_join() {
+    let (gate, sink, profile, _dir) = setup();
+    undelivered(&gate, &sink, &profile).await;
+    let barrier = Barrier::new(profile.clone(), gate.clone(), CancellationToken::new());
+    assert!(barrier.ensure_ready().await.is_err());
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while barrier.health_error().is_none() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    // A close waiter dropped while the supervisor Join is still pending
+    // releases only its borrow: the sole Join stays owned by the Barrier.
+    {
+        use std::future::Future;
+        let mut close = std::pin::pin!(barrier.close());
+        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+        assert!(matches!(
+            close.as_mut().poll(&mut cx),
+            std::task::Poll::Pending
+        ));
+    }
+    assert!(matches!(
+        barrier.state.lock().await.supervisor.as_ref(),
+        Some(Supervised::Pending(_))
+    ));
+    // The retry performs the actual Join and then reconciles the resolved
+    // transient record; only that real evidence permits success.
+    sink.fail.store(false, Ordering::SeqCst);
+    gate.flush_outbox(&profile).await.unwrap();
+    barrier.close().await.unwrap();
+    assert!(barrier.health_error().is_none());
+    // A repeated close observes the retained successful Join state.
+    barrier.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn unknown_delivery_join_outcome_is_never_reconciled_by_a_successful_flush() {
+    let (gate, sink, profile, _dir) = setup();
+    undelivered(&gate, &sink, &profile).await;
+    let barrier = Barrier::new(profile.clone(), gate.clone(), CancellationToken::new());
+    assert!(barrier.ensure_ready().await.is_err());
+    // Stall the sink so the in-flight metadata delivery job cannot report
+    // inside the supervisor's bounded stop wait: its Join outcome becomes
+    // genuinely unknown.
+    sink.stall.store(true, Ordering::SeqCst);
+    sink.fail.store(false, Ordering::SeqCst);
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while !sink.stall_entered.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    // The bounded stop wait elapses with the delivery still running; the
+    // outcome is latched as unknown, not as the earlier transient outage.
+    assert!(barrier.close().await.is_err());
+    // Let the abandoned delivery finish: the same winner is then durably
+    // acknowledged, but a successful flush still cannot clear the unknown
+    // Join observation.
+    sink.stall.store(false, Ordering::SeqCst);
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while sink.events.lock().unwrap().is_empty() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(barrier.health_error().is_some());
     assert!(barrier.close().await.is_err());
 }

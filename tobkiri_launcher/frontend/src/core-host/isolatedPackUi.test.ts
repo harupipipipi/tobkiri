@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
 import { MessageChannel as NodeChannel } from 'node:worker_threads';
@@ -47,6 +48,7 @@ test('opaque frame receives only its one-use port, never a token or global IPC',
   const s = setup();
   assert.equal(s.mounted.frame.getAttribute('sandbox'), 'allow-scripts');
   assert.equal(s.mounted.frame.getAttribute('referrerpolicy'), 'no-referrer');
+  assert.equal(s.mounted.frame.className, 'pack-ui-frame');
   assert.equal(s.posted.length, 1);
   assert.deepEqual(s.posted[0][0], { type: 'tobkiri-pack-channel' });
   assert.equal(s.posted[0][1], '*');
@@ -57,6 +59,18 @@ test('opaque frame receives only its one-use port, never a token or global IPC',
   assert.deepEqual(s.replies, [{ id: 1, result: { ok: true } }]);
   assert.deepEqual(s.acknowledged, [[attachment.uiSessionId, attachment.generation, 1]]);
   s.mounted.close();
+});
+
+test('host frame keeps sandbox, no-referrer and its stable host class', () => {
+  const s = setup();
+  assert.equal(s.mounted.frame.getAttribute('sandbox'), 'allow-scripts');
+  assert.equal(s.mounted.frame.getAttribute('referrerpolicy'), 'no-referrer');
+  assert.ok(s.mounted.frame.classList.contains('pack-ui-frame'));
+  s.mounted.close();
+  const main = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+  assert.ok(main.includes("import './style.css'"));
+  const sheet = readFileSync(new URL('./style.css', import.meta.url), 'utf8');
+  assert.ok(sheet.includes('iframe.pack-ui-frame'));
 });
 
 test('forged identities and approval fields are rejected before trusted dispatch', () => {
