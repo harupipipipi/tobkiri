@@ -8,7 +8,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import shutil
 import tempfile
 from typing import Any
@@ -31,24 +31,40 @@ def read_manifest(name: str) -> dict[str, Any]:
 
 def variant(source: str, name: str, config: dict[str, Any] | None = None,
             network: bool = False,
-            asset_overrides: dict[str, Path] | None = None) -> dict[str, Any]:
+            asset_overrides: dict[str, Path] | None = None,
+            asset_additions: dict[str, Path] | None = None) -> dict[str, Any]:
     """Copy hash-bound files, alter explicit settings, and rebind every digest."""
     original = read_manifest(source)
     directory = ROOT / ("local." + name)
     paths = [entry["path"] for entry in original["files"]]
     overrides = asset_overrides or {}
+    additions = asset_additions or {}
     unknown = set(overrides) - set(paths)
     if unknown:
         raise ValueError("asset override is not declared by the source Pack: "
                          + ", ".join(sorted(unknown)))
-    for relative, selected in overrides.items():
+    if len(additions) > 16:
+        raise ValueError("too many explicit asset additions")
+    for relative in additions:
+        if (not isinstance(relative, str) or not relative
+                or len(relative.encode("utf-8")) > 240
+                or "\\" in relative or ":" in relative
+                or any(ord(character) < 32 for character in relative)
+                or PurePosixPath(relative).is_absolute()
+                or any(part in {"", ".", ".."} for part in relative.split("/"))
+                or relative in paths):
+            raise ValueError("asset addition must be a new safe relative path")
+    for relative, selected in {**overrides, **additions}.items():
         if not Path(selected).is_file():
             raise FileNotFoundError("asset override source is missing: " + str(selected))
+    paths.extend(additions)
     directory.mkdir(exist_ok=True)
     for relative in paths:
         target = directory / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        selected = Path(overrides.get(relative, ROOT / ("local." + source) / relative))
+        selected = Path(additions.get(relative, overrides.get(
+            relative, ROOT / ("local." + source) / relative,
+        )))
         if selected.resolve() != target.resolve():
             shutil.copyfile(selected, target)
     manifest = copy.deepcopy(original)
@@ -60,6 +76,21 @@ def variant(source: str, name: str, config: dict[str, Any] | None = None,
         manifest["permissions"]["secrets"] = [{"name": "api-key", "reveal": False, "optional": False}]
     manifest["files"] = []
     return build.bind_files(directory, manifest, paths)
+
+
+def stage_deepthink_ui() -> dict[str, Any]:
+    """Preserve every authored UI asset and bind explicit additions on each stage."""
+    directory = ROOT / "local.deepthink-ui"
+    ui = variant("harness-ui", "deepthink-ui", asset_overrides={
+        path: directory / path
+        for path in ["ui/app.js", "ui/index.html", "ui/style.css"]
+    }, asset_additions={"ui/restore.mjs": directory / "ui/restore.mjs"})
+    view = "local.deepthink.continuation-input@1.0"
+    ui["permissions"]["ports"].append(view)
+    ui["ports"]["consumes"].append(build.port(view.rsplit("@", 1)[0]))
+    ui["ui"]["ports_used"].append(view)
+    build.write_json(directory / "pack.json", ui)
+    return ui
 
 
 def workflow_harness_variant() -> dict[str, Any]:
@@ -190,14 +221,7 @@ def stage(target_dir: Path, build_profile: str = "debug") -> list[Path]:
         "model": MODEL, "system_prompt": "Follow the active Profile, use declared tools, and report verified outcomes accurately.",
         "max_tokens": 0,
     })
-    ui = variant("harness-ui", "deepthink-ui", asset_overrides={
-        "ui/app.js": ROOT / "local.deepthink-ui/ui/app.js",
-    })
-    view = "local.deepthink.continuation-input@1.0"
-    ui["permissions"]["ports"].append(view)
-    ui["ports"]["consumes"].append(build.port(view.rsplit("@", 1)[0]))
-    ui["ui"]["ports_used"].append(view)
-    build.write_json(ROOT / "local.deepthink-ui/pack.json", ui)
+    ui = stage_deepthink_ui()
     publish_presets.publish("mock")
     preset_variants = []
     for source in sorted((ROOT / "profiles/presets").glob("*.published.json")):

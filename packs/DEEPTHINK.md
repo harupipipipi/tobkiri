@@ -55,6 +55,19 @@ of the same Run validates that saved preparation and claims its next attempt
 through the ordinary Core path. UI Resume remains a manual action. Repeated
 status reads and implicit workflow calls cannot consume the preparation.
 
+The DeepThink Pack UI can restore a saved Run by manually entered Run ID and
+conversation. “保存状態を読む” calls only the ordinary read-only STATUS port;
+it never submits a model request or appends history. Browser storage is optional
+and cached references stay unverified until this explicit read. Resume is a
+separate manual action and is disabled for Core-pending, reconciliation, running,
+quarantined or completed state. Unknown accounting stays unknown and alone does
+not forbid a continuation that Core permits. The UI does not display a rejected
+candidate as an answer. STATUS does not return the original conversation, so the
+entered conversation is not proven by a successful read; Core validates it on
+continuation. UI call/pull waits explicitly use the existing 300,000 ms transport
+bound without changing Core's original deadline. The existing SDK cancel wait is
+unchanged. Goal-review controls remain a separate UI gap.
+
 Pending attempts and unknown checkpoint/tool outcomes cannot become retry
 boundaries. Installing this version does not repair an older pending attempt
 or authorize its replay. See the

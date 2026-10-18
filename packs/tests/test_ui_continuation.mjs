@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { formatUsage, parseEventText } from "../local.deepthink-ui/ui/accounting.mjs";
+import { REQUEST_OPTIONS, inspectStatus, statusUsage, validConversation, validRetryBoundary, validRunId } from "../local.deepthink-ui/ui/restore.mjs";
 
 // Exercise the real UI control flow with an in-memory DOM/port fixture. No
 // browser, Core request, provider API or local database is used by this test.
@@ -58,7 +59,8 @@ async function harness(segments) {
   let index = 0;
   let cancelled = 0;
   const client = {
-    async call(shape, op, args) {
+    async call(shape, op, args, options) {
+      assert.equal(options, REQUEST_OPTIONS);
       calls.push({ shape, op, args });
       if (shape === storeShape) {
         assert.equal(op, "load");
@@ -70,8 +72,9 @@ async function harness(segments) {
       assert.ok(segment, "no automatic extra User request is allowed");
       let delivered = false;
       return {
-        async pull(max) {
+        async pull(max, options) {
           assert.equal(max, 8);
+          assert.equal(options, REQUEST_OPTIONS);
           assert.equal(delivered, false);
           delivered = true;
           if (segment.persisted) messages = structuredClone(segment.persisted);
@@ -85,7 +88,8 @@ async function harness(segments) {
     document: { querySelector: element, createElement: () => new Element() },
     sessionStorage: { getItem: () => null, setItem: () => {} },
     connectPackUi: async () => client,
-    formatUsage, parseEventText,
+    formatUsage, parseEventText, REQUEST_OPTIONS, inspectStatus, statusUsage,
+    validConversation, validRetryBoundary, validRunId,
   };
   runInNewContext(source, context);
   await new Promise((resolve) => setImmediate(resolve));

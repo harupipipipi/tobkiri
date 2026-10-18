@@ -1,5 +1,6 @@
 import { connectPackUi } from "./ports.js";
 import { formatUsage, parseEventText } from "./accounting.mjs";
+import { REQUEST_OPTIONS, inspectStatus, statusUsage, validConversation, validRetryBoundary, validRunId } from "./restore.mjs";
 
 const inputShape = "local.harness-chat.user-input@1.0";
 const storeShape = "local.harness-chat.conversation-store@1.0";
@@ -16,28 +17,95 @@ const usage = document.querySelector("#usage");
 const runReference = document.querySelector("#run-reference");
 const nextAction = document.querySelector("#next-action");
 const phaseLog = document.querySelector("#phase-log");
+const restoreForm = document.querySelector("#restore-form");
+const restoreRun = document.querySelector("#restore-run");
+const restoreConversation = document.querySelector("#restore-conversation");
+const restoreButton = document.querySelector("#restore");
 const continuationShape = "local.deepthink.continuation-input@1.0";
-const conversation = "e2e";
+let conversation = "e2e";
 let client;
 let active;
 let cancelled = false;
 let busy = false;
 let runId;
 let runStatus;
+let contextVerified = false;
+let canResume = false;
+let canAnswer = false;
+let referenceBlocked = false;
+let restoreGeneration = 0;
+restoreConversation.value = conversation;
 // This is only a resume reference. The authoritative state remains in Core.
 // Sandboxed hosts may disallow browser storage; live continuation still works.
 try {
   const saved = JSON.parse(sessionStorage.getItem("tobkiri.harness.resume") ?? "null");
-  if (/^[a-f0-9]{64}$/.test(saved?.runId ?? "")) {
+  if (validRunId(saved?.runId)) {
     runId = saved.runId;
-    runStatus = saved.runStatus;
+    restoreRun.value = runId;
+    restoreConversation.value = validConversation(saved.conversation) ? saved.conversation : conversation;
+    referenceBlocked = true;
     workflow.hidden = false;
-    runReference.textContent = `再開参照: ${runId}`;
+    runReference.textContent = `未検証の保存参照: ${runId}`;
   }
 } catch {}
 
 function rememberRun() {
-  try { sessionStorage.setItem("tobkiri.harness.resume", JSON.stringify({ runId, runStatus })); } catch {}
+  try { sessionStorage.setItem("tobkiri.harness.resume", JSON.stringify({ runId, runStatus, conversation })); } catch {}
+}
+
+function controls() {
+  resume.disabled = !client || busy || !contextVerified || !canResume;
+  send.disabled = !client || busy || referenceBlocked || (!!runId && !canAnswer);
+  restoreButton.disabled = !client || busy;
+  restoreRun.disabled = busy;
+  restoreConversation.disabled = busy;
+  document.querySelector("#new-request").disabled = busy;
+}
+
+async function restoreReference() {
+  if (!client || busy) return;
+  // Keep the old reference/cache until a matching authoritative reply succeeds.
+  const selectedRun = restoreRun.value.trim();
+  const selectedConversation = restoreConversation.value;
+  const generation = ++restoreGeneration;
+  contextVerified = canResume = canAnswer = false;
+  referenceBlocked = true;
+  workflow.hidden = false;
+  if (!validRunId(selectedRun) || !validConversation(selectedConversation)) {
+    status.textContent = "Run IDは小文字の16進数64桁、会話IDは空欄にせず256バイト以内で入力してください。以前の参照は保持しています。";
+    controls();
+    return;
+  }
+  busy = true;
+  controls();
+  status.textContent = "保存状態を読み取り中です。再開・モデル送信はしていません。";
+  try {
+    const value = await client.call(continuationShape, "status", { "run-id": selectedRun }, REQUEST_OPTIONS);
+    const inspected = inspectStatus(value, selectedRun, selectedConversation);
+    if (generation !== restoreGeneration || restoreRun.value.trim() !== selectedRun || restoreConversation.value !== selectedConversation) {
+      throw new Error("照会中に参照入力が変わりました。以前の参照を保持し、再開は無効のままです。");
+    }
+    runId = selectedRun;
+    conversation = selectedConversation;
+    runStatus = inspected.status;
+    contextVerified = true;
+    referenceBlocked = false;
+    canResume = inspected.resumable;
+    canAnswer = inspected.canAnswer;
+    runReference.textContent = `再開参照: ${runId}\n会話ID（入力値・再開時に照合）: ${conversation}`;
+    phase.textContent = `${runStatus} · 保存済み ${inspected.phaseCount}工程 · revision ${inspected.revision}`;
+    usage.textContent = statusUsage(inspected.usage);
+    nextAction.textContent = inspected.explanation;
+    status.textContent = "保存状態を読み取りました。会話IDは再開時に照合します。";
+    rememberRun();
+  } catch (error) {
+    // No submit/history load/write or cache replacement follows a failed read.
+    status.textContent = `照会を完了できませんでした。以前の参照は保持しています。再開せず確認してください。 ${error.message}`;
+    nextAction.textContent = "再送・自動修正はしていません。明示的に状態を読み直すか「新しい依頼」を選んでください。";
+  } finally {
+    busy = false;
+    controls();
+  }
 }
 
 function progress(value) {
@@ -76,35 +144,13 @@ const message = (role, content, receipt) => {
   return { body, state };
 };
 
-function validRetryReceipt(receipt) {
-  const keys = ["version", "retry_boundary_version", "run_id", "conversation", "status", "approved", "phase", "next_phase", "completed_phases", "completed_phases_this_segment", "reason", "rejected_attempt", "rejected_generation", "prepared_generation", "retry", "maximum_retries", "usage"];
-  if (!receipt || typeof receipt !== "object" || Array.isArray(receipt) || Object.keys(receipt).length !== keys.length || Object.keys(receipt).some((key) => !keys.includes(key))) return false;
-  const rejected = typeof receipt.rejected_generation === "string" ? /^(.+)#(0|[1-9][0-9]*)$/.exec(receipt.rejected_generation) : null;
-  const epoch = rejected ? Number(rejected[2]) : NaN;
-  const ordinal = typeof receipt.rejected_attempt === "string" && receipt.rejected_attempt.startsWith(`${receipt.rejected_generation}:`)
-    ? receipt.rejected_attempt.slice(receipt.rejected_generation.length + 1) : "";
-  return receipt.version === "deepthink.workflow.v5"
-    && receipt.retry_boundary_version === "deepthink.contract-retry-boundary.v1"
-    && receipt.status === "awaiting_retry" && receipt.approved === false
-    && receipt.reason === "invalid_phase_contract"
-    && receipt.conversation === conversation && receipt.run_id === runId
-    && typeof receipt.phase === "string" && !!receipt.phase.trim() && receipt.next_phase === receipt.phase
-    && Number.isSafeInteger(receipt.completed_phases) && receipt.completed_phases >= 0
-    && receipt.completed_phases_this_segment === 0
-    && Number.isSafeInteger(receipt.retry) && receipt.retry >= 1
-    && Number.isSafeInteger(receipt.maximum_retries) && receipt.retry <= receipt.maximum_retries && receipt.maximum_retries <= 3
-    && !!rejected && rejected[1].startsWith(`${receipt.phase}@`)
-    && Number.isSafeInteger(epoch) && Number.isSafeInteger(epoch + 1)
-    && receipt.prepared_generation === `${rejected[1]}#${epoch + 1}`
-    && /^(0|[1-9][0-9]*)$/.test(ordinal) && Number.isSafeInteger(Number(ordinal))
-    && receipt.usage && typeof receipt.usage === "object" && !Array.isArray(receipt.usage)
-    && receipt.usage.pending_attempts === 0;
-}
-
 async function submit(input, continuation = false) {
   if (!client || busy) return;
-  if (continuation && !runId) return;
+  if (continuation && (!runId || !contextVerified || (input === null ? !canResume : !canAnswer))) return;
+  if (!continuation && (runId || referenceBlocked)) return;
   busy = true;
+  contextVerified = canResume = canAnswer = false;
+  controls();
   if (!continuation) {
     runId = undefined;
     runStatus = undefined;
@@ -120,10 +166,10 @@ async function submit(input, continuation = false) {
   resume.disabled = true;
   cancelled = false;
   try {
-    const previous = await client.call(storeShape, "load", { conversation });
+    const previous = await client.call(storeShape, "load", { conversation }, REQUEST_OPTIONS);
     const stream = continuation
-      ? await client.call(continuationShape, "submit", { "run-id": runId, conversation, answers: originalInput })
-      : await client.call(inputShape, "submit", { input: { conversation, text: input } });
+      ? await client.call(continuationShape, "submit", { "run-id": runId, conversation, answers: originalInput }, REQUEST_OPTIONS)
+      : await client.call(inputShape, "submit", { input: { conversation, text: input } }, REQUEST_OPTIONS);
     active = stream;
     if (cancelled) throw new Error("停止しました。下書きを残しています。");
     stop.disabled = false;
@@ -132,7 +178,7 @@ async function submit(input, continuation = false) {
     let retrySegment = false;
     let sawAnswer = false;
     while (active && !completed) {
-      const events = await stream.pull(8);
+      const events = await stream.pull(8, REQUEST_OPTIONS);
       if (!events.length) throw new Error("会話の完了を確認できませんでした。下書きを残しています。");
       for (const event of events) {
         const frame = typeof event.kind === "object" ? event.kind : event;
@@ -164,7 +210,7 @@ async function submit(input, continuation = false) {
           }
           if (value.kind === "awaiting_retry") {
             const receipt = parseEventText(value.text);
-            if (pausedSegment || retrySegment || sawAnswer || !validRetryReceipt(receipt)) {
+            if (pausedSegment || retrySegment || sawAnswer || !validRetryBoundary(receipt, runId, conversation)) {
               runStatus = "needs_reconciliation";
               rememberRun();
               throw new Error("契約再試行の安全な中断を確認できませんでした。再送せず実行参照を保持してください。");
@@ -186,7 +232,7 @@ async function submit(input, continuation = false) {
       rememberRun();
       throw new Error("安全な中断の終端を確認できませんでした。再送せず実行参照を保持してください。");
     }
-    const persisted = await client.call(storeShape, "load", { conversation });
+    const persisted = await client.call(storeShape, "load", { conversation }, REQUEST_OPTIONS);
     if (retrySegment) {
       if (sawAnswer || runStatus !== "awaiting_retry" || JSON.stringify(persisted.messages) !== JSON.stringify(previous.messages)) {
         runStatus = "needs_reconciliation";
@@ -198,6 +244,7 @@ async function submit(input, continuation = false) {
       text.value = "";
       nextAction.textContent = "工程はまだ完了していません。「再開」で同じ工程の次の契約修正を明示的に実行します。";
       status.textContent = "応答の契約不適合を保存しました。自動再試行はしていません。";
+      contextVerified = canResume = true;
       return;
     }
     if (pausedSegment) {
@@ -211,6 +258,7 @@ async function submit(input, continuation = false) {
       text.value = "";
       nextAction.textContent = "「再開」で次の工程を実行します。最終回答はレビュー合格後に表示されます。";
       status.textContent = "1工程を保存しました。続けるには「再開」を押してください。";
+      contextVerified = canResume = true;
       return;
     }
     const tail = persisted.messages.slice(-2);
@@ -220,8 +268,12 @@ async function submit(input, continuation = false) {
     user.state.textContent = "✓ 保存済み";
     assistant.state.textContent = "✓ 保存済み";
     text.value = "";
+    contextVerified = true;
+    canAnswer = runStatus === "needs_input";
     status.textContent = runStatus === "needs_input" ? "確認事項への回答を入力してください。途中の成果は保存済みです。" : "準備できました";
   } catch (error) {
+    contextVerified = canResume = canAnswer = false;
+    referenceBlocked = !!runId;
     assistant.state.textContent = "送信を完了できませんでした";
     status.textContent = error.message;
     // Draft remains in the composer when the Flow fails or is cancelled.
@@ -232,34 +284,45 @@ async function submit(input, continuation = false) {
     active = undefined;
     busy = false;
     stop.disabled = true;
-    send.disabled = false;
-    resume.disabled = !runId || runStatus === "completed" || runStatus === "needs_input" || runStatus === "needs_reconciliation";
+    controls();
   }
 }
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!text.value.trim()) return;
+  if (!text.value.trim() || send.disabled) return;
   await submit(text.value, runStatus === "needs_input" && !!runId);
 });
 resume.addEventListener("click", () => submit(null, true));
+restoreForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await restoreReference();
+});
 document.querySelector("#new-request").addEventListener("click", () => {
   if (busy) return;
   runId = undefined;
   runStatus = undefined;
+  ++restoreGeneration;
+  contextVerified = canResume = canAnswer = referenceBlocked = false;
+  restoreRun.value = "";
+  restoreConversation.value = conversation;
   rememberRun();
   resume.disabled = true;
   workflow.hidden = true;
   status.textContent = "新しい依頼を入力できます。以前の成果はCoreに保存されています。";
+  controls();
 });
 stop.addEventListener("click", async () => {
   cancelled = true;
+  contextVerified = canResume = canAnswer = false;
+  referenceBlocked = !!runId;
+  controls();
   if (active) await active.cancel();
   active = undefined;
   status.textContent = "停止しました";
 });
 connectPackUi().then((connection) => {
   client = connection;
-  send.disabled = false;
-  resume.disabled = !runId || runStatus === "completed" || runStatus === "needs_input" || runStatus === "needs_reconciliation";
-  status.textContent = "準備できました";
+  controls();
+  status.textContent = runId ? "保存参照は未検証です。「保存状態を読む」で確認してください。自動照会・自動再開はしていません。" : "準備できました。保存済みのRunは参照を手動入力して照会できます。";
 });
+controls();

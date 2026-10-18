@@ -10,6 +10,15 @@
 <body>
   <main>
     <header><h1>Tobkiri Harness</h1><p id="status" role="status">ホストへの接続を待っています</p></header>
+    <form id="restore-form" aria-label="保存済みRunの照会">
+      <h2>保存済みの実行を読み取る</h2>
+      <label for="restore-run">Run ID（64桁）</label>
+      <input id="restore-run" type="text" maxlength="64" pattern="[a-f0-9]{64}" autocomplete="off" spellcheck="false" required>
+      <label for="restore-conversation">元の会話ID</label>
+      <input id="restore-conversation" type="text" value="e2e" maxlength="256" autocomplete="off" required>
+      <button id="restore" type="submit" disabled>保存状態を読む</button>
+      <p>保存済みの進捗と使用量を表示します。会話IDは再開時に照合します。</p>
+    </form>
     <section id="messages" aria-label="会話" aria-live="polite"></section>
     <aside id="workflow" aria-live="polite" hidden>
       <p id="phase"></p><p id="usage">使用量の確定待ち</p>
