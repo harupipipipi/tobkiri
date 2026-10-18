@@ -1,0 +1,245 @@
+name: DeepThink Pack contracts
+
+on:
+  pull_request:
+    branches: [soon]
+  push:
+    branches: [soon]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deepthink:
+    name: Guest, UI and staged Pack contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      RUSTUP_TOOLCHAIN: '1.94.0'
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-target
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          targets: wasm32-wasip2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install preset staging dependency
+        run: python3 -m pip install --disable-pip-version-check PyYAML==6.0.3
+      - name: Guest SDK, tool engine and DeepThink unit tests
+        run: >-
+          cargo test --manifest-path packs/Cargo.toml
+          -p tobkiri-guest-sdk -p tobkiri-pack-harness-tools
+          -p tobkiri-pack-deepthink -p tobkiri-pack-deepthink-input -p tobkiri-pack-openai-compat-provider
+          -p tobkiri-pack-harness-conversation-store --locked --lib
+      - name: Independent read-only generation reader tests
+        run: |
+          cargo test --manifest-path packs/recovery/local.openrouter-generation-reader/Cargo.toml --locked --lib
+          python3 -B -m unittest discover -s packs/recovery/tests -p test_generation_reader_build.py -v
+      - name: Incremental DeepThink ledger artifact contracts
+        if: ${{ !cancelled() }}
+        run: python3 -B -m unittest packs/recovery/tests/test_deepthink_ledger_build.py -v
+      - name: Build independent generation reader component
+        run: >-
+          cargo build --manifest-path packs/recovery/local.openrouter-generation-reader/Cargo.toml
+          --locked --release --target wasm32-wasip2
+      - name: Build real Wasm Pack components
+        run: >-
+          cargo build --manifest-path packs/Cargo.toml --workspace
+          --release --target wasm32-wasip2 --locked
+      - name: Stage baseline Packs and Profiles
+        run: python3 -B packs/build.py --skip-build --build-profile release --target-dir "$CARGO_TARGET_DIR"
+      - name: Stage DeepThink and preset Profiles
+        run: python3 -B packs/build_deepthink_profile.py --build-profile release --target-dir "$CARGO_TARGET_DIR"
+      - name: Staged UI usage, restoration, continuation and syntax
+        run: |
+          node --test packs/tests/test_ui_accounting.mjs packs/tests/test_ui_continuation.mjs packs/tests/test_ui_restore.mjs
+          node --check packs/local.harness-ui/ui/app.js
+          node --check packs/local.deepthink-ui/ui/app.js
+      - name: Explicit Profile variant sources and authority
+        run: |
+          python3 -B -m unittest discover -s packs/tests -p test_build_profiles.py -v
+          python3 -B -m unittest discover -s packs/tests -p test_deepthink_ui_assets.py -v
+          python3 -B -m unittest discover -s packs/tests -p test_new_deepthink_operations.py -v
+          python3 -B packs/tests/test_profile_sources.py -v
+      # The test reads packs/ relative to CARGO_MANIFEST_DIR, then builds and
+      # verifies real .tpk bytes in memory. It never starts Core or calls an LLM.
+      # Existing full-workspace/migration-completion CI remains independent.
+      - name: Verify Pack archives, component ABI and Profile pins
+        run: >-
+          cargo test -p tobkiri-wasm --lib --locked
+          abi::staged_component_tests::real_staged_components_match_verified_wit_and_closed_core_abi
+          -- --ignored --exact --nocapture
+      - name: Native store contracts
+        run: cargo test -p tobkiri-store --lib --locked
+      - name: Native SQL transactions and durable Run repository
+        if: ${{ !cancelled() }}
+        run: |
+          status=0
+          cargo test -p tobkiri-store --locked --test run_ledger_transactions -- --test-threads=1 || status=$?
+          cargo test -p tobkiri-store --locked --test deepthink_run_repository native_ -- --test-threads=1 || status=$?
+          exit "$status"
+      - name: Native Linux ext4 ownership, tmpfs refusal and quota integration
+        if: ${{ !cancelled() }}
+        run: |
+          status=0
+          cargo test -p tobkiri-store --locked --test owner_linux -- --nocapture --test-threads=1 || status=$?
+          cargo test -p tobkiri-store --locked --test owner --test native_quota --test owner_unavailable -- --nocapture --test-threads=1 || status=$?
+          exit "$status"
+      - name: Independent reader WIT and actual component ABI admission
+        if: ${{ !cancelled() }}
+        env:
+          TOBKIRI_TEST_GENERATION_READER_STAGE: ${{ runner.temp }}/generation-reader
+        run: |
+          python3 -B packs/recovery/build_generation_reader.py stage --target-dir "$CARGO_TARGET_DIR" --build-profile release --destination "$TOBKIRI_TEST_GENERATION_READER_STAGE"
+          cargo test -p tobkiri-wasm --lib --locked abi::generation_reader_tests::real_reader_matches_verified_wit_and_closed_core_abi -- --ignored --exact --nocapture
+      - name: Supervised filesystem effects
+        if: ${{ !cancelled() }}
+        run: cargo test -p tobkiri-wasm --lib --locked filesystem -- --nocapture
+      - name: Typed stream failures and cleanup uncertainty
+        if: ${{ !cancelled() }}
+        run: |
+          status=0
+          cargo test -p tobkiri-flow --locked || status=$?
+          cargo test -p tobkiri-wasm --lib --locked core_imports::error_tests || status=$?
+          cargo test -p tobkiri-wasm --lib --locked dispatch::tests || status=$?
+          exit "$status"
+      - name: Prepaid byte-list ABI and allocation contracts
+        if: ${{ !cancelled() }}
+        run: |
+          status=0
+          cargo test -p tobkiri-canon --lib --locked || status=$?
+          cargo test -p tobkiri-wasm --lib --locked effect_values::network_digest_tests || status=$?
+          cargo test -p tobkiri-wasm --lib --locked network::tests::coalesce_ || status=$?
+          cargo test -p tobkiri-wasm --test byte_list_abi --locked || status=$?
+          exit "$status"
+      - name: Closed transport and finite-fuel diagnostics
+        if: ${{ !cancelled() }}
+        run: |
+          status=0
+          cargo test -p tobkiri-wasm --lib --locked entry_diagnostics || status=$?
+          cargo test -p tobkiri-wasm --lib --locked network_diagnostics || status=$?
+          cargo test -p tobkiri-wasm --lib --locked native_network_ || status=$?
+          cargo test -p tobkiri-wasm --test entry_fuel_diagnostics --locked || status=$?
+          exit "$status"
+      - name: Bounded call trees, stream cleanup and native User entry
+        if: ${{ !cancelled() }}
+        run: |
+          status=0
+          cargo test -p tobkiri-gate --lib --locked || status=$?
+          cargo test -p tobkiri-flow --lib --locked stream::tests || status=$?
+          cargo test -p tobkiri-core --lib --locked user_ports || status=$?
+          cargo test -p tobkiri-cli --bin tobkiri --locked || status=$?
+          exit "$status"
+
+      - name: Retained stream close and optional numeric request metrics
+        if: ${{ !cancelled() }}
+        run: |
+          status=0
+          cargo test -p tobkiri-wasm --lib --locked || status=$?
+          cargo test -p tobkiri-core --lib --locked ui_handle_capacity_and_session_close_are_bounded || status=$?
+          cargo test -p tobkiri-gate --features closed-request-metrics --lib --locked closed_metrics || status=$?
+          cargo test -p tobkiri-store --features closed-request-metrics --locked --test closed_metrics -- --test-threads=1 || status=$?
+          cargo test -p tobkiri-wasm --features closed-request-metrics --lib --locked closed_metrics -- --test-threads=1 || status=$?
+          cargo test -p tobkiri-cli --features closed-request-metrics --bin tobkiri --locked profile_session:: || status=$?
+          cargo test -p tobkiri-core --features closed-request-metrics --lib --locked user_ports || status=$?
+          exit "$status"
+
+  windows-storage:
+    name: Native Windows storage and CLI input
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      RUSTUP_TOOLCHAIN: '1.94.0'
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - name: Native ownership, authority escrow, vault and canonical names
+        run: >-
+          cargo test -p tobkiri-store --locked --lib
+          --test owner_windows --test windows_storage_names
+          --test security --test terminal --test audit_performance -- --test-threads=1
+      - name: Native SQL transactions and durable Run repository
+        if: ${{ !cancelled() }}
+        run: |
+          $taskStatus = 0
+          cargo test -p tobkiri-store --locked --test run_ledger_transactions -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-store --locked --test deepthink_run_repository native_ -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          exit $taskStatus
+      - name: CLI contracts and cancellable native input
+        if: ${{ !cancelled() }}
+        run: cargo test -p tobkiri-cli --bin tobkiri --locked
+      - name: Native User port values and streams
+        if: ${{ !cancelled() }}
+        run: cargo test -p tobkiri-core --lib --locked user_ports
+      - name: Retained stream close and optional numeric request metrics
+        if: ${{ !cancelled() }}
+        run: |
+          $taskStatus = 0
+          cargo test -p tobkiri-wasm --lib --locked
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-core --lib --locked ui_handle_capacity_and_session_close_are_bounded
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-gate --features closed-request-metrics --lib --locked closed_metrics
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-store --features closed-request-metrics --locked --test closed_metrics -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-wasm --features closed-request-metrics --lib --locked closed_metrics -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-cli --features closed-request-metrics --bin tobkiri --locked profile_session::
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-core --features closed-request-metrics --lib --locked user_ports
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          exit $taskStatus
+      - name: Typed stream failures and cleanup uncertainty
+        if: ${{ !cancelled() }}
+        run: |
+          $taskStatus = 0
+          cargo test -p tobkiri-flow --locked
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-wasm --lib --locked core_imports::error_tests
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-wasm --lib --locked dispatch::tests
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          exit $taskStatus
+      # These tests require the real platform allocation-owner backend.
+      # Linux ext4 positives and actual tmpfs refusal run in the Linux job.
+      - name: Native prepaid allocation ownership
+        if: ${{ !cancelled() }}
+        run: cargo test -p tobkiri-wasm --lib --locked allocation
+      - name: Prepaid byte-list ABI
+        if: ${{ !cancelled() }}
+        run: cargo test -p tobkiri-wasm --test byte_list_abi --locked
+      - name: Closed transport and finite-fuel diagnostics
+        if: ${{ !cancelled() }}
+        run: |
+          $taskStatus = 0
+          cargo test -p tobkiri-wasm --lib --locked entry_diagnostics
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-wasm --lib --locked network_diagnostics
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-wasm --lib --locked native_network_
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          cargo test -p tobkiri-wasm --test entry_fuel_diagnostics --locked
+          if ($LASTEXITCODE -ne 0) { $taskStatus = $LASTEXITCODE }
+          exit $taskStatus

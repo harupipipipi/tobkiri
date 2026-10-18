@@ -1,0 +1,83 @@
+{
+  "algorithm": "SHA256(canonical UTF-8 JSON array sorted by UTF-8 relative path; keys sorted; compact separators; directory empty digest; symlink target text digest; ordinary file content digest; mode included)",
+  "archive_sha256": "9c59398106b417f8f14913380fdf0097a8cc0ff4af9eb3ce0065a859e88d49e9",
+  "entries": 18243,
+  "file_bytes": 595535658,
+  "format": "tobkiri.producer-sdk-pin/2",
+  "metadata_bytes": 3782542,
+  "path_override": "denied; recipe role locators must match these exact logical paths and hashes",
+  "sdk": "wasi-sdk-34.0-arm64-macos",
+  "selected": {
+    "bin/clang": {
+      "native_closure_verified": false,
+      "native_load_commands_sha256": "642ae48863cb405d19e8000ec26a48721472c7fe0db5d10fef456cf6795e4e67",
+      "native_system_libraries": [
+        "libSystem.B.dylib",
+        "libc++.1.dylib"
+      ],
+      "resolved_path": "bin/clang-23",
+      "sha256": "19b9ef777eec50d9a353060db546963f588fc10b13baff7839a54d0d97bf871c",
+      "size": 139976
+    },
+    "bin/clang++": {
+      "native_closure_verified": false,
+      "native_load_commands_sha256": "642ae48863cb405d19e8000ec26a48721472c7fe0db5d10fef456cf6795e4e67",
+      "native_system_libraries": [
+        "libSystem.B.dylib",
+        "libc++.1.dylib"
+      ],
+      "resolved_path": "bin/clang-23",
+      "sha256": "19b9ef777eec50d9a353060db546963f588fc10b13baff7839a54d0d97bf871c",
+      "size": 139976
+    },
+    "bin/llvm-ar": {
+      "native_closure_verified": false,
+      "native_load_commands_sha256": "e420c213b34c9ace534338bcf6b57b1d69fc6c74fa54ac07848f96d2b1e97a52",
+      "native_system_libraries": [
+        "libSystem.B.dylib",
+        "libc++.1.dylib"
+      ],
+      "resolved_path": "bin/llvm-ar",
+      "sha256": "43dc42fff1a5e6519c4e460a4754a772d5d9611946a3f5e693c0abf905bd93ed",
+      "size": 97832
+    },
+    "bin/llvm-ranlib": {
+      "native_closure_verified": false,
+      "native_load_commands_sha256": "e420c213b34c9ace534338bcf6b57b1d69fc6c74fa54ac07848f96d2b1e97a52",
+      "native_system_libraries": [
+        "libSystem.B.dylib",
+        "libc++.1.dylib"
+      ],
+      "resolved_path": "bin/llvm-ar",
+      "sha256": "43dc42fff1a5e6519c4e460a4754a772d5d9611946a3f5e693c0abf905bd93ed",
+      "size": 97832
+    },
+    "bin/llvm-strip": {
+      "native_closure_verified": false,
+      "native_load_commands_sha256": "e420c213b34c9ace534338bcf6b57b1d69fc6c74fa54ac07848f96d2b1e97a52",
+      "native_system_libraries": [
+        "libSystem.B.dylib",
+        "libc++.1.dylib"
+      ],
+      "resolved_path": "bin/llvm-objcopy",
+      "sha256": "6c92fcd8ef8eeea2aa3b9cbdd0444652e60719c97c90abf584c2704336fe10db",
+      "size": 181392
+    },
+    "bin/wasm-ld": {
+      "native_closure_verified": false,
+      "native_load_commands_sha256": "e420c213b34c9ace534338bcf6b57b1d69fc6c74fa54ac07848f96d2b1e97a52",
+      "native_system_libraries": [
+        "libSystem.B.dylib",
+        "libc++.1.dylib"
+      ],
+      "resolved_path": "bin/lld",
+      "sha256": "f3f36480cec4c76cd996e7e7624c811d18f92d63dc81fd224c0f757a7f4c3377",
+      "size": 4115152
+    }
+  },
+  "sysroot_entries": 17734,
+  "sysroot_sha256": "bace9d3c060d5b4bb66fae320f8d06c2901879a07dc7f963d5e9b0c5096bc9cc",
+  "system_native_closure_verified": false,
+  "tool_execution": false,
+  "tree_sha256": "d1fd7fa0f954d59a14309bd23b29483ebfeecf551d8deebb2d280b730f919f6d"
+}

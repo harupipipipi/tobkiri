@@ -1,0 +1,25 @@
+[package]
+name = "tobkiri-e2e"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+tobkiri-core.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+tobkiri-canon.workspace = true
+tobkiri-gate.workspace = true
+tobkiri-store.workspace = true
+tobkiri-profile.workspace = true
+tobkiri-flow.workspace = true
+tobkiri-manifest.workspace = true
+tobkiri-wasm.workspace = true
+sha2.workspace = true
+hex.workspace = true
+reqwest.workspace = true
+rusqlite.workspace = true

@@ -15,6 +15,7 @@ from domain.ui_compiler import (
 from .agent_backend import UIAgentBackend
 from .prompts import leaf_prompt
 from .validation import validate_candidate_bundle
+from domain.tool.schema_adapter import list_or_empty, mapping_or_empty
 
 
 class CandidateGenerator:
@@ -174,7 +175,7 @@ def _manifest_from_payload(
     candidate_id: str,
     validation: dict[str, Any],
 ) -> ComponentBundleManifest:
-    payload = validation.get("manifest") if isinstance(validation.get("manifest"), dict) else {}
+    payload = mapping_or_empty(validation.get("manifest"))
     return ComponentBundleManifest(
         node_id=str(payload.get("nodeId") or contract.id),
         candidate_id=str(payload.get("candidateId") or candidate_id),
@@ -184,8 +185,8 @@ def _manifest_from_payload(
         required_states=_list(payload.get("requiredStates")),
         allowed_primitives=_list(payload.get("allowedPrimitives")),
         visible_action_budget=int(payload.get("visibleActionBudget") or contract.visible_action_budget),
-        slot_mappings=list(payload.get("slotMappings") if isinstance(payload.get("slotMappings"), list) else []),
-        design_intent=dict(payload.get("designIntent") or validation.get("designIntent") or {}),
+        slot_mappings=list_or_empty(payload.get("slotMappings")),
+        design_intent=mapping_or_empty(payload.get("designIntent") or validation.get("designIntent")),
     )
 
 

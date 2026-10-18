@@ -1,0 +1,167 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:4bccc92d40c02b1c7a3c2951faa92d1dec8c93dcff3d6ab36e1fc5d650128c70",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:950483f806040683967e92baff8e9b0dbff1feb8c4d8ca60c7d8bd860561c84f",
+      "kind": "executable",
+      "path": "runtime/runner.py"
+    },
+    {
+      "digest": "sha256:93c188c2347bcee2337f83d6145fe696faaaee7318f2a2b6333b97228f6791ef",
+      "kind": "executable",
+      "path": "runtime/service.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.browser.host.v1",
+      "operations": [
+        "rumi_browser_host_service_pack.browser-host-control"
+      ],
+      "revision_digest": "sha256:8b0167929103637d337a877c716dc34921db04501d48b6a1850790353c1cb630"
+    },
+    {
+      "contract_id": "tobkiri.resource.browser.host.v1",
+      "operations": [
+        "rumi_browser_host_service_pack.browser-host-observe"
+      ],
+      "revision_digest": "sha256:f4266b8bc3b1fd6e062c9e70fa1bb0ea14970ddd5d701131adc2d57b44c9e275"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:8b0167929103637d337a877c716dc34921db04501d48b6a1850790353c1cb630",
+      "id": "rumi_browser_host_service_pack.browser-host.control",
+      "implementation_digest": "sha256:93c188c2347bcee2337f83d6145fe696faaaee7318f2a2b6333b97228f6791ef",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_browser_host_service_pack.browser-host-control"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:f4266b8bc3b1fd6e062c9e70fa1bb0ea14970ddd5d701131adc2d57b44c9e275",
+      "id": "rumi_browser_host_service_pack.browser-host.observe",
+      "implementation_digest": "sha256:93c188c2347bcee2337f83d6145fe696faaaee7318f2a2b6333b97228f6791ef",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_browser_host_service_pack.browser-host-observe"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:50ee7dbc13da91c9ed3e867204f5e0a06bed040e7e878931cd7e5701df1f423e",
+    "contract_catalog_digest": "sha256:5a82324ab83e46cc2682f1b79998cc025860aa52919b5cfb74e725594cd100cc",
+    "source_identity": "sha256:9c519c46f89dce140e93ba4b98682bc46fc159cde68d8577c72781167a4409e1"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.browser.host.v1",
+      "rumi.resource.browser.host.v1",
+      "rumi:ecosystem/rumi_browser_host_service_pack",
+      "rumi_browser_host_service_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.action.browser.host.v1",
+      "effect_ceiling": [
+        "capability:browser.host.control",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_browser_host_service_pack.browser-host-control",
+      "owner": "rumi_browser_host_service_pack",
+      "provider_id": "rumi_browser_host_service_pack.browser-host.control",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.browser.host.v1",
+      "effect_ceiling": [
+        "capability:browser.host.observe",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_browser_host_service_pack.browser-host-observe",
+      "owner": "rumi_browser_host_service_pack",
+      "provider_id": "rumi_browser_host_service_pack.browser-host.observe",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:50ee7dbc13da91c9ed3e867204f5e0a06bed040e7e878931cd7e5701df1f423e",
+    "display_name": "Rumi Browser Host Service",
+    "id": "rumi_browser_host_service_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:9c519c46f89dce140e93ba4b98682bc46fc159cde68d8577c72781167a4409e1",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:9c519c46f89dce140e93ba4b98682bc46fc159cde68d8577c72781167a4409e1",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_browser_host_service_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.action.browser.host.v1",
+      "operations": [
+        "rumi_browser_host_service_pack.browser-host-control"
+      ],
+      "owner": "rumi_browser_host_service_pack",
+      "provider_id": "rumi_browser_host_service_pack.browser-host.control"
+    },
+    {
+      "contract_reference": "tobkiri.resource.browser.host.v1",
+      "operations": [
+        "rumi_browser_host_service_pack.browser-host-observe"
+      ],
+      "owner": "rumi_browser_host_service_pack",
+      "provider_id": "rumi_browser_host_service_pack.browser-host.observe"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "browser.host.control",
+      "browser.host.observe",
+      "host.authority.consume"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

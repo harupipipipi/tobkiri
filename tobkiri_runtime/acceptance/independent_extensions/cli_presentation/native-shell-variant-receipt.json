@@ -1,0 +1,28 @@
+{
+  "evidence_kind": "ordinary_platform_verifier_candidate_only",
+  "public_api": "tobkiri_protocol.shell_authoring.describe_shell_variant",
+  "source_shell_provider_id": "shell.cli.default",
+  "source_shell_definition_revision": "sha256:20ce04757cda1e8843c9676ba4e822c8f32deb09099fd297d6fb6c7617dc2742",
+  "source_shell_definition_file_digest": "sha256:061a322a3167d41e528e0a1395a64da48e60686c6f7f3ef57cbb78f2624ebc23",
+  "source_shell_availability": "build_required",
+  "candidate_variant": {
+    "platform": "macos",
+    "architecture": "arm64",
+    "relative_path": "TobkiriCLI.app",
+    "entrypoint": "TobkiriCLI.app/Contents/MacOS/tobkiri-shell",
+    "bundle_identity": "io.tobkiri.shell.cli.default",
+    "artifact_digest": "sha256:13e262a1ee1d26d657390a37cb5670c64fa11fef683b86ae523905029ecc5317",
+    "entrypoint_digest": "sha256:ac4c576bc166719768702941ea18eaa3f095c950f40e46ad0b4e57b5adb483d7"
+  },
+  "strict_macos_signature_checked": true,
+  "signature_kind": "ad-hoc",
+  "source_application_and_renderer_changed": false,
+  "native_bytes_changed": false,
+  "published_trusted_catalog": false,
+  "installed_verified_shell": false,
+  "host_issued_bootstrap": false,
+  "active_profile_authority": false,
+  "production_broker_execution": false,
+  "production_packvm_execution": false,
+  "native_product_shell_launch_ceremony": false
+}

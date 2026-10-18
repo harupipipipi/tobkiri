@@ -1,120 +1,94 @@
-"""
-egress_domain_controller.py - Pack別ドメイン制御
+"""Immutable Pack v4 network-domain policy for the egress proxy."""
 
-ecosystem.json ベースのドメインホワイトリスト/ブラックリスト。
-egress_proxy.py から分離 (W13-T047)。
-W12-T046 で追加。
-"""
 from __future__ import annotations
 
 import fnmatch
-import json
-import os
-import threading
-from pathlib import Path
-from typing import Any, Dict, Tuple
+from types import MappingProxyType
+from typing import Any, Mapping
 
+from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.validation import validate_document
 
-# ============================================================
-# ドメイン制御定数
-# ============================================================
-
-_ECOSYSTEM_DIR = os.environ.get("RUMI_ECOSYSTEM_DIR", "packs")
-
-
-# ============================================================
-# DomainController
-# ============================================================
 
 class DomainController:
-    """
-    Pack別のドメインホワイトリスト/ブラックリスト制御。
+    """Check domains against an explicitly selected Pack v4 policy snapshot.
 
-    ecosystem.json の egress_allow_domains / egress_deny_domains を参照。
-    deny が優先（deny にマッチ → allow に関係なくブロック）。
-    ワイルドカードパターン対応（*.example.com）。
-    初回アクセス時にキャッシュ。
+    An empty or missing policy denies.  The controller never scans installed
+    Packs, reads environment variables, or treats a legacy manifest as
+    authority.
     """
 
-    def __init__(self, ecosystem_dir: str = None):
-        self._ecosystem_dir = ecosystem_dir or _ECOSYSTEM_DIR
-        self._cache: Dict[str, Dict[str, Any]] = {}
-        self._lock = threading.Lock()
+    def __init__(self, policies: Mapping[str, tuple[str, ...]] | None = None) -> None:
+        normalized: dict[str, tuple[str, ...]] = {}
+        for pack_id, domains in (policies or {}).items():
+            identity = str(pack_id or "").strip()
+            values = tuple(sorted({str(item).strip().lower() for item in domains}))
+            if not identity or not values or any(not item for item in values):
+                raise ValueError("Pack v4 domain policy is incomplete")
+            normalized[identity] = values
+        self._policies: Mapping[str, tuple[str, ...]] = MappingProxyType(normalized)
 
-    def _load_pack_config(self, pack_id: str) -> Dict[str, Any]:
-        """Pack の ecosystem.json からドメイン制御設定を読み込む"""
-        try:
-            eco_path = Path(self._ecosystem_dir) / pack_id / "ecosystem.json"
-            if not eco_path.exists():
-                return {"allow": [], "deny": []}
+    @classmethod
+    def from_pack_v4_documents(
+        cls,
+        selected: Mapping[str, Mapping[str, Any]],
+        bindings: Mapping[str, Mapping[str, str]],
+    ) -> "DomainController":
+        """Compile exact policies from an already-resolved Profile Pack set."""
 
-            with open(eco_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+        policies: dict[str, tuple[str, ...]] = {}
+        for expected_id, document in selected.items():
+            manifest = validate_document(dict(document), "pack")
+            pack_id = str(manifest["pack"]["id"])
+            binding = bindings.get(expected_id)
+            if (
+                pack_id != expected_id
+                or pack_id in policies
+                or not isinstance(binding, Mapping)
+                or binding.get("source_identity")
+                != manifest["integrity"]["source_identity"]
+                or binding.get("artifact_digest") != manifest["pack"]["artifact_digest"]
+                or binding.get("manifest_digest") != canonical_digest(manifest)
+            ):
+                raise ValueError("selected Pack v4 network identity mismatch")
+            network = manifest["requirements"]["network"]
+            allowed = network.get("allowed_domains") if isinstance(network, Mapping) else None
+            if not isinstance(allowed, list):
+                raise ValueError("selected Pack v4 network policy is missing")
+            domains = tuple(str(item).strip().lower() for item in allowed)
+            if domains:
+                policies[pack_id] = domains
+        if set(bindings) != set(selected):
+            raise ValueError("selected Pack v4 network bindings are not exact")
+        return cls(policies)
 
-            return {
-                "allow": data.get("egress_allow_domains", []),
-                "deny": data.get("egress_deny_domains", []),
-            }
-        except Exception:
-            return {"allow": [], "deny": []}
+    def check_domain(self, pack_id: str, domain: str) -> tuple[bool, str]:
+        """Allow only a domain in the exact selected Pack policy."""
 
-    def _get_pack_config(self, pack_id: str) -> Dict[str, Any]:
-        """キャッシュ付きで設定を取得"""
-        with self._lock:
-            if pack_id not in self._cache:
-                self._cache[pack_id] = self._load_pack_config(pack_id)
-            return self._cache[pack_id]
-
-    def _match_domain(self, domain: str, patterns: list) -> bool:
-        """ドメインがパターンリストにマッチするか判定"""
-        domain_lower = domain.lower()
-        for pattern in patterns:
-            pattern_lower = pattern.lower()
-            if domain_lower == pattern_lower:
-                return True
-            if pattern_lower == "*":
-                return True
-            if pattern_lower.startswith("*."):
-                base = pattern_lower[2:]
-                if domain_lower == base:
-                    return True
-                if domain_lower.endswith("." + base):
-                    return True
-            if fnmatch.fnmatch(domain_lower, pattern_lower):
-                return True
-        return False
-
-    def check_domain(self, pack_id: str, domain: str) -> Tuple[bool, str]:
-        """
-        ドメイン制御チェック。
-
-        Returns:
-            (allowed, reason)
-
-        ルール:
-        - deny リストにマッチ → ブロック（allow に関係なく）
-        - allow リストが空 → 制限なし（ドメイン制御未設定扱い）
-        - allow リストが非空 → allow にマッチしなければブロック
-        """
-        config = self._get_pack_config(pack_id)
-        deny_list = config.get("deny", [])
-        allow_list = config.get("allow", [])
-
-        if deny_list and self._match_domain(domain, deny_list):
-            return False, f"Domain '{domain}' is in egress deny list for pack '{pack_id}'"
-
-        if not allow_list:
+        identity = str(pack_id or "").strip()
+        candidate = str(domain or "").strip().lower().rstrip(".")
+        patterns = self._policies.get(identity)
+        if not patterns or not candidate:
+            return False, "Pack v4 domain authority is unavailable"
+        if any(_matches(candidate, pattern) for pattern in patterns):
             return True, ""
+        return False, "Domain is outside the selected Pack v4 network policy"
 
-        if self._match_domain(domain, allow_list):
-            return True, ""
+    def invalidate_cache(self, pack_id: str | None = None) -> None:
+        """Reject legacy mutation: a captured v4 policy snapshot is immutable."""
 
-        return False, f"Domain '{domain}' is not in egress allow list for pack '{pack_id}'"
+        del pack_id
+        raise RuntimeError("Pack v4 domain policy snapshots are immutable")
 
-    def invalidate_cache(self, pack_id: str = None) -> None:
-        """キャッシュを無効化（設定変更時に呼び出し）"""
-        with self._lock:
-            if pack_id:
-                self._cache.pop(pack_id, None)
-            else:
-                self._cache.clear()
+
+def _matches(domain: str, pattern: str) -> bool:
+    normalized = pattern.lower().rstrip(".")
+    if normalized == "*":
+        return True
+    if normalized.startswith("*."):
+        base = normalized[2:]
+        return domain == base or domain.endswith("." + base)
+    return domain == normalized or fnmatch.fnmatchcase(domain, normalized)
+
+
+__all__ = ["DomainController"]

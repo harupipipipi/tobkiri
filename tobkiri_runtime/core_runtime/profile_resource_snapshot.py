@@ -5,13 +5,19 @@ import json
 import shutil
 import time
 from collections.abc import Iterable
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 
-from .paths import discover_pack_locations
+from .pack_boundary import finite_files, resolve_pack_root
 from .profile_workspace import ProfileWorkspaceManager
+from .resolved_profile import (
+    ResolvedProfile,
+    create_lockfile,
+    write_lockfile,
+)
 
 
 class ProfileResourceSnapshotManager:
@@ -23,6 +29,34 @@ class ProfileResourceSnapshotManager:
     ) -> None:
         self.workspace_manager = ProfileWorkspaceManager(user_data_root)
         self.ecosystem_dir = ecosystem_dir
+
+    def snapshot_resolved_profile(
+        self,
+        plan: ResolvedProfile,
+    ) -> dict[str, Any]:
+        """Snapshot every selected pack/provider/resource hash for one plan."""
+        paths = self.workspace_manager.paths_for_profile(plan.profile_id)
+        snapshot_root = paths.snapshots_dir / "resolved-profile" / plan.plan_hash
+        snapshot_root.mkdir(parents=True, exist_ok=True)
+        lockfile = create_lockfile(plan)
+        write_lockfile(snapshot_root / "profile.lock.json", lockfile)
+        manifest = {
+            "version": 2,
+            "profile_id": plan.profile_id,
+            "profile_revision": plan.profile_revision,
+            "input_hash": plan.input_hash,
+            "plan_hash": plan.plan_hash,
+            "effective_pack_set": list(plan.effective_pack_set),
+            "packs": [asdict(item) for item in plan.packs],
+            "providers": [asdict(item) for item in plan.providers],
+            "resources": [asdict(item) for item in plan.projections],
+            "lock_hash": lockfile.lock_hash,
+        }
+        (snapshot_root / "manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        return manifest
 
     def snapshot_default_resources(
         self,
@@ -101,14 +135,7 @@ class ProfileResourceSnapshotManager:
         return manifest
 
     def _pack_path(self, base_pack: str) -> Path:
-        for location in discover_pack_locations(self.ecosystem_dir):
-            if location.pack_id == base_pack:
-                return location.pack_subdir
-        root = Path(self.ecosystem_dir) if self.ecosystem_dir else Path(__file__).resolve().parent.parent / "ecosystem"
-        candidate = root / base_pack
-        if candidate.is_dir():
-            return candidate
-        raise FileNotFoundError(f"Pack '{base_pack}' was not found")
+        return resolve_pack_root(base_pack, self.ecosystem_dir)
 
     def _resolve_flow_path(self, pack_path: Path, flow_id: str) -> Path | None:
         candidates = []
@@ -126,13 +153,20 @@ class ProfileResourceSnapshotManager:
                     pack_path / "flows" / flow_id.rsplit(".", 1)[-1] / "flow.yaml",
                 ]
             )
-        source = next((path for path in candidates if path.is_file()), None)
+        source = next(
+            (
+                safe
+                for path in candidates
+                if (safe := self._safe_pack_file(pack_path, path)) is not None
+            ),
+            None,
+        )
         if source is not None:
             return source
         flows_dir = pack_path / "flows"
         if not flows_dir.is_dir():
             return None
-        for candidate in sorted(list(flows_dir.glob("*.yaml")) + list(flows_dir.glob("*/*.yaml"))):
+        for candidate in finite_files(flows_dir, (".yaml", ".yml"), recursive=True):
             try:
                 data = yaml.safe_load(candidate.read_text(encoding="utf-8")) or {}
             except (OSError, yaml.YAMLError):
@@ -174,14 +208,23 @@ class ProfileResourceSnapshotManager:
                         pack_path / "extensions" / "prompts" / prompt_name / "manifest.json",
                     ]
                 )
-        source = next((path for path in candidates if path.is_file()), None)
+        source = next(
+            (
+                safe
+                for path in candidates
+                if (safe := self._safe_pack_file(pack_path, path)) is not None
+            ),
+            None,
+        )
         if source is None:
             return []
         if source.name == "manifest.json" and source.parent.parent.name in {"prompts"}:
-            return self._prompt_manifest_files(source)
+            return self._prompt_manifest_files(pack_path, source)
         return [source]
 
-    def _prompt_manifest_files(self, manifest_path: Path) -> list[Path]:
+    def _prompt_manifest_files(
+        self, pack_path: Path, manifest_path: Path
+    ) -> list[Path]:
         files = [manifest_path]
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -192,11 +235,13 @@ class ProfileResourceSnapshotManager:
             template_file = config.get("template_file") if isinstance(config, dict) else None
             if isinstance(template_file, str) and template_file:
                 candidate = manifest_path.parent / template_file
-                if candidate.is_file():
-                    files.append(candidate)
+                safe = self._safe_pack_file(pack_path, candidate)
+                if safe is not None:
+                    files.append(safe)
         fallback = manifest_path.parent / "prompt.md"
-        if fallback.is_file() and fallback not in files:
-            files.append(fallback)
+        safe_fallback = self._safe_pack_file(pack_path, fallback)
+        if safe_fallback is not None and safe_fallback not in files:
+            files.append(safe_fallback)
         return files
 
     def _prompt_snapshot_relative_path(self, pack_path: Path, source: Path) -> Path:
@@ -216,6 +261,10 @@ class ProfileResourceSnapshotManager:
         item_type: str,
         items: list[dict[str, Any]],
     ) -> None:
+        safe_source = self._safe_pack_file(pack_path, source)
+        if safe_source is None:
+            raise PermissionError("snapshot source escapes the selected Pack")
+        source = safe_source
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, dest)
         items.append(
@@ -262,13 +311,20 @@ class ProfileResourceSnapshotManager:
             pack_path / "graphs" / f"{graph_id}.graph.yaml",
             pack_path / "graphs" / f"{graph_id.replace('.', '_')}.graph.yaml",
         ]
-        graph_path = next((path for path in candidates if path.is_file()), None)
+        graph_path = next(
+            (
+                safe
+                for path in candidates
+                if (safe := self._safe_pack_file(pack_path, path)) is not None
+            ),
+            None,
+        )
         if graph_path is not None:
             return graph_path
         graphs_dir = pack_path / "graphs"
         if not graphs_dir.is_dir():
             return None
-        for candidate in sorted(list(graphs_dir.glob("*.yaml")) + list(graphs_dir.glob("*.yml"))):
+        for candidate in finite_files(graphs_dir, (".yaml", ".yml"), recursive=False):
             try:
                 data = yaml.safe_load(candidate.read_text(encoding="utf-8")) or {}
             except (OSError, yaml.YAMLError):
@@ -321,6 +377,27 @@ class ProfileResourceSnapshotManager:
             seen.add(normalized)
             result.append(normalized)
         return result
+
+    @staticmethod
+    def _safe_pack_file(pack_path: Path, candidate: Path) -> Path | None:
+        """Return one regular in-Pack file without following symlink edges."""
+
+        root = pack_path.resolve()
+        try:
+            relative = candidate.relative_to(pack_path)
+        except ValueError:
+            return None
+        current = pack_path
+        for part in relative.parts:
+            current = current / part
+            if current.is_symlink():
+                return None
+        resolved = candidate.resolve()
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            return None
+        return resolved if resolved.is_file() else None
 
     def _sha256(self, path: Path) -> str:
         digest = hashlib.sha256()

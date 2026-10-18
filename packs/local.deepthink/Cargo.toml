@@ -1,0 +1,18 @@
+[package]
+name = "tobkiri-pack-deepthink"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wit-bindgen.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "=0.10.9"
+
+[dev-dependencies]
+tobkiri-pack-harness-tools = { path = "../local.harness-tools" }

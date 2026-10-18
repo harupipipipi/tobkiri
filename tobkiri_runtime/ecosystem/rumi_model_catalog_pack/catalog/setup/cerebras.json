@@ -1,0 +1,65 @@
+{
+ "provider_id": "cerebras",
+ "models": [
+  {
+   "model_id": "gpt-oss-120b",
+   "display_name": "GPT OSS 120B",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 40960,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.35,
+    "output": 0.75
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen-3.8-27b",
+   "display_name": "Qwen3.8 27B",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 40960,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.99,
+    "output": 1.49,
+    "cache_read": 0.99
+   },
+   "source": "models.dev"
+  }
+ ]
+}

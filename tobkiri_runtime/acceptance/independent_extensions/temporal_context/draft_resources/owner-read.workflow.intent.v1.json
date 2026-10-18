@@ -1,0 +1,21 @@
+{
+  "max_concurrency": 1,
+  "name": "Tobkiri owner read source draft; not selected or executed",
+  "steps": [
+    {
+      "id": "owner.read",
+      "request": {
+        "contract_id": "tobkiri.resource.conversation.v1",
+        "contract_revision_digest": "sha256:254d3ee4bdbe11bf21f658bbb3b89a1d6510ef7dbf77fb9108dcc4b426496156",
+        "function_id": "rumi_conversation_store_pack.conversation-store.resource",
+        "input": {
+          "conversation_id": "${inputs.conversation_id}",
+          "operation": "get",
+          "profile_id": "${inputs.profile_id}"
+        },
+        "operation_id": "rumi_conversation_store_pack.conversation-resource"
+      }
+    }
+  ],
+  "workflow_intent_api_version": "io.tobkiri.profile-workflow-intent.v1"
+}

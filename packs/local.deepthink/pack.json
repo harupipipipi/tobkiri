@@ -1,0 +1,432 @@
+{
+  "files": [
+    {
+      "path": "component.build.json",
+      "sha256": "sha256:1bb5f39a90741494f6574c42107792c921d6168f3064f1029302faf904bb7caa",
+      "size": 3877
+    },
+    {
+      "path": "component.wasm",
+      "sha256": "sha256:dd6b8551d1a5eb8e39624b21ce30825342331d00555057bfeb1c7bf24a8efa6b",
+      "size": 1269649
+    },
+    {
+      "path": "config.json",
+      "sha256": "sha256:d773ffe5c8ec21a41f2aec7ba7fde7f811c5b4f43ca5cafb1b3fec561c42e821",
+      "size": 6949
+    },
+    {
+      "path": "flows/continuation.flow.json",
+      "sha256": "sha256:0ff434ae34a16c07c3d0334ab838d9346031bf4124b2259ea205a624fb1453c0",
+      "size": 1263
+    },
+    {
+      "path": "flows/control.flow.json",
+      "sha256": "sha256:056752ad7f1d97d744e5d5251d4fe30f38baae9de66c9a30470af001bcfe4040",
+      "size": 2211
+    },
+    {
+      "path": "flows/goal-review.flow.json",
+      "sha256": "sha256:887d55fe19a32619212500dbf035d741200b531fbb1b4700ef2c8688472f49a8",
+      "size": 579
+    },
+    {
+      "path": "flows/regeneration.flow.json",
+      "sha256": "sha256:95681d8ffef57eb66fde504b220fa053cf45fa9d3091f82f33c5b2f239db0bb6",
+      "size": 1196
+    },
+    {
+      "path": "flows/tool-diagnostics.flow.json",
+      "sha256": "sha256:8d06c543cd1917bd6405c20d3396a8c13d84568ca135afb801456ab89473a5b4",
+      "size": 528
+    },
+    {
+      "path": "overlays/generate.overlay.json",
+      "sha256": "sha256:998181e8a673b868126157f1b09959a32ab20f9a7c42922792216ff428ba600e",
+      "size": 548
+    },
+    {
+      "path": "wit/continuation-flow.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/continuation-input.shape.json",
+      "sha256": "sha256:1f6f7150066fed4cc2357e0a5d807a7b68f4b3ad239ad0a44eeaa19eb3c86e0d",
+      "size": 154
+    },
+    {
+      "path": "wit/control-flow.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/deps/core-v1-1.wit",
+      "sha256": "sha256:519ae1215e01df9d782e0f5808cc53207b5be71f1f10e9f7bf1073796c66c90f",
+      "size": 6639
+    },
+    {
+      "path": "wit/deps/core.wit",
+      "sha256": "sha256:f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "size": 5732
+    },
+    {
+      "path": "wit/deps/deepthink.wit",
+      "sha256": "sha256:0372bd2abbc0c0b2aef2f58e1ab65e3e4039eb3e0bbe7add9fc7ddaea9f9f71b",
+      "size": 3735
+    },
+    {
+      "path": "wit/deps/generation-reader.wit",
+      "sha256": "sha256:fa21aa76f65d634f584e09d73259a65a8e91a9156bd641243d2cda0a9b2de9aa",
+      "size": 410
+    },
+    {
+      "path": "wit/deps/harness-agent.wit",
+      "sha256": "sha256:4f521cccf31d8c1ee2f777b3d2000a56137119a04011a156304f1442cf592e26",
+      "size": 384
+    },
+    {
+      "path": "wit/deps/harness-chat.wit",
+      "sha256": "sha256:773dab1acafb9e85414e67572fa0b913a0476d41987880db34881c27f2420a82",
+      "size": 2202
+    },
+    {
+      "path": "wit/goal-review-flow.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/goal-review-input.shape.json",
+      "sha256": "sha256:dd20df36b4444733761bdbc1fc8ec43ce2634a00cf327b2d78b7f7f1c9a084fe",
+      "size": 116
+    },
+    {
+      "path": "wit/goal-review-worker.shape.json",
+      "sha256": "sha256:8b42ec5aad9e2bc7077316d4b9352b4895bb1403523ea928602d84c3bbc540b0",
+      "size": 116
+    },
+    {
+      "path": "wit/input-context.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/pack.wit",
+      "sha256": "sha256:f045b46c3243172e43bfc605dc3396cafb38a5d8ae7ed2043ea0a0d7b5042528",
+      "size": 366
+    },
+    {
+      "path": "wit/records.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/regeneration-flow.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/tool-diagnostics-flow.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/tool-diagnostics.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/tool-receipt-reader.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/workflow.shape.json",
+      "sha256": "sha256:8ec69d22386d5d9dd5200bc1bac7283b3e635598c3f99c7d1a748727cf5ef731",
+      "size": 185
+    }
+  ],
+  "flows": [
+    "flows/continuation.flow.json",
+    "flows/regeneration.flow.json",
+    "flows/control.flow.json",
+    "flows/tool-diagnostics.flow.json",
+    "flows/goal-review.flow.json"
+  ],
+  "format": "tobkiri.pack/1",
+  "id": "local.deepthink",
+  "overlays": [
+    "overlays/generate.overlay.json"
+  ],
+  "permissions": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 512,
+      "max_wall_ms": 3600000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": [],
+      "user_origins": null
+    },
+    "ports": [
+      "local.deepthink.continuation-flow@1.0",
+      "local.deepthink.continuation-input@1.0",
+      "local.deepthink.control-flow@1.0",
+      "local.deepthink.goal-review-flow@1.0",
+      "local.deepthink.goal-review-input@1.0",
+      "local.deepthink.goal-review-worker@1.0",
+      "local.deepthink.input-context@1.0",
+      "local.deepthink.regeneration-flow@1.0",
+      "local.deepthink.tool-diagnostics-flow@1.0",
+      "local.deepthink.tool-diagnostics@1.0",
+      "local.deepthink.tool-receipt-reader@1.0",
+      "local.deepthink.workflow@1.0",
+      "local.harness-agent.tool-provider@1.0",
+      "local.harness-chat.assistant-output@1.0",
+      "local.harness-chat.conversation-store@1.0",
+      "local.harness-chat.generate@1.0",
+      "local.harness-chat.llm-provider@1.0",
+      "local.harness-chat.structured-llm-provider@1.0",
+      "local.openrouter-generation-reader.generation-reader@1.0"
+    ],
+    "proc": [],
+    "pty": false,
+    "secrets": [],
+    "storage": {
+      "private": true,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  },
+  "ports": {
+    "consumes": [
+      {
+        "optional": false,
+        "shape": "local.harness-chat.llm-provider",
+        "version": "1.0"
+      },
+      {
+        "optional": true,
+        "shape": "local.harness-chat.structured-llm-provider",
+        "version": "1.0"
+      },
+      {
+        "optional": true,
+        "shape": "local.harness-agent.tool-provider",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.harness-chat.assistant-output",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.workflow",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.continuation-input",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.continuation-flow",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.regeneration-flow",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.control-flow",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.input-context",
+        "version": "1.0"
+      },
+      {
+        "optional": true,
+        "shape": "local.openrouter-generation-reader.generation-reader",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.harness-chat.conversation-store",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.tool-receipt-reader",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.tool-diagnostics",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.goal-review-worker",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.goal-review-input",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.tool-diagnostics-flow",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.goal-review-flow",
+        "version": "1.0"
+      }
+    ],
+    "provides": [
+      {
+        "optional": false,
+        "shape": "local.deepthink.workflow",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.input-context",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.tool-receipt-reader",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.deepthink.goal-review-worker",
+        "version": "1.0"
+      }
+    ],
+    "untyped": []
+  },
+  "publisher_key": null,
+  "runtime": {
+    "component": "component.wasm",
+    "config": {
+      "path": "config.json",
+      "shape": null
+    },
+    "kind": "wasm",
+    "toolchain": "rust/1.94.0;wit-bindgen/0.62.0"
+  },
+  "shapes": [
+    {
+      "kind": "port",
+      "name": "local.deepthink.workflow",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "data",
+      "name": "local.deepthink.records",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "port",
+      "name": "local.deepthink.continuation-input",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "flow",
+      "name": "local.deepthink.continuation-flow",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "flow",
+      "name": "local.deepthink.regeneration-flow",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "flow",
+      "name": "local.deepthink.control-flow",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "port",
+      "name": "local.deepthink.input-context",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "port",
+      "name": "local.deepthink.tool-receipt-reader",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "port",
+      "name": "local.deepthink.tool-diagnostics",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "port",
+      "name": "local.deepthink.goal-review-worker",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "port",
+      "name": "local.deepthink.goal-review-input",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "flow",
+      "name": "local.deepthink.tool-diagnostics-flow",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    },
+    {
+      "kind": "flow",
+      "name": "local.deepthink.goal-review-flow",
+      "version": "1.0",
+      "wit": "wit/deps/deepthink.wit"
+    }
+  ],
+  "stores": [
+    {
+      "data_shape": "local.deepthink.records@1.0",
+      "name": "workflows",
+      "seed": null,
+      "tier": "private"
+    }
+  ],
+  "ui": null,
+  "version": "0.1.0"
+}

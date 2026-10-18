@@ -12,6 +12,9 @@ type DesktopToolbarProps = {
   density: DesktopDensity;
   doctorLoading?: boolean;
   canCreate: boolean;
+  canDoctor?: boolean;
+  framesAvailable?: boolean;
+  unavailableReason?: string;
   onFilterChange: (filter: DesktopFilter) => void;
   onDensityChange: (density: DesktopDensity) => void;
   onCreate: () => void;
@@ -32,6 +35,9 @@ export function DesktopToolbar({
   density,
   doctorLoading = false,
   canCreate,
+  canDoctor = true,
+  framesAvailable = true,
+  unavailableReason,
   onFilterChange,
   onDensityChange,
   onCreate,
@@ -43,10 +49,10 @@ export function DesktopToolbar({
         <div className="flex items-center gap-2">
           <h1 className="truncate text-[15px] font-semibold text-zinc-100">Desktops</h1>
           <span className="rounded-md border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-200">
-            {runningCount} running
+            {runningCount} {framesAvailable ? "running" : "保存時の起動記録"}
           </span>
         </div>
-        <p className="mt-0.5 truncate text-[11px] text-zinc-500">{totalCount} seats · Live snapshots</p>
+        <p className="mt-0.5 truncate text-[11px] text-zinc-500">{totalCount} {framesAvailable ? "seats · Live snapshots" : "件 · 保存された一覧（稼働未確認）"}</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -81,16 +87,18 @@ export function DesktopToolbar({
         <button
           type="button"
           onClick={onDoctor}
-          disabled={doctorLoading}
+          disabled={doctorLoading || !canDoctor}
+          title={!canDoctor ? unavailableReason : undefined}
           className="flex h-8 items-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-950/70 px-2 text-[11px] font-medium text-zinc-300 transition-colors hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-100 disabled:cursor-wait disabled:opacity-55"
         >
           {doctorLoading ? <SlidersHorizontal size={13} /> : <RefreshCw size={13} />}
-          <span>Run doctor again</span>
+          <span>動作を診断</span>
         </button>
         <button
           type="button"
           onClick={onCreate}
           disabled={!canCreate}
+          title={!canCreate ? unavailableReason : undefined}
           className="flex h-8 items-center gap-1.5 rounded-md bg-zinc-100 px-3 text-[11px] font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus size={13} />

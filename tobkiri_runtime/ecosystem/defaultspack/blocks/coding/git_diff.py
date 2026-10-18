@@ -1,8 +1,7 @@
 """defaults.coding.git_diff — Git差分取得ブロック（スタブ）"""
 
 from blocks._common import ok, error
-from blocks.coding._workspace import resolve_workspace, with_workspace, workspace_error_response
-from domain.coding.git_ops import GitOps
+from domain.coding.contract_adapter import GIT_READ, invoke_coding_contract, workspace_id
 
 
 def run(input_data, context=None):
@@ -17,12 +16,22 @@ def run(input_data, context=None):
     ref = input_data.get("ref")
 
     try:
-        workspace = resolve_workspace(input_data, context)
-        git = GitOps(workspace.root_path)
-        result = git.diff(ref=ref)
-        return ok(with_workspace(result, workspace))
+        selected_workspace_id = workspace_id(input_data)
+        result = invoke_coding_contract(
+            GIT_READ,
+            "diff",
+            {"workspace_id": selected_workspace_id, "ref": ref},
+        )
+        diff = str(result.get("output") or "")
+        return ok(
+            {
+                "diff": diff,
+                "files_changed": sum(
+                    1 for line in diff.splitlines() if line.startswith("diff --git ")
+                ),
+                "workspace_id": selected_workspace_id,
+                "repository_root": result.get("repository_root"),
+            }
+        )
     except Exception as e:
-        workspace_error = workspace_error_response(e, error)
-        if workspace_error:
-            return workspace_error
         return error(str(e), code="GIT_ERROR")

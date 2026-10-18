@@ -1,0 +1,131 @@
+{
+  "files": [
+    {
+      "path": "component.build.json",
+      "sha256": "sha256:964edff6c547a7e95cc3ac5a0f305211cb15aa924e277888a6670a4f4180cf1f",
+      "size": 1959
+    },
+    {
+      "path": "component.wasm",
+      "sha256": "sha256:3057aec3badecaaeb9ab499fd081d0700b1972184370cff96918ac02e3b0b7e8",
+      "size": 230484
+    },
+    {
+      "path": "config.json",
+      "sha256": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "size": 3
+    },
+    {
+      "path": "tools.json",
+      "sha256": "sha256:a18fc79f6dff5d26c65dcb1eb83da0eea1daf5ed78a3395cb30bdb4f04a5c531",
+      "size": 4599
+    },
+    {
+      "path": "wit/artifacts.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/artifacts.wit",
+      "sha256": "sha256:0354633156c903b185937f4711667766c68d0c358754cba607eaa4c65686e6e0",
+      "size": 184
+    },
+    {
+      "path": "wit/deps/core-v1-1.wit",
+      "sha256": "sha256:519ae1215e01df9d782e0f5808cc53207b5be71f1f10e9f7bf1073796c66c90f",
+      "size": 6639
+    },
+    {
+      "path": "wit/deps/core.wit",
+      "sha256": "sha256:f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "size": 5732
+    },
+    {
+      "path": "wit/deps/harness-agent.wit",
+      "sha256": "sha256:4f521cccf31d8c1ee2f777b3d2000a56137119a04011a156304f1442cf592e26",
+      "size": 384
+    },
+    {
+      "path": "wit/pack.wit",
+      "sha256": "sha256:b8bbcb78c70d05c3add59e1629b4c7900bf5cb6e2874a399b7cb878bc54602b0",
+      "size": 181
+    }
+  ],
+  "flows": [],
+  "format": "tobkiri.pack/1",
+  "id": "local.harness-tools",
+  "overlays": [],
+  "permissions": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 16,
+      "max_wall_ms": 300000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": [],
+      "user_origins": null
+    },
+    "ports": [],
+    "proc": [],
+    "pty": false,
+    "secrets": [],
+    "storage": {
+      "private": true,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  },
+  "ports": {
+    "consumes": [],
+    "provides": [
+      {
+        "optional": false,
+        "shape": "local.harness-agent.tool-provider",
+        "version": "1.0"
+      }
+    ],
+    "untyped": []
+  },
+  "publisher_key": null,
+  "runtime": {
+    "component": "component.wasm",
+    "config": {
+      "path": "config.json",
+      "shape": null
+    },
+    "kind": "wasm",
+    "toolchain": "rust/1.94.0;wit-bindgen/0.62.0"
+  },
+  "shapes": [
+    {
+      "kind": "data",
+      "name": "local.harness-tools.artifacts",
+      "version": "1.0",
+      "wit": "wit/artifacts.wit"
+    }
+  ],
+  "stores": [
+    {
+      "data_shape": "local.harness-tools.artifacts@1.0",
+      "name": "artifacts",
+      "seed": null,
+      "tier": "private"
+    }
+  ],
+  "ui": null,
+  "version": "0.1.0"
+}

@@ -1,0 +1,5 @@
+{
+  "max_tokens": 0,
+  "model": "xiaomi/mimo-v2.6-flash",
+  "system_prompt": "Follow the active Profile, use declared tools, and report verified outcomes accurately."
+}

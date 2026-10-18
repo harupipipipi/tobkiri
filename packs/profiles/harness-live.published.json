@@ -1,0 +1,333 @@
+{
+  "bindings": {
+    "local.harness-chat.assistant-output@1": "local.terminal-output",
+    "local.harness-chat.conversation-store@1": "local.harness-conversation-store",
+    "local.harness-chat.llm-provider@1": "local.openai-compat-provider",
+    "local.harness-chat.prompt-builder@1": "local.harness-prompt",
+    "local.harness-chat.user-input@1": "local.terminal-input"
+  },
+  "ceiling": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [
+      "terminal-read-line",
+      "terminal-write",
+      "display"
+    ],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 16,
+      "max_wall_ms": 300000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": [
+        "http://127.0.0.1:18080"
+      ]
+    },
+    "ports": [
+      "local.harness-chat.user-input@1.0",
+      "local.harness-chat.assistant-output@1.0",
+      "local.harness-chat.conversation-store@1.0",
+      "local.harness-chat.prompt-builder@1.0",
+      "local.harness-chat.llm-provider@1.0",
+      "local.harness-chat.turn-flow@1.0"
+    ],
+    "proc": [],
+    "pty": false,
+    "secrets": [
+      {
+        "name": "api-key",
+        "optional": true,
+        "reveal": false
+      }
+    ],
+    "storage": {
+      "private": true,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  },
+  "format": "tobkiri.published-profile/1",
+  "overlay_order": [],
+  "pack_limits": {
+    "local.harness-chat": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [
+        "local.harness-chat.assistant-output@1.0",
+        "local.harness-chat.conversation-store@1.0",
+        "local.harness-chat.llm-provider@1.0",
+        "local.harness-chat.prompt-builder@1.0",
+        "local.harness-chat.user-input@1.0"
+      ],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.harness-conversation-store": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": true,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.harness-prompt": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.openai-compat-provider": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": [
+          "http://127.0.0.1:18080"
+        ]
+      },
+      "ports": [],
+      "proc": [],
+      "pty": false,
+      "secrets": [
+        {
+          "name": "api-key",
+          "optional": true,
+          "reveal": false
+        }
+      ],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.terminal-input": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [
+        "terminal-read-line"
+      ],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [
+        "local.harness-chat.turn-flow@1.0"
+      ],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    },
+    "local.terminal-output": {
+      "audit_append": true,
+      "audit_read": false,
+      "cross_profile_storage": false,
+      "fs": [],
+      "host_io": [
+        "terminal-write"
+      ],
+      "loops": {
+        "max_cost_units": 100000,
+        "max_iterations": 16,
+        "max_wall_ms": 300000
+      },
+      "mediator": false,
+      "native": false,
+      "network": {
+        "origins": []
+      },
+      "ports": [],
+      "proc": [],
+      "pty": false,
+      "secrets": [],
+      "storage": {
+        "private": false,
+        "public_read": false,
+        "public_write": false
+      },
+      "wasm": {
+        "fuel_per_call": 2000000000,
+        "memory_mib": 128,
+        "output_bytes": 4194304,
+        "table_elements": 65536,
+        "wall_ms": 300000
+      }
+    }
+  },
+  "packs": [
+    {
+      "id": "local.harness-chat",
+      "sha256": "sha256:919889d705a99afaf868cb4536dc4f501fe644021c0a4cf20dbaccb1e581ce4c",
+      "source": "file:../local.harness-chat",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.terminal-input",
+      "sha256": "sha256:56c165ab5a5e5e06412235674939d1bd01432392b905af4d6703fa7166a2ecdd",
+      "source": "file:../local.terminal-input",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.harness-conversation-store",
+      "sha256": "sha256:bef72f2ee390ecdaa13a32a3b8ec238b511a4e46c15c400cc247badc36e298fd",
+      "source": "file:../local.harness-conversation-store",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.harness-prompt",
+      "sha256": "sha256:41f388d47c3bf8a40de24b4fa0284d9ae64ba19bb38e9f45f77891c0bbb26b76",
+      "source": "file:../local.harness-prompt",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.openai-compat-provider",
+      "sha256": "sha256:bff4fbf5037941267466edf6aefad80fc81a601d983770f4eef4931af60b26b3",
+      "source": "file:../local.openai-compat-provider",
+      "version": "0.1.0"
+    },
+    {
+      "id": "local.terminal-output",
+      "sha256": "sha256:a1a62ca4b30d5009c90e38dbb3f39a904441b8533c3bf5200475468990a415a0",
+      "source": "file:../local.terminal-output",
+      "version": "0.1.0"
+    }
+  ],
+  "publishers": {},
+  "startup": {
+    "inputs": [
+      {
+        "exact_input_view": "local.harness-chat.user-input@1.0",
+        "operation": "read",
+        "source_pack": "local.terminal-input"
+      }
+    ],
+    "ui": null
+  },
+  "user_overlays": []
+}

@@ -5,7 +5,7 @@ from domain.company.store import CompanyStore
 from ._helpers import invalid, missing_team, require_dict
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner=None):
     del context
     try:
         if require_dict(input_data) is None:
@@ -23,7 +23,10 @@ def run(input_data, context):
         if not company_id:
             return invalid("company_id is required")
 
-        company = CompanyService(store).update_company(company_id, {"metadata": metadata})
+        company = CompanyService(
+            store,
+            settings_owner=settings_owner,
+        ).update_company(company_id, {"metadata": metadata})
         if company is None:
             return missing_team(company_id)
         return ok(company)

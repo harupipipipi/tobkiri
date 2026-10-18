@@ -1,0 +1,113 @@
+{
+  "files": [
+    {
+      "path": "component.build.json",
+      "sha256": "sha256:26f7afd01c7477b47c9927eb7d4a3beba84f81dde81c6a30e4de3fed8f190c25",
+      "size": 1693
+    },
+    {
+      "path": "component.wasm",
+      "sha256": "sha256:419d230496012c8b5d143a42cc55bd7a73cf72f48bdbdf734e1086c351520170",
+      "size": 120211
+    },
+    {
+      "path": "config.json",
+      "sha256": "sha256:1fcb36bed51dac1ffa6c0bc053d91549b4a97d0d68c947fc10ef30c8275364f8",
+      "size": 92
+    },
+    {
+      "path": "wit/deps/core.wit",
+      "sha256": "sha256:f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "size": 5732
+    },
+    {
+      "path": "wit/deps/shape.wit",
+      "sha256": "sha256:773dab1acafb9e85414e67572fa0b913a0476d41987880db34881c27f2420a82",
+      "size": 2202
+    },
+    {
+      "path": "wit/pack.wit",
+      "sha256": "sha256:b8fab00d16104c6cf371374cf5a10e287522e417c002bfb03cce6c7a5b19a03d",
+      "size": 178
+    }
+  ],
+  "flows": [],
+  "format": "tobkiri.pack/1",
+  "id": "local.terminal-input",
+  "inputs": [
+    {
+      "exact_input_view": "local.harness-chat.user-input@1.0",
+      "operation": "read"
+    }
+  ],
+  "overlays": [],
+  "permissions": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [
+      "terminal-read-line"
+    ],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 16,
+      "max_wall_ms": 300000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": [],
+      "user_origins": null
+    },
+    "ports": [
+      "local.harness-chat.turn-flow@1.0"
+    ],
+    "proc": [],
+    "pty": false,
+    "secrets": [],
+    "storage": {
+      "private": false,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  },
+  "ports": {
+    "consumes": [
+      {
+        "optional": false,
+        "shape": "local.harness-chat.turn-flow",
+        "version": "1.0"
+      }
+    ],
+    "provides": [
+      {
+        "optional": false,
+        "shape": "local.harness-chat.user-input",
+        "version": "1.0"
+      }
+    ],
+    "untyped": []
+  },
+  "publisher_key": null,
+  "runtime": {
+    "component": "component.wasm",
+    "config": {
+      "path": "config.json",
+      "shape": null
+    },
+    "kind": "wasm",
+    "toolchain": "rust/1.94.0;wit-bindgen/0.62.0"
+  },
+  "shapes": [],
+  "stores": [],
+  "ui": null,
+  "version": "0.1.0"
+}

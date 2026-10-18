@@ -1,0 +1,25 @@
+{
+  "pack_id": "acceptance.cli.application",
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/api/transcript/render",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "columns",
+            "messages",
+            "output_limit"
+          ],
+          "contract_id": "acceptance.presentation.transcript.v1",
+          "contribution_id": "acceptance.cli.transcript",
+          "function_id": "acceptance.cli.presentation.render",
+          "operation_id": "acceptance.presentation.render",
+          "provider_id": "acceptance.cli.presentation.render"
+        }
+      ]
+    }
+  ],
+  "schema": "io.tobkiri.frontend-contract-map.v4"
+}

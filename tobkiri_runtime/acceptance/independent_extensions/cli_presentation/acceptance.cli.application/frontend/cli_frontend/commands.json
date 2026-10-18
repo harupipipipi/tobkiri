@@ -1,0 +1,53 @@
+{
+  "transcript.render": {
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "columns": {
+          "maximum": 200,
+          "minimum": 20,
+          "type": "integer"
+        },
+        "messages": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "role": {
+                "enum": [
+                  "user",
+                  "assistant",
+                  "system",
+                  "tool"
+                ]
+              },
+              "text": {
+                "maxLength": 8192,
+                "type": "string"
+              }
+            },
+            "required": [
+              "role",
+              "text"
+            ],
+            "type": "object"
+          },
+          "maxItems": 128,
+          "type": "array"
+        },
+        "output_limit": {
+          "maximum": 1048576,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "messages",
+        "columns",
+        "output_limit"
+      ],
+      "type": "object"
+    },
+    "namespace": "acceptance.cli.application",
+    "path": "/api/transcript/render"
+  }
+}

@@ -19,8 +19,8 @@ def build_connections_router(registry: ConnectionsRegistry, oauth_service: OAuth
         provider = registry.get(provider_id)
         mode = body.get("mode", "self_host")
         config = OAuthClientConfig(
-            client_id=body.get("client_id") or _env_required(provider_id, "CLIENT_ID"),
-            client_secret=body.get("client_secret") or _env_optional(provider_id, "CLIENT_SECRET"),
+            client_id=body.get("client_id") or _host_contract_required(provider_id, "CLIENT_ID"),
+            client_secret=body.get("client_secret") or _host_contract_optional(provider_id, "CLIENT_SECRET"),
             redirect_uri=body["redirect_uri"],
             scopes=body.get("scopes") or (provider.oauth.default_scopes if provider.oauth else []),
             mode=mode,
@@ -43,14 +43,18 @@ def build_connections_router(registry: ConnectionsRegistry, oauth_service: OAuth
     return router
 
 
-def _env_required(provider_id: str, key: str) -> str:
-    value = _env_optional(provider_id, key)
+def _host_contract_required(provider_id: str, key: str) -> str:
+    value = _host_contract_optional(provider_id, key)
     if not value:
         raise HTTPException(status_code=400, detail=f"Missing self-host OAuth config for {provider_id}: {key}")
     return value
 
 
-def _env_optional(provider_id: str, key: str) -> str | None:
-    import os
+def _host_contract_optional(provider_id: str, key: str) -> str | None:
+    from core_runtime.host_contract import host_contract_value
 
-    return os.environ.get(f"RUMI_{provider_id.upper()}_OAUTH_{key}")
+    value = host_contract_value(
+        f"oauth_{provider_id.strip().lower()}_{key.strip().lower()}",
+        provider_id=provider_id,
+    )
+    return value or None

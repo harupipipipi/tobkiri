@@ -1,0 +1,117 @@
+{
+  "files": [
+    {
+      "path": "component.build.json",
+      "sha256": "sha256:4fbfa4b569060407398add7fd3aabe6762aca2650f0d9723ea82dcffb13f6a3e",
+      "size": 1933
+    },
+    {
+      "path": "component.wasm",
+      "sha256": "sha256:012f40886dd730571bcbdd579a791f85e3a5585d6e140e89e4bf12027755e93f",
+      "size": 210718
+    },
+    {
+      "path": "config.json",
+      "sha256": "sha256:c750ebf040e955c8d0b6825f1f766af6d03376237193c6b9fdcaa3550f122535",
+      "size": 27
+    },
+    {
+      "path": "wit/deps/core.wit",
+      "sha256": "sha256:f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "size": 5732
+    },
+    {
+      "path": "wit/deps/reader.wit",
+      "sha256": "sha256:fa21aa76f65d634f584e09d73259a65a8e91a9156bd641243d2cda0a9b2de9aa",
+      "size": 410
+    },
+    {
+      "path": "wit/generation-reader.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/pack.wit",
+      "sha256": "sha256:a409f15018664c04b6f4fd196b7f98dd6c06c46dd3279b3a2293eb4a295309ed",
+      "size": 258
+    }
+  ],
+  "flows": [],
+  "format": "tobkiri.pack/1",
+  "id": "local.openrouter-generation-reader",
+  "overlays": [],
+  "permissions": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 16,
+      "max_wall_ms": 300000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": [
+        "https://openrouter.ai"
+      ],
+      "user_origins": null
+    },
+    "ports": [],
+    "proc": [],
+    "pty": false,
+    "secrets": [
+      {
+        "name": "api-key",
+        "optional": false,
+        "reveal": false
+      }
+    ],
+    "storage": {
+      "private": false,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  },
+  "ports": {
+    "consumes": [],
+    "provides": [
+      {
+        "optional": false,
+        "shape": "local.openrouter-generation-reader.generation-reader",
+        "version": "1.0"
+      }
+    ],
+    "untyped": []
+  },
+  "publisher_key": null,
+  "runtime": {
+    "component": "component.wasm",
+    "config": {
+      "path": "config.json",
+      "shape": null
+    },
+    "kind": "wasm",
+    "toolchain": "rust/1.94.0;wit-bindgen/0.62.0"
+  },
+  "shapes": [
+    {
+      "kind": "port",
+      "name": "local.openrouter-generation-reader.generation-reader",
+      "version": "1.0",
+      "wit": "wit/deps/reader.wit"
+    }
+  ],
+  "stores": [],
+  "ui": null,
+  "version": "0.1.0"
+}

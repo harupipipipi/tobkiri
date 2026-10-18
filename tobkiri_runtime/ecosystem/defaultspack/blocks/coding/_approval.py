@@ -101,7 +101,15 @@ def approval_required(operation, risk_level="high", args: dict[str, Any] | None 
     # Embed the approved arguments inside the approval request details so the
     # approval-followup path can replay the exact pending tool deterministically
     # without depending on the model's natural-language compliance.
-    details_with_args = {"arguments": replay_args, **details}
+    inferred_tool_name = "coding_" + str(operation).replace(".", "_")
+    details_with_args = {
+        "arguments": replay_args,
+        "tool_name": inferred_tool_name,
+        "function_id": inferred_tool_name,
+        "action": str(operation),
+        "conversation_id": str(replay_args.get("conversation_id") or ""),
+        **details,
+    }
     request = _approval_module().create_approval_request(
         operation,
         risk_level,

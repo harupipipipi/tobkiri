@@ -1,0 +1,53 @@
+{
+  "format": "tobkiri.preset-migration/1",
+  "legacy": {
+    "behavior": [
+      "ask_when_ambiguous",
+      "approval_gated_edits",
+      "preview_when_available",
+      "tests_first_when_safe"
+    ],
+    "enabled_capabilities": [
+      "coding_workspace",
+      "browser_optional",
+      "terminal",
+      "artifact_delivery",
+      "safety_review"
+    ],
+    "id": "cline_pair_programmer_service",
+    "name": "Cline Style Pair Programmer",
+    "policy": {
+      "browser_requires_approval": true,
+      "file_write_requires_approval": true,
+      "network_default": "deny",
+      "terminal_requires_approval": true
+    },
+    "profile": "rumi_agent_services.coding_operator",
+    "task_defaults": {
+      "output": {
+        "type": "patch_with_preview_notes"
+      }
+    },
+    "ui_panels": [
+      "chat",
+      "file_tree",
+      "diff",
+      "terminal",
+      "browser_preview"
+    ],
+    "workflow": "coding_service_loop"
+  },
+  "legacy_path": "tobkiri_runtime/profile_projections/agent-services/presets/cline_pair_programmer_service.preset.yaml",
+  "legacy_sha256": "c9451c41fbf3d7a782c0c2f426f0a7be90462866529e7dd4f215663f6a4f54d6",
+  "name": "Cline Style Pair Programmer",
+  "pending_capabilities": [
+    "coding_workspace",
+    "browser_optional",
+    "terminal",
+    "artifact_delivery",
+    "safety_review"
+  ],
+  "prompt_pack": "local.preset-cline-pair-programmer-service",
+  "published_profile": "packs/profiles/presets/cline_pair_programmer_service.published.json",
+  "status": "style-defaults-published; legacy capability parity todo"
+}

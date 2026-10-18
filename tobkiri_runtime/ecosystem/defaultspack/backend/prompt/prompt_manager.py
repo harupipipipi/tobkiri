@@ -356,3 +356,13 @@ class PromptManager:
         prompt = PromptDefinition.from_dict(template)
         self.create(prompt)
         return prompt
+
+
+_PROMPT_MANAGER: PromptManager | None = None
+
+
+def get_prompt_manager() -> PromptManager:
+    global _PROMPT_MANAGER
+    if _PROMPT_MANAGER is None:
+        _PROMPT_MANAGER = PromptManager()
+    return _PROMPT_MANAGER

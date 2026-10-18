@@ -4,13 +4,13 @@ import json
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from domain.ai_client.api_key_store import (
     provider_api_metadata,
     provider_has_api_key,
     provider_named_api_keys,
     read_provider_api_key,
-    set_provider_api_key,
 )
 from domain.ai_client.model_groups import default_model_groups, normalize_model_groups
 from domain.ai_client.model_pack_store import normalize_model_packs
@@ -23,29 +23,39 @@ from domain.ai_client.rumi_process import (
     ensure_default_rumi_model_pack,
     resolve_rumi_base_model,
 )
-from domain.frontend_settings_store import FrontendSettingsStore
+from domain.frontend_settings_client import update_settings_document, update_settings_state
+from domain.frontend_settings_store import (
+    FrontendSettingsStore,
+    defaultspack_frontend_settings_path,
+    settings_state_revision,
+)
 
 
 VALID_THINKING_LEVELS = {"none", "low", "medium", "high", "xhigh"}
 DEFAULT_MODEL = "stub/default"
-LEGACY_CLOUD_DEFAULT_MODEL = "openrouter/tencent/hy3-preview:free"
+LEGACY_CLOUD_DEFAULT_MODELS = {
+    "openrouter/tencent/hy3:free",
+    "openrouter/tencent/hy3-preview:free",
+}
 DEFAULT_THINKING_LEVEL = "medium"
-DEFAULT_DEEPTHINK_ENABLED = False
+STRATEGY_REFERENCE_STATE_REF = "defaultspack:models.strategy_reference"
 CEREBRAS_REASONING_MODELS = {"gpt-oss-120b", "zai-glm-4.7"}
 MODEL_SLOT_MAIN = "main"
 MODEL_SLOT_LIGHTWEIGHT = "lightweight"
 
-
 class ModelRuntimeSettingsService:
     """Owns model runtime settings persisted in frontend_settings.json."""
 
-    def __init__(self, pack_root: Path | None = None) -> None:
+    def __init__(self, pack_root: Path | None = None, *, settings_owner: SettingsOwnerPort | None = None) -> None:
         self._pack_root = pack_root or Path(__file__).resolve().parents[2]
-        self._settings_path = self._pack_root / "user_data" / "shared" / "frontend_settings.json"
-        self._settings_store = FrontendSettingsStore(self._settings_path)
+        self._settings_path = defaultspack_frontend_settings_path(pack_root)
+        self._settings_store = FrontendSettingsStore(self._settings_path, owner=settings_owner)
 
     def get_settings(self) -> dict[str, Any]:
-        return self.refresh_models_settings(self._read_all().get("models", {}))
+        """Resolve current owner values, without inferring freshness from files."""
+        resolved = self._read_all().get("models", {})
+        resolved = resolved if isinstance(resolved, dict) else self.default_model_settings()
+        return deepcopy(resolved)
 
     def update_settings(self, patch: dict[str, Any]) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -62,7 +72,7 @@ class ModelRuntimeSettingsService:
             all_settings["models"] = dict(result)
             return all_settings
 
-        self._settings_store.update(merge)
+        update_settings_document(self._settings_store, merge)
         return result
 
     def get_preferred_model(self) -> str:
@@ -214,32 +224,81 @@ class ModelRuntimeSettingsService:
             "settings": updated,
         }
 
-    def get_deepthink_enabled(self) -> dict[str, Any]:
-        settings = self.get_settings()
+    def get_strategy_reference(self) -> dict[str, Any]:
+        """Return the selected admitted AI strategy, if one is selected."""
+        snapshot = self._read_all()
+        settings = snapshot["models"]
+        reference = settings.get("strategy_reference")
+        reference = reference if isinstance(reference, str) and reference else None
         return {
-            "enabled": bool(settings.get("deepthink_enabled", DEFAULT_DEEPTHINK_ENABLED)),
-            "warning": "DeepThinkが有効なタスクには数時間かかる可能性があります。",
+            "strategy_reference": reference,
+            "state_ref": STRATEGY_REFERENCE_STATE_REF,
+            "revision": settings_state_revision(snapshot, STRATEGY_REFERENCE_STATE_REF),
         }
 
-    def set_deepthink_enabled(self, enabled: bool | None = None) -> dict[str, Any]:
-        settings = self.get_settings()
-        if enabled is None:
-            next_enabled = not bool(settings.get("deepthink_enabled", DEFAULT_DEEPTHINK_ENABLED))
-        else:
-            next_enabled = self._coerce_bool(enabled, default=DEFAULT_DEEPTHINK_ENABLED)
-        updated = self.update_settings({"deepthink_enabled": next_enabled})
-        message = (
-            "DeepThinkをONにしました。タスクには数時間かかる可能性があります。"
-            if next_enabled
-            else "DeepThinkをOFFにしました。"
+    def set_strategy_reference(
+        self,
+        strategy_reference: str | None,
+        *,
+        expected_revision: int | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Clear a strategy reference through the legacy settings facade.
+
+        Selecting a strategy needs an active Plan catalog read, which this
+        compatibility facade does not have.  Selection therefore belongs to
+        the captured ``tobkiri.ui.model-state.write`` action.  Clearing an
+        existing selection is safe and remains available for migration code.
+        """
+
+        if strategy_reference is not None:
+            raise PermissionError(
+                "strategy selection requires the captured model-state action"
+            )
+        requested = None
+
+        def mutate(all_settings: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+            current_models = all_settings.get("models", {})
+            if not isinstance(current_models, dict):
+                current_models = {}
+            sanitized = self.sanitize_models_patch(
+                {"strategy_reference": requested}, current_models=current_models
+            )
+            updated_models = self.refresh_models_settings(
+                self._deep_merge(current_models, sanitized)
+            )
+            all_settings["models"] = dict(updated_models)
+            return all_settings, {
+                "strategy_reference": requested,
+                "persisted": True,
+                "settings": updated_models,
+            }
+
+        fingerprint = json.dumps(
+            {
+                "state_ref": STRATEGY_REFERENCE_STATE_REF,
+                "desired": requested,
+                "expected_revision": expected_revision,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
         )
-        return {
-            "enabled": next_enabled,
-            "persisted": True,
-            "message": message,
-            "warning": "タスクには数時間かかる可能性があります。" if next_enabled else "",
-            "settings": updated,
+        updated = update_settings_state(
+            self._settings_store,
+            STRATEGY_REFERENCE_STATE_REF,
+            mutate,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            request_fingerprint=fingerprint,
+        )
+        updated["state_snapshot"] = {
+            "state_ref": STRATEGY_REFERENCE_STATE_REF,
+            "value": requested,
+            "revision": int(updated.get("revision") or 0),
+            "freshness": "authoritative",
         }
+        return updated
 
     def get_effective_thinking_level(
         self,
@@ -287,7 +346,7 @@ class ModelRuntimeSettingsService:
             else:
                 result["provider_params"] = {}
             return result
-        if provider in {"openai", "openai_compatible", "openrouter"}:
+        if provider in {"openai", "openai_compatible", "openrouter", "nvidia"}:
             effort = "high" if normalized == "xhigh" else normalized
             if effort != "none":
                 result["provider_params"] = {"reasoning_effort": effort}
@@ -303,7 +362,7 @@ class ModelRuntimeSettingsService:
                 result["provider_params"] = {"reasoning_effort": effort}
             else:
                 result["provider_params"] = {}
-            result["level"] = effort if normalized == "xhigh" else normalized
+            result["level"] = normalized
         elif provider == "anthropic":
             result["provider_params"] = {"thinking_level": normalized}
         elif provider == "google":
@@ -367,7 +426,7 @@ class ModelRuntimeSettingsService:
             "model_groups": default_model_groups(),
             "on_switch_to_non_vision_with_images": "auto_bridge",
             "thinking_level": DEFAULT_THINKING_LEVEL,
-            "deepthink_enabled": DEFAULT_DEEPTHINK_ENABLED,
+            "strategy_reference": None,
             "favorite_profiles": [DEFAULT_MODEL],
             "thinking_level_by_profile": {DEFAULT_MODEL: DEFAULT_THINKING_LEVEL},
             "thinking_level_by_conversation": {},
@@ -416,7 +475,11 @@ class ModelRuntimeSettingsService:
 
             provider_map = detect_available_providers()
             available_providers.update(str(name or "").strip() for name in provider_map.keys() if str(name or "").strip())
-            for model in get_all_known_models():
+            # Rumi base-model resolution only needs models from providers that
+            # are actually available in this runtime.  Asking the catalog for
+            # every manifest here makes a routine model-pack lookup walk every
+            # unconfigured provider and repeatedly re-hash its metadata.
+            for model in get_all_known_models(active_provider_ids=available_providers):
                 if not isinstance(model, dict):
                     continue
                 if not self._is_real_chat_profile(model):
@@ -489,11 +552,13 @@ class ModelRuntimeSettingsService:
             ("openrouter", "openrouter_api_key", "openrouter_api_key_configured"),
         ):
             raw_key = sanitized.pop(field_id, None)
-            if isinstance(raw_key, str) and raw_key.strip():
-                result = set_provider_api_key(provider_id, raw_key, pack_root=self._pack_root)
-                sanitized[configured_field] = bool(result.get("success"))
-            else:
-                sanitized[configured_field] = provider_has_api_key(provider_id, pack_root=self._pack_root)
+            # Legacy model settings cannot carry a trusted approval context.
+            # Discard submitted secret material and preserve status only; new
+            # credentials must use the approved provider-key action.
+            del raw_key
+            sanitized[configured_field] = provider_has_api_key(
+                provider_id, pack_root=self._pack_root
+            )
             sanitized[field_id] = ""
         sanitized["model_api_routes"] = self._normalize_model_api_routes(
             sanitized.get("model_api_routes", "")
@@ -521,11 +586,14 @@ class ModelRuntimeSettingsService:
             sanitized["preferred_model_group"] = str(sanitized.get("preferred_model_group") or "default").strip() or "default"
         if "auto_route_within_group" in sanitized:
             sanitized["auto_route_within_group"] = bool(sanitized.get("auto_route_within_group"))
-        if "deepthink_enabled" in sanitized:
-            sanitized["deepthink_enabled"] = self._coerce_bool(
-                sanitized.get("deepthink_enabled"),
-                default=DEFAULT_DEEPTHINK_ENABLED,
-            )
+        if "strategy_reference" in sanitized:
+            reference = sanitized.get("strategy_reference")
+            if reference is None or reference == "":
+                sanitized["strategy_reference"] = None
+            else:
+                raise PermissionError(
+                    "strategy selection requires the captured model-state action"
+                )
         if "on_switch_to_non_vision_with_images" in sanitized:
             policy = str(sanitized.get("on_switch_to_non_vision_with_images") or "auto_bridge").strip()
             sanitized["on_switch_to_non_vision_with_images"] = policy if policy in {"auto_bridge", "ask", "block", "ignore"} else "auto_bridge"
@@ -550,13 +618,12 @@ class ModelRuntimeSettingsService:
         normalized_favorites: list[str] = []
         for item in favorite_profiles:
             profile_id = str(item or "").strip()
+            if profile_id in LEGACY_CLOUD_DEFAULT_MODELS:
+                continue
             if profile_id and profile_id not in normalized_favorites:
                 normalized_favorites.append(profile_id)
         preferred_model = str(models.get("preferred_model") or DEFAULT_MODEL).strip() or DEFAULT_MODEL
-        if preferred_model == LEGACY_CLOUD_DEFAULT_MODEL and not provider_has_api_key(
-            "openrouter",
-            pack_root=self._pack_root,
-        ):
+        if preferred_model in LEGACY_CLOUD_DEFAULT_MODELS:
             preferred_model = DEFAULT_MODEL
         if preferred_model not in normalized_favorites:
             normalized_favorites.insert(0, preferred_model)
@@ -572,9 +639,9 @@ class ModelRuntimeSettingsService:
                     values_by_scope = {}
             models[key] = values_by_scope if isinstance(values_by_scope, dict) else {}
         models["thinking_level"] = self._normalize_level(models.get("thinking_level"))
-        models["deepthink_enabled"] = self._coerce_bool(
-            models.get("deepthink_enabled"),
-            default=DEFAULT_DEEPTHINK_ENABLED,
+        reference = models.get("strategy_reference")
+        models["strategy_reference"] = (
+            reference.strip() if isinstance(reference, str) and reference.strip() else None
         )
         models["model_api_routes"] = self._normalize_model_api_routes(models.get("model_api_routes", ""))
         models["api_routes"] = self._normalize_api_routes(models.get("api_routes"))

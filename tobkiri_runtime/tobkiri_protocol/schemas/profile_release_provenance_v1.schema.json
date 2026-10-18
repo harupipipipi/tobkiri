@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/profile-release-provenance.v1.schema.json",
+  "title": "Tobkiri generated Profile release provenance v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "profile_id", "profile_revision", "profile_definition_digest", "source_inputs", "generator", "catalog", "outputs", "release_digest"],
+  "properties": {
+    "schema": {"const": "io.tobkiri.profile-release-provenance.v1"},
+    "profile_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+    "profile_revision": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "profile_definition_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "source_inputs": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/pathDigest"}},
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "path", "digest"],
+      "properties": {
+        "name": {"const": "tobkiri-profile-artifacts"},
+        "version": {"const": "1.0.0"},
+        "path": {"type": "string", "minLength": 1},
+        "digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"}
+      }
+    },
+    "catalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundle_lock_path", "bundle_digest", "catalog_revision", "closure_digest"],
+      "properties": {
+        "bundle_lock_path": {"type": "string", "minLength": 1},
+        "bundle_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+        "catalog_revision": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+        "closure_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"}
+      }
+    },
+    "outputs": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/pathDigest"}},
+    "release_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"}
+  },
+  "$defs": {
+    "pathDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "digest"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"}
+      }
+    }
+  }
+}

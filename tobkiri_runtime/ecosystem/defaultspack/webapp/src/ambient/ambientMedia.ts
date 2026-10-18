@@ -232,19 +232,27 @@ export async function startPinchAudioRecorder(deviceId?: string): Promise<Active
   }
   const stream = await navigator.mediaDevices.getUserMedia({ audio: audioCaptureConstraints(deviceId) });
   const mimeType = preferredAudioMimeType();
-  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
   const chunks: Blob[] = [];
   const startedAt = performance.now();
   let stopped = false;
-
-  recorder.addEventListener("dataavailable", (event) => {
-    if (event.data.size > 0) chunks.push(event.data);
-  });
-  recorder.start(250);
-
+  let tracksStopped = false;
   const stopTracks = () => {
+    if (tracksStopped) return;
+    tracksStopped = true;
     stream.getTracks().forEach((track) => track.stop());
   };
+  let recorder: MediaRecorder;
+  try {
+    recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    recorder.addEventListener("dataavailable", (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    });
+    recorder.addEventListener("error", stopTracks, { once: true });
+    recorder.start(250);
+  } catch (error) {
+    stopTracks();
+    throw error;
+  }
 
   return {
     stop: () => new Promise<AmbientAudioRecording>((resolve, reject) => {
@@ -269,14 +277,16 @@ export async function startPinchAudioRecorder(deviceId?: string): Promise<Active
           reject(error);
         }
       }, { once: true });
-      recorder.stop();
+      try { recorder.stop(); } finally { stopTracks(); }
     }),
     cancel: () => {
-      if (!stopped && recorder.state !== "inactive") {
-        stopped = true;
-        recorder.stop();
-      }
-      stopTracks();
+      try {
+        if (!stopped && recorder.state !== "inactive") {
+          stopped = true;
+          recorder.stop();
+        }
+      } catch { /* The stream still closes if the device stopped first. */ }
+      finally { stopTracks(); }
     },
   };
 }

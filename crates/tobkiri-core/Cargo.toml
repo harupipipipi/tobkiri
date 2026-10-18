@@ -1,0 +1,32 @@
+[package]
+name = "tobkiri-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+closed-request-metrics = ["tobkiri-gate/closed-request-metrics", "tobkiri-store/closed-request-metrics", "tobkiri-wasm/closed-request-metrics"]
+
+[dependencies]
+async-trait.workspace = true
+dirs.workspace = true
+getrandom.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+ulid.workspace = true
+tobkiri-canon.workspace = true
+tobkiri-flow.workspace = true
+tobkiri-gate.workspace = true
+tobkiri-manifest.workspace = true
+tobkiri-profile.workspace = true
+tobkiri-store.workspace = true
+tobkiri-wasm.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+wat.workspace = true
+rusqlite.workspace = true

@@ -1,0 +1,37 @@
+{
+  "authority_references": [],
+  "base": {
+    "artifact_digest": null,
+    "definition_revision": null,
+    "pack_id": "fixture-base",
+    "resolution": "verified_exact_artifact_required"
+  },
+  "catalog_revision": null,
+  "intent_api_version": "io.tobkiri.profile-intent.v1",
+  "mode": "headless",
+  "packs": [
+    {"artifact_digest": null, "pack_id": "fixture_ai_pack", "role": "provider"}
+  ],
+  "profile_id": "fixture-primary",
+  "profile_authority_snapshot_digest": null,
+  "requested_edges": [
+    {
+      "caller_function_id": "fixture.shell",
+      "contract_id": "tobkiri.service.ai.generate.v1",
+      "operation_id": "fixture_ai_pack.generate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": ["tobkiri.service.ai.generate.v1"],
+          "operation": ["fixture_ai_pack.generate"]
+        },
+        "exact_request_digest": null,
+        "opaque": false,
+        "quotas": {}
+      },
+      "target_provider_id": "fixture_ai_pack.provider"
+    }
+  ],
+  "shell": null,
+  "state": "needs_resolution"
+}

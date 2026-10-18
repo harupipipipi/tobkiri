@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import dataclass, field, fields, is_dataclass
 from typing import Any, Mapping
 
 
@@ -362,8 +362,11 @@ class DesktopSeatView:
 
 
 def model_to_dict(value: Any) -> Any:
-    if is_dataclass(value):
-        return {key: model_to_dict(item) for key, item in asdict(value).items()}
+    if is_dataclass(value) and not isinstance(value, type):
+        return {
+            field_info.name: model_to_dict(getattr(value, field_info.name))
+            for field_info in fields(value)
+        }
     if isinstance(value, frozenset):
         return sorted(value)
     if isinstance(value, tuple):

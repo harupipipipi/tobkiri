@@ -9,6 +9,9 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _coding_contract_fixture import bind_verified_coding_contracts  # noqa: E402
 
 
 def test_terminal_policy_marks_common_read_commands_low_risk(tmp_path):
@@ -50,11 +53,14 @@ def test_terminal_policy_requires_approval_for_project_code_execution_commands(t
         assert "command_execution" in result["risk_reasons"]
 
 
-def test_terminal_exec_does_not_run_test_commands_without_approval(tmp_path):
+def test_terminal_exec_does_not_run_test_commands_without_approval(
+    tmp_path, monkeypatch
+):
     from blocks.coding.terminal_exec import run as terminal_exec_run
     from domain.safety.approval import reset_approval_state_for_tests
 
     reset_approval_state_for_tests()
+    bind_verified_coding_contracts(monkeypatch, tmp_path)
     marker = tmp_path / "pytest-marker.txt"
     (tmp_path / "test_probe.py").write_text(
         "from pathlib import Path\n"
@@ -62,7 +68,9 @@ def test_terminal_exec_does_not_run_test_commands_without_approval(tmp_path):
         encoding="utf-8",
     )
 
-    result = terminal_exec_run({"workspace_root": str(tmp_path), "command": "pytest -q"}, {})
+    result = terminal_exec_run(
+        {"workspace_id": "trusted", "command": "pytest -q"}, {}
+    )
 
     assert result["status"] == "ok"
     assert result["data"]["approval_required"] is True
@@ -127,12 +135,15 @@ def test_terminal_exec_includes_classification_and_reasons_in_approval_response(
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path / "audit.jsonl"))
     reset_approval_state_for_tests()
+    bind_verified_coding_contracts(monkeypatch, tmp_path)
 
-    result = terminal_exec_run({"workspace_root": str(tmp_path), "command": "git push origin main"}, {})
+    result = terminal_exec_run(
+        {"workspace_id": "trusted", "command": "git push origin main"}, {}
+    )
 
     assert result["status"] == "ok"
     assert result["data"]["approval_required"] is True
-    assert result["data"]["classification"] in {"medium", "high"}
+    assert result["data"]["classification"] == "critical"
     assert "network" in result["data"]["risk_reasons"]
 
 

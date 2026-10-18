@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-recover-development-host-handover"
+description = "Enables the recover_development_host_handover command without any pre-configured scope."
+commands.allow = ["recover_development_host_handover"]
+
+[[permission]]
+identifier = "deny-recover-development-host-handover"
+description = "Denies the recover_development_host_handover command without any pre-configured scope."
+commands.deny = ["recover_development_host_handover"]

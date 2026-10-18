@@ -1,0 +1,94 @@
+package local:deepthink@1.0.0;
+
+interface workflow {
+  use tobkiri:core/types@1.0.0.{error, json, stream-handle};
+  record message { role: string, content: string }
+  record prompt { messages: list<message>, model: string, max-tokens: u32 }
+  record chat-event { kind: string, text: option<string>, prompt-tokens: option<u32>, completion-tokens: option<u32> }
+  record recovery-selection {
+    run-id: string,
+    conversation: string,
+    attempt-id: string,
+    expected-revision: string,
+    expected-snapshot-digest: string,
+  }
+  run: func(prompt: prompt, conversation: string, resume: option<string>) -> result<stream-handle, error>;
+  continue-run: func(run-id: string, conversation: string, answers: option<string>) -> result<stream-handle, error>;
+  status: func(run-id: string) -> result<json, error>;
+  reconcile-generation: func(selection: recovery-selection) -> result<json, error>;
+  regenerate-phase: func(selection: recovery-selection, resolution-digest: string) -> result<stream-handle, error>;
+}
+
+interface continuation-input {
+  use tobkiri:core/types@1.0.0.{error, json, stream-handle};
+  use workflow.{chat-event};
+  use workflow.{recovery-selection};
+  type flow-frame = json;
+  status: func(run-id: string) -> result<json, error>;
+  submit: func(run-id: string, conversation: string, answers: option<string>) -> result<stream-handle, error>;
+  reconcile-generation: func(selection: recovery-selection) -> result<json, error>;
+  regenerate-phase: func(selection: recovery-selection, resolution-digest: string) -> result<stream-handle, error>;
+  pull: func(%stream: stream-handle, max: u32) -> result<list<chat-event>, error>;
+  cancel: func(%stream: stream-handle);
+}
+
+interface input-context {
+  use tobkiri:core/types@1.0.0.{error, json};
+  use workflow.{recovery-selection};
+  record context { conversation: string, history-text: string }
+  continuation: func(run-id: string, conversation: string, answers: option<string>) -> result<context, error>;
+  regeneration: func(selection: recovery-selection) -> result<context, error>;
+  control-result: func(op: string, value: json) -> result<json, error>;
+}
+
+interface control-flow { run: func(); }
+interface continuation-flow { run: func(); }
+interface regeneration-flow { run: func(); }
+
+interface records {
+  use tobkiri:core/types@1.0.0.{json};
+  record checkpoint { version: string, run-id: string, payload: json }
+}
+
+// New independent ordinary interfaces leave all published 1.0 members above
+// unchanged. Read-only selections never supply an outcome or dispatch permit.
+interface tool-receipt-reader {
+  use tobkiri:core/types@1.0.0.{error, json};
+  record selection {
+    run-id: string,
+    conversation: string,
+    expected-revision: string,
+    expected-snapshot-digest: string,
+  }
+  page: func(selection: selection, offset: u32, limit: u32) -> result<json, error>;
+}
+
+interface tool-diagnostics {
+  use tobkiri:core/types@1.0.0.{error, json};
+  use tool-receipt-reader.{selection};
+  page: func(selection: selection, offset: u32, limit: u32) -> result<json, error>;
+}
+
+interface tool-diagnostics-flow { run: func(); }
+
+interface goal-review-worker {
+  use tobkiri:core/types@1.0.0.{error, stream-handle};
+  use workflow.{chat-event};
+  record selection {
+    run-id: string,
+    conversation: string,
+    expected-revision: string,
+    expected-snapshot-digest: string,
+    candidate-digest: string,
+  }
+  review: func(selection: selection) -> result<stream-handle, error>;
+}
+
+interface goal-review-input {
+  use tobkiri:core/types@1.0.0.{error, json, stream-handle};
+  use goal-review-worker.{selection};
+  type flow-frame = json;
+  review: func(selection: selection) -> result<stream-handle, error>;
+}
+
+interface goal-review-flow { run: func(); }

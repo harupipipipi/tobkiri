@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'none'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'">
+  <title>Tobkiri Harness</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header><h1>Tobkiri Harness</h1><p id="status" role="status">ホストへの接続を待っています</p></header>
+    <form id="restore-form" aria-label="保存済みRunの照会">
+      <h2>保存済みの実行を読み取る</h2>
+      <label for="restore-run">Run ID（64桁）</label>
+      <input id="restore-run" type="text" maxlength="64" pattern="[a-f0-9]{64}" autocomplete="off" spellcheck="false" required>
+      <label for="restore-conversation">元の会話ID</label>
+      <input id="restore-conversation" type="text" value="e2e" maxlength="256" autocomplete="off" required>
+      <button id="restore" type="button" disabled>保存状態を読む</button>
+      <p>保存済みの進捗と使用量を表示します。会話IDは再開時に照合します。</p>
+    </form>
+    <section id="messages" aria-label="会話" aria-live="polite"></section>
+    <aside id="workflow" aria-live="polite" hidden>
+      <p id="phase"></p><p id="usage">使用量の確定待ち</p>
+      <p id="run-reference"></p><p id="next-action"></p>
+      <details><summary>工程ごとの判断の要約</summary><ol id="phase-log"></ol></details>
+      <button id="resume" type="button" disabled>チェックポイントから再開</button>
+      <button id="new-request" type="button">新しい依頼</button>
+    </aside>
+    <form id="composer"><label for="text">メッセージ</label><textarea id="text" rows="3" aria-describedby="send-help" required></textarea>
+      <p id="send-help">Ctrl+Enter（Macは⌘+Enter）で送信。Enterは改行です。</p>
+      <div><button id="send" type="button" disabled>送信</button><button id="stop" type="button" disabled>停止</button></div>
+    </form>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

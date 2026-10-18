@@ -3,6 +3,8 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from domain.company.message_router import CompanySlackRuntime
 from domain.company.mention import CompanyMentionService
 from domain.company.models import DEFAULT_CHANNEL_ID, timestamp
@@ -35,9 +37,11 @@ class SubagentTeamService:
         *,
         company_store: CompanyStore | None = None,
         runtime_store: CompanyRuntimeStore | None = None,
+        settings_owner: SettingsOwnerPort | None = None,
     ) -> None:
         self.company_store = company_store or CompanyStore()
         self.runtime_store = runtime_store or CompanyRuntimeStore()
+        self.settings_owner = settings_owner
 
     def ensure_team(self, data: dict[str, Any] | None = None) -> dict[str, Any]:
         data = data if isinstance(data, dict) else {}
@@ -46,7 +50,10 @@ class SubagentTeamService:
         if company_id:
             company = self.company_store.get_company(company_id)
             if company is None and data.get("bootstrap"):
-                company = CompanyService(self.company_store).create_company(
+                company = CompanyService(
+                    self.company_store,
+                    settings_owner=self.settings_owner,
+                ).create_company(
                     {
                         "id": company_id,
                         "name": data.get("name") or "Team Workspace",
@@ -56,11 +63,17 @@ class SubagentTeamService:
                 )
             return {"company_id": company_id, "company": company, "bootstrapped": company is not None}
         if conversation_id:
-            return CompanyService(self.company_store).status_for_conversation(
+            return CompanyService(
+                self.company_store,
+                settings_owner=self.settings_owner,
+            ).status_for_conversation(
                 conversation_id,
                 bootstrap=bool(data.get("bootstrap", True)),
             )
-        return CompanyService(self.company_store).status()
+        return CompanyService(
+            self.company_store,
+            settings_owner=self.settings_owner,
+        ).status()
 
     def status(self, company_id: str) -> dict[str, Any] | None:
         company = self.company_store.get_company(company_id)
@@ -381,7 +394,11 @@ class SubagentTeamService:
             metadata["rich_payload"] = rich["rich_payload"]
         if rich["attachments"]:
             metadata["attachments"] = rich["attachments"]
-        result = CompanySlackRuntime(company_store=self.company_store, runtime_store=self.runtime_store).post_message(
+        result = CompanySlackRuntime(
+            company_store=self.company_store,
+            runtime_store=self.runtime_store,
+            settings_owner=self.settings_owner,
+        ).post_message(
             company_id,
             content=routed_content,
             sender_id=message["sender_id"],
@@ -397,7 +414,10 @@ class SubagentTeamService:
 
     def _resolve_target_agent_ids(self, company_id: str, *, explicit: list[str], content: str, channel_id: str | None = None) -> list[str]:
         resolved: list[str] = []
-        mention_service = CompanyMentionService(self.company_store)
+        mention_service = CompanyMentionService(
+            self.company_store,
+            settings_owner=self.settings_owner,
+        )
         if explicit:
             explicit_resolution = mention_service.resolve(company_id, explicit) or {}
             resolved.extend(str(item) for item in explicit_resolution.get("resolved_agent_ids") or [])
@@ -418,10 +438,18 @@ class SubagentTeamService:
         return evaluate_rich_payload(data)
 
     def creator_preview(self, company_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
-        return CreatorService(company_store=self.company_store, runtime_store=self.runtime_store).preview(company_id, data)
+        return CreatorService(
+            company_store=self.company_store,
+            runtime_store=self.runtime_store,
+            settings_owner=self.settings_owner,
+        ).preview(company_id, data)
 
     def creator_request(self, company_id: str, data: dict[str, Any], *, context: dict[str, Any] | None = None) -> dict[str, Any] | None:
-        return CreatorService(company_store=self.company_store, runtime_store=self.runtime_store).request(
+        return CreatorService(
+            company_store=self.company_store,
+            runtime_store=self.runtime_store,
+            settings_owner=self.settings_owner,
+        ).request(
             company_id,
             data,
             context=context or {},
@@ -823,7 +851,10 @@ class SubagentTeamService:
     def _unresolved_target_ids(self, company_id: str, target_agent_ids: list[str]) -> list[str]:
         if not target_agent_ids:
             return []
-        mention_service = CompanyMentionService(self.company_store)
+        mention_service = CompanyMentionService(
+            self.company_store,
+            settings_owner=self.settings_owner,
+        )
         resolution = mention_service.resolve(company_id, target_agent_ids) or {}
         return [str(item) for item in resolution.get("unresolved") or [] if str(item).strip()]
 

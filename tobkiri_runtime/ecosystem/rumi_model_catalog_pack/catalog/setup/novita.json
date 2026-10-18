@@ -1,0 +1,3237 @@
+{
+ "provider_id": "novita",
+ "models": [
+  {
+   "model_id": "baichuan/baichuan-m2-32b",
+   "display_name": "baichuan-m2-32b",
+   "type": "chat",
+   "context_window": 131072,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.07,
+    "output": 0.07
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "baidu/ernie-4.5-21B-a3b",
+   "display_name": "ERNIE 4.5 21B A3B",
+   "type": "chat",
+   "context_window": 120000,
+   "max_output_tokens": 8000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.07,
+    "output": 0.28
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "baidu/ernie-4.5-21B-a3b-thinking",
+   "display_name": "ERNIE-4.5-21B-A3B-Thinking",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.07,
+    "output": 0.28
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "baidu/ernie-4.5-300b-a47b-paddle",
+   "display_name": "ERNIE 4.5 300B A47B",
+   "type": "chat",
+   "context_window": 123000,
+   "max_output_tokens": 12000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.28,
+    "output": 1.1
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "baidu/ernie-4.5-vl-28b-a3b",
+   "display_name": "ERNIE 4.5 VL 28B A3B",
+   "type": "reasoning",
+   "context_window": 30000,
+   "max_output_tokens": 8000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.14,
+    "output": 0.56
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "baidu/ernie-4.5-vl-28b-a3b-thinking",
+   "display_name": "ERNIE-4.5-VL-28B-A3B-Thinking",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.39,
+    "output": 0.39
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "baidu/ernie-4.5-vl-424b-a47b",
+   "display_name": "ERNIE 4.5 VL 424B A47B",
+   "type": "reasoning",
+   "context_window": 123000,
+   "max_output_tokens": 16000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.42,
+    "output": 1.25
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek/deepseek-ocr",
+   "display_name": "DeepSeek-OCR",
+   "type": "chat",
+   "context_window": 8192,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.03,
+    "output": 0.03
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek/deepseek-ocr-2",
+   "display_name": "deepseek/deepseek-ocr-2",
+   "type": "chat",
+   "context_window": 8192,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.03,
+    "output": 0.03
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek/deepseek-prover-v2-671b",
+   "display_name": "Deepseek Prover V2 671B",
+   "type": "chat",
+   "context_window": 160000,
+   "max_output_tokens": 160000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.7,
+    "output": 2.5
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek/deepseek-r1-0528",
+   "display_name": "DeepSeek R1 0528",
+   "type": "reasoning",
+   "context_window": 163840,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.7,
+    "output": 2.5,
+    "cache_read": 0.35
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek/deepseek-r1-0528-qwen3-8b",
+   "display_name": "DeepSeek R1 0528 Qwen3 8B",
+   "type": "reasoning",
+   "context_window": 128000,
+   "max_output_tokens": 32000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.06,
+    "output": 0.09
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek/deepseek-r1-distill-llama-70b",
+   "display_name": "DeepSeek R1 Distill LLama 70B",
+   "type": "reasoning",
+   "context_window": 8192,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.8,
+    "output": 0.8
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek/deepseek-r1-distill-qwen-14b",
+   "display_name": "DeepSeek R1 Distill Qwen 14B",
+   "type": "chat",
+   "context_window": 32768,
+   "max_output_tokens": 16384,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.15,
+    "output": 0.15
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek/deepseek-r1-distill-qwen-32b",
+   "display_name": "DeepSeek R1 Distill Qwen 32B",
+   "type": "chat",
+   "context_window": 64000,
+   "max_output_tokens": 32000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.3,
+    "output": 0.3
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek/deepseek-r1-turbo",
+   "display_name": "DeepSeek R1 (Turbo)\t",
+   "type": "reasoning",
+   "context_window": 64000,
+   "max_output_tokens": 16000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.7,
+    "output": 2.5
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek/deepseek-v3-0324",
+   "display_name": "DeepSeek V3 0324",
+   "type": "chat",
+   "context_window": 163840,
+   "max_output_tokens": 163840,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.27,
+    "output": 1.12,
+    "cache_read": 0.135
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek/deepseek-v3-turbo",
+   "display_name": "DeepSeek V3 (Turbo)\t",
+   "type": "chat",
+   "context_window": 64000,
+   "max_output_tokens": 16000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.4,
+    "output": 1.3
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek/deepseek-v3.1",
+   "display_name": "DeepSeek V3.1",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.27,
+    "output": 1,
+    "cache_read": 0.135
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek/deepseek-v3.1-terminus",
+   "display_name": "Deepseek V3.1 Terminus",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.27,
+    "output": 1,
+    "cache_read": 0.135
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek/deepseek-v3.2",
+   "display_name": "Deepseek V3.2",
+   "type": "reasoning",
+   "context_window": 163840,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.269,
+    "output": 0.4,
+    "cache_read": 0.1345
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek/deepseek-v3.2-exp",
+   "display_name": "Deepseek V3.2 Exp",
+   "type": "reasoning",
+   "context_window": 163840,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.27,
+    "output": 0.41
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek/deepseek-v4-flash",
+   "display_name": "DeepSeek V4 Flash",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 393216,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.14,
+    "output": 0.28,
+    "cache_read": 0.028
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "deepseek/deepseek-v4-pro",
+   "display_name": "DeepSeek V4 Pro",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 393216,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1.6,
+    "output": 3.2,
+    "cache_read": 0.135
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "google/gemma-3-12b-it",
+   "display_name": "Gemma 3 12B",
+   "type": "chat",
+   "context_window": 131072,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.05,
+    "output": 0.1
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "google/gemma-3-27b-it",
+   "display_name": "Gemma 3 27B",
+   "type": "chat",
+   "context_window": 98304,
+   "max_output_tokens": 16384,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.119,
+    "output": 0.2
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "google/gemma-4-26b-a4b-it",
+   "display_name": "Gemma 4 26B A4B",
+   "type": "reasoning",
+   "context_window": 262144,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.13,
+    "output": 0.4
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "google/gemma-4-31b-it",
+   "display_name": "Gemma 4 31B",
+   "type": "reasoning",
+   "context_window": 262144,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.14,
+    "output": 0.4
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "gryphe/mythomax-l2-13b",
+   "display_name": "Mythomax L2 13B",
+   "type": "chat",
+   "context_window": 4096,
+   "max_output_tokens": 3200,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.09,
+    "output": 0.09
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "inclusionai/ling-2.6-1t",
+   "display_name": "Ling-2.6-1T",
+   "type": "chat",
+   "context_window": 262144,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.3,
+    "output": 2.5,
+    "cache_read": 0.06
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "inclusionai/ling-2.6-flash",
+   "display_name": "Ling-2.6-flash",
+   "type": "chat",
+   "context_window": 262144,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.1,
+    "output": 0.3,
+    "cache_read": 0.02
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "inclusionai/ring-2.6-1t",
+   "display_name": "Ring-2.6-1T",
+   "type": "reasoning",
+   "context_window": 262144,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.3,
+    "output": 2.5,
+    "cache_read": 0.06
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "kwaipilot/kat-coder-pro",
+   "display_name": "Kat Coder Pro",
+   "type": "chat",
+   "context_window": 256000,
+   "max_output_tokens": 128000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.06
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "meta-llama/llama-3-70b-instruct",
+   "display_name": "Llama3 70B Instruct",
+   "type": "chat",
+   "context_window": 8192,
+   "max_output_tokens": 8000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.51,
+    "output": 0.74
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "meta-llama/llama-3-8b-instruct",
+   "display_name": "Llama 3 8B Instruct",
+   "type": "chat",
+   "context_window": 8192,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.04,
+    "output": 0.04
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "meta-llama/llama-3.1-8b-instruct",
+   "display_name": "Llama 3.1 8B Instruct",
+   "type": "chat",
+   "context_window": 16384,
+   "max_output_tokens": 16384,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.02,
+    "output": 0.05
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "meta-llama/llama-3.2-3b-instruct",
+   "display_name": "Llama 3.2 3B Instruct",
+   "type": "chat",
+   "context_window": 32768,
+   "max_output_tokens": 32000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.03,
+    "output": 0.05
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "meta-llama/llama-3.3-70b-instruct",
+   "display_name": "Llama 3.3 70B Instruct",
+   "type": "chat",
+   "context_window": 131072,
+   "max_output_tokens": 120000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.135,
+    "output": 0.4
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "meta-llama/llama-4-maverick-17b-128e-instruct-fp8",
+   "display_name": "Llama 4 Maverick Instruct",
+   "type": "chat",
+   "context_window": 1048576,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.27,
+    "output": 0.85
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "meta-llama/llama-4-scout-17b-16e-instruct",
+   "display_name": "Llama 4 Scout Instruct",
+   "type": "chat",
+   "context_window": 131072,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.18,
+    "output": 0.59
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "microsoft/wizardlm-2-8x22b",
+   "display_name": "Wizardlm 2 8x22B",
+   "type": "chat",
+   "context_window": 65535,
+   "max_output_tokens": 8000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.62,
+    "output": 0.62
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "minimax/minimax-m2",
+   "display_name": "MiniMax-M2",
+   "type": "reasoning",
+   "context_window": 204800,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.03
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "minimax/minimax-m2.1",
+   "display_name": "Minimax M2.1",
+   "type": "chat",
+   "context_window": 204800,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.03
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "minimax/minimax-m2.5",
+   "display_name": "MiniMax M2.5",
+   "type": "reasoning",
+   "context_window": 204800,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.03
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "minimax/minimax-m2.5-highspeed",
+   "display_name": "MiniMax M2.5 Highspeed",
+   "type": "reasoning",
+   "context_window": 204800,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.6,
+    "output": 2.4,
+    "cache_read": 0.03
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "minimax/minimax-m2.7",
+   "display_name": "MiniMax M2.7",
+   "type": "reasoning",
+   "context_window": 204800,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.06
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "minimax/minimax-m2.7-highspeed",
+   "display_name": "MiniMax-M2.7-highspeed",
+   "type": "reasoning",
+   "context_window": 204800,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.6,
+    "output": 2.4,
+    "cache_read": 0.06,
+    "cache_write": 0.375
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "minimaxai/minimax-m1-80k",
+   "display_name": "MiniMax M1",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 40000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.55,
+    "output": 2.2
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "mistralai/mistral-nemo",
+   "display_name": "Mistral Nemo",
+   "type": "chat",
+   "context_window": 60288,
+   "max_output_tokens": 16000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.04,
+    "output": 0.17
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "moonshotai/kimi-k2-0905",
+   "display_name": "Kimi K2 0905",
+   "type": "chat",
+   "context_window": 262144,
+   "max_output_tokens": 98304,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.6,
+    "output": 2.5
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "moonshotai/kimi-k2-instruct",
+   "display_name": "Kimi K2 Instruct",
+   "type": "chat",
+   "context_window": 131072,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.57,
+    "output": 2.3
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "moonshotai/kimi-k2-thinking",
+   "display_name": "Kimi K2 Thinking",
+   "type": "reasoning",
+   "context_window": 262144,
+   "max_output_tokens": 98304,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.6,
+    "output": 2.5,
+    "cache_read": 0.15
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "moonshotai/kimi-k2.5",
+   "display_name": "Kimi K2.5",
+   "type": "reasoning",
+   "context_window": 262144,
+   "max_output_tokens": 262144,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.6,
+    "output": 3,
+    "cache_read": 0.1
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "moonshotai/kimi-k2.6",
+   "display_name": "Kimi K2.6",
+   "type": "reasoning",
+   "context_window": 262144,
+   "max_output_tokens": 262144,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.8,
+    "output": 3.4,
+    "cache_read": 0.16
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "moonshotai/kimi-k2.7-code",
+   "display_name": "Kimi K2.7 Code",
+   "type": "reasoning",
+   "context_window": 262144,
+   "max_output_tokens": 262144,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.95,
+    "output": 4,
+    "cache_read": 0.19
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "moonshotai/kimi-k3",
+   "display_name": "Kimi K3",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 1048576,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "nousresearch/hermes-2-pro-llama-3-8b",
+   "display_name": "Hermes 2 Pro Llama 3 8B",
+   "type": "chat",
+   "context_window": 8192,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.14,
+    "output": 0.14
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "openai/gpt-oss-120b",
+   "display_name": "OpenAI GPT OSS 120B",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.05,
+    "output": 0.25
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "openai/gpt-oss-20b",
+   "display_name": "OpenAI: GPT OSS 20B",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.04,
+    "output": 0.15
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "paddlepaddle/paddleocr-vl",
+   "display_name": "PaddleOCR-VL",
+   "type": "chat",
+   "context_window": 16384,
+   "max_output_tokens": 16384,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.02,
+    "output": 0.02
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen-2.5-72b-instruct",
+   "display_name": "Qwen 2.5 72B Instruct",
+   "type": "chat",
+   "context_window": 32000,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.38,
+    "output": 0.4
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen-mt-plus",
+   "display_name": "Qwen MT Plus",
+   "type": "chat",
+   "context_window": 16384,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.25,
+    "output": 0.75
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen2.5-7b-instruct",
+   "display_name": "Qwen2.5 7B Instruct",
+   "type": "chat",
+   "context_window": 32000,
+   "max_output_tokens": 32000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.07,
+    "output": 0.07
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen2.5-vl-72b-instruct",
+   "display_name": "Qwen2.5 VL 72B Instruct",
+   "type": "chat",
+   "context_window": 32768,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.8,
+    "output": 0.8
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-235b-a22b-fp8",
+   "display_name": "Qwen3 235B A22B",
+   "type": "reasoning",
+   "context_window": 40960,
+   "max_output_tokens": 20000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.2,
+    "output": 0.8
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-235b-a22b-instruct-2507",
+   "display_name": "Qwen3 235B A22B Instruct 2507",
+   "type": "chat",
+   "context_window": 131072,
+   "max_output_tokens": 16384,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.09,
+    "output": 0.58
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-235b-a22b-thinking-2507",
+   "display_name": "Qwen3 235B A22b Thinking 2507",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.3,
+    "output": 3
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-30b-a3b-fp8",
+   "display_name": "Qwen3 30B A3B",
+   "type": "reasoning",
+   "context_window": 40960,
+   "max_output_tokens": 20000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.09,
+    "output": 0.45
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-32b-fp8",
+   "display_name": "Qwen3 32B",
+   "type": "reasoning",
+   "context_window": 40960,
+   "max_output_tokens": 20000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.1,
+    "output": 0.45
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-4b-fp8",
+   "display_name": "Qwen3 4B",
+   "type": "reasoning",
+   "context_window": 128000,
+   "max_output_tokens": 20000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.03,
+    "output": 0.03
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-8b-fp8",
+   "display_name": "Qwen3 8B",
+   "type": "reasoning",
+   "context_window": 128000,
+   "max_output_tokens": 20000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.035,
+    "output": 0.138
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-coder-30b-a3b-instruct",
+   "display_name": "Qwen3 Coder 30b A3B Instruct",
+   "type": "chat",
+   "context_window": 160000,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.07,
+    "output": 0.27
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-coder-480b-a35b-instruct",
+   "display_name": "Qwen3 Coder 480B A35B Instruct",
+   "type": "chat",
+   "context_window": 262144,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.38,
+    "output": 1.55
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-coder-next",
+   "display_name": "Qwen3 Coder Next",
+   "type": "chat",
+   "context_window": 262144,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.2,
+    "output": 1.5
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-max",
+   "display_name": "Qwen3 Max",
+   "type": "chat",
+   "context_window": 262144,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 2.11,
+    "output": 8.45
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-next-80b-a3b-instruct",
+   "display_name": "Qwen3 Next 80B A3B Instruct",
+   "type": "chat",
+   "context_window": 131072,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.15,
+    "output": 1.5
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-next-80b-a3b-thinking",
+   "display_name": "Qwen3 Next 80B A3B Thinking",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.15,
+    "output": 1.5
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-omni-30b-a3b-instruct",
+   "display_name": "Qwen3 Omni 30B A3B Instruct",
+   "type": "chat",
+   "context_window": 65536,
+   "max_output_tokens": 16384,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "video",
+     "audio",
+     "image"
+    ],
+    "output": [
+     "text",
+     "audio"
+    ]
+   },
+   "pricing": {
+    "input": 0.25,
+    "output": 0.97,
+    "input_audio": 2.2,
+    "output_audio": 1.788
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-omni-30b-a3b-thinking",
+   "display_name": "Qwen3 Omni 30B A3B Thinking",
+   "type": "reasoning",
+   "context_window": 65536,
+   "max_output_tokens": 16384,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "audio",
+     "video",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.25,
+    "output": 0.97,
+    "input_audio": 2.2,
+    "output_audio": 1.788
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-vl-235b-a22b-instruct",
+   "display_name": "Qwen3 VL 235B A22B Instruct",
+   "type": "chat",
+   "context_window": 131072,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.3,
+    "output": 1.5
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-vl-235b-a22b-thinking",
+   "display_name": "Qwen3 VL 235B A22B Thinking",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.98,
+    "output": 3.95
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-vl-30b-a3b-instruct",
+   "display_name": "qwen/qwen3-vl-30b-a3b-instruct",
+   "type": "chat",
+   "context_window": 131072,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "video",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.2,
+    "output": 0.7
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-vl-30b-a3b-thinking",
+   "display_name": "qwen/qwen3-vl-30b-a3b-thinking",
+   "type": "chat",
+   "context_window": 131072,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.2,
+    "output": 1
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3-vl-8b-instruct",
+   "display_name": "qwen/qwen3-vl-8b-instruct",
+   "type": "chat",
+   "context_window": 131072,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.08,
+    "output": 0.5
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3.5-122b-a10b",
+   "display_name": "Qwen3.5-122B-A10B",
+   "type": "reasoning",
+   "context_window": 262144,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.4,
+    "output": 3.2
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3.5-27b",
+   "display_name": "Qwen3.5-27B",
+   "type": "reasoning",
+   "context_window": 262144,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.3,
+    "output": 2.4
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3.5-35b-a3b",
+   "display_name": "Qwen3.5-35B-A3B",
+   "type": "reasoning",
+   "context_window": 262144,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.25,
+    "output": 2
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3.5-397b-a17b",
+   "display_name": "Qwen3.5-397B-A17B",
+   "type": "reasoning",
+   "context_window": 262144,
+   "max_output_tokens": 64000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.6,
+    "output": 3.6
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3.7-max",
+   "display_name": "Qwen3.7-Max",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1.25,
+    "output": 3.75,
+    "cache_read": 0.25,
+    "cache_write": 1.5625
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "sao10K/L3-8B-stheno-v3.2",
+   "display_name": "L3 8B Stheno V3.2",
+   "type": "chat",
+   "context_window": 8192,
+   "max_output_tokens": 32000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.05,
+    "output": 0.05
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "sao10K/l3-70b-euryale-v2.1",
+   "display_name": "L3 70B Euryale V2.1\t",
+   "type": "chat",
+   "context_window": 8192,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1.48,
+    "output": 1.48
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "sao10K/l3-8b-lunaris",
+   "display_name": "Sao10k L3 8B Lunaris\t",
+   "type": "chat",
+   "context_window": 8192,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.05,
+    "output": 0.05
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "sao10K/l31-70b-euryale-v2.2",
+   "display_name": "L31 70B Euryale V2.2",
+   "type": "chat",
+   "context_window": 8192,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1.48,
+    "output": 1.48
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "xiaomimimo/mimo-v2-flash",
+   "display_name": "XiaomiMiMo/MiMo-V2-Flash",
+   "type": "reasoning",
+   "context_window": 262144,
+   "max_output_tokens": 32000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.1,
+    "output": 0.3,
+    "cache_read": 0.3
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "xiaomimimo/mimo-v2-pro",
+   "display_name": "MiMo-V2-Pro",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.4,
+    "tiers": [
+     {
+      "input": 2,
+      "output": 6,
+      "cache_read": 0.4,
+      "tier": {
+       "type": "context",
+       "size": 256000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 2,
+     "output": 6,
+     "cache_read": 0.4
+    }
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "xiaomimimo/mimo-v2.5-pro",
+   "display_name": "MiMo-V2.5-Pro",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.522,
+    "output": 1.044,
+    "cache_read": 0.0043,
+    "tiers": [
+     {
+      "input": 0.522,
+      "output": 1.044,
+      "cache_read": 0.0043,
+      "tier": {
+       "type": "context",
+       "size": 256000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 0.522,
+     "output": 1.044,
+     "cache_read": 0.0043
+    }
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "zai-org/autoglm-phone-9b-multilingual",
+   "display_name": "AutoGLM-Phone-9B-Multilingual",
+   "type": "chat",
+   "context_window": 65536,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.035,
+    "output": 0.138
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "zai-org/glm-4.5",
+   "display_name": "GLM-4.5",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 98304,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.6,
+    "output": 2.2,
+    "cache_read": 0.11
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "zai-org/glm-4.5-air",
+   "display_name": "GLM 4.5 Air",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 98304,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.13,
+    "output": 0.85,
+    "cache_read": 0.025
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "zai-org/glm-4.5v",
+   "display_name": "GLM 4.5V",
+   "type": "reasoning",
+   "context_window": 65536,
+   "max_output_tokens": 16384,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "video",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.6,
+    "output": 1.8,
+    "cache_read": 0.11
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "zai-org/glm-4.6",
+   "display_name": "GLM 4.6",
+   "type": "reasoning",
+   "context_window": 204800,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.55,
+    "output": 2.2,
+    "cache_read": 0.11
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "zai-org/glm-4.6v",
+   "display_name": "GLM 4.6V",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "video",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.3,
+    "output": 0.9,
+    "cache_read": 0.055
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "zai-org/glm-4.7",
+   "display_name": "GLM-4.7",
+   "type": "reasoning",
+   "context_window": 204800,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.6,
+    "output": 2.2,
+    "cache_read": 0.11
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "zai-org/glm-4.7-flash",
+   "display_name": "GLM-4.7-Flash",
+   "type": "reasoning",
+   "context_window": 200000,
+   "max_output_tokens": 128000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.07,
+    "output": 0.4,
+    "cache_read": 0.01
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "zai-org/glm-5",
+   "display_name": "GLM-5",
+   "type": "reasoning",
+   "context_window": 202800,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1,
+    "output": 3.2,
+    "cache_read": 0.2
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "zai-org/glm-5.1",
+   "display_name": "GLM-5.1",
+   "type": "reasoning",
+   "context_window": 204800,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1.38,
+    "output": 4.4,
+    "cache_read": 0.26
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "zai-org/glm-5.2",
+   "display_name": "GLM-5.2",
+   "type": "reasoning",
+   "context_window": 1048576,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
+   },
+   "source": "models.dev"
+  }
+ ]
+}

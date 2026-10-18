@@ -20,7 +20,7 @@ def _write_json(path: Path, payload: dict) -> None:
 
 def test_component_discovery_reads_manifest_without_importing_entrypoint(tmp_path):
     pack = tmp_path / "defaultspack"
-    _write_json(pack / "ecosystem.json", {"pack_id": "defaultspack"})
+    _write_json(pack / "pack.v4.json", {"pack": {"id": "defaultspack"}})
     _write_json(
         pack / "domain" / "tools" / "demo" / "manifest.json",
         {
@@ -55,13 +55,24 @@ def test_component_discovery_fails_soft_on_bad_manifest(tmp_path):
     assert "manifest.category is required" in result.issues[0].message
 
 
-def test_component_roots_include_sibling_ecosystem_packs(tmp_path):
+def test_component_roots_include_selected_sibling_ecosystem_packs(tmp_path, monkeypatch):
+    from domain.components import registry as component_registry
+
+    monkeypatch.setattr(
+        component_registry,
+        "effective_pack_ids",
+        lambda: frozenset({"rumi_model_catalog_pack"}),
+    )
     ecosystem = tmp_path / "ecosystem"
     defaultspack = ecosystem / "defaultspack"
     catalog = ecosystem / "rumi_model_catalog_pack"
-    _write_json(defaultspack / "ecosystem.json", {"pack_id": "defaultspack"})
-    _write_json(catalog / "ecosystem.json", {"pack_id": "rumi_model_catalog_pack"})
+    _write_json(defaultspack / "pack.v4.json", {"pack": {"id": "defaultspack"}})
+    _write_json(catalog / "pack.v4.json", {"pack": {"id": "rumi_model_catalog_pack"}})
     (catalog / "domain").mkdir(parents=True)
+    monkeypatch.setattr(
+        "domain.components.registry.effective_pack_ids",
+        lambda: frozenset({"rumi_model_catalog_pack"}),
+    )
 
     roots = build_domain_component_roots(defaultspack)
 
@@ -70,19 +81,30 @@ def test_component_roots_include_sibling_ecosystem_packs(tmp_path):
 
 
 def test_component_roots_skip_unreadable_sibling_pack_candidates(tmp_path, monkeypatch):
+    from domain.components import registry as component_registry
+
+    monkeypatch.setattr(
+        component_registry,
+        "effective_pack_ids",
+        lambda: frozenset({"rumi_model_catalog_pack", "restricted"}),
+    )
     ecosystem = tmp_path / "ecosystem"
     defaultspack = ecosystem / "defaultspack"
     catalog = ecosystem / "rumi_model_catalog_pack"
     restricted = ecosystem / "restricted"
-    _write_json(defaultspack / "ecosystem.json", {"pack_id": "defaultspack"})
-    _write_json(catalog / "ecosystem.json", {"pack_id": "rumi_model_catalog_pack"})
+    _write_json(defaultspack / "pack.v4.json", {"pack": {"id": "defaultspack"}})
+    _write_json(catalog / "pack.v4.json", {"pack": {"id": "rumi_model_catalog_pack"}})
     (catalog / "domain").mkdir(parents=True)
     restricted.mkdir(parents=True)
+    monkeypatch.setattr(
+        "domain.components.registry.effective_pack_ids",
+        lambda: frozenset({"rumi_model_catalog_pack"}),
+    )
 
     original_is_file = Path.is_file
 
     def fake_is_file(path: Path) -> bool:
-        if path == restricted / "ecosystem.json":
+        if path == restricted / "pack.v4.json":
             raise PermissionError("blocked test path")
         return original_is_file(path)
 
@@ -119,7 +141,7 @@ def test_component_registry_supports_category_scoped_aliases(tmp_path):
 def test_component_discovery_uses_root_pack_id_over_manifest_spoof(tmp_path):
     ecosystem = tmp_path / "ecosystem"
     malicious = ecosystem / "malicious_pack"
-    _write_json(malicious / "ecosystem.json", {"pack_id": "malicious_pack"})
+    _write_json(malicious / "pack.v4.json", {"pack": {"id": "malicious_pack"}})
     _write_json(
         malicious / "domain" / "tools" / "spoof" / "manifest.json",
         {
@@ -140,10 +162,10 @@ def test_component_discovery_uses_root_pack_id_over_manifest_spoof(tmp_path):
     assert component.manifest["source_pack_id"] == "malicious_pack"
 
 
-def test_component_discovery_uses_directory_pack_id_on_ecosystem_mismatch(tmp_path):
+def test_component_discovery_rejects_source_identity_on_v4_manifest_mismatch(tmp_path):
     ecosystem = tmp_path / "ecosystem"
     malicious = ecosystem / "malicious_pack"
-    _write_json(malicious / "ecosystem.json", {"pack_id": "defaultspack"})
+    _write_json(malicious / "pack.v4.json", {"pack": {"id": "defaultspack"}})
     _write_json(
         malicious / "domain" / "tools" / "spoof" / "manifest.json",
         {
@@ -159,5 +181,5 @@ def test_component_discovery_uses_directory_pack_id_on_ecosystem_mismatch(tmp_pa
 
     assert len(result.components) == 1
     component = result.components[0]
-    assert component.source_pack_id == "malicious_pack"
-    assert component.manifest["source_pack_id"] == "malicious_pack"
+    assert component.source_pack_id == ""
+    assert component.manifest["source_pack_id"] == ""

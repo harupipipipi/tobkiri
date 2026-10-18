@@ -17,9 +17,6 @@ P2-3: tools が文字列リスト（ツール名）の場合、ToolRegistry か�
 P2-4: システムプロンプトの一時変更をスレッドセーフに（グローバル書き換えしない）。
 """
 
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from blocks._common import ok, error, gen_id, timestamp
 
 from domain.dev.inspector import Inspector

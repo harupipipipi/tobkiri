@@ -1,13 +1,21 @@
+"""Finite compatibility response for the retired sandbox export path."""
+
 from __future__ import annotations
 
 from typing import Any
 
-from blocks.coding.sandbox_common import run_sandbox_action
+from blocks._common import error
 
 
-def run(input_data: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:
-    return run_sandbox_action(
-        input_data,
-        context,
-        lambda manager, workspace: manager.export_artifacts(workspace, input_data.get("paths")),
+def run(
+    input_data: dict[str, Any],
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Fail closed until an artifact owner provides an export contract."""
+
+    del input_data, context
+    return error(
+        "sandbox artifact export is unavailable; no selected pack owns a safe "
+        "sandbox-to-artifact transfer contract",
+        code="UNAVAILABLE",
     )

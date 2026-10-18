@@ -112,6 +112,12 @@ class ChatManager:
         conversation = self._conversations.get(chat_id)
         return list(conversation.messages) if conversation else []
 
+    def list_conversations(self) -> List[Dict[str, Any]]:
+        return [conversation.to_dict() for conversation in self._conversations.values()]
+
+    def get_history_json(self, chat_id: str) -> Dict[str, Any]:
+        return self.get_history(chat_id) or {"conversation_id": chat_id, "messages": []}
+
     def request_stop(self, chat_id: str) -> None:
         self._stop_flags[chat_id] = True
 
@@ -121,3 +127,12 @@ class ChatManager:
 
 ChatMessage = Message
 ChatConversation = Conversation
+
+_CHAT_MANAGER: ChatManager | None = None
+
+
+def get_chat_manager() -> ChatManager:
+    global _CHAT_MANAGER
+    if _CHAT_MANAGER is None:
+        _CHAT_MANAGER = ChatManager()
+    return _CHAT_MANAGER

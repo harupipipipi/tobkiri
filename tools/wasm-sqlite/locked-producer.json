@@ -1,0 +1,112 @@
+{
+  "abi_version": 1,
+  "imports": [
+    "tobkiri-sql/broker",
+    "tobkiri-sql/check"
+  ],
+  "exports": [
+    "memory",
+    "tobkiri_abi_version",
+    "tobkiri_alloc",
+    "tobkiri_autocommit",
+    "tobkiri_bind_blob",
+    "tobkiri_bind_integer",
+    "tobkiri_bind_null",
+    "tobkiri_bind_real",
+    "tobkiri_bind_text",
+    "tobkiri_changes",
+    "tobkiri_close",
+    "tobkiri_column_blob",
+    "tobkiri_column_bytes",
+    "tobkiri_column_count",
+    "tobkiri_column_integer",
+    "tobkiri_column_name",
+    "tobkiri_column_real",
+    "tobkiri_column_text",
+    "tobkiri_column_type",
+    "tobkiri_context",
+    "tobkiri_control",
+    "tobkiri_error_code",
+    "tobkiri_finish",
+    "tobkiri_free",
+    "tobkiri_init",
+    "tobkiri_last_rowid",
+    "tobkiri_open",
+    "tobkiri_prepare",
+    "tobkiri_shm_calls",
+    "tobkiri_step",
+    "tobkiri_stmt_generation",
+    "tobkiri_stmt_readonly"
+  ],
+  "linear_memories": [
+    {
+      "initial": 256,
+      "maximum": 256
+    }
+  ],
+  "tables": [
+    {
+      "initial": 320,
+      "maximum": 320
+    }
+  ],
+  "stack_bytes": 262144,
+  "sqlite_heap_capacity_bytes": 4194304,
+  "sqlite_version": "3.53.2",
+  "sqlite_source_sha256": "0a409f1633283fa31a9126b11fbfd64a1991c5d30defad07e5745d4667f5e23d",
+  "sdk_version": "34.0",
+  "sdk_archive_sha256": "9c59398106b417f8f14913380fdf0097a8cc0ff4af9eb3ce0065a859e88d49e9",
+  "compiler_sha256": "19b9ef777eec50d9a353060db546963f588fc10b13baff7839a54d0d97bf871c",
+  "linker_sha256": "f3f36480cec4c76cd996e7e7624c811d18f92d63dc81fd224c0f757a7f4c3377",
+  "libc_sha256": "a9aff53312240258085fd94da05e18545f4c98b2f6a91ce4985b519eb8159fb9",
+  "wrapper_sha256": "44b0e1210c60bf922e8671a8a8e426a30db9fed444f801bbcc3c899013def477",
+  "producer_sha256": "da85688c3c5a571ce12f9a119b40db2be624d5d02d7e86746999d5e5b2356399",
+  "compiler_version": "clang version 23.1.0-wasi-sdk (https://github.com/llvm/llvm-project 895aa2c896ada719451be2e3673c83da8ddf1141)",
+  "flags": [
+    "--target=wasm32-wasip1",
+    "-O2",
+    "-DNDEBUG",
+    "-nostartfiles",
+    "-DSQLITE_OS_OTHER=1",
+    "-DSQLITE_THREADSAFE=0",
+    "-DSQLITE_ENABLE_MEMSYS5=1",
+    "-DSQLITE_OMIT_LOAD_EXTENSION=1",
+    "-DSQLITE_OMIT_SHARED_CACHE=1",
+    "-DSQLITE_OMIT_AUTOINIT=1",
+    "-DSQLITE_OMIT_LOCALTIME=1",
+    "-DSQLITE_USE_URI=0",
+    "-DSQLITE_OMIT_AUTORESET=1",
+    "-DSQLITE_TEMP_STORE=3",
+    "-DSQLITE_DEFAULT_CACHE_SIZE=-512",
+    "-DSQLITE_DEFAULT_PAGE_SIZE=4096",
+    "-DSQLITE_DEFAULT_MEMSTATUS=0",
+    "-DLONGDOUBLE_TYPE=double",
+    "-Wl,--no-entry",
+    "-Wl,--strip-all",
+    "-Wl,--stack-first",
+    "-Wl,-z,stack-size=262144",
+    "-Wl,--initial-memory=16777216",
+    "-Wl,--max-memory=16777216",
+    "-Wl,--export-memory",
+    "-ffile-prefix-map=<producer-root>=/tobkiri/private-sql"
+  ],
+  "source_before": {
+    "private_sql.c": "44b0e1210c60bf922e8671a8a8e426a30db9fed444f801bbcc3c899013def477",
+    "build.py": "da85688c3c5a571ce12f9a119b40db2be624d5d02d7e86746999d5e5b2356399",
+    "vendor/sqlite3.c": "0a409f1633283fa31a9126b11fbfd64a1991c5d30defad07e5745d4667f5e23d",
+    "vendor/sqlite3.h": "9e69a1353a4288450b0d5239ede11fc7f1f4c8e5eb07491fc8317eacb5b7de7e"
+  },
+  "source_after": {
+    "private_sql.c": "44b0e1210c60bf922e8671a8a8e426a30db9fed444f801bbcc3c899013def477",
+    "build.py": "da85688c3c5a571ce12f9a119b40db2be624d5d02d7e86746999d5e5b2356399",
+    "vendor/sqlite3.c": "0a409f1633283fa31a9126b11fbfd64a1991c5d30defad07e5745d4667f5e23d",
+    "vendor/sqlite3.h": "9e69a1353a4288450b0d5239ede11fc7f1f4c8e5eb07491fc8317eacb5b7de7e"
+  },
+  "disk_floor_bytes": 5905580032,
+  "free_before_bytes": 7433158656,
+  "free_min_bytes": 7431618560,
+  "peak_additional_disk_bytes": 1540096,
+  "module_sha256": "d52e4d9ec0ee1d6bee0cb26918d907d96722442950787a5c45656d674e3ccc02",
+  "module_bytes": 1073130,
+  "acceptance": "producer-proof-only; exclusive VFS/SQL runtime and full capacity proof not established"
+}

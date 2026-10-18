@@ -1,0 +1,9 @@
+{
+  "callbacks": {},
+  "cardinality": "one",
+  "conformance": null,
+  "streams": {
+    "regenerate-phase": "flow-frame",
+    "submit": "flow-frame"
+  }
+}

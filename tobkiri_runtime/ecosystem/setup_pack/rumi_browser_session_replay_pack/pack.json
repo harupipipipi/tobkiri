@@ -24,7 +24,7 @@
     "redaction_review": "owned_by_rumi_browser_session_replay_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Browser replay evidence is sensitive and belongs behind explicit review before any defaultspack promotion.",
     "promotion_blockers": [

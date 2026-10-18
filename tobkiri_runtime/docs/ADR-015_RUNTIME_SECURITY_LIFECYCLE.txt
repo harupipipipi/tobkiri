@@ -1,0 +1,356 @@
+# ADR-015: Runtime security lifecycle, admission, activation, distribution, and effects
+
+- Status: Accepted
+- Date: 2026-08-04
+- Decision owners: Tobkiri Runtime / Pack Architecture
+- Applies to: artifact distribution, Profile resolution and activation, PackVM/Wasm
+  materialization, Request dispatch, resource accounting, GUI contributions,
+  Workflow triggers, remote Providers, and emergency revocation
+- Must be read with: ADR-014_BOUNDARY_CAPABILITY_GRANTS.txt and
+  TOBKIRI_PACK_ARCHITECTURE_IMPLEMENTATION_PLAN.txt
+
+## Context
+
+ADR-014 fixes the Host-authority principal and Grant model. That model is necessary
+but not sufficient. A Runtime can still fail before authority evaluation, expose an
+inconsistent activation, execute stale artifacts, misrepresent remote effects, or
+allow a stopped Pack to evade resource and wake limits.
+
+This ADR fixes the non-Function security lifecycle which must exist before unknown
+Pack execution becomes reachable. It is normative even where implementation does
+not yet exist. Unsupported states fail closed; a weaker fallback is not a conforming
+implementation.
+
+## Decision
+
+### 1. Threat model and TCB
+
+The Runtime protects the Host, users, Profiles, Packs, credentials, and authoritative
+state from:
+
+- malicious or compromised Normal Packs and Host Extensions;
+- a compromised publisher key, stale or rollback distribution mirror, and
+  mix-and-match artifacts;
+- malformed Protocol, Contract, manifest, archive, GUI, and Adapter input;
+- confused-deputy delegation, cross-Profile/state access, resource exhaustion, and
+  incomplete cancellation;
+- guest escape attempts and same-tenant Pack attacks;
+- crash, power loss, disk full, clock rollback, duplicated delivery, and partial
+  activation.
+
+The Runtime TCB contains the Host Kernel, immutable safety evaluator, authority DB,
+Broker/Handle implementations, artifact verifier and trusted metadata client,
+activation journal, resource controller, Trigger/Wake Kernel, security UI surface,
+backend supervisor, and platform-enforced isolation substrate. A Host Extension
+using os_entitlement joins the TCB for its declared blast radius.
+
+Normal Packs, Pack UI, Profiles, repository mirrors, remote Providers, publisher
+metadata, and guest Pack processes are untrusted. A signed artifact has identity;
+signature alone does not make its code or claims trusted.
+
+Non-goals are protection from a fully compromised Host kernel/hypervisor, physical
+attacks outside the platform threat model, semantic correctness of an opaque remote
+service, and guaranteed rollback of an external effect already accepted by a remote
+system. These limits must be displayed honestly.
+
+### 2. Static pre-admission precedes materialization
+
+No untrusted Pack VM, process, component, or worker is started merely to decide
+whether a Request is authorized. Before queue reservation or materialization, the
+Host validates only non-executable, signed data:
+
+- trusted repository freshness, artifact and subartifact signatures/digests;
+- manifest, Contract/schema, ProfileLock, ResolvedPlan, platform variant, dependency,
+  routing, Adapter, trust-class, and ExecutionDomain requirements;
+- SecurityEpoch/revocation status and existence of a potentially matching authority
+  path, without minting a Grant;
+- declared hard resource ceilings, measured admission estimate, Profile/admin
+  ceilings, caller/Pack/binding rate limits, and Host free-resource guard.
+
+Pack code is never imported for admission. Metadata requiring code execution is
+invalid. Optional inspection runs only in a separate quarantine domain with no Host
+authority and strict CPU, memory, output, process, and deadline limits; its result is
+evidence, not authority.
+
+Passing pre-admission permits a bounded queue reservation and materialization. After
+the domain starts, runtime evidence and domain identity are verified, then final
+authorization is evaluated under ADR-014. Any mismatch destroys the candidate and
+releases the reservation.
+
+### 3. Pool identity and workload identity are separate
+
+PackVMPoolKey identifies reusable clean infrastructure and includes:
+
+- tenant security domain;
+- exact platform ArtifactVariant/base image/backend/guest-agent/runtime ABI digests;
+- OS, architecture, libc, CPU-feature constraints;
+- SecurityEpoch and immutable backend security configuration.
+
+WorkloadInstanceKey identifies a logical workload and includes:
+
+- Profile ID, Activation ID, state generation, immutable config digest;
+- exact FunctionPrincipal/provider binding and authority-equivalence class;
+- private-state namespace, ExecutionDomain ID, and boot epoch.
+
+Only a backend which proves separate process, memory, UID, mount, Handle, IPC,
+capability, and state namespaces may reuse clean pooled infrastructure across
+activations. Pack-specific RAM snapshots and previously used workload instances are
+never reassigned to another Pack or Profile.
+
+ADR-014 remains authoritative about principals: the PackArtifact is administrative
+identity, FunctionPrincipal is authority identity, and ExecutionDomain is the
+enforcement boundary. Pool sharing never collapses those layers.
+
+### 4. Activation is a fenced transaction
+
+Activation uses this durable state machine:
+
+  Resolved -> Prepared -> ReadyWithoutAuthority -> Committing -> Active
+           -> Draining -> Retired
+
+Prepared creates a candidate-only copy-on-write state generation, reserves resources,
+validates artifacts, and builds routing without making the candidate reachable.
+ReadyWithoutAuthority may run bounded readiness probes but receives no normal Grant,
+external-effect Lease, durable timer registration, unrestricted network, child
+activation, or mutation of active authoritative state.
+
+Committing atomically installs the ProfileAuthoritySnapshot, routing generation,
+state-generation pointer, trigger registrations, and monotonically increasing
+fencing token. Only the current token may mutate active state or receive normal
+InvocationLeases. Failure before commit destroys the candidate generation and all
+candidate resources. Recovery exposes either the complete old activation or the
+complete new activation, never a mixture. The old activation drains under its old
+token and cannot begin new effects after fencing.
+
+### 5. Artifact variants and offline materialization
+
+A logical Pack release is distinct from an ArtifactVariant. A variant is selected by
+OS, architecture, libc/runtime ABI, CPU features, backend, and base-image constraints.
+ProfileLock and ResolvedPlan pin the exact selected variant and every executable
+subartifact digest.
+
+Activation and materialization perform no pip/npm/cargo download, source build, or
+sdist execution. Python uses a locked wheelhouse or completed environment artifact.
+All runtime dependencies are verified before promotion from quarantine CAS.
+
+### 6. Trusted repository metadata
+
+Artifact signatures are supplemented by TUF-equivalent metadata:
+
+- offline Root metadata with threshold keys and explicit root rotation;
+- Targets delegations, Snapshot, and short-lived Timestamp metadata;
+- expiry, consistent snapshots, hash/length binding, and mix-and-match prevention;
+- client highest-seen versions and rollback/freeze protection;
+- an explicit trusted-time/clock-rollback policy.
+
+Downloaded bytes remain in a non-executable quarantine CAS until repository metadata,
+artifact signatures, digests, variant inventory, and revocation checks pass. Offline
+mode may use only unexpired previously verified metadata and artifacts according to
+an explicit policy; it never silently disables freshness verification.
+
+### 7. SecurityEpoch and emergency revocation
+
+SecurityEpoch is a Host-owned, monotonic value independent of compatibility versions.
+It is bound into ResolvedPlan, ActivationRecord, ProfileAuthoritySnapshot,
+PackVMPoolKey, ExecutionDomain, Grant, InvocationLease, ResourceHandle, and Workflow
+Run/StepAttempt.
+
+The Runtime rechecks epoch and revocation at queue admission, materialization, final
+authorization, dispatch, each Broker effect boundary, and irreversible commit where
+possible. Epoch advance fences old activations, denies new Lease use, revokes Handle
+namespaces and cached decisions, stops affected domains, and moves workflows to a
+reconciliation or reactivation state. Pins cannot override emergency revocation.
+
+### 8. Effects are multi-axis, not one ordinal
+
+The broad labels pure/read/write/external_effect/privileged are UI hints only.
+Authorization and audit describe independent sets:
+
+- resource read/write/create/delete and consistency preconditions;
+- external effect and destination identity;
+- credential, device, workspace, process, and OS authority;
+- input/output data sensitivity and disclosure class;
+- persistence, reversibility, auditability, and reconciliation mechanism.
+
+Sensitive reads and all Host effects fail closed when authoritative audit reservation
+is unavailable. A risk calculation uses the union of capability and disclosure across
+every hop; it does not use the weakest or strongest single isolation label.
+
+Idempotency declarations define key namespace, caller/target/resource binding,
+payload and resource-version digest, retention, replay response, and concurrency
+semantics. An ambiguous effect is never automatically retried unless the Contract
+defines a safe status/receipt reconciliation procedure.
+
+### 9. Adapter restrictions
+
+An automatically planned structural Adapter must be pure, deterministic, bounded,
+no-network, no-secret, no external state, and normally a capability-free Wasm
+component. Its source and target schemas are validated at every hop, and its exact
+artifact is pinned.
+
+Lossy conversion requires explicit Profile opt-in. Any conversion requiring secrets,
+network, Host authority, persistence, or external effects is a Provider or Workflow
+step, not a structural Adapter, and receives normal identity, Grant, audit, and error
+semantics. Adapter chains do not inherit ambient authority.
+
+### 10. Remote Providers are a separate trust vector
+
+L0-L4 may describe local containment mechanisms. Remote is not a higher containment
+level. Selection records independent dimensions: execution containment, operator
+trust, data locality/region, egress and destination identity, filesystem/device
+reachability, persistence/retention, credential exposure, and auditability.
+
+A remote Provider is treated as disclosure to a third party even when its local Host
+access is zero. TLS identity, endpoint pinning, region, retention, receipt/status API,
+and cancellation semantics are part of its pinned Provider definition.
+
+### 11. ResourceHandle closes TOCTOU
+
+A ResourceHandle binds stable resource identity, expected type, provider/root,
+inode/device or platform equivalent, generation/content digest/ETag, allowed
+operations, range and byte quota, owner/target principals, Profile/Activation,
+ExecutionDomain/boot epoch, expiry/use count, SecurityEpoch, and symlink/reparse/
+hardlink policy.
+
+Use is descriptor/handle based and revalidated at the Broker boundary. Path strings
+are not re-resolved after approval. Writes require an explicit version precondition
+or atomic create/replace semantic. Identity change, stale generation, namespace
+change, or epoch mismatch revokes the Handle.
+
+### 12. Resource accounting, queues, and eviction
+
+Admission charge is the maximum of measured artifact P95, declared minimum, Runtime
+floor, Profile reservation, and backend fixed overhead, multiplied by the admitted
+concurrency set. Accounting includes guest/VMM memory, shared pages charged by policy,
+Host Extension domains, queue reservations, state/cache/log buffers, and startup
+surge. Soft, hard, burst, and OOM limits are distinct.
+
+Queues are bounded and fair across global, Profile, caller, Pack, and binding scopes.
+An accepted queue item owns a resource reservation; timeout/cancel releases it.
+Pressure rejects new work before violating the Host free-resource guard.
+
+Eviction is fenced:
+
+  Running -> Draining -> BrokerFenced -> AllRequestsQuiesced -> StateFlushed
+          -> HandlesRevoked -> Terminated
+
+Failure to quiesce escalates to kill. No new effect begins after BrokerFenced. A
+suspended VM retains its full RAM charge.
+
+### 13. Runtime evidence and attestation terminology
+
+Guest self-report is not attestation. Runtime evidence includes verified base image,
+kernel, guest-agent and executable digests, immutable boot/config measurement, mount
+identity, fresh Host nonce, replay protection, authenticated channel, and an agent key
+unavailable to the Pack process. Agent and Pack process are separated.
+
+The term hardware-rooted attestation is used only where a platform trust root verifies
+the complete chain and its guarantees are documented. Otherwise the API and UI say
+runtime evidence and state the limited guarantee. Evidence never replaces final
+authorization.
+
+### 14. Timeout, cancellation, and ambiguous effects
+
+At deadline or cancellation the Host:
+
+- prevents new local Broker I/O/effects under the Lease;
+- fences and terminates Host-owned local child/process/component/VM resources;
+- requests remote cancellation only as best effort;
+- records whether the external system accepted, rejected, completed, or has unknown
+  status;
+- returns ambiguous_effect when an accepted or possibly accepted effect cannot be
+  proven complete or absent;
+- reconciles through signed receipt, idempotency key, or status query where defined.
+
+Zero residual execution is a guarantee only for Host-owned local resources. It is not
+claimed for a remote service or an external effect already accepted. Automatic retry
+after ambiguous_effect is prohibited without Contract-defined safe reconciliation.
+
+### 15. GUI origin and trusted attention
+
+`/p/<pack-id>/...` is only a routing namespace, never a security origin. Each Pack UI
+uses a dedicated origin or an opaque sandbox without allow-same-origin. Storage,
+service workers, cache, cookies, permissions, navigation, downloads, messaging, and
+clipboard are partitioned or denied by default with CSP and Permissions Policy.
+
+Approval and security state are rendered on a Host-owned surface which Pack content
+cannot cover, intercept, navigate, or synthesize. The product defines an unforgeable
+trusted-attention cue; it does not claim ordinary styling is impossible to imitate.
+Profile swap revokes routes, channels, listeners, timers, and Handle namespaces.
+
+### 16. Trigger/Wake Kernel
+
+A Dormant Pack cannot wake itself. The Runtime TCB therefore contains a minimal,
+domain-independent Trigger/Wake Kernel responsible only for durable registration,
+OS wake integration, monotonic due-time tracking, occurrence claiming, bounded
+at-least-once delivery, deduplication identifier, quota, and issuance of a trigger-
+specific one-shot Lease.
+
+Calendar, recurrence, timezone, retry, and workflow meaning remain in Scheduler Pack.
+The Kernel invokes a pinned Trigger Contract and never executes Scheduler-defined code
+while deciding whether a domain may wake. SecurityEpoch/revocation is checked before
+wake and before delivery.
+
+### 17. Policy evaluator bootstrap
+
+The immutable safety evaluator is TCB, no-I/O, deterministic, bounded, version-pinned,
+and separately tested. A normal Policy Pack cannot replace it or decide whether it is
+allowed to execute. Optional Policy Packs may only produce restrict-only input through
+a safe declarative form or capability-free bounded interpreter. Evaluator failure,
+recursion, unknown semantics, and revision mismatch deny.
+
+### 18. State identity and migration
+
+Authoritative state is keyed by Pack/Function owner, Profile or declared sharing
+scope, state schema revision, state generation, and SecurityEpoch. Activation prepares
+a COW generation. Cross-version migration is an explicit, pinned operation with input
+and output schema digests, bounded execution, no ambient Host authority, journaled
+commit, and rollback/forward-only policy. Cache and derived state are never silently
+promoted to authoritative state.
+
+## Required implementation order
+
+The safe dependency order is:
+
+1. tracked normative schemas/ADRs, reproducible inventory, scanner, and CI;
+2. trusted repository metadata, quarantine CAS, artifact variants, verifier;
+3. immutable safety evaluator, authority DB, audit reservation, SecurityEpoch;
+4. ProfileLock/ResolvedPlan and fenced activation without executable backends;
+5. canonical Broker/Request protocol and static pre-admission;
+6. Wasm and PackVM backends initially unreachable except conformance harnesses;
+7. runtime evidence, resource controller, lifecycle and cancellation;
+8. one complete Capability vertical slice;
+9. GUI, Workflow/Trigger, remote Provider, and Pack migrations;
+10. legacy-path deletion.
+
+Every intermediate PR must be safe when merged: unverified CAS is quarantine-only;
+backends are feature-disabled until Broker, authority, audit, admission, epoch, and
+lifecycle gates exist; no temporary direct-call fallback is permitted.
+
+## Security invariants
+
+1. No untrusted code runs before static admission and bounded resource reservation.
+2. Activation exposes a complete old or complete new generation, never a mixture.
+3. Compatibility pins cannot override SecurityEpoch or revocation.
+4. ProfileLock pins the exact executable platform variant.
+5. Unverified or stale-repository artifacts remain non-executable.
+6. Structural Adapters are capability-free; effectful conversion is explicit.
+7. Remote execution is modeled as third-party disclosure, not stronger local isolation.
+8. ResourceHandles remain stable across use and fail closed on identity/generation drift.
+9. Queued, starting, running, suspended, and Host Extension resources are all charged.
+10. Timeout never claims to undo an accepted external effect.
+11. Pack UI cannot share an origin or trusted-attention surface with the Host.
+12. Dormant work starts only through the bounded Trigger/Wake Kernel or admitted Request.
+13. Policy extensions can restrict but cannot replace the immutable safety evaluator.
+
+## Consequences
+
+- Unknown Pack activation requires more metadata and preflight work, but unauthorized
+  cold-start resource exhaustion is bounded before code execution.
+- Activation, update, and emergency revocation become explicit recoverable protocols.
+- Distribution remains usable without Docker or user-managed infrastructure while
+  still resisting rollback and freeze attacks.
+- Remote and external effects expose uncertainty rather than promising impossible
+  cancellation guarantees.
+- Runtime Core remains small in domain semantics, while its security lifecycle remains
+  strict and non-extensible by untrusted code.

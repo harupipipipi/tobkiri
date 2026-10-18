@@ -1,85 +1,73 @@
+"""Execute a digest-pinned command in the selected coding sandbox."""
+
 from __future__ import annotations
 
+import shlex
 from typing import Any
 
 from blocks._common import error, ok
-from blocks.coding.sandbox_common import sandbox_manager
-from backend.sandbox.isolation import ManagedSandboxSupervisor
+from blocks.coding.sandbox_common import run_sandbox_control
 
 
-def run(input_data: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:
-    command = input_data.get("command")
-    argv = input_data.get("argv")
-    if not command and not argv:
-        return error("'command' or 'argv' is required", code="INVALID_INPUT")
+def run(
+    input_data: dict[str, Any],
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Route sandbox execution through its receipt-gated service owner."""
+
     if input_data.get("network") or input_data.get("network_enabled"):
         return ok(
             {
                 "requires_approval": True,
                 "approval_required": True,
                 "operation": "sandbox.network.request",
-                "message": "Sandbox network access requires a separate approval path.",
+                "message": "This sandbox service does not provide network access.",
                 "sandbox_only": True,
+                "host_modified": False,
             }
         )
     try:
-        manager = sandbox_manager(context)
-        workspace = manager.prepare(input_data, context or {})
-        supervisor = _supervisor(context)
-        result = supervisor.execute_coding_terminal(
-            {
-                "sandbox_id": workspace.sandbox_id,
-                "workspace_root": str(workspace.work_root),
-                "command": command,
-                "argv": argv,
-                "cwd": input_data.get("cwd") or ".",
-                "timeout_seconds": input_data.get("timeout") or input_data.get("timeout_seconds") or 30,
-                "network_enabled": False,
-                "provider_id": input_data.get("provider_id"),
-            }
-        )
-        quota = manager.validate_post_run(workspace)
-        preview = manager.diff_preview(workspace, max_chars=input_data.get("max_diff_chars"))
-        payload = {
-            **result,
-            "host_modified": False,
-            "sandbox_only": True,
-            "post_run_audit": quota,
-            "changed_files": preview.get("changed_files", []),
-            "changed_file_count": preview.get("changed_file_count", 0),
-            "diff": preview.get("diff", ""),
-            "diff_truncated": preview.get("diff_truncated", False),
-            "diff_summary": preview.get("diff_summary", ""),
-            **workspace.to_public_dict(),
-        }
-        if not result.get("success", result.get("ok", False)):
-            return _error_with_details(
-                str(result.get("error") or result.get("stderr") or "sandbox terminal failed"),
-                code=str(result.get("error_type") or result.get("code") or "SANDBOX_ERROR"),
-                details=payload,
-            )
-        return ok(
-            payload
-        )
+        command = _command(input_data)
     except ValueError as exc:
         return error(str(exc), code="INVALID_INPUT")
-    except Exception as exc:
-        return error(str(exc), code="SANDBOX_ERROR")
-
-
-def _supervisor(context: dict[str, Any] | None) -> ManagedSandboxSupervisor:
-    injected = (context or {}).get("managed_sandbox_supervisor") if isinstance(context, dict) else None
-    if isinstance(injected, ManagedSandboxSupervisor):
-        return injected
-    return ManagedSandboxSupervisor()
-
-
-def _error_with_details(message: str, *, code: str, details: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "status": "error",
-        "error": {
-            "code": code,
-            "message": message,
-            "details": details,
+    image = str(input_data.get("image") or "").strip()
+    if not image:
+        return error("'image' is required", code="INVALID_INPUT")
+    if str(input_data.get("cwd") or ".") != ".":
+        return error(
+            "this sandbox contract only executes from the workspace root",
+            code="INVALID_INPUT",
+        )
+    timeout = max(
+        1,
+        min(
+            300,
+            int(input_data.get("timeout") or input_data.get("timeout_seconds") or 60),
+        ),
+    )
+    return run_sandbox_control(
+        input_data,
+        context,
+        legacy_operation="sandbox.terminal_exec",
+        control_operation="execute",
+        arguments=lambda sandbox_id, workspace_id: {
+            "sandbox_id": sandbox_id,
+            "image": image,
+            "command": command,
+            "timeout": timeout,
+            "workspace_id": workspace_id,
         },
-    }
+    )
+
+
+def _command(input_data: dict[str, Any]) -> list[str]:
+    argv = input_data.get("argv")
+    if isinstance(argv, list) and argv:
+        return [str(item) for item in argv]
+    command = str(input_data.get("command") or "").strip()
+    if not command:
+        raise ValueError("'command' or 'argv' is required")
+    parsed = shlex.split(command)
+    if not parsed:
+        raise ValueError("command is empty")
+    return parsed

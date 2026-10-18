@@ -1,0 +1,478 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "conversation.turn.v1",
+      "operations": [
+        {
+          "effect_ceiling": [],
+          "error_schema_digest": "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:bef8e7369d362483cb966f08a4d30bdb2ebe393298f2fc508636680d637e9bef",
+          "operation_id": "complete",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "declarative"
+        }
+      ],
+      "owner": "defaultspack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:f4652500caa77b17c7b24838da090ecf0da42cc3c3cd7ff7937a385a67ee067f",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:f4652500caa77b17c7b24838da090ecf0da42cc3c3cd7ff7937a385a67ee067f",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "sandbox",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "4.0.0"
+        },
+        "provider_id": "defaultspack.conversation",
+        "required_capabilities": [],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:4ab185713b507f4cece1a3fadadcd9b8ed0918f66570d9d6d7b3b22f0ebca59a",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:bef8e7369d362483cb966f08a4d30bdb2ebe393298f2fc508636680d637e9bef": {
+          "additionalProperties": false,
+          "properties": {
+            "context": {
+              "type": "object"
+            },
+            "messages": {
+              "items": {
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "model": {
+              "type": "string"
+            },
+            "params": {
+              "type": "object"
+            },
+            "runtime_context": {
+              "type": "object"
+            },
+            "timezone": {
+              "type": "string"
+            },
+            "tools": {
+              "items": {
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "messages"
+          ],
+          "type": "object"
+        },
+        "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.resource.application.presentation.v1",
+      "operations": [
+        {
+          "effect_ceiling": [],
+          "error_schema_digest": "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:63ae091e96456d7eab02d161d39e8ed538d3191cbc339d53cd8a0a629d0e105d",
+          "operation_id": "defaultspack.presentation.read",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "declarative"
+        }
+      ],
+      "owner": "defaultspack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:f4652500caa77b17c7b24838da090ecf0da42cc3c3cd7ff7937a385a67ee067f",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:f4652500caa77b17c7b24838da090ecf0da42cc3c3cd7ff7937a385a67ee067f",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "sandbox",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "4.0.0"
+        },
+        "provider_id": "defaultspack.application-presentation",
+        "required_capabilities": [],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:d6e1d7af7ba7009863707c15c253dfe43728453b901c6db7c1d33e0861357967",
+      "schema_catalog": {
+        "sha256:63ae091e96456d7eab02d161d39e8ed538d3191cbc339d53cd8a0a629d0e105d": {
+          "additionalProperties": false,
+          "properties": {
+            "_session_id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "ui",
+                "commands"
+              ]
+            },
+            "model_options": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "maxLength": 4096,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "value": {
+                    "maxLength": 4096,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "value",
+                  "label"
+                ],
+                "type": "object"
+              },
+              "maxItems": 256,
+              "type": "array"
+            },
+            "profile_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.python.sandbox.v1",
+      "operations": [
+        {
+          "effect_ceiling": [],
+          "error_schema_digest": "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:2d6265cabc4a938f5c19349d3a8fd1a1aceaece867dc0eabec441f55038b41e3",
+          "operation_id": "defaultspack.python-sandbox-guest-execute",
+          "output_schema_digest": "sha256:ed6407e421c230dfba5ea39b64aea5801344be85458d3a15bfdfcb791fc9e08c",
+          "scope_semantics": "declarative"
+        }
+      ],
+      "owner": "defaultspack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:f4652500caa77b17c7b24838da090ecf0da42cc3c3cd7ff7937a385a67ee067f",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:f4652500caa77b17c7b24838da090ecf0da42cc3c3cd7ff7937a385a67ee067f",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "sandbox",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "defaultspack.python-sandbox-guest",
+        "required_capabilities": [],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:4a63f37526ae3f20bc144a03553fff7597e7b391213dd6b3ca841b3fd004e682",
+      "schema_catalog": {
+        "sha256:2d6265cabc4a938f5c19349d3a8fd1a1aceaece867dc0eabec441f55038b41e3": {
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "test_targets"
+                    ]
+                  }
+                ]
+              },
+              "properties": {
+                "mode": {
+                  "const": "script"
+                }
+              },
+              "required": [
+                "mode",
+                "script_path",
+                "arguments",
+                "stdin"
+              ]
+            },
+            {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "script_path"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "arguments"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "stdin"
+                    ]
+                  }
+                ]
+              },
+              "properties": {
+                "mode": {
+                  "const": "unittest"
+                }
+              },
+              "required": [
+                "mode",
+                "test_targets"
+              ]
+            }
+          ],
+          "properties": {
+            "arguments": {
+              "items": {
+                "maxLength": 1024,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 32,
+              "type": "array"
+            },
+            "cwd": {
+              "default": ".",
+              "maxLength": 512,
+              "minLength": 1,
+              "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).*$",
+              "type": "string"
+            },
+            "mode": {
+              "enum": [
+                "script",
+                "unittest"
+              ]
+            },
+            "script_path": {
+              "maxLength": 512,
+              "minLength": 1,
+              "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+\\.py$",
+              "type": "string"
+            },
+            "stdin": {
+              "maxLength": 16384,
+              "type": "string"
+            },
+            "test_targets": {
+              "items": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+                "type": "string"
+              },
+              "maxItems": 16,
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "timeout_seconds": {
+              "maximum": 60,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "workspace_snapshot": {
+              "description": "Host-captured typed source bytes; Host enforces decoded aggregate <=512 KiB, each file <=64 KiB, path depth <=64, entry count <=1024, and regular files only.",
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "content_base64": {
+                    "maxLength": 87384,
+                    "type": "string"
+                  },
+                  "path": {
+                    "maxLength": 512,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path",
+                  "content_base64"
+                ],
+                "type": "object"
+              },
+              "maxItems": 256,
+              "type": "array"
+            }
+          },
+          "required": [
+            "mode",
+            "cwd",
+            "timeout_seconds",
+            "workspace_snapshot"
+          ],
+          "type": "object"
+        },
+        "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "sha256:ed6407e421c230dfba5ea39b64aea5801344be85458d3a15bfdfcb791fc9e08c": {
+          "additionalProperties": false,
+          "properties": {
+            "duration_ms": {
+              "maximum": 60000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "exit_code": {
+              "maximum": 255,
+              "minimum": -255,
+              "type": "integer"
+            },
+            "status": {
+              "enum": [
+                "completed",
+                "failed"
+              ]
+            },
+            "stderr": {
+              "maxLength": 65536,
+              "type": "string"
+            },
+            "stdout": {
+              "maxLength": 65536,
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "exit_code",
+            "stdout",
+            "stderr",
+            "duration_ms"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    }
+  ],
+  "pack_id": "defaultspack",
+  "source_identity": "sha256:f4652500caa77b17c7b24838da090ecf0da42cc3c3cd7ff7937a385a67ee067f"
+}

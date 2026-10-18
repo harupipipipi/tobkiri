@@ -27,6 +27,7 @@
         "additionalProperties": false,
         "properties": {
           "workspace_id": {"type": "string"},
+          "sandbox_id": {"type": "string", "minLength": 1},
           "max_chars": {"type": "integer", "minimum": 1},
           "max_output_chars": {"type": "integer", "minimum": 1},
           "include_paths": {"type": "array", "items": {"type": "string"}}

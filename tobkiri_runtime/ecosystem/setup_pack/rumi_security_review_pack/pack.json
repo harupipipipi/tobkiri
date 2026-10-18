@@ -43,7 +43,7 @@
       "Network and executable scanning are intentionally out of scope."
     ]
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Security review guidance should remain optional and must not become implicit grant or approval authority."
   },

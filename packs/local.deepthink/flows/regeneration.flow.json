@@ -1,0 +1,41 @@
+{
+  "format": "tobkiri.flow/1",
+  "id": "regenerate",
+  "implements": "local.deepthink.regeneration-flow@1.0",
+  "trigger": {"input": "local.deepthink.continuation-input@1.0"},
+  "loop_limits": "profile-default",
+  "on_error": {"default": "fail", "steps": {}},
+  "steps": [
+    {
+      "id": "context",
+      "call": {
+        "shape": "local.deepthink.input-context@1.0",
+        "op": "regeneration",
+        "args": {"selection": "$input.selection"}
+      },
+      "out": "context"
+    },
+    {
+      "id": "regenerate",
+      "call": {
+        "shape": "local.deepthink.workflow@1.0",
+        "op": "regenerate-phase",
+        "args": {"selection": "$input.selection", "resolution-digest": "$input.resolution-digest"}
+      },
+      "out": "turn",
+      "stream": {"emit": "local.harness-chat.assistant-output@1.0", "collect": "turn"}
+    },
+    {
+      "id": "save",
+      "call": {
+        "shape": "local.harness-chat.conversation-store@1.0",
+        "op": "append",
+        "args": {
+          "conversation": "$context.conversation",
+          "input": {"conversation": "$context.conversation", "text": "$context.history-text"},
+          "events": "$turn"
+        }
+      }
+    }
+  ]
+}

@@ -29,6 +29,7 @@ from .project_writer import write_json
 from .render_matrix import RenderMatrixRunner
 from .subagent_backend import SubagentToolBackend
 from .verifier import ProjectVerifier
+from domain.tool.schema_adapter import list_or_empty, mapping_or_empty
 
 
 class RecursiveUIBuildOrchestrator:
@@ -561,8 +562,8 @@ def _idempotency(data: dict[str, Any]) -> str | None:
 
 
 def _fake_failures(data: dict[str, Any]) -> dict[str, str]:
-    options = data.get("options") if isinstance(data.get("options"), dict) else {}
-    failures = options.get("fakeFailures") if isinstance(options.get("fakeFailures"), dict) else {}
+    options = mapping_or_empty(data.get("options"))
+    failures = mapping_or_empty(options.get("fakeFailures"))
     return {str(key): str(value) for key, value in failures.items()}
 
 
@@ -875,14 +876,14 @@ def _generated_files_summary(
             "intent": artifacts.get("intent"),
             "topology": artifacts.get("topology"),
             "splitManifest": artifacts.get("splitManifest"),
-            "pipelineTasks": list(artifacts.get("pipelineTasks") if isinstance(artifacts.get("pipelineTasks"), list) else []),
+            "pipelineTasks": list_or_empty(artifacts.get("pipelineTasks")),
             "contracts": list(artifacts.get("contracts") or []),
         },
         "composition": {
             "sourceRoot": composition.get("sourceRoot"),
             "entry": composition.get("entry"),
-            "imports": len(composition.get("imports") if isinstance(composition.get("imports"), list) else []),
-            "slotMappings": len(composition.get("slotMappings") if isinstance(composition.get("slotMappings"), list) else []),
+            "imports": len(list_or_empty(composition.get("imports"))),
+            "slotMappings": len(list_or_empty(composition.get("slotMappings"))),
         },
         "appliedProject": apply_report,
         "finalReport": f".rumi/ui/runs/{plan.run_id}/reports/final.json",
@@ -919,20 +920,20 @@ def _recursive_split_summary(plan: UIPlan) -> dict[str, Any]:
 
 
 def _accepted_foundation_summary(foundation: dict[str, Any]) -> dict[str, Any]:
-    spec = foundation.get("spec") if isinstance(foundation.get("spec"), dict) else {}
+    spec = mapping_or_empty(foundation.get("spec"))
     if not spec:
         spec = foundation
-    direction = spec.get("direction") if isinstance(spec.get("direction"), dict) else {}
-    typography = spec.get("typography") if isinstance(spec.get("typography"), dict) else {}
-    color = spec.get("color") if isinstance(spec.get("color"), dict) else {}
-    surface = spec.get("surface") if isinstance(spec.get("surface"), dict) else {}
+    direction = mapping_or_empty(spec.get("direction"))
+    typography = mapping_or_empty(spec.get("typography"))
+    color = mapping_or_empty(spec.get("color"))
+    surface = mapping_or_empty(spec.get("surface"))
     return {
         "candidateId": foundation.get("candidateId") or spec.get("candidateId"),
         "productMode": direction.get("productMode"),
-        "typographyRoles": sorted((typography.get("roles") or {}).keys()) if isinstance(typography.get("roles"), dict) else [],
-        "colorRoles": list(color.get("roles") if isinstance(color.get("roles"), list) else []),
+        "typographyRoles": sorted(mapping_or_empty(typography.get("roles")).keys()),
+        "colorRoles": list_or_empty(color.get("roles")),
         "surfacePolicy": surface,
-        "primitiveCount": len(spec.get("primitives") if isinstance(spec.get("primitives"), list) else []),
+        "primitiveCount": len(list_or_empty(spec.get("primitives"))),
     }
 
 
@@ -941,13 +942,13 @@ def _accepted_leaf_bundles_summary(accepted: dict[str, Any]) -> list[dict[str, A
     for node_id, decision in sorted(accepted.items()):
         data = decision if isinstance(decision, dict) else {}
         chosen = data.get("acceptedCandidateId")
-        decision_payload = data.get("decision") if isinstance(data.get("decision"), dict) else {}
+        decision_payload = mapping_or_empty(data.get("decision"))
         rows.append(
             {
                 "nodeId": node_id,
                 "acceptedCandidateId": chosen,
                 "compressionScore": decision_payload.get("compressionScore"),
-                "rejectedCount": len(data.get("rejected") if isinstance(data.get("rejected"), list) else []),
+                "rejectedCount": len(list_or_empty(data.get("rejected"))),
                 "stateCoverage": decision_payload.get("stateCoverage"),
                 "renderMatrix": decision_payload.get("renderMatrix"),
             }
@@ -968,7 +969,7 @@ def _audit_summary(audits: dict[str, Any]) -> dict[str, Any]:
     ]
     return {
         "status": audits.get("status"),
-        "failedAudits": list(audits.get("failedAudits") if isinstance(audits.get("failedAudits"), list) else []),
+        "failedAudits": list_or_empty(audits.get("failedAudits")),
         "sections": {
             key: audits.get(key, {}).get("status")
             for key in keys
@@ -982,7 +983,7 @@ def _failed_retried_candidate_summary(accepted: dict[str, Any]) -> dict[str, Any
     retried: list[dict[str, Any]] = []
     for node_id, decision in sorted(accepted.items()):
         data = decision if isinstance(decision, dict) else {}
-        for item in data.get("rejected") if isinstance(data.get("rejected"), list) else []:
+        for item in list_or_empty(data.get("rejected")):
             if isinstance(item, dict):
                 rejected.append({"nodeId": node_id, **item})
         accepted_candidate = str(data.get("acceptedCandidateId") or "")

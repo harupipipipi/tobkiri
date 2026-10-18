@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from domain.ui_compiler import RenderMatrix, UIPlan
+from domain.tool.schema_adapter import list_or_empty, mapping_or_empty
 
 
 class UIQualityAuditOrchestrator:
@@ -112,12 +113,12 @@ def _foundation_report(foundation: dict[str, Any]) -> dict[str, Any]:
     for key in ("direction", "typography", "spacing", "color", "surface", "primitives"):
         if not foundation.get(key):
             missing.append(key)
-    direction = foundation.get("direction") if isinstance(foundation.get("direction"), dict) else {}
-    surface = foundation.get("surface") if isinstance(foundation.get("surface"), dict) else {}
+    direction = mapping_or_empty(foundation.get("direction"))
+    surface = mapping_or_empty(foundation.get("surface"))
     evidence = {
         "productMode": direction.get("productMode"),
         "surfacePolicy": surface,
-        "primitiveCount": len(foundation.get("primitives") if isinstance(foundation.get("primitives"), list) else []),
+        "primitiveCount": len(list_or_empty(foundation.get("primitives"))),
     }
     return _report("fail" if missing else "pass", missing, evidence)
 
@@ -185,8 +186,8 @@ def _text_pressure_report(metrics: dict[str, Any]) -> dict[str, Any]:
 
 
 def _typography_report(foundation: dict[str, Any], metrics: dict[str, Any]) -> dict[str, Any]:
-    typography = foundation.get("typography") if isinstance(foundation.get("typography"), dict) else {}
-    roles = typography.get("roles") if isinstance(typography.get("roles"), dict) else {}
+    typography = mapping_or_empty(foundation.get("typography"))
+    roles = mapping_or_empty(typography.get("roles"))
     required = {"pageTitle", "sectionTitle", "body", "label", "caption", "numeric", "code"}
     missing = sorted(required - set(roles))
     issues = [f"missing typography roles: {', '.join(missing)}"] if missing else []
@@ -196,8 +197,8 @@ def _typography_report(foundation: dict[str, Any], metrics: dict[str, Any]) -> d
 
 
 def _color_report(foundation: dict[str, Any], metrics: dict[str, Any]) -> dict[str, Any]:
-    color = foundation.get("color") if isinstance(foundation.get("color"), dict) else {}
-    roles = color.get("roles") if isinstance(color.get("roles"), list) else []
+    color = mapping_or_empty(foundation.get("color"))
+    roles = list_or_empty(color.get("roles"))
     required = {"canvas", "surface", "textPrimary", "textSecondary", "actionPrimary", "statusCritical"}
     missing = sorted(required - set(str(item) for item in roles))
     issues = [f"missing semantic color roles: {', '.join(missing)}"] if missing else []
@@ -211,7 +212,7 @@ def _color_report(foundation: dict[str, Any], metrics: dict[str, Any]) -> dict[s
 
 
 def _surface_report(foundation: dict[str, Any], metrics: dict[str, Any]) -> dict[str, Any]:
-    surface = foundation.get("surface") if isinstance(foundation.get("surface"), dict) else {}
+    surface = mapping_or_empty(foundation.get("surface"))
     max_nested = int(surface.get("maxNestedDepth") or 1)
     issues = []
     if int(metrics.get("maxSurfaceDepth") or 0) > max_nested + 1:
