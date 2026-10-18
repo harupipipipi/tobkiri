@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'authority_approval_screen.dart';
 import 'models.dart';
+import 'pc_conversations/pc_conversations.dart';
 import 'rumi_api_client.dart';
 import 'secure_settings_store.dart';
 
@@ -19,6 +20,7 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
   final _settingsStore = SecureSettingsStore();
   final _serverController = TextEditingController();
   final _tokenController = TextEditingController();
+  late final PcConversationsController _pcConversationsController;
 
   Timer? _refreshTimer;
   RumiRemoteSettings _settings = RumiRemoteSettings.defaults;
@@ -28,17 +30,19 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
   MigrationStatus? _migration;
   List<PackRequest> _packRequests = const [];
   String? _error;
+  String? _activeConversationId;
   bool _loading = true;
   bool _busy = false;
 
-  RumiApiClient get _client => RumiApiClient(
-        baseUrl: _settings.baseUrl,
-        bearerToken: _settings.token,
-      );
+  RumiApiClient get _client =>
+      RumiApiClient(baseUrl: _settings.baseUrl, bearerToken: _settings.token);
 
   @override
   void initState() {
     super.initState();
+    _pcConversationsController = PcConversationsController(
+      loader: _loadPcConversations,
+    );
     _loadSettings();
   }
 
@@ -47,6 +51,7 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
     _refreshTimer?.cancel();
     _serverController.dispose();
     _tokenController.dispose();
+    _pcConversationsController.dispose();
     super.dispose();
   }
 
@@ -80,6 +85,33 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
     );
   }
 
+  Future<List<PcConversation>> _loadPcConversations() async {
+    if (_settings.token.trim().isEmpty) {
+      throw const RumiApiException('Bearer token is required');
+    }
+    final client = _client;
+    try {
+      final catalog = await client.listPcConversations();
+      return catalog.conversations;
+    } finally {
+      client.close();
+    }
+  }
+
+  Future<void> _refreshPcConversations() async {
+    try {
+      if (_settings.token.trim().isEmpty) {
+        _pcConversationsController.markOffline(stale: false);
+        return;
+      }
+      await _pcConversationsController.refresh();
+    } catch (error) {
+      // The drawer owns its cached projection and status; a conversation
+      // failure must not make health/module refresh fail with it.
+      _pcConversationsController.markOffline(error: error);
+    }
+  }
+
   Future<void> _saveSettings(bool autoRefresh) async {
     final settings = RumiRemoteSettings(
       baseUrl: _serverController.text.trim(),
@@ -90,6 +122,7 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
     if (!mounted) {
       return;
     }
+    _pcConversationsController.reset();
     setState(() {
       _settings = settings;
       _health = null;
@@ -97,6 +130,7 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
       _migration = null;
       _packRequests = const [];
       _selectedModule = null;
+      _activeConversationId = null;
       _error = null;
     });
     _configureTimer(settings);
@@ -116,6 +150,10 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
     }
     final client = _client;
     try {
+      // This refresh is isolated from the module projection.  A conversation
+      // failure keeps the last successful drawer cache instead of making the
+      // rest of the remote control panel unavailable.
+      unawaited(_refreshPcConversations());
       final health = await client.health();
       ModuleCatalog? catalog;
       MigrationStatus? migration;
@@ -182,6 +220,14 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
         setState(() => _busy = false);
       }
     }
+  }
+
+  void _selectPcConversation(PcConversation conversation) {
+    setState(() => _activeConversationId = conversation.id);
+    Navigator.of(context).maybePop();
+    _showSnack(
+      '${conversation.displayTitle}: read-only. Open this conversation on the PC.',
+    );
   }
 
   Future<void> _moduleAction(RumiModule module, ModuleAction action) async {
@@ -257,11 +303,7 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
   void _showSnack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          message,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
+        content: Text(message, maxLines: 2, overflow: TextOverflow.ellipsis),
       ),
     );
   }
@@ -274,6 +316,16 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
 
     final modules = _catalog?.modules ?? const <RumiModule>[];
     return Scaffold(
+      onDrawerChanged: (opened) {
+        if (opened && !_pcConversationsController.loading) {
+          unawaited(_refreshPcConversations());
+        }
+      },
+      drawer: PcConversationsDrawer(
+        controller: _pcConversationsController,
+        activeConversationId: _activeConversationId,
+        onConversationSelected: _selectPcConversation,
+      ),
       appBar: AppBar(
         title: const Text('Rumi Remote'),
         actions: [
@@ -914,9 +966,9 @@ class _JsonPanel extends StatelessWidget {
             const SizedBox(height: 8),
             SelectableText(
               encoder.convert(data),
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontFamily: 'monospace',
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
             ),
           ],
         ),
