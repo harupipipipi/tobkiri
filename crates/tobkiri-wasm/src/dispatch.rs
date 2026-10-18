@@ -450,9 +450,7 @@ impl PackHost {
                 }
                 Err(_) if frame.context().cancel().is_cancelled() => Outcome::Cancelled,
                 Err(error) => Outcome::Failed {
-                    code: step_error(anyhow::anyhow!(error.to_string()))
-                        .audit_code()
-                        .into(),
+                    code: dispatch_error_audit_code(error).into(),
                 },
             };
             // Do not borrow a result containing CoreStream across the terminal
@@ -1102,6 +1100,15 @@ pub(crate) fn public_core_error_code(code: &str) -> Option<StepError> {
     Some(StepError::new(code, message))
 }
 
+/// Classify the existing typed error without moving it or parsing its display
+/// text. Native storage failures, deadline and cancellation keep their earlier
+/// dispatch branches; other untyped errors keep the existing internal fallback.
+fn dispatch_error_audit_code(error: &anyhow::Error) -> &'static str {
+    error
+        .downcast_ref::<StepError>()
+        .map_or("internal", StepError::audit_code)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1336,9 +1343,12 @@ mod tests {
                     &owners,
                     verified,
                 )
-                .unwrap_err()
-                .downcast::<StepError>()
-                .unwrap();
+                .unwrap_err();
+                assert_eq!(
+                    dispatch_error_audit_code(&error),
+                    if verified { code } else { "internal" }
+                );
+                let error = error.downcast::<StepError>().unwrap();
                 assert_eq!(error.code, if verified { code } else { "provider-error" });
                 assert!(
                     !error
@@ -1353,6 +1363,59 @@ mod tests {
             }
         }
         assert_eq!(meter.0.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn dispatch_audit_preserves_typed_errors_through_context_without_consuming_them() {
+        for code in [
+            "invalid",
+            "not-found",
+            "denied",
+            "approval-required",
+            "cancelled",
+            "deadline",
+            "limit-exceeded",
+            "conflict",
+            "unavailable",
+            "trap",
+            "blocked",
+            "internal",
+        ] {
+            let original = StepError::new(code, "bounded original diagnostic");
+            let error = anyhow::Error::new(original.clone());
+            assert_eq!(dispatch_error_audit_code(&error), code);
+            let error = error.context("different outer diagnostic");
+            assert_eq!(dispatch_error_audit_code(&error), code);
+            assert_eq!(error.downcast_ref::<StepError>(), Some(&original));
+        }
+    }
+
+    #[test]
+    fn dispatch_audit_does_not_infer_codes_from_untyped_or_unknown_errors() {
+        for code in CORE_ERROR_CODES {
+            let displayed = StepError::new(code, "display text is not typed evidence").to_string();
+            let error = anyhow::anyhow!(displayed.clone());
+            assert_eq!(dispatch_error_audit_code(&error), "internal");
+            let error = anyhow::anyhow!("untyped cause").context(displayed);
+            assert_eq!(dispatch_error_audit_code(&error), "internal");
+        }
+        let unknown = anyhow::Error::new(StepError::new(
+            "guest-private-code",
+            "invalid: a diagnostic cannot select an audit code",
+        ));
+        assert_eq!(dispatch_error_audit_code(&unknown), "internal");
+        // This helper handles only the final fallback branch. It does not widen
+        // the existing classification of untyped errors or inspect their text.
+        for error in [
+            tobkiri_gate::GateError::Cancelled,
+            tobkiri_gate::GateError::Deadline,
+            tobkiri_gate::GateError::ApprovalRequired,
+        ] {
+            assert_eq!(
+                dispatch_error_audit_code(&anyhow::Error::new(error)),
+                "internal"
+            );
+        }
     }
 
     #[test]

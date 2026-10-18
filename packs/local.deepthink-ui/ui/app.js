@@ -22,6 +22,24 @@ const restoreRun = document.querySelector("#restore-run");
 const restoreConversation = document.querySelector("#restore-conversation");
 const restoreButton = document.querySelector("#restore");
 const continuationShape = "local.deepthink.continuation-input@1.0";
+const PORT_ERROR_CODES = new Set([
+  "approval-required", "blocked", "cancelled", "closed", "conflict",
+  "consumed", "deadline", "denied", "duplicate", "internal", "invalid",
+  "limit", "limit-exceeded", "not-found", "persistence", "registration-full",
+  "stale-epoch", "trap", "unavailable",
+]);
+const RESTORE_ERROR_MESSAGES = new Set([
+  "Core refused the UI request", "Invalid UI request", "UI request refused",
+  "Core response exceeded the UI limit", "Port call failed",
+  "保存状態の形式または参照が一致しません。再送せず参照を保持してください。",
+  "照会中に参照入力が変わりました。以前の参照を保持し、再開は無効のままです。",
+]);
+
+function restoreErrorLabel(error) {
+  const code = error && typeof error === "object" && Object.getOwnPropertyDescriptor(error, "code")?.value;
+  return PORT_ERROR_CODES.has(code) ? code : "unknown";
+}
+
 let conversation = "e2e";
 let client;
 let active;
@@ -100,7 +118,9 @@ async function restoreReference() {
     rememberRun();
   } catch (error) {
     // No submit/history load/write or cache replacement follows a failed read.
-    status.textContent = `照会を完了できませんでした。以前の参照は保持しています。再開せず確認してください。 ${error.message}`;
+    // A closed transport classification is diagnostic, not a saved Run result.
+    const detail = RESTORE_ERROR_MESSAGES.has(error?.message) ? error.message : "";
+    status.textContent = `照会を完了できませんでした。以前の参照は保持しています。再開せず確認してください。 エラー分類: ${restoreErrorLabel(error)}。 ${detail}`;
     nextAction.textContent = "再送・自動修正はしていません。明示的に状態を読み直すか「新しい依頼」を選んでください。";
   } finally {
     busy = false;

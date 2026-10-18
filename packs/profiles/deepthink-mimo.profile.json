@@ -571,7 +571,7 @@
     },
     {
       "id": "local.deepthink",
-      "sha256": "sha256:c5a69c337ffc680ed10f013fab863c87251944e49127a3cda95bb8f0f24b685d",
+      "sha256": "sha256:8f42960c4271772a024d2a7040b66c5c6263bd64bc76b1aaa4d1bde15b30532b",
       "source": "file:../local.deepthink",
       "version": "0.1.0"
     },

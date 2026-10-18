@@ -80,6 +80,24 @@ fn decode_record(
     Ok((progress, record.stamp))
 }
 
+fn merge_loaded_progress(
+    run: &mut Run,
+    mut read: impl FnMut(&AttemptContext) -> Result<Option<GenerationProgress>, Failure>,
+) -> Result<(), Failure> {
+    for attempt in run.attempts.clone().values() {
+        let id = context(attempt)?;
+        if attempt["status"] == "completed"
+            || run.generation_resolutions.contains_key(&id.attempt_id)
+        {
+            continue;
+        }
+        if let Some(progress) = read(&id)? {
+            run.merge_generation_progress(progress)?;
+        }
+    }
+    Ok(())
+}
+
 impl RunSession {
     fn repository(store: Rc<storage::Store>) -> Result<Repository, Failure> {
         RunRepository::open(CoreDatabase(store)).map_err(repository_failure)
@@ -109,7 +127,28 @@ impl RunSession {
     }
 
     pub fn load(store: Rc<storage::Store>, run_id: &str) -> Result<Option<(Run, Head)>, Failure> {
-        let mut repository = Self::repository(store)?;
+        Self::load_from_repository(Self::repository(store)?, run_id)
+    }
+
+    /// Noncreating ordinary STATUS still includes the current unresolved public
+    /// progress. Raw load_existing intentionally has a different snapshot-only
+    /// contract for selected read-only operations.
+    pub fn load_status(
+        store: Rc<storage::Store>,
+        run_id: &str,
+    ) -> Result<Option<(Run, Head)>, Failure> {
+        let Some(repository) = RunRepository::open_existing_optional(CoreDatabase(store))
+            .map_err(repository_failure)?
+        else {
+            return Ok(None);
+        };
+        Self::load_from_repository(repository, run_id)
+    }
+
+    fn load_from_repository(
+        mut repository: Repository,
+        run_id: &str,
+    ) -> Result<Option<(Run, Head)>, Failure> {
         let Some(snapshot) = repository.load(run_id).map_err(repository_failure)? else {
             return Ok(None);
         };
@@ -130,17 +169,7 @@ impl RunSession {
             poisoned: false,
         };
         let mut run = run;
-        for attempt in run.attempts.clone().values() {
-            let id = context(attempt)?;
-            if attempt["status"] == "completed"
-                || run.generation_resolutions.contains_key(&id.attempt_id)
-            {
-                continue;
-            }
-            if let Some(progress) = session.read_progress(&id)? {
-                run.merge_generation_progress(progress)?;
-            }
-        }
+        merge_loaded_progress(&mut run, |attempt| session.read_progress(attempt))?;
         Ok(Some((run, session.head)))
     }
 
@@ -468,5 +497,168 @@ impl RunSession {
             return Err(repository_failure(RepositoryError::Conflict));
         }
         permit.consume(&expected).map_err(repository_failure)
+    }
+}
+
+#[cfg(test)]
+mod status_tests {
+    use super::*;
+    use crate::workflow::reconciliation::{
+        OBSERVATION_VERSION, ObservationProvenance, PROVENANCE_VERSION, READER_PORT,
+        ReaderObservation,
+    };
+
+    fn pending() -> (Run, GenerationProgress) {
+        let (mut run, _, _) = crate::run_selection::fixture();
+        let attempt = AttemptContext {
+            run_id: run.id.clone(),
+            run_request_digest: run.request_digest.clone(),
+            phase: "goal_intake".into(),
+            generation_key: "goal_intake@0:0".into(),
+            attempt_id: "goal_intake@0:0#0:0".into(),
+            request_digest: Digest::hash(b"diagnostic-request").as_str().into(),
+            route_digest: workflow::digest(&json!({"model":run.model,"settings":run.settings})),
+        };
+        run.attempts.insert(
+            attempt.attempt_id.clone(),
+            json!({
+                "phase":"goal_intake","status":"pending","context":attempt,"usage":null
+            }),
+        );
+        let mut progress = GenerationProgress::new(attempt);
+        progress
+            .accept(&json!({"kind":"metadata","text":json!({
+            "version":"tobkiri.chat.metadata.v1","generation_id":"gen-diagnostic-fixture",
+            "model":run.model,"provider":"fixture-provider"
+        }).to_string()}))
+            .unwrap();
+        progress
+            .accept(&json!({"kind":"delta","text":"{\"public\":"}))
+            .unwrap();
+        progress
+            .accept(
+                &json!({"kind":"usage","prompt-tokens":3,"completion-tokens":2,
+            "text":json!({"total_tokens":5,"cost_usd":"0.001"}).to_string()}),
+            )
+            .unwrap();
+        progress.next_snapshot().unwrap();
+        (run, progress)
+    }
+
+    fn freeze(run: &mut Run, progress: &GenerationProgress) {
+        let observation: ReaderObservation = serde_json::from_value(json!({
+            "version":OBSERVATION_VERSION,"generation_id":"gen-diagnostic-fixture",
+            "metadata":{"availability":"available","http_status":200,"model":run.model,
+                "provider":"fixture-provider","identity_diagnostics":null,
+                "reported_latency":null,"reported_generation_time":null,
+                "terminal":{"state":"normal_stop_reported","finish_reason":"stop",
+                    "native_finish_reason":"stop","cancelled":false},
+                "observed_usage":{"native_input_tokens":3,"native_output_tokens":2,
+                    "native_total_tokens":5,"native_cached_input_tokens":null,
+                    "native_reasoning_tokens":null,"normalized_input_tokens":null,
+                    "normalized_output_tokens":null,"cost_usd":"0.001",
+                    "native_tokens_complete":true,"cost_known":true}},
+            "content":{"availability":"not_found","http_status":404,"public_completion":null}
+        }))
+        .unwrap();
+        let provenance = ObservationProvenance {
+            version: PROVENANCE_VERSION.into(),
+            reader_pack: "local.openrouter-generation-reader".into(),
+            reader_contract: READER_PORT.into(),
+            reader_pack_hash: None,
+            reader_binding_digest: None,
+            profile_revision: None,
+            requested_model: run.model.clone(),
+            canonical_model: run.model.clone(),
+            observation_digest: workflow::digest(&json!(observation)),
+            model_mapping: None,
+        };
+        run.reconcile_generation(&progress.attempt.attempt_id, observation, provenance)
+            .unwrap();
+    }
+
+    #[test]
+    fn status_progress_merges_public_prefix_and_partial_accounting_without_settling() {
+        let (mut run, progress) = pending();
+        let original_id = run.id.clone();
+        let original_request = run.request_digest.clone();
+        let original_goal = run.goal.clone();
+        let mut reads = 0;
+        merge_loaded_progress(&mut run, |attempt| {
+            reads += 1;
+            assert_eq!(attempt, &progress.attempt);
+            Ok(Some(progress.clone()))
+        })
+        .unwrap();
+        assert_eq!(reads, 1);
+        let attempt = &run.attempts[&progress.attempt.attempt_id];
+        assert_eq!(attempt["progress"], json!(progress));
+        assert_eq!(attempt["usage"], progress.usage);
+        assert_eq!(attempt["status"], "pending");
+        assert_eq!(
+            (run.id.as_str(), run.request_digest.as_str()),
+            (original_id.as_str(), original_request.as_str())
+        );
+        assert_eq!(run.goal, original_goal);
+        assert!(run.generations.is_empty());
+        assert!(run.phases.is_empty());
+        assert_eq!(run.usage()["pending_attempts"], 1);
+        assert_eq!(run.usage()["tokens_complete"], false);
+    }
+
+    #[test]
+    fn status_progress_never_reads_completed_or_resolution_frozen_attempts() {
+        for resolved in [false, true] {
+            let (mut run, progress) = pending();
+            run.merge_generation_progress(progress.clone()).unwrap();
+            if resolved {
+                freeze(&mut run, &progress);
+            } else {
+                run.attempts.get_mut(&progress.attempt.attempt_id).unwrap()["status"] =
+                    json!("completed");
+            }
+            let before = serde_json::to_value(&run).unwrap();
+            merge_loaded_progress(&mut run, |_| {
+                panic!("frozen evidence must not read a late sidecar")
+            })
+            .unwrap();
+            assert_eq!(serde_json::to_value(&run).unwrap(), before);
+        }
+    }
+
+    #[test]
+    fn status_progress_preserves_storage_unknown_and_rejects_changed_identity() {
+        let (mut run, progress) = pending();
+        let before = serde_json::to_value(&run).unwrap();
+        let failure = merge_loaded_progress(&mut run, |_| {
+            Err(repository_failure(RepositoryError::CommitUnknown))
+        })
+        .unwrap_err();
+        assert_eq!(failure.code, "checkpoint-unconfirmed");
+        assert_eq!(serde_json::to_value(&run).unwrap(), before);
+        let mut foreign = progress;
+        foreign.attempt.route_digest = Digest::hash(b"other-route").as_str().into();
+        assert!(merge_loaded_progress(&mut run, |_| Ok(Some(foreign.clone()))).is_err());
+        assert_eq!(serde_json::to_value(&run).unwrap(), before);
+    }
+
+    #[test]
+    fn status_progress_decode_still_requires_exact_context_and_sequence_stamp() {
+        let (_, progress) = pending();
+        for changed_context in [false, true] {
+            let mut expected = progress.attempt.clone();
+            if changed_context {
+                expected.request_digest = Digest::hash(b"other-request").as_str().into();
+            }
+            let bytes = serde_json::to_vec(&progress).unwrap();
+            let record = ProgressRecord {
+                stamp: ProgressStamp {
+                    sequence: progress.sequence + u64::from(!changed_context),
+                    digest: Digest::hash(&bytes),
+                },
+                bytes,
+            };
+            assert!(decode_record(record, &expected).is_err());
+        }
     }
 }

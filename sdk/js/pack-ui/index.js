@@ -1,6 +1,28 @@
 /** Port client for an isolated Pack iframe. The host binds the Core UI session. */
 export { toCanonFloat } from "./float.js";
 
+// Diagnostic metadata only. Never copy guest/provider error fields or infer
+// dispatch, cleanup, retry permission or a successful result from a code.
+const HOST_ERROR_CODES = new Set([
+  "approval-required", "blocked", "cancelled", "closed", "conflict",
+  "consumed", "deadline", "denied", "duplicate", "internal", "invalid",
+  "limit", "limit-exceeded", "not-found", "persistence", "registration-full",
+  "stale-epoch", "trap", "unavailable",
+]);
+const HOST_ERROR_MESSAGES = new Set([
+  "Core refused the UI request", "Invalid UI request", "UI request refused",
+  "Core response exceeded the UI limit",
+]);
+
+function hostRefusal(value) {
+  const record = value && typeof value === "object" && !Array.isArray(value) ? value : null;
+  const code = record && Object.getOwnPropertyDescriptor(record, "code")?.value;
+  const message = record && Object.getOwnPropertyDescriptor(record, "message")?.value;
+  const error = new Error(HOST_ERROR_MESSAGES.has(message) ? message : "Port call failed");
+  if (HOST_ERROR_CODES.has(code)) Object.defineProperty(error, "code", { value: code, enumerable: true });
+  return error;
+}
+
 /** An opaque Core-owned stream. Pulls retain the original Core call context. */
 class PackStream {
   #client;
@@ -47,7 +69,7 @@ export class PackPortClient {
       if (!pending) return;
       this.#pending.delete(data.id);
       pending.cleanup();
-      if (data.error) pending.reject(new Error(data.error.message ?? "Port call failed"));
+      if (data.error) pending.reject(hostRefusal(data.error));
       else pending.resolve(data.result);
     };
     port.start();

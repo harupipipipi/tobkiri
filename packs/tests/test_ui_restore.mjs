@@ -254,6 +254,65 @@ test("bad/foreign replies and transport failure preserve old cache/ref and disab
   }
 });
 
+test("restore displays only a fixed closed error classification without private detail", async () => {
+  for (const code of [
+    "approval-required", "blocked", "cancelled", "closed", "conflict",
+    "consumed", "deadline", "denied", "duplicate", "internal", "invalid",
+    "limit", "limit-exceeded", "not-found", "persistence", "registration-full",
+    "stale-epoch", "trap", "unavailable",
+  ]) {
+    const reply = Object.assign(new Error("private-body"), { code, payload: "private-payload" });
+    const h = await harness({ reply, cached: { runId: OTHER, conversation: "old" } });
+    await h.read();
+    assert.equal(h.element("#status").textContent,
+      `照会を完了できませんでした。以前の参照は保持しています。再開せず確認してください。 エラー分類: ${code}。 `);
+    assert.doesNotMatch(h.element("#status").textContent, /private-/);
+    assert.equal(h.element("#resume").disabled, true);
+    assert.equal(h.element("#send").disabled, true);
+    assert.equal(h.writes.length, 0);
+    assert.equal(h.calls.length, 1);
+  }
+});
+
+test("unknown or malformed error classification never substitutes for saved status", async () => {
+  for (const code of [undefined, null, 0, {}, "NOT_FOUND", "not_found", "provider-private", "not-found\n", "x".repeat(65)]) {
+    const reply = Object.assign(new Error("private-body"), { code });
+    const h = await harness({ reply, cached: { runId: OTHER, conversation: "old" } });
+    await h.read(); await h.resume(); await h.compose();
+    assert.equal(h.element("#status").textContent,
+      "照会を完了できませんでした。以前の参照は保持しています。再開せず確認してください。 エラー分類: unknown。 ");
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.writes.length, 0);
+    assert.equal(h.element("#resume").disabled, true);
+    assert.equal(h.element("#send").disabled, true);
+  }
+  const value = snapshot("unknown");
+  value.code = "not-found";
+  const h = await harness({ reply: value }); await h.read();
+  assert.match(h.element("#status").textContent, /エラー分類: unknown/);
+  assert.equal(h.element("#resume").disabled, true);
+  assert.equal(h.writes.length, 0);
+});
+
+test("a later typed refusal revokes verified Resume without replacing the old reference", async () => {
+  let failed = false;
+  const h = await harness({ reply: () => {
+    if (failed) throw Object.assign(new Error("Core refused the UI request"), { code: "not-found" });
+    return snapshot();
+  } });
+  await h.read();
+  assert.equal(h.element("#resume").disabled, false);
+  const saved = structuredClone(h.writes);
+  failed = true;
+  await h.read(OTHER, "another"); await h.resume(); await h.compose();
+  assert.match(h.element("#status").textContent, /エラー分類: not-found。 Core refused the UI request/);
+  assert.equal(h.calls.length, 2);
+  assert.deepEqual(h.writes, saved);
+  assert.match(h.element("#run-reference").textContent, new RegExp(RUN));
+  assert.equal(h.element("#resume").disabled, true);
+  assert.equal(h.element("#send").disabled, true);
+});
+
 test("repository/version/types/counters/decimal corruption cannot enable Resume", async () => {
   for (const mutate of [
     (v) => { v.version = "future"; }, (v) => { v.repository = null; },

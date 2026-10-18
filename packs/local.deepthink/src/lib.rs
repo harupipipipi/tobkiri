@@ -637,13 +637,21 @@ struct LoadedRun {
 }
 
 fn load_optional_run(run_id: &str) -> Result<Option<LoadedRun>, Error> {
+    load_optional_run_using(run_id, runtime_repository::RunSession::load)
+}
+
+fn load_optional_run_using(
+    run_id: &str,
+    load_managed: impl FnOnce(
+        Rc<storage::Store>,
+        &str,
+    ) -> Result<Option<(Run, run_repository::Head)>, Failure>,
+) -> Result<Option<LoadedRun>, Error> {
     if run_id.len() != 64 || !run_id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(guest_error(invalid("invalid run reference")));
     }
     let store = Rc::new(private_store().map_err(guest_error)?);
-    if let Some((run, head)) =
-        runtime_repository::RunSession::load(Rc::clone(&store), run_id).map_err(guest_error)?
-    {
+    if let Some((run, head)) = load_managed(Rc::clone(&store), run_id).map_err(guest_error)? {
         return Ok(Some(LoadedRun {
             run,
             head: Some(head),
@@ -827,7 +835,10 @@ impl Guest for Pack {
         if run_id.len() != 64 || !run_id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return Err(guest_error(invalid("invalid run reference")));
         }
-        let loaded = load_run(&run_id)?;
+        // STATUS does not initialize a ledger, but keeps managed progress and
+        // the same diagnostic-only legacy KV fallback as the ordinary loader.
+        let loaded = load_optional_run_using(&run_id, runtime_repository::RunSession::load_status)?
+            .ok_or_else(|| guest_error(invalid("workflow was not found")))?;
         let repository = loaded.head.as_ref().map(head_value);
         let run = loaded.run;
         let reconciliation = run.ensure_generations_reconciled().err();

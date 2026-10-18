@@ -432,6 +432,21 @@ impl<D: SqlDatabase> RunRepository<D> {
         Ok(Self { database })
     }
 
+    /// Ordinary STATUS may inspect a Store before its first managed Run exists.
+    /// Only a completely absent ledger is None; any present schema must validate.
+    /// This never creates schema or turns a failed read/commit into absence.
+    pub fn open_existing_optional(mut database: D) -> Result<Option<Self>> {
+        let present = transaction(&mut database, |tx| {
+            let rows = read_schema(tx)?;
+            if rows.is_empty() {
+                return Ok(false);
+            }
+            validate_schema_rows(tx, rows)?;
+            Ok(true)
+        })?;
+        Ok(present.then_some(Self { database }))
+    }
+
     pub fn validate_schema(&mut self) -> Result<()> {
         transaction(&mut self.database, |tx| check_schema(tx, false))
     }
@@ -781,14 +796,18 @@ fn initialize_schema<T: SqlTransaction>(tx: &mut T) -> Result<()> {
     check_schema(tx, true)
 }
 
-fn check_schema<T: SqlTransaction>(tx: &mut T, may_create: bool) -> Result<()> {
-    let rows = query(
+fn read_schema<T: SqlTransaction>(tx: &mut T) -> Result<Vec<Vec<SqlCell>>> {
+    query(
         tx,
         SELECT_SCHEMA,
         &[],
         64,
         &["type", "name", "tbl_name", "sql"],
-    )?;
+    )
+}
+
+fn check_schema<T: SqlTransaction>(tx: &mut T, may_create: bool) -> Result<()> {
+    let rows = read_schema(tx)?;
     if rows.is_empty() && may_create {
         for (_, ddl) in SCHEMA {
             tx.exec(ddl, &[])?;
@@ -803,6 +822,10 @@ fn check_schema<T: SqlTransaction>(tx: &mut T, may_create: bool) -> Result<()> {
         // Also inspect the schema actually persisted by SQLite before commit.
         return check_schema(tx, false);
     }
+    validate_schema_rows(tx, rows)
+}
+
+fn validate_schema_rows<T: SqlTransaction>(tx: &mut T, rows: Vec<Vec<SqlCell>>) -> Result<()> {
     let mut found = BTreeSet::new();
     for row in rows {
         let kind = cell_text(&row[0])?;
@@ -1553,6 +1576,7 @@ mod tests {
     // independent actual typed Store integration is a separate proof.
     enum Step {
         Query(&'static str, SqlRows),
+        QueryError(&'static str, SqlError),
         Exec(&'static str, std::result::Result<u64, SqlError>),
         Commit(std::result::Result<(), SqlError>),
         Rollback(std::result::Result<(), SqlError>),
@@ -1593,15 +1617,17 @@ mod tests {
             max_rows: u32,
         ) -> std::result::Result<SqlRows, SqlError> {
             let mut trace = self.0.lock().unwrap();
-            let Some(Step::Query(prefix, rows)) = trace.steps.pop_front() else {
-                panic!("unexpected query: {sql}")
+            let (prefix, result) = match trace.steps.pop_front() {
+                Some(Step::Query(prefix, rows)) => (prefix, Ok(rows)),
+                Some(Step::QueryError(prefix, error)) => (prefix, Err(error)),
+                _ => panic!("unexpected query: {sql}"),
             };
             assert!(sql.starts_with(prefix), "expected {prefix}, got {sql}");
             assert!(max_rows <= 256);
             trace
                 .queries
                 .push((sql.to_owned(), params.to_vec(), max_rows));
-            Ok(rows)
+            result
         }
         fn commit(self) -> std::result::Result<(), SqlError> {
             let mut trace = self.0.lock().unwrap();
@@ -2071,6 +2097,172 @@ mod tests {
             }
             assert!(trace.lock().unwrap().writes.is_empty());
             assert_eq!(trace.lock().unwrap().queries.len(), 2);
+            finished(&trace);
+        }
+    }
+
+    #[test]
+    fn optional_existing_open_confirms_absence_without_creating_schema() {
+        let trace = Arc::new(Mutex::new(Trace {
+            steps: vec![
+                Step::Query(
+                    SELECT_SCHEMA,
+                    rows(&["type", "name", "tbl_name", "sql"], vec![]),
+                ),
+                Step::Commit(Ok(())),
+            ]
+            .into(),
+            ..Trace::default()
+        }));
+        assert!(
+            RunRepository::open_existing_optional(FakeDatabase(trace.clone()))
+                .unwrap()
+                .is_none()
+        );
+        let trace = trace.lock().unwrap();
+        assert!(trace.writes.is_empty());
+        assert_eq!((trace.begins, trace.commits, trace.rollbacks), (1, 1, 0));
+        assert_eq!(trace.queries.len(), 1);
+        assert!(trace.steps.is_empty());
+    }
+
+    #[test]
+    fn optional_existing_open_reads_a_missing_run_without_ddl_or_claims() {
+        let trace = Arc::new(Mutex::new(Trace {
+            steps: vec![
+                Step::Query(SELECT_SCHEMA, schema_rows()),
+                marker_query(),
+                Step::Commit(Ok(())),
+                q(
+                    SELECT_HEAD,
+                    &["run_request_digest", "revision", "snapshot_digest"],
+                    vec![],
+                ),
+                Step::Commit(Ok(())),
+            ]
+            .into(),
+            ..Trace::default()
+        }));
+        let mut repo = RunRepository::open_existing_optional(FakeDatabase(trace.clone()))
+            .unwrap()
+            .unwrap();
+        assert!(repo.load(&identity().run_id).unwrap().is_none());
+        let trace = trace.lock().unwrap();
+        assert!(trace.writes.is_empty());
+        assert_eq!((trace.begins, trace.commits, trace.rollbacks), (2, 2, 0));
+        assert_eq!(trace.queries.len(), 3);
+        assert!(trace.steps.is_empty());
+    }
+
+    #[test]
+    fn optional_existing_open_rejects_partial_or_foreign_schema_as_errors() {
+        let mut partial = schema_rows();
+        partial.rows.pop();
+        let mut foreign = schema_rows();
+        foreign.rows.push(vec![
+            text("trigger"),
+            text("foreign"),
+            text("dt_run_heads"),
+            text("CREATE TRIGGER foreign"),
+        ]);
+        for present in [partial, foreign] {
+            let trace = Arc::new(Mutex::new(Trace {
+                steps: vec![Step::Query(SELECT_SCHEMA, present), Step::Rollback(Ok(()))].into(),
+                ..Trace::default()
+            }));
+            assert!(matches!(
+                RunRepository::open_existing_optional(FakeDatabase(trace.clone())),
+                Err(RepositoryError::Schema)
+            ));
+            assert!(trace.lock().unwrap().writes.is_empty());
+            assert_eq!(trace.lock().unwrap().commits, 0);
+            finished(&trace);
+        }
+    }
+
+    #[test]
+    fn optional_existing_open_rejects_wrong_version_or_digest() {
+        for (version, digest) in [(2, schema_digest()), (1, Digest::hash(b"foreign-schema"))] {
+            let trace = Arc::new(Mutex::new(Trace {
+                steps: vec![
+                    Step::Query(SELECT_SCHEMA, schema_rows()),
+                    q(
+                        "SELECT slot,version,schema_digest",
+                        &["slot", "version", "schema_digest"],
+                        vec![vec![
+                            text("schema"),
+                            SqlCell::Integer(version),
+                            text(digest.as_str()),
+                        ]],
+                    ),
+                    Step::Rollback(Ok(())),
+                ]
+                .into(),
+                ..Trace::default()
+            }));
+            assert!(matches!(
+                RunRepository::open_existing_optional(FakeDatabase(trace.clone())),
+                Err(RepositoryError::Schema)
+            ));
+            assert!(trace.lock().unwrap().writes.is_empty());
+            finished(&trace);
+        }
+    }
+
+    #[test]
+    fn optional_existing_open_never_converts_query_or_rollback_failure_to_absence() {
+        for rollback_unknown in [false, true] {
+            let trace = Arc::new(Mutex::new(Trace {
+                steps: vec![
+                    Step::QueryError(SELECT_SCHEMA, SqlError::new(SqlErrorKind::Denied)),
+                    Step::Rollback(if rollback_unknown {
+                        Err(SqlError::commit_unknown())
+                    } else {
+                        Ok(())
+                    }),
+                ]
+                .into(),
+                ..Trace::default()
+            }));
+            let expected = if rollback_unknown {
+                RepositoryError::CommitUnknown
+            } else {
+                RepositoryError::Storage(SqlErrorKind::Denied)
+            };
+            assert!(
+                matches!(RunRepository::open_existing_optional(FakeDatabase(trace.clone())), Err(error) if error == expected)
+            );
+            assert!(trace.lock().unwrap().writes.is_empty());
+            assert_eq!(trace.lock().unwrap().commits, 0);
+            finished(&trace);
+        }
+    }
+
+    #[test]
+    fn optional_existing_open_preserves_unknown_commit_even_for_absent_schema() {
+        for present in [false, true] {
+            let mut steps = vec![Step::Query(
+                SELECT_SCHEMA,
+                if present {
+                    schema_rows()
+                } else {
+                    rows(&["type", "name", "tbl_name", "sql"], vec![])
+                },
+            )];
+            if present {
+                steps.push(marker_query());
+            }
+            steps.push(Step::Commit(Err(SqlError::commit_unknown())));
+            let trace = Arc::new(Mutex::new(Trace {
+                steps: steps.into(),
+                ..Trace::default()
+            }));
+            assert!(matches!(
+                RunRepository::open_existing_optional(FakeDatabase(trace.clone())),
+                Err(RepositoryError::CommitUnknown)
+            ));
+            assert!(trace.lock().unwrap().writes.is_empty());
+            assert_eq!(trace.lock().unwrap().rollbacks, 0);
             finished(&trace);
         }
     }

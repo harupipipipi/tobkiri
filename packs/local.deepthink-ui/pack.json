@@ -7,8 +7,8 @@
     },
     {
       "path": "ui/app.js",
-      "sha256": "sha256:d1019aec78917f4c990c4d7c9c4adb52416b111c31b8ea96ccf89878ab37e709",
-      "size": 17453
+      "sha256": "sha256:2ef5edfbe09a0bf9723aa4a19c5bf1da1687dae2306b2b1a4e875b2370c32416",
+      "size": 18574
     },
     {
       "path": "ui/float.js",
@@ -22,8 +22,8 @@
     },
     {
       "path": "ui/ports.js",
-      "sha256": "sha256:0950b3311192a2bf4cf6f4a6630844aa879e2bf77731b0399ef590959e5e5de6",
-      "size": 5277
+      "sha256": "sha256:28ebeeb8ee8ff12e7f9da765f1f179ed71c6052c65e4d56256dd89b622f838dc",
+      "size": 6369
     },
     {
       "path": "ui/restore.mjs",

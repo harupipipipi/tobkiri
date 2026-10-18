@@ -606,7 +606,7 @@
     },
     {
       "id": "local.deepthink",
-      "sha256": "sha256:c5a69c337ffc680ed10f013fab863c87251944e49127a3cda95bb8f0f24b685d",
+      "sha256": "sha256:8f42960c4271772a024d2a7040b66c5c6263bd64bc76b1aaa4d1bde15b30532b",
       "source": "file:../local.deepthink",
       "version": "0.1.0"
     },
@@ -624,7 +624,7 @@
     },
     {
       "id": "local.deepthink-ui",
-      "sha256": "sha256:499d17630c37292a3fe4c2fe6e54ffd680ccf4c7c1922f01fae543eb23c5ec58",
+      "sha256": "sha256:8f938e01742e9efba9753a2da84c268d2179139c168069d3a1052949916c5186",
       "source": "file:../local.deepthink-ui",
       "version": "0.1.0"
     }
