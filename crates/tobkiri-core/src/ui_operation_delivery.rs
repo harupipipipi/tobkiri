@@ -10,7 +10,7 @@ use std::{
 };
 use tobkiri_canon::{Digest, ids::UiSessionId};
 use tobkiri_flow::{StepError, StreamCloseControl, StreamCloseReason};
-use tobkiri_gate::{CancellationToken, ControlKind, CoreControl, GateError};
+use tobkiri_gate::{CallCx, CancellationToken, ControlKind, CoreControl, GateError};
 
 const MAX_OPERATIONS: usize = 1024;
 pub(crate) const MAX_SOURCES: usize = 64;
@@ -121,17 +121,106 @@ impl UiScopeRetirement {
 
 /// Factory-owned handle, separate from authentication. The process owner pins
 /// its anchor before this handle may accept any operation/source/intent.
-/// Drop only records retirement; it performs no allocation, callback or wake.
+/// Drop records retirement and tries exact empty-metadata reclamation. Busy or
+/// uncertain entries remain funded in the bounded process registry for reuse.
 pub(crate) struct UiDeliveryOwner {
     anchor: FundedArc<UiDeliveryAnchor>,
 }
 impl UiDeliveryOwner {
+    #[cfg(test)]
     pub(crate) fn new(factory: &Digest, control: &CoreControl) -> Result<Self, GateError> {
         Self::prepare(factory, control, warm_new_mutex)
     }
+    /// Retain one funded candidate while only its registry's proven contention
+    /// retries. The original startup context, deadline and budget never reset.
+    pub(crate) async fn new_with_context(
+        factory: &Digest,
+        control: &CoreControl,
+        cx: &CallCx,
+    ) -> Result<Self, GateError> {
+        cx.check_active()?;
+        let owner = Self::prepare_unpublished(factory, control, warm_new_mutex)?;
+        owner
+            .publish_with(cx, crate::tracked_stream::register_ui_notifications)
+            .await?;
+        Ok(owner)
+    }
+    async fn publish_with(
+        &self,
+        cx: &CallCx,
+        mut register: impl FnMut(
+            &FundedArc<UiDeliveryAnchor>,
+        ) -> crate::tracked_stream::UiNotificationRegistrationAttempt,
+    ) -> Result<(), GateError> {
+        use crate::tracked_stream::UiNotificationRegistrationAttempt as Attempt;
+        const WAIT_MS: [u64; 7] = [1, 2, 4, 8, 16, 16, 16];
+        let bytes = std::mem::size_of::<Self>()
+            .checked_add(2 * std::mem::size_of::<tokio::time::Sleep>())
+            .and_then(|bytes| bytes.checked_add(256))
+            .and_then(|bytes| u64::try_from(bytes).ok())
+            .ok_or(GateError::Unavailable)?;
+        let _waiter = cx.control().reserve(ControlKind::Waiter, bytes)?;
+        for attempt in 0..=WAIT_MS.len() {
+            cx.check_active()?;
+            match register(&self.anchor) {
+                Attempt::Registered => return cx.check_active(),
+                Attempt::Rejected(error) => return Err(error),
+                Attempt::BusyBeforePublication => {}
+            }
+            let Some(wait) = WAIT_MS.get(attempt) else {
+                return Err(GateError::Unavailable);
+            };
+            // No registry/anchor/authority guard crosses this await. A dropped
+            // future retains no published slot after Busy and refunds normally.
+            tokio::select! {
+                result = cx.cancel().cancelled() => {
+                    // A failed cancellation waiter is capacity uncertainty,
+                    // not evidence that the original token was cancelled.
+                    return Err(match result {
+                        Ok(_) => cx.check_active().err().unwrap_or(GateError::Cancelled),
+                        Err(_) => GateError::Unavailable,
+                    });
+                }
+                _ = tokio::time::sleep_until(cx.deadline().into()) => {
+                    return Err(GateError::Deadline);
+                }
+                _ = tokio::time::sleep(std::time::Duration::from_millis(*wait)) => {}
+            }
+        }
+        Err(GateError::Unavailable)
+    }
+    // Synchronous fixture construction is test-only. Production always uses
+    // the original-context async path above; no executor thread sleeps there.
+    #[cfg(test)]
+    fn prepare(
+        factory: &Digest,
+        control: &CoreControl,
+        initialize: impl FnMut(&Mutex<Option<FundedArc<UiDelivery>>>) -> Result<(), GateError>,
+    ) -> Result<Self, GateError> {
+        use crate::tracked_stream::UiNotificationRegistrationAttempt as Attempt;
+        let owner = Self::prepare_unpublished(factory, control, initialize)?;
+        for attempt in 0..8 {
+            match crate::tracked_stream::register_ui_notifications(&owner.anchor) {
+                Attempt::Registered => return Ok(owner),
+                Attempt::Rejected(error) => return Err(error),
+                Attempt::BusyBeforePublication if attempt < 7 => {
+                    std::thread::sleep(std::time::Duration::from_millis(1 << attempt.min(4)));
+                }
+                Attempt::BusyBeforePublication => return Err(GateError::Unavailable),
+            }
+        }
+        Err(GateError::Unavailable)
+    }
+    #[cfg(test)]
+    pub(crate) fn unpublished_for_test(
+        factory: &Digest,
+        control: &CoreControl,
+    ) -> Result<Self, GateError> {
+        Self::prepare_unpublished(factory, control, warm_new_mutex)
+    }
     // The initializer is a private construction/test seam, never a guest or
     // source callback. Production passes only warm_new_mutex above.
-    fn prepare(
+    fn prepare_unpublished(
         factory: &Digest,
         control: &CoreControl,
         mut initialize: impl FnMut(&Mutex<Option<FundedArc<UiDelivery>>>) -> Result<(), GateError>,
@@ -172,7 +261,6 @@ impl UiDeliveryOwner {
             },
             funding,
         );
-        crate::tracked_stream::register_ui_notifications(anchor.clone())?;
         Ok(Self { anchor })
     }
     pub(crate) fn weak(&self) -> FundedWeak<UiDeliveryAnchor> {
@@ -196,6 +284,7 @@ impl UiDeliveryOwner {
     }
     pub(crate) fn retire(&self) {
         self.anchor.retire();
+        crate::tracked_stream::remove_retired_ui_notifications(&self.anchor);
     }
     /// Caller holds no outer guard. This is not physical cleanup or ACK.
     pub(crate) fn close(&self) {
@@ -205,7 +294,7 @@ impl UiDeliveryOwner {
 }
 impl Drop for UiDeliveryOwner {
     fn drop(&mut self) {
-        self.anchor.retire();
+        self.retire();
     }
 }
 
@@ -343,7 +432,10 @@ impl UiDeliveryAnchor {
             && self
                 .slots
                 .iter()
-                .all(|slot| self.slot(slot).is_ok_and(|slot| slot.is_none()))
+                // Pure emptiness observation under the outer registry guard.
+                // SlotGuard would clone/drop a delivery and record retirement
+                // on unlock; neither is allowed in this proof-only predicate.
+                .all(|slot| slot.try_lock().is_ok_and(|slot| slot.is_none()))
     }
 }
 
@@ -713,6 +805,283 @@ mod tests {
     fn owner(control: &CoreControl, name: &[u8]) -> UiDeliveryOwner {
         UiDeliveryOwner::new(&Digest::hash(name), control).unwrap()
     }
+    fn startup_context(control: &CoreControl) -> CallCx {
+        CallCx::try_root_with_control(
+            tobkiri_canon::ids::ProfileId::parse("prof_registration").unwrap(),
+            tobkiri_gate::Principal::User,
+            tobkiri_canon::ids::RequestId::parse("req_registration").unwrap(),
+            CoreCancellation::new_with_control(control).unwrap(),
+            std::time::Instant::now() + std::time::Duration::from_secs(60),
+            tobkiri_gate::ResourceLimits {
+                fuel_per_call: 100_000,
+                memory_mib: 8,
+                wall_ms: 60_000,
+                table_elements: 1024,
+                output_bytes: 1024,
+            },
+            control.clone(),
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn registration_retries_same_funded_anchor_exactly_eight_times() {
+        use crate::tracked_stream::UiNotificationRegistrationAttempt as Attempt;
+        let control = CoreControl::default();
+        let cx = startup_context(&control);
+        let baseline = control.usage();
+        let owner = UiDeliveryOwner::prepare_unpublished(
+            &Digest::hash(b"retained-retry-anchor"),
+            &control,
+            warm_new_mutex,
+        )
+        .unwrap();
+        let expected = owner.anchor.clone();
+        let weak = owner.weak();
+        let mut calls = 0;
+        let result = owner
+            .publish_with(&cx, |actual| {
+                calls += 1;
+                assert!(FundedArc::ptr_eq(actual, &expected));
+                assert_eq!(control.usage().count(ControlKind::Waiter), 1);
+                Attempt::BusyBeforePublication
+            })
+            .await;
+        assert!(matches!(result, Err(GateError::Unavailable)));
+        assert_eq!(calls, 8);
+        assert_eq!(control.usage().count(ControlKind::Waiter), 0);
+        drop(expected);
+        drop(owner);
+        assert!(weak.upgrade().is_none());
+        drop(weak);
+        assert_eq!(control.usage(), baseline);
+    }
+
+    #[tokio::test]
+    async fn registration_busy_then_success_pins_the_same_anchor_once() {
+        use crate::tracked_stream::UiNotificationRegistrationAttempt as Attempt;
+        let control = CoreControl::default();
+        let cx = startup_context(&control);
+        let baseline = control.usage();
+        let owner = UiDeliveryOwner::prepare_unpublished(
+            &Digest::hash(b"successful-retained-anchor"),
+            &control,
+            warm_new_mutex,
+        )
+        .unwrap();
+        let expected = owner.anchor.clone();
+        let before = expected.strong_count();
+        let mut calls = 0;
+        owner
+            .publish_with(&cx, |actual| {
+                calls += 1;
+                assert!(FundedArc::ptr_eq(actual, &expected));
+                if calls == 1 {
+                    Attempt::BusyBeforePublication
+                } else {
+                    crate::tracked_stream::register_ui_notifications(actual)
+                }
+            })
+            .await
+            .unwrap();
+        assert!(calls >= 2 && calls <= 8);
+        assert_eq!(expected.strong_count(), before + 1);
+        assert_eq!(control.usage().count(ControlKind::Waiter), 0);
+        owner.close();
+        crate::tracked_stream::TrackedStream::check_native_cleanup(&owner.anchor.factory)
+            .await
+            .unwrap();
+        assert_eq!(expected.strong_count(), before);
+        drop(expected);
+        drop(owner);
+        assert_eq!(control.usage(), baseline);
+    }
+
+    #[tokio::test]
+    async fn registration_cancel_during_busy_never_retries_or_publishes() {
+        use crate::tracked_stream::UiNotificationRegistrationAttempt as Attempt;
+        let control = CoreControl::default();
+        let cx = startup_context(&control);
+        let owner = UiDeliveryOwner::prepare_unpublished(
+            &Digest::hash(b"cancel-retry-anchor"),
+            &control,
+            warm_new_mutex,
+        )
+        .unwrap();
+        let mut calls = 0;
+        let result = owner
+            .publish_with(&cx, |_| {
+                calls += 1;
+                cx.cancel().cancel();
+                Attempt::BusyBeforePublication
+            })
+            .await;
+        assert!(matches!(result, Err(GateError::Cancelled)));
+        assert_eq!(calls, 1);
+        assert_eq!(control.usage().count(ControlKind::Waiter), 0);
+    }
+
+    #[tokio::test]
+    async fn registration_full_or_poison_rejection_is_never_retried() {
+        use crate::tracked_stream::UiNotificationRegistrationAttempt as Attempt;
+        for full in [false, true] {
+            let control = CoreControl::default();
+            let cx = startup_context(&control);
+            let owner = UiDeliveryOwner::prepare_unpublished(
+                &Digest::hash(b"closed-registration"),
+                &control,
+                warm_new_mutex,
+            )
+            .unwrap();
+            let mut calls = 0;
+            let result = owner
+                .publish_with(&cx, |_| {
+                    calls += 1;
+                    Attempt::Rejected(if full {
+                        GateError::Limit("full".into())
+                    } else {
+                        GateError::Unavailable
+                    })
+                })
+                .await;
+            assert!(result.is_err());
+            assert_eq!(calls, 1);
+            assert_eq!(control.usage().count(ControlKind::Waiter), 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn registration_expired_original_context_accepts_nothing() {
+        use crate::tracked_stream::UiNotificationRegistrationAttempt as Attempt;
+        let control = CoreControl::default();
+        let cx = startup_context(&control).cap_deadline(std::time::Instant::now());
+        let owner = UiDeliveryOwner::prepare_unpublished(
+            &Digest::hash(b"expired-registration"),
+            &control,
+            warm_new_mutex,
+        )
+        .unwrap();
+        let mut calls = 0;
+        let result = owner
+            .publish_with(&cx, |_| {
+                calls += 1;
+                Attempt::Registered
+            })
+            .await;
+        assert!(matches!(result, Err(GateError::Deadline)));
+        assert_eq!(calls, 0);
+    }
+
+    #[tokio::test]
+    async fn registration_rechecks_original_budget_after_busy_wait() {
+        use crate::tracked_stream::UiNotificationRegistrationAttempt as Attempt;
+        let control = CoreControl::default();
+        let cx = startup_context(&control);
+        let budget = tobkiri_gate::BudgetContext::new(
+            tobkiri_gate::LoopLimits {
+                max_iterations: 1,
+                max_cost_units: 1,
+                max_wall_ms: 100,
+            },
+            cx.deadline(),
+        )
+        .unwrap();
+        let cx = cx.with_budget(budget).unwrap();
+        let owner = UiDeliveryOwner::prepare_unpublished(
+            &Digest::hash(b"budget-registration"),
+            &control,
+            warm_new_mutex,
+        )
+        .unwrap();
+        let mut calls = 0;
+        let result = owner
+            .publish_with(&cx, |_| {
+                calls += 1;
+                // Test-only late-budget expiry; the production callback never waits.
+                std::thread::sleep(std::time::Duration::from_millis(110));
+                Attempt::BusyBeforePublication
+            })
+            .await;
+        assert!(matches!(result, Err(GateError::Deadline)));
+        assert!(calls <= 1);
+        assert_eq!(control.usage().count(ControlKind::Waiter), 0);
+    }
+
+    #[tokio::test]
+    async fn registration_waiter_pressure_is_unavailable_not_cancellation() {
+        use crate::tracked_stream::UiNotificationRegistrationAttempt as Attempt;
+        let control = CoreControl::new(CoreControlLimits {
+            max_waiters: 1,
+            ..Default::default()
+        })
+        .unwrap();
+        let cx = startup_context(&control);
+        let owner = UiDeliveryOwner::prepare_unpublished(
+            &Digest::hash(b"waiter-pressure"),
+            &control,
+            warm_new_mutex,
+        )
+        .unwrap();
+        let mut calls = 0;
+        let result = owner
+            .publish_with(&cx, |_| {
+                calls += 1;
+                Attempt::BusyBeforePublication
+            })
+            .await;
+        assert!(matches!(result, Err(GateError::Unavailable)));
+        assert!(!cx.cancel().is_cancelled());
+        assert_eq!(calls, 1);
+        assert_eq!(control.usage().count(ControlKind::Waiter), 0);
+    }
+
+    #[tokio::test]
+    async fn dropped_unpublished_retry_future_releases_waiters_and_anchor_funding() {
+        use crate::tracked_stream::UiNotificationRegistrationAttempt as Attempt;
+        use std::future::Future;
+        let control = CoreControl::default();
+        let cx = startup_context(&control);
+        let baseline = control.usage();
+        let owner = UiDeliveryOwner::prepare_unpublished(
+            &Digest::hash(b"dropped-retry"),
+            &control,
+            warm_new_mutex,
+        )
+        .unwrap();
+        let weak = owner.weak();
+        let calls = AtomicUsize::new(0);
+        let mut future = Box::pin(owner.publish_with(&cx, |_| {
+            calls.fetch_add(1, Ordering::AcqRel);
+            Attempt::BusyBeforePublication
+        }));
+        let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+        assert!(future.as_mut().poll(&mut context).is_pending());
+        assert_eq!(calls.load(Ordering::Acquire), 1);
+        assert_eq!(control.usage().count(ControlKind::Waiter), 2);
+        drop(future);
+        assert_eq!(control.usage().count(ControlKind::Waiter), 0);
+        drop(owner);
+        assert!(weak.upgrade().is_none());
+        drop(weak);
+        assert_eq!(control.usage(), baseline);
+    }
+
+    #[test]
+    fn removable_observation_never_clones_or_signals_a_nonempty_delivery() {
+        let control = CoreControl::default();
+        let owner = owner(&control, b"proof-only-removable");
+        let record = delivery(&owner, &control, None);
+        let before = record.strong_count();
+        // Test an already-recorded anchor retirement before delivery receipt.
+        owner.anchor.retired.store(true, Ordering::Release);
+        assert!(!owner.anchor.removable());
+        crate::tracked_stream::remove_retired_ui_notifications(&owner.anchor);
+        assert_eq!(record.strong_count(), before);
+        assert_eq!(record.intent.load(Ordering::Acquire), 0);
+        record.release();
+        owner.close();
+    }
+
     fn delivery(
         owner: &UiDeliveryOwner,
         control: &CoreControl,

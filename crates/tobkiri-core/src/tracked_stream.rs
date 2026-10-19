@@ -66,41 +66,95 @@ fn vacant_cleanup_slot(
 ) -> Option<usize> {
     owner.iter().position(Option::is_none)
 }
+/// Only contention of this exact Core-owned registry before mutation is retryable.
+pub(crate) enum UiNotificationRegistrationAttempt {
+    Registered,
+    BusyBeforePublication,
+    Rejected(tobkiri_gate::GateError),
+}
 fn insert_ui_notifications(
     owner: &mut [Option<NativeCleanupEntry>; NATIVE_CLEANUP_SLOTS],
     anchor: &FundedArc<crate::ui_operation_delivery::UiDeliveryAnchor>,
-) -> Result<(), tobkiri_gate::GateError> {
-    let index = vacant_cleanup_slot(owner)
+) -> Result<Option<NativeCleanupEntry>, tobkiri_gate::GateError> {
+    let index = owner
+        .iter()
+        .position(|entry| {
+            matches!(entry, Some(NativeCleanupEntry::Notifications(value))
+            if value.removable())
+        })
+        // Prefer reclaiming retired funding even when a vacant slot exists;
+        // serial Factory replacement must not accumulate old registrations.
+        .or_else(|| vacant_cleanup_slot(owner))
         .ok_or_else(|| tobkiri_gate::GateError::Limit("Core cleanup quarantine is full".into()))?;
-    owner[index] = Some(NativeCleanupEntry::Notifications(anchor.clone()));
-    Ok(())
+    // Reuse at most one retired, completely empty notification record. Never
+    // displace physical/unknown work or a live/uncertain notification record.
+    Ok(owner[index].replace(NativeCleanupEntry::Notifications(anchor.clone())))
 }
-/// Called only during Factory construction, before the Factory or any
-/// notification candidate is public. Funding precedes this slot pin.
-/// This uses the existing 256 slots and never evicts physical/unknown work.
-pub(crate) fn register_ui_notifications(
-    anchor: FundedArc<crate::ui_operation_delivery::UiDeliveryAnchor>,
-) -> Result<(), tobkiri_gate::GateError> {
-    // Reuse only retired, completely empty notification metadata. No source,
-    // callback or physical entry is touched by this admission maintenance.
-    for index in 0..NATIVE_CLEANUP_SLOTS {
-        let removed = {
-            let mut owner = NATIVE_CLEANUP_OWNER
-                .try_lock()
-                .map_err(|_| tobkiri_gate::GateError::Unavailable)?;
-            match owner[index].as_ref() {
-                Some(NativeCleanupEntry::Notifications(value)) if value.removable() => {
-                    owner[index].take()
-                }
-                _ => None,
+fn register_ui_notifications_in(
+    registry: &Mutex<[Option<NativeCleanupEntry>; NATIVE_CLEANUP_SLOTS]>,
+    anchor: &FundedArc<crate::ui_operation_delivery::UiDeliveryAnchor>,
+) -> UiNotificationRegistrationAttempt {
+    let removed = {
+        let mut owner = match registry.try_lock() {
+            Ok(owner) => owner,
+            Err(std::sync::TryLockError::WouldBlock) => {
+                return UiNotificationRegistrationAttempt::BusyBeforePublication;
+            }
+            Err(std::sync::TryLockError::Poisoned(_)) => {
+                return UiNotificationRegistrationAttempt::Rejected(
+                    tobkiri_gate::GateError::Unavailable,
+                );
             }
         };
-        drop(removed);
+        insert_ui_notifications(&mut owner, anchor)
+    };
+    match removed {
+        Ok(removed) => {
+            // No payload, funding, callback or notification destruction under
+            // the process owner guard, including displaced retired metadata.
+            drop(removed);
+            UiNotificationRegistrationAttempt::Registered
+        }
+        Err(error) => UiNotificationRegistrationAttempt::Rejected(error),
     }
-    let mut owner = NATIVE_CLEANUP_OWNER
-        .try_lock()
-        .map_err(|_| tobkiri_gate::GateError::Unavailable)?;
-    insert_ui_notifications(&mut owner, &anchor)
+}
+/// Called during funded, unpublished Factory construction. One nonblocking
+/// lock attempt covers the bounded scan and atomic insertion; only its own
+/// WouldBlock is retryable, never poison, full capacity or external failures.
+pub(crate) fn register_ui_notifications(
+    anchor: &FundedArc<crate::ui_operation_delivery::UiDeliveryAnchor>,
+) -> UiNotificationRegistrationAttempt {
+    register_ui_notifications_in(&NATIVE_CLEANUP_OWNER, anchor)
+}
+/// Best-effort exact retirement, never physical cleanup proof. Contention or
+/// uncertain slot state leaves the original funded entry in the fixed registry;
+/// a later observer or registration can reclaim proven retired-empty metadata.
+fn remove_retired_ui_notifications_in(
+    registry: &Mutex<[Option<NativeCleanupEntry>; NATIVE_CLEANUP_SLOTS]>,
+    anchor: &FundedArc<crate::ui_operation_delivery::UiDeliveryAnchor>,
+) -> bool {
+    let removed = {
+        let Ok(mut owner) = registry.try_lock() else {
+            return false;
+        };
+        let index = owner.iter().position(|entry| {
+            matches!(entry, Some(NativeCleanupEntry::Notifications(current))
+                if FundedArc::ptr_eq(current, anchor))
+        });
+        match index {
+            Some(index) if anchor.removable() => owner[index].take(),
+            _ => None,
+        }
+    };
+    let removed_any = removed.is_some();
+    // Release storage/funding only after the registry guard has been dropped.
+    drop(removed);
+    removed_any
+}
+pub(crate) fn remove_retired_ui_notifications(
+    anchor: &FundedArc<crate::ui_operation_delivery::UiDeliveryAnchor>,
+) {
+    remove_retired_ui_notifications_in(&NATIVE_CLEANUP_OWNER, anchor);
 }
 fn observe_ui_notifications(
     index: usize,
@@ -1665,9 +1719,289 @@ mod cleanup_receipt_classification_tests {
 mod notification_slot_tests {
     use super::*;
     #[test]
+    fn exact_retired_removal_preserves_other_anchor_with_same_factory() {
+        let control = tobkiri_gate::CoreControl::default();
+        let baseline = control.usage().bytes;
+        let identity = Digest::hash(b"same-factory-distinct-anchor");
+        let first = crate::ui_operation_delivery::UiDeliveryOwner::unpublished_for_test(
+            &identity, &control,
+        )
+        .unwrap();
+        let second = crate::ui_operation_delivery::UiDeliveryOwner::unpublished_for_test(
+            &identity, &control,
+        )
+        .unwrap();
+        let a = first.weak().upgrade().unwrap();
+        let b = second.weak().upgrade().unwrap();
+        let registry = Mutex::new([const { None }; NATIVE_CLEANUP_SLOTS]);
+        assert!(matches!(
+            register_ui_notifications_in(&registry, &a),
+            UiNotificationRegistrationAttempt::Registered
+        ));
+        assert!(matches!(
+            register_ui_notifications_in(&registry, &b),
+            UiNotificationRegistrationAttempt::Registered
+        ));
+        assert!(!remove_retired_ui_notifications_in(&registry, &a));
+        drop(first);
+        assert!(remove_retired_ui_notifications_in(&registry, &a));
+        let slots = registry.lock().unwrap();
+        assert_eq!(slots.iter().filter(|slot| slot.is_some()).count(), 1);
+        assert!(slots.iter().any(|slot| matches!(slot, Some(NativeCleanupEntry::Notifications(current)) if FundedArc::ptr_eq(current, &b))));
+        drop(slots);
+        drop((a, second, b, registry));
+        assert_eq!(control.usage().bytes, baseline);
+    }
+
+    #[test]
+    fn contended_failed_start_retirement_is_funded_and_reuses_one_slot() {
+        let control = tobkiri_gate::CoreControl::default();
+        let baseline = control.usage().bytes;
+        let registry = Mutex::new([const { None }; NATIVE_CLEANUP_SLOTS]);
+        let mut retained_bytes = None;
+        // More failed constructions than registry capacity, with no observer.
+        for _ in 0..(NATIVE_CLEANUP_SLOTS + 16) {
+            let owner = crate::ui_operation_delivery::UiDeliveryOwner::unpublished_for_test(
+                &Digest::hash(b"failed-start"),
+                &control,
+            )
+            .unwrap();
+            let anchor = owner.weak().upgrade().unwrap();
+            assert!(matches!(
+                register_ui_notifications_in(&registry, &anchor),
+                UiNotificationRegistrationAttempt::Registered
+            ));
+            let held = registry.lock().unwrap();
+            drop(owner);
+            assert!(anchor.removable());
+            assert!(!remove_retired_ui_notifications_in(&registry, &anchor));
+            assert_eq!(held.iter().filter(|slot| slot.is_some()).count(), 1);
+            drop(held);
+            drop(anchor);
+            let bytes = control.usage().bytes;
+            assert!(bytes > baseline);
+            assert_eq!(*retained_bytes.get_or_insert(bytes), bytes);
+        }
+        // A normal exact observation refunds the final bounded retained record.
+        let anchor = {
+            let slots = registry.lock().unwrap();
+            match slots.iter().flatten().next().unwrap() {
+                NativeCleanupEntry::Notifications(anchor) => anchor.clone(),
+                _ => panic!("notification only"),
+            }
+        };
+        assert!(remove_retired_ui_notifications_in(&registry, &anchor));
+        drop(anchor);
+        assert_eq!(control.usage().bytes, baseline);
+    }
+
+    #[test]
+    fn own_registry_contention_is_retryable_before_publication() {
+        let control = tobkiri_gate::CoreControl::default();
+        let owner = crate::ui_operation_delivery::UiDeliveryOwner::unpublished_for_test(
+            &Digest::hash(b"retry-owner"),
+            &control,
+        )
+        .unwrap();
+        let anchor = owner.weak().upgrade().unwrap();
+        let registry = Mutex::new([const { None }; NATIVE_CLEANUP_SLOTS]);
+        let before = anchor.strong_count();
+        let held = registry.lock().unwrap();
+        std::thread::scope(|scope| {
+            scope
+                .spawn(|| {
+                    assert!(matches!(
+                        register_ui_notifications_in(&registry, &anchor),
+                        UiNotificationRegistrationAttempt::BusyBeforePublication
+                    ));
+                })
+                .join()
+                .unwrap();
+        });
+        assert!(held.iter().all(Option::is_none));
+        assert_eq!(anchor.strong_count(), before);
+        drop(held);
+        assert!(matches!(
+            register_ui_notifications_in(&registry, &anchor),
+            UiNotificationRegistrationAttempt::Registered
+        ));
+        assert_eq!(anchor.strong_count(), before + 1);
+        drop(registry);
+        assert_eq!(anchor.strong_count(), before);
+        owner.close();
+    }
+
+    #[test]
+    fn concurrent_registrations_publish_once_each_without_slot_loss() {
+        const WRITERS: usize = 8;
+        let control = tobkiri_gate::CoreControl::default();
+        let owner = crate::ui_operation_delivery::UiDeliveryOwner::unpublished_for_test(
+            &Digest::hash(b"concurrent-owner"),
+            &control,
+        )
+        .unwrap();
+        let anchor = owner.weak().upgrade().unwrap();
+        let registry = Mutex::new([const { None }; NATIVE_CLEANUP_SLOTS]);
+        let resume = std::sync::Barrier::new(WRITERS + 1);
+        let (send, receive) = std::sync::mpsc::channel();
+        let before = anchor.strong_count();
+        std::thread::scope(|scope| {
+            let held = registry.lock().unwrap();
+            let mut workers = Vec::new();
+            for _ in 0..WRITERS {
+                let send = send.clone();
+                let registry = &registry;
+                let anchor = &anchor;
+                let resume = &resume;
+                workers.push(scope.spawn(move || {
+                    assert!(matches!(
+                        register_ui_notifications_in(registry, anchor),
+                        UiNotificationRegistrationAttempt::BusyBeforePublication
+                    ));
+                    send.send(()).unwrap();
+                    resume.wait();
+                    for attempt in 0..8 {
+                        match register_ui_notifications_in(registry, anchor) {
+                            UiNotificationRegistrationAttempt::Registered => return,
+                            UiNotificationRegistrationAttempt::BusyBeforePublication
+                                if attempt < 7 =>
+                            {
+                                std::thread::sleep(std::time::Duration::from_millis(
+                                    1 << attempt.min(4),
+                                ));
+                            }
+                            _ => panic!("isolated bounded publication failed"),
+                        }
+                    }
+                }));
+            }
+            for _ in 0..WRITERS {
+                receive.recv().unwrap();
+            }
+            assert!(held.iter().all(Option::is_none));
+            drop(held);
+            resume.wait();
+            for worker in workers {
+                worker.join().unwrap();
+            }
+        });
+        assert_eq!(
+            registry
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|slot| slot.is_some())
+                .count(),
+            WRITERS
+        );
+        assert_eq!(anchor.strong_count(), before + WRITERS);
+        drop(registry);
+        assert_eq!(anchor.strong_count(), before);
+        owner.close();
+    }
+
+    #[test]
+    fn retired_metadata_is_reused_before_consuming_another_vacant_slot() {
+        let control = tobkiri_gate::CoreControl::default();
+        let retired = crate::ui_operation_delivery::UiDeliveryOwner::unpublished_for_test(
+            &Digest::hash(b"retired-partial-owner"),
+            &control,
+        )
+        .unwrap();
+        let old = retired.weak().upgrade().unwrap();
+        let incoming = crate::ui_operation_delivery::UiDeliveryOwner::unpublished_for_test(
+            &Digest::hash(b"new-partial-owner"),
+            &control,
+        )
+        .unwrap();
+        let new = incoming.weak().upgrade().unwrap();
+        let mut slots = [const { None }; NATIVE_CLEANUP_SLOTS];
+        slots[17] = Some(NativeCleanupEntry::Notifications(old.clone()));
+        let registry = Mutex::new(slots);
+        retired.close();
+        assert!(matches!(
+            register_ui_notifications_in(&registry, &new),
+            UiNotificationRegistrationAttempt::Registered
+        ));
+        let slots = registry.lock().unwrap();
+        assert!(slots[0].is_none());
+        assert!(
+            matches!(slots[17].as_ref(), Some(NativeCleanupEntry::Notifications(value))
+            if FundedArc::ptr_eq(value, &new))
+        );
+        drop(slots);
+        incoming.close();
+    }
+
+    #[test]
+    fn poisoned_registry_is_not_retryable_and_accepts_nothing() {
+        let control = tobkiri_gate::CoreControl::default();
+        let owner = crate::ui_operation_delivery::UiDeliveryOwner::unpublished_for_test(
+            &Digest::hash(b"poison-owner"),
+            &control,
+        )
+        .unwrap();
+        let anchor = owner.weak().upgrade().unwrap();
+        let registry = Mutex::new([const { None }; NATIVE_CLEANUP_SLOTS]);
+        let before = anchor.strong_count();
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _held = registry.lock().unwrap();
+            panic!("poison only the isolated test registry");
+        }));
+        assert!(matches!(
+            register_ui_notifications_in(&registry, &anchor),
+            UiNotificationRegistrationAttempt::Rejected(tobkiri_gate::GateError::Unavailable)
+        ));
+        assert_eq!(anchor.strong_count(), before);
+        let poisoned = match registry.lock() {
+            Err(error) => error,
+            Ok(_) => panic!("registry must remain poisoned"),
+        };
+        assert!(poisoned.get_ref().iter().all(Option::is_none));
+        drop(poisoned);
+        owner.close();
+    }
+
+    #[test]
+    fn only_proven_retired_empty_metadata_can_be_replaced_when_full() {
+        let control = tobkiri_gate::CoreControl::default();
+        let retired = crate::ui_operation_delivery::UiDeliveryOwner::unpublished_for_test(
+            &Digest::hash(b"retired-owner"),
+            &control,
+        )
+        .unwrap();
+        let retired_anchor = retired.weak().upgrade().unwrap();
+        let incoming = crate::ui_operation_delivery::UiDeliveryOwner::unpublished_for_test(
+            &Digest::hash(b"incoming-owner"),
+            &control,
+        )
+        .unwrap();
+        let incoming_anchor = incoming.weak().upgrade().unwrap();
+        let registry = Mutex::new(std::array::from_fn(|_| {
+            Some(NativeCleanupEntry::Notifications(retired_anchor.clone()))
+        }));
+        assert!(matches!(
+            register_ui_notifications_in(&registry, &incoming_anchor),
+            UiNotificationRegistrationAttempt::Rejected(tobkiri_gate::GateError::Limit(_))
+        ));
+        retired.close();
+        assert!(retired_anchor.removable());
+        let old_count = retired_anchor.strong_count();
+        let new_count = incoming_anchor.strong_count();
+        assert!(matches!(
+            register_ui_notifications_in(&registry, &incoming_anchor),
+            UiNotificationRegistrationAttempt::Registered
+        ));
+        assert_eq!(retired_anchor.strong_count(), old_count - 1);
+        assert_eq!(incoming_anchor.strong_count(), new_count + 1);
+        assert!(registry.try_lock().is_ok());
+        incoming.close();
+    }
+
+    #[test]
     fn full_existing_256_slots_reject_before_notification_receipt_without_eviction() {
         let control = tobkiri_gate::CoreControl::default();
-        let owner = crate::ui_operation_delivery::UiDeliveryOwner::new(
+        let owner = crate::ui_operation_delivery::UiDeliveryOwner::unpublished_for_test(
             &Digest::hash(b"full-owner"),
             &control,
         )

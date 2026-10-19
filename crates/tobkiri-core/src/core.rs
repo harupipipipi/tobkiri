@@ -624,11 +624,13 @@ impl Core {
                 .map_err(|error| CoreError::Runtime(error.to_string()))?;
         }
         let invoker: Arc<dyn tobkiri_flow::PortInvoker> = pack_host.clone();
-        let execution_factory = crate::execution_frames::ExecutionFactory::new(
+        let execution_factory = crate::execution_frames::ExecutionFactory::new_with_context(
             compiled.clone(),
             gate.clone(),
             invoker.clone(),
-        )?;
+            &cx,
+        )
+        .await?;
         let provider_bridge =
             crate::session::provider_entry::CoreProviderEntryBridge::allocate_shared(
                 execution_factory.provider_authority(),

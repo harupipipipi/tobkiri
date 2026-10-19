@@ -6378,12 +6378,40 @@ impl ExecutionFactory {
         publish()
     }
 
+    #[cfg(test)]
     pub(crate) fn new(
         compiled: Arc<CompiledProfile>,
         gate: Arc<GateEngine>,
         invoker: Arc<dyn PortInvoker>,
     ) -> Result<Self, CoreError> {
-        let frozen = compiled.as_ref();
+        let identity = Self::prepare_identity(compiled.as_ref())?;
+        let notifications =
+            crate::ui_operation_delivery::UiDeliveryOwner::new(&identity, gate.control())?;
+        Self::finish_construction(compiled, gate, invoker, identity, notifications)
+    }
+
+    pub(crate) async fn new_with_context(
+        compiled: Arc<CompiledProfile>,
+        gate: Arc<GateEngine>,
+        invoker: Arc<dyn PortInvoker>,
+        cx: &CallCx,
+    ) -> Result<Self, CoreError> {
+        cx.check_active()?;
+        let identity = Self::prepare_identity(compiled.as_ref())?;
+        let notifications = crate::ui_operation_delivery::UiDeliveryOwner::new_with_context(
+            &identity,
+            gate.control(),
+            cx,
+        )
+        .await?;
+        let factory = Self::finish_construction(compiled, gate, invoker, identity, notifications)?;
+        // Provider allocation is still private construction, not publication.
+        // A late cancellation/deadline drops this unpublished Factory normally.
+        cx.check_active()?;
+        Ok(factory)
+    }
+
+    fn prepare_identity(frozen: &CompiledProfile) -> Result<Digest, CoreError> {
         if frozen.flows.len() > 65_536
             || frozen.flows.iter().any(|(flow_key, flow)| {
                 flow_key.is_empty()
@@ -6407,14 +6435,21 @@ impl ExecutionFactory {
         }
         let mut entropy = [0_u8; 32];
         getrandom::fill(&mut entropy).map_err(|_| GateError::Unavailable)?;
-        let identity = identity(&[
+        Ok(identity(&[
             b"tobkiri.core-factory/2\0",
             frozen.profile.id.as_str().as_bytes(),
             frozen.plan_digest.as_str().as_bytes(),
             &entropy,
-        ])?;
-        let notifications =
-            crate::ui_operation_delivery::UiDeliveryOwner::new(&identity, gate.control())?;
+        ])?)
+    }
+
+    fn finish_construction(
+        compiled: Arc<CompiledProfile>,
+        gate: Arc<GateEngine>,
+        invoker: Arc<dyn PortInvoker>,
+        identity: Digest,
+        notifications: crate::ui_operation_delivery::UiDeliveryOwner,
+    ) -> Result<Self, CoreError> {
         let provider = build_provider_authority(
             compiled.clone(),
             gate.clone(),
