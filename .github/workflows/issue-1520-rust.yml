@@ -31,6 +31,8 @@ jobs:
         run: python3 tools/quality/test_issue_1520_gate.py
       - name: CI execution and producer receipt regression
         run: python3 -B tools/quality/test_issue_1520_ci.py
+      - name: Workflow platform and artifact routing regression
+        run: python3 -B tools/quality/test_issue_1520_workflow.py
       - name: Core and host boundaries
         run: python3 tools/quality/issue_1520_gate.py --stage foundation
       - name: Verify migration inventory coverage
@@ -44,11 +46,45 @@ jobs:
       - name: Pure Flow dependency graph
         run: |
           cargo tree --locked -p tobkiri-flow > flow-dependencies.txt
-          if rg 'wasmtime|rusqlite|reqwest' flow-dependencies.txt; then exit 1; fi
-      - name: Rust unit and integration checks
+          python3 - <<'PYTHON'
+          import re
+          from pathlib import Path
+
+          dependencies = Path("flow-dependencies.txt").read_text(encoding="utf-8")
+          if re.search(r"\b(?:wasmtime|rusqlite|reqwest)\b", dependencies):
+              raise SystemExit("Pure Flow has a forbidden runtime dependency")
+          PYTHON
+      # These suites do not require the production APFS/Darwin owner broker.
+      # Mixed native/runtime suites run without filters in the native job below.
+      - name: Portable Rust package tests
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/rust-workspace.log" -- cargo test --workspace --locked
+          --log "$RUNNER_TEMP/portable-packages.log" -- cargo test --locked
+          -p tobkiri-canon -p tobkiri-wit -p tobkiri-manifest
+          -p tobkiri-profile -p tobkiri-flow -p tobkiri-gate -p tobkiri-cli
+      - name: Portable Wasm engine integration tests
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/portable-wasm.log" -- cargo test --locked
+          -p tobkiri-wasm --test component_structure
+          --test input_generated_components --test limits --test static_lifts
+          --test typed_values --test warm_fiber
+      - name: Portable Core journal tests
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/portable-journal.log" -- cargo test --locked
+          -p tobkiri-core --test journal
+      - name: Native acceptance source contracts without runtime claims
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-source-contracts.log" -- cargo test --locked
+          -p tobkiri-e2e --test native_acceptance
+      - name: Unsupported Linux owner platform fails closed
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/owner-unavailable.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-store --test owner_unavailable
+          unproven_allocation_owner_platform_is_unavailable -- --exact
       - name: Strict Rust lint
         run: cargo clippy --workspace --all-targets --locked --no-deps -- -D warnings
       - name: Python guest SDK contracts
@@ -68,6 +104,9 @@ jobs:
         run: npm test
 
   verified-platform-runtime:
+    needs: official-python-parity
+    # A producer failure must not suppress independent native workspace evidence.
+    if: ${{ !cancelled() }}
     # The production owner/DATA gate currently accepts only this OS family.
     # Do not silently broaden it when GitHub updates the runner image.
     runs-on: macos-15
@@ -79,6 +118,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify the currently supported native proof platform
+        id: native_platform
         shell: bash
         run: |
           test "$(uname -m)" = arm64
@@ -88,6 +128,7 @@ jobs:
           diskutil info "$device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
           echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@1.94.0
+        id: rust_toolchain
         with:
           targets: wasm32-wasip2
           components: rustfmt, clippy
@@ -98,9 +139,45 @@ jobs:
       - name: Execute complete Rust workspace on the supported platform
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/supported-workspace.log" -- cargo test --workspace --locked
+          --log "$RUNNER_TEMP/supported-workspace.log" -- cargo test --workspace --locked --no-fail-fast
       - name: Strict workspace lint
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
         run: cargo clippy --workspace --all-targets --locked --no-deps -- -D warnings
+      - name: Download this run's official Linux Python component
+        id: download_python
+        if: ${{ !cancelled() && needs.official-python-parity.result == 'success' && steps.native_platform.outcome == 'success' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: official-python-component
+          path: ${{ runner.temp }}/issue-1520-python
+      - name: Revalidate and bind the transferred component to this checkout
+        id: stage_python
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.download_python.outcome == 'success' }}
+        run: |
+          python3 -B tools/quality/issue_1520_ci.py stage-python \
+            --artifact "$RUNNER_TEMP/issue-1520-python/shell-policy.wasm" \
+            --destination "$RUNNER_TEMP/issue-1520-python/pack"
+          echo "TOBKIRI_TEST_PYTHON_PACK_DIR=$RUNNER_TEMP/issue-1520-python/pack" >> "$GITHUB_ENV"
+      - name: Replay the original 91 cases through actual Rust Core
+        # Keep this proof independent of an earlier workspace/lint failure.
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' && steps.stage_python.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/python-parity.log" --expected-passed 1 --python-parity --
+          cargo test --locked -p tobkiri-e2e --test parity
+          shell_policy_frozen_inputs_replay_through_the_real_rust_host
+          -- --ignored --exact --nocapture --test-threads=1
+      - name: Retain actual Python replay evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-python-parity-replay
+          path: |
+            ${{ runner.temp }}/issue-1520-python/python-fixture.receipt.json
+            ${{ runner.temp }}/issue-1520-python/pack/pack.json
+            ${{ runner.temp }}/python-parity.log
+            ${{ runner.temp }}/python-parity.receipt.json
+          if-no-files-found: warn
       - name: Retain actual runtime test output
         if: always()
         uses: actions/upload-artifact@v4
@@ -121,8 +198,6 @@ jobs:
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@v4
-      - name: Set the runner-local Python fixture directory
-        run: echo "TOBKIRI_TEST_PYTHON_PACK_DIR=$RUNNER_TEMP/issue-1520-python/pack" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@1.94.0
       - uses: actions/setup-python@v5
         with:
@@ -137,14 +212,15 @@ jobs:
           chmod +x "$RUNNER_TEMP/wac-cli"
           python3 -B tools/quality/issue_1520_ci.py prepare-python \
             --work-dir "$RUNNER_TEMP/issue-1520-python" --composer "$RUNNER_TEMP/wac-cli"
-      - name: Replay the original 91 cases through actual Rust Core
-        run: >-
-          python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/python-parity.log" --expected-passed 1 --python-parity --
-          cargo test --locked -p tobkiri-e2e --test parity
-          shell_policy_frozen_inputs_replay_through_the_real_rust_host
-          -- --ignored --exact --nocapture --test-threads=1
-      - name: Retain actual Python producer and replay receipts
+      - name: Transfer the authenticated component and producer receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-python-component
+          path: |
+            ${{ runner.temp }}/issue-1520-python/shell-policy.wasm
+            ${{ runner.temp }}/issue-1520-python/shell-policy.build.json
+          if-no-files-found: error
+      - name: Retain actual Python producer receipts
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
@@ -153,8 +229,6 @@ jobs:
             ${{ runner.temp }}/issue-1520-python/python-fixture.receipt.json
             ${{ runner.temp }}/issue-1520-python/shell-policy.build.json
             ${{ runner.temp }}/issue-1520-python/pack/pack.json
-            ${{ runner.temp }}/python-parity.log
-            ${{ runner.temp }}/python-parity.receipt.json
           if-no-files-found: error
 
   optional-private-sqlite-experiment:

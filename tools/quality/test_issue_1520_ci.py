@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 import re
 import importlib.util
 from pathlib import Path
+import shutil
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location(
     "issue_ci", Path(__file__).with_name("issue_1520_ci.py"))
@@ -82,8 +85,136 @@ class WorkflowContextTests(unittest.TestCase):
         self.assertNotIn("continue-on-error", job)
 
 
+class CleanCheckoutStagingTests(unittest.TestCase):
+    """Exercise staging only; synthetic components are not runtime evidence."""
+
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.work = Path(temporary.name)
+        self.root = self.work / "checkout"
+        self.source = self.root / "packs/local.shell-policy-python"
+        original = ci.ROOT / "packs/local.shell-policy-python"
+        for relative in ("pack.json", "config.json", "tests/inspection.json",
+                         "wit/pack.wit", "wit/policy.shape.json"):
+            target = self.source / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(original / relative, target)
+        self.core = self.root / "crates/tobkiri-wit/wit/core/core.wit"
+        self.core.parent.mkdir(parents=True)
+        shutil.copyfile(ci.ROOT / "crates/tobkiri-wit/wit/core/core.wit", self.core)
+        shutil.copyfile(ci.ROOT / "packs/build.py", self.root / "packs/build.py")
+        self.artifact = self.work / "synthetic.wasm"
+        self.artifact.write_bytes(b"unit-only staging input, not a component")
+        self.artifact.with_suffix(".build.json").write_text("{}")
+        # Producer provenance validation is independently covered below. This
+        # fixture tests copying/binding only and never invokes any build/runtime.
+        validator = patch.object(ci, "verify_python_build")
+        self.validator = validator.start()
+        self.addCleanup(validator.stop)
+
+    def stage(self) -> Path:
+        destination = self.work / "staged"
+        ci.stage_python_pack(self.root, self.artifact, destination)
+        self.validator.assert_called_once()
+        return destination
+
+    def test_clean_checkout_stages_canonical_core_without_mutating_checkout(self) -> None:
+        self.assertFalse((self.source / "wit/deps/core.wit").exists())
+        before = {path.relative_to(self.root): path.read_bytes()
+                  for path in self.root.rglob("*") if path.is_file()}
+        destination = self.stage()
+        self.assertEqual((destination / "wit/deps/core.wit").read_bytes(),
+                         self.core.read_bytes())
+        manifest = json.loads((destination / "pack.json").read_text())
+        binding = next(item for item in manifest["files"]
+                       if item["path"] == "wit/deps/core.wit")
+        self.assertEqual(binding["size"], 5732)
+        self.assertEqual(binding["sha256"], "sha256:" + ci.digest(self.core))
+        self.assertEqual(before, {path.relative_to(self.root): path.read_bytes()
+                                 for path in self.root.rglob("*") if path.is_file()})
+
+    def test_stale_generated_dependency_cannot_override_canonical_core(self) -> None:
+        generated = self.source / "wit/deps/core.wit"
+        generated.parent.mkdir()
+        generated.write_bytes(b"stale generated dependency")
+        destination = self.stage()
+        self.assertEqual((destination / "wit/deps/core.wit").read_bytes(),
+                         self.core.read_bytes())
+        self.assertEqual(generated.read_bytes(), b"stale generated dependency")
+
+    def test_changed_canonical_bytes_are_rejected(self) -> None:
+        original = self.core.read_bytes()
+        self.core.write_bytes(b"X" + original[1:])
+        with self.assertRaisesRegex(ValueError, "differs from its manifest"):
+            self.stage()
+
+    def test_canonical_symlink_is_rejected(self) -> None:
+        saved = self.work / "core.wit"
+        self.core.rename(saved)
+        self.core.symlink_to(saved)
+        with self.assertRaisesRegex(ValueError, "differs from its manifest"):
+            self.stage()
+
+    def test_manifest_core_hash_size_and_path_requirements_are_strict(self) -> None:
+        path = self.source / "pack.json"
+        baseline = json.loads(path.read_text())
+        for mutation in ("hash", "size", "missing", "duplicate", "traversal"):
+            with self.subTest(mutation=mutation):
+                manifest = copy.deepcopy(baseline)
+                entry = next(item for item in manifest["files"]
+                             if item["path"] == "wit/deps/core.wit")
+                if mutation == "hash":
+                    entry["sha256"] = "sha256:" + "0" * 64
+                elif mutation == "size":
+                    entry["size"] += 1
+                elif mutation == "missing":
+                    manifest["files"].remove(entry)
+                elif mutation == "duplicate":
+                    manifest["files"].append(copy.deepcopy(entry))
+                else:
+                    entry["path"] = "../escaped.wit"
+                path.write_text(json.dumps(manifest))
+                with self.assertRaises(ValueError):
+                    ci.stage_python_pack(self.root, self.artifact,
+                                         self.work / mutation)
+        self.assertFalse((self.work / "escaped.wit").exists())
+
+
 class ProducerEvidenceTests(unittest.TestCase):
     """Changed platform archives and stale build/source evidence fail closed."""
+
+    def test_stage_cli_only_dispatches_to_verified_staging(self) -> None:
+        arguments = ["issue_1520_ci.py", "stage-python", "--artifact",
+                     "transfer/shell-policy.wasm", "--destination", "output/pack"]
+        with patch.object(sys, "argv", arguments), \
+                patch.object(ci, "stage_python_pack") as staging, \
+                patch.object(ci, "prepare_python") as producer, \
+                patch.object(ci.subprocess, "run") as run:
+            ci.main()
+        staging.assert_called_once_with(ci.ROOT, Path("transfer/shell-policy.wasm"),
+                                        Path("output/pack"))
+        producer.assert_not_called()
+        run.assert_not_called()
+
+    def test_stage_cli_rejects_changed_artifact_without_producing_or_staging(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            artifact = Path(temporary) / "unit-only.wasm"
+            artifact.write_bytes(b"unit-only receipt-validator input")
+            receipt = self.build_receipt(artifact)
+            artifact.with_suffix(".build.json").write_text(json.dumps(receipt))
+            artifact.write_bytes(b"malformed transferred artifact")
+            destination = Path(temporary) / "pack"
+            arguments = ["issue_1520_ci.py", "stage-python", "--artifact",
+                         str(artifact), "--destination", str(destination)]
+            with patch.object(sys, "argv", arguments), \
+                    patch.object(ci, "prepare_python") as producer, \
+                    patch.object(ci.subprocess, "run") as run, \
+                    self.assertRaisesRegex(ValueError, "artifact_sha256"):
+                ci.main()
+            self.assertFalse(destination.exists())
+            producer.assert_not_called()
+            run.assert_not_called()
 
     def test_wrong_linux_archive_name_and_bytes_are_rejected(self) -> None:
         pins = ci.linux_wheel_pins(ci.ROOT)

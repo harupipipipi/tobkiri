@@ -6,7 +6,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import platform
 import re
 import shutil
@@ -184,8 +184,15 @@ def stage_python_pack(root: Path, artifact: Path, destination: Path) -> None:
         raise ValueError("the original 91-case Python corpus changed")
     if manifest["runtime"]["component"] != "component.wasm":
         raise ValueError("the reviewed Python Pack component path changed")
-    destination.mkdir(parents=True, exist_ok=False)
     paths = [item["path"] for item in manifest["files"]]
+    if (any(not isinstance(path, str) or not path
+            or "\\" in path or PurePosixPath(path).is_absolute()
+            or ".." in PurePosixPath(path).parts
+            or str(PurePosixPath(path)) != path for path in paths)
+            or len(paths) != len(set(paths))
+            or paths.count("wit/deps/core.wit") != 1):
+        raise ValueError("invalid reviewed Python Pack file paths or Core dependency")
+    destination.mkdir(parents=True, exist_ok=False)
     for item in manifest["files"]:
         relative = item["path"]
         target = destination / relative
@@ -195,7 +202,11 @@ def stage_python_pack(root: Path, artifact: Path, destination: Path) -> None:
         elif relative == "component.build.json":
             original = receipt_path
         else:
-            original = source / relative
+            # This dependency is generated/ignored in Pack directories. A clean
+            # checkout must use the tracked canonical Core, never a stale local
+            # generated copy. Its bytes still must satisfy the frozen manifest.
+            original = (root / "crates/tobkiri-wit/wit/core/core.wit"
+                        if relative == "wit/deps/core.wit" else source / relative)
             if (original.is_symlink() or not original.is_file()
                     or "sha256:" + digest(original) != item["sha256"]
                     or original.stat().st_size != item["size"]):
@@ -256,7 +267,7 @@ def prepare_python(work: Path, composer: Path) -> None:
 
 
 def main() -> None:
-    """Expose only the two acceptance operations used by the workflow."""
+    """Expose execution, production, and verified staging for CI acceptance."""
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="operation", required=True)
     tests = commands.add_parser("cargo-test")
@@ -267,13 +278,18 @@ def main() -> None:
     python = commands.add_parser("prepare-python")
     python.add_argument("--work-dir", type=Path, required=True)
     python.add_argument("--composer", type=Path, required=True)
+    staging = commands.add_parser("stage-python")
+    staging.add_argument("--artifact", type=Path, required=True)
+    staging.add_argument("--destination", type=Path, required=True)
     args = parser.parse_args()
     if args.operation == "cargo-test":
         command = args.command[1:] if args.command[:1] == ["--"] else args.command
         cargo_test(command, args.log, expected_passed=args.expected_passed,
                    python_parity=args.python_parity)
-    else:
+    elif args.operation == "prepare-python":
         prepare_python(args.work_dir, args.composer)
+    else:
+        stage_python_pack(ROOT, args.artifact, args.destination)
 
 
 if __name__ == "__main__":
