@@ -151,5 +151,12 @@
     "WASI shared-library creation is experimental; no actual dynamic loading or guest behavior demonstrated.",
     "Existing SQLite OMIT_RANDOMNESS and disabled features unchanged; no ordinary SQLite or cryptographic-random parity claim.",
     "Rust runtime, producer packaging, final component build, Gate denial and native owner acceptance remain separate gates."
-  ]
+  ],
+  "wasm_validation": {
+    "engine": "Wasmtime 48.0.0",
+    "api": "Module.validate",
+    "result": "passed",
+    "instantiation": false,
+    "guest_execution": false
+  }
 }

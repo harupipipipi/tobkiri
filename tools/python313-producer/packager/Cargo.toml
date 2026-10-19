@@ -1,0 +1,14 @@
+[package]
+name = "tobkiri-python313-packager"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
+publish = false
+
+[workspace]
+
+[dependencies]
+anyhow = "=1.0.102"
+zstd = "=0.13.3"
+wasmparser = "=0.245.1"
+wasm-encoder = { version = "=0.245.1", features = ["wasmparser"] }
