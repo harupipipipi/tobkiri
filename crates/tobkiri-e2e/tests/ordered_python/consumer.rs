@@ -18,7 +18,9 @@ const BRIDGE: &str = "local.ai-tool-bridge-ordered-python.bridge@1.0";
 const WIT: &str = r#"package local:ordered-python-consumer@1.0.0;
 
 interface entry {
+    use tobkiri:core/types@1.0.0.{error};
     run: func() -> string;
+    normalize: func(operation: string, payload: string) -> result<string, error>;
 }
 "#;
 
@@ -33,10 +35,33 @@ world pack {
 }
 "#;
 
-// Import the complete candidate interface, including the exact Core error
-// signature on normalize. Only runtime-info is invoked by this permission
-// probe. The actual Core linker supplies both functions through its ordinary
-// typed proxy; no test host function or unknown-import trap is installed.
+// A deliberately bounded string-only arena, not a production allocator. Every
+// canonical allocation in these signatures is fresh (old pointer/length zero)
+// and byte-aligned. Separate input and result strings cannot alias. Core calls
+// post-return only after copying the complete result out of guest memory.
+// Result records live below 1024; the bump state is a separate Wasm global.
+const STORAGE: &str = r#"
+        (memory (export "memory") 1 1)
+        (global $next (mut i32) (i32.const 1024))
+        (func (export "realloc") (param i32 i32 i32 i32) (result i32)
+            local.get 0 local.get 1 i32.or
+            if unreachable end
+            local.get 2 i32.const 1 i32.ne
+            if unreachable end
+            local.get 3 i32.const 65536 global.get $next i32.sub i32.gt_u
+            if unreachable end
+            global.get $next
+            global.get $next local.get 3 i32.add global.set $next)
+        (func (export "post-return") (param i32)
+            i32.const 1024 global.set $next)
+"#;
+
+// Import the complete candidate interface with the exact Core error identity.
+// Both runtime-info and normalize use Core's ordinary typed proxy; no test host
+// function, expected-output substitute, or unknown-import trap is installed.
+// Canonical return areas: run's string at 0..8, normalize's 16-byte result at
+// 16..32 (tag, then ok pointer/length or error code/message pointer/length), and
+// init's result at 64..80. None overlaps the string arena beginning at 1024.
 const COMPONENT: &str = r#"(component
     (type $core-types (instance
         (type $code-definition (enum
@@ -60,38 +85,50 @@ const COMPONENT: &str = r#"(component
     (import "local:ai-tool-bridge-ordered-python/bridge@1.0.0"
         (instance $bridge-import (type $bridge)))
     (alias export $bridge-import "runtime-info" (func $runtime-info))
+    (alias export $bridge-import "normalize" (func $normalize))
 
-    (core module $storage
-        (memory (export "memory") 1 1)
-        (func (export "realloc") (param i32 i32 i32 i32) (result i32)
-            local.get 3 i32.const 61440 i32.gt_u
-            if unreachable end
-            i32.const 4096))
+    (core module $storage @STORAGE@)
     (core instance $storage-instance (instantiate $storage))
     (alias core export $storage-instance "memory" (core memory $memory))
     (alias core export $storage-instance "realloc" (core func $realloc))
+    (alias core export $storage-instance "post-return" (core func $post-return))
     (core func $runtime-info-lowered
         (canon lower (func $runtime-info) (memory $memory) (realloc $realloc)))
+    (core func $normalize-lowered
+        (canon lower (func $normalize) (memory $memory) (realloc $realloc)))
     (core module $caller
         (import "host" "memory" (memory 1 1))
         (import "host" "runtime-info" (func $runtime-info (param i32)))
+        (import "host" "normalize" (func $normalize (param i32 i32 i32 i32 i32)))
         (func (export "init") (param i32 i32) (result i32)
             i32.const 64 i32.const 0 i32.store i32.const 64)
         (func (export "shutdown"))
         (func (export "run") (result i32)
-            i32.const 0 call $runtime-info i32.const 0))
+            i32.const 0 call $runtime-info i32.const 0)
+        (func (export "normalize") (param i32 i32 i32 i32) (result i32)
+            local.get 0 local.get 1 local.get 2 local.get 3
+            i32.const 16 call $normalize i32.const 16))
     (core instance $caller-instance (instantiate $caller
         (with "host" (instance
             (export "memory" (memory $memory))
-            (export "runtime-info" (func $runtime-info-lowered))))))
+            (export "runtime-info" (func $runtime-info-lowered))
+            (export "normalize" (func $normalize-lowered))))))
     (alias core export $caller-instance "init" (core func $init))
     (alias core export $caller-instance "shutdown" (core func $shutdown))
     (alias core export $caller-instance "run" (core func $run))
+    (alias core export $caller-instance "normalize" (core func $forward-normalize))
     (func $init-value (param "config" string) (result $init-result)
-        (canon lift (core func $init) (memory $memory) (realloc $realloc)))
+        (canon lift (core func $init) (memory $memory) (realloc $realloc)
+            (post-return $post-return)))
     (func $shutdown-value (canon lift (core func $shutdown)))
     (func $run-value (result string)
-        (canon lift (core func $run) (memory $memory) (realloc $realloc)))
+        (canon lift (core func $run) (memory $memory) (realloc $realloc)
+            (post-return $post-return)))
+    (func $normalize-value
+        (param "operation" string) (param "payload" string)
+        (result $normalize-result)
+        (canon lift (core func $forward-normalize) (memory $memory) (realloc $realloc)
+            (post-return $post-return)))
     (instance $types
         (export "error-code" (type $code))
         (export "error" (type $error)))
@@ -100,15 +137,21 @@ const COMPONENT: &str = r#"(component
         (export "init" (func $init-value))
         (export "shutdown" (func $shutdown-value)))
     (export "tobkiri:core/lifecycle@1.0.0" (instance $lifecycle))
-    (instance $entry (export "run" (func $run-value)))
+    (instance $entry
+        (export "run" (func $run-value))
+        (export "normalize" (func $normalize-value)))
     (export "local:ordered-python-consumer/entry@1.0.0" (instance $entry)))"#;
+
+fn component_bytes() -> Result<Vec<u8>> {
+    Ok(wat::parse_str(COMPONENT.replace("@STORAGE@", STORAGE))?)
+}
 
 /// Materialize a verified caller in a trusted private fixture root.
 ///
 /// Both allowed and denied profiles retain this same required typed import and
 /// requested permission. The denied profile narrows only its consumer limit.
-/// The fixed one-string scratch region is sufficient for this no-argument
-/// runtime-info probe; it is not a general-purpose normalize caller allocator.
+/// Its bounded test-only forwarding entry is not the original Gateway caller
+/// and does not constitute production caller replacement or full-unit parity.
 pub fn materialize(root: &Path, provider: &VerifiedPack) -> Result<(PackPin, VerifiedPack)> {
     anyhow::ensure!(
         provider.manifest.id.as_str() == PROVIDER,
@@ -123,7 +166,7 @@ pub fn materialize(root: &Path, provider: &VerifiedPack) -> Result<(PackPin, Ver
     );
     let entry = ShapeRef::parse(ENTRY)?;
     let files: BTreeMap<String, Vec<u8>> = BTreeMap::from([
-        ("component.wasm".into(), wat::parse_str(COMPONENT)?),
+        ("component.wasm".into(), component_bytes()?),
         ("wit/consumer.wit".into(), WIT.as_bytes().to_vec()),
         ("wit/world.wit".into(), WORLD.as_bytes().to_vec()),
         (
@@ -226,7 +269,7 @@ pub fn materialize(root: &Path, provider: &VerifiedPack) -> Result<(PackPin, Ver
 
 #[tokio::test]
 async fn typed_caller_validates_without_instantiating_or_replacing_python() -> Result<()> {
-    let bytes = wat::parse_str(COMPONENT)?;
+    let bytes = component_bytes()?;
     let engine = tobkiri_wasm::WasmEngine::new()?;
     let component = wasmtime::component::Component::new(engine.engine(), &bytes)?;
     let imports: std::collections::BTreeSet<_> = component
@@ -245,5 +288,38 @@ async fn typed_caller_validates_without_instantiating_or_replacing_python() -> R
     );
     // This proves only fixture syntax/type validity, not provider execution,
     // production ABI admission, authority, or native owner acceptance.
+    Ok(())
+}
+
+#[test]
+fn string_arena_is_disjoint_bounded_and_reset_after_return() -> Result<()> {
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, wat::parse_str(format!("(module {STORAGE})"))?)?;
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = wasmtime::Instance::new(&mut store, &module, &[])?;
+    let alloc = instance.get_typed_func::<(i32, i32, i32, i32), i32>(&mut store, "realloc")?;
+    let reset = instance.get_typed_func::<i32, ()>(&mut store, "post-return")?;
+    let memory = instance.get_memory(&mut store, "memory").unwrap();
+    for _ in 0..2 {
+        let operation = alloc.call(&mut store, (0, 0, 1, 48))?;
+        let payload = alloc.call(&mut store, (0, 0, 1, 120))?;
+        let output = alloc.call(&mut store, (0, 0, 1, 256))?;
+        assert_eq!((operation, payload, output), (1024, 1072, 1192));
+        memory.write(&mut store, operation as usize, &[b'o'; 48])?;
+        memory.write(&mut store, payload as usize, &[b'p'; 120])?;
+        memory.write(&mut store, output as usize, &[b'r'; 256])?;
+        let bytes = memory.data(&store);
+        assert_eq!(&bytes[1024..1072], &[b'o'; 48]);
+        assert_eq!(&bytes[1072..1192], &[b'p'; 120]);
+        assert_eq!(&bytes[1192..1448], &[b'r'; 256]);
+        assert!(alloc.call(&mut store, (0, 0, 1, 65536)).is_err());
+        assert!(alloc.call(&mut store, (0, 0, 1, -1)).is_err());
+        assert!(alloc.call(&mut store, (operation, 48, 1, 49)).is_err());
+        assert!(alloc.call(&mut store, (0, 0, 4, 4)).is_err());
+        assert_eq!(alloc.call(&mut store, (0, 0, 1, 64088))?, 1448);
+        assert!(alloc.call(&mut store, (0, 0, 1, 1)).is_err());
+        reset.call(&mut store, 16)?;
+    }
+    // This exercises only the allocator, never a substitute Python provider.
     Ok(())
 }

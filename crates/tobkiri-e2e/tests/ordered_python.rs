@@ -94,7 +94,7 @@ fn profile(
 async fn start(data: &Path, profile: &Profile, consumer: bool) -> Result<(Core, Session)> {
     let host = Arc::new(Host::default());
     for (shape, op) in if consumer {
-        vec![(consumer::ENTRY, "run")]
+        vec![(consumer::ENTRY, "run"), (consumer::ENTRY, "normalize")]
     } else {
         vec![(SHAPE, "runtime-info"), (SHAPE, "normalize")]
     } {
@@ -150,6 +150,15 @@ fn terminal_pair(
     effect: &tobkiri_gate::EffectRequest,
     args: &tobkiri_canon::Digest,
 ) -> Result<bool> {
+    Ok(matched_terminal(rows, principal, effect, args)?.is_some())
+}
+
+fn matched_terminal<'a>(
+    rows: &'a [Value],
+    principal: &Value,
+    effect: &tobkiri_gate::EffectRequest,
+    args: &tobkiri_canon::Digest,
+) -> Result<Option<&'a Value>> {
     let effect = effect.digest()?.to_string();
     let args = args.to_string();
     let dispatches: Vec<_> = rows
@@ -162,22 +171,36 @@ fn terminal_pair(
         })
         .collect();
     if dispatches.len() != 1 {
-        return Ok(false);
+        return Ok(None);
     }
     let dispatch = dispatches[0];
-    Ok(dispatch["payload"]["grant"].is_string()
-        && rows
-            .iter()
-            .filter(|row| {
-                row["kind"] == "outcome"
-                    && &row["principal"] == principal
-                    && row["request"] == dispatch["request"]
-                    && row["payload"]["grant"] == dispatch["payload"]["grant"]
-                    && row["payload"]["effect_digest"] == effect
-                    && row["payload"]["args_digest"] == args
-            })
-            .count()
-            == 1)
+    if !dispatch["payload"]["grant"].is_string() {
+        return Ok(None);
+    }
+    let outcomes: Vec<_> = rows
+        .iter()
+        .filter(|row| {
+            row["kind"] == "outcome"
+                && &row["principal"] == principal
+                && row["request"] == dispatch["request"]
+                && row["payload"]["grant"] == dispatch["payload"]["grant"]
+                && row["payload"]["effect_digest"] == effect
+                && row["payload"]["args_digest"] == args
+        })
+        .collect();
+    Ok((outcomes.len() == 1).then(|| outcomes[0]))
+}
+
+fn terminal_pair_with_outcome(
+    rows: &[Value],
+    principal: &Value,
+    effect: &tobkiri_gate::EffectRequest,
+    args: &tobkiri_canon::Digest,
+    expected: &tobkiri_gate::Outcome,
+) -> Result<bool> {
+    let expected = serde_json::to_value(expected)?;
+    Ok(matched_terminal(rows, principal, effect, args)?
+        .is_some_and(|row| row["payload"]["outcome"] == expected))
 }
 
 fn provider_initialized(rows: &[Value], provider: &VerifiedPack) -> Result<bool> {
@@ -418,12 +441,196 @@ async fn consumer_authority(root: &Path, inputs: &Inputs, report: &mut Value) ->
         result?;
         close?;
     }
+    consumer_normalize_authority(root, inputs, &caller, report).await?;
+    Ok(())
+}
+
+fn consumer_normalize_cases(oracle: &Value) -> Result<Vec<&Value>> {
+    let cases = oracle["cases"].as_array().context("frozen cases missing")?;
+    [("base:ordinary", "ok"), ("base:invalid-name", "invalid")]
+        .into_iter()
+        .map(|(id, status)| {
+            let selected: Vec<_> = cases.iter().filter(|case| case["id"] == id).collect();
+            ensure!(
+                selected.len() == 1,
+                "typed normalize oracle case is not unique"
+            );
+            let case = selected[0];
+            ensure!(
+                case["transport"]["status"] == status,
+                "typed normalize classification changed"
+            );
+            let operation = case["operation"].as_str().context("operation missing")?;
+            let payload = case["input_json"].as_str().context("payload missing")?;
+            // These are concrete, authenticated original inputs, not generated
+            // caller data. Bound each string well below the 64 KiB test arena.
+            ensure!(
+                operation.len() <= 1024 && payload.len() <= 4096,
+                "typed normalize input exceeds fixture bound"
+            );
+            if status == "ok" {
+                ensure!(
+                    case["transport"]["output_json"]
+                        .as_str()
+                        .context("oracle output missing")?
+                        .len()
+                        <= 4096,
+                    "typed normalize output exceeds fixture bound"
+                );
+            }
+            Ok(case)
+        })
+        .collect()
+}
+
+/// A bounded typed forwarding regression, not the legacy Gateway migration.
+/// Use fresh sessions for normalize so a denied runtime-info trap cannot
+/// accidentally stand in for a denied normalize invocation.
+async fn consumer_normalize_authority(
+    root: &Path,
+    inputs: &Inputs,
+    caller: &(PackPin, VerifiedPack),
+    report: &mut Value,
+) -> Result<()> {
+    let cases = consumer_normalize_cases(&inputs.oracle)?;
+    let principal = json!({"kind":"pack", "pack":caller.1.manifest.id, "hash":caller.1.hash});
+    let effect = tobkiri_gate::EffectRequest::PortCall {
+        shape: ShapeRef::parse(SHAPE)?,
+        op: OpName::parse("normalize")?,
+    };
+    let effect_digest = effect.digest()?.to_string();
+    for allowed in [true, false] {
+        let label = if allowed { "allowed" } else { "denied" };
+        let profile = profile(
+            inputs,
+            Some(caller),
+            allowed,
+            &format!("prof_ordered_normalize_{label}"),
+        )?;
+        let data = root.join(format!("normalize-{label}")).join("data");
+        let (_core, session) = start(&data, &profile, true).await?;
+        report["consumer_normalize"][label] = json!({
+            "caller_pack_sha256":caller.1.hash.to_string(), "cases":[],
+            "original_gateway_replaced":false
+        });
+        let result: Result<()> = async {
+            // One denied request suffices: both profiles retain the identical
+            // required typed import; only the effective consumer port limit
+            // differs. The allowed profile exercises both result arms.
+            for case in cases.iter().take(if allowed { 2 } else { 1 }) {
+                let args = canon(&json!({"operation":case["operation"], "payload":case["input_json"]}))?;
+                let args_digest = tobkiri_canon::digest(&args, Variant::StrictV1)?;
+                let before = audit_rows(&data, &profile)?.len();
+                let actual = session.call_user_port(
+                    ShapeRef::parse(consumer::ENTRY)?, OpName::parse("normalize")?, &args,
+                ).await;
+                let rows = audit_rows(&data, &profile)?;
+                let interval = rows.get(before..).context("audit sequence shrank")?;
+                let dispatches = interval.iter().filter(|row| {
+                    row["kind"] == "dispatch" && row["payload"]["effect_digest"] == effect_digest
+                }).count();
+                let provider_dispatches = pack_events(interval, "dispatch", &inputs.pack);
+                let denials = interval.iter().filter(|row| {
+                    row["kind"] == "denied" && row["principal"] == principal
+                        && row["payload"][0] == "port-call" && row["payload"][1] == "denied"
+                }).count();
+                let terminal = terminal_pair(interval, &principal, &effect, &args_digest)?;
+                // dispatch_owned records a typed error arm as provider-error;
+                // the outer User facade separately sanitizes its Core error.
+                let expected_outcome = if case["transport"]["status"] == "ok" {
+                    tobkiri_gate::Outcome::Succeeded
+                } else {
+                    tobkiri_gate::Outcome::Failed { code: "provider-error".into() }
+                };
+                let outcome = terminal_pair_with_outcome(interval, &principal, &effect, &args_digest, &expected_outcome)?;
+                let mut record = json!({
+                    "id":case["id"], "observed":true, "matched":false,
+                    "operation":case["operation"], "payload_sha256":evidence::digest(case["input_json"].as_str().context("payload missing")?.as_bytes()),
+                    "args_digest":args_digest, "effect_digest":effect_digest,
+                    "bridge_port_dispatches":dispatches, "provider_dispatches":provider_dispatches,
+                    "caller_denials":denials, "exact_port_dispatch_outcome":terminal,
+                    "exact_terminal_outcome":outcome, "expected_terminal_outcome":expected_outcome,
+                    "returned_error":actual.is_err()
+                });
+                let matched = if allowed {
+                    let output_matches = match actual {
+                        Ok(buffer) => {
+                            let CanonValue::Str(output) = parse_output(&buffer)? else {
+                                anyhow::bail!("typed normalize returned a non-string success");
+                            };
+                            record["actual"] = json!({"status":"ok", "output_sha256":evidence::digest(output.as_bytes()), "output_bytes":output.len()});
+                            case["transport"]["status"] == "ok"
+                                && case["transport"]["output_json"].as_str() == Some(output.as_str())
+                        }
+                        Err(CoreError::Step(step)) => {
+                            let invalid = step.code == "invalid" && step.message == "provider reported invalid input";
+                            record["actual"] = json!({"status":"step-error", "code":step.code, "exact_public_invalid":invalid});
+                            case["transport"]["status"] == "invalid" && invalid
+                        }
+                        Err(_) => false,
+                    };
+                    let initialized = provider_initialized(&rows, &inputs.pack)?;
+                    record["physical_provider_init_receipt"] = json!(initialized);
+                    output_matches && terminal && outcome && dispatches == 1 && denials == 0 && initialized
+                } else {
+                    actual.is_err() && denials == 1 && dispatches == 0 && provider_dispatches == 0 && !terminal
+                };
+                record["matched"] = json!(matched);
+                report["consumer_normalize"][label]["cases"].as_array_mut().context("typed cases missing")?.push(record);
+                ensure!(matched, "typed normalize result or exact consumer audit authority failed");
+            }
+            Ok(())
+        }.await;
+        let close = session.close().await;
+        report["consumer_normalize"][label]["session_closed"] = json!(close.is_ok());
+        result?;
+        close?;
+    }
     Ok(())
 }
 
 #[test]
 fn ordered_python_reviewed_source_identity_is_current() -> Result<()> {
     evidence::reviewed_sources(&repo())?;
+    Ok(())
+}
+
+#[test]
+fn typed_normalize_inputs_remain_exact_original_oracle_strings() -> Result<()> {
+    let bytes = std::fs::read(repo().join("packs").join(PACK).join("oracle.json"))?;
+    ensure!(
+        evidence::digest(&bytes) == evidence::ORACLE_SHA,
+        "original oracle changed"
+    );
+    let oracle: Value = serde_json::from_slice(&bytes)?;
+    let cases = consumer_normalize_cases(&oracle)?;
+    for case in &cases {
+        let args = canon(&json!({"operation":case["operation"], "payload":case["input_json"]}))?;
+        let CanonValue::Obj(fields) = args else {
+            anyhow::bail!("outer argument record missing");
+        };
+        assert_eq!(
+            fields["operation"],
+            CanonValue::Str(case["operation"].as_str().unwrap().to_owned())
+        );
+        assert_eq!(
+            fields["payload"],
+            CanonValue::Str(case["input_json"].as_str().unwrap().to_owned())
+        );
+    }
+    assert!(
+        cases[0]["input_json"]
+            .as_str()
+            .unwrap()
+            .contains("\"z\":1.0,\"a\":-0.0")
+    );
+    assert!(
+        cases[0]["transport"]["output_json"]
+            .as_str()
+            .unwrap()
+            .contains("\"z\":1.0,\"a\":-0.0")
+    );
+    assert_eq!(cases[1]["original"]["code"], "invalid_response");
     Ok(())
 }
 
@@ -474,6 +681,50 @@ fn terminal_pair_rejects_wrong_principal_arguments_and_grant() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn typed_normalize_terminal_requires_exact_outcome_on_same_request_and_grant() -> Result<()> {
+    let principal = json!({"kind":"pack", "pack":consumer::CONSUMER,
+        "hash":tobkiri_canon::Digest::hash(b"test-only-consumer")});
+    let effect = tobkiri_gate::EffectRequest::PortCall {
+        shape: ShapeRef::parse(SHAPE)?,
+        op: OpName::parse("normalize")?,
+    };
+    let args = tobkiri_canon::Digest::hash(b"test-only-original-string-arguments");
+    let dispatch = json!({"kind":"dispatch", "principal":principal, "request":"request-one",
+        "payload":{"grant":"grant-one", "effect_digest":effect.digest()?, "args_digest":args}});
+    let success = tobkiri_gate::Outcome::Succeeded;
+    let failure = tobkiri_gate::Outcome::Failed {
+        code: "provider-error".into(),
+    };
+    for (expected, wrong) in [(&success, &failure), (&failure, &success)] {
+        let mut outcome = dispatch.clone();
+        outcome["kind"] = json!("outcome");
+        outcome["payload"]["outcome"] = serde_json::to_value(expected)?;
+        let valid = vec![dispatch.clone(), outcome.clone()];
+        assert!(terminal_pair_with_outcome(
+            &valid, &principal, &effect, &args, expected
+        )?);
+        assert!(!terminal_pair_with_outcome(
+            &valid, &principal, &effect, &args, wrong
+        )?);
+        for field in ["request", "grant"] {
+            let mut unmatched = outcome.clone();
+            if field == "request" {
+                unmatched[field] = json!("other-request");
+            } else {
+                unmatched["payload"][field] = json!("other-grant");
+            }
+            let mut changed = valid.clone();
+            changed[1]["payload"]["outcome"] = serde_json::to_value(wrong)?;
+            changed.push(unmatched);
+            assert!(!terminal_pair_with_outcome(
+                &changed, &principal, &effect, &args, expected
+            )?);
+        }
+    }
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "requires the real pinned ordered Python component and external evidence destination"]
 async fn ordered_python_bridge_replays_through_real_core() -> Result<()> {
@@ -488,7 +739,7 @@ async fn ordered_python_bridge_replays_through_real_core() -> Result<()> {
         "frozen_case_counts":{"cases":33, "success":12, "original_invalid":12, "excluded_not_parity":9},
         "core_runtime_path_passed":false, "full_unit_complete":false,
         "owner_platform_acceptance":false, "production_enabled":false,
-        "consumer_authority":{}, "cases":[]
+        "consumer_authority":{}, "consumer_normalize":{}, "cases":[]
     });
     let result: Result<()> = async {
         let profile = profile(&inputs, None, true, "prof_ordered_python")?;
