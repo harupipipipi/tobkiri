@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "e65cc625b27ab9c51e9151f95a5408e0374ee7abe306b044c7310edb217f4c17",
+    "digest": "2862a2256d4baf1fcefe9735fdf02f2c7bb5c7793db7fc2e47f78e7eff2cd495",
     "entries": [
       {
         "path": "index.html",
@@ -220,13 +220,13 @@
       },
       {
         "path": "src/ambient/DefaultsConsoleWindow.tsx",
-        "size": 9371,
-        "sha256": "88d0ab123ce9de003e87e775e4e1cdc35be6d31faa36108967ea98f35b22d102"
+        "size": 9370,
+        "sha256": "3fc5964beb3bde6555110a0885e34ffbc90cbe15d206bb9d610f1bb9c26be133"
       },
       {
         "path": "src/ambient/ambientApprovalBoundary.test.ts",
-        "size": 24516,
-        "sha256": "115fdcc3ac06e232b1e007798818f41b90d8d84f85ebf5c618f5959c4ba487c3"
+        "size": 24533,
+        "sha256": "7baa353a245819df7762e88e1f4287705a069cf05b0b83aefa744739905af8aa"
       },
       {
         "path": "src/ambient/ambientConversationCompletion.ts",
@@ -3106,7 +3106,7 @@
     ]
   },
   "bundle": {
-    "digest": "7bf38d53c66f77b200a706a81d3c9cc37045d9c7d09b2c3c3b585818ae200ae5",
+    "digest": "a6d8458aec1ad374797a16ad4c1de606dd438d5554508deefdb46fb40be04637",
     "entries": [
       {
         "path": "shell-app.css",
@@ -3120,8 +3120,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2686880,
-        "sha256": "2de0ff8600aae40dccbe1b274504f645bd084074f849b0e59f22e4dd35bc51e8"
+        "size": 2686879,
+        "sha256": "2b06de1e837121c62bfeddebbe6be362afa12333fa3ec01f01c8885ff3b65a34"
       },
       {
         "path": "shell-icons.js",

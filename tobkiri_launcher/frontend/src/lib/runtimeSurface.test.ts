@@ -313,7 +313,6 @@ test('generated Contract Map is pinned to the canonical raw artifact and include
       'speed_tier',
       'provider_id',
       'provider',
-      'connection_id',
       'configured_only',
       'local_only',
       'min_knowledge_level',

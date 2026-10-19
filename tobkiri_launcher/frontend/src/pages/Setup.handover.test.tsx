@@ -112,7 +112,8 @@ test('inactive Setup offers an explicit migration choice and reloads after nativ
       .find((button) => button.textContent?.includes('Review previous Host data'))!;
     await act(async () => { reviewMigration.click(); });
     const activateWhileBusy = [...ui.container.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent?.includes('Activate Defaults Profile'))!;
+      .find((button) => button.textContent?.includes('Activate Tobkiri Harness'));
+    assert.ok(activateWhileBusy, 'Harness activation control remains visible during migration');
     assert.equal(activateWhileBusy.disabled, true, 'activation stays locked during the native ceremony');
     await act(async () => { resolveHandover({stage: 'completed'}); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 25)); });
@@ -145,7 +146,8 @@ test('a failed migration cannot retain review consent or unlock activation', asy
     assert.match(ui.container.textContent ?? '', /native migration failed/);
     assert.equal(ui.container.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked, false);
     const activate = [...ui.container.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent?.includes('Activate Defaults Profile'))!;
+      .find((button) => button.textContent?.includes('Activate Tobkiri Harness'));
+    assert.ok(activate, 'Harness activation control remains visible while activation is fenced');
     assert.equal(activate.disabled, true);
   } finally {
     await ui.cleanup();
@@ -221,7 +223,8 @@ test('an unavailable Profile registry keeps migration and activation locked with
     assert.match(ui.container.textContent ?? '', /Retry Host Profile verification/);
     assert.doesNotMatch(ui.container.textContent ?? '', /Choose how to start this Profile/);
     const activate = [...ui.container.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent?.includes('Activate Defaults Profile'))!;
+      .find((button) => button.textContent?.includes('Activate Tobkiri Harness'));
+    assert.ok(activate, 'Harness activation control remains visible while activation is fenced');
     assert.equal(activate.disabled, true);
   } finally {
     await ui.cleanup();
