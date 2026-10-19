@@ -1,0 +1,155 @@
+{
+  "schema": "tobkiri.python313-isolated-build-trial/1",
+  "status": "native build-Python executed; WASI static/shared artifacts linked; WASI guest not executed",
+  "date_utc": "2026-10-19",
+  "source_commit": "c0949b19d464f5d70bc1051195a3ae0e6a012df9",
+  "cpython": "3.13.16",
+  "native_observed_unicode": "15.1.0",
+  "native_module_check": {
+    "checked": 112,
+    "built_in": 33,
+    "shared": 66,
+    "not_applicable": 1,
+    "disabled": 1,
+    "missing": 11,
+    "failed_import": 0
+  },
+  "native_missing_modules": [
+    "_bz2",
+    "_ctypes",
+    "_ctypes_test",
+    "_curses",
+    "_curses_panel",
+    "_dbm",
+    "_gdbm",
+    "_lzma",
+    "_tkinter",
+    "_uuid",
+    "readline"
+  ],
+  "native_compiler": "gcc (Debian 14.2.0-19) 14.2.0",
+  "wasi_sdk": {
+    "version": "33.0",
+    "archive_sha256": "0ba8b5bfaeb2adf3f29bab5841d76cf5318ab8e1642ea195f88baba1abd47bce"
+  },
+  "isolation": {
+    "network": "new user/network namespace; no configured network route",
+    "filesystem": "read-only source and tool directories; explicit private /work writable; temporary /tmp; private PID namespace",
+    "environment": "cleared; PATH=/usr/bin:/bin HOME=/work LC_ALL=C CONFIG_SITE=/dev/null TMPDIR=/tmp",
+    "extra_readonly_tool_binding": "/usr/bin/mawk at /etc/alternatives/awk"
+  },
+  "steps": {
+    "native-build-python": {
+      "script": "native-build-python.sh",
+      "script_sha256": "06e41cabb1217df66c6e40f45cc1a1b108e5ffdc4645ef852d7bedb5b42c6599",
+      "exit_code": 0,
+      "elapsed_seconds": 200.03010725700005,
+      "limits": {
+        "address_space_per_process": 2147483648,
+        "file_size_per_file": 1073741824,
+        "timeout_seconds": 1200,
+        "disk_free_floor": 8589934592,
+        "make_jobs": 1
+      },
+      "source_manifest_sha256": "f4edf03314a3d7fcd63b655153c64a3a07ea32fe7ef264e186e121acfacca367"
+    },
+    "wasi-zlib": {
+      "script": "wasi-zlib.sh",
+      "script_sha256": "b2d0bd3dcaac908cc7a6df5ee12173657d7ac15a7cb212fd85dc3ef87a91381e",
+      "exit_code": 0,
+      "elapsed_seconds": 2.0024061539952527,
+      "limits": {
+        "address_space_per_process": 2147483648,
+        "file_size_per_file": 1073741824,
+        "timeout_seconds": 1200,
+        "disk_free_floor": 8589934592,
+        "make_jobs": 1
+      },
+      "source_manifest_sha256": "f4edf03314a3d7fcd63b655153c64a3a07ea32fe7ef264e186e121acfacca367"
+    },
+    "wasi-sqlite": {
+      "script": "wasi-sqlite.sh",
+      "script_sha256": "a21a43fea47d58860b8b042ecb4e649fcd1088ce0d2e9ac3740f96a559ae2a6e",
+      "exit_code": 0,
+      "elapsed_seconds": 28.004743085999507,
+      "limits": {
+        "address_space_per_process": 2147483648,
+        "file_size_per_file": 1073741824,
+        "timeout_seconds": 1200,
+        "disk_free_floor": 8589934592,
+        "make_jobs": 1
+      },
+      "source_manifest_sha256": "f4edf03314a3d7fcd63b655153c64a3a07ea32fe7ef264e186e121acfacca367"
+    },
+    "wasi-cpython": {
+      "script": "wasi-cpython.sh",
+      "script_sha256": "e275a275e259240dee7d81bf4f3d16d40c49da9012a10252ef0bcdf79444783d",
+      "exit_code": 0,
+      "elapsed_seconds": 182.03346517899627,
+      "limits": {
+        "address_space_per_process": 2147483648,
+        "file_size_per_file": 1073741824,
+        "timeout_seconds": 1200,
+        "disk_free_floor": 8589934592,
+        "make_jobs": 1
+      },
+      "source_manifest_sha256": "f4edf03314a3d7fcd63b655153c64a3a07ea32fe7ef264e186e121acfacca367"
+    }
+  },
+  "artifacts": {
+    "work/native2/python": {
+      "sha256": "8ea836d521d70c0606d18ea08f7b980d756ad35dd81d7b59cabb89a240aee8aa",
+      "bytes": 33000688
+    },
+    "work/wasi/deps/lib/libz.a": {
+      "sha256": "f7440c7d1d68fbad6a59cb4ea34ee69838c1fea65e42b8ac46a0a0eee643c9bb",
+      "bytes": 149172
+    },
+    "work/wasi/deps/lib/libsqlite3.a": {
+      "sha256": "3c85004cdfc73be677da0e460c96fa0532792acb6f8a06647f2eb3ca2c2582be",
+      "bytes": 1396216
+    },
+    "work/wasi/libpython3.13.a": {
+      "sha256": "a85ce76ac2f93114f69c39c745caab1214f2e5680f7fdfb180c5db386fde96a8",
+      "bytes": 42189820
+    },
+    "work/wasi/libpython3.13.so": {
+      "sha256": "9398c97225387e8a7dae9049e490948cef960948c18082576b89caa4a2d716c3",
+      "bytes": 30165147
+    }
+  },
+  "wasm_inspection": {
+    "format": "core-wasm-v1",
+    "custom_sections": [
+      "dylink.0",
+      ".debug_abbrev",
+      ".debug_info",
+      ".debug_str",
+      ".debug_line",
+      ".debug_loc",
+      ".debug_ranges",
+      "name",
+      "producers",
+      "target_features"
+    ],
+    "exports_count": 1716,
+    "critical_exports": {
+      "Py_Initialize": true,
+      "PyRun_SimpleString": true,
+      "PyInit_zlib": true,
+      "PyInit__sqlite3": true,
+      "PyInit__sha2": true,
+      "PyInit__sha3": true,
+      "PyInit__md5": true,
+      "PyInit__sha1": true
+    },
+    "guest_execution": false
+  },
+  "known_limits": [
+    "First native attempt failed because minimal sandbox omitted awk alternative; preserved, then retried with explicit read-only binary binding.",
+    "Host system headers/libraries are not a hermetic source-pinned toolchain; these hashes do not claim reproducible binary output.",
+    "WASI shared-library creation is experimental; no actual dynamic loading or guest behavior demonstrated.",
+    "Existing SQLite OMIT_RANDOMNESS and disabled features unchanged; no ordinary SQLite or cryptographic-random parity claim.",
+    "Rust runtime, producer packaging, final component build, Gate denial and native owner acceptance remain separate gates."
+  ]
+}
