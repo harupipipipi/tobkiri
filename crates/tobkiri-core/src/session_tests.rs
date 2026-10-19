@@ -12,7 +12,16 @@ async fn setup() -> (RuntimeFixture, Session, UiAttachment) {
 async fn setup_with_permissions(
     permissions: tobkiri_gate::PermissionSet,
 ) -> (RuntimeFixture, Session, UiAttachment) {
-    let fixture = RuntimeFixture::with_permissions(&["fixture"], true, permissions).await;
+    setup_with_permissions_and_timing(permissions, None).await
+}
+async fn setup_with_permissions_and_timing(
+    permissions: tobkiri_gate::PermissionSet,
+    timing: Option<Arc<crate::test_support::AuditTiming>>,
+) -> (RuntimeFixture, Session, UiAttachment) {
+    let mut fixture = RuntimeFixture::with_permissions(&["fixture"], true, permissions).await;
+    if let Some(timing) = timing {
+        fixture.core.set_audit_timing(timing);
+    }
     let session = fixture.session().await;
     let primary = session.ui.lock().unwrap().keys().next().unwrap().clone();
     let pack = session.compiled.profile.startup.ui.as_ref().unwrap();
@@ -492,7 +501,9 @@ async fn ui_handle_capacity_and_session_close_are_bounded() {
     // independent original-deadline tests use their short explicit budgets.
     permissions.wasm.wall_ms = 30_000;
     permissions.loops.max_wall_ms = 30_000;
-    let (_fixture, session, attachment) = setup_with_permissions(permissions).await;
+    let timing = Arc::new(crate::test_support::AuditTiming::default());
+    let (_fixture, session, attachment) =
+        setup_with_permissions_and_timing(permissions, Some(timing.clone())).await;
     for _ in 0..UI_STREAMS_PER_FRAME {
         open_stream(
             &session,
@@ -514,7 +525,7 @@ async fn ui_handle_capacity_and_session_close_are_bounded() {
         .is_err()
     );
     assert_eq!(session.streams.lock().unwrap().len(), UI_STREAMS_PER_FRAME);
-    session.close().await.unwrap();
+    timing.observe_close(session.close()).await.unwrap();
     assert!(session.streams.lock().unwrap().is_empty());
     assert!(
         invoke(&session, &attachment, input_shape(), "read", &empty_args())
@@ -530,7 +541,9 @@ async fn scalar_invoke_still_succeeds_at_full_stream_capacity() {
     // every per-frame handle is occupied by a live stream.
     permissions.wasm.wall_ms = 30_000;
     permissions.loops.max_wall_ms = 30_000;
-    let (_fixture, session, attachment) = setup_with_permissions(permissions).await;
+    let timing = Arc::new(crate::test_support::AuditTiming::default());
+    let (_fixture, session, attachment) =
+        setup_with_permissions_and_timing(permissions, Some(timing.clone())).await;
     for _ in 0..UI_STREAMS_PER_FRAME {
         open_stream(
             &session,
@@ -560,7 +573,7 @@ async fn scalar_invoke_still_succeeds_at_full_stream_capacity() {
         .is_err()
     );
     assert_eq!(session.streams.lock().unwrap().len(), UI_STREAMS_PER_FRAME);
-    session.close().await.unwrap();
+    timing.observe_close(session.close()).await.unwrap();
 }
 
 #[tokio::test]

@@ -53,6 +53,8 @@ pub struct Core {
     /// closed; its absence never weakens other Core services.
     processes: Option<crate::process_catalog::ProcessCatalog>,
     recovery: BTreeMap<ProfileId, ProfileRecoveryStatus>,
+    #[cfg(test)]
+    audit_timing: Option<Arc<crate::test_support::AuditTiming>>,
 }
 
 /// Read-only evidence from synchronous recovery. This never authorizes work;
@@ -113,6 +115,8 @@ impl Core {
             profiles: Profiles { root },
             admissions: crate::admission::Admissions::default(),
             recovery: BTreeMap::new(),
+            #[cfg(test)]
+            audit_timing: None,
         };
         let profiles = core.profiles.root.list_profiles()?;
         if profiles.len() > 4096 {
@@ -206,6 +210,10 @@ impl Core {
     fn authority(&self, profile: &Profile) -> Result<(Arc<GateEngine>, Arc<AuditLog>), CoreError> {
         self.authority_for_id(&profile.id)
     }
+    #[cfg(test)]
+    pub(crate) fn set_audit_timing(&mut self, timing: Arc<crate::test_support::AuditTiming>) {
+        self.audit_timing = Some(timing);
+    }
     fn authority_for_id(
         &self,
         id: &ProfileId,
@@ -226,9 +234,18 @@ impl Core {
             }
             Err(error) => return Err(error.into()),
         };
+        // The diagnostic wrapper exists only in unit tests and delegates to
+        // this exact real sink. The journal still receives the concrete log.
+        #[cfg(test)]
+        let gate_audit: Arc<dyn tobkiri_gate::AuditSink> = match &self.audit_timing {
+            Some(timing) => crate::test_support::timed_audit_sink(audit.clone(), timing.clone()),
+            None => audit.clone(),
+        };
+        #[cfg(not(test))]
+        let gate_audit = audit.clone();
         let gate = Arc::new(GateEngine::new_with_control(
             approvals,
-            audit.clone(),
+            gate_audit,
             Arc::new(Prompt(self.host.clone())),
             MediatorChain::default(),
             self.control.clone(),

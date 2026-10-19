@@ -41,6 +41,113 @@ pub(crate) fn batch(values: impl ExactSizeIterator<Item = CoreValue>) -> CoreVal
     CoreValue::array_shared(values.map(Ok), &value_budget()).unwrap()
 }
 use tobkiri_gate::{AuditEvent, GateError};
+
+/// Per-fixture timing only: no authority, source receipt or completion proof.
+#[derive(Default)]
+pub(crate) struct AuditTiming {
+    calls: AtomicU64,
+    total_micros: AtomicU64,
+    max_micros: AtomicU64,
+}
+
+impl AuditTiming {
+    fn measure<T>(&self, append: impl FnOnce() -> T) -> T {
+        let start = std::time::Instant::now();
+        let result = append();
+        let micros = u64::try_from(start.elapsed().as_micros()).unwrap_or(u64::MAX);
+        self.calls.fetch_add(1, Ordering::Relaxed);
+        self.total_micros.fetch_add(micros, Ordering::Relaxed);
+        self.max_micros.fetch_max(micros, Ordering::Relaxed);
+        result
+    }
+
+    /// Observe the unchanged real close. The heartbeat is stopped and joined
+    /// before returning its original result; dropping this observer aborts the
+    /// heartbeat via JoinSet. No source/physical receipt is polled separately.
+    pub(crate) async fn observe_close(
+        &self,
+        close: impl std::future::Future<Output = Result<(), crate::CoreError>>,
+    ) -> Result<(), crate::CoreError> {
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let (stop, mut stopped) = tokio::sync::oneshot::channel();
+        let mut heartbeat = tokio::task::JoinSet::new();
+        heartbeat.spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_millis(10));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            let mut last = std::time::Instant::now();
+            let mut maximum = std::time::Duration::ZERO;
+            let _ = started.send(());
+            loop {
+                tokio::select! {
+                    biased;
+                    _ = &mut stopped => return maximum.max(last.elapsed()),
+                    _ = interval.tick() => {
+                        let now = std::time::Instant::now();
+                        maximum = maximum.max(now.duration_since(last));
+                        last = now;
+                    }
+                }
+            }
+        });
+        let heartbeat_started = ready.await.is_ok();
+        let before_calls = self.calls.load(Ordering::Relaxed);
+        let before_total = self.total_micros.load(Ordering::Relaxed);
+        self.max_micros.store(0, Ordering::Relaxed);
+        let start = std::time::Instant::now();
+        let result = close.await;
+        let elapsed = start.elapsed();
+        let calls = self
+            .calls
+            .load(Ordering::Relaxed)
+            .saturating_sub(before_calls);
+        let total = self
+            .total_micros
+            .load(Ordering::Relaxed)
+            .saturating_sub(before_total);
+        let maximum = self.max_micros.load(Ordering::Relaxed);
+        let _ = stop.send(());
+        let poll_gap = heartbeat.join_next().await.and_then(Result::ok);
+        // One bounded aggregate line, with no IDs, payloads or error text.
+        // Timing correlates scheduler pressure; it does not prove cleanup.
+        let _ = std::io::Write::write_fmt(
+            &mut std::io::stderr(),
+            format_args!(
+                "CLEANUP_TIMING close_ok={} close_us={} audit_calls={} audit_total_us={} audit_max_us={} heartbeat_ok={} max_poll_gap_us={}\n",
+                result.is_ok(),
+                elapsed.as_micros(),
+                calls,
+                total,
+                maximum,
+                heartbeat_started && poll_gap.is_some(),
+                poll_gap.map_or(0, |gap| gap.as_micros()),
+            ),
+        );
+        result
+    }
+}
+
+pub(crate) fn timed_audit_sink(
+    audit: Arc<tobkiri_store::AuditLog>,
+    timing: Arc<AuditTiming>,
+) -> Arc<dyn tobkiri_gate::AuditSink> {
+    struct TimedAuditSink {
+        audit: Arc<tobkiri_store::AuditLog>,
+        timing: Arc<AuditTiming>,
+    }
+    impl tobkiri_gate::AuditSink for TimedAuditSink {
+        fn append(&self, event: AuditEvent) -> Result<(), GateError> {
+            self.timing
+                .measure(|| tobkiri_gate::AuditSink::append(self.audit.as_ref(), event))
+        }
+        fn append_idempotent(&self, id: &Digest, event: AuditEvent) -> Result<(), GateError> {
+            self.timing.measure(|| {
+                tobkiri_gate::AuditSink::append_idempotent(self.audit.as_ref(), id, event)
+            })
+        }
+    }
+    Arc::new(TimedAuditSink { audit, timing })
+}
+
 pub(crate) fn append_once(
     delivered: &Mutex<BTreeMap<Digest, Vec<u8>>>,
     id: &Digest,
