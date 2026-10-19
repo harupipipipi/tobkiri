@@ -169,6 +169,59 @@ class OrderedBridgeExtractionTests(unittest.TestCase):
             self.assertEqual((first / name).read_bytes(), (second / name).read_bytes())
         self.assertEqual(before, {path: (ROOT / path).read_bytes() for path in paths})
 
+    def test_wrapper_source_and_actual_delegation_sites_are_bound(self) -> None:
+        """Profile edge names alone do not pin wrapper implementation bytes."""
+        _module.prepare(self.output)
+        inventory = json.loads((self.output / "inventory.json").read_bytes())
+        wrappers = inventory["wrapper_evidence"]
+        self.assertEqual({item["caller_function_id"] for item in wrappers}, {
+            "rumi_ai_gateway_pack.ai-gateway.text-generate",
+            "rumi_ai_gateway_pack.ai-gateway.messages-generate",
+        })
+        for wrapper in wrappers:
+            self.assertEqual([item["symbol"] for item in
+                              wrapper["gateway_delegation_calls"]],
+                             ["gateway.create_generate_operation", "generate"])
+            evidence = wrapper["definitions"] + wrapper["gateway_delegation_calls"]
+            for item in evidence:
+                source = (ROOT / item["source_path"]).read_bytes()
+                self.assertEqual(_digest(source[
+                    item["source_start_byte"]:item["source_end_byte"]
+                ]), item["sha256"])
+
+    def test_changed_wrapper_source_invalidates_inventory(self) -> None:
+        """Even an unselected wrapper change invalidates full source identity."""
+        from unittest.mock import patch
+        _module.prepare(self.output)
+        capture = _module._capture
+        for filename, _ in _module.WRAPPERS.values():
+            def changed(path, filename=filename):
+                content = capture(path)
+                if path.endswith(filename):
+                    content += b"\n# changed wrapper\n"
+                return content
+            with self.subTest(wrapper=filename), patch.object(
+                _module, "_capture", changed,
+            ):
+                with self.assertRaisesRegex(ValueError, "inventory.json"):
+                    _module.verify(self.output)
+
+    def test_wrapper_identity_cannot_disagree_with_profile_edge(self) -> None:
+        """Fresh preparation must not relabel a different implementation as a caller."""
+        from unittest.mock import patch
+        capture = _module._capture
+        def changed(path):
+            content = capture(path)
+            if path.endswith("/text_generate.py"):
+                content = content.replace(
+                    b'FUNCTION_ID = "rumi_ai_gateway_pack.ai-gateway.text-generate"',
+                    b'FUNCTION_ID = "other.caller"',
+                )
+            return content
+        with patch.object(_module, "_capture", changed):
+            with self.assertRaisesRegex(ValueError, "wrapper identity"):
+                _module.prepare(self.output)
+
     def test_verification_rejects_tampering_without_rewriting(self) -> None:
         """Verification detects changed code or evidence and is strictly read-only."""
         for name in OUTPUT_NAMES:

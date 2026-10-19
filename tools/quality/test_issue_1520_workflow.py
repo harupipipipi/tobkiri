@@ -76,6 +76,14 @@ class RuntimeRoutingTests(unittest.TestCase):
             "unproven_allocation_owner_platform_is_unavailable -- --exact", denial)
         self.assertNotIn("--ignored", denial)
 
+    def test_registry_only_packager_runs_python_and_actual_worker_tests(self) -> None:
+        command = step(self.linux, "Python 3.13 asset packager regression")
+        self.assertIn("unittest discover -s tools/python313-producer/packager/tests", command)
+        self.assertIn("cargo test --locked --manifest-path "
+                      "tools/python313-producer/packager/Cargo.toml", command)
+        self.assertNotIn("continue-on-error", command)
+        self.assertNotIn("--ignored", command)
+
     def test_existing_foundation_checks_are_retained(self) -> None:
         for command in (
             "test_issue_1520_gate.py", "test_issue_1520_ci.py",

@@ -4670,6 +4670,7 @@ mod native_mailbox_tests {
 
     #[tokio::test]
     async fn source_native_scope_excludes_pending_caller_and_sibling_work() {
+        let _census_fixture = crate::child_census::lock_census_fixture().await;
         let control = CoreControl::default();
         let (caller, lifetime) = spawner(&control);
         let source = child_operation(&caller, 2);
@@ -4728,6 +4729,7 @@ mod native_mailbox_tests {
 
     #[tokio::test]
     async fn actual_store_drop_and_source_children_do_not_wait_for_native_caller() {
+        let _census_fixture = crate::child_census::lock_census_fixture().await;
         let control = CoreControl::default();
         let (caller, lifetime) = spawner(&control);
         let source = child_operation(&caller, 2);
@@ -4797,6 +4799,7 @@ mod native_mailbox_tests {
 
     #[tokio::test]
     async fn source_native_scope_covers_transitive_work_and_rejects_late_publication() {
+        let _census_fixture = crate::child_census::lock_census_fixture().await;
         let control = CoreControl::default();
         let (caller, lifetime) = spawner(&control);
         let source = child_operation(&caller, 2);
@@ -4848,6 +4851,7 @@ mod native_mailbox_tests {
 
     #[tokio::test]
     async fn caller_unknown_is_excluded_from_source_but_legacy_marker_is_retained() {
+        let _census_fixture = crate::child_census::lock_census_fixture().await;
         let control = CoreControl::default();
         let (caller, lifetime) = spawner(&control);
         let source = child_operation(&caller, 2);
@@ -4884,6 +4888,7 @@ mod native_mailbox_tests {
 
     #[tokio::test]
     async fn sealed_operation_rejects_unaccepted_payload_before_it_can_run() {
+        let _census_fixture = crate::child_census::lock_census_fixture().await;
         let control = CoreControl::default();
         let (caller, lifetime) = spawner(&control);
         let pending = child_operation(&caller, 2);
@@ -4919,6 +4924,7 @@ mod native_mailbox_tests {
 
     #[tokio::test]
     async fn uncertain_close_companion_still_notifies_original_native_cancellation() {
+        let _census_fixture = crate::child_census::lock_census_fixture().await;
         struct UncertainClose;
         impl StreamCloseControl for UncertainClose {
             fn record_close(&self, _: StreamCloseReason) -> Result<(), StepError> {
@@ -4957,6 +4963,7 @@ mod native_mailbox_tests {
 
     #[tokio::test]
     async fn parent_receipt_covers_both_immutable_child_siblings_without_seal_or_self_wait() {
+        let _census_fixture = crate::child_census::lock_census_fixture().await;
         let control = CoreControl::default();
         let (parent, lifetime) = spawner(&control);
         let cancel = parent
@@ -5020,6 +5027,7 @@ mod native_mailbox_tests {
 
     #[tokio::test]
     async fn child_body_rejects_start_without_its_exact_claimed_and_started_cleanup() {
+        let _census_fixture = crate::child_census::lock_census_fixture().await;
         let control = CoreControl::default();
         let (parent, lifetime) = spawner(&control);
         let cancel = parent
@@ -5060,6 +5068,7 @@ mod native_mailbox_tests {
 
     #[tokio::test]
     async fn submitted_mailbox_retains_actual_body_and_join_after_close_and_abandoned_wait() {
+        let _census_fixture = crate::child_census::lock_census_fixture().await;
         let control = CoreControl::default();
         let (spawner, lifetime) = spawner(&control);
         let cancel = spawner
@@ -5106,6 +5115,7 @@ mod native_mailbox_tests {
 
     #[tokio::test]
     async fn abandoned_unaccepted_mailbox_finishes_unknown_without_generation_seal() {
+        let _census_fixture = crate::child_census::lock_census_fixture().await;
         let control = CoreControl::default();
         let (spawner, lifetime) = spawner(&control);
         RunTaskSpawner::abandon_unstarted(&spawner).unwrap();
@@ -5132,6 +5142,7 @@ mod native_mailbox_tests {
 
     #[tokio::test]
     async fn sealed_unsubmitted_mailbox_wakes_but_keeps_physical_completion_unknown() {
+        let _census_fixture = crate::child_census::lock_census_fixture().await;
         let control = CoreControl::default();
         let (spawner, lifetime) = spawner(&control);
         let retirement = seal(&lifetime);

@@ -884,7 +884,7 @@ mod tests {
             })
             .await
             .unwrap();
-        assert!(calls >= 2 && calls <= 8);
+        assert!((2..=8).contains(&calls));
         assert_eq!(expected.strong_count(), before + 1);
         assert_eq!(control.usage().count(ControlKind::Waiter), 0);
         owner.close();

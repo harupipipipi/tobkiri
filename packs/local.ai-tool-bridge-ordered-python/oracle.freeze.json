@@ -5,8 +5,8 @@
     "python": "3.13.5",
     "unicode": "15.1.0"
   },
-  "oracle_sha256": "293b5093b3d986cad0aec658a9b80714663441ff9562126d20091e79d0cc7877",
-  "source_provenance_sha256": "9a0a54fc8be333b864fc749498cd04a9ecb53d2526db523a4fe879d2a023749e",
+  "oracle_sha256": "c571795b64aa470b12adf719f7946baa11129ed7f70556feb0f1fd3b272dd2fa",
+  "source_provenance_sha256": "55e6ebe946b9700072f78bc346ac63a9a8a2700f790abaffd537cbf8b1ac0010",
   "freeze_script_sha256": "83e1093f9a36468786b1f4b05661846f3f3e3b07b5eab1229a941835228faa04",
   "case_inputs_sha256": "39bf861b89825925890e3d1bae5fa99bdd9992323a7d25b19e49f57859366796",
   "case_count": 33

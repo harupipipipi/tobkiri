@@ -20,6 +20,10 @@ ECOSYSTEM = "tobkiri_runtime/ecosystem"
 BRIDGE = f"{ECOSYSTEM}/rumi_ai_tool_bridge_pack/runtime/bridge.py"
 DISPATCH = "tobkiri_runtime/core_runtime/global_contract_dispatch.py"
 GATEWAY = f"{ECOSYSTEM}/rumi_ai_gateway_pack/runtime/gateway.py"
+WRAPPERS = {
+    "text-generate": ("text_generate.py", "create_text_generate_operation"),
+    "messages-generate": ("messages_generate.py", "create_messages_generate_operation"),
+}
 BRIDGE_PACK = f"{ECOSYSTEM}/rumi_ai_tool_bridge_pack"
 PROFILE = f"{ECOSYSTEM}/defaultspack/v4/defaults.profile.v5.json"
 INTENT = f"{ECOSYSTEM}/defaultspack/v4/defaults.profile.intent.v1.json"
@@ -156,6 +160,8 @@ def _inventory() -> dict[str, Any]:
         f"{BRIDGE_PACK}/executables.v4.json",
         f"{BRIDGE_PACK}/pack.v4.json",
         PROFILE, INTENT, GATEWAY,
+        *(f"{ECOSYSTEM}/rumi_ai_gateway_pack/runtime/{filename}"
+          for filename, _ in WRAPPERS.values()),
     )
     sources = {path: _capture(path) for path in paths}
     documents = {path: json.loads(content) for path, content in sources.items()
@@ -228,6 +234,43 @@ def _inventory() -> dict[str, Any]:
                     if streaming is not None else None
                 )
                 call_sites.append(record)
+    wrapper_evidence = []
+    for caller, (filename, factory) in WRAPPERS.items():
+        path = f"{ECOSYSTEM}/rumi_ai_gateway_pack/runtime/{filename}"
+        content = sources[path]
+        wrapper_tree = ast.parse(content, filename=path)
+        caller_id = f"rumi_ai_gateway_pack.ai-gateway.{caller}"
+        identity = _symbol(wrapper_tree, "FUNCTION_ID")
+        if (not isinstance(identity, ast.Assign)
+                or not isinstance(identity.value, ast.Constant)
+                or identity.value.value != caller_id
+                or caller_id not in {edge["caller_function_id"]
+                                     for edge in edges.values()}):
+            raise ValueError(f"wrapper identity differs from original edge: {caller}")
+        factory_node = _symbol(wrapper_tree, factory)
+        records = []
+        for name in ("FUNCTION_ID", factory, "HOST_PROVIDER_FACTORY"):
+            _, record = _source_slice(path, content, _symbol(wrapper_tree, name), name)
+            records.append(record)
+        calls = []
+        for node in ast.walk(factory_node):
+            if not isinstance(node, ast.Call):
+                continue
+            target = ast.get_source_segment(content.decode("utf-8"), node.func)
+            if target in ("gateway.create_generate_operation", "generate"):
+                _, record = _source_slice(path, content, node, target)
+                calls.append(record)
+        if sorted(record["symbol"] for record in calls) != [
+            "gateway.create_generate_operation", "generate",
+        ]:
+            raise ValueError(f"expected one original Gateway delegation for {caller}")
+        wrapper_evidence.append({
+            "caller_function_id": caller_id,
+            "definitions": records,
+            "gateway_delegation_calls": sorted(
+                calls, key=lambda record: record["source_start_line"],
+            ),
+        })
     return {
         "schema": "io.tobkiri.python-tool-bridge-inventory.v1",
         "contract_id": CONTRACT,
@@ -237,6 +280,7 @@ def _inventory() -> dict[str, Any]:
                        for operation, refs in declarations.items()],
         "caller_edges": list(edges.values()),
         "gateway_evidence": gateway_evidence,
+        "wrapper_evidence": wrapper_evidence,
         "gateway_tool_intent_call_sites": sorted(
             call_sites, key=lambda record: record["source_start_line"],
         ),
@@ -245,6 +289,7 @@ def _inventory() -> dict[str, Any]:
             "Gateway stream calls select .stream; other listed edges select .generate.",
             "The original host factory invokes the pure callable as normalize.",
             "No profile, manifest, host capture, or runtime selection is modified.",
+            "Wrapper source and delegation sites are pinned; their runtime behavior is not migrated by this inventory.",
         ],
     }
 

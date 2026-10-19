@@ -47,6 +47,23 @@ const TASK_CONTROL: u64 = 4096;
 const MONITOR_CONTROL: u64 = 4096;
 const WAITER_CONTROL: u64 = 512;
 
+// Independent fixtures share the process-wide execution owner. Keep their
+// maintenance scans from consuming another fixture's original Joins or waking
+// its observers; intentional concurrency within each fixture is unchanged.
+// Acquire once at the outer test boundary, never from a spawned child/helper.
+#[cfg(test)]
+static CENSUS_FIXTURE: AsyncMutex<()> = AsyncMutex::const_new(());
+
+#[cfg(test)]
+pub(crate) async fn lock_census_fixture() -> tokio::sync::MutexGuard<'static, ()> {
+    CENSUS_FIXTURE.lock().await
+}
+
+#[cfg(test)]
+fn lock_census_fixture_blocking() -> tokio::sync::MutexGuard<'static, ()> {
+    CENSUS_FIXTURE.blocking_lock()
+}
+
 // A conservative requested-layout bound for the pinned repr(Rust) field set.
 // Rounding EACH field to the greatest field alignment covers every field
 // permutation and the final tail padding. This is not a proxy ABI assertion.
@@ -1725,17 +1742,48 @@ mod execution_owner {
         poll_join(&entry, Kind::Body, false).is_none()
     }
     #[cfg(test)]
-    pub(super) fn original_monitor_is_finished(id: SlotId) -> bool {
-        let Lookup::Found(entry) = lookup(id) else {
-            return false;
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(super) enum OriginalMonitorProbe {
+        OwnerBusy,
+        OwnerMissing,
+        MonitorUnpublished,
+        MonitorCellBusy,
+        MonitorPresent {
+            finished: bool,
+        },
+        MonitorConsumed {
+            outcome_cached: bool,
+            monitor_result_cached: bool,
+            destroyed: bool,
+        },
+        UnexpectedBody,
+    }
+    #[cfg(test)]
+    pub(super) fn original_monitor_probe(id: SlotId) -> OriginalMonitorProbe {
+        let entry = match lookup(id) {
+            Lookup::Found(entry) => entry,
+            Lookup::Busy => return OriginalMonitorProbe::OwnerBusy,
+            Lookup::Missing => return OriginalMonitorProbe::OwnerMissing,
         };
+        if entry.slot.cells[Kind::Monitor.index()].get().is_none() {
+            return OriginalMonitorProbe::MonitorUnpublished;
+        }
         let Some(mut cell) = try_cell(&entry.slot, Kind::Monitor) else {
-            return false;
+            return OriginalMonitorProbe::MonitorCellBusy;
         };
-        let finished =
-            matches!(cell.join.as_ref(), Some(ActualJoin::Monitor(join)) if join.is_finished());
+        let probe = match cell.join.as_ref() {
+            Some(ActualJoin::Monitor(join)) => OriginalMonitorProbe::MonitorPresent {
+                finished: join.is_finished(),
+            },
+            Some(ActualJoin::Body(_)) => OriginalMonitorProbe::UnexpectedBody,
+            None => OriginalMonitorProbe::MonitorConsumed {
+                outcome_cached: cell.outcome.is_some(),
+                monitor_result_cached: entry.slot.monitor_result.get().is_some(),
+                destroyed: entry.slot.destroyed[Kind::Monitor.index()].load(Ordering::Acquire),
+            },
+        };
         cell.complete();
-        finished
+        probe
     }
     #[cfg(test)]
     pub(super) struct OwnerPause {
@@ -2573,6 +2621,7 @@ mod tests {
 
     #[tokio::test]
     async fn unpolled_unpublished_work_is_included_and_keeps_close_intent() {
+        let _census_fixture = lock_census_fixture().await;
         let control = CoreControl::default();
         let census = census(&control, 1);
         let notified = Arc::new(AtomicBool::new(false));
@@ -2628,6 +2677,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn original_work_observer_awaits_join_without_seal_and_survives_abandonment() {
+        let _census_fixture = lock_census_fixture().await;
         let control = CoreControl::default();
         let census = census(&control, 1);
         let (started, observe_start) = oneshot::channel();
@@ -2685,6 +2735,7 @@ mod tests {
 
     #[tokio::test]
     async fn completed_receipts_do_not_retain_scheduled_task_slots() {
+        let _census_fixture = lock_census_fixture().await;
         let control = CoreControl::default();
         let census = census(&control, 4);
         let mut receipts = Vec::new();
@@ -2722,6 +2773,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn maintenance_preserves_all_original_completion_observers() {
+        let _census_fixture = lock_census_fixture().await;
         struct ObserverWake(AtomicUsize);
         impl Wake for ObserverWake {
             fn wake(self: Arc<Self>) {
@@ -2749,8 +2801,8 @@ mod tests {
             .unwrap();
         let completion = census.work_completion(id).unwrap();
         observed.await.unwrap();
-        let mut first = Box::pin(completion.wait_joined());
-        let mut second = Box::pin(completion.wait_joined());
+        let mut first = Box::pin(tokio::task::unconstrained(completion.wait_joined()));
+        let mut second = Box::pin(tokio::task::unconstrained(completion.wait_joined()));
         // The body is explicitly blocked. Register both original waiters before
         // independent maintenance polls either Join with its stable owner Wake.
         let first_wake = Arc::new(ObserverWake(AtomicUsize::new(0)));
@@ -2771,12 +2823,27 @@ mod tests {
         );
         GenerationChildCensus::maintain_executions();
         assert_eq!(control.usage().count(ControlKind::Task), 2);
-        assert_eq!(first_wake.0.load(Ordering::Acquire), 0);
-        assert_eq!(second_wake.0.load(Ordering::Acquire), 0);
+        // A legitimate progress/REPOLL notification may wake an observer, but
+        // cannot complete it while the actual body is still blocked. Rearm
+        // these same original futures before measuring completion's wakes.
+        assert!(
+            first
+                .as_mut()
+                .poll(&mut Context::from_waker(&first_waker))
+                .is_pending()
+        );
+        assert!(
+            second
+                .as_mut()
+                .poll(&mut Context::from_waker(&second_waker))
+                .is_pending()
+        );
+        let first_before_release = first_wake.0.load(Ordering::Acquire);
+        let second_before_release = second_wake.0.load(Ordering::Acquire);
         release.send(()).unwrap();
         tokio::time::timeout(Duration::from_secs(2), async {
-            while first_wake.0.load(Ordering::Acquire) == 0
-                || second_wake.0.load(Ordering::Acquire) == 0
+            while first_wake.0.load(Ordering::Acquire) <= first_before_release
+                || second_wake.0.load(Ordering::Acquire) <= second_before_release
             {
                 tokio::task::yield_now().await;
             }
@@ -2802,6 +2869,7 @@ mod tests {
 
     #[tokio::test]
     async fn monitor_poll_panic_restores_original_body_join_and_retains_custody() {
+        let _census_fixture = lock_census_fixture().await;
         struct ActualBody(Arc<AtomicBool>);
         impl Drop for ActualBody {
             fn drop(&mut self) {
@@ -2874,6 +2942,7 @@ mod tests {
 
     #[tokio::test]
     async fn abandoned_wait_retains_same_join_and_resources_until_real_completion() {
+        let _census_fixture = lock_census_fixture().await;
         let control = CoreControl::default();
         let census = census(&control, 1);
         let starts = Arc::new(AtomicUsize::new(0));
@@ -2918,6 +2987,7 @@ mod tests {
 
     #[tokio::test]
     async fn panic_is_cached_unknown_and_never_reaped_as_empty_success() {
+        let _census_fixture = lock_census_fixture().await;
         let control = CoreControl::default();
         let census = census(&control, 1);
         census
@@ -2956,6 +3026,7 @@ mod tests {
 
     #[tokio::test]
     async fn only_confirmed_completed_slots_are_reused_without_new_generation_funds() {
+        let _census_fixture = lock_census_fixture().await;
         let control = CoreControl::default();
         let census = census(&control, 1);
         let mut previous = 0;
@@ -2982,6 +3053,7 @@ mod tests {
 
     #[tokio::test]
     async fn task_capacity_failure_is_before_work_publication() {
+        let _census_fixture = lock_census_fixture().await;
         let control = CoreControl::new(CoreControlLimits {
             max_tasks: 1, // Both the actual task and its monitor must be admitted.
             ..CoreControlLimits::default()
@@ -3011,6 +3083,7 @@ mod tests {
 
     #[tokio::test]
     async fn normal_supervisor_join_does_not_hide_lost_nested_native_completion() {
+        let _census_fixture = lock_census_fixture().await;
         let control = CoreControl::default();
         let census = census(&control, 1);
         let (started, observed) = oneshot::channel();
@@ -3038,6 +3111,7 @@ mod tests {
 
     #[tokio::test]
     async fn unpublished_async_cleanup_responsibility_is_unknown_even_after_normal_drop() {
+        let _census_fixture = lock_census_fixture().await;
         assert_eq!(
             UnstartedCleanupPolicy::default(),
             UnstartedCleanupPolicy::RequiresCompletion
@@ -3083,6 +3157,7 @@ mod tests {
 
     #[tokio::test]
     async fn unpublished_synchronous_drop_panic_is_cached_unknown() {
+        let _census_fixture = lock_census_fixture().await;
         struct PanicOnDrop;
         impl Drop for PanicOnDrop {
             fn drop(&mut self) {
@@ -3116,6 +3191,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejected_launch_destroys_captured_payload_outside_publication_mutex() {
+        let _census_fixture = lock_census_fixture().await;
         struct Payload {
             census: Weak<CensusInner>,
             dropped: Arc<AtomicBool>,
@@ -3153,6 +3229,7 @@ mod tests {
 
     #[tokio::test]
     async fn seal_and_publication_race_has_no_unregistered_or_late_child() {
+        let _census_fixture = lock_census_fixture().await;
         let control = CoreControl::default();
         let census = census(&control, 16);
         let barrier = Arc::new(std::sync::Barrier::new(9));
@@ -3202,6 +3279,7 @@ mod tests {
 
     #[test]
     fn runtime_shutdown_is_unknown_not_an_empty_generation_receipt() {
+        let _census_fixture = lock_census_fixture_blocking();
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -3234,6 +3312,7 @@ mod tests {
 
     #[tokio::test]
     async fn close_callback_can_reenter_census_without_locking_or_starting_late_work() {
+        let _census_fixture = lock_census_fixture().await;
         struct ReentrantClose(GenerationChildCensus);
         impl StreamCloseControl for ReentrantClose {
             fn record_close(
@@ -3297,6 +3376,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn borrowed_join_real_wake_is_repolled_after_restore() {
+        let _census_fixture = lock_census_fixture().await;
         let control = CoreControl::default();
         let census = census(&control, 1);
         let (completion, release) = blocked_child(&census, 1).await;
@@ -3345,6 +3425,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn state_wait_request_survives_unlock_in_both_crossing_orders() {
+        let _census_fixture = lock_census_fixture().await;
         let control = CoreControl::default();
         let census = census(&control, 1);
         let (completion, release) = blocked_child(&census, 1).await;
@@ -3396,6 +3477,7 @@ mod tests {
 
     #[tokio::test]
     async fn contended_completion_cache_serves_the_same_physical_receipt() {
+        let _census_fixture = lock_census_fixture().await;
         let control = CoreControl::default();
         let census = census(&control, 1);
         let (completion, release) = blocked_child(&census, 1).await;
@@ -3437,6 +3519,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn pending_join_without_real_wake_creates_no_repoll_obligations() {
+        let _census_fixture = lock_census_fixture().await;
         let control = CoreControl::default();
         let census = census(&control, 1);
         let (completion, release) = blocked_child(&census, 1).await;
@@ -3477,6 +3560,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn completed_cache_unlock_wakes_two_original_observers_without_rescue() {
+        let _census_fixture = lock_census_fixture().await;
         struct CountWake(AtomicUsize);
         impl Wake for CountWake {
             fn wake(self: Arc<Self>) {
@@ -3567,6 +3651,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
     async fn actual_trailer_last_waker_retires_without_observers_at_all_owner_crossings() {
+        let _census_fixture = lock_census_fixture().await;
         // Both real trailer orders: body remains the last Waker block after
         // monitor Ready, or monitor itself remains the last Waker block.
         for kind in [execution_owner::Kind::Body, execution_owner::Kind::Monitor] {
@@ -3614,7 +3699,10 @@ mod tests {
                 eprintln!(
                     "CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=actual_monitor_wake_entered"
                 );
-                assert!(execution_owner::original_monitor_is_finished(slot));
+                assert_eq!(
+                    execution_owner::original_monitor_probe(slot),
+                    execution_owner::OriginalMonitorProbe::MonitorPresent { finished: true }
+                );
                 eprintln!(
                     "CENSUS_REV2 fixture=owner kind={diagnostic_kind} crossing={crossing} phase=actual_monitor_complete"
                 );
@@ -3689,6 +3777,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
     async fn last_actual_trailer_release_hands_finalization_to_foreign_state_holder() {
+        let _census_fixture = lock_census_fixture().await;
         for kind in [execution_owner::Kind::Body, execution_owner::Kind::Monitor] {
             let diagnostic_kind = if matches!(kind, execution_owner::Kind::Body) {
                 "body"
@@ -3727,7 +3816,10 @@ mod tests {
             eprintln!(
                 "CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=actual_monitor_wake_entered"
             );
-            assert!(execution_owner::original_monitor_is_finished(slot));
+            assert_eq!(
+                execution_owner::original_monitor_probe(slot),
+                execution_owner::OriginalMonitorProbe::MonitorPresent { finished: true }
+            );
             eprintln!(
                 "CENSUS_REV2 fixture=state kind={diagnostic_kind} phase=actual_monitor_complete"
             );

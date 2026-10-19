@@ -23,9 +23,11 @@ ALLOWED_IMPORTS = {f"tobkiri:core/{name}@1.0.0" for name in
                    ("types", "flow", "clock", "random", "audit")}
 
 
-def validate_evidence(artifact: Path, oracle: Path) -> tuple[bytes, bytes, bytes, dict]:
+def validate_evidence(artifact: Path, oracle: Path, *,
+                      artifact_limit: int = 512 * 1024 * 1024
+                      ) -> tuple[bytes, bytes, bytes, dict]:
     """Bind actual artifact, complete reviewed source plan and exact oracle bytes."""
-    binary = bounded_read(artifact, 512 * 1024 * 1024)
+    binary = bounded_read(artifact, artifact_limit)
     if not binary:
         raise ValueError("component must not be empty")
     receipt_bytes = bounded_read(artifact.with_suffix(".build.json"), 16 * 1024 * 1024)
