@@ -81,6 +81,9 @@ impl WasiView for PackState {
 /// certifies no separately scheduled native work; that proof remains separate.
 pub(crate) struct StoreDisposal {
     done: AtomicBool,
+    // Observation only: original retirement/inline cleanup still owns this
+    // exact Store's disposal. Never VM, native or terminal completion.
+    custodians: AtomicUsize,
     changed: tokio::sync::Notify,
     census: Option<GenerationChildCensus>,
     retirement: StdMutex<Option<GenerationRetirement>>,
@@ -96,6 +99,7 @@ impl StoreDisposal {
         let reservation = control.reserve(tobkiri_gate::ControlKind::Frame, 512)?;
         Ok(Self {
             done: AtomicBool::new(false),
+            custodians: AtomicUsize::new(0),
             changed: tokio::sync::Notify::new(),
             census,
             retirement: StdMutex::new(None),
@@ -109,6 +113,69 @@ impl StoreDisposal {
     }
     pub(crate) fn is_complete(&self) -> bool {
         self.done.load(Ordering::Acquire)
+    }
+    fn claim_owner(self: &Arc<Self>) -> Result<StoreDisposalOwner> {
+        self.custodians
+            .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| anyhow::anyhow!("exact generation already has a disposal owner"))?;
+        Ok(StoreDisposalOwner(self.clone()))
+    }
+    // Only the initializer holding this exact PackInstance's mutex may add
+    // inline custody. It may overlap the original retirement worker waiting
+    // for that mutex; an observer can never acquire or extend custody.
+    fn claim_inline_owner(self: &Arc<Self>) -> Result<StoreDisposalOwner> {
+        self.custodians
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |owners| {
+                owners.checked_add(1)
+            })
+            .map_err(|_| anyhow::anyhow!("exact Store inline custody exhausted"))?;
+        Ok(StoreDisposalOwner(self.clone()))
+    }
+    fn dispose_inline<T>(
+        self: &Arc<Self>,
+        store: T,
+        seal: impl FnOnce() -> Result<()>,
+    ) -> Result<()> {
+        // The caller retains the exact PackInstance mutex. Ownership of its
+        // actual Store has moved here, not to an observing or replacement task.
+        let owner = self.claim_inline_owner();
+        // A sealing panic must also destroy the Store before releasing its
+        // custodian. Function parameters otherwise outlive later local guards.
+        let store = store;
+        let sealed = if owner.is_ok() {
+            seal()
+        } else {
+            // Unknown custody must not publish a retirement or wake children.
+            Ok(())
+        };
+        drop(store);
+        self.complete();
+        // Keep custody through actual destruction even when sealing failed.
+        let _owner = owner?;
+        sealed
+    }
+    async fn wait_owned_vm(&self) -> Result<()> {
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                let changed = self.changed.notified();
+                tokio::pin!(changed);
+                changed.as_mut().enable();
+                if self.is_complete() {
+                    return Ok(());
+                }
+                if self.custodians.load(Ordering::Acquire) == 0 {
+                    // Recheck after observing owner release: actual Store
+                    // destruction may have preceded that release.
+                    if self.is_complete() {
+                        return Ok(());
+                    }
+                    bail!("exact generation has no live disposal owner")
+                }
+                changed.await;
+            }
+        })
+        .await
+        .context("owned generation Store destruction remains unknown")?
     }
     async fn wait_vm(&self) -> Result<()> {
         tokio::time::timeout(std::time::Duration::from_secs(2), async {
@@ -143,12 +210,43 @@ impl StoreDisposal {
         Ok(())
     }
 }
+/// Kept by the exact inline retirement or its original worker. Dropping a
+/// failed/cancelled owner wakes observers, but never marks the Store disposed.
+struct StoreDisposalOwner(Arc<StoreDisposal>);
+impl Drop for StoreDisposalOwner {
+    fn drop(&mut self) {
+        if self.0.custodians.fetch_sub(1, Ordering::AcqRel) == 1 {
+            self.0.changed.notify_waiters();
+        }
+    }
+}
 struct RetiredGeneration {
     token: tokio_util::sync::CancellationToken,
     generation: u64,
     disposal: Arc<StoreDisposal>,
     native: Option<GenerationRetirement>,
     operations: Vec<ProviderOperationScope>,
+    _owner: StoreDisposalOwner,
+}
+
+struct PreparedDisposalTask {
+    runtime: tokio::runtime::Handle,
+    control: tobkiri_gate::ControlReservation,
+}
+impl PreparedDisposalTask {
+    /// Every fallible task admission precedes the caller's retirement commit.
+    fn prepare<T>(
+        control: &tobkiri_gate::CoreControl,
+        retire: impl FnOnce() -> Result<T>,
+    ) -> Result<(Self, T)> {
+        let control = control
+            .reserve(tobkiri_gate::ControlKind::Task, 4096)
+            .context("generation disposal task capacity unavailable before retirement")?;
+        let runtime = tokio::runtime::Handle::try_current()
+            .context("generation disposal runtime unavailable before retirement")?;
+        let retirement = retire()?;
+        Ok((Self { runtime, control }, retirement))
+    }
 }
 
 pub(crate) struct GenerationLifetime {
@@ -2557,6 +2655,7 @@ impl PackHost {
                 .shared
                 .control
                 .reserve(tobkiri_gate::ControlKind::Frame, snapshot_bytes)?;
+            let owner = lifetime.disposal.claim_owner()?;
             let native = {
                 let mut receipt = lifetime
                     .disposal
@@ -2591,6 +2690,7 @@ impl PackHost {
                     disposal: lifetime.disposal.clone(),
                     native,
                     operations,
+                    _owner: owner,
                 },
                 lifetime
                     .controls
@@ -2640,7 +2740,13 @@ impl PackHost {
                 .discard_generation_mode(pack, entry.generation, false)
                 .await
             {
-                disposal.wait_vm().await.map_err(|_| error)?;
+                // A rejection does not establish that another cleanup worker
+                // exists. Observe only this exact source receipt's live owner
+                // (or its actual completed Store destruction), never a newer
+                // generation or an unowned retirement flag.
+                disposal.wait_owned_vm().await.map_err(|observation| {
+                    error.context(format!("source disposal ownership: {observation}"))
+                })?;
             }
         }
         disposal.wait_vm().await?;
@@ -2655,15 +2761,16 @@ impl PackHost {
         wait_native: bool,
     ) -> Result<()> {
         let slot = self.instance(id)?;
-        let retirement = self.retire_generation(&slot, expected)?;
+        let (prepared, retirement) = PreparedDisposalTask::prepare(&self.shared.control, || {
+            self.retire_generation(&slot, expected)
+        })?;
         retirement.token.cancel();
-        let control = self
-            .shared
-            .control
-            .reserve(tobkiri_gate::ControlKind::Task, 4096)?;
         let disposal = retirement.disposal.clone();
-        let task = tokio::spawn(async move {
-            let _control = control;
+        let task = prepared.runtime.spawn(async move {
+            let _control = prepared.control;
+            // Move the whole original retirement owner into the task. Field
+            // capture alone must not drop its ownership marker before work.
+            let retirement = retirement;
             {
                 let mut instance = slot.instance.lock().await;
                 if instance.current_generation == retirement.generation
@@ -2682,14 +2789,16 @@ impl PackHost {
             }
             // This owning cleanup task survives an outer timeout. It retains
             // the exact census while every actual Join/custody receipt resolves.
-            retirement.disposal.wait().await
+            let result = retirement.disposal.wait().await;
+            drop(retirement);
+            result
         });
         if !wait_native {
             // The existing worker keeps full-generation custody independently.
             // A source observes only actual VM destruction here; waiting that
             // worker would include a native caller awaiting this very close.
             drop(task);
-            return disposal.wait_vm().await;
+            return disposal.wait_owned_vm().await;
         }
         tokio::time::timeout(std::time::Duration::from_secs(2), task)
             .await
@@ -2804,6 +2913,15 @@ async fn ensure_provider_operation(
 }
 
 impl PackInstance {
+    fn dispose_failed_initialization(&mut self) -> Result<()> {
+        // The actual instance mutex remains held by initialize. Keep this
+        // original inline custodian through Store destruction even if sealing
+        // fails, or an independently admitted retirement worker disappears.
+        let disposal = self.store_disposal.clone();
+        let store = self.live.take();
+        disposal.dispose_inline(store, || self.seal_native_generation())
+    }
+
     fn seal_native_generation(&self) -> Result<()> {
         let (retirement, token, operations, _snapshot) = {
             let mut lifetime = self
@@ -2951,9 +3069,8 @@ impl PackInstance {
         Ok(())
         }.await;
         if result.is_err() {
-            let _ = self.seal_native_generation();
-            self.live.take();
-            self.store_disposal.complete();
+            // Preserve the original initialization error and its audit path.
+            let _ = self.dispose_failed_initialization();
         }
         shared
             .gate
@@ -3915,6 +4032,10 @@ impl StreamSource for ComponentStream {
         result
     }
 }
+
+#[cfg(test)]
+#[path = "store_disposal_tests.rs"]
+mod store_disposal_tests;
 
 #[cfg(test)]
 mod native_mailbox_tests {
