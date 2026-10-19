@@ -159,6 +159,33 @@ class RuntimeRoutingTests(unittest.TestCase):
         self.assertNotIn("cargo test", self.producer)
         self.assertNotIn("--python-parity", self.producer)
 
+    def test_custom_ordered_fixture_has_separate_authenticated_native_replay(self) -> None:
+        portable = step(self.linux, "Preserved ordered Python component transport regression")
+        self.assertIn("test_stage_preserved_ordered_python.py", portable)
+        stage = step(self.native, "Authenticate the preserved custom Python 3.13 component")
+        replay = step(self.native, "Replay the ordered Python candidate through actual Rust Core")
+        self.assertIn("scripts/wasm/stage_preserved_ordered_python.py", stage)
+        self.assertIn("materialization.json", stage)
+        self.assertIn("TOBKIRI_TEST_ORDERED_PYTHON_", stage)
+        self.assertLess(self.native.index(stage), self.native.index(replay))
+        self.assertIn("--expected-passed 1 --", replay)
+        self.assertIn("--test ordered_python", replay)
+        self.assertIn("ordered_python_bridge_replays_through_real_core", replay)
+        self.assertIn("-- --ignored --exact --nocapture --test-threads=1", replay)
+        self.assertNotIn("--python-parity", replay)
+        condition = re.search(r"^        if: (.+)$", replay, re.MULTILINE).group(1)
+        for prerequisite in ("native_platform", "rust_toolchain", "stage_ordered_python"):
+            self.assertIn(f"steps.{prerequisite}.outcome == 'success'", condition)
+        self.assertIn("!cancelled()", condition)
+        self.assertNotIn("success()", condition)
+        self.assertNotIn("stage_python.", condition)
+        retain = step(self.native, "Retain actual ordered Python replay evidence")
+        self.assertIn("if: always()", retain)
+        for name in ("component.build.json", "materialization.json", "pack/pack.json",
+                     "native-replay.json", "ordered-python-parity.log",
+                     "ordered-python-parity.receipt.json"):
+            self.assertIn(name, retain)
+
     def test_replay_survives_other_failures_but_requires_prerequisites(self) -> None:
         replay = step(
             self.native, "Replay the original 91 cases through actual Rust Core")

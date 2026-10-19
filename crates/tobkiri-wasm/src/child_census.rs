@@ -1156,7 +1156,7 @@ mod execution_owner {
         monitor: ControlReservation,
         physical: oneshot::Sender<PhysicalResult>,
         changed: Arc<tokio::sync::Notify>,
-    ) -> Result<UnpublishedAdmission, CensusError> {
+    ) -> Result<(UnpublishedAdmission, Publication), CensusError> {
         let body = Box::new(parking_lot::RwLock::new(JoinState::empty()));
         let monitor_cell = Box::new(parking_lot::RwLock::new(JoinState::empty()));
         let state = parking_lot::RwLock::new(State {
@@ -1235,7 +1235,7 @@ mod execution_owner {
             .map_err(|_| CensusError::Capacity)
         };
         let baselines = [make_waker(Kind::Body)?, make_waker(Kind::Monitor)?];
-        {
+        let monitor_prepared = {
             let Some(mut state) = try_state(&entry) else {
                 return Err(CensusError::StateUnavailable);
             };
@@ -1245,10 +1245,65 @@ mod execution_owner {
                 };
                 cell.get_mut().baseline_waker = Some(waker);
             }
+            // This entry is still private. Extract the monitor's prewarmed
+            // cell before maintenance can borrow its process-owner slot.
+            let prepared = state.prepared[Kind::Monitor.index()]
+                .take()
+                .ok_or(CensusError::LaunchUnknown)?;
             state.complete();
+            prepared
+        };
+        let publication = Publication {
+            entry: entry.clone(),
+            kind: Kind::Monitor,
+            prepared: Some(monitor_prepared),
+            committed: false,
+            installed: false,
+        };
+        let admission = UnpublishedAdmission { entry };
+        insert_owner(&admission.entry)?;
+        #[cfg(test)]
+        pause_reserved_admission(admission.id());
+        Ok((admission, publication))
+    }
+
+    // A one-shot publisher-local seam pauses outside every custody guard.
+    // Tests borrow the real OWNER cell, not a synthetic contention flag.
+    #[cfg(test)]
+    std::thread_local! {
+        static ADMISSION_PAUSE: std::cell::RefCell<Option<AdmissionPause>> = const {
+            std::cell::RefCell::new(None)
+        };
+    }
+    #[cfg(test)]
+    struct AdmissionPause {
+        reserved: std::sync::mpsc::SyncSender<SlotId>,
+        resume: std::sync::mpsc::Receiver<()>,
+    }
+    #[cfg(test)]
+    pub(super) fn set_admission_pause(
+        reserved: std::sync::mpsc::SyncSender<SlotId>,
+        resume: std::sync::mpsc::Receiver<()>,
+    ) {
+        ADMISSION_PAUSE.with(|pause| {
+            assert!(
+                pause
+                    .borrow_mut()
+                    .replace(AdmissionPause { reserved, resume })
+                    .is_none()
+            );
+        });
+    }
+    #[cfg(test)]
+    fn pause_reserved_admission(id: SlotId) {
+        let pause = ADMISSION_PAUSE.with(|pause| pause.borrow_mut().take());
+        if let Some(pause) = pause {
+            pause
+                .reserved
+                .send(id)
+                .expect("reserved admission observer");
+            pause.resume.recv().expect("resume reserved admission");
         }
-        insert_owner(&entry)?;
-        Ok(UnpublishedAdmission { entry })
     }
 
     pub(super) struct Publication {
@@ -2111,7 +2166,7 @@ impl GenerationChildCensus {
         // takes its waiter mutex and returns through the empty-list branch.
         // This prepays/initializes Darwin's lazy PAL mutex before publication.
         changed.notify_waiters();
-        let _admission = execution_owner::reserve(
+        let (_admission, mut monitor_publication) = execution_owner::reserve(
             record_control.clone(),
             task_control,
             monitor_control,
@@ -2119,11 +2174,6 @@ impl GenerationChildCensus {
             changed.clone(),
         )?;
         let execution_slot = _admission.id();
-        let mut monitor_publication =
-            match execution_owner::prepare(execution_slot, execution_owner::Kind::Monitor)? {
-                execution_owner::Prepared::Ready(publication) => publication,
-                execution_owner::Prepared::Busy => return Err(CensusError::StateUnavailable),
-            };
         let carrier_payload = Mutex::new(Some(future));
         {
             // Fresh, unshared and fully charged, before every outer guard.
@@ -3225,6 +3275,159 @@ mod tests {
         ));
         assert!(dropped.load(Ordering::Acquire));
         assert_eq!(retired.wait_physical().await.unwrap().completed(), 0);
+    }
+
+    #[derive(Clone, Copy)]
+    enum ReservedAdmissionCase {
+        Open,
+        Sealed,
+        Capacity,
+    }
+
+    async fn admission_with_borrowed_reserved_owner(case: ReservedAdmissionCase) {
+        let _census_fixture = lock_census_fixture().await;
+        struct Payload {
+            census: Weak<CensusInner>,
+            dropped: Arc<AtomicBool>,
+        }
+        impl Drop for Payload {
+            fn drop(&mut self) {
+                let census = self.census.upgrade().unwrap();
+                assert!(census.state.try_lock().is_ok());
+                self.dropped.store(true, Ordering::Release);
+            }
+        }
+        let control = CoreControl::default();
+        let census = census(&control, 1);
+        let existing = if matches!(case, ReservedAdmissionCase::Capacity) {
+            Some(
+                census
+                    .admit_and_spawn(
+                        execution(1),
+                        None,
+                        UnstartedCleanupPolicy::SynchronousDrop,
+                        async { Ok(()) },
+                    )
+                    .unwrap(),
+            )
+        } else {
+            None
+        };
+        let baseline_tasks = control.usage().count(ControlKind::Task);
+        let baseline_bytes = control.usage().bytes;
+        let dropped = Arc::new(AtomicBool::new(false));
+        let runs = Arc::new(AtomicUsize::new(0));
+        let payload = Payload {
+            census: Arc::downgrade(&census.inner),
+            dropped: dropped.clone(),
+        };
+        let (reserved_tx, reserved_rx) = std::sync::mpsc::sync_channel(1);
+        let (resume_tx, resume_rx) = std::sync::mpsc::sync_channel(1);
+        let (result_tx, result_rx) = std::sync::mpsc::sync_channel(1);
+        let publisher_census = census.clone();
+        let actual_runs = runs.clone();
+        let publisher = std::thread::spawn(move || {
+            execution_owner::set_admission_pause(reserved_tx, resume_rx);
+            let result = publisher_census.admit_and_spawn(
+                execution(2),
+                None,
+                UnstartedCleanupPolicy::SynchronousDrop,
+                async move {
+                    actual_runs.fetch_add(1, Ordering::AcqRel);
+                    drop(payload);
+                    Ok(())
+                },
+            );
+            result_tx.send(result).unwrap();
+        });
+        let slot = reserved_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        let mut retired = if matches!(case, ReservedAdmissionCase::Sealed) {
+            Some(census.seal(StreamCloseReason::Manual).unwrap())
+        } else {
+            None
+        };
+        let result = execution_owner::with_actual_owner_guard(slot, None, || {
+            // A real foreign maintenance borrower holds the exact reserved
+            // incarnation while the publisher must finish without its lock.
+            resume_tx.send(()).unwrap();
+            let result = result_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+            match case {
+                ReservedAdmissionCase::Open => assert!(result.is_ok(), "{result:?}"),
+                ReservedAdmissionCase::Sealed => {
+                    assert!(matches!(result, Err(CensusError::Sealed)))
+                }
+                ReservedAdmissionCase::Capacity => {
+                    assert!(matches!(result, Err(CensusError::Capacity)))
+                }
+            }
+            assert_eq!(runs.load(Ordering::Acquire), 0);
+            assert_eq!(dropped.load(Ordering::Acquire), result.is_err());
+            assert_eq!(
+                census.inner.state.lock().unwrap().records.len(),
+                usize::from(existing.is_some()) + usize::from(result.is_ok())
+            );
+            // Rejection cannot refund the reservation while this original
+            // owner borrower still pins its actual prepared allocations.
+            assert_eq!(control.usage().count(ControlKind::Task), baseline_tasks + 2);
+            assert!(control.usage().bytes > baseline_bytes);
+            assert!(execution_owner::owner_attached(slot));
+            result
+        })
+        .expect("reserved owner must be available to the foreign borrower");
+        publisher.join().unwrap();
+        if result.is_err() {
+            assert!(!execution_owner::owner_attached(slot));
+            assert_eq!(control.usage().count(ControlKind::Task), baseline_tasks);
+            assert_eq!(control.usage().bytes, baseline_bytes);
+        }
+        let slots = execution_slots(&census);
+        let admitted = result.ok().or(existing);
+        if let Some(id) = admitted {
+            let completion = census.work_completion(id).unwrap();
+            tokio::time::timeout(Duration::from_secs(2), completion.wait_joined())
+                .await
+                .unwrap()
+                .unwrap();
+        }
+        if retired.is_none() {
+            retired = Some(census.seal(StreamCloseReason::Manual).unwrap());
+        }
+        let retired = retired.unwrap();
+        let receipt = tokio::time::timeout(Duration::from_secs(2), retired.wait_physical())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(receipt.completed(), u64::from(admitted.is_some()));
+        assert_eq!(receipt.joined(), u64::from(admitted.is_some()));
+        assert_eq!(receipt.never_started(), 0);
+        assert_eq!(
+            runs.load(Ordering::Acquire),
+            usize::from(matches!(case, ReservedAdmissionCase::Open))
+        );
+        assert!(dropped.load(Ordering::Acquire));
+        assert_eq!(control.usage().count(ControlKind::Task), 0);
+        // The physical receipt deliberately owns the same funded census.
+        // Destroy this original observer before asking for its final refund.
+        drop(receipt);
+        drop(retired);
+        drop(census);
+        await_metadata_deallocation(&control, &slots).await;
+        assert_eq!(control.usage().bytes, 0);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn reserved_monitor_admits_while_original_owner_is_borrowed() {
+        admission_with_borrowed_reserved_owner(ReservedAdmissionCase::Open).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn reserved_monitor_seal_rejection_keeps_borrowed_funding() {
+        admission_with_borrowed_reserved_owner(ReservedAdmissionCase::Sealed).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn reserved_monitor_capacity_rejection_keeps_borrowed_funding() {
+        admission_with_borrowed_reserved_owner(ReservedAdmissionCase::Capacity).await;
     }
 
     #[tokio::test]

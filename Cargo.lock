@@ -2479,6 +2479,8 @@ dependencies = [
  "tobkiri-store",
  "tobkiri-wasm",
  "tokio",
+ "wasmtime",
+ "wat",
 ]
 
 [[package]]

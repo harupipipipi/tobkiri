@@ -1,0 +1,331 @@
+{
+  "format": "tobkiri.python313-component-trial/1",
+  "date": "2026-10-19",
+  "production_enabled": false,
+  "native_core_acceptance": false,
+  "component": {
+    "sha256": "3c2aa68e256fa125e2e2a4cb3098704220fdf4832d83c699559ead60617aceac",
+    "bytes": 17899248,
+    "build_receipt_sha256": "480803d6ac72f53c9bc19d56eab187f9185c30ff2a9457e32c1fd9796c11d87d",
+    "build_mode": "hash-bound-custom-python313-producer-trial",
+    "build_plan_sha256": "0375ca57eb858a1ec70323eda9170090d7622c1c5bde25af15b520b368dca591",
+    "compiler_sha256": "ba5ce27a1109faeaf80d0f1fe3491f1863a3bb67db08c11845151e55cd483987",
+    "imports": [
+      "tobkiri:core/audit@1.0.0",
+      "tobkiri:core/clock@1.0.0",
+      "tobkiri:core/flow@1.0.0",
+      "tobkiri:core/random@1.0.0",
+      "tobkiri:core/types@1.0.0"
+    ],
+    "exports": [
+      "local:ai-tool-bridge-ordered-python/bridge@1.0.0",
+      "tobkiri:core/lifecycle@1.0.0"
+    ],
+    "guest_preinitialization_executed": true,
+    "typed_outer_composition_validation": {
+      "tool": "wac-cli",
+      "world": "pack",
+      "exact_exports": true,
+      "typed_target_check": true
+    },
+    "wac": {
+      "version": "0.12.0",
+      "sha256": "7cd490edbd452221ef89e6750fc43eacc9b71b1242095eb577cb9a3bf0d3beda"
+    }
+  },
+  "development_replay": {
+    "receipt_sha256": "956cd575e625c00c41fce31c8784272312d7141cc99d509729ce859e8bd308b6",
+    "oracle_sha256": "c571795b64aa470b12adf719f7946baa11129ed7f70556feb0f1fd3b272dd2fa",
+    "guest_runtime": [
+      {
+        "python": "3.13.16",
+        "unicode": "15.1.0"
+      }
+    ],
+    "original_reference_runtime": {
+      "python": "3.13.5",
+      "unicode": "15.1.0"
+    },
+    "admitted_cases_matched": 24,
+    "success_string_cases": 12,
+    "invalid_code_cases": 12,
+    "profile_exclusions_enforced": 9,
+    "full_original_protocol_parity": false,
+    "error_message_parity_checked": false,
+    "lifecycle_init_checked": true,
+    "lifecycle_shutdown_checked": false,
+    "host_import_policy": "canonical minimal imports trap if called",
+    "fuel_per_whole_case": 2000000000,
+    "timeout_seconds_per_whole_case": 30,
+    "store_limits": {
+      "memory_size": 134217728,
+      "table_elements": 65536,
+      "instances": 64,
+      "tables": 64,
+      "memories": 4
+    },
+    "observations": [
+      {
+        "id": "base:empty",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": "base:ordinary",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": "base:unicode-repr-15-1",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": "base:opaque-inner-json",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": "base:invalid-name",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": "base:invalid-item",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": "base:invalid-arguments",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": "base:invalid-json",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": "base:inner-bigint-excluded",
+        "admitted_parity": false,
+        "profile_exclusion_not_parity": true,
+        "exclusion_enforced": true
+      },
+      {
+        "id": "base:inner-nonfinite-excluded",
+        "admitted_parity": false,
+        "profile_exclusion_not_parity": true,
+        "exclusion_enforced": true
+      },
+      {
+        "id": "base:inner-depth-excluded",
+        "admitted_parity": false,
+        "profile_exclusion_not_parity": true,
+        "exclusion_enforced": true
+      },
+      {
+        "id": ".generate:empty",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": ".generate:ordinary",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": ".generate:unicode-repr-15-1",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": ".generate:opaque-inner-json",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": ".generate:invalid-name",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": ".generate:invalid-item",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": ".generate:invalid-arguments",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": ".generate:invalid-json",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": ".generate:inner-bigint-excluded",
+        "admitted_parity": false,
+        "profile_exclusion_not_parity": true,
+        "exclusion_enforced": true
+      },
+      {
+        "id": ".generate:inner-nonfinite-excluded",
+        "admitted_parity": false,
+        "profile_exclusion_not_parity": true,
+        "exclusion_enforced": true
+      },
+      {
+        "id": ".generate:inner-depth-excluded",
+        "admitted_parity": false,
+        "profile_exclusion_not_parity": true,
+        "exclusion_enforced": true
+      },
+      {
+        "id": ".stream:empty",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": ".stream:ordinary",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": ".stream:unicode-repr-15-1",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": ".stream:opaque-inner-json",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": ".stream:invalid-name",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": ".stream:invalid-item",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": ".stream:invalid-arguments",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": ".stream:invalid-json",
+        "admitted_parity": true,
+        "profile_exclusion_not_parity": false,
+        "exclusion_enforced": false
+      },
+      {
+        "id": ".stream:inner-bigint-excluded",
+        "admitted_parity": false,
+        "profile_exclusion_not_parity": true,
+        "exclusion_enforced": true
+      },
+      {
+        "id": ".stream:inner-nonfinite-excluded",
+        "admitted_parity": false,
+        "profile_exclusion_not_parity": true,
+        "exclusion_enforced": true
+      },
+      {
+        "id": ".stream:inner-depth-excluded",
+        "admitted_parity": false,
+        "profile_exclusion_not_parity": true,
+        "exclusion_enforced": true
+      }
+    ]
+  },
+  "materialization": {
+    "format": "tobkiri.ordered-python-pack-materialization/1",
+    "pack_manifest_sha256": "a92dc3f569b54469aa802021c4c255f7d13e194bd339d8b23180ef5e624e24a1",
+    "artifact_sha256": "3c2aa68e256fa125e2e2a4cb3098704220fdf4832d83c699559ead60617aceac",
+    "receipt_sha256": "480803d6ac72f53c9bc19d56eab187f9185c30ff2a9457e32c1fd9796c11d87d",
+    "oracle_sha256": "c571795b64aa470b12adf719f7946baa11129ed7f70556feb0f1fd3b272dd2fa",
+    "shape": "local.ai-tool-bridge-ordered-python.bridge",
+    "case_count": 33,
+    "outer_budget": {
+      "core_strict_v1_max_bytes": 4194304,
+      "max_request_bytes": 284,
+      "max_success_response_bytes": 257
+    },
+    "production_enabled": false,
+    "core_runtime_acceptance": false
+  },
+  "isolation": {
+    "network": "separate unshare network namespace plus bubblewrap PID namespace",
+    "inputs": "read-only, exact source and dependency hashes rechecked after execution",
+    "python_host": "existing system CPython3.13.5 with -I -S -B and fresh pycache prefix; not guest identity",
+    "wasmtime_validator": "48.0.0; exact interpreter/stdlib/dependency inventory of1362files,73301166bytes",
+    "validation_inventory_sha256": "51c0bc7bf5e7ce104147ca940930c3b7c3937d5e135f6b6f6ac1bdfd7f5e85f4",
+    "temporary_files": "fresh disk-backed scratch; no inherited host home or site-packages",
+    "limits": {
+      "address_space_per_process": 8589934592,
+      "sampled_aggregate_rss": 3221225472,
+      "polling_sleep_seconds": 0.1,
+      "actual_sample_period_includes_census_time": true,
+      "rss_sampling_is_not_hard_resident_enforcement": true,
+      "sampled_process_count_guard": 64,
+      "process_count_is_not_hard_pid_or_task_limit": true,
+      "available_memory_preflight": 4294967296,
+      "sampled_available_memory_floor": 1073741824,
+      "timeout_seconds": 1200,
+      "disk_free_floor": 8589934592
+    },
+    "scope": "fixed reviewed producer/replay, not a generic hostile-process containment guarantee"
+  },
+  "outcomes": {
+    "componentization": {
+      "outcome": "success",
+      "exit_code": 0,
+      "seconds": 30.555277577004745,
+      "observed_peak_sampled_rss": 415666176,
+      "observed_max_processes": 4
+    },
+    "replay": {
+      "outcome": "success",
+      "exit_code": 0,
+      "seconds": 15.329310793997138,
+      "observed_peak_sampled_rss": 376213504,
+      "observed_max_processes": 3
+    }
+  },
+  "script_sha256": {
+    "componentize-trial.py": "c441b1f375eaa94c1b853ecdd001f0d637be6cae92cc608eb572349b3d9ddecb",
+    "replay-trial.py": "c9ea5b49750cb27b7baeb36216341ac0264604eace5f59041eb006264d4c4be2"
+  },
+  "pending": [
+    "native Core/Gate/provider dispatch with real artifact",
+    "consumer permission denial evidence",
+    "full original integer/nonfinite/depth behavior remains outside this narrowed profile"
+  ]
+}

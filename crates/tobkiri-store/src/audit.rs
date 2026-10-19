@@ -12,6 +12,12 @@ use tobkiri_gate::{AuditEvent, AuditSink, CallCx, EffectRequest, GateError, Gran
 mod audit_guest;
 pub use audit_guest::*;
 
+#[cfg(test)]
+#[path = "audit_phase_tests.rs"]
+mod phase_tests;
+#[cfg(test)]
+use phase_tests::{AuditPhase, AuditPhaseSpan, AuditPhaseTiming};
+
 #[derive(Clone, Debug)]
 pub struct AuditQuota {
     pub records_per_minute: u64,
@@ -67,6 +73,8 @@ pub struct AuditLog {
     connection: Mutex<rusqlite::Connection>,
     _directory: crate::vfs::DatabaseGuard,
     quota: AuditQuota,
+    #[cfg(test)]
+    phase_timing: Option<AuditPhaseTiming>,
 }
 impl AuditLog {
     pub fn open(
@@ -86,9 +94,15 @@ impl AuditLog {
             connection: Mutex::new(conn),
             _directory: directory,
             quota,
+            #[cfg(test)]
+            phase_timing: None,
         };
         log.verify()?;
         Ok(log)
+    }
+    #[cfg(test)]
+    fn phase(&self, phase: AuditPhase) -> Option<AuditPhaseSpan<'_>> {
+        self.phase_timing.as_ref().map(|timing| timing.start(phase))
     }
     pub fn verify(&self) -> Result<(), StoreError> {
         let conn = self
@@ -142,6 +156,10 @@ impl AuditLog {
         event: AuditEvent,
         event_id: Option<&Digest>,
     ) -> Result<(), StoreError> {
+        #[cfg(test)]
+        let _total = self.phase(AuditPhase::Total);
+        #[cfg(test)]
+        let prepare = self.phase(AuditPhase::Prepare);
         if event.profile != self.profile {
             return Err(StoreError::Denied("audit Profile mismatch".into()));
         }
@@ -161,14 +179,30 @@ impl AuditLog {
                 _ => "user".into(),
             },
         };
+        #[cfg(test)]
+        drop(prepare);
+        #[cfg(test)]
+        let lock = self.phase(AuditPhase::Lock);
         let mut conn = self
             .connection
             .lock()
             .map_err(|_| StoreError::Conflict("audit lock poisoned".into()))?;
+        #[cfg(test)]
+        drop(lock);
+        #[cfg(test)]
+        let begin = self.phase(AuditPhase::Begin);
         let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        #[cfg(test)]
+        drop(begin);
         // Existing outbox decisions may progress through a faulted admission
         // domain only while this independent audit chain is still verified.
+        #[cfg(test)]
+        let verify = self.phase(AuditPhase::Verify);
         self.verify_connection(&tx)?;
+        #[cfg(test)]
+        drop(verify);
+        #[cfg(test)]
+        let queries = self.phase(AuditPhase::Queries);
         if let Some(event_id) = event_id {
             let existing: Option<Vec<u8>> = tx
                 .query_row(
@@ -183,6 +217,10 @@ impl AuditLog {
                         tobkiri_gate::IntegrityFaultCode::AuditIdentityConflict,
                     ));
                 }
+                #[cfg(test)]
+                drop(queries);
+                #[cfg(test)]
+                let _commit = self.phase(AuditPhase::Commit);
                 tx.commit()?;
                 return Ok(());
             }
@@ -215,8 +253,16 @@ impl AuditLog {
             ),
             None => (1, Digest::hash(&[])),
         };
+        #[cfg(test)]
+        drop(queries);
+        #[cfg(test)]
+        let insert = self.phase(AuditPhase::EncodeInsert);
         let digest = AuditRow::digest(seq, &prev, &event, event_id)?;
         tx.execute("INSERT INTO audit(seq,prev_digest,digest,body,writer,minute,size,event_id) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![seq as i64,prev.as_str(),digest.as_str(),body,writer,minute as i64,body.len()as i64,event_id.map(Digest::as_str)])?;
+        #[cfg(test)]
+        drop(insert);
+        #[cfg(test)]
+        let _commit = self.phase(AuditPhase::Commit);
         tx.commit()?;
         Ok(())
     }

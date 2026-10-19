@@ -7,8 +7,9 @@ run them directly against arbitrary host paths. The receipt describes enforced
 resource limits and observed results. No binary, secret, or full internal log
 is included.
 
-The native executable ran and reported CPython3.13.16 / Unicode15.1.0. The WASI
-artifacts only compiled/linked; export inspection is not execution or ABI proof.
+The native executable ran and reported CPython3.13.16 / Unicode15.1.0. At this initial
+CPython-only checkpoint the WASI artifacts had only compiled/linked; export
+inspection alone was not execution or ABI proof. Later stages are recorded below.
 Optional native module absences, experimental dynamic linking and unchanged
 SQLite restrictions remain explicit. This does not complete Issue1520.
 
@@ -41,8 +42,9 @@ sources are unchanged. All 142 source/assets files were rechecked after the
 build. Actual `--version` and `--help` calls succeeded in the isolated sandbox;
 this proves executable startup, not the version or behavior of a running guest.
 
-Componentization, Python preinitialization, guest runtime identity, typed
-33-case replay and native Core acceptance are still separate pending gates.
+At the producer-only checkpoint, componentization, Python preinitialization,
+guest runtime identity, typed 33-case replay and native Core acceptance were
+separate pending gates. The later component receipt below advances some of them.
 The custom trial does not change the SDK's official-wheel verifier or enable a
 production default.
 
@@ -55,3 +57,26 @@ read-only after complete archive/source-closure verification. For packaging,
 standard-library and bundled inputs; `/helper` is the reviewed standalone
 packager. The native CLI stage mounts the separately verified source/assets
 copy at `/source/componentize-py` and does not inherit the runtime stage's flags.
+
+## Actual component and development replay
+
+The later `component-receipt.json` records successful componentization and
+Python preinitialization, exact outer-component ABI validation, and actual
+export calls. `componentize-trial.py` and `replay-trial.py` are the exact drivers
+used inside the separately enforced sandbox, not standalone sandbox launchers.
+The custom driver reuses source-plan and composition checks without replacing
+or weakening the SDK's official-wheel verifier. Its binary and plan hashes are
+explicit trial pins, not a new production default.
+
+The running guest reported Python 3.13.16 / Unicode 15.1.0. Of 33 development
+cases, 12 success strings and 12 typed-invalid codes matched; nine documented
+profile exclusions were rejected. This does not establish error-message parity
+or full original integer/nonfinite/depth compatibility. Each complete case
+shares its fuel and timeout budget across instantiation, lifecycle init,
+runtime-info and normalization. Lifecycle shutdown was not covered here.
+
+The replay's minimal host imports trap if called. It is not native Core/Gate,
+provider dispatch or consumer-permission evidence. The actual hash-bound Pack
+was materialized, but production enablement and native Core acceptance remain
+false in this dated receipt. Resident memory and process-count monitoring are
+sampled safeguards, not hard RSS/PID caps or generic hostile-process guarantees.

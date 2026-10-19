@@ -24,3 +24,7 @@ sha2.workspace = true
 hex.workspace = true
 reqwest.workspace = true
 rusqlite.workspace = true
+
+[dev-dependencies]
+wasmtime.workspace = true
+wat.workspace = true

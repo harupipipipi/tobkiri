@@ -37,6 +37,8 @@ jobs:
         run: |
           python3 -B -m unittest discover -s tools/python313-producer/packager/tests
           cargo test --locked --manifest-path tools/python313-producer/packager/Cargo.toml
+      - name: Preserved ordered Python component transport regression
+        run: python3 -B -m unittest discover -s tests -p test_stage_preserved_ordered_python.py
       - name: Core and host boundaries
         run: python3 tools/quality/issue_1520_gate.py --stage foundation
       - name: Verify migration inventory coverage
@@ -171,6 +173,60 @@ jobs:
           cargo test --locked -p tobkiri-e2e --test parity
           shell_policy_frozen_inputs_replay_through_the_real_rust_host
           -- --ignored --exact --nocapture --test-threads=1
+      - name: Authenticate the preserved custom Python 3.13 component
+        id: stage_ordered_python
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        shell: bash
+        run: |
+          python3 -B scripts/wasm/stage_preserved_ordered_python.py \
+            --output "$RUNNER_TEMP/issue-1520-ordered-python"
+          python3 - "$RUNNER_TEMP/issue-1520-ordered-python" "$GITHUB_ENV" <<'PY'
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          receipt = json.loads((root / "materialization.json").read_text())
+          values = {
+              "PACK_DIR": str(root / "pack"),
+              "EVIDENCE": str(root / "native-replay.json"),
+          }
+          for name, key in (("PACK", "pack_manifest_sha256"),
+                            ("COMPONENT", "artifact_sha256"),
+                            ("RECEIPT", "receipt_sha256")):
+              value = receipt[key]
+              if not isinstance(value, str) or not re.fullmatch("[0-9a-f]{64}", value):
+                  raise SystemExit("invalid ordered component identity")
+              values[name + "_SHA256"] = value
+          if any("\n" in value or "\r" in value for value in values.values()):
+              raise SystemExit("invalid ordered fixture path")
+          with Path(sys.argv[2]).open("a") as environment:
+              for name, value in values.items():
+                  environment.write(f"TOBKIRI_TEST_ORDERED_PYTHON_{name}={value}\n")
+          PY
+      - name: Replay the ordered Python candidate through actual Rust Core
+        # This is separate from official-wheel production and the original 91 cases.
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' && steps.stage_ordered_python.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/ordered-python-parity.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-e2e --test ordered_python
+          ordered_python_bridge_replays_through_real_core
+          -- --ignored --exact --nocapture --test-threads=1
+      - name: Retain actual ordered Python replay evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: custom-ordered-python-native-replay
+          path: |
+            ${{ runner.temp }}/issue-1520-ordered-python/component.build.json
+            ${{ runner.temp }}/issue-1520-ordered-python/materialization.json
+            ${{ runner.temp }}/issue-1520-ordered-python/pack/pack.json
+            ${{ runner.temp }}/issue-1520-ordered-python/native-replay.json
+            ${{ runner.temp }}/ordered-python-parity.log
+            ${{ runner.temp }}/ordered-python-parity.receipt.json
+          if-no-files-found: warn
       - name: Retain actual Python replay evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -37,6 +37,70 @@ use tobkiri_store::{Approvals, AuditLog, AuditQuota, AuditRow, DataRoot};
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
+fn report_fixture_stage_failure(
+    stage: &'static str,
+    thread: &std::thread::Thread,
+    started: Instant,
+) {
+    use std::io::Write as _;
+
+    let _ = writeln!(
+        std::io::stderr().lock(),
+        "{}: thread={}; failed stage={stage}; elapsed_us={}",
+        file!(),
+        thread.name().unwrap_or("<unnamed>"),
+        started.elapsed().as_micros(),
+    );
+}
+
+async fn fixture_stage<T, E>(
+    stage: &'static str,
+    operation: impl Future<Output = Result<T, E>>,
+) -> Result<T, E> {
+    let started = Instant::now();
+    let thread = std::thread::current();
+    operation
+        .await
+        .inspect_err(|_| report_fixture_stage_failure(stage, &thread, started))
+}
+
+fn fixture_sync_stage<T, E>(
+    stage: &'static str,
+    operation: impl FnOnce() -> Result<T, E>,
+) -> Result<T, E> {
+    let started = Instant::now();
+    let thread = std::thread::current();
+    operation().inspect_err(|_| report_fixture_stage_failure(stage, &thread, started))
+}
+
+#[tokio::test]
+async fn fixture_stage_preserves_original_boxed_core_error() {
+    let error: Box<dyn std::error::Error + Send + Sync> =
+        Box::new(CoreError::Gate(tobkiri_gate::GateError::Deadline));
+    let original = error.downcast_ref::<CoreError>().unwrap() as *const CoreError;
+    let result: TestResult = fixture_stage(
+        "diagnostic-regression: boxed CoreError",
+        std::future::ready(Err(error)),
+    )
+    .await;
+    let error = result.unwrap_err();
+    let preserved = error.downcast_ref::<CoreError>().unwrap();
+    assert!(std::ptr::eq(original, preserved));
+    assert!(matches!(
+        preserved,
+        CoreError::Gate(tobkiri_gate::GateError::Deadline)
+    ));
+}
+
+#[test]
+fn fixture_sync_stage_preserves_original_gate_error() {
+    let result: Result<(), tobkiri_gate::GateError> =
+        fixture_sync_stage("diagnostic-regression: GateError", || {
+            Err(tobkiri_gate::GateError::Deadline)
+        });
+    assert!(matches!(result, Err(tobkiri_gate::GateError::Deadline)));
+}
+
 const PROVIDER: &str = "local.test-provider";
 const CONSUMER: &str = "local.test-consumer";
 const SUBSTITUTE: &str = "local.test-substitute";
@@ -772,8 +836,16 @@ impl Fixture {
     }
 
     async fn start(&self) -> TestResult<Session> {
-        self.core.save_profile(self.profile.clone(), None).await?;
-        Ok(self.core.start(&self.profile.id).await?)
+        fixture_stage(
+            "fixture.start: Core::save_profile",
+            self.core.save_profile(self.profile.clone(), None),
+        )
+        .await?;
+        Ok(fixture_stage(
+            "fixture.start: Core::start",
+            self.core.start(&self.profile.id),
+        )
+        .await?)
     }
 
     async fn ui(&self, session: &Session) -> TestResult<UiAttachment> {
@@ -793,9 +865,11 @@ impl Fixture {
         operation: &str,
         value: &CanonValue,
     ) -> TestResult<CanonValue> {
-        let buffer = session
-            .call_user_port(shape(interface), op(operation), value)
-            .await?;
+        let buffer = fixture_stage(
+            "fixture.call: Session::call_user_port",
+            session.call_user_port(shape(interface), op(operation), value),
+        )
+        .await?;
         parse_output(&buffer)
     }
 
@@ -807,8 +881,9 @@ impl Fixture {
         operation: &str,
         value: &CanonValue,
     ) -> Result<CoreBuffer, CoreError> {
-        session
-            .ui_invoke_received(
+        fixture_stage(
+            "fixture.ui_call: Session::ui_invoke_received",
+            session.ui_invoke_received(
                 &ui.session,
                 &ui.host_session,
                 UI_GENERATION,
@@ -816,8 +891,9 @@ impl Fixture {
                 shape(interface),
                 op(operation),
                 value,
-            )
-            .await
+            ),
+        )
+        .await
     }
 
     async fn count_stream(
@@ -842,8 +918,9 @@ impl Fixture {
         count: i64,
         cancel: tokio_util::sync::CancellationToken,
     ) -> TestResult<u64> {
-        let buffer = session
-            .ui_invoke_received_with_cancel(
+        let buffer = fixture_stage(
+            "fixture.count_stream: Session::ui_invoke_received_with_cancel",
+            session.ui_invoke_received_with_cancel(
                 &ui.session,
                 &ui.host_session,
                 UI_GENERATION,
@@ -852,8 +929,9 @@ impl Fixture {
                 op("count-stream"),
                 &args(&[("count", CanonValue::Int(count))]),
                 cancel,
-            )
-            .await?;
+            ),
+        )
+        .await?;
         let value = parse_output(&buffer)?;
         assert_eq!(
             value.get("kind").and_then(CanonValue::as_str),
@@ -874,9 +952,11 @@ impl Fixture {
         handle: u64,
         max: u32,
     ) -> TestResult<CanonValue> {
-        let buffer = session
-            .ui_stream_pull_buffer(&ui.session, handle, max)
-            .await?;
+        let buffer = fixture_stage(
+            "fixture.pull: Session::ui_stream_pull_buffer",
+            session.ui_stream_pull_buffer(&ui.session, handle, max),
+        )
+        .await?;
         parse_output(&buffer)
     }
 
@@ -896,7 +976,11 @@ impl Fixture {
             self.host.clone(),
             MediatorChain::default(),
         );
-        gate.flush_outbox(&self.profile.id).await?;
+        fixture_stage(
+            "fixture.flush_outbox: Gate::flush_outbox",
+            gate.flush_outbox(&self.profile.id),
+        )
+        .await?;
         Ok(())
     }
 
@@ -979,16 +1063,24 @@ impl Fixture {
         )
         .with_security_epoch(epoch)
         .with_revision(revision.clone());
-        let grant = gate
-            .authorize(
+        let grant = fixture_stage(
+            "audit-reader: Gate::authorize(AuditRead)",
+            gate.authorize(
                 &cx,
                 EffectRequest::AuditRead,
                 AuditLog::read_digest(0, 1000)?,
-            )
-            .await?;
+            ),
+        )
+        .await?;
         let id = grant.id().clone();
-        let rows = audit.read(&cx, 0, 1000, grant)?;
-        gate.record_outcome(id, Outcome::Succeeded).await?;
+        let rows = fixture_sync_stage("audit-reader: AuditLog::read", || {
+            audit.read(&cx, 0, 1000, grant)
+        })?;
+        fixture_stage(
+            "audit-reader: Gate::record_outcome",
+            gate.record_outcome(id, Outcome::Succeeded),
+        )
+        .await?;
         Ok(rows)
     }
 }
@@ -1128,10 +1220,11 @@ async fn input_principal_cannot_select_another_pack_with_the_same_provided_shape
         native_input: true,
         ..Options::default()
     })?;
-    fixture
-        .core
-        .save_profile(fixture.profile.clone(), None)
-        .await?;
+    fixture_stage(
+        "fixture.setup: Core::save_profile",
+        fixture.core.save_profile(fixture.profile.clone(), None),
+    )
+    .await?;
     let before = fixture.host.prompts.load(Ordering::SeqCst);
     assert!(
         fixture.core.start(&fixture.profile.id).await.is_err(),
@@ -1846,14 +1939,19 @@ async fn missing_hash_bound_execution_budget_is_audited_before_instantiation() -
         omit_provider_limit: true,
         ..Options::default()
     })?;
-    fixture
-        .core
-        .save_profile(fixture.profile.clone(), None)
-        .await?;
+    fixture_stage(
+        "fixture.setup: Core::save_profile",
+        fixture.core.save_profile(fixture.profile.clone(), None),
+    )
+    .await?;
     // Startup compiles the verified catalog; component initialization is lazy.
     // A missing explicit Pack cap yields zero effective execution capacity and
     // must deny the actual entry before it can initialize or read host input.
-    let session = fixture.core.start(&fixture.profile.id).await?;
+    let session = fixture_stage(
+        "fixture.setup: Core::start",
+        fixture.core.start(&fixture.profile.id),
+    )
+    .await?;
     let before = fixture.audit_rows(&session).await?.len();
     let reservations_before = fixture.reservations()?.len();
     let error = session
@@ -1923,10 +2021,11 @@ async fn core_interface_name_with_forged_function_signature_is_rejected_before_i
         forged_core_import: true,
         ..Options::default()
     })?;
-    fixture
-        .core
-        .save_profile(fixture.profile.clone(), None)
-        .await?;
+    fixture_stage(
+        "fixture.setup: Core::save_profile",
+        fixture.core.save_profile(fixture.profile.clone(), None),
+    )
+    .await?;
     let prompts = fixture.host.prompts.load(Ordering::SeqCst);
     assert!(fixture.core.start(&fixture.profile.id).await.is_err());
     assert_eq!(fixture.host.prompts.load(Ordering::SeqCst), prompts);
@@ -1952,10 +2051,13 @@ async fn epoch_revocation_closes_live_stream_and_next_fresh_context_recovers() -
     let (_, head) = fixture.core.profile(&fixture.profile.id)?;
     fixture.profile.name = "Revised verified provider integration".into();
     fixture.review_user(2)?;
-    fixture
-        .core
-        .save_profile(fixture.profile.clone(), Some(head))
-        .await?;
+    fixture_stage(
+        "fixture.revision: Core::save_profile",
+        fixture
+            .core
+            .save_profile(fixture.profile.clone(), Some(head)),
+    )
+    .await?;
     assert!(
         session
             .ui_stream_pull_buffer(&ui.session, handle, 1)
@@ -1963,7 +2065,11 @@ async fn epoch_revocation_closes_live_stream_and_next_fresh_context_recovers() -
             .is_err(),
         "revoked stream kept executing"
     );
-    let fresh = fixture.core.start(&fixture.profile.id).await?;
+    let fresh = fixture_stage(
+        "fixture.revision: Core::start",
+        fixture.core.start(&fixture.profile.id),
+    )
+    .await?;
     assert_eq!(
         fixture
             .call(

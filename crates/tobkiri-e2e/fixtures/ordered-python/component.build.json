@@ -1,0 +1,237 @@
+{
+  "format": "tobkiri.component-build/2",
+  "language": "python",
+  "build_mode": "hash-bound-custom-python313-producer-trial",
+  "production_enabled": false,
+  "guest_runtime_identity_verified": false,
+  "compiler_executable_sha256": "ba5ce27a1109faeaf80d0f1fe3491f1863a3bb67db08c11845151e55cd483987",
+  "producer_trial_receipt_sha256": "8b0275c76933234f94ba950ec83a217927b5d1bdf2a3a24966ed4aaaaabdd8c3",
+  "producer_sources": {
+    "driver.py": "c441b1f375eaa94c1b853ecdd001f0d637be6cae92cc608eb572349b3d9ddecb",
+    "build_component.py": "c8366a81728ee406d25ae3abd51bff14cd16900a7745834716ccbd3813e6cc94",
+    "composition.py": "c349a13710e82d82a0bd2d659b80c373cbac8d89ec6e6b87c0bed47c0e42fdd7"
+  },
+  "build_plan_sha256": "0375ca57eb858a1ec70323eda9170090d7622c1c5bde25af15b520b368dca591",
+  "source_manifest": [
+    {
+      "source": "app.py",
+      "destination": "app.py",
+      "sha256": "13aeb755387089e0151f38d25a3f917b5b417cba7210d91334a5f1e3a1eeb07f",
+      "bytes": 1410
+    },
+    {
+      "source": "caller_adapter.py",
+      "destination": "caller_adapter.py",
+      "sha256": "68f56bae4262eedf4427c63929897597c051a88e347ba96cc970b07eeb101528",
+      "bytes": 1477
+    },
+    {
+      "source": "inventory.json",
+      "destination": "inventory.json",
+      "sha256": "c50e04ca75d826ea51a34fa460af48bbf736b6c5f9772542f67dd47168a167db",
+      "bytes": 14189
+    },
+    {
+      "source": "ordered_json.py",
+      "destination": "ordered_json.py",
+      "sha256": "7df89c2e5275fdc795c13e0d70d6ec69f7f022aa968c58a3c1b1637e0eee2158",
+      "bytes": 8961
+    },
+    {
+      "source": "original_bridge.py",
+      "destination": "original_bridge.py",
+      "sha256": "4e964fbfa066dc656d36144b96d26a3a03df94295517781cf29815c1f90ba0d6",
+      "bytes": 2867
+    },
+    {
+      "source": "provenance.json",
+      "destination": "provenance.json",
+      "sha256": "55e6ebe946b9700072f78bc346ac63a9a8a2700f790abaffd537cbf8b1ac0010",
+      "bytes": 5246
+    },
+    {
+      "source": "reviewed-inputs.json",
+      "destination": "reviewed-inputs.json",
+      "sha256": "97dcb9cb15004ecbc3319b6480f48d197f4539587fe1fb0c56c9d634b3cee9da",
+      "bytes": 580
+    },
+    {
+      "source": "wit/deps/core.wit",
+      "destination": "wit/deps/core.wit",
+      "sha256": "f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "bytes": 5732
+    },
+    {
+      "source": "wit/pack.wit",
+      "destination": "wit/pack.wit",
+      "sha256": "625952f31c4caffd4d1de6ba682b15662b22c4e10f11c451592d187acad3cb75",
+      "bytes": 364
+    }
+  ],
+  "source_manifest_sha256": "6f25971071bed0441534d0377166d71b284ee10caa65eea9645cac3ade96a955",
+  "bindings": {
+    "files": [
+      {
+        "path": "componentize_py_async_support/__init__.py",
+        "sha256": "020eea916ee9a23e118d8ec688846209b501b182b7520fa7cff6450d635dcd19",
+        "bytes": 19180
+      },
+      {
+        "path": "componentize_py_async_support/futures.py",
+        "sha256": "d1ccb9b8a630d27eaca5d50a49d390eca1edd9e1a24cdacefe5d6f1ec2b2f096",
+        "bytes": 5814
+      },
+      {
+        "path": "componentize_py_async_support/streams.py",
+        "sha256": "e9e846a731e3e6578e3d20d5d2a42ffdb797e0ef04134529196e3e75b36274ca",
+        "bytes": 13165
+      },
+      {
+        "path": "componentize_py_runtime.pyi",
+        "sha256": "f1e3d6e0deffc0d7c4b7981e419a565e249fb3f430f2695ef389402d5f832367",
+        "bytes": 1271
+      },
+      {
+        "path": "componentize_py_types.py",
+        "sha256": "9fcd0eed0f50db129f5421a75aa915f71d5abfb45ec0777ece33bdaed12e4efc",
+        "bytes": 911
+      },
+      {
+        "path": "poll_loop.py",
+        "sha256": "294060653c9c4b7124f9af863d079ba2fb9c77606e98d7b47365c5c2ea4a1872",
+        "bytes": 12181
+      },
+      {
+        "path": "wit_world/__init__.py",
+        "sha256": "e596e615d830399ad56968fdb51e285bff2593bd67ad654ec3846bdf586945e1",
+        "bytes": 437
+      },
+      {
+        "path": "wit_world/exports/__init__.py",
+        "sha256": "3da37937e5cfff57ee1c4771a4c0e6698148597ebc99a035ba8421575e9af826",
+        "bytes": 1044
+      },
+      {
+        "path": "wit_world/exports/bridge.py",
+        "sha256": "f3a545afbeb0ae69e1145339f960aee448381eac16efc316e13c4a7d8a0f789e",
+        "bytes": 467
+      },
+      {
+        "path": "wit_world/exports/lifecycle.py",
+        "sha256": "a2772c08013607d263616e26464a80c02573e281ba22d8bec5dcf3c459e26214",
+        "bytes": 401
+      },
+      {
+        "path": "wit_world/imports/__init__.py",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "wit_world/imports/audit.py",
+        "sha256": "e58f672e4ee4415ff8989ac5e53f2ccc18f73f66b2eda14302311061ed333236",
+        "bytes": 726
+      },
+      {
+        "path": "wit_world/imports/clock.py",
+        "sha256": "10334bc544d15f8995607ba697f392d00214f9187ad44357ed24a487c9927e6d",
+        "bytes": 658
+      },
+      {
+        "path": "wit_world/imports/flow.py",
+        "sha256": "024af6368362cb4ef1a5e67963172e988458392e314b06e66840d955c0cb426a",
+        "bytes": 1633
+      },
+      {
+        "path": "wit_world/imports/random.py",
+        "sha256": "8954abdd87af6eb6f4c36963b39b59d2144cdac460fb9c321783ef462002f304",
+        "bytes": 460
+      },
+      {
+        "path": "wit_world/imports/types.py",
+        "sha256": "f98893461f38b401d67a439b19d11e9259f5deee03d401527e03147cb5f15525",
+        "bytes": 1137
+      }
+    ],
+    "manifest_sha256": "04c2811b6a9ccc4e1a6fadf476b73501db9fff3b407e60f8b98427029033d949"
+  },
+  "options": {
+    "stub_wasi": true,
+    "inherited_environment": false,
+    "site_packages": "explicit empty private VIRTUAL_ENV",
+    "compiler_process_pythonhashseed": "0",
+    "guest_pythonhashseed": "upstream compiler default uncontrolled"
+  },
+  "commands": {
+    "bindings": [
+      "/producer",
+      "-d",
+      "wit",
+      "-w",
+      "pack",
+      "bindings",
+      "."
+    ],
+    "componentize": [
+      "/producer",
+      "-d",
+      "wit",
+      "-w",
+      "pack",
+      "componentize",
+      "--stub-wasi",
+      "app",
+      "-o",
+      "component.wasm"
+    ]
+  },
+  "composition": {
+    "tool": "wac-cli",
+    "version": "0.12.0",
+    "tool_sha256": "7cd490edbd452221ef89e6750fc43eacc9b71b1242095eb577cb9a3bf0d3beda",
+    "wit_sha256": "625952f31c4caffd4d1de6ba682b15662b22c4e10f11c451592d187acad3cb75",
+    "composition_source": "package local:sdk-python-outer;\nlet implementation = new local:python-inner { ... };\nexport implementation[\"tobkiri:core/lifecycle@1.0.0\"];\nexport implementation[\"local:ai-tool-bridge-ordered-python/bridge@1.0.0\"];\n",
+    "composition_source_sha256": "1a4f603a1ff80d321f45ffe86ef8857aae1d0d25591c7f4a6ee492c933380d22",
+    "flags": {
+      "define_components": true,
+      "validate": true,
+      "ambient_dependency_directory": false,
+      "typed_target_validation": true
+    }
+  },
+  "target_validation": {
+    "tool": "wac-cli",
+    "world": "pack",
+    "exact_exports": true,
+    "typed_target_check": true
+  },
+  "inner": {
+    "artifact_sha256": "797fc85324b97f31be0fb2fa91817d9c5cc5f713c110e46555628d8c77d74da3",
+    "artifact_bytes": 17897792,
+    "imports": [
+      "tobkiri:core/audit@1.0.0",
+      "tobkiri:core/clock@1.0.0",
+      "tobkiri:core/flow@1.0.0",
+      "tobkiri:core/random@1.0.0",
+      "tobkiri:core/types@1.0.0"
+    ],
+    "exports": [
+      "exports",
+      "local:ai-tool-bridge-ordered-python/bridge@1.0.0",
+      "tobkiri:core/lifecycle@1.0.0"
+    ]
+  },
+  "world": "pack",
+  "imports": [
+    "tobkiri:core/audit@1.0.0",
+    "tobkiri:core/clock@1.0.0",
+    "tobkiri:core/flow@1.0.0",
+    "tobkiri:core/random@1.0.0",
+    "tobkiri:core/types@1.0.0"
+  ],
+  "exports": [
+    "local:ai-tool-bridge-ordered-python/bridge@1.0.0",
+    "tobkiri:core/lifecycle@1.0.0"
+  ],
+  "artifact_sha256": "3c2aa68e256fa125e2e2a4cb3098704220fdf4832d83c699559ead60617aceac",
+  "artifact_bytes": 17899248
+}
