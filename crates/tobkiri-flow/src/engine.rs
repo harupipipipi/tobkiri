@@ -191,10 +191,12 @@ pub trait RunTaskSpawner: Send + Sync {
 
 struct TaskReceipt {
     receiver: Option<oneshot::Receiver<Result<(), StepError>>>,
+    received: Option<Result<(), StepError>>,
     result: Option<Result<(), StepError>>,
 }
 struct TokioRunCompletion {
     receipt: Mutex<TaskReceipt>,
+    monitor: OnceLock<Mutex<tokio::task::JoinHandle<()>>>,
     control: CoreControl,
     _reservation: ControlReservation,
 }
@@ -214,13 +216,35 @@ impl RunTaskCompletion for TokioRunCompletion {
         if let Some(result) = &receipt.result {
             return result.clone();
         }
-        // Borrow rather than take before await: abandoning a wait cannot lose
-        // the only receipt, nor cause another cleanup task to be launched.
-        let result = match receipt.receiver.as_mut() {
-            Some(receiver) => receiver.await.unwrap_or_else(|_| Err(task_unknown())),
+        // The channel is the monitor's result, not proof that the monitor has
+        // destroyed its own original Task custody. Persist a received result
+        // before awaiting that Join so cancellation cannot repoll a completed
+        // oneshot or lose the original error.
+        let received = match &receipt.received {
+            Some(result) => result.clone(),
+            None => {
+                let result = match receipt.receiver.as_mut() {
+                    Some(receiver) => receiver.await.unwrap_or_else(|_| Err(task_unknown())),
+                    None => Err(task_unknown()),
+                };
+                receipt.receiver.take();
+                receipt.received = Some(result.clone());
+                result
+            }
+        };
+        // Installation precedes publication of this completion. Borrow the
+        // SAME Join across await; an abandoned observer must never detach it.
+        // The monitor never takes either mutex and drops its retained Arc on
+        // exit, so it can finish while this original observer owns the guards.
+        let joined = match self.monitor.get() {
+            Some(monitor) => (&mut *monitor.lock().await)
+                .await
+                .map_err(|_| task_unknown()),
             None => Err(task_unknown()),
         };
-        receipt.receiver.take();
+        // Preserve an original error. A monitor Join failure can never turn
+        // an earlier successful channel result into physical success.
+        let result = received.and(joined);
         receipt.result = Some(result.clone());
         result
     }
@@ -254,8 +278,10 @@ impl RunTaskSpawner for TokioRunTaskSpawner {
         let completion = Arc::new(TokioRunCompletion {
             receipt: Mutex::new(TaskReceipt {
                 receiver: Some(receiver),
+                received: None,
                 result: None,
             }),
+            monitor: OnceLock::new(),
             control: self.control.clone(),
             _reservation: reservation,
         });
@@ -280,7 +306,12 @@ impl RunTaskSpawner for TokioRunTaskSpawner {
             })
         }))
         .map_err(|_| StepError::new("unavailable", "Flow runtime is unavailable"))?;
-        drop(monitor); // Detach only the owning monitor, never the actual Join.
+        // No caller can observe completion until its exact original monitor
+        // Join is installed. Only this constructor writes the fresh cell.
+        assert!(
+            completion.monitor.set(Mutex::new(monitor)).is_ok(),
+            "new Flow completion already has its original monitor"
+        );
         Ok(completion)
     }
 }
@@ -1364,6 +1395,10 @@ impl RunState {
             .map_err(|_| StepError::new("limit-exceeded", "run output byte ceiling exceeded"))
     }
 }
+
+#[cfg(test)]
+#[path = "engine_monitor_tests.rs"]
+mod monitor_receipt_tests;
 
 #[cfg(test)]
 mod task_tests {
