@@ -1,0 +1,82 @@
+# Python 3.13 producer source review
+
+This is a **source-only reconstruction**, not a runnable producer, a built
+component, or evidence that issue #1520 is finished. No upstream program was
+executed during reconstruction. The previous unpublished implementation was not
+recovered; these outputs were regenerated from surviving source bytes.
+
+## Pinned inputs and reproducibility
+
+- Official CPython 3.13.16 archive:
+  https://www.python.org/ftp/python/3.13.16/Python-3.13.16.tar.xz
+- Archive SHA-256:
+  `f4b1bfb3c79b5bb11b8d228a12504163b4c0dab4d679828d8f5f26b6cb6ab35d`
+- Selected componentize-py 0.25 source snapshot, attributed to commit
+  `c0949b19d464f5d70bc1051195a3ae0e6a012df9`. The manifest records exact file
+  hashes and upstream URLs. A complete upstream tree has **not** been
+  independently authenticated by this reconstruction.
+- Reconstructed patch SHA-256:
+  `160cbaa6ceaf8b3707cb0d8d8eec630ea585ee52e08af5360553397638bcdeaa`
+
+`source-manifest.json` pins 14 selected originals and seven patched outputs.
+The self-authored verifier pins the manifest and patch themselves, compares all
+selected CPython files with regular members of the hashed official archive,
+and applies exact-context unified hunks in memory. It neither writes source
+outputs nor imports, builds, or runs upstream code. Source layout:
+
+```
+SOURCE/componentize-py/{build.rs,alt-build.rs,Cargo.toml,Cargo.lock,...}
+SOURCE/cpython/{configure,configure.ac,Makefile.pre.in,...}
+```
+
+Run only the native verifier and its tests:
+
+```
+PYTHONDONTWRITEBYTECODE=1 python -m unittest discover \
+  -s tools/python313-producer/tests -v
+PYTHONDONTWRITEBYTECODE=1 python tools/python313-producer/verify_source.py \
+  --source SOURCE --cpython-archive PATH/TO/Python-3.13.16.tar.xz
+```
+
+The archive is limited to 100 MiB and each selected regular file to 16 MiB.
+No network or external command is used. This verifies selected source bytes,
+not arbitrary files in an entire source checkout. Do not use the receipt as a
+whole-tree attestation or as permission to execute a build.
+
+## Exact delta
+
+The patch moves library/stdlib names, link arguments, and PyO3 configuration
+from Python 3.14 to 3.13; fixes the WASI config-site path; replaces the custom
+CPython auto-fetch fallback with a failure requiring a verified staged tree;
+and enables the WASI dynamic-linking configure option. The CPython delta is
+exactly one corresponding line in each of `configure` and `configure.ac`.
+
+Five HACL archive link arguments absent from the 3.13 build are removed (HMAC,
+BLAKE2, MD5, SHA1, SHA3), while the existing SHA2 archive stays linked. This is
+not evidence of removal of those algorithms from CPython.
+
+No socket, random, authentication, capability, or policy patch is introduced.
+The existing WASI socketpair authentication exception in official CPython and
+`SQLITE_OMIT_RANDOMNESS` in the upstream build script are source-review findings,
+not changes made by this patch. Neither is silently expanded or treated as
+proven safe here.
+
+## Execution is gated
+
+Do not run top-level Cargo as a shortcut. The existing upstream build script:
+
+- strips nested `CARGO*` and `RUST*` environment variables, so an outer offline
+  flag or build override does not establish nested-build isolation;
+- builds both synchronous and asynchronous variants unconditionally;
+- fetches zlib and SQLite without verified content hashes;
+- can fetch a WASI SDK and execute downloaded build tools;
+- trusts pre-existing output paths rather than a complete provenance receipt.
+
+The removed CPython fallback does not resolve these other download or execution
+paths. `tools/python-producer` is an older Python 3.14/custom-source experiment;
+it is not an approved substitute and is not applied by this work.
+
+See `STAGED_RECIPE.md` for the required next-stage review boundaries. The patch
+is experimental: compilation, linking, dynamic-loader compatibility, module
+availability, runtime authority enforcement, guest tests, and component output
+are all unverified.
