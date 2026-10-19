@@ -1,0 +1,245 @@
+{
+  "caller_edges": [
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+      "declarations": [
+        {
+          "json_pointer": "/requested_edges/72",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
+        },
+        {
+          "json_pointer": "/requested_edges/72",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
+        }
+      ],
+      "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "target_provider_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "declarations": [
+        {
+          "json_pointer": "/requested_edges/73",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
+        },
+        {
+          "json_pointer": "/requested_edges/73",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
+        }
+      ],
+      "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "target_provider_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.text-generate",
+      "declarations": [
+        {
+          "json_pointer": "/requested_edges/284",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
+        },
+        {
+          "json_pointer": "/requested_edges/284",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
+        }
+      ],
+      "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "target_provider_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.messages-generate",
+      "declarations": [
+        {
+          "json_pointer": "/requested_edges/307",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
+        },
+        {
+          "json_pointer": "/requested_edges/307",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
+        }
+      ],
+      "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "target_provider_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize"
+    }
+  ],
+  "contract_id": "tobkiri.service.ai.tool_intent.normalize.v1",
+  "gateway_evidence": [
+    {
+      "sha256": "a1abd6a774ca43361fb6f02c588f5b3bd61fe55a4d56acc6d1bb2da7dc1cb31f",
+      "source_end_byte": 2485,
+      "source_end_line": 57,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 2416,
+      "source_start_line": 57,
+      "symbol": "TOOL_BRIDGE_CONTRACT"
+    },
+    {
+      "sha256": "9f3cbfd57adfec1d42adf5a634f0a8fc2d94b351852396c8170408e744fd6ca3",
+      "source_end_byte": 2587,
+      "source_end_line": 60,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 2485,
+      "source_start_line": 58,
+      "symbol": "TOOL_BRIDGE_GENERATE_OPERATION"
+    },
+    {
+      "sha256": "f6725598aa71c3f78d28aafc8ed1bd3d959ad5a37bcffab272d6a1ddc012c6ab",
+      "source_end_byte": 2685,
+      "source_end_line": 63,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 2587,
+      "source_start_line": 61,
+      "symbol": "TOOL_BRIDGE_STREAM_OPERATION"
+    },
+    {
+      "sha256": "08f96f339ce27dcf9e06879a3b350b53539c94a178e8063ff3788ca149c3c536",
+      "source_end_byte": 2740,
+      "source_end_line": 64,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 2685,
+      "source_start_line": 64,
+      "symbol": "TOOL_BRIDGE_OPERATION"
+    },
+    {
+      "sha256": "3a633a80b13d133588f87c87965a32ed76e472c2b6087e7b4990e55efaca97fd",
+      "source_end_byte": 57791,
+      "source_end_line": 1517,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 57115,
+      "source_start_line": 1500,
+      "symbol": "_tool_intents"
+    },
+    {
+      "sha256": "2931c3cb605bdfdeb1d05ef8f176a3761242d09010a364d530f55a7a7e6da9ce",
+      "source_end_byte": 57113,
+      "source_end_line": 1497,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 56593,
+      "source_start_line": 1481,
+      "symbol": "_attach_stream_tool_intents"
+    }
+  ],
+  "gateway_tool_intent_call_sites": [
+    {
+      "sha256": "b3a0f06d98c1101672c12bc6f27a1727a84f9cffd4875c8b67985138cd3173a3",
+      "source_end_byte": 20231,
+      "source_end_line": 534,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 20042,
+      "source_start_line": 531,
+      "streaming_expression": "True",
+      "symbol": "_tool_intents"
+    },
+    {
+      "sha256": "ca9d74b1da2b4fdb5a200e29bc4286e9a6e7fdbbeeb0cb17fa2db2d40f33d923",
+      "source_end_byte": 20951,
+      "source_end_line": 549,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 20756,
+      "source_start_line": 544,
+      "streaming_expression": "streaming",
+      "symbol": "_tool_intents"
+    },
+    {
+      "sha256": "55cdb8a88003118c3c7ea58d3c37c0b8642b5982ffc794ea5767ab6a0697953d",
+      "source_end_byte": 57064,
+      "source_end_line": 1496,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 56900,
+      "source_start_line": 1491,
+      "streaming_expression": "True",
+      "symbol": "_tool_intents"
+    }
+  ],
+  "notes": [
+    "The base operation is declared but has no caller edge in these profiles.",
+    "Gateway stream calls select .stream; other listed edges select .generate.",
+    "The original host factory invokes the pure callable as normalize.",
+    "No profile, manifest, host capture, or runtime selection is modified."
+  ],
+  "operations": [
+    {
+      "declarations": [
+        {
+          "json_pointer": "/contracts/0/operations/0",
+          "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/contracts.v4.json"
+        },
+        {
+          "json_pointer": "/variants/0/operations/0",
+          "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/executables.v4.json"
+        },
+        {
+          "json_pointer": "/operation_catalog/0",
+          "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/pack.v4.json"
+        }
+      ],
+      "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize"
+    },
+    {
+      "declarations": [
+        {
+          "json_pointer": "/contracts/0/operations/1",
+          "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/contracts.v4.json"
+        },
+        {
+          "json_pointer": "/variants/0/operations/1",
+          "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/executables.v4.json"
+        },
+        {
+          "json_pointer": "/operation_catalog/1",
+          "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/pack.v4.json"
+        }
+      ],
+      "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate"
+    },
+    {
+      "declarations": [
+        {
+          "json_pointer": "/contracts/0/operations/2",
+          "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/contracts.v4.json"
+        },
+        {
+          "json_pointer": "/variants/0/operations/2",
+          "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/executables.v4.json"
+        },
+        {
+          "json_pointer": "/operation_catalog/2",
+          "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/pack.v4.json"
+        }
+      ],
+      "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream"
+    }
+  ],
+  "schema": "io.tobkiri.python-tool-bridge-inventory.v1",
+  "sources": [
+    {
+      "bytes": 4108,
+      "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/contracts.v4.json",
+      "sha256": "9a4e26280f902adc8f9b89566715b08f83de247d59bd37b335ed9ad376363cdd"
+    },
+    {
+      "bytes": 2998,
+      "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/executables.v4.json",
+      "sha256": "00617d083d1924da5e121106842cd9a32d19f47dafffb4016d8b569885c7439e"
+    },
+    {
+      "bytes": 5453,
+      "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/pack.v4.json",
+      "sha256": "025005f08eb0afcedd74f52429b6641d5c5e788a778ba2b04de8d2f8a7fa4257"
+    },
+    {
+      "bytes": 255256,
+      "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json",
+      "sha256": "4c66d34286551d93df2778321a989c81e007c13f03fdec53bf7ad65c4faafdb2"
+    },
+    {
+      "bytes": 220761,
+      "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json",
+      "sha256": "a011d0559a5bf485393ed738830e03ab09e54761539ec3c3961feeefc5b9ed29"
+    },
+    {
+      "bytes": 65389,
+      "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "sha256": "6f091cc5230c53d8571a134e3d35d0009a0af6cddd51ef933a5d1ea8dc5f2774"
+    }
+  ]
+}
