@@ -22,11 +22,40 @@ import observe_gateway_tool_caller as observer
 import replay_gateway_tool_caller as replay
 
 ORACLE = ROOT / "tests/fixtures/issue1520/gateway-tool-caller.source.json"
+CURRENT_ORACLE = (
+    ROOT / "tests/fixtures/issue1520/gateway-tool-caller.current-source.json"
+)
+# This separately pinned reference is source proof only. It does not
+# replace the historical oracle/production runner pins or establish a new replay.
+CURRENT_ORACLE_SHA256 = (
+    "854fa03de651c12cb7126d8f81e4f0c62e340a5a85f71eb50784e539e207bced"
+)
+HISTORICAL_BINDINGS_SHA256 = (
+    "32f2684e0054e1ab2c17a86f98dfb65f071e5c85fd08b7923cd16ad96948215a"
+)
+HISTORICAL_REPLAY = (
+    ROOT / "tools/python313-producer/trials/2026-10-20-gateway/replay.json"
+)
+HISTORICAL_REPLAY_SHA256 = (
+    "0fac9e2d7b6864f7aaaa2414ba9d3cdb474ea4853968fe041aaf2632313f18c1"
+)
 
 
 @pytest.fixture
 def source() -> dict[str, Any]:
+    """Preserved historical source expectations, not current source bindings."""
     return json.loads(ORACLE.read_bytes())
+
+
+@pytest.fixture
+def current_source() -> dict[str, Any]:
+    """Start structural mutations from hash-pinned, currently valid source."""
+    raw, document = replay.validate_observations(
+        CURRENT_ORACLE, CURRENT_ORACLE_SHA256,
+    )
+    assert raw == CURRENT_ORACLE.read_bytes()
+    assert all(document[key] is False for key in observer.NO_EXECUTION)
+    return document
 
 
 @pytest.fixture
@@ -125,22 +154,91 @@ def test_caller_source_change_after_staging_is_rejected(
         replay.validate_caller(artifact, pins)
 
 
-def test_reviewed_observations_match_current_complete_source(source: Any) -> None:
-    raw, actual = replay.validate_observations(
-        ORACLE, replay.REVIEWED_PINS["source_observations_sha256"],
+def test_historical_observations_keep_recorded_bindings_and_replay_identity(
+    source: Any,
+) -> None:
+    """The preserved 92f38e3 proof never authenticates today's source closure."""
+    replay._pin(
+        ORACLE.read_bytes(), replay.REVIEWED_PINS["source_observations_sha256"],
+        "historical source observations",
     )
-    assert raw == ORACLE.read_bytes()
-    assert actual == source
-    assert len(actual["cases"]) == 30
-    assert actual["counts"] == {"success": 16, "provider-invalid": 7, "provider-nonfinite": 7}
-    assert len(actual["source_bindings"]) == 37
-    assert all(actual[key] is False for key in observer.NO_EXECUTION)
+    replay._pin(
+        HISTORICAL_REPLAY.read_bytes(), HISTORICAL_REPLAY_SHA256,
+        "historical two-component replay receipt",
+    )
+    receipt = json.loads(HISTORICAL_REPLAY.read_bytes())
+    assert receipt["component_pins"] == replay.REVIEWED_PINS
+    assert receipt["provider_33_oracle_sha256"] == source["provider_33_oracle_sha256"]
+    assert receipt["original_reference_runtime"] == source["runtime"]
+    for name, directory in (
+        ("caller", "2026-10-20-gateway"), ("provider", "2026-10-20"),
+    ):
+        build_path = (
+            ROOT / "tools/python313-producer/trials" / directory
+            / "component.build.json"
+        )
+        build_bytes = build_path.read_bytes()
+        replay._pin(
+            build_bytes, receipt["component_pins"][name]["receipt_sha256"],
+            f"historical {name} build receipt",
+        )
+        build = json.loads(build_bytes)
+        assert build["artifact_sha256"] == (
+            receipt["component_pins"][name]["artifact_sha256"]
+        )
+        if name == "caller":
+            assert build["build_plan_sha256"] == receipt["caller_plan_sha256"]
+            assert build["source_manifest_sha256"] == (
+                receipt["caller_source_manifest_sha256"]
+            )
+    assert source["source_bindings_sha256"] == HISTORICAL_BINDINGS_SHA256
+    assert replay.digest(observer.canonical(source["source_bindings"])) == (
+        HISTORICAL_BINDINGS_SHA256
+    )
+    assert len(source["cases"]) == 30
+    assert source["counts"] == {
+        "success": 16, "provider-invalid": 7, "provider-nonfinite": 7,
+    }
+    assert len(source["source_bindings"]) == 37
+    assert all(source[key] is False for key in observer.NO_EXECUTION)
+    with pytest.raises(
+        ValueError,
+        match="^source observations differ from reviewed source identities$",
+    ):
+        replay.validate_observations(
+            ORACLE, replay.REVIEWED_PINS["source_observations_sha256"],
+        )
 
 
-def test_exact_reference_runtime_reproduces_frozen_actual_source_observations() -> None:
+def test_current_reference_changes_only_bindings_not_historical_cases(
+    source: Any, current_source: Any,
+) -> None:
+    """Current source-only proof is separate from the preserved actual replay."""
+    assert set(current_source) == set(source)
+    assert {key for key in source if source[key] != current_source[key]} == {
+        "source_bindings", "source_bindings_sha256", "provider_33_oracle_sha256",
+    }
+    assert observer.json_bytes(current_source["cases"]) == observer.json_bytes(
+        source["cases"],
+    )
+    assert current_source["source_bindings"] == observer.source_bindings()
+    assert len(current_source["source_bindings"]) == 37
+    assert CURRENT_ORACLE_SHA256 != replay.REVIEWED_PINS["source_observations_sha256"]
+    with pytest.raises(
+        ValueError,
+        match="^source observations differs from its exact reviewed SHA-256$",
+    ):
+        replay.validate_observations(
+            CURRENT_ORACLE, replay.REVIEWED_PINS["source_observations_sha256"],
+        )
+
+
+def test_exact_reference_runtime_reproduces_current_source_only_observations() -> None:
     if observer.runtime() != observer.EXPECTED_RUNTIME:
         pytest.skip("actual reference observations require exact CPython3.13.5")
-    assert observer.json_bytes(observer.observe()) == ORACLE.read_bytes()
+    raw = observer.json_bytes(observer.observe())
+    assert raw == CURRENT_ORACLE.read_bytes()
+    assert replay.digest(raw) == CURRENT_ORACLE_SHA256
 
 
 def test_source_observer_never_claims_all_error_arms_or_runtime_counts(source: Any) -> None:
@@ -152,12 +250,23 @@ def test_source_observer_never_claims_all_error_arms_or_runtime_counts(source: A
     assert source["all_typed_error_arms_executed"] is False
 
 
-@pytest.mark.parametrize("mutation", ["case-order", "case-missing", "case-id", "case-input",
-                                      "runtime", "bindings", "provider-oracle", "counts",
-                                      "classification", "typed-error", "execution-flag"])
+@pytest.mark.parametrize(("mutation", "message"), [
+    ("case-order", "source observations differ from reviewed source identities"),
+    ("case-missing", "source observations do not contain complete reviewed cases"),
+    ("case-id", "source observations differ from reviewed source identities"),
+    ("case-input", "source observations differ from reviewed source identities"),
+    ("runtime", "source observations differ from reviewed source identities"),
+    ("bindings", "source observations differ from reviewed source identities"),
+    ("provider-oracle", "source observations differ from reviewed source identities"),
+    ("counts", "source observation counts are inconsistent"),
+    ("classification", "unknown source observation classification"),
+    ("typed-error", "typed error boundary differs from reviewed mapping"),
+    ("execution-flag", "source observations differ from reviewed source identities"),
+])
 def test_reforged_observation_hash_cannot_hide_structural_drift(
-    source: Any, tmp_path: Path, mutation: str,
+    current_source: Any, tmp_path: Path, mutation: str, message: str,
 ) -> None:
+    source = current_source
     if mutation == "case-order":
         source["cases"].reverse()
     elif mutation == "case-missing":
@@ -183,18 +292,22 @@ def test_reforged_observation_hash_cannot_hide_structural_drift(
     raw = observer.json_bytes(source)
     path = tmp_path / "tampered.json"
     path.write_bytes(raw)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=f"^{message}$"):
         replay.validate_observations(path, replay.digest(raw))
 
 
-def test_new_source_binding_is_rejected_with_unchanged_oracle(
-    monkeypatch: pytest.MonkeyPatch,
+def test_new_source_binding_is_rejected_with_unchanged_current_oracle(
+    current_source: Any, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    assert current_source["source_bindings"] == observer.source_bindings()
     bindings = observer.source_bindings()
     bindings[0]["sha256"] = "0" * 64
     monkeypatch.setattr(observer, "source_bindings", lambda: bindings)
-    with pytest.raises(ValueError, match="reviewed source identities"):
-        replay.validate_observations(ORACLE, replay.REVIEWED_PINS["source_observations_sha256"])
+    with pytest.raises(
+        ValueError,
+        match="^source observations differ from reviewed source identities$",
+    ):
+        replay.validate_observations(CURRENT_ORACLE, CURRENT_ORACLE_SHA256)
 
 
 @pytest.mark.parametrize("target", ["caller", "provider", "oracle", "wac"])
