@@ -10,11 +10,11 @@ from materialize_ordered_tool_bridge import materialize, no_links, require_hash
 from stage_ordered_tool_bridge import PACK, ROOT, bounded_read
 
 FIXTURE = ROOT / "crates/tobkiri-e2e/fixtures/ordered-python"
-COMPRESSED_SHA = "85b4d52f8ec9f2f6f530dafa4e1dda64b5fe8c63730509e3839560ce9c4f7165"
-COMPRESSED_BYTES = 3938612
-ARTIFACT_SHA = "3c2aa68e256fa125e2e2a4cb3098704220fdf4832d83c699559ead60617aceac"
-ARTIFACT_BYTES = 17899248
-RECEIPT_SHA = "480803d6ac72f53c9bc19d56eab187f9185c30ff2a9457e32c1fd9796c11d87d"
+COMPRESSED_SHA = "c34ba42e584ab8b6e2fdbfc94e102cef385bc4edc13083cd0d1fe54f7823ce04"
+COMPRESSED_BYTES = 3952452
+ARTIFACT_SHA = "9beee26b1ad8229c04571eca1f22d47f9d23e1a8475324919f8c1fc4c7ea1e94"
+ARTIFACT_BYTES = 17921530
+RECEIPT_SHA = "496d94b8a3ed9b53e97a58c8f58a17f42ea3d5d1837bb1466b039a82ae6d867a"
 
 
 def decompress_verified(data: bytes, *, compressed_sha: str,

@@ -7,11 +7,11 @@
   "compiler_executable_sha256": "ba5ce27a1109faeaf80d0f1fe3491f1863a3bb67db08c11845151e55cd483987",
   "producer_trial_receipt_sha256": "8b0275c76933234f94ba950ec83a217927b5d1bdf2a3a24966ed4aaaaabdd8c3",
   "producer_sources": {
-    "driver.py": "c441b1f375eaa94c1b853ecdd001f0d637be6cae92cc608eb572349b3d9ddecb",
+    "driver.py": "929a6f1f55674c74efe736d8bd255cf4abc8c6c3cee799d8e29117f19eac7cfa",
     "build_component.py": "c8366a81728ee406d25ae3abd51bff14cd16900a7745834716ccbd3813e6cc94",
     "composition.py": "c349a13710e82d82a0bd2d659b80c373cbac8d89ec6e6b87c0bed47c0e42fdd7"
   },
-  "build_plan_sha256": "0375ca57eb858a1ec70323eda9170090d7622c1c5bde25af15b520b368dca591",
+  "build_plan_sha256": "2cbcea74445575d81e3595f5f7011d598adef457367edffccc733fbf72af7c19",
   "source_manifest": [
     {
       "source": "app.py",
@@ -28,8 +28,8 @@
     {
       "source": "inventory.json",
       "destination": "inventory.json",
-      "sha256": "c50e04ca75d826ea51a34fa460af48bbf736b6c5f9772542f67dd47168a167db",
-      "bytes": 14189
+      "sha256": "512332db549b6ea86b8ae11e827cc5feb520724f13a34b0234b110d6e45e861c",
+      "bytes": 16854
     },
     {
       "source": "ordered_json.py",
@@ -46,13 +46,13 @@
     {
       "source": "provenance.json",
       "destination": "provenance.json",
-      "sha256": "55e6ebe946b9700072f78bc346ac63a9a8a2700f790abaffd537cbf8b1ac0010",
+      "sha256": "4d3d828b00fa49bcba1f2b53a26b0cf98532ebcabaa572602be0738c205ee2d5",
       "bytes": 5246
     },
     {
       "source": "reviewed-inputs.json",
       "destination": "reviewed-inputs.json",
-      "sha256": "97dcb9cb15004ecbc3319b6480f48d197f4539587fe1fb0c56c9d634b3cee9da",
+      "sha256": "be98b1b5cc6a20dda6b098c8d7e2f378497f80bcaae8ad96a6f18b18d8e40553",
       "bytes": 580
     },
     {
@@ -68,7 +68,7 @@
       "bytes": 364
     }
   ],
-  "source_manifest_sha256": "6f25971071bed0441534d0377166d71b284ee10caa65eea9645cac3ade96a955",
+  "source_manifest_sha256": "1bd4fcc804cd78a627d8e53e4f8d3300d6d9545bc41228ec962d61dac222e7d1",
   "bindings": {
     "files": [
       {
@@ -205,8 +205,8 @@
     "typed_target_check": true
   },
   "inner": {
-    "artifact_sha256": "797fc85324b97f31be0fb2fa91817d9c5cc5f713c110e46555628d8c77d74da3",
-    "artifact_bytes": 17897792,
+    "artifact_sha256": "9dfc7aab24a587711ea04152d7adff16bdeed8af15fc5a1ba16e78deff9265b4",
+    "artifact_bytes": 17920074,
     "imports": [
       "tobkiri:core/audit@1.0.0",
       "tobkiri:core/clock@1.0.0",
@@ -232,6 +232,6 @@
     "local:ai-tool-bridge-ordered-python/bridge@1.0.0",
     "tobkiri:core/lifecycle@1.0.0"
   ],
-  "artifact_sha256": "3c2aa68e256fa125e2e2a4cb3098704220fdf4832d83c699559ead60617aceac",
-  "artifact_bytes": 17899248
+  "artifact_sha256": "9beee26b1ad8229c04571eca1f22d47f9d23e1a8475324919f8c1fc4c7ea1e94",
+  "artifact_bytes": 17921530
 }

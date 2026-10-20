@@ -14,13 +14,13 @@ use tobkiri_manifest::VerifiedPack;
 
 pub const PACK: &str = evidence::PACK;
 pub const SHAPE: &str = "local.ai-tool-bridge-ordered-python.bridge@2.0";
-pub const COMPONENT_SHA: &str = "0f28f4a87158b18a24fe045a9be1c24e8d9405549a0af1b56546b2017ac92a46";
-pub const RECEIPT_SHA: &str = "17da81e4225c83aab657697457dbfa86b49f81b7d0ef60c3bf6e5fcdb9757cff";
-const PLAN_SHA: &str = "14d659b6c661aa9a5d190912f046a7dd122b356f07473635c812bcf8f8af558e";
-const SOURCES_SHA: &str = "3bb3d6c867afe14addeddc9c3f1f5230c6dc529b17811ab1d0129a560124ae9a";
+pub const COMPONENT_SHA: &str = "30103a20b3694622a62e50cd57cb52af791cf0936657889811562db06ad3e092";
+pub const RECEIPT_SHA: &str = "01f8d3b20b5bcd46d16d1fae1265b16155237fef3ce2163c0cfa47e32c23a14d";
+const PLAN_SHA: &str = "4028c00dd67e63c49137440f338fe1995247f9fdbb267a8d0dab7d5cb47b347e";
+const SOURCES_SHA: &str = "243e0040c4731b3c4cd898fca4112b3e6f861a7815656d793f354bde8772fc72";
 pub const OBSERVATIONS_SHA: &str =
-    "3387411b6ac46b160e793477d270aa1c110a0d58f033937d58957ffe47a539e4";
-const FREEZE_SHA: &str = "97dcb9cb15004ecbc3319b6480f48d197f4539587fe1fb0c56c9d634b3cee9da";
+    "438dd64bc9ec1f849739556e2ab25336751022afa24a59fa19ff7e539c22daa8";
+const FREEZE_SHA: &str = "be98b1b5cc6a20dda6b098c8d7e2f378497f80bcaae8ad96a6f18b18d8e40553";
 const PREFIX: &str = "packs/local.ai-tool-bridge-ordered-python";
 const STAGER: &str = "scripts/wasm/stage_ordered_tool_bridge_v2.py";
 
@@ -515,7 +515,7 @@ pub fn load(repo: &Path) -> Result<Inputs> {
         .context("V2 receipt missing")?;
     ensure!(
         digest(binary) == component_pin
-            && binary.len() == 17_881_199
+            && binary.len() == 17_910_172
             && digest(receipt_bytes) == receipt_pin,
         "V2 component or receipt bytes differ"
     );

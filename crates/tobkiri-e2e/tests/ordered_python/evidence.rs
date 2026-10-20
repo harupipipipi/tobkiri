@@ -13,9 +13,9 @@ use tobkiri_manifest::VerifiedPack;
 pub const PACK: &str = "local.ai-tool-bridge-ordered-python";
 pub const SHAPE: &str = "local.ai-tool-bridge-ordered-python.bridge@1.0";
 pub const INTERFACE: &str = "local:ai-tool-bridge-ordered-python/bridge@1.0.0";
-pub const ORACLE_SHA: &str = "c571795b64aa470b12adf719f7946baa11129ed7f70556feb0f1fd3b272dd2fa";
-const PLAN_SHA: &str = "0375ca57eb858a1ec70323eda9170090d7622c1c5bde25af15b520b368dca591";
-const SOURCES_SHA: &str = "6f25971071bed0441534d0377166d71b284ee10caa65eea9645cac3ade96a955";
+pub const ORACLE_SHA: &str = "9aae37387a6b0758451abe3cb6070d8a3d8106b744de053a5bc16e8715f3481d";
+const PLAN_SHA: &str = "2cbcea74445575d81e3595f5f7011d598adef457367edffccc733fbf72af7c19";
+const SOURCES_SHA: &str = "1bd4fcc804cd78a627d8e53e4f8d3300d6d9545bc41228ec962d61dac222e7d1";
 const EVIDENCE_LIMIT: usize = 4 * 1024 * 1024;
 
 pub struct Inputs {

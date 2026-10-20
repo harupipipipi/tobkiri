@@ -1,23 +1,34 @@
 # Versioned bridge: static inspection and native acceptance
 
 This is an opt-in test harness, not a replacement for the original Gateway.
-The v1 component, evidence, and test route remain unchanged. The v2 route uses
+The v1 behavior and consumer test route remain unchanged. Its component and
+source-proof pins were refreshed on 2026-10-20 after the reviewed Gateway helper
+extraction changed provenance, not any of the 33 source case observations.
+The v2 route uses
 Pack version `2.0.0`, shape `local.ai-tool-bridge-ordered-python.bridge@2.0`,
 and WIT interface `local:ai-tool-bridge-ordered-python/bridge@2.0.0`.
 
 ## Required immutable inputs
 
-Materialize the exact v2 component with
-`scripts/wasm/materialize_ordered_tool_bridge_v2.py`; see `INTEGER_V2.md` and
-`tools/python313-producer/trials/2026-10-20/README.md` for the preserved build,
-actual development replay, and materialization evidence. Set these independent
-pins when invoking the Rust tests:
+Materialize the exact refreshed v2 component with
+`scripts/wasm/materialize_ordered_tool_bridge_v2.py`. The current provenance
+change is recorded in
+`tools/python313-producer/trials/2026-10-20-finalization/source-rebinding.json`.
+Both rebuilt bridges passed fresh isolated 33-case development replays before
+their native-harness identity pins were updated. Inactive materialization
+authenticates bytes only and does not establish native Core acceptance.
+
+The earlier build, replay, and materialization in
+`tools/python313-producer/trials/2026-10-20/` and the passing checkpoint
+`92f38e3241b802605a4af59ba35aae72ee73cdbd` are preserved historical evidence,
+not current source proof. See `INTEGER_V2.md` for the protocol. Set these
+independent pins for the refreshed component when invoking the Rust tests:
 
 ```sh
 export TOBKIRI_TEST_ORDERED_PYTHON_V2_PACK_DIR=/absolute/path/to/inactive-v2-pack
-export TOBKIRI_TEST_ORDERED_PYTHON_V2_PACK_SHA256=659328e7bf0af0bf34bdb14935e61eb6b49aac1632b1403e2e7fe94efbbe75dd
-export TOBKIRI_TEST_ORDERED_PYTHON_V2_COMPONENT_SHA256=0f28f4a87158b18a24fe045a9be1c24e8d9405549a0af1b56546b2017ac92a46
-export TOBKIRI_TEST_ORDERED_PYTHON_V2_RECEIPT_SHA256=17da81e4225c83aab657697457dbfa86b49f81b7d0ef60c3bf6e5fcdb9757cff
+export TOBKIRI_TEST_ORDERED_PYTHON_V2_PACK_SHA256=7ff540650f7677c8530ef6f5cdba8d1e2fe436a57f99133118e9d377c467cb31
+export TOBKIRI_TEST_ORDERED_PYTHON_V2_COMPONENT_SHA256=30103a20b3694622a62e50cd57cb52af791cf0936657889811562db06ad3e092
+export TOBKIRI_TEST_ORDERED_PYTHON_V2_RECEIPT_SHA256=01f8d3b20b5bcd46d16d1fae1265b16155237fef3ce2163c0cfa47e32c23a14d
 ```
 
 The harness independently checks the canonical manifest, exact members,

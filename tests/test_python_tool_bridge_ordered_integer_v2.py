@@ -215,7 +215,7 @@ def test_adapter_fails_closed_on_unreviewed_integer_limit(monkeypatch: Any) -> N
         adapter.invoke(adapter.OPERATIONS[0], "{}")
 
 
-def test_v1_runtime_behavior_and_preserved_source_plan_are_unchanged(
+def test_v1_behavior_is_unchanged_and_fresh_fixture_binds_current_source_plan(
     tmp_path: Path,
 ) -> None:
     with pytest.raises(ValueError, match="safe integer"):
@@ -230,12 +230,12 @@ def test_v1_runtime_behavior_and_preserved_source_plan_are_unchanged(
     fixture = ROOT / "crates/tobkiri-e2e/fixtures/ordered-python"
     receipt_bytes = (fixture / "component.build.json").read_bytes()
     assert hashlib.sha256(receipt_bytes).hexdigest() == (
-        "480803d6ac72f53c9bc19d56eab187f9185c30ff2a9457e32c1fd9796c11d87d")
+        "496d94b8a3ed9b53e97a58c8f58a17f42ea3d5d1837bb1466b039a82ae6d867a")
     assert hashlib.sha256((fixture / "component.wasm.xz").read_bytes()).hexdigest() == (
-        "85b4d52f8ec9f2f6f530dafa4e1dda64b5fe8c63730509e3839560ce9c4f7165")
+        "c34ba42e584ab8b6e2fdbfc94e102cef385bc4edc13083cd0d1fe54f7823ce04")
     receipt = json.loads(receipt_bytes)
     assert receipt["artifact_sha256"] == (
-        "3c2aa68e256fa125e2e2a4cb3098704220fdf4832d83c699559ead60617aceac")
+        "9beee26b1ad8229c04571eca1f22d47f9d23e1a8475324919f8c1fc4c7ea1e94")
     manifest = [{**item, "bytes": len((output / item["source"]).read_bytes())}
                 for item in plan["sources"]]
     assert manifest == receipt["source_manifest"]
@@ -243,7 +243,7 @@ def test_v1_runtime_behavior_and_preserved_source_plan_are_unchanged(
         receipt["build_plan_sha256"])
     assert not any("v2" in entry["source"] for entry in manifest)
     assert hashlib.sha256((PACK / "oracle.json").read_bytes()).hexdigest() == (
-        "c571795b64aa470b12adf719f7946baa11129ed7f70556feb0f1fd3b272dd2fa")
+        "9aae37387a6b0758451abe3cb6070d8a3d8106b744de053a5bc16e8715f3481d")
 
 
 def test_supplemental_observations_bind_sources_without_claiming_guest_parity() -> None:
