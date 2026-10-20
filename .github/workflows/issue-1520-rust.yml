@@ -33,12 +33,16 @@ jobs:
         run: python3 -B tools/quality/test_issue_1520_ci.py
       - name: Workflow platform and artifact routing regression
         run: python3 -B tools/quality/test_issue_1520_workflow.py
+      - name: Gateway tool-caller native routing regression
+        run: python3 -B tools/quality/test_gateway_tool_caller_workflow.py
       - name: Python 3.13 asset packager regression
         run: |
           python3 -B -m unittest discover -s tools/python313-producer/packager/tests
           cargo test --locked --manifest-path tools/python313-producer/packager/Cargo.toml
       - name: Preserved ordered Python component transport regression
         run: python3 -B -m unittest discover -s tests -p test_stage_preserved_ordered_python.py
+      - name: Preserved Gateway tool-caller transport regression
+        run: python3 -B -m unittest discover -s tests -p test_preserved_gateway_tool_caller.py
       - name: Core and host boundaries
         run: python3 tools/quality/issue_1520_gate.py --stage foundation
       - name: Verify migration inventory coverage
@@ -214,6 +218,74 @@ jobs:
           cargo test --locked -p tobkiri-e2e --test ordered_python
           ordered_python_bridge_replays_through_real_core
           -- --ignored --exact --nocapture --test-threads=1
+      - name: Authenticate the preserved Gateway tool-caller graph
+        id: stage_gateway_tool_caller
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B scripts/wasm/stage_preserved_gateway_tool_caller.py \
+            --output "$RUNNER_TEMP/issue-1520-gateway-tool-caller" \
+            2>&1 | tee "$RUNNER_TEMP/gateway-tool-caller-stage.log"
+          python3 -B - "$RUNNER_TEMP/issue-1520-gateway-tool-caller" "$GITHUB_ENV" 2>&1 <<'PY' | tee -a "$RUNNER_TEMP/gateway-tool-caller-stage.log"
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          receipt = json.loads((root / "materialization.json").read_text())
+          expected = "0441bde565b5e1765a8fdc262e61db00a5fff0c160624d99d5d841f65c737d96"
+          if (receipt.get("format") != "tobkiri.preserved-gateway-tool-caller/1"
+                  or receipt.get("graph_directory") != "graph"
+                  or receipt.get("graph_index_sha256") != expected
+                  or any(receipt.get(key) is not False for key in (
+                      "build_performed", "wasm_execution_performed",
+                      "native_core_acceptance", "production_enabled"))):
+              raise SystemExit("invalid inactive Gateway tool-caller materialization")
+          if hashlib.sha256((root / "graph/index.json").read_bytes()).hexdigest() != expected:
+              raise SystemExit("Gateway tool-caller graph identity differs")
+          evidence = root / "native-replay.json"
+          if evidence.exists() or evidence.is_symlink():
+              raise SystemExit("Gateway tool-caller evidence path must be fresh")
+          values = {
+              "GRAPH_DIR": str(root / "graph"),
+              "INDEX_SHA256": expected,
+              "EVIDENCE": str(evidence),
+          }
+          if any("\n" in value or "\r" in value for value in values.values()):
+              raise SystemExit("invalid Gateway tool-caller fixture path")
+          with Path(sys.argv[2]).open("a") as environment:
+              for name, value in values.items():
+                  environment.write(f"TOBKIRI_TEST_GATEWAY_TOOL_CALLER_{name}={value}\n")
+          PY
+      - name: Replay the original Python tool caller through actual Rust Core
+        # Independent of the official producer, old WAT route, and earlier failures.
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' && steps.stage_gateway_tool_caller.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/gateway-tool-caller-native.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-e2e --test ordered_python
+          gateway_tool_caller::original_python_tool_caller_replays_through_real_core
+          -- --ignored --exact --nocapture --test-threads=1
+      - name: Retain Gateway tool-caller native evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-tool-caller-native-replay
+          path: |
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/materialization.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/graph/index.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/graph/source-observations.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/graph/bridge/pack.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/graph/bridge/component.build.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/graph/caller/pack.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/graph/caller/component.build.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/native-replay.json
+            ${{ runner.temp }}/gateway-tool-caller-stage.log
+            ${{ runner.temp }}/gateway-tool-caller-native.log
+            ${{ runner.temp }}/gateway-tool-caller-native.receipt.json
+          if-no-files-found: warn
       - name: Retain actual ordered Python replay evidence
         if: always()
         uses: actions/upload-artifact@v4

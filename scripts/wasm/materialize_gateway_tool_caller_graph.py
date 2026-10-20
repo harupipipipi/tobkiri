@@ -146,7 +146,7 @@ def _validate_pins(pins: dict[str, Any]) -> None:
 
 
 def _component(
-    artifact: Path, pins: dict[str, str], staging: Any,
+    artifact: Path, pins: dict[str, str], staging: Any, *, scratch_parent: Path,
 ) -> tuple[dict[str, bytes], dict[str, Any], dict[str, bytes]]:
     """Reconstruct and match every source-plan record without guest execution."""
     binary = _read(artifact, MAX_GRAPH_BYTES)
@@ -159,7 +159,9 @@ def _component(
     if type(receipt) is not dict:
         raise ValueError("build receipt must be an object")
     before = staging.reviewed_inputs()
-    with tempfile.TemporaryDirectory(prefix="caller-graph-review-") as temporary:
+    with tempfile.TemporaryDirectory(
+        prefix="caller-graph-review-", dir=scratch_parent,
+    ) as temporary:
         stage = Path(temporary) / "stage"
         plan = staging.stage(stage)
         sources = {
@@ -297,13 +299,15 @@ def materialize(
         source_bytes, pins["source_observations_sha256"], "source observations",
     )
     bridge_files, bridge_receipt, bridge_sources = _component(
-        bridge, pins["bridge"], bridge_stage,
+        bridge, pins["bridge"], bridge_stage, scratch_parent=destination.parent,
     )
     caller_files, caller_receipt, caller_sources = _component(
-        caller, pins["caller"], caller_stage,
+        caller, pins["caller"], caller_stage, scratch_parent=destination.parent,
     )
     # Validate captured bytes, not a mutable external oracle path.
-    with tempfile.TemporaryDirectory(prefix="caller-graph-oracle-") as temporary:
+    with tempfile.TemporaryDirectory(
+        prefix="caller-graph-oracle-", dir=destination.parent,
+    ) as temporary:
         captured = Path(temporary) / "source.json"
         with captured.open("xb") as stream:
             stream.write(source_bytes)

@@ -570,6 +570,32 @@ def test_absent_parent_and_traversal_do_not_create_directories(
     assert_unpublished(tmp_path)
 
 
+def test_internal_scratch_ignores_symlinked_default_temp_directory(
+    inputs: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    default = tmp_path / "default-temp"
+    default.mkdir()
+    link = tmp_path / "linked-temp"
+    link.symlink_to(default, target_is_directory=True)
+    monkeypatch.setattr(materializer.tempfile, "tempdir", str(link))
+    original = materializer.tempfile.TemporaryDirectory
+    captured = []
+
+    def create(*args: Any, **kwargs: Any) -> Any:
+        assert kwargs.get("dir") == tmp_path
+        directory = original(*args, **kwargs)
+        captured.append(Path(directory.name))
+        return directory
+
+    monkeypatch.setattr(materializer.tempfile, "TemporaryDirectory", create)
+    report = run(inputs, tmp_path / "graph")
+    assert report["native_core_acceptance"] is False
+    assert len(captured) == 4
+    assert all(not path.exists() for path in captured)
+    assert not list(default.iterdir())
+    assert not list(tmp_path.glob("caller-graph-*"))
+
+
 def test_catalog_bound_includes_all_published_bytes(
     inputs: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

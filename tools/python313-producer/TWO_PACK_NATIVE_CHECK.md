@@ -7,6 +7,26 @@ the purpose is to observe the actual caller-to-provider edge through Core/Gate.
 
 ## Immutable inputs and packaging
 
+The checked-in transport fixtures can be authenticated and prepared without a
+producer, source-oracle regeneration, or guest execution:
+
+```sh
+python3 -B scripts/wasm/stage_preserved_gateway_tool_caller.py \
+  --output /absolute/path/to/fresh-staged-inputs
+```
+
+The output contains `graph/` and `materialization.json`, published together only
+after all pinned compressed/decompressed identities, current source plans and
+the fixed graph index pass. The graph directory used below is
+`/absolute/path/to/fresh-staged-inputs/graph`. Preparation rejects existing
+destinations and linked/nonregular inputs. All private scratch directories use
+the validated output parent, not a potentially symlinked platform default
+temporary directory. No preparation receipt claims native acceptance.
+
+The existing guarded macOS CI job runs this preparation and then the exact
+native test below, retaining both preparation and replay diagnostics. Workflow
+presence and passing local routing tests do not establish an executed CI result.
+
 `scripts/wasm/materialize_gateway_tool_caller_graph.py` verifies the reviewed
 caller/bridge component and build-receipt pins, reconstructs current source
 plans, and publishes only a fresh inactive graph directory. Its CLI requires
