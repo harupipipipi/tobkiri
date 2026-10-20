@@ -125,6 +125,8 @@ def test_required_three_imports_typed_outcome_and_no_authority_implementation() 
     ):
         assert f"import {identity};" in wit
     assert wit.count("result<finalization-outcome, error>") == 2
+    assert "  %stream: func(payload: string)" in wit
+    assert "  stream: func(payload: string)" not in wit
     assert "finalized(string)" in wit and "domain-rejected(domain-error)" in wit
     assert "include tobkiri:core/pack-minimal@1.0.0" in wit
     source = (PACK / "python/original_gateway_finalizer.py").read_text()

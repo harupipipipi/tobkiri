@@ -12,7 +12,7 @@ interface finalizer {
   }
   runtime-info: func() -> string;
   generate: func(payload: string) -> result<finalization-outcome, error>;
-  stream: func(payload: string) -> result<finalization-outcome, error>;
+  %stream: func(payload: string) -> result<finalization-outcome, error>;
 }
 world pack {
   include tobkiri:core/pack-minimal@1.0.0;

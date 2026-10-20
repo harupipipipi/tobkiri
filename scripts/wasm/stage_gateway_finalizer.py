@@ -101,7 +101,7 @@ REVIEWED_SHA256 = {
         'f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb'
     ),
     'wit/pack.wit': (
-        '80e75878e1952b54723f9b324436f9a659ebea55364ddd3d26173f4e7bb325f3'
+        'b260bfcf0822d4bcd4006ff041625a6cca472d89cb5232c6188deff7a51ff952'
     ),
 }
 REVIEWED_EVIDENCE_SHA256 = {
@@ -184,6 +184,14 @@ def _wit_identities(files: dict[str, bytes]) -> None:
     )
     if imports != list(REQUIRED_INTERFACES):
         raise ValueError("finalizer direct typed imports differ from declaration")
+    functions = re.findall(
+        r"(?m)^\s*(%?[a-z][\w-]*):\s*func",
+        files["wit/pack.wit"].decode("utf-8"),
+    )
+    # `stream` is a WIT type keyword. Escaping it retains the external name.
+    # This static spelling check does not establish generated Python ABI names.
+    if functions != ["runtime-info", "generate", "%stream"]:
+        raise ValueError("finalizer function spelling requires escaped %stream")
     caller = files["wit/deps/ai-gateway-tool-caller-python/pack.wit"]
     if f"import {TRANSITIVE_WIT_INTERFACE};".encode() not in caller:
         raise ValueError("canonical caller transitive WIT dependency changed")

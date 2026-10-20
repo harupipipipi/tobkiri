@@ -632,3 +632,20 @@ def test_output_directory_replacement_is_detected_without_outside_write(
     assert list(output.iterdir()) == [output / "sentinel"]
     assert (output / "sentinel").read_bytes() == b"keep"
     assert (moved / "source-stage.json").is_file()
+
+
+def test_reserved_stream_keyword_requires_escape_without_renaming_export(
+    repository: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Static source regression only, not generated Python/WIT ABI evidence."""
+    source = repository / staging.DESTINATIONS["wit/pack.wit"]
+    original = source.read_bytes()
+    assert b"  %stream: func(payload: string)" in original
+    data = original.replace(b"  %stream: func", b"  stream: func")
+    source.write_bytes(data)
+    monkeypatch.setattr(staging, "REVIEWED_SHA256", {
+        **staging.REVIEWED_SHA256, "wit/pack.wit": digest(data),
+    })
+    with pytest.raises(ValueError, match="requires escaped %stream"):
+        staging.stage(tmp_path / "stage")
+    assert not (tmp_path / "stage").exists()
