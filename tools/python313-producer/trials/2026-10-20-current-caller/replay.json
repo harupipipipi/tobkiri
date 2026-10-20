@@ -1,0 +1,3167 @@
+{
+  "all_cases_completed": true,
+  "all_expected_results_matched": true,
+  "all_guest_calls_returned": true,
+  "all_lifecycles_completed": true,
+  "all_typed_error_arms_executed": false,
+  "authority_granted": false,
+  "billing_authority_claimed": false,
+  "both_guest_runtimes_verified": true,
+  "bridge_implementation": "actual composed Python provider component",
+  "build_performed": false,
+  "caller_activated": false,
+  "compilation_bounded_by_guest_fuel_or_epoch": false,
+  "compilation_wall_time_bounded": false,
+  "complete_case_set": true,
+  "component_pins": {
+    "caller": {
+      "artifact_sha256": "cb561cb9b9b85aaf1de9cb74a57ffece061bd4b8100d6030b5aabc79b2cb7fc1",
+      "receipt_sha256": "18d900c56e25e2a5ab9d746a00f06066ebbae32cba8f0a681e6009826224f477"
+    },
+    "composition_wac_sha256": "107675f2bfcdbe32bd7eab4c77a9aa9bde2e6dc2e6d1aa9378989a006f2ba4b4",
+    "provider": {
+      "artifact_sha256": "30103a20b3694622a62e50cd57cb52af791cf0936657889811562db06ad3e092",
+      "receipt_sha256": "01f8d3b20b5bcd46d16d1fae1265b16155237fef3ce2163c0cfa47e32c23a14d"
+    },
+    "runner_source_bindings_sha256": "3c4d619cd758dee5405d4fa6b4f3697cc065ad0e764409c7b276085f05d22e18",
+    "source_observations_sha256": "854fa03de651c12cb7126d8f81e4f0c62e340a5a85f71eb50784e539e207bced",
+    "wac_sha256": "7cd490edbd452221ef89e6750fc43eacc9b71b1242095eb577cb9a3bf0d3beda"
+  },
+  "component_source_evidence": {
+    "caller": {
+      "plan_sha256": "bc03deb9d3b214f083258785f2cac52a399aaf3381b1913dea221a21fd4e69ec",
+      "producer_trial_receipt_sha256": "8b0275c76933234f94ba950ec83a217927b5d1bdf2a3a24966ed4aaaaabdd8c3",
+      "source_manifest_sha256": "47e0ab2a526e81f192e6fdcde6ac083d28a8f561fd54585091d06ededb657761",
+      "stage_sha256": "34661a8f3b142120e55f9925b6496cc297f1ea7361dd512ac962dad7adf8d0f0"
+    },
+    "provider": {
+      "plan_sha256": "4028c00dd67e63c49137440f338fe1995247f9fdbb267a8d0dab7d5cb47b347e",
+      "producer_trial_receipt_sha256": "8b0275c76933234f94ba950ec83a217927b5d1bdf2a3a24966ed4aaaaabdd8c3",
+      "source_manifest_sha256": "243e0040c4731b3c4cd898fca4112b3e6f861a7815656d793f354bde8772fc72",
+      "stage_sha256": "58b7c42f5479f40ee672a8f76effd31e60db9d7bd40288b0d7ad0da9ff764a2e"
+    }
+  },
+  "composition_bytes": 35800659,
+  "composition_command": [
+    "wac",
+    "compose",
+    "replay.wac",
+    "--dep",
+    "local:caller=caller.wasm",
+    "--dep",
+    "local:provider=provider.wasm",
+    "--deps-dir",
+    "no-ambient-dependencies",
+    "-o",
+    "composed.wasm"
+  ],
+  "composition_sha256": "c00209ee4863a4d064c4ff994ead86cd644e284b657e048420b3cd247788c87d",
+  "composition_tool_stderr": "",
+  "composition_wac_sha256": "107675f2bfcdbe32bd7eab4c77a9aa9bde2e6dc2e6d1aa9378989a006f2ba4b4",
+  "core_runtime_acceptance": false,
+  "engine_memory_reservation_bytes": 134217728,
+  "engine_memory_reservation_scope": "Unchanged 128 MiB development fixture virtual reservation; per-memory Store caps, tables, guards, growth, traps and external OS limits unchanged. This is not the separate native Core memory cap.",
+  "execution_observation_scope": "execution flags report explicit export calls attempted/returned, not instantiation starts or instruction-level execution",
+  "expected_guest_runtime": {
+    "python": "3.13.16",
+    "unicode": "15.1.0"
+  },
+  "exports": [
+    "caller-lifecycle",
+    "local:ai-gateway-tool-caller-python/caller@1.0.0",
+    "local:ai-tool-bridge-ordered-python/bridge@2.0.0",
+    "provider-lifecycle"
+  ],
+  "external_process_supervisor_required": true,
+  "format": "tobkiri.gateway-tool-caller-current-development-replay/1",
+  "fuel_per_case": 2000000000,
+  "full_gateway_migration_claimed": false,
+  "full_host_replay_performed": false,
+  "gate_runtime_acceptance": false,
+  "guest_import_call_counts_observed": false,
+  "guest_timeout_scope": "entire case including instantiation and four lifecycle calls",
+  "guest_timeout_seconds": 30.0,
+  "historical_evidence_scope": "Separate from the preserved 92f38e3 artifacts, source and replay receipts",
+  "historical_receipts_are_current_source_proof": false,
+  "host_import_policy": "all five residual canonical Core imports trap",
+  "imports": [
+    "tobkiri:core/audit@1.0.0",
+    "tobkiri:core/clock@1.0.0",
+    "tobkiri:core/flow@1.0.0",
+    "tobkiri:core/random@1.0.0",
+    "tobkiri:core/types@1.0.0"
+  ],
+  "instance_limit_scope": "bounded two-producer DEVELOPMENT fixture allowance: twice the single-provider instance cap, not a measured minimum",
+  "legacy_http_error_parity_claimed": false,
+  "native_core_acceptance": false,
+  "observations": [
+    {
+      "actual": {
+        "output_json": "[{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"echo\",\"arguments\":{\"above-u64\":18446744073709551616,\"below-i64\":-1208925819614629174706176,\"wide\":100000000000000000000000000000000000000000000000000000000000000000000000000000000,\"$int\":\"inert DATA\"},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]",
+        "status": "ok"
+      },
+      "case_completed": true,
+      "classification": "success",
+      "expected_result_matched": true,
+      "fuel_consumed": 12407878,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "generate-native-bigints",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "output_json": "[{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"echo\",\"arguments\":{\"n\":9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]",
+        "status": "ok"
+      },
+      "case_completed": true,
+      "classification": "success",
+      "expected_result_matched": true,
+      "fuel_consumed": 35971754,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "generate-inner-4300-digit-bigint",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "output_json": "[{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"echo\",\"arguments\":{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"tail\":[-0.0,18446744073709551616]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]",
+        "status": "ok"
+      },
+      "case_completed": true,
+      "classification": "success",
+      "expected_result_matched": true,
+      "fuel_consumed": 65952290,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "generate-deep-values",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "output_json": "[{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"negative_zero\":-0.0,\"a\":1e-07,\"nested\":{\"b\":2,\"a\":1},\"unicode\":\"\ud835\udd18\u00e9\"},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]",
+        "status": "ok"
+      },
+      "case_completed": true,
+      "classification": "success",
+      "expected_result_matched": true,
+      "fuel_consumed": 14055390,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "generate-floats-order-negative-zero",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "output_json": "[{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"one\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false},{\"intent_id\":\"id\",\"request_id\":\"req\",\"operation\":\"two\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]",
+        "status": "ok"
+      },
+      "case_completed": true,
+      "classification": "success",
+      "expected_result_matched": true,
+      "fuel_consumed": 12878187,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "generate-multiple-intents",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "output_json": "[]",
+        "status": "ok"
+      },
+      "case_completed": true,
+      "classification": "success",
+      "expected_result_matched": true,
+      "fuel_consumed": 7945251,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "generate-empty-intents",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain",
+        "status": "error"
+      },
+      "case_completed": true,
+      "classification": "provider-invalid",
+      "expected_result_matched": true,
+      "fuel_consumed": 8198154,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "generate-invalid-name",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": false,
+      "typed_error_custody": true
+    },
+    {
+      "actual": {
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain",
+        "status": "error"
+      },
+      "case_completed": true,
+      "classification": "provider-invalid",
+      "expected_result_matched": true,
+      "fuel_consumed": 8505360,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "generate-invalid-arguments",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": false,
+      "typed_error_custody": true
+    },
+    {
+      "actual": {
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain",
+        "status": "error"
+      },
+      "case_completed": true,
+      "classification": "provider-invalid",
+      "expected_result_matched": true,
+      "fuel_consumed": 7846095,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "generate-invalid-item",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": false,
+      "typed_error_custody": true
+    },
+    {
+      "actual": {
+        "code": "internal",
+        "message": "provider output contains a non-finite number",
+        "status": "error"
+      },
+      "case_completed": true,
+      "classification": "provider-nonfinite",
+      "expected_result_matched": true,
+      "fuel_consumed": 8937866,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "generate-nonfinite-nan",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": false,
+      "typed_error_custody": true
+    },
+    {
+      "actual": {
+        "code": "internal",
+        "message": "provider output contains a non-finite number",
+        "status": "error"
+      },
+      "case_completed": true,
+      "classification": "provider-nonfinite",
+      "expected_result_matched": true,
+      "fuel_consumed": 8951723,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "generate-nonfinite-infinity",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": false,
+      "typed_error_custody": true
+    },
+    {
+      "actual": {
+        "code": "internal",
+        "message": "provider output contains a non-finite number",
+        "status": "error"
+      },
+      "case_completed": true,
+      "classification": "provider-nonfinite",
+      "expected_result_matched": true,
+      "fuel_consumed": 8941758,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "generate-nonfinite-overflow",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": false,
+      "typed_error_custody": true
+    },
+    {
+      "actual": {
+        "output_json": "[{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"echo\",\"arguments\":{\"above-u64\":18446744073709551616,\"below-i64\":-1208925819614629174706176,\"wide\":100000000000000000000000000000000000000000000000000000000000000000000000000000000,\"$int\":\"inert DATA\"},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]",
+        "status": "ok"
+      },
+      "case_completed": true,
+      "classification": "success",
+      "expected_result_matched": true,
+      "fuel_consumed": 12408696,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "stream-native-bigints",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "output_json": "[{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"echo\",\"arguments\":{\"n\":9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]",
+        "status": "ok"
+      },
+      "case_completed": true,
+      "classification": "success",
+      "expected_result_matched": true,
+      "fuel_consumed": 35972572,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "stream-inner-4300-digit-bigint",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "output_json": "[{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"echo\",\"arguments\":{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"nested\":[{\"tail\":[-0.0,18446744073709551616]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]",
+        "status": "ok"
+      },
+      "case_completed": true,
+      "classification": "success",
+      "expected_result_matched": true,
+      "fuel_consumed": 65953108,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "stream-deep-values",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "output_json": "[{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"negative_zero\":-0.0,\"a\":1e-07,\"nested\":{\"b\":2,\"a\":1},\"unicode\":\"\ud835\udd18\u00e9\"},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]",
+        "status": "ok"
+      },
+      "case_completed": true,
+      "classification": "success",
+      "expected_result_matched": true,
+      "fuel_consumed": 14056208,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "stream-floats-order-negative-zero",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "output_json": "[{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"one\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false},{\"intent_id\":\"id\",\"request_id\":\"req\",\"operation\":\"two\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]",
+        "status": "ok"
+      },
+      "case_completed": true,
+      "classification": "success",
+      "expected_result_matched": true,
+      "fuel_consumed": 12879005,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "stream-multiple-intents",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "output_json": "[]",
+        "status": "ok"
+      },
+      "case_completed": true,
+      "classification": "success",
+      "expected_result_matched": true,
+      "fuel_consumed": 7946069,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "stream-empty-intents",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain",
+        "status": "error"
+      },
+      "case_completed": true,
+      "classification": "provider-invalid",
+      "expected_result_matched": true,
+      "fuel_consumed": 8198972,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "stream-invalid-name",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": false,
+      "typed_error_custody": true
+    },
+    {
+      "actual": {
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain",
+        "status": "error"
+      },
+      "case_completed": true,
+      "classification": "provider-invalid",
+      "expected_result_matched": true,
+      "fuel_consumed": 8506178,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "stream-invalid-arguments",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": false,
+      "typed_error_custody": true
+    },
+    {
+      "actual": {
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain",
+        "status": "error"
+      },
+      "case_completed": true,
+      "classification": "provider-invalid",
+      "expected_result_matched": true,
+      "fuel_consumed": 7846913,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "stream-invalid-item",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": false,
+      "typed_error_custody": true
+    },
+    {
+      "actual": {
+        "code": "internal",
+        "message": "provider output contains a non-finite number",
+        "status": "error"
+      },
+      "case_completed": true,
+      "classification": "provider-nonfinite",
+      "expected_result_matched": true,
+      "fuel_consumed": 8938684,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "stream-nonfinite-nan",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": false,
+      "typed_error_custody": true
+    },
+    {
+      "actual": {
+        "code": "internal",
+        "message": "provider output contains a non-finite number",
+        "status": "error"
+      },
+      "case_completed": true,
+      "classification": "provider-nonfinite",
+      "expected_result_matched": true,
+      "fuel_consumed": 8952541,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "stream-nonfinite-infinity",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": false,
+      "typed_error_custody": true
+    },
+    {
+      "actual": {
+        "code": "internal",
+        "message": "provider output contains a non-finite number",
+        "status": "error"
+      },
+      "case_completed": true,
+      "classification": "provider-nonfinite",
+      "expected_result_matched": true,
+      "fuel_consumed": 8942576,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "stream-nonfinite-overflow",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": false,
+      "typed_error_custody": true
+    },
+    {
+      "actual": {
+        "output_json": "[{\"type\":\"tool_intent_delta\",\"tool_intent\":{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"one\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}}]",
+        "status": "ok"
+      },
+      "case_completed": true,
+      "classification": "success",
+      "expected_result_matched": true,
+      "fuel_consumed": 10685867,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "events-singleton-index-zero",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "output_json": "[{\"type\":\"text_delta\",\"text\":\"keep\",\"tool_intent\":{\"name\":\"skip\"}},{\"type\":\"tool_intent_delta\",\"tool_intent\":{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"one\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}},{\"type\":\"tool_intent_delta\",\"tool_intent\":\"skip\"},{\"type\":\"tool_intent_delta\"},{\"type\":\"tool_intent_delta\",\"tool_intent\":{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"two\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}}]",
+        "status": "ok"
+      },
+      "case_completed": true,
+      "classification": "success",
+      "expected_result_matched": true,
+      "fuel_consumed": 15799889,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "events-mixed-skipped",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "output_json": "[{\"type\":\"tool_intent_delta\",\"tool_intent\":{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"one\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}},{\"type\":\"tool_intent_delta\",\"tool_intent\":{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"two\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}},{\"type\":\"tool_intent_delta\",\"tool_intent\":{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"three\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}}]",
+        "status": "ok"
+      },
+      "case_completed": true,
+      "classification": "success",
+      "expected_result_matched": true,
+      "fuel_consumed": 17567970,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "events-multiple-events",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "output_json": "[{\"type\":\"text_delta\",\"text\":\"keep\"},{\"type\":\"tool_intent_delta\",\"tool_intent\":null}]",
+        "status": "ok"
+      },
+      "case_completed": true,
+      "classification": "success",
+      "expected_result_matched": true,
+      "fuel_consumed": 7913617,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "events-all-skipped",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": true,
+      "typed_error_custody": false
+    },
+    {
+      "actual": {
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain",
+        "status": "error"
+      },
+      "case_completed": true,
+      "classification": "provider-invalid",
+      "expected_result_matched": true,
+      "fuel_consumed": 11538754,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "events-later-invalid",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": false,
+      "typed_error_custody": true
+    },
+    {
+      "actual": {
+        "code": "internal",
+        "message": "provider output contains a non-finite number",
+        "status": "error"
+      },
+      "case_completed": true,
+      "classification": "provider-nonfinite",
+      "expected_result_matched": true,
+      "fuel_consumed": 12282429,
+      "guest_calls_attempted": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_calls_returned": [
+        "provider.init",
+        "caller.init",
+        "provider.runtime-info",
+        "caller.runtime-info",
+        "caller.operation",
+        "caller.shutdown",
+        "provider.shutdown"
+      ],
+      "guest_runtime": {
+        "caller": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        },
+        "provider": {
+          "python": "3.13.16",
+          "unicode": "15.1.0"
+        }
+      },
+      "id": "events-later-nonfinite",
+      "instantiation_attempted": true,
+      "lifecycle": {
+        "caller": {
+          "init": true,
+          "shutdown": true
+        },
+        "provider": {
+          "init": true,
+          "shutdown": true
+        }
+      },
+      "lifecycle_results": {
+        "caller.init": {
+          "status": "ok"
+        },
+        "caller.shutdown": {
+          "status": "ok"
+        },
+        "provider.init": {
+          "status": "ok"
+        },
+        "provider.shutdown": {
+          "status": "ok"
+        }
+      },
+      "source_success_parity": false,
+      "typed_error_custody": true
+    }
+  ],
+  "original_reference_runtime": {
+    "implementation": "CPython",
+    "int_max_str_digits": 4300,
+    "python": "3.13.5",
+    "unicode": "15.1.0"
+  },
+  "partial_stream_mutations_observed": false,
+  "pins_document_sha256": "d8ed300d82dd36e2bf09cd2988850fb0a2291d604b37da0fc72a48345f91c916",
+  "production_enabled": false,
+  "protocol": "ordered-finite-json-v2",
+  "replay_sha256": "f3f859a47aa16c45a1c0dc0ee5c8ec19f853fb162b973eb25f4c96066897e2bd",
+  "replay_succeeded": true,
+  "retry_parity_claimed": false,
+  "reviewed_current_source_sha256": "854fa03de651c12cb7126d8f81e4f0c62e340a5a85f71eb50784e539e207bced",
+  "runner_source_bindings": {
+    "freeze_ordered_tool_bridge.py": "83e1093f9a36468786b1f4b05661846f3f3e3b07b5eab1229a941835228faa04",
+    "observe_gateway_finalizer.py": "4e2c8aa20a567a8d49463c9b99803a2f585ee56f9f25cea1c0c6fb3c82d1ac43",
+    "observe_gateway_tool_caller.py": "73393f7f1ff214dec98ead55b7f7b64790c9a6e6125b70d4f825586245f3cef7",
+    "prepare_gateway_finalization_providers.py": "d212e0e3fa782a03dcd4d4a772f8ddf7158dad5eb437b7d7373e24939074fa80",
+    "prepare_gateway_finalizer.py": "46c49cd9a1d33bbbde8d11c94dc3bf8a240ba15780f47c99e56eb2167698e20e",
+    "prepare_gateway_tool_caller.py": "9412b61e277e8247b62965bbe8a40ed2027d3cea4ec2259067422f26f8c7069b",
+    "prepare_ordered_tool_bridge.py": "f3034aa6c4296751ba69d820ba8ba688e4c0783f39b48d43e55a2eb38ed3b075",
+    "replay_gateway_finalizer.py": "ef3f90ecdb0b636f86322d62550e688b6cd5c83e044d9e923f520892a9774063",
+    "replay_gateway_tool_caller.py": "839ef1f516856237934c8818d774716d9883c4974d639eb80554575638cb6696",
+    "replay_gateway_tool_caller_current.py": "f3f859a47aa16c45a1c0dc0ee5c8ec19f853fb162b973eb25f4c96066897e2bd",
+    "replay_ordered_tool_bridge_v2.py": "6e1998f03ba74b5939ae57fcf6ab54e31d7aee381ae22ed007979c4ab551d4fe",
+    "stage_gateway_finalization_providers.py": "6599e093b4e6ad7da134d0f6b344f4a24118338a669d89a025e6b7c606d36eeb",
+    "stage_gateway_finalizer.py": "a21694608ff7af5e1f91fca8abfd0a869eaa97bb6e9d95bdd914478cffb3499b",
+    "stage_gateway_tool_caller.py": "ce1e3849868e24b10db1d2f52b07216fee8a8e625d3ee2ace3d1afe7c7e3b0c9",
+    "stage_ordered_tool_bridge.py": "ecc9427fbe1bc2d351e3e50900a716455d47b2cdbc261275e7bc1a9a9cc07554",
+    "stage_ordered_tool_bridge_v2.py": "5fb02eb2aa2b28aec9163e7b00f2da51472feb0293543ce010a3ad77a5766b2d"
+  },
+  "scope": "current-source-two-component-not-native-core-acceptance",
+  "source_observations_sha256": "854fa03de651c12cb7126d8f81e4f0c62e340a5a85f71eb50784e539e207bced",
+  "source_reference_scope": "source helper semantics, not full Host error parity",
+  "store_limit_difference_from_single_provider": {
+    "instances": {
+      "single_provider": 64,
+      "two_producer_fixture": 128
+    }
+  },
+  "store_limit_scope": "memory_size is per linear memory, not an aggregate process bound; native compilation requires separate external supervision",
+  "store_limits": {
+    "instances": 128,
+    "memories": 4,
+    "memory_size": 134217728,
+    "table_elements": 65536,
+    "tables": 64
+  },
+  "typed_surface": {
+    "exports": {
+      "caller-lifecycle": {
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "init": [
+          "func",
+          [
+            [
+              "config",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            null,
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "json": "string",
+        "shutdown": [
+          "func",
+          [],
+          null
+        ]
+      },
+      "local:ai-gateway-tool-caller-python/caller@1.0.0": {
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "generate-intents": [
+          "func",
+          [
+            [
+              "payload",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            "string",
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "runtime-info": [
+          "func",
+          [],
+          "string"
+        ],
+        "stream-event-intents": [
+          "func",
+          [
+            [
+              "payload",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            "string",
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "stream-intents": [
+          "func",
+          [
+            [
+              "payload",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            "string",
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ]
+      },
+      "local:ai-tool-bridge-ordered-python/bridge@2.0.0": {
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "normalize": [
+          "func",
+          [
+            [
+              "operation",
+              "string"
+            ],
+            [
+              "payload",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            "string",
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "runtime-info": [
+          "func",
+          [],
+          "string"
+        ]
+      },
+      "provider-lifecycle": {
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "init": [
+          "func",
+          [
+            [
+              "config",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            null,
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "json": "string",
+        "shutdown": [
+          "func",
+          [],
+          null
+        ]
+      }
+    },
+    "imports": {
+      "tobkiri:core/audit@1.0.0": {
+        "append": [
+          "func",
+          [
+            [
+              "kind",
+              "string"
+            ],
+            [
+              "payload",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            null,
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "json": "string",
+        "read": [
+          "func",
+          [
+            [
+              "after",
+              "u64"
+            ],
+            [
+              "max",
+              "u32"
+            ]
+          ],
+          [
+            "result",
+            [
+              "list",
+              "string"
+            ],
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ]
+      },
+      "tobkiri:core/clock@1.0.0": {
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "monotonic-ns": [
+          "func",
+          [],
+          "u64"
+        ],
+        "now-ms": [
+          "func",
+          [],
+          "u64"
+        ],
+        "sleep-ms": [
+          "func",
+          [
+            [
+              "ms",
+              "u32"
+            ]
+          ],
+          [
+            "result",
+            null,
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ]
+      },
+      "tobkiri:core/flow@1.0.0": {
+        "call-port": [
+          "func",
+          [
+            [
+              "shape",
+              "string"
+            ],
+            [
+              "op",
+              "string"
+            ],
+            [
+              "args",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            "string",
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "call-port-stream": [
+          "func",
+          [
+            [
+              "shape",
+              "string"
+            ],
+            [
+              "op",
+              "string"
+            ],
+            [
+              "args",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            [
+              "record",
+              [
+                [
+                  "id",
+                  "u64"
+                ]
+              ]
+            ],
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "callback-handle": [
+          "record",
+          [
+            [
+              "id",
+              "u64"
+            ]
+          ]
+        ],
+        "cancel-stream": [
+          "func",
+          [
+            [
+              "s",
+              [
+                "record",
+                [
+                  [
+                    "id",
+                    "u64"
+                  ]
+                ]
+              ]
+            ]
+          ],
+          null
+        ],
+        "emit": [
+          "func",
+          [
+            [
+              "output-shape",
+              "string"
+            ],
+            [
+              "event",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            null,
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "invoke-callback": [
+          "func",
+          [
+            [
+              "c",
+              [
+                "record",
+                [
+                  [
+                    "id",
+                    "u64"
+                  ]
+                ]
+              ]
+            ],
+            [
+              "args",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            "string",
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "is-cancelled": [
+          "func",
+          [],
+          "bool"
+        ],
+        "json": "string",
+        "pull": [
+          "func",
+          [
+            [
+              "s",
+              [
+                "record",
+                [
+                  [
+                    "id",
+                    "u64"
+                  ]
+                ]
+              ]
+            ],
+            [
+              "max",
+              "u32"
+            ]
+          ],
+          [
+            "result",
+            [
+              "list",
+              "string"
+            ],
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "run-flow": [
+          "func",
+          [
+            [
+              "implements",
+              "string"
+            ],
+            [
+              "input",
+              "string"
+            ]
+          ],
+          [
+            "result",
+            [
+              "record",
+              [
+                [
+                  "id",
+                  "u64"
+                ]
+              ]
+            ],
+            [
+              "record",
+              [
+                [
+                  "code",
+                  [
+                    "enum",
+                    [
+                      "denied",
+                      "approval-required",
+                      "cancelled",
+                      "not-found",
+                      "invalid",
+                      "limit-exceeded",
+                      "conflict",
+                      "unavailable",
+                      "internal"
+                    ]
+                  ]
+                ],
+                [
+                  "message",
+                  "string"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "stream-handle": [
+          "record",
+          [
+            [
+              "id",
+              "u64"
+            ]
+          ]
+        ]
+      },
+      "tobkiri:core/random@1.0.0": {
+        "bytes": [
+          "func",
+          [
+            [
+              "n",
+              "u32"
+            ]
+          ],
+          [
+            "list",
+            "u8"
+          ]
+        ]
+      },
+      "tobkiri:core/types@1.0.0": {
+        "callback-handle": [
+          "record",
+          [
+            [
+              "id",
+              "u64"
+            ]
+          ]
+        ],
+        "error": [
+          "record",
+          [
+            [
+              "code",
+              [
+                "enum",
+                [
+                  "denied",
+                  "approval-required",
+                  "cancelled",
+                  "not-found",
+                  "invalid",
+                  "limit-exceeded",
+                  "conflict",
+                  "unavailable",
+                  "internal"
+                ]
+              ]
+            ],
+            [
+              "message",
+              "string"
+            ]
+          ]
+        ],
+        "error-code": [
+          "enum",
+          [
+            "denied",
+            "approval-required",
+            "cancelled",
+            "not-found",
+            "invalid",
+            "limit-exceeded",
+            "conflict",
+            "unavailable",
+            "internal"
+          ]
+        ],
+        "json": "string",
+        "stream-handle": [
+          "record",
+          [
+            [
+              "id",
+              "u64"
+            ]
+          ]
+        ]
+      }
+    }
+  },
+  "typed_surface_bytes": 6219,
+  "typed_surface_sha256": "e4a321b6a174e02287c98d4f632cc33b5c4b0b1adf5c2242b989a20d0636a1c9",
+  "typed_surface_validated": true,
+  "wasm_execution_attempted": true,
+  "wasm_execution_performed": true
+}
