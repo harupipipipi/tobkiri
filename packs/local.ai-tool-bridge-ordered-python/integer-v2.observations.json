@@ -1,0 +1,662 @@
+{
+  "format": "tobkiri.ordered-integer-source-observations/1",
+  "protocol": "ordered-finite-json-v2",
+  "runtime": {
+    "implementation": "CPython",
+    "python": "3.13.5",
+    "unicode": "15.1.0",
+    "int_max_str_digits": 4300
+  },
+  "oracle_sha256": "c571795b64aa470b12adf719f7946baa11129ed7f70556feb0f1fd3b272dd2fa",
+  "oracle_freeze_sha256": "97dcb9cb15004ecbc3319b6480f48d197f4539587fe1fb0c56c9d634b3cee9da",
+  "case_inputs_sha256": "39bf861b89825925890e3d1bae5fa99bdd9992323a7d25b19e49f57859366796",
+  "source_bindings": [
+    {
+      "path": "crates/tobkiri-canon/src/codec.rs",
+      "bytes": 16519,
+      "sha256": "d1c2491b98e35433792205bf255d0f1ca5bab36600736bc3e03d9052df9f7379"
+    },
+    {
+      "path": "crates/tobkiri-wit/wit/core/core.wit",
+      "bytes": 5732,
+      "sha256": "f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb"
+    },
+    {
+      "path": "packs/local.ai-tool-bridge-ordered-python/oracle.freeze.json",
+      "bytes": 580,
+      "sha256": "97dcb9cb15004ecbc3319b6480f48d197f4539587fe1fb0c56c9d634b3cee9da"
+    },
+    {
+      "path": "packs/local.ai-tool-bridge-ordered-python/oracle.json",
+      "bytes": 20051,
+      "sha256": "c571795b64aa470b12adf719f7946baa11129ed7f70556feb0f1fd3b272dd2fa"
+    },
+    {
+      "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json.py",
+      "bytes": 8961,
+      "sha256": "7df89c2e5275fdc795c13e0d70d6ec69f7f022aa968c58a3c1b1637e0eee2158"
+    },
+    {
+      "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json_v2.py",
+      "bytes": 4036,
+      "sha256": "39ea1579fc3293cadc66b458052f173f8d0fc3b2ae767b87d78642602c4e7c48"
+    },
+    {
+      "path": "packs/local.ai-tool-bridge-ordered-python/python/caller_adapter.py",
+      "bytes": 1477,
+      "sha256": "68f56bae4262eedf4427c63929897597c051a88e347ba96cc970b07eeb101528"
+    },
+    {
+      "path": "packs/local.ai-tool-bridge-ordered-python/python/caller_adapter_v2.py",
+      "bytes": 1239,
+      "sha256": "04b590a0be5472272b7458f8c0c0ebe993eab16ee105d5eecd5b3f415c42bbf1"
+    },
+    {
+      "path": "packs/local.ai-tool-bridge-ordered-python/python/inventory.json",
+      "bytes": 14189,
+      "sha256": "c50e04ca75d826ea51a34fa460af48bbf736b6c5f9772542f67dd47168a167db"
+    },
+    {
+      "path": "packs/local.ai-tool-bridge-ordered-python/python/original_bridge.py",
+      "bytes": 2867,
+      "sha256": "4e964fbfa066dc656d36144b96d26a3a03df94295517781cf29815c1f90ba0d6"
+    },
+    {
+      "path": "packs/local.ai-tool-bridge-ordered-python/python/provenance.json",
+      "bytes": 5246,
+      "sha256": "55e6ebe946b9700072f78bc346ac63a9a8a2700f790abaffd537cbf8b1ac0010"
+    },
+    {
+      "path": "scripts/wasm/freeze_ordered_tool_bridge.py",
+      "bytes": 5016,
+      "sha256": "83e1093f9a36468786b1f4b05661846f3f3e3b07b5eab1229a941835228faa04"
+    },
+    {
+      "path": "scripts/wasm/observe_ordered_integer_v2.py",
+      "bytes": 11276,
+      "sha256": "9f3c2af2ca31cf16a7cd037babe44fadacba987997cb8ea3ad8714a0b763fe41"
+    },
+    {
+      "path": "scripts/wasm/prepare_ordered_tool_bridge.py",
+      "bytes": 15467,
+      "sha256": "8c616046c2698a108236f63d60a020b99e888404ab2cbc2ef53bc58b23e9ef3e"
+    },
+    {
+      "path": "scripts/wasm/stage_ordered_tool_bridge.py",
+      "bytes": 5813,
+      "sha256": "ecc9427fbe1bc2d351e3e50900a716455d47b2cdbc261275e7bc1a9a9cc07554"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/global_contract_dispatch.py",
+      "bytes": 17989,
+      "sha256": "f1cc60d7361b0716430c715c529fc36d41d1db5a130e47c2ae835962f6f7d893"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/executables.v4.json",
+      "bytes": 2998,
+      "sha256": "00617d083d1924da5e121106842cd9a32d19f47dafffb4016d8b569885c7439e"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/runtime/bridge.py",
+      "bytes": 5407,
+      "sha256": "27c6d726d1c1db4bb7a67565e4d56c9bddaab875d30824f330e15ec5c3e7e6b0"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/broker.py",
+      "bytes": 78663,
+      "sha256": "5a1e76765a525058268cd62b23bf6bdd460b53eac2198715ecbb44f03244eed9"
+    }
+  ],
+  "source_bindings_sha256": "c2622068e127e3ec7653fc35ae7bb2a012eee265d03d4b62a427d1cb617f2428",
+  "limits": {
+    "inner_utf8_bytes": 4194304,
+    "depth": 64,
+    "nodes_including_keys": 100000,
+    "integer_decimal_digits": 4300,
+    "outer_core_strict_v1_bytes": 4194304
+  },
+  "frozen_case_counts": {
+    "success": 15,
+    "original-invalid": 12,
+    "excluded-not-parity": 6
+  },
+  "admitted_source_parity_count": 27,
+  "wasm_execution_performed": false,
+  "native_core_acceptance": false,
+  "full_host_replay_performed": false,
+  "production_enabled": false,
+  "cases": [
+    {
+      "id": "base:empty",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{}",
+      "v1_classification": "ok",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': []}"
+      },
+      "classification": "success",
+      "output_json": "{\"intents\":[]}",
+      "output_sha256": "c372d5c02d3f9851d3b51ebdf6829694a568e5f857aad3696afcb78dbfd77f01",
+      "outer_response_bytes": 18,
+      "outer_request_bytes": 80
+    },
+    {
+      "id": "base:ordinary",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"request_id\":\" req \",\"intents\":[{\"function\":{\"name\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0}}}]}",
+      "v1_classification": "ok",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': 'req:tool:0', 'request_id': 'req', 'operation': 'echo', 'arguments': {'z': 1.0, 'a': -0.0}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "classification": "success",
+      "output_json": "{\"intents\":[{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}",
+      "output_sha256": "a8caacf01cf60b899a462508281df104e80c4efbf849ac245bd0d74513c5fa86",
+      "outer_response_bytes": 233,
+      "outer_request_bytes": 190
+    },
+    {
+      "id": "base:unicode-repr-15-1",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"request_id\":{\"\u1c89\":1},\"intents\":[{\"name\":\"echo\",\"arguments\":{}}]}",
+      "v1_classification": "ok",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': \"{'\\\\u1c89': 1}:tool:0\", 'request_id': \"{'\\\\u1c89': 1}\", 'operation': 'echo', 'arguments': {}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "classification": "success",
+      "output_json": "{\"intents\":[{\"intent_id\":\"{'\\\\u1c89': 1}:tool:0\",\"request_id\":\"{'\\\\u1c89': 1}\",\"operation\":\"echo\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}",
+      "output_sha256": "256b7342b7ad510ca1a93c581a45408bd42f283eeca3d0af686eea1267998dde",
+      "outer_response_bytes": 239,
+      "outer_request_bytes": 157
+    },
+    {
+      "id": "base:opaque-inner-json",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"z\\\":1.0,\\\"a\\\":-0.0,\\\"dup\\\":1,\\\"dup\\\":2,\\\"u\\\":\\\"\u65e5\u672c\u8a9e\\\"}\"}]}",
+      "v1_classification": "ok",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'z': 1.0, 'a': -0.0, 'dup': 2, 'u': '\u65e5\u672c\u8a9e'}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "classification": "success",
+      "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0,\"dup\":2,\"u\":\"\u65e5\u672c\u8a9e\"},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}",
+      "output_sha256": "a321d9d9650722213e72440cc28d06ee5fad2eff092b305306ee2e96029bbdf6",
+      "outer_response_bytes": 257,
+      "outer_request_bytes": 218
+    },
+    {
+      "id": "base:invalid-name",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"intents\":[{\"name\":\"a b\"}]}",
+      "v1_classification": "invalid",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent name is invalid"
+      },
+      "classification": "original-invalid",
+      "outer_request_bytes": 112
+    },
+    {
+      "id": "base:invalid-item",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"intents\":[1]}",
+      "v1_classification": "invalid",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent must be an object"
+      },
+      "classification": "original-invalid",
+      "outer_request_bytes": 95
+    },
+    {
+      "id": "base:invalid-arguments",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"[1]\"}]}",
+      "v1_classification": "invalid",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent arguments must be an object"
+      },
+      "classification": "original-invalid",
+      "outer_request_bytes": 135
+    },
+    {
+      "id": "base:invalid-json",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\"}]}",
+      "v1_classification": "invalid",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent arguments are invalid JSON"
+      },
+      "classification": "original-invalid",
+      "outer_request_bytes": 133
+    },
+    {
+      "id": "base:inner-bigint-excluded",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":9007199254740992}\"}]}",
+      "v1_classification": "excluded",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': 9007199254740992}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "classification": "success",
+      "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"n\":9007199254740992},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}",
+      "output_sha256": "c1ef462a0094ddeec95bc5167821c0545f2ca14fc5b1c301c6475565194b80c5",
+      "outer_response_bytes": 229,
+      "outer_request_bytes": 160
+    },
+    {
+      "id": "base:inner-nonfinite-excluded",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":NaN}\"}]}",
+      "v1_classification": "excluded",
+      "admitted_source_parity": false,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': nan}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "classification": "excluded-not-parity",
+      "actual_error": "JSON floats must be finite",
+      "outer_request_bytes": 147
+    },
+    {
+      "id": "base:inner-depth-excluded",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}\"}]}",
+      "v1_classification": "excluded",
+      "admitted_source_parity": false,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "classification": "excluded-not-parity",
+      "actual_error": "JSON depth exceeds 64",
+      "outer_request_bytes": 275
+    },
+    {
+      "id": ".generate:empty",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{}",
+      "v1_classification": "ok",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': []}"
+      },
+      "classification": "success",
+      "output_json": "{\"intents\":[]}",
+      "output_sha256": "c372d5c02d3f9851d3b51ebdf6829694a568e5f857aad3696afcb78dbfd77f01",
+      "outer_response_bytes": 18,
+      "outer_request_bytes": 89
+    },
+    {
+      "id": ".generate:ordinary",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"request_id\":\" req \",\"intents\":[{\"function\":{\"name\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0}}}]}",
+      "v1_classification": "ok",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': 'req:tool:0', 'request_id': 'req', 'operation': 'echo', 'arguments': {'z': 1.0, 'a': -0.0}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "classification": "success",
+      "output_json": "{\"intents\":[{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}",
+      "output_sha256": "a8caacf01cf60b899a462508281df104e80c4efbf849ac245bd0d74513c5fa86",
+      "outer_response_bytes": 233,
+      "outer_request_bytes": 199
+    },
+    {
+      "id": ".generate:unicode-repr-15-1",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"request_id\":{\"\u1c89\":1},\"intents\":[{\"name\":\"echo\",\"arguments\":{}}]}",
+      "v1_classification": "ok",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': \"{'\\\\u1c89': 1}:tool:0\", 'request_id': \"{'\\\\u1c89': 1}\", 'operation': 'echo', 'arguments': {}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "classification": "success",
+      "output_json": "{\"intents\":[{\"intent_id\":\"{'\\\\u1c89': 1}:tool:0\",\"request_id\":\"{'\\\\u1c89': 1}\",\"operation\":\"echo\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}",
+      "output_sha256": "256b7342b7ad510ca1a93c581a45408bd42f283eeca3d0af686eea1267998dde",
+      "outer_response_bytes": 239,
+      "outer_request_bytes": 166
+    },
+    {
+      "id": ".generate:opaque-inner-json",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"z\\\":1.0,\\\"a\\\":-0.0,\\\"dup\\\":1,\\\"dup\\\":2,\\\"u\\\":\\\"\u65e5\u672c\u8a9e\\\"}\"}]}",
+      "v1_classification": "ok",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'z': 1.0, 'a': -0.0, 'dup': 2, 'u': '\u65e5\u672c\u8a9e'}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "classification": "success",
+      "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0,\"dup\":2,\"u\":\"\u65e5\u672c\u8a9e\"},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}",
+      "output_sha256": "a321d9d9650722213e72440cc28d06ee5fad2eff092b305306ee2e96029bbdf6",
+      "outer_response_bytes": 257,
+      "outer_request_bytes": 227
+    },
+    {
+      "id": ".generate:invalid-name",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"intents\":[{\"name\":\"a b\"}]}",
+      "v1_classification": "invalid",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent name is invalid"
+      },
+      "classification": "original-invalid",
+      "outer_request_bytes": 121
+    },
+    {
+      "id": ".generate:invalid-item",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"intents\":[1]}",
+      "v1_classification": "invalid",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent must be an object"
+      },
+      "classification": "original-invalid",
+      "outer_request_bytes": 104
+    },
+    {
+      "id": ".generate:invalid-arguments",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"[1]\"}]}",
+      "v1_classification": "invalid",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent arguments must be an object"
+      },
+      "classification": "original-invalid",
+      "outer_request_bytes": 144
+    },
+    {
+      "id": ".generate:invalid-json",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\"}]}",
+      "v1_classification": "invalid",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent arguments are invalid JSON"
+      },
+      "classification": "original-invalid",
+      "outer_request_bytes": 142
+    },
+    {
+      "id": ".generate:inner-bigint-excluded",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":9007199254740992}\"}]}",
+      "v1_classification": "excluded",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': 9007199254740992}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "classification": "success",
+      "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"n\":9007199254740992},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}",
+      "output_sha256": "c1ef462a0094ddeec95bc5167821c0545f2ca14fc5b1c301c6475565194b80c5",
+      "outer_response_bytes": 229,
+      "outer_request_bytes": 169
+    },
+    {
+      "id": ".generate:inner-nonfinite-excluded",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":NaN}\"}]}",
+      "v1_classification": "excluded",
+      "admitted_source_parity": false,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': nan}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "classification": "excluded-not-parity",
+      "actual_error": "JSON floats must be finite",
+      "outer_request_bytes": 156
+    },
+    {
+      "id": ".generate:inner-depth-excluded",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}\"}]}",
+      "v1_classification": "excluded",
+      "admitted_source_parity": false,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "classification": "excluded-not-parity",
+      "actual_error": "JSON depth exceeds 64",
+      "outer_request_bytes": 284
+    },
+    {
+      "id": ".stream:empty",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{}",
+      "v1_classification": "ok",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': []}"
+      },
+      "classification": "success",
+      "output_json": "{\"intents\":[]}",
+      "output_sha256": "c372d5c02d3f9851d3b51ebdf6829694a568e5f857aad3696afcb78dbfd77f01",
+      "outer_response_bytes": 18,
+      "outer_request_bytes": 87
+    },
+    {
+      "id": ".stream:ordinary",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"request_id\":\" req \",\"intents\":[{\"function\":{\"name\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0}}}]}",
+      "v1_classification": "ok",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': 'req:tool:0', 'request_id': 'req', 'operation': 'echo', 'arguments': {'z': 1.0, 'a': -0.0}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "classification": "success",
+      "output_json": "{\"intents\":[{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}",
+      "output_sha256": "a8caacf01cf60b899a462508281df104e80c4efbf849ac245bd0d74513c5fa86",
+      "outer_response_bytes": 233,
+      "outer_request_bytes": 197
+    },
+    {
+      "id": ".stream:unicode-repr-15-1",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"request_id\":{\"\u1c89\":1},\"intents\":[{\"name\":\"echo\",\"arguments\":{}}]}",
+      "v1_classification": "ok",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': \"{'\\\\u1c89': 1}:tool:0\", 'request_id': \"{'\\\\u1c89': 1}\", 'operation': 'echo', 'arguments': {}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "classification": "success",
+      "output_json": "{\"intents\":[{\"intent_id\":\"{'\\\\u1c89': 1}:tool:0\",\"request_id\":\"{'\\\\u1c89': 1}\",\"operation\":\"echo\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}",
+      "output_sha256": "256b7342b7ad510ca1a93c581a45408bd42f283eeca3d0af686eea1267998dde",
+      "outer_response_bytes": 239,
+      "outer_request_bytes": 164
+    },
+    {
+      "id": ".stream:opaque-inner-json",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"z\\\":1.0,\\\"a\\\":-0.0,\\\"dup\\\":1,\\\"dup\\\":2,\\\"u\\\":\\\"\u65e5\u672c\u8a9e\\\"}\"}]}",
+      "v1_classification": "ok",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'z': 1.0, 'a': -0.0, 'dup': 2, 'u': '\u65e5\u672c\u8a9e'}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "classification": "success",
+      "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0,\"dup\":2,\"u\":\"\u65e5\u672c\u8a9e\"},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}",
+      "output_sha256": "a321d9d9650722213e72440cc28d06ee5fad2eff092b305306ee2e96029bbdf6",
+      "outer_response_bytes": 257,
+      "outer_request_bytes": 225
+    },
+    {
+      "id": ".stream:invalid-name",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"intents\":[{\"name\":\"a b\"}]}",
+      "v1_classification": "invalid",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent name is invalid"
+      },
+      "classification": "original-invalid",
+      "outer_request_bytes": 119
+    },
+    {
+      "id": ".stream:invalid-item",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"intents\":[1]}",
+      "v1_classification": "invalid",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent must be an object"
+      },
+      "classification": "original-invalid",
+      "outer_request_bytes": 102
+    },
+    {
+      "id": ".stream:invalid-arguments",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"[1]\"}]}",
+      "v1_classification": "invalid",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent arguments must be an object"
+      },
+      "classification": "original-invalid",
+      "outer_request_bytes": 142
+    },
+    {
+      "id": ".stream:invalid-json",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\"}]}",
+      "v1_classification": "invalid",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent arguments are invalid JSON"
+      },
+      "classification": "original-invalid",
+      "outer_request_bytes": 140
+    },
+    {
+      "id": ".stream:inner-bigint-excluded",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":9007199254740992}\"}]}",
+      "v1_classification": "excluded",
+      "admitted_source_parity": true,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': 9007199254740992}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "classification": "success",
+      "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"n\":9007199254740992},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}",
+      "output_sha256": "c1ef462a0094ddeec95bc5167821c0545f2ca14fc5b1c301c6475565194b80c5",
+      "outer_response_bytes": 229,
+      "outer_request_bytes": 167
+    },
+    {
+      "id": ".stream:inner-nonfinite-excluded",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":NaN}\"}]}",
+      "v1_classification": "excluded",
+      "admitted_source_parity": false,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': nan}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "classification": "excluded-not-parity",
+      "actual_error": "JSON floats must be finite",
+      "outer_request_bytes": 154
+    },
+    {
+      "id": ".stream:inner-depth-excluded",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}\"}]}",
+      "v1_classification": "excluded",
+      "admitted_source_parity": false,
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "classification": "excluded-not-parity",
+      "actual_error": "JSON depth exceeds 64",
+      "outer_request_bytes": 282
+    }
+  ],
+  "integer_boundaries": [
+    {
+      "digits": 4300,
+      "negative": false,
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999}\"}]}",
+      "status": "success",
+      "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"n\":9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}",
+      "output_sha256": "a4f53be0f4808bd6cac0e6ca20f996090d0e5264525f89975898920feebd9a5c",
+      "outer_response_bytes": 4513,
+      "outer_request_bytes": 4444
+    },
+    {
+      "digits": 4300,
+      "negative": true,
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":-9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999}\"}]}",
+      "status": "success",
+      "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"n\":-9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}",
+      "output_sha256": "8e2cd18f0b1399c9f3a4b46412901b9ff34a8cdadfe08e9d4743de4c10d5a0b8",
+      "outer_response_bytes": 4514,
+      "outer_request_bytes": 4445
+    },
+    {
+      "digits": 4301,
+      "negative": false,
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999}\"}]}",
+      "status": "original-ValueError",
+      "message": "Exceeds the limit (4300 digits) for integer string conversion: value has 4301 digits; use sys.set_int_max_str_digits() to increase the limit",
+      "candidate_matches_original_error": true,
+      "outer_request_bytes": 4445
+    },
+    {
+      "digits": 4301,
+      "negative": true,
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":-99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999}\"}]}",
+      "status": "original-ValueError",
+      "message": "Exceeds the limit (4300 digits) for integer string conversion: value has 4301 digits; use sys.set_int_max_str_digits() to increase the limit",
+      "candidate_matches_original_error": true,
+      "outer_request_bytes": 4446
+    }
+  ]
+}
