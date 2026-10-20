@@ -65,9 +65,9 @@ interface entry {
 }
 "#;
 
-// Shape documents resolve independently against Core. Keep the dependency
-// import in a separate same-package world, resolved with all verified WIT when
-// the actual runtime Pack is inspected.
+// Retain this original template byte-for-byte. The published document combines
+// its body with WIT and one nested dependency, because production parses each
+// document before same-package union.
 const WORLD: &str = r#"package local:ordered-python-consumer@1.0.0;
 world pack {
     include tobkiri:core/pack-minimal@1.0.0;
@@ -195,6 +195,58 @@ fn component_bytes_for(abi: BridgeAbi) -> Result<Vec<u8>> {
     )?)
 }
 
+/// Fixed reversible fixture packaging, not a component or interface rewrite.
+fn packaged_wit(abi: BridgeAbi, bridge: &[u8]) -> Result<Vec<u8>> {
+    let expected = match abi {
+        BridgeAbi::V1 => "625952f31c4caffd4d1de6ba682b15662b22c4e10f11c451592d187acad3cb75",
+        BridgeAbi::V2 => "513454d839ac468205bc5b4ed93032625ed4f5d3064aa17f643f907e80bfeb78",
+    };
+    anyhow::ensure!(
+        bridge.len() == 364
+            && Digest::hash(bridge).to_string() == format!("sha256:{expected}")
+            && bridge[49] == b';',
+        "reviewed bridge WIT changed"
+    );
+    let declaration = b"package local:ordered-python-consumer@1.0.0;\n";
+    let world = WORLD.replace("@BRIDGE_INTERFACE@", abi.interface());
+    anyhow::ensure!(
+        WIT.as_bytes().starts_with(declaration) && world.as_bytes().starts_with(declaration),
+        "original consumer package declarations differ"
+    );
+    let world_body = &world.as_bytes()[declaration.len()..];
+    let combined = [
+        WIT.as_bytes(),
+        b"\n",
+        world_body,
+        b"\n",
+        &bridge[..49],
+        b" {",
+        &bridge[50..],
+        b"}\n",
+    ]
+    .concat();
+    let world_start = WIT.len() + 1;
+    let bridge_start = world_start + world_body.len() + 1;
+    anyhow::ensure!(
+        &combined[..WIT.len()] == WIT.as_bytes()
+            && [
+                declaration.as_slice(),
+                &combined[world_start..bridge_start - 1]
+            ]
+            .concat()
+                == world.as_bytes()
+            && [
+                &combined[bridge_start..bridge_start + 49],
+                b";",
+                &combined[bridge_start + 51..combined.len() - 2],
+            ]
+            .concat()
+                == bridge,
+        "fixture packaging loses original WIT bytes"
+    );
+    Ok(combined)
+}
+
 /// Materialize a verified caller in a trusted private fixture root.
 ///
 /// Both allowed and denied profiles retain this same required typed import and
@@ -223,23 +275,13 @@ pub fn materialize_for(
         "ordered Python candidate does not provide its required exact bridge"
     );
     let entry = ShapeRef::parse(ENTRY)?;
+    let provider_wit = provider
+        .files
+        .get(abi.wit_member())
+        .context("verified candidate bridge WIT is missing")?;
     let files: BTreeMap<String, Vec<u8>> = BTreeMap::from([
         ("component.wasm".into(), component_bytes_for(abi)?),
-        ("wit/consumer.wit".into(), WIT.as_bytes().to_vec()),
-        (
-            "wit/world.wit".into(),
-            WORLD
-                .replace("@BRIDGE_INTERFACE@", abi.interface())
-                .into_bytes(),
-        ),
-        (
-            "wit/deps/ordered-python.wit".into(),
-            provider
-                .files
-                .get(abi.wit_member())
-                .context("verified candidate bridge WIT is missing")?
-                .clone(),
-        ),
+        ("wit/consumer.wit".into(), packaged_wit(abi, provider_wit)?),
         (
             "wit/deps/core.wit".into(),
             provider
@@ -370,6 +412,158 @@ fn v1_fixture_templates_remain_byte_exact() {
         Digest::hash(component.as_bytes()).to_string(),
         "sha256:7e12fdce47fddb0df2a7b839027b43da17989afd4f2faa9db849b2d64df8c1f8"
     );
+}
+
+#[test]
+fn packaged_consumer_versions_pass_production_wit_inspection_without_guest() -> Result<()> {
+    use tobkiri_manifest::WitBindingDirection;
+
+    for abi in [BridgeAbi::V1, BridgeAbi::V2] {
+        let bridge = ShapeRef::parse(abi.shape())?;
+        let bridge_wit = std::fs::read(
+            super::repo()
+                .join("packs")
+                .join(PROVIDER)
+                .join(abi.wit_member()),
+        )?;
+        let core_wit = std::fs::read(super::repo().join("crates/tobkiri-wit/wit/core/core.wit"))?;
+        // This DATA-only source witness is never activated or offered as a
+        // runtime provider. It exercises the actual fixture materializer and
+        // production package/WIT parsers without a Python binary or guest.
+        let files = BTreeMap::from([
+            (abi.wit_member().to_owned(), bridge_wit.clone()),
+            ("wit/deps/core.wit".into(), core_wit.clone()),
+            (
+                "wit/bridge.shape.json".into(),
+                br#"{"cardinality":"one","streams":{},"callbacks":{},"conformance":null}"#.to_vec(),
+            ),
+        ]);
+        let manifest: PackManifest = serde_json::from_value(serde_json::json!({
+            "format":"tobkiri.pack/1","id":PROVIDER,
+            "version":if abi == BridgeAbi::V1 {"1.0.0"} else {"2.0.0"},
+            "publisher_key":null,"runtime":{"kind":"data"},
+            "shapes":[{"name":bridge.name,"version":bridge.version,
+                "kind":"port","wit":abi.wit_member()}],
+            "ports":{"provides":[{"shape":bridge.name,"version":bridge.version,
+                "optional":false}],"consumes":[],"untyped":[]},
+            "inputs":[],"flows":[],"overlays":[],"stores":[],"ui":null,
+            "permissions":PermissionSet::default(),
+            "files":files.iter().map(|(path,bytes)| serde_json::json!({
+                "path":path,"size":bytes.len(),"sha256":Digest::hash(bytes)
+            })).collect::<Vec<_>>()
+        }))?;
+        let archive = tobkiri_manifest::build_tpk(&manifest, &files, None)?;
+        let provider = tobkiri_manifest::verify_tpk(&archive, &BTreeMap::new())?;
+        let temporary = tempfile::tempdir()?;
+        let (_, caller) = materialize_for(temporary.path(), &provider, abi)?;
+        assert_eq!(
+            caller.files.keys().map(String::as_str).collect::<Vec<_>>(),
+            [
+                "component.wasm",
+                "wit/consumer.wit",
+                "wit/deps/core.wit",
+                "wit/entry.shape.json",
+            ]
+        );
+        assert_eq!(caller.files["component.wasm"], component_bytes_for(abi)?);
+        assert_eq!(caller.files["wit/deps/core.wit"], core_wit);
+        assert_eq!(
+            caller.manifest.permissions.ports,
+            [abi.shape().to_owned()].into_iter().collect()
+        );
+        assert_eq!(caller.manifest.ports.consumes.len(), 1);
+        assert!(!caller.manifest.ports.consumes[0].optional);
+        let shapes = tobkiri_manifest::load_shapes(&caller.manifest, &caller.files)?;
+        assert_eq!(shapes.len(), 1);
+        assert_eq!(shapes[0].reference, ShapeRef::parse(ENTRY)?);
+        assert_eq!(
+            shapes[0]
+                .functions
+                .keys()
+                .map(|name| name.as_str())
+                .collect::<Vec<_>>(),
+            ["normalize", "run"]
+        );
+        let views = [&caller, &provider]
+            .into_iter()
+            .flat_map(|pack| pack.shapes.iter().cloned())
+            .map(|shape| (shape.reference.clone(), shape))
+            .collect();
+        let inspection = tobkiri_manifest::inspect_pack_wit(&caller, &views)?;
+        assert!(inspection.allowed_imports().contains(abi.interface()));
+        assert!(
+            !inspection
+                .allowed_imports()
+                .contains("local:ordered-python-consumer/entry@1.0.0")
+        );
+        for (direction, shape) in [
+            (WitBindingDirection::Export, ENTRY),
+            (WitBindingDirection::Import, abi.shape()),
+        ] {
+            assert!(inspection.core_errors().has_core_error_result(
+                direction,
+                &ShapeRef::parse(shape)?,
+                &"normalize".parse()?,
+            ));
+        }
+        let reverify = |files: BTreeMap<String, Vec<u8>>| -> Result<VerifiedPack> {
+            let mut manifest = caller.manifest.clone();
+            manifest.files = files
+                .iter()
+                .map(|(path, bytes)| FileEntry {
+                    path: path.clone(),
+                    sha256: Digest::hash(bytes),
+                    size: bytes.len() as u64,
+                })
+                .collect();
+            let archive = tobkiri_manifest::build_tpk(&manifest, &files, None)?;
+            Ok(tobkiri_manifest::verify_tpk(&archive, &BTreeMap::new())?)
+        };
+        let mut duplicate = caller.files.clone();
+        duplicate.insert("wit/deps/ordered-python.wit".into(), bridge_wit.clone());
+        assert!(
+            tobkiri_manifest::inspect_pack_wit(&reverify(duplicate)?, &views).is_err(),
+            "duplicate dependency must not resolve"
+        );
+        let world = WORLD.replace("@BRIDGE_INTERFACE@", abi.interface());
+        let declaration = b"package local:ordered-python-consumer@1.0.0;\n";
+        let mut missing = caller.files.clone();
+        missing.insert(
+            "wit/consumer.wit".into(),
+            [
+                WIT.as_bytes(),
+                b"\n",
+                &world.as_bytes()[declaration.len()..],
+            ]
+            .concat(),
+        );
+        assert!(
+            reverify(missing).is_err(),
+            "missing dependency must not resolve"
+        );
+        let mut old_split = caller.files.clone();
+        old_split.insert("wit/consumer.wit".into(), WIT.as_bytes().to_vec());
+        old_split.insert("wit/world.wit".into(), world.into_bytes());
+        old_split.insert("wit/deps/ordered-python.wit".into(), bridge_wit.clone());
+        assert!(
+            tobkiri_manifest::inspect_pack_wit(&reverify(old_split)?, &views)
+                .unwrap_err()
+                .to_string()
+                .contains("interface or world `entry` does not exist"),
+            "original split must remain a parser regression, not acceptance evidence"
+        );
+        let mut changed = bridge_wit.clone();
+        changed[0] ^= 1;
+        assert!(packaged_wit(abi, &changed).is_err());
+        assert!(packaged_wit(abi, &bridge_wit[..363]).is_err());
+        let other = if abi == BridgeAbi::V1 {
+            BridgeAbi::V2
+        } else {
+            BridgeAbi::V1
+        };
+        assert!(packaged_wit(other, &bridge_wit).is_err());
+    }
+    Ok(())
 }
 
 #[tokio::test]
