@@ -32,14 +32,14 @@ pub fn digest(bytes: &[u8]) -> String {
         .to_owned()
 }
 
-fn no_links(path: &Path) -> Result<()> {
+pub(super) fn no_links(path: &Path) -> Result<()> {
     for part in path.ancestors() {
         ensure!(!part.is_symlink(), "evidence path contains a symlink");
     }
     Ok(())
 }
 
-fn bounded_read(path: &Path, limit: usize) -> Result<Vec<u8>> {
+pub(super) fn bounded_read(path: &Path, limit: usize) -> Result<Vec<u8>> {
     no_links(path)?;
     let file = File::open(path)?;
     ensure!(
@@ -56,14 +56,14 @@ fn bounded_read(path: &Path, limit: usize) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-fn strict_json(bytes: &[u8]) -> Result<Value> {
+pub(super) fn strict_json(bytes: &[u8]) -> Result<Value> {
     // All evidence is finite JSON metadata; ordered request/response strings
     // remain opaque. This also rejects duplicate metadata keys.
     tobkiri_canon::parse(bytes, Variant::StrictV1)?;
     Ok(serde_json::from_slice(bytes)?)
 }
 
-fn environment_hash(name: &str) -> Result<String> {
+pub(super) fn environment_hash(name: &str) -> Result<String> {
     let value = std::env::var(name).with_context(|| format!("explicit {name} pin required"))?;
     ensure!(
         value.len() == 64

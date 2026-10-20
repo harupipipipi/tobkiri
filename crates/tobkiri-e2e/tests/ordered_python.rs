@@ -13,9 +13,14 @@
 mod consumer;
 #[path = "ordered_python/evidence.rs"]
 mod evidence;
+#[path = "ordered_python/evidence_v2.rs"]
+mod evidence_v2;
 mod support;
+#[path = "ordered_python/v2.rs"]
+mod v2;
 
 use anyhow::{Context, Result, ensure};
+use consumer::BridgeAbi;
 use evidence::{Inputs, PACK, SHAPE};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, path::Path, sync::Arc};
@@ -38,6 +43,16 @@ fn profile(
     allow: bool,
     id: &str,
 ) -> Result<Profile> {
+    profile_for(inputs, caller, allow, id, BridgeAbi::V1)
+}
+
+fn profile_for(
+    inputs: &Inputs,
+    caller: Option<&(PackPin, VerifiedPack)>,
+    allow: bool,
+    id: &str,
+    abi: BridgeAbi,
+) -> Result<Profile> {
     let candidate = PackPin {
         id: inputs.pack.manifest.id.clone(),
         version: inputs.pack.manifest.version.clone(),
@@ -49,10 +64,7 @@ fn profile(
         inputs.pack.manifest.id.clone(),
         inputs.pack.manifest.permissions.clone(),
     )]);
-    let mut bindings = BTreeMap::from([(
-        "local.ai-tool-bridge-ordered-python.bridge@1".to_owned(),
-        PACK.to_owned(),
-    )]);
+    let mut bindings = BTreeMap::from([(abi.binding().to_owned(), PACK.to_owned())]);
     if let Some((pin, pack)) = caller {
         pins.push(pin.clone());
         let mut permissions = pack.manifest.permissions.clone();
@@ -66,7 +78,7 @@ fn profile(
         );
     }
     let mut ceiling = inputs.pack.manifest.permissions.clone();
-    ceiling.ports.insert(SHAPE.to_owned());
+    ceiling.ports.insert(abi.shape().to_owned());
     if caller.is_some() {
         ceiling.ports.insert(consumer::ENTRY.to_owned());
     }
@@ -74,7 +86,7 @@ fn profile(
         ports: [if caller.is_some() {
             consumer::ENTRY
         } else {
-            SHAPE
+            abi.shape()
         }
         .to_owned()]
         .into_iter()
@@ -92,11 +104,20 @@ fn profile(
 }
 
 async fn start(data: &Path, profile: &Profile, consumer: bool) -> Result<(Core, Session)> {
+    start_for(data, profile, consumer, BridgeAbi::V1).await
+}
+
+async fn start_for(
+    data: &Path,
+    profile: &Profile,
+    consumer: bool,
+    abi: BridgeAbi,
+) -> Result<(Core, Session)> {
     let host = Arc::new(Host::default());
     for (shape, op) in if consumer {
         vec![(consumer::ENTRY, "run"), (consumer::ENTRY, "normalize")]
     } else {
-        vec![(SHAPE, "runtime-info"), (SHAPE, "normalize")]
+        vec![(abi.shape(), "runtime-info"), (abi.shape(), "normalize")]
     } {
         host.utility_ports
             .lock()

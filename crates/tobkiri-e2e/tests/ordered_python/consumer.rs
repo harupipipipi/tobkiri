@@ -15,6 +15,47 @@ pub const ENTRY: &str = "local.ordered-python-consumer.entry@1.0";
 const PROVIDER: &str = "local.ai-tool-bridge-ordered-python";
 const BRIDGE: &str = "local.ai-tool-bridge-ordered-python.bridge@1.0";
 
+/// The two reviewed bridge ABIs; no arbitrary interface substitution is allowed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BridgeAbi {
+    V1,
+    V2,
+}
+
+impl BridgeAbi {
+    /// Exact Pack-owned shape identity, including its minor version.
+    pub fn shape(self) -> &'static str {
+        match self {
+            Self::V1 => BRIDGE,
+            Self::V2 => "local.ai-tool-bridge-ordered-python.bridge@2.0",
+        }
+    }
+
+    /// Exact component-model interface identity.
+    pub fn interface(self) -> &'static str {
+        match self {
+            Self::V1 => "local:ai-tool-bridge-ordered-python/bridge@1.0.0",
+            Self::V2 => "local:ai-tool-bridge-ordered-python/bridge@2.0.0",
+        }
+    }
+
+    /// Exact major-version profile binding.
+    pub fn binding(self) -> &'static str {
+        match self {
+            Self::V1 => "local.ai-tool-bridge-ordered-python.bridge@1",
+            Self::V2 => "local.ai-tool-bridge-ordered-python.bridge@2",
+        }
+    }
+
+    /// Verified provider member declaring this bridge ABI.
+    pub fn wit_member(self) -> &'static str {
+        match self {
+            Self::V1 => "wit/pack.wit",
+            Self::V2 => "wit/pack-v2.wit",
+        }
+    }
+}
+
 const WIT: &str = r#"package local:ordered-python-consumer@1.0.0;
 
 interface entry {
@@ -30,7 +71,7 @@ interface entry {
 const WORLD: &str = r#"package local:ordered-python-consumer@1.0.0;
 world pack {
     include tobkiri:core/pack-minimal@1.0.0;
-    import local:ai-tool-bridge-ordered-python/bridge@1.0.0;
+    import @BRIDGE_INTERFACE@;
     export entry;
 }
 "#;
@@ -82,7 +123,7 @@ const COMPONENT: &str = r#"(component
         (export "normalize" (func
             (param "operation" string) (param "payload" string)
             (result $normalize-result)))))
-    (import "local:ai-tool-bridge-ordered-python/bridge@1.0.0"
+    (import "@BRIDGE_INTERFACE@"
         (instance $bridge-import (type $bridge)))
     (alias export $bridge-import "runtime-info" (func $runtime-info))
     (alias export $bridge-import "normalize" (func $normalize))
@@ -143,7 +184,15 @@ const COMPONENT: &str = r#"(component
     (export "local:ordered-python-consumer/entry@1.0.0" (instance $entry)))"#;
 
 fn component_bytes() -> Result<Vec<u8>> {
-    Ok(wat::parse_str(COMPONENT.replace("@STORAGE@", STORAGE))?)
+    component_bytes_for(BridgeAbi::V1)
+}
+
+fn component_bytes_for(abi: BridgeAbi) -> Result<Vec<u8>> {
+    Ok(wat::parse_str(
+        COMPONENT
+            .replace("@BRIDGE_INTERFACE@", abi.interface())
+            .replace("@STORAGE@", STORAGE),
+    )?)
 }
 
 /// Materialize a verified caller in a trusted private fixture root.
@@ -153,11 +202,20 @@ fn component_bytes() -> Result<Vec<u8>> {
 /// Its bounded test-only forwarding entry is not the original Gateway caller
 /// and does not constitute production caller replacement or full-unit parity.
 pub fn materialize(root: &Path, provider: &VerifiedPack) -> Result<(PackPin, VerifiedPack)> {
+    materialize_for(root, provider, BridgeAbi::V1)
+}
+
+/// Materialize the same caller with only its reviewed provider ABI selected.
+pub fn materialize_for(
+    root: &Path,
+    provider: &VerifiedPack,
+    abi: BridgeAbi,
+) -> Result<(PackPin, VerifiedPack)> {
     anyhow::ensure!(
         provider.manifest.id.as_str() == PROVIDER,
         "typed caller requires the actual ordered Python candidate"
     );
-    let bridge = ShapeRef::parse(BRIDGE)?;
+    let bridge = ShapeRef::parse(abi.shape())?;
     anyhow::ensure!(
         provider.manifest.ports.provides.iter().any(|port| {
             port.shape == bridge.name && port.version == bridge.version && !port.optional
@@ -166,14 +224,19 @@ pub fn materialize(root: &Path, provider: &VerifiedPack) -> Result<(PackPin, Ver
     );
     let entry = ShapeRef::parse(ENTRY)?;
     let files: BTreeMap<String, Vec<u8>> = BTreeMap::from([
-        ("component.wasm".into(), component_bytes()?),
+        ("component.wasm".into(), component_bytes_for(abi)?),
         ("wit/consumer.wit".into(), WIT.as_bytes().to_vec()),
-        ("wit/world.wit".into(), WORLD.as_bytes().to_vec()),
+        (
+            "wit/world.wit".into(),
+            WORLD
+                .replace("@BRIDGE_INTERFACE@", abi.interface())
+                .into_bytes(),
+        ),
         (
             "wit/deps/ordered-python.wit".into(),
             provider
                 .files
-                .get("wit/pack.wit")
+                .get(abi.wit_member())
                 .context("verified candidate bridge WIT is missing")?
                 .clone(),
         ),
@@ -229,7 +292,7 @@ pub fn materialize(root: &Path, provider: &VerifiedPack) -> Result<(PackPin, Ver
         overlays: Vec::new(),
         stores: Vec::new(),
         permissions: PermissionSet {
-            ports: [BRIDGE.to_owned()].into_iter().collect(),
+            ports: [abi.shape().to_owned()].into_iter().collect(),
             wasm: provider.manifest.permissions.wasm.clone(),
             loops: provider.manifest.permissions.loops.clone(),
             ..Default::default()
@@ -288,6 +351,142 @@ async fn typed_caller_validates_without_instantiating_or_replacing_python() -> R
     );
     // This proves only fixture syntax/type validity, not provider execution,
     // production ABI admission, authority, or native owner acceptance.
+    Ok(())
+}
+
+#[test]
+fn v1_fixture_templates_remain_byte_exact() {
+    // Baselines from e98553ae's existing V1 fixture, not provider/build pins.
+    // Expand the allocator too, so its full original WAT is covered.
+    let world = WORLD.replace("@BRIDGE_INTERFACE@", BridgeAbi::V1.interface());
+    let component = COMPONENT
+        .replace("@BRIDGE_INTERFACE@", BridgeAbi::V1.interface())
+        .replace("@STORAGE@", STORAGE);
+    assert_eq!(
+        Digest::hash(world.as_bytes()).to_string(),
+        "sha256:9ac946582ce8f07d76428fe61fb0e619bc1ebbce7bbed5e3491e24993acf63b1"
+    );
+    assert_eq!(
+        Digest::hash(component.as_bytes()).to_string(),
+        "sha256:7e12fdce47fddb0df2a7b839027b43da17989afd4f2faa9db849b2d64df8c1f8"
+    );
+}
+
+#[tokio::test]
+async fn typed_caller_versions_keep_exact_imports_and_core_error_types() -> Result<()> {
+    use wasmtime::component::types::{ComponentItem, Type};
+
+    let engine = tobkiri_wasm::WasmEngine::new()?;
+    for (abi, shape, interface, binding, wit_member) in [
+        (
+            BridgeAbi::V1,
+            "local.ai-tool-bridge-ordered-python.bridge@1.0",
+            "local:ai-tool-bridge-ordered-python/bridge@1.0.0",
+            "local.ai-tool-bridge-ordered-python.bridge@1",
+            "wit/pack.wit",
+        ),
+        (
+            BridgeAbi::V2,
+            "local.ai-tool-bridge-ordered-python.bridge@2.0",
+            "local:ai-tool-bridge-ordered-python/bridge@2.0.0",
+            "local.ai-tool-bridge-ordered-python.bridge@2",
+            "wit/pack-v2.wit",
+        ),
+    ] {
+        assert_eq!(abi.shape(), shape);
+        assert_eq!(abi.interface(), interface);
+        assert_eq!(abi.binding(), binding);
+        assert_eq!(abi.wit_member(), wit_member);
+        let world = WORLD.replace("@BRIDGE_INTERFACE@", abi.interface());
+        assert!(world.contains(&format!("import {interface};")));
+        assert!(world.contains("include tobkiri:core/pack-minimal@1.0.0;"));
+        assert_eq!(world.matches("import ").count(), 1);
+
+        let bytes = component_bytes_for(abi)?;
+        let component = wasmtime::component::Component::new(engine.engine(), &bytes)?;
+        let imports: BTreeMap<_, _> = component
+            .component_type()
+            .imports(engine.engine())
+            .map(|(name, item)| (name.to_owned(), item.ty))
+            .collect();
+        assert_eq!(
+            imports.keys().map(String::as_str).collect::<Vec<_>>(),
+            [interface, "tobkiri:core/types@1.0.0"]
+        );
+        let ComponentItem::ComponentInstance(bridge) = &imports[interface] else {
+            anyhow::bail!("bridge import is not a typed interface");
+        };
+        let members: BTreeMap<_, _> = bridge
+            .exports(engine.engine())
+            .map(|(name, item)| (name.to_owned(), item.ty))
+            .collect();
+        assert_eq!(
+            members.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["normalize", "runtime-info"]
+        );
+        let ComponentItem::ComponentFunc(runtime) = &members["runtime-info"] else {
+            anyhow::bail!("runtime-info is not a function");
+        };
+        assert_eq!(runtime.params().len(), 0);
+        assert_eq!(runtime.results().collect::<Vec<_>>(), [Type::String]);
+        let ComponentItem::ComponentFunc(normalize) = &members["normalize"] else {
+            anyhow::bail!("normalize is not a function");
+        };
+        assert_eq!(
+            normalize.params().collect::<Vec<_>>(),
+            [("operation", Type::String), ("payload", Type::String)]
+        );
+        let results: Vec<_> = normalize.results().collect();
+        let [Type::Result(result)] = results.as_slice() else {
+            anyhow::bail!("normalize has the wrong result type");
+        };
+        assert_eq!(result.ok(), Some(Type::String));
+        let ComponentItem::ComponentInstance(core) = &imports["tobkiri:core/types@1.0.0"] else {
+            anyhow::bail!("Core types import is not a typed interface");
+        };
+        let (_, error) = core
+            .exports(engine.engine())
+            .find(|(name, _)| *name == "error")
+            .context("Core error type is missing")?;
+        let ComponentItem::Type(error) = error.ty else {
+            anyhow::bail!("Core error is not a type");
+        };
+        assert_eq!(result.err(), Some(error));
+
+        let exports: BTreeMap<_, _> = component
+            .component_type()
+            .exports(engine.engine())
+            .map(|(name, item)| (name.to_owned(), item.ty))
+            .collect();
+        assert_eq!(
+            exports.keys().map(String::as_str).collect::<Vec<_>>(),
+            [
+                "local:ordered-python-consumer/entry@1.0.0",
+                "tobkiri:core/lifecycle@1.0.0",
+                "tobkiri:core/types@1.0.0",
+            ]
+        );
+        let ComponentItem::ComponentInstance(entry) =
+            &exports["local:ordered-python-consumer/entry@1.0.0"]
+        else {
+            anyhow::bail!("caller entry is not a typed interface");
+        };
+        let (_, forward) = entry
+            .exports(engine.engine())
+            .find(|(name, _)| *name == "normalize")
+            .context("caller normalize is missing")?;
+        let ComponentItem::ComponentFunc(forward) = forward.ty else {
+            anyhow::bail!("caller normalize is not a function");
+        };
+        assert_eq!(
+            forward.params().collect::<Vec<_>>(),
+            normalize.params().collect::<Vec<_>>()
+        );
+        assert_eq!(forward.results().collect::<Vec<_>>(), results);
+    }
+    // This inspects real compiled callers, never a mock provider or an
+    // execution/authority receipt. Core's imported error aliases and the
+    // caller's entry@1 package are deliberately unchanged in both versions.
     Ok(())
 }
 
