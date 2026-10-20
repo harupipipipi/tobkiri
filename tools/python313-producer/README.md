@@ -1,9 +1,25 @@
 # Python 3.13 producer source review
 
-This is a **source-only reconstruction**, not a runnable producer, a built
-component, or evidence that issue #1520 is finished. No upstream program was
-executed during reconstruction. The previous unpublished implementation was not
-recovered; these outputs were regenerated from surviving source bytes.
+The source reconstruction described below was **source-only**. No upstream
+program was executed during that reconstruction. The previous unpublished
+implementation was not recovered; these outputs were regenerated from surviving
+source bytes.
+
+## Subsequent bounded trials
+
+Later isolated builds and development replays are preserved separately:
+
+- [Current-source finalization trial](trials/2026-10-20-finalization/) records
+  six component builds, two standalone bridge replays, and the ten-case
+  five-component replay.
+- [Current-source caller trial](trials/2026-10-20-current-caller/) records the
+  thirty-case original-Python caller/bridge composition.
+
+These records establish only their explicitly bounded build and development
+execution results. They do not establish native Core/Gate acceptance, production
+activation, complete Host retirement, or completion of issue #1520. They do not
+turn the upstream top-level build into a safe or reproducible shortcut. The
+source-verifier and execution-boundary guidance below still applies.
 
 ## Pinned inputs and reproducibility
 
@@ -77,6 +93,8 @@ paths. `tools/python-producer` is an older Python 3.14/custom-source experiment;
 it is not an approved substitute and is not applied by this work.
 
 See `STAGED_RECIPE.md` for the required next-stage review boundaries. The patch
-is experimental: compilation, linking, dynamic-loader compatibility, module
-availability, runtime authority enforcement, guest tests, and component output
-are all unverified.
+remains experimental. The original source review did not establish compilation,
+linking, dynamic-loader compatibility, module availability, runtime authority
+enforcement, guest tests, or component output. Consult the separately bound trial
+records above for subsequent evidence rather than treating the source review as
+execution proof or general runtime acceptance.
