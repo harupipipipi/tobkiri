@@ -120,6 +120,25 @@ def observe() -> dict[str, object]:
             record["original"] = observed
             try:
                 actual = adapter.invoke(case["operation"], case["input_json"])
+            except adapter.NonFiniteProviderOutputError as exc:
+                if (case["transport"]["status"] != "excluded"
+                        or "inner-nonfinite" not in case["id"]):
+                    raise ValueError("unexpected source provider failure") from exc
+                try:
+                    json.dumps(output, allow_nan=False)
+                except ValueError:
+                    pass
+                else:
+                    raise ValueError(
+                        "provider failure did not reflect nonfinite output"
+                    )
+                record.update(
+                    classification="excluded-not-parity",
+                    actual_error=str(exc), source_error_type=type(exc).__name__,
+                    source_provider_code=exc.code, source_retryable=exc.retryable,
+                    intended_core_error="internal",
+                    legacy_http_error_parity_claimed=False,
+                )
             except v2.OrderedJSONError as exc:
                 if case["transport"]["status"] != "excluded":
                     raise ValueError("v2 unexpectedly excluded a v1 case") from exc
@@ -195,7 +214,7 @@ def observe() -> dict[str, object]:
         name: sum(item["classification"] == name for item in records)
         for name in ("success", "original-invalid", "excluded-not-parity")
     }
-    if counts != {"success": 15, "original-invalid": 12, "excluded-not-parity": 6}:
+    if counts != {"success": 18, "original-invalid": 12, "excluded-not-parity": 3}:
         raise ValueError("unexpected complete frozen-case classification")
     inputs = [{key: case[key] for key in ("id", "operation", "input_json")}
               for case in oracle["cases"]]
@@ -209,10 +228,11 @@ def observe() -> dict[str, object]:
         "case_inputs_sha256": digest(canonical(inputs)),
         "source_bindings": bindings,
         "source_bindings_sha256": digest(canonical(bindings)),
-        "limits": {"inner_utf8_bytes": v1.MAX_BYTES, "depth": v1.MAX_DEPTH,
-                   "nodes_including_keys": v1.MAX_NODES, "integer_decimal_digits": 4300,
+        "limits": {"inner_utf8_bytes": v2.MAX_BYTES, "independent_depth_cap": None,
+                   "maximum_depth_from_nodes": v2.MAX_NODES - 1,
+                   "nodes_including_keys": v2.MAX_NODES, "integer_decimal_digits": 4300,
                    "outer_core_strict_v1_bytes": v1.MAX_BYTES},
-        "frozen_case_counts": counts, "admitted_source_parity_count": 27,
+        "frozen_case_counts": counts, "admitted_source_parity_count": 30,
         "wasm_execution_performed": False, "native_core_acceptance": False,
         "full_host_replay_performed": False, "production_enabled": False,
         "cases": records, "integer_boundaries": boundaries,

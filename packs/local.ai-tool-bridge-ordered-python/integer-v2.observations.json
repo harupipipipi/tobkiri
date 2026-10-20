@@ -38,8 +38,8 @@
     },
     {
       "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json_v2.py",
-      "bytes": 4036,
-      "sha256": "39ea1579fc3293cadc66b458052f173f8d0fc3b2ae767b87d78642602c4e7c48"
+      "bytes": 8184,
+      "sha256": "495b613a37807cf10e831a2332b7f401148d3aaec29ec84c16a22f0a2c05d3a2"
     },
     {
       "path": "packs/local.ai-tool-bridge-ordered-python/python/caller_adapter.py",
@@ -48,8 +48,8 @@
     },
     {
       "path": "packs/local.ai-tool-bridge-ordered-python/python/caller_adapter_v2.py",
-      "bytes": 1239,
-      "sha256": "04b590a0be5472272b7458f8c0c0ebe993eab16ee105d5eecd5b3f415c42bbf1"
+      "bytes": 1972,
+      "sha256": "ec5b33231f7226b6040486eb6cd43ff5e39409dd14562927a748915e7511041b"
     },
     {
       "path": "packs/local.ai-tool-bridge-ordered-python/python/inventory.json",
@@ -73,8 +73,8 @@
     },
     {
       "path": "scripts/wasm/observe_ordered_integer_v2.py",
-      "bytes": 11370,
-      "sha256": "3848e0bdac16c823155823064322fc393d180e040f3b04b521c80b81a644d505"
+      "bytes": 12396,
+      "sha256": "6949560ac5e901fe0e780fab22ddd20f441295b7fbc0d0f0b91e36941d93f9cb"
     },
     {
       "path": "scripts/wasm/prepare_ordered_tool_bridge.py",
@@ -107,20 +107,21 @@
       "sha256": "5a1e76765a525058268cd62b23bf6bdd460b53eac2198715ecbb44f03244eed9"
     }
   ],
-  "source_bindings_sha256": "5207b8d0cbd70bf1493eab43838a657798a848b11adc5891040e3bf076cf2ef4",
+  "source_bindings_sha256": "d4f298b941ce1f8a57e5bae3025ea7ec98ae257b5a413c492a8c5de461a8bae1",
   "limits": {
     "inner_utf8_bytes": 4194304,
-    "depth": 64,
+    "independent_depth_cap": null,
+    "maximum_depth_from_nodes": 99999,
     "nodes_including_keys": 100000,
     "integer_decimal_digits": 4300,
     "outer_core_strict_v1_bytes": 4194304
   },
   "frozen_case_counts": {
-    "success": 15,
+    "success": 18,
     "original-invalid": 12,
-    "excluded-not-parity": 6
+    "excluded-not-parity": 3
   },
-  "admitted_source_parity_count": 27,
+  "admitted_source_parity_count": 30,
   "wasm_execution_performed": false,
   "native_core_acceptance": false,
   "full_host_replay_performed": false,
@@ -273,7 +274,12 @@
         "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': nan}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
       },
       "classification": "excluded-not-parity",
-      "actual_error": "JSON floats must be finite",
+      "actual_error": "provider output contains a non-finite number",
+      "source_error_type": "NonFiniteProviderOutputError",
+      "source_provider_code": "provider_failed",
+      "source_retryable": false,
+      "intended_core_error": "internal",
+      "legacy_http_error_parity_claimed": false,
       "outer_request_bytes": 147
     },
     {
@@ -281,13 +287,15 @@
       "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
       "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}\"}]}",
       "v1_classification": "excluded",
-      "admitted_source_parity": false,
+      "admitted_source_parity": true,
       "original": {
         "status": "ok",
         "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
       },
-      "classification": "excluded-not-parity",
-      "actual_error": "JSON depth exceeds 64",
+      "classification": "success",
+      "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"n\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}",
+      "output_sha256": "7a9c20366c9eaa52f2edb4fedbda15aefc589986435dccaec24b275fda86a699",
+      "outer_response_bytes": 344,
       "outer_request_bytes": 275
     },
     {
@@ -437,7 +445,12 @@
         "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': nan}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
       },
       "classification": "excluded-not-parity",
-      "actual_error": "JSON floats must be finite",
+      "actual_error": "provider output contains a non-finite number",
+      "source_error_type": "NonFiniteProviderOutputError",
+      "source_provider_code": "provider_failed",
+      "source_retryable": false,
+      "intended_core_error": "internal",
+      "legacy_http_error_parity_claimed": false,
       "outer_request_bytes": 156
     },
     {
@@ -445,13 +458,15 @@
       "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
       "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}\"}]}",
       "v1_classification": "excluded",
-      "admitted_source_parity": false,
+      "admitted_source_parity": true,
       "original": {
         "status": "ok",
         "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
       },
-      "classification": "excluded-not-parity",
-      "actual_error": "JSON depth exceeds 64",
+      "classification": "success",
+      "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"n\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}",
+      "output_sha256": "7a9c20366c9eaa52f2edb4fedbda15aefc589986435dccaec24b275fda86a699",
+      "outer_response_bytes": 344,
       "outer_request_bytes": 284
     },
     {
@@ -601,7 +616,12 @@
         "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': nan}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
       },
       "classification": "excluded-not-parity",
-      "actual_error": "JSON floats must be finite",
+      "actual_error": "provider output contains a non-finite number",
+      "source_error_type": "NonFiniteProviderOutputError",
+      "source_provider_code": "provider_failed",
+      "source_retryable": false,
+      "intended_core_error": "internal",
+      "legacy_http_error_parity_claimed": false,
       "outer_request_bytes": 154
     },
     {
@@ -609,13 +629,15 @@
       "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
       "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}\"}]}",
       "v1_classification": "excluded",
-      "admitted_source_parity": false,
+      "admitted_source_parity": true,
       "original": {
         "status": "ok",
         "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
       },
-      "classification": "excluded-not-parity",
-      "actual_error": "JSON depth exceeds 64",
+      "classification": "success",
+      "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"n\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}",
+      "output_sha256": "7a9c20366c9eaa52f2edb4fedbda15aefc589986435dccaec24b275fda86a699",
+      "outer_response_bytes": 344,
       "outer_request_bytes": 282
     }
   ],

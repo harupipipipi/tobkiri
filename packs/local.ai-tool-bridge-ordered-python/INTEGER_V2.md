@@ -4,7 +4,7 @@
 `ordered-finite-json-v2` without modifying any v1 staged source, frozen oracle,
 component, receipt, WIT, native acceptance fixture, or active provider.
 
-The only value-domain expansion is exact native integers up to 4300 decimal
+The integer value-domain expansion admits exact native integers up to 4300 decimal
 digits, excluding the sign. They remain ordinary JSON decimal numbers inside
 the opaque WIT string, never floats, tags, or quoted numeric replacements.
 Encoding checks signed magnitude before decimal conversion; decoding checks
@@ -13,9 +13,13 @@ token length before conversion. The adapter requires the interpreter's existing
 4301-digit inner integers still raise the original `ValueError`, not an invented
 normalization error or successful result.
 
-The existing 4 MiB UTF-8, root-zero depth 64, 100,000-node (including keys),
+The existing 4 MiB UTF-8 and 100,000-node (including keys) budgets,
 finite binary64, exact-native-type, Unicode, duplicate-key and cycle rules remain.
-The unchanged v1 scanner and scalar helpers are explicitly source-bound.
+The unshipped v2 profile now traverses iteratively without v1's separate depth-64
+cap; node and byte budgets bound traversal. The standard decoder's actual
+recursion failure remains a runtime resource boundary, not a universal accepted
+depth promise. See `DEPTH_V2.md`.
+The reused unchanged v1 scalar helpers are explicitly source-bound.
 The per-integer bound plus document/node bounds limits aggregate conversion work;
 it does not prove execution within Wasm fuel, memory or wall-clock budgets.
 Native CoreStrictV1's separate 4 MiB *outer JSON* limit is unchanged. Quoting can
@@ -38,12 +42,15 @@ independent standard JSON serialization of the actual original results. It
 records exact output bytes, source bindings, and original digit-boundary errors.
 Sources are checked before and after observation.
 
-`integer-v2.observations.json` reports 15 successful source comparisons,
-12 original normalization-error comparisons, and six remaining exclusions.
-The three bigint cases move from v1 exclusions to successful **source-adapter**
-comparisons. The preserved v1 component evidence remains 24 admitted cases plus
-nine exclusions. The three depth feature gaps and three NaN error-boundary
-differences remain; this is not full Host replay or whole-unit parity.
+`integer-v2.observations.json` reports 18 successful source comparisons,
+12 original normalization-error comparisons, and three remaining error-boundary
+differences.
+The three bigint and three depth cases move from v1 exclusions to successful
+**source-adapter** comparisons. The preserved v1 component evidence remains 24 admitted cases plus
+nine exclusions. NaN is a fixed, nonretryable source-provider failure rather
+than invalid caller input; it remains an intentional typed-boundary difference,
+not exact legacy Host/HTTP error parity. See `NONFINITE_V2.md`. This is not full
+Host replay or whole-unit parity.
 
 ## Pending component and production proof
 

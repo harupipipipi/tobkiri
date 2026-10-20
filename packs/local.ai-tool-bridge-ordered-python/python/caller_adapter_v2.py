@@ -3,8 +3,19 @@
 import sys
 
 from caller_adapter import OPERATIONS
+import ordered_json_v2 as codec
 from ordered_json_v2 import PROTOCOL, dumps, loads
 from original_bridge import create_tool_intent_operation
+
+
+class NonFiniteProviderOutputError(RuntimeError):
+    """Terminal source-provider failure, not invalid caller input or Core data."""
+
+    code = "provider_failed"
+    retryable = False
+
+    def __init__(self) -> None:
+        super().__init__("provider output contains a non-finite number")
 
 
 def request(payload: object) -> str:
@@ -22,7 +33,14 @@ def invoke(operation: str, payload: str) -> str:
     if type(value) is not dict:
         raise ValueError("tool bridge request must be an object")
     output = create_tool_intent_operation(None)("normalize", value)
-    return dumps(output)
+    # A successful original call can produce NaN/Infinity from opaque argument
+    # JSON. The old audited Host rejects that output as provider failure. Keep
+    # this distinct from request/transport errors without exporting nonfinite
+    # data, replaying normalization, or importing the legacy Host.
+    try:
+        return dumps(output)
+    except codec.NonFiniteJSONError:
+        raise NonFiniteProviderOutputError() from None
 
 
 def response(payload: str) -> object:

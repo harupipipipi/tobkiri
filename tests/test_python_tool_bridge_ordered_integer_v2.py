@@ -108,13 +108,16 @@ def test_exact_type_rule_is_not_weakened(base: type) -> None:
         codec.dumps(subclass())
 
 
-def test_depth_nodes_cycles_and_shared_children_retain_existing_bounds() -> None:
+def test_depth_is_iterative_but_nodes_cycles_and_shared_children_are_bounded() -> None:
     nested: object = 2**64
-    for _ in range(codec.MAX_DEPTH):
+    for _ in range(256):
         nested = [nested]
-    assert codec.loads(codec.dumps(nested)) == nested
+    restored = codec.loads(codec.dumps(nested))
+    for _ in range(256):
+        assert type(restored) is list and len(restored) == 1
+        restored = restored[0]
+    assert restored == 2**64
     for operation, value in (
-        (codec.dumps, [nested]), (codec.loads, "[" + codec.dumps(nested) + "]"),
         (codec.dumps, [0] * codec.MAX_NODES),
         (codec.loads, "[" + ",".join(["0"] * codec.MAX_NODES) + "]"),
     ):
@@ -128,21 +131,20 @@ def test_depth_nodes_cycles_and_shared_children_retain_existing_bounds() -> None
     assert codec.loads(codec.dumps([child, child])) == [child, child]
 
 
-def test_object_keys_count_toward_node_and_depth_budgets(monkeypatch: Any) -> None:
-    monkeypatch.setattr(v1, "MAX_NODES", 5)
+def test_object_keys_and_nested_containers_count_toward_node_budget(
+    monkeypatch: Any,
+) -> None:
     monkeypatch.setattr(codec, "MAX_NODES", 5)
     assert codec.loads(codec.dumps({"a": 2**64, "b": 0})) == {"a": 2**64, "b": 0}
     with pytest.raises(ValueError, match="node count"):
         codec.dumps({"a": 2**64, "b": 0, "c": 0})
     with pytest.raises(ValueError, match="node count"):
         codec.loads('{"a":9007199254740992,"b":0,"c":0}')
-    nested: object = {"a": 2**64}
-    for _ in range(codec.MAX_DEPTH):
-        nested = [nested]
-    monkeypatch.setattr(v1, "MAX_NODES", 100000)
-    monkeypatch.setattr(codec, "MAX_NODES", 100000)
-    with pytest.raises(ValueError, match="depth"):
-        codec.dumps(nested)
+    assert codec.dumps([[[[0]]]]) == "[[[[0]]]]"
+    with pytest.raises(ValueError, match="node count"):
+        codec.dumps([[[[[0]]]]])
+    with pytest.raises(ValueError, match="node count"):
+        codec.loads("[[[[[0]]]]]")
 
 
 def test_utf8_budget_is_unchanged_and_outer_quoting_is_separate() -> None:
@@ -275,9 +277,9 @@ def test_supplemental_observations_bind_sources_without_claiming_guest_parity() 
         "tobkiri_runtime/core_runtime/global_contract_dispatch.py",
     }
     assert report["frozen_case_counts"] == {
-        "success": 15, "original-invalid": 12, "excluded-not-parity": 6,
+        "success": 18, "original-invalid": 12, "excluded-not-parity": 3,
     }
-    assert report["admitted_source_parity_count"] == 27
+    assert report["admitted_source_parity_count"] == 30
     assert report["wasm_execution_performed"] is False
     assert report["native_core_acceptance"] is False
     assert report["full_host_replay_performed"] is False
@@ -291,6 +293,17 @@ def test_supplemental_observations_bind_sources_without_claiming_guest_parity() 
         assert case["output_sha256"] == (
             "c1ef462a0094ddeec95bc5167821c0545f2ca14fc5b1c301c6475565194b80c5")
         assert case["outer_response_bytes"] == 229
+    nonfinite = [case for case in report["cases"]
+                 if "inner-nonfinite" in case["id"]]
+    assert len(nonfinite) == 3
+    for case in nonfinite:
+        assert case["classification"] == "excluded-not-parity"
+        assert case["admitted_source_parity"] is False
+        assert case["source_error_type"] == "NonFiniteProviderOutputError"
+        assert case["source_provider_code"] == "provider_failed"
+        assert case["source_retryable"] is False
+        assert case["intended_core_error"] == "internal"
+        assert case["legacy_http_error_parity_claimed"] is False
     boundaries = report["integer_boundaries"]
     assert len(boundaries) == 4
     statuses = {(item["digits"], item["negative"], item["status"])
