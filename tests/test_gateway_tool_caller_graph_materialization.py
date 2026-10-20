@@ -28,8 +28,7 @@ BRIDGE_MEMBERS = {
 }
 CALLER_MEMBERS = {
     "component.wasm", "component.build.json", "config.json",
-    "wit/caller.shape.json", "wit/shape.wit", "wit/world.wit",
-    "wit/deps/core.wit", "wit/deps/bridge-v2.wit",
+    "wit/caller.shape.json", "wit/pack.wit", "wit/deps/core.wit",
 }
 
 
@@ -145,7 +144,7 @@ def test_exact_separate_pack_members_shapes_permissions_and_index(
     assert set(index) == {
         "format", "protocol", "scope", "components", "source_observations",
         "component_source_bytes", "core_component_catalog_limit_bytes",
-        "caller_wit_partition", "outer_budget", "build_performed",
+        "caller_wit_closure", "outer_budget", "build_performed",
         "wasm_execution_performed", "native_core_acceptance", "production_enabled",
     }
     assert index["format"] == "tobkiri.gateway-tool-caller-native-inputs/1"
@@ -206,7 +205,7 @@ def test_exact_separate_pack_members_shapes_permissions_and_index(
     assert caller_manifest["version"] == "1.0.0"
     assert caller_manifest["shapes"] == [{
         "name": materializer.CALLER_SHAPE, "version": "1.0", "kind": "port",
-        "wit": "wit/shape.wit",
+        "wit": "wit/pack.wit",
     }]
     assert caller_manifest["ports"] == {
         "provides": [{
@@ -219,16 +218,26 @@ def test_exact_separate_pack_members_shapes_permissions_and_index(
         "untyped": [],
     }
     source = (materializer.caller_stage.PACK / "wit/pack.wit").read_bytes()
-    shape = (output / "caller/wit/shape.wit").read_bytes()
-    world = (output / "caller/wit/world.wit").read_bytes()
-    assert len(shape) == 597 and len(world) == 185
-    assert shape + world[51:] == source
-    assert b"world pack" not in shape and b"interface caller" not in world
-    assert source.count(b"interface caller") == shape.count(b"interface caller") == 1
-    assert index["caller_wit_partition"] == materializer.CALLER_WIT_PARTITION
-    assert (output / "caller/wit/deps/bridge-v2.wit").read_bytes() == (
-        output / "bridge/wit/pack-v2.wit"
-    ).read_bytes()
+    combined = (output / "caller/wit/pack.wit").read_bytes()
+    bridge = (output / "bridge/wit/pack-v2.wit").read_bytes()
+    assert len(combined) == 1099
+    assert combined == (
+        source + b"\n" + bridge[:49] + b" {" + bridge[50:] + b"}\n"
+    )
+    assert combined[:731] == source
+    assert combined[732:781] + b";" + combined[783:-2] == bridge
+    assert combined.count(b"interface caller") == 1
+    assert combined.count(b"interface bridge") == 1
+    assert combined.count(b"world pack") == 2
+    assert index["caller_wit_closure"] == materializer.CALLER_WIT_CLOSURE
+    assert set(index["caller_wit_closure"]) == {
+        "caller_source_destination", "caller_source_sha256", "caller_source_bytes",
+        "bridge_source_destination", "bridge_source_sha256", "bridge_source_bytes",
+        "bridge_package_semicolon_offset", "member", "member_sha256", "member_bytes",
+    }
+    assert materializer.digest(combined) == (
+        "687f47f6c592ee1bc195d481d02efd0c051f664729e965cc0271850735ffaa04"
+    )
     assert (output / "caller/wit/deps/core.wit").read_bytes() == (
         output / "bridge/wit/deps/core.wit"
     ).read_bytes()
@@ -420,19 +429,50 @@ def test_current_oracle_remains_bound_beyond_an_explicit_hash(
     assert_unpublished(tmp_path)
 
 
-@pytest.mark.parametrize("mutation", ["suffix", "duplicate", "trim", "world"])
-def test_caller_partition_accepts_only_exact_reviewed_source(mutation: str) -> None:
-    source = (materializer.caller_stage.PACK / "wit/pack.wit").read_bytes()
+@pytest.mark.parametrize("name", ["caller", "bridge"])
+@pytest.mark.parametrize(
+    "mutation", ["suffix", "duplicate", "trim", "world", "package"],
+)
+def test_caller_closure_accepts_only_exact_reviewed_sources(
+    name: str, mutation: str,
+) -> None:
+    sources = {
+        "caller": (materializer.caller_stage.PACK / "wit/pack.wit").read_bytes(),
+        "bridge": (
+            materializer.bridge_stage.PACK / "wit/pack-v2.wit"
+        ).read_bytes(),
+    }
+    source = sources[name]
     if mutation == "suffix":
         source += b"\n"
     elif mutation == "duplicate":
-        source += b"interface caller {}\n"
+        source += f"interface {name} {{}}\n".encode()
     elif mutation == "trim":
         source = source.rstrip()
+    elif mutation == "world":
+        source = source.replace(f"  export {name};".encode(), b"  export other;")
     else:
-        source = source.replace(b"  export caller;", b"  export bridge;")
+        source = source.replace(b";", b" {", 1) + b"}\n"
+    sources[name] = source
     with pytest.raises(ValueError):
-        materializer.partition_caller_wit(source)
+        materializer.package_caller_wit(sources["caller"], sources["bridge"])
+
+
+@pytest.mark.parametrize("member", [
+    "wit/deps/bridge-v2.wit", "wit/shape.wit", "wit/world.wit", "wit/extra.wit",
+])
+def test_caller_manifest_rejects_extra_or_duplicate_wit_members(member: str) -> None:
+    files = {name: b"test" for name in CALLER_MEMBERS}
+    files[member] = b"duplicate or unrelated WIT must never enter the Pack"
+    with pytest.raises(ValueError, match="exact six-member"):
+        materializer._caller_manifest(files)
+
+
+@pytest.mark.parametrize("member", sorted(CALLER_MEMBERS))
+def test_caller_manifest_rejects_missing_closure_members(member: str) -> None:
+    files = {name: b"test" for name in CALLER_MEMBERS if name != member}
+    with pytest.raises(ValueError, match="exact six-member"):
+        materializer._caller_manifest(files)
 
 
 def test_outer_envelopes_preserve_opaque_inner_strings_and_bound_expansion() -> None:

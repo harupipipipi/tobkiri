@@ -51,20 +51,25 @@ REVIEWED_PINS = {
     "source_observations_sha256":
         "854fa03de651c12cb7126d8f81e4f0c62e340a5a85f71eb50784e539e207bced",
 }
-CALLER_WIT_PARTITION = {
-    "source_destination": "wit/pack.wit",
-    "source_sha256":
+CALLER_WIT_CLOSURE = {
+    "caller_source_destination": "wit/pack.wit",
+    "caller_source_sha256":
         "34cad3a098d41f9103386b0dab1988624c0de7f81721807b4da1e5c0f64bdd41",
-    "source_bytes": 731,
-    "world_offset": 597,
-    "package_declaration_bytes": 51,
-    "shape_member": "wit/shape.wit",
-    "shape_sha256":
-        "689a23a2835b690b16496198786fa450596631440cce7041545a7d07c768ae05",
-    "world_member": "wit/world.wit",
-    "world_sha256":
-        "36a12119a23bd931929b084533a88ca1fe8e6dc61575e531e0c678462156c5ab",
+    "caller_source_bytes": 731,
+    "bridge_source_destination": "wit/deps/bridge-v2.wit",
+    "bridge_source_sha256":
+        "513454d839ac468205bc5b4ed93032625ed4f5d3064aa17f643f907e80bfeb78",
+    "bridge_source_bytes": 364,
+    "bridge_package_semicolon_offset": 49,
+    "member": "wit/pack.wit",
+    "member_sha256":
+        "687f47f6c592ee1bc195d481d02efd0c051f664729e965cc0271850735ffaa04",
+    "member_bytes": 1099,
 }
+CALLER_MEMBERS = frozenset((
+    "component.wasm", "component.build.json", "config.json",
+    "wit/caller.shape.json", "wit/pack.wit", "wit/deps/core.wit",
+))
 
 
 def _path(path: Path) -> Path:
@@ -190,21 +195,35 @@ def _component(
     )
 
 
-def partition_caller_wit(source: bytes) -> tuple[bytes, bytes]:
-    """Partition only the exact reviewed WIT, preserving its complete graph."""
-    binding = CALLER_WIT_PARTITION
-    require_hash(source, binding["source_sha256"], "caller WIT")
-    if len(source) != binding["source_bytes"]:
-        raise ValueError("caller WIT length differs")
-    offset = binding["world_offset"]
-    package_bytes = binding["package_declaration_bytes"]
-    shape = source[:offset]
-    world = source[:package_bytes] + source[offset:]
-    require_hash(shape, binding["shape_sha256"], "caller shape partition")
-    require_hash(world, binding["world_sha256"], "caller world partition")
-    if shape + world[package_bytes:] != source:
-        raise ValueError("caller WIT partition does not reconstruct its source")
-    return shape, world
+def package_caller_wit(caller: bytes, bridge: bytes) -> bytes:
+    """Package exact sources reversibly, without changing any ABI declaration.
+
+    Production parses each document before merging packages, so splitting the
+    caller interface and its world into different files is invalid. Keep that
+    entire document unchanged and nest the canonical bridge package once.
+    This is a fixed reviewed closure, not a general-purpose WIT rewriter.
+    """
+    binding = CALLER_WIT_CLOSURE
+    for name, source in (("caller", caller), ("bridge", bridge)):
+        require_hash(source, binding[f"{name}_source_sha256"], f"{name} WIT")
+        if len(source) != binding[f"{name}_source_bytes"]:
+            raise ValueError(f"{name} WIT length differs")
+    offset = binding["bridge_package_semicolon_offset"]
+    if bridge[offset:offset + 1] != b";":
+        raise ValueError("canonical bridge package delimiter differs")
+    combined = (
+        caller + b"\n" + bridge[:offset] + b" {" + bridge[offset + 1:] + b"}\n"
+    )
+    require_hash(combined, binding["member_sha256"], "caller WIT closure")
+    if len(combined) != binding["member_bytes"]:
+        raise ValueError("caller WIT closure length differs")
+    start = len(caller) + 1
+    reconstructed = (
+        combined[start:start + offset] + b";" + combined[start + offset + 2:-2]
+    )
+    if combined[:len(caller)] != caller or reconstructed != bridge:
+        raise ValueError("caller WIT closure does not reconstruct exact sources")
+    return combined
 
 
 def envelope_bounds(observations: dict[str, Any]) -> dict[str, int]:
@@ -235,11 +254,13 @@ def envelope_bounds(observations: dict[str, Any]) -> dict[str, int]:
 
 
 def _caller_manifest(files: dict[str, bytes]) -> dict[str, Any]:
+    if set(files) != CALLER_MEMBERS:
+        raise ValueError("caller Pack requires the exact six-member WIT closure")
     manifest = bridge_pack._manifest(files)
     manifest.update(id=CALLER_ID, version=CALLER_VERSION)
     manifest["shapes"] = [{
         "name": CALLER_SHAPE, "version": CALLER_SHAPE_VERSION,
-        "kind": "port", "wit": CALLER_WIT_PARTITION["shape_member"],
+        "kind": "port", "wit": CALLER_WIT_CLOSURE["member"],
     }]
     manifest["ports"] = {
         "provides": [{
@@ -305,10 +326,11 @@ def materialize(
         "wit/deps/core.wit": bridge_sources["wit/deps/core.wit"],
         "wit/bridge.shape.json": sidecar,
     })
-    shape, world = partition_caller_wit(caller_sources["wit/pack.wit"])
+    wit = package_caller_wit(
+        caller_sources["wit/pack.wit"], caller_sources["wit/deps/bridge-v2.wit"],
+    )
     caller_files.update({
-        "wit/shape.wit": shape, "wit/world.wit": world,
-        "wit/deps/bridge-v2.wit": caller_sources["wit/deps/bridge-v2.wit"],
+        "wit/pack.wit": wit,
         "wit/deps/core.wit": caller_sources["wit/deps/core.wit"],
         "wit/caller.shape.json": sidecar,
     })
@@ -351,7 +373,7 @@ def materialize(
             component["artifact_bytes"] for component in components.values()
         ),
         "core_component_catalog_limit_bytes": MAX_GRAPH_BYTES,
-        "caller_wit_partition": dict(CALLER_WIT_PARTITION),
+        "caller_wit_closure": dict(CALLER_WIT_CLOSURE),
         "outer_budget": bounds,
         "build_performed": False, "wasm_execution_performed": False,
         "native_core_acceptance": False, "production_enabled": False,
