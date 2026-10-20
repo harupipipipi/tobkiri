@@ -505,57 +505,24 @@ def _invoke(
                 provider_instance_id=attempt_candidate.provider_instance_id,
             )
             if streaming:
-                normalized = client.invoke(
-                    STREAM_NORMALIZE_CONTRACT,
-                    STREAM_NORMALIZE_OPERATION,
-                    {
-                        "request_id": request_id,
-                        "provider_attempt": attempt_number,
-                        "value": value,
-                    },
+                return _finalize_stream_result(
+                    client,
+                    value,
+                    request_id,
+                    attempt_candidate,
+                    attempt_number,
+                    attempts,
+                    packvm_response=packvm_response,
                 )
-                events = (
-                    normalized.get("events")
-                    if isinstance(normalized, Mapping)
-                    else None
-                )
-                if not isinstance(events, list):
-                    raise GlobalContractInvocationError(
-                        "invalid_response",
-                        "stream normalizer returned an invalid result",
-                    )
-                _attach_stream_usage_cost(client, events, attempt_candidate)
-                _attach_stream_tool_intents(client, events, request_id)
-                return _maybe_packvm_safe_response({
-                    "status": "ok", "output": value.get("output", ""),
-                    "tool_intents": _tool_intents(
-                        client, value.get("tool_intents", []), request_id,
-                        streaming=True,
-                    ),
-                    "finish_reason": value.get("finish_reason"),
-                    "delivery_mode": value.get("delivery_mode", "buffered"),
-                    "request_id": request_id,
-                    "model_id": attempt_candidate.model_id,
-                    "provider_instance_id": attempt_candidate.provider_instance_id,
-                    "events": events,
-                    "attempts": attempts,
-                }, packvm_response)
-            result = _normalize_result(value, request_id, attempt_candidate)
-            result["tool_intents"] = _tool_intents(
+            return _finalize_generate_result(
                 client,
-                result["tool_intents"],
+                value,
                 request_id,
-                streaming=streaming,
-            )
-            result["usage_cost"] = _usage_cost(
-                client,
-                result["usage"],
                 attempt_candidate,
-                result["usage_provenance"],
+                attempts,
                 streaming=streaming,
+                packvm_response=packvm_response,
             )
-            result["attempts"] = attempts
-            return _maybe_packvm_safe_response(result, packvm_response)
         except GlobalContractUnavailable as exc:
             failure = GlobalContractInvocationError(
                 "provider_unavailable",
@@ -598,6 +565,83 @@ def _invoke(
         "provider_unavailable",
         "all selected providers failed",
     )
+
+
+def _finalize_generate_result(
+    client: GlobalContractClient,
+    value: Any,
+    request_id: str,
+    attempt_candidate: Candidate,
+    attempts: list[dict[str, Any]],
+    *,
+    streaming: bool,
+    packvm_response: bool,
+) -> dict[str, Any]:
+    """Finalize one provider generation without changing dependency custody."""
+    result = _normalize_result(value, request_id, attempt_candidate)
+    result["tool_intents"] = _tool_intents(
+        client,
+        result["tool_intents"],
+        request_id,
+        streaming=streaming,
+    )
+    result["usage_cost"] = _usage_cost(
+        client,
+        result["usage"],
+        attempt_candidate,
+        result["usage_provenance"],
+        streaming=streaming,
+    )
+    result["attempts"] = attempts
+    return _maybe_packvm_safe_response(result, packvm_response)
+
+
+def _finalize_stream_result(
+    client: GlobalContractClient,
+    value: Any,
+    request_id: str,
+    attempt_candidate: Candidate,
+    attempt_number: int,
+    attempts: list[dict[str, Any]],
+    *,
+    packvm_response: bool,
+) -> dict[str, Any]:
+    """Finalize one provider stream in the original usage-before-tools order."""
+    normalized = client.invoke(
+        STREAM_NORMALIZE_CONTRACT,
+        STREAM_NORMALIZE_OPERATION,
+        {
+            "request_id": request_id,
+            "provider_attempt": attempt_number,
+            "value": value,
+        },
+    )
+    events = (
+        normalized.get("events")
+        if isinstance(normalized, Mapping)
+        else None
+    )
+    if not isinstance(events, list):
+        raise GlobalContractInvocationError(
+            "invalid_response",
+            "stream normalizer returned an invalid result",
+        )
+    _attach_stream_usage_cost(client, events, attempt_candidate)
+    _attach_stream_tool_intents(client, events, request_id)
+    return _maybe_packvm_safe_response({
+        "status": "ok", "output": value.get("output", ""),
+        "tool_intents": _tool_intents(
+            client, value.get("tool_intents", []), request_id,
+            streaming=True,
+        ),
+        "finish_reason": value.get("finish_reason"),
+        "delivery_mode": value.get("delivery_mode", "buffered"),
+        "request_id": request_id,
+        "model_id": attempt_candidate.model_id,
+        "provider_instance_id": attempt_candidate.provider_instance_id,
+        "events": events,
+        "attempts": attempts,
+    }, packvm_response)
 
 
 def _requirement(request: Mapping[str, Any]) -> RouteRequirement:
