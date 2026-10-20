@@ -1,0 +1,173 @@
+{
+  "build_performed": false,
+  "byte_offsets": "zero-based-half-open",
+  "extraction": "verbatim-complete-source-lines",
+  "generator": "scripts/wasm/prepare_gateway_tool_caller.py",
+  "inventory": {
+    "bytes": 15803,
+    "path": "inventory.json",
+    "sha256": "7416ba4a38059dc3e18452abe947bb8dc6b0cfb82ead6a8a2e2dc95b30d556cc"
+  },
+  "line_numbers": "one-based-inclusive",
+  "output": {
+    "bytes": 2046,
+    "path": "original_gateway_tool_caller.py",
+    "sha256": "9b0d671807095cf2211b8bb51db703cea563133b2e8d935a50e9f77ea40ff1b1"
+  },
+  "production_enabled": false,
+  "protocol": "ordered-finite-json-v2",
+  "schema": "io.tobkiri.gateway-tool-caller-extraction.v1",
+  "slices": [
+    {
+      "output_end_byte": 219,
+      "output_end_line": 5,
+      "output_start_byte": 184,
+      "output_start_line": 5,
+      "sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f",
+      "source_end_byte": 108,
+      "source_end_line": 3,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 73,
+      "source_start_line": 3,
+      "symbol": "import:__future__"
+    },
+    {
+      "output_end_byte": 263,
+      "output_end_line": 8,
+      "output_start_byte": 221,
+      "output_start_line": 8,
+      "sha256": "921e62959e5f3742900e70c6b4ca21a5eefeef26879cc7e64b43eab179da6228",
+      "source_end_byte": 460,
+      "source_end_line": 14,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 418,
+      "source_start_line": 14,
+      "symbol": "import:typing"
+    },
+    {
+      "output_end_byte": 512,
+      "output_end_line": 16,
+      "output_start_byte": 265,
+      "output_start_line": 11,
+      "sha256": "60c02dabf8c507c07ddfe30784a66bf90036cca26ded9aed1234d4c1ff7a58fb",
+      "source_end_byte": 600,
+      "source_end_line": 19,
+      "source_path": "tobkiri_runtime/core_runtime/global_contract_dispatch.py",
+      "source_start_byte": 353,
+      "source_start_line": 14,
+      "symbol": "GlobalContractInvocationError"
+    },
+    {
+      "output_end_byte": 583,
+      "output_end_line": 19,
+      "output_start_byte": 514,
+      "output_start_line": 19,
+      "sha256": "a1abd6a774ca43361fb6f02c588f5b3bd61fe55a4d56acc6d1bb2da7dc1cb31f",
+      "source_end_byte": 2485,
+      "source_end_line": 57,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 2416,
+      "source_start_line": 57,
+      "symbol": "TOOL_BRIDGE_CONTRACT"
+    },
+    {
+      "output_end_byte": 687,
+      "output_end_line": 24,
+      "output_start_byte": 585,
+      "output_start_line": 22,
+      "sha256": "9f3cbfd57adfec1d42adf5a634f0a8fc2d94b351852396c8170408e744fd6ca3",
+      "source_end_byte": 2587,
+      "source_end_line": 60,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 2485,
+      "source_start_line": 58,
+      "symbol": "TOOL_BRIDGE_GENERATE_OPERATION"
+    },
+    {
+      "output_end_byte": 787,
+      "output_end_line": 29,
+      "output_start_byte": 689,
+      "output_start_line": 27,
+      "sha256": "f6725598aa71c3f78d28aafc8ed1bd3d959ad5a37bcffab272d6a1ddc012c6ab",
+      "source_end_byte": 2685,
+      "source_end_line": 63,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 2587,
+      "source_start_line": 61,
+      "symbol": "TOOL_BRIDGE_STREAM_OPERATION"
+    },
+    {
+      "output_end_byte": 844,
+      "output_end_line": 32,
+      "output_start_byte": 789,
+      "output_start_line": 32,
+      "sha256": "08f96f339ce27dcf9e06879a3b350b53539c94a178e8063ff3788ca149c3c536",
+      "source_end_byte": 2740,
+      "source_end_line": 64,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 2685,
+      "source_start_line": 64,
+      "symbol": "TOOL_BRIDGE_OPERATION"
+    },
+    {
+      "output_end_byte": 1366,
+      "output_end_line": 51,
+      "output_start_byte": 846,
+      "output_start_line": 35,
+      "sha256": "2931c3cb605bdfdeb1d05ef8f176a3761242d09010a364d530f55a7a7e6da9ce",
+      "source_end_byte": 57113,
+      "source_end_line": 1497,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 56593,
+      "source_start_line": 1481,
+      "symbol": "_attach_stream_tool_intents"
+    },
+    {
+      "output_end_byte": 2044,
+      "output_end_line": 71,
+      "output_start_byte": 1368,
+      "output_start_line": 54,
+      "sha256": "3a633a80b13d133588f87c87965a32ed76e472c2b6087e7b4990e55efaca97fd",
+      "source_end_byte": 57791,
+      "source_end_line": 1517,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 57115,
+      "source_start_line": 1500,
+      "symbol": "_tool_intents"
+    }
+  ],
+  "sources": [
+    {
+      "bytes": 65389,
+      "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "sha256": "6f091cc5230c53d8571a134e3d35d0009a0af6cddd51ef933a5d1ea8dc5f2774"
+    },
+    {
+      "bytes": 17989,
+      "path": "tobkiri_runtime/core_runtime/global_contract_dispatch.py",
+      "sha256": "f1cc60d7361b0716430c715c529fc36d41d1db5a130e47c2ae835962f6f7d893"
+    }
+  ],
+  "transport_dependencies": [
+    {
+      "bytes": 8961,
+      "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json.py",
+      "sha256": "7df89c2e5275fdc795c13e0d70d6ec69f7f022aa968c58a3c1b1637e0eee2158"
+    },
+    {
+      "bytes": 8184,
+      "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json_v2.py",
+      "sha256": "495b613a37807cf10e831a2332b7f401148d3aaec29ec84c16a22f0a2c05d3a2"
+    },
+    {
+      "bytes": 5732,
+      "path": "crates/tobkiri-wit/wit/core/core.wit",
+      "sha256": "f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb"
+    },
+    {
+      "bytes": 364,
+      "path": "packs/local.ai-tool-bridge-ordered-python/wit/pack-v2.wit",
+      "sha256": "513454d839ac468205bc5b4ed93032625ed4f5d3064aa17f643f907e80bfeb78"
+    }
+  ]
+}
