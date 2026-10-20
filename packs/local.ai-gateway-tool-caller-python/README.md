@@ -22,12 +22,17 @@ The new WIT world retains canonical Core `pack-minimal`, adds a **required**
 `local:ai-tool-bridge-ordered-python/bridge@2.0.0` import, and exports only its own
 `caller` interface:
 
-- `generate-intents(payload: string)`: `{request_id: string, intents: list}` input;
+- `generate-intents(payload: string)`: `{request_id: string, intents: DATA}` input;
   returns the original helper's list of normalized intents.
 - `stream-intents(payload: string)`: the same shape, choosing the original stream
   bridge operation.
 - `stream-event-intents(payload: string)`: `{request_id: string, events: list<object>}`
   input; returns the event list after the unchanged helper processes it.
+
+`intents` is any value in the bounded finite DATA codec. Non-list values pass
+unchanged to the real original bridge, which owns its existing empty-list
+fallback. The caller transport does not duplicate that normalization or relax
+the exact envelope, request ID, codec limits, or stream-event object checks.
 
 These exact object shapes and string request IDs deliberately bound the new
 caller input domain. The original helper's Python annotations do not validate

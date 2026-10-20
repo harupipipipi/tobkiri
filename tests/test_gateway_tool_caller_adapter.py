@@ -168,6 +168,25 @@ def test_real_normalizer_source_fixture_keeps_authority_data_inert(
     assert len(state.calls) == 1
 
 
+@pytest.mark.parametrize("operation", ["generate-intents", "stream-intents"])
+@pytest.mark.parametrize("intents", [
+    None, {}, {"name": "not-an-intent-list"}, 0, 17, -2.5, False, True,
+    "", "not-an-intent-list",
+])
+def test_non_list_intents_reach_original_bridge_unchanged(
+    normalizer_source_transport: SimpleNamespace, operation: str, intents: Any,
+) -> None:
+    """Original provider owns fallback; this is source, not guest execution."""
+    state = normalizer_source_transport
+    payload = {"request_id": " req ", "intents": intents}
+    encoded = state.codec.dumps(payload)
+    assert state.adapter.invoke(operation, encoded) == "[]"
+    suffix = "stream" if operation == "stream-intents" else "generate"
+    assert state.calls == [
+        (f"rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.{suffix}", encoded),
+    ]
+
+
 @pytest.mark.parametrize("contract,operation", [
     ("other.contract", "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate"),
     ("tobkiri.service.ai.tool_intent.normalize.v1", "normalize"),
@@ -194,6 +213,9 @@ def test_no_other_contract_or_operation_can_dispatch(
     ("generate-intents", '{"request_id":"r","intents":{},"extra":1}'),
     ("generate-intents", '{"request_id":"r","intents":[],"extra":1}'),
     ("stream-event-intents", '{"request_id":"r","events":[null]}'),
+    ("stream-event-intents", '{"request_id":"r","events":null}'),
+    ("stream-event-intents", '{"request_id":"r","events":{}}'),
+    ("stream-event-intents", '{"request_id":"r","events":"not-events"}'),
     ("generate-intents", '{"request_id":"r","intents":[],"request_id":"s"}'),
     ("generate-intents", '{"request_id":"r","intents":[NaN]}'),
 ])

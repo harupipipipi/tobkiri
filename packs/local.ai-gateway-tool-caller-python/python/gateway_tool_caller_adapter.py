@@ -89,11 +89,13 @@ def _input(operation: str, payload: str) -> dict[str, Any]:
         raise CallerInputError("outside ordered-finite-json-v2 domain") from None
     collection = "events" if operation == "stream-event-intents" else "intents"
     if (type(value) is not dict or set(value) != {"request_id", collection}
-            or type(value["request_id"]) is not str
-            or type(value[collection]) is not list):
+            or type(value["request_id"]) is not str):
         raise CallerInputError("invalid Gateway helper request")
-    if collection == "events" and any(
-        type(event) is not dict for event in value[collection]
+    # The original bridge, not this transport, owns non-list intent fallback.
+    # Keep all finite DATA intact until that real dependency evaluates it.
+    if collection == "events" and (
+        type(value[collection]) is not list
+        or any(type(event) is not dict for event in value[collection])
     ):
         raise CallerInputError("stream events must be objects")
     return value
