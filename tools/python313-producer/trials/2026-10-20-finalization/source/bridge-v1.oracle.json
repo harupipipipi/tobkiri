@@ -1,0 +1,430 @@
+{
+  "format": "tobkiri.ordered-python-tool-bridge-oracle/1",
+  "protocol": "ordered-finite-json-v1",
+  "python": "3.13.5",
+  "unicode": "15.1.0",
+  "source_provenance_sha256": "4d3d828b00fa49bcba1f2b53a26b0cf98532ebcabaa572602be0738c205ee2d5",
+  "freeze_script_sha256": "83e1093f9a36468786b1f4b05661846f3f3e3b07b5eab1229a941835228faa04",
+  "cases": [
+    {
+      "id": "base:empty",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': []}"
+      },
+      "transport": {
+        "status": "ok",
+        "output_json": "{\"intents\":[]}"
+      }
+    },
+    {
+      "id": "base:ordinary",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"request_id\":\" req \",\"intents\":[{\"function\":{\"name\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0}}}]}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': 'req:tool:0', 'request_id': 'req', 'operation': 'echo', 'arguments': {'z': 1.0, 'a': -0.0}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "transport": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      }
+    },
+    {
+      "id": "base:unicode-repr-15-1",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"request_id\":{\"\u1c89\":1},\"intents\":[{\"name\":\"echo\",\"arguments\":{}}]}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': \"{'\\\\u1c89': 1}:tool:0\", 'request_id': \"{'\\\\u1c89': 1}\", 'operation': 'echo', 'arguments': {}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "transport": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\"{'\\\\u1c89': 1}:tool:0\",\"request_id\":\"{'\\\\u1c89': 1}\",\"operation\":\"echo\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      }
+    },
+    {
+      "id": "base:opaque-inner-json",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"z\\\":1.0,\\\"a\\\":-0.0,\\\"dup\\\":1,\\\"dup\\\":2,\\\"u\\\":\\\"\u65e5\u672c\u8a9e\\\"}\"}]}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'z': 1.0, 'a': -0.0, 'dup': 2, 'u': '\u65e5\u672c\u8a9e'}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "transport": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0,\"dup\":2,\"u\":\"\u65e5\u672c\u8a9e\"},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      }
+    },
+    {
+      "id": "base:invalid-name",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"intents\":[{\"name\":\"a b\"}]}",
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent name is invalid"
+      },
+      "transport": {
+        "status": "invalid"
+      }
+    },
+    {
+      "id": "base:invalid-item",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"intents\":[1]}",
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent must be an object"
+      },
+      "transport": {
+        "status": "invalid"
+      }
+    },
+    {
+      "id": "base:invalid-arguments",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"[1]\"}]}",
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent arguments must be an object"
+      },
+      "transport": {
+        "status": "invalid"
+      }
+    },
+    {
+      "id": "base:invalid-json",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\"}]}",
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent arguments are invalid JSON"
+      },
+      "transport": {
+        "status": "invalid"
+      }
+    },
+    {
+      "id": "base:inner-bigint-excluded",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":9007199254740992}\"}]}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': 9007199254740992}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "transport": {
+        "status": "excluded"
+      }
+    },
+    {
+      "id": "base:inner-nonfinite-excluded",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":NaN}\"}]}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': nan}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "transport": {
+        "status": "excluded"
+      }
+    },
+    {
+      "id": "base:inner-depth-excluded",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}\"}]}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "transport": {
+        "status": "excluded"
+      }
+    },
+    {
+      "id": ".generate:empty",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': []}"
+      },
+      "transport": {
+        "status": "ok",
+        "output_json": "{\"intents\":[]}"
+      }
+    },
+    {
+      "id": ".generate:ordinary",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"request_id\":\" req \",\"intents\":[{\"function\":{\"name\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0}}}]}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': 'req:tool:0', 'request_id': 'req', 'operation': 'echo', 'arguments': {'z': 1.0, 'a': -0.0}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "transport": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      }
+    },
+    {
+      "id": ".generate:unicode-repr-15-1",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"request_id\":{\"\u1c89\":1},\"intents\":[{\"name\":\"echo\",\"arguments\":{}}]}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': \"{'\\\\u1c89': 1}:tool:0\", 'request_id': \"{'\\\\u1c89': 1}\", 'operation': 'echo', 'arguments': {}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "transport": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\"{'\\\\u1c89': 1}:tool:0\",\"request_id\":\"{'\\\\u1c89': 1}\",\"operation\":\"echo\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      }
+    },
+    {
+      "id": ".generate:opaque-inner-json",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"z\\\":1.0,\\\"a\\\":-0.0,\\\"dup\\\":1,\\\"dup\\\":2,\\\"u\\\":\\\"\u65e5\u672c\u8a9e\\\"}\"}]}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'z': 1.0, 'a': -0.0, 'dup': 2, 'u': '\u65e5\u672c\u8a9e'}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "transport": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0,\"dup\":2,\"u\":\"\u65e5\u672c\u8a9e\"},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      }
+    },
+    {
+      "id": ".generate:invalid-name",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"intents\":[{\"name\":\"a b\"}]}",
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent name is invalid"
+      },
+      "transport": {
+        "status": "invalid"
+      }
+    },
+    {
+      "id": ".generate:invalid-item",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"intents\":[1]}",
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent must be an object"
+      },
+      "transport": {
+        "status": "invalid"
+      }
+    },
+    {
+      "id": ".generate:invalid-arguments",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"[1]\"}]}",
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent arguments must be an object"
+      },
+      "transport": {
+        "status": "invalid"
+      }
+    },
+    {
+      "id": ".generate:invalid-json",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\"}]}",
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent arguments are invalid JSON"
+      },
+      "transport": {
+        "status": "invalid"
+      }
+    },
+    {
+      "id": ".generate:inner-bigint-excluded",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":9007199254740992}\"}]}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': 9007199254740992}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "transport": {
+        "status": "excluded"
+      }
+    },
+    {
+      "id": ".generate:inner-nonfinite-excluded",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":NaN}\"}]}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': nan}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "transport": {
+        "status": "excluded"
+      }
+    },
+    {
+      "id": ".generate:inner-depth-excluded",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}\"}]}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "transport": {
+        "status": "excluded"
+      }
+    },
+    {
+      "id": ".stream:empty",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': []}"
+      },
+      "transport": {
+        "status": "ok",
+        "output_json": "{\"intents\":[]}"
+      }
+    },
+    {
+      "id": ".stream:ordinary",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"request_id\":\" req \",\"intents\":[{\"function\":{\"name\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0}}}]}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': 'req:tool:0', 'request_id': 'req', 'operation': 'echo', 'arguments': {'z': 1.0, 'a': -0.0}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "transport": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\"req:tool:0\",\"request_id\":\"req\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      }
+    },
+    {
+      "id": ".stream:unicode-repr-15-1",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"request_id\":{\"\u1c89\":1},\"intents\":[{\"name\":\"echo\",\"arguments\":{}}]}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': \"{'\\\\u1c89': 1}:tool:0\", 'request_id': \"{'\\\\u1c89': 1}\", 'operation': 'echo', 'arguments': {}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "transport": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\"{'\\\\u1c89': 1}:tool:0\",\"request_id\":\"{'\\\\u1c89': 1}\",\"operation\":\"echo\",\"arguments\":{},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      }
+    },
+    {
+      "id": ".stream:opaque-inner-json",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"z\\\":1.0,\\\"a\\\":-0.0,\\\"dup\\\":1,\\\"dup\\\":2,\\\"u\\\":\\\"\u65e5\u672c\u8a9e\\\"}\"}]}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'z': 1.0, 'a': -0.0, 'dup': 2, 'u': '\u65e5\u672c\u8a9e'}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "transport": {
+        "status": "ok",
+        "output_json": "{\"intents\":[{\"intent_id\":\":tool:0\",\"request_id\":\"\",\"operation\":\"echo\",\"arguments\":{\"z\":1.0,\"a\":-0.0,\"dup\":2,\"u\":\"\u65e5\u672c\u8a9e\"},\"authority_granted\":false,\"approved\":false,\"approval_status\":\"unrequested\",\"executes\":false}]}"
+      }
+    },
+    {
+      "id": ".stream:invalid-name",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"intents\":[{\"name\":\"a b\"}]}",
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent name is invalid"
+      },
+      "transport": {
+        "status": "invalid"
+      }
+    },
+    {
+      "id": ".stream:invalid-item",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"intents\":[1]}",
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent must be an object"
+      },
+      "transport": {
+        "status": "invalid"
+      }
+    },
+    {
+      "id": ".stream:invalid-arguments",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"[1]\"}]}",
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent arguments must be an object"
+      },
+      "transport": {
+        "status": "invalid"
+      }
+    },
+    {
+      "id": ".stream:invalid-json",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\"}]}",
+      "original": {
+        "status": "error",
+        "code": "invalid_response",
+        "message": "tool intent arguments are invalid JSON"
+      },
+      "transport": {
+        "status": "invalid"
+      }
+    },
+    {
+      "id": ".stream:inner-bigint-excluded",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":9007199254740992}\"}]}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': 9007199254740992}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "transport": {
+        "status": "excluded"
+      }
+    },
+    {
+      "id": ".stream:inner-nonfinite-excluded",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":NaN}\"}]}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': nan}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "transport": {
+        "status": "excluded"
+      }
+    },
+    {
+      "id": ".stream:inner-depth-excluded",
+      "operation": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "input_json": "{\"intents\":[{\"name\":\"echo\",\"arguments\":\"{\\\"n\\\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}\"}]}",
+      "original": {
+        "status": "ok",
+        "repr": "{'intents': [{'intent_id': ':tool:0', 'request_id': '', 'operation': 'echo', 'arguments': {'n': [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}, 'authority_granted': False, 'approved': False, 'approval_status': 'unrequested', 'executes': False}]}"
+      },
+      "transport": {
+        "status": "excluded"
+      }
+    }
+  ]
+}
