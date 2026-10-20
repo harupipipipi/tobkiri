@@ -42,3 +42,25 @@ The official Wasmtime 48 wheel was verified against the SDK lock hash and both
 archive/installed RECORD manifests. Installed archive members matched byte for
 byte except pip's rewritten RECORD. WAC 0.12.0 matched the existing SDK release
 hash. No new unrecognized producer dependency or interpreter change was used.
+
+## Actual v2 guest replay
+
+The separate `replay-trial.py` ran the exact source-bound component through real
+Wasmtime 48 typed exports. `replay.json` records all 33 cases: 18 exact successful
+normalization strings, 12 typed INVALID mappings, and three sanitized INTERNAL
+nonfinite-provider boundaries. Those three boundary differences remain outside
+original parity. Every case returned from init, runtime-info, normalize and
+shutdown, with canonical post-return cleanup. The running guest reported
+CPython 3.13.16 / Unicode 15.1.0 in every case.
+
+Replay took 13.83 seconds with a sampled peak RSS of 386,547,712 bytes. All mounted
+inputs remained unchanged. `receipt.json` binds the actual build/replay receipts
+and their separate external supervision evidence. Raw replay correctly says its
+own compilation is not wall-time bounded; the external supervisor covers that
+phase and the complete process.
+
+The development linker supplies no authority or effects: all canonical imports
+trap if called. This is not real Core/Gate or consumer-permission acceptance.
+Native public session cleanup is also distinct from the guest shutdown export
+checked here. The real Gateway callers still use the old Host path; passing this
+probe neither retires that path nor completes the migration inventory.
