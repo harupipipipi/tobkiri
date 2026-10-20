@@ -36,7 +36,7 @@
       "path": "defaultspack/turn_progress_presentation.py"
     },
     {
-      "digest": "sha256:e1679b0d9d92068ebd349cdb0268b9bbdc10f065e9b0e47a491e1727d5a3bb79",
+      "digest": "sha256:a2a20b99c7f1ea6135417adac31ee82d2314992822bc4c22bed631390399ec0f",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -731,7 +731,7 @@
       "path": "ui/shell-app.js"
     },
     {
-      "digest": "sha256:2de0ff8600aae40dccbe1b274504f645bd084074f849b0e59f22e4dd35bc51e8",
+      "digest": "sha256:2b06de1e837121c62bfeddebbe6be362afa12333fa3ec01f01c8885ff3b65a34",
       "kind": "asset",
       "path": "ui/shell-defaultspack-app.js"
     },
@@ -817,8 +817,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:55118a8195a014afdcbd2b401b664fb737e27ba06fb0e50f74c40e1dea3e591f",
-    "artifact_set_digest": "sha256:a44623341d02414bd97f9dbb31731730258a92dab27ad82fdb65596e58f2195c",
+    "source_identity": "sha256:99ab22319f14d04b9a6058e8fe04ba48f098c7b27fb049343301b92c7cf2d28a",
+    "artifact_set_digest": "sha256:118f72eebb4528718bc5dcf96e67abe28b63a4f956efb0c136836dc6402c8783",
     "contract_catalog_digest": "sha256:48f8956e1d6feadaae5231bdd79d8326f28620a3b9bd4759266a5da7bb80bef9"
   },
   "migration": {
@@ -854,7 +854,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:6892d036a8569ce7fcac28ffaae1188b7498510a1abf7bd06b1294ae3ff4fc53",
+    "artifact_digest": "sha256:2a7b6917eca8a5b0e5fe5ce41452cba58d590e781bdc268296424a4e38f91e64",
     "display_name": "Tobkiri Harness Providers",
     "id": "defaultspack",
     "kind": "normal_sandbox",
@@ -865,15 +865,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/pack.v4.json",
-    "source_digest": "sha256:55118a8195a014afdcbd2b401b664fb737e27ba06fb0e50f74c40e1dea3e591f",
+    "source_digest": "sha256:99ab22319f14d04b9a6058e8fe04ba48f098c7b27fb049343301b92c7cf2d28a",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:1ae24f20037682ed86fa9243e35565ec627aef74ab5101836af03fb73cc309ec",
+    "content_root_digest": "sha256:2ac299039d18d5cdd76dcd0b8e1cb9bc810659b4c54fc5e233ac1e03aad8a66d",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:72e5fe4e8f670a1618d79b16dfc9896b6e9f4276616d87632022b726ec01735a",
-    "input_inventory_digest": "sha256:7253b819fe63407ee2228b313810dec3d750c4aafc104f4db268abbd7ea83da2",
+    "input_inventory_digest": "sha256:366097715d0655fcdb3f08db2dcad144d9c3a78831cfa8af1ef7c51b6a99a7ef",
     "normative": true,
     "evidence": [
       {
@@ -884,7 +884,7 @@
       {
         "path": "ecosystem/defaultspack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:55118a8195a014afdcbd2b401b664fb737e27ba06fb0e50f74c40e1dea3e591f"
+        "digest": "sha256:99ab22319f14d04b9a6058e8fe04ba48f098c7b27fb049343301b92c7cf2d28a"
       }
     ]
   },
