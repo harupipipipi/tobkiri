@@ -172,7 +172,9 @@ def test_all_operations_preserve_bigint_results_and_no_authority(
 ) -> None:
     arguments: object = {"z": 2**64, "negative": -(2**64), "f": -0.0}
     if as_inner_json:
-        arguments = '{"z":18446744073709551616,"negative":-18446744073709551616,"f":-0.0}'
+        arguments = (
+            '{"z":18446744073709551616,"negative":-18446744073709551616,"f":-0.0}'
+        )
     result = adapter.response(adapter.invoke(operation, adapter.request({
         "intents": [{"name": "echo", "arguments": arguments}],
     })))
@@ -211,7 +213,9 @@ def test_adapter_fails_closed_on_unreviewed_integer_limit(monkeypatch: Any) -> N
         adapter.invoke(adapter.OPERATIONS[0], "{}")
 
 
-def test_v1_runtime_behavior_and_preserved_source_plan_are_unchanged(tmp_path: Path) -> None:
+def test_v1_runtime_behavior_and_preserved_source_plan_are_unchanged(
+    tmp_path: Path,
+) -> None:
     with pytest.raises(ValueError, match="safe integer"):
         v1.dumps(2**53)
     with pytest.raises(ValueError, match="safe integer"):
@@ -247,7 +251,8 @@ def test_supplemental_observations_bind_sources_without_claiming_guest_parity() 
         data = (ROOT / item["path"]).read_bytes()
         assert len(data) == item["bytes"]
         assert digest(data) == item["sha256"]
-    assert digest(canonical(report["source_bindings"])) == report["source_bindings_sha256"]
+    assert digest(canonical(report["source_bindings"])) == (
+        report["source_bindings_sha256"])
     assert {item["path"] for item in report["source_bindings"]} == {
         "packs/local.ai-tool-bridge-ordered-python/oracle.json",
         "packs/local.ai-tool-bridge-ordered-python/oracle.freeze.json",
@@ -288,7 +293,9 @@ def test_supplemental_observations_bind_sources_without_claiming_guest_parity() 
         assert case["outer_response_bytes"] == 229
     boundaries = report["integer_boundaries"]
     assert len(boundaries) == 4
-    assert {(item["digits"], item["negative"], item["status"]) for item in boundaries} == {
+    statuses = {(item["digits"], item["negative"], item["status"])
+                for item in boundaries}
+    assert statuses == {
         (4300, False, "success"), (4300, True, "success"),
         (4301, False, "original-ValueError"), (4301, True, "original-ValueError"),
     }

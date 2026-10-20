@@ -73,8 +73,8 @@
     },
     {
       "path": "scripts/wasm/observe_ordered_integer_v2.py",
-      "bytes": 11276,
-      "sha256": "9f3c2af2ca31cf16a7cd037babe44fadacba987997cb8ea3ad8714a0b763fe41"
+      "bytes": 11370,
+      "sha256": "3848e0bdac16c823155823064322fc393d180e040f3b04b521c80b81a644d505"
     },
     {
       "path": "scripts/wasm/prepare_ordered_tool_bridge.py",
@@ -107,7 +107,7 @@
       "sha256": "5a1e76765a525058268cd62b23bf6bdd460b53eac2198715ecbb44f03244eed9"
     }
   ],
-  "source_bindings_sha256": "c2622068e127e3ec7653fc35ae7bb2a012eee265d03d4b62a427d1cb617f2428",
+  "source_bindings_sha256": "5207b8d0cbd70bf1493eab43838a657798a848b11adc5891040e3bf076cf2ef4",
   "limits": {
     "inner_utf8_bytes": 4194304,
     "depth": 64,

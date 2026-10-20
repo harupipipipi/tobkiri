@@ -152,7 +152,9 @@ def observe() -> dict[str, object]:
     for digits in (4300, 4301):
         for sign in ("", "-"):
             token = sign + "9" * digits
-            payload = {"intents": [{"name": "echo", "arguments": '{"n":' + token + "}"}]}
+            payload = {"intents": [{
+                "name": "echo", "arguments": '{"n":' + token + "}",
+            }]}
             input_json = adapter.request(payload)
             entry = {"digits": digits, "negative": bool(sign), "input_json": input_json}
             try:
@@ -164,7 +166,9 @@ def observe() -> dict[str, object]:
                     adapter.invoke(adapter.OPERATIONS[0], input_json)
                 except ValueError as actual:
                     if type(actual) is not type(exc) or str(actual) != str(exc):
-                        raise ValueError("original digit-limit error changed") from actual
+                        raise ValueError(
+                            "original digit-limit error changed"
+                        ) from actual
                 else:
                     raise ValueError("v2 accepted an original digit-limit error")
                 entry.update(status="original-ValueError", message=str(exc),
@@ -203,7 +207,8 @@ def observe() -> dict[str, object]:
         "protocol": v2.PROTOCOL, "runtime": observed_runtime,
         "oracle_sha256": digest(oracle_raw), "oracle_freeze_sha256": digest(freeze_raw),
         "case_inputs_sha256": digest(canonical(inputs)),
-        "source_bindings": bindings, "source_bindings_sha256": digest(canonical(bindings)),
+        "source_bindings": bindings,
+        "source_bindings_sha256": digest(canonical(bindings)),
         "limits": {"inner_utf8_bytes": v1.MAX_BYTES, "depth": v1.MAX_DEPTH,
                    "nodes_including_keys": v1.MAX_NODES, "integer_decimal_digits": 4300,
                    "outer_core_strict_v1_bytes": v1.MAX_BYTES},
@@ -224,8 +229,10 @@ def main() -> None:
     report = observe()
     with output.open("xb") as stream:
         stream.write((json.dumps(report, ensure_ascii=True, indent=2) + "\n").encode())
-    print(json.dumps({"output": str(output), "counts": report["frozen_case_counts"],
-                      "wasm_execution_performed": False, "native_core_acceptance": False}))
+    print(json.dumps({
+        "output": str(output), "counts": report["frozen_case_counts"],
+        "wasm_execution_performed": False, "native_core_acceptance": False,
+    }))
 
 
 if __name__ == "__main__":
