@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -21,6 +22,35 @@ EXPECTED_FILES = {
     "inventory.json", "provenance.json", "ordered_json.py", "ordered_json_v2.py",
     "wit/pack.wit", "wit/deps/core.wit", "wit/deps/bridge-v2.wit",
 }
+
+
+def test_tree_enumeration_is_bounded_before_materializing_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only cap+1 synthetic entries may be consumed, with the iterator closed."""
+    reads = []
+    closed = []
+
+    class Entries:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            closed.append(True)
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            reads.append(True)
+            assert len(reads) <= 10
+            return SimpleNamespace(name=f"entry-{len(reads)}")
+
+    monkeypatch.setattr(staging.os, "scandir", lambda descriptor: Entries())
+    with pytest.raises(ValueError, match="undeclared inputs"):
+        staging._caller_tree()
+    assert len(reads) == 10
+    assert closed == [True]
 
 
 def digest(value: bytes) -> str:

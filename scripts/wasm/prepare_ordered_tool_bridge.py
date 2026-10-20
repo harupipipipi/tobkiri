@@ -33,6 +33,8 @@ HEADER = (
     b"# Source slices below are verbatim; see provenance.json.\n\n"
 )
 SYMBOLS = ("_TOOL_NAME", "create_tool_intent_operation", "_normalize", "_invalid")
+# Evidence only: no Gateway finalizer enters the extracted bridge module.
+FINALIZERS = ("_finalize_generate_result", "_finalize_stream_result")
 IMPORTS = (
     ("__future__", ("annotations",)),
     (None, ("json",)),
@@ -154,6 +156,57 @@ def _extract_module() -> tuple[bytes, dict[str, Any]]:
     }
 
 
+def _finalization_calls(tree: ast.Module, content: bytes) -> list[dict[str, Any]]:
+    """Bind the two actual _invoke edges, not unrelated finalizer references."""
+    source = content.decode()
+    invoke = _symbol(tree, "_invoke")
+    calls = []
+    pending = list(invoke.body)
+    while pending:
+        node = pending.pop()
+        if isinstance(node, (
+            ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda,
+        )):
+            continue
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id in FINALIZERS):
+            calls.append(node)
+        pending.extend(ast.iter_child_nodes(node))
+    if sorted(node.func.id for node in calls) != sorted(FINALIZERS):
+        raise ValueError("expected exactly two original _invoke finalization calls")
+    expected = {
+        "_finalize_generate_result": (
+            ["client", "value", "request_id", "attempt_candidate", "attempts"],
+            [("streaming", "streaming"), ("packvm_response", "packvm_response")],
+        ),
+        "_finalize_stream_result": (
+            ["client", "value", "request_id", "attempt_candidate",
+             "attempt_number", "attempts"],
+            [("packvm_response", "packvm_response")],
+        ),
+    }
+    records = []
+    for node in calls:
+        arguments = [ast.get_source_segment(source, item) for item in node.args]
+        keywords = [
+            (item.arg, ast.get_source_segment(source, item.value))
+            for item in node.keywords
+        ]
+        if (arguments, keywords) != expected[node.func.id]:
+            raise ValueError("unexpected original _invoke finalization arguments")
+        _, record = _source_slice(GATEWAY, content, node, node.func.id)
+        record.update(
+            caller_symbol="_invoke",
+            positional_arguments=arguments,
+            keyword_arguments=[
+                {"name": name, "expression": expression}
+                for name, expression in keywords
+            ],
+        )
+        records.append(record)
+    return sorted(records, key=lambda item: item["source_start_line"])
+
+
 def _inventory() -> dict[str, Any]:
     paths = (
         f"{BRIDGE_PACK}/contracts.v4.json",
@@ -218,10 +271,11 @@ def _inventory() -> dict[str, Any]:
     for name in (
         "TOOL_BRIDGE_CONTRACT", "TOOL_BRIDGE_GENERATE_OPERATION",
         "TOOL_BRIDGE_STREAM_OPERATION", "TOOL_BRIDGE_OPERATION", "_tool_intents",
-        "_attach_stream_tool_intents",
+        "_attach_stream_tool_intents", "_invoke", *FINALIZERS,
     ):
         _, record = _source_slice(GATEWAY, sources[GATEWAY], _symbol(tree, name), name)
         gateway_evidence.append(record)
+    finalization_calls = _finalization_calls(tree, sources[GATEWAY])
     call_sites = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
@@ -284,12 +338,15 @@ def _inventory() -> dict[str, Any]:
         "gateway_tool_intent_call_sites": sorted(
             call_sites, key=lambda record: record["source_start_line"],
         ),
+        "gateway_finalization_call_sites": finalization_calls,
         "notes": [
             "The base operation is declared but has no caller edge in these profiles.",
             "Gateway stream calls select .stream; other listed edges select .generate.",
             "The original host factory invokes the pure callable as normalize.",
             "No profile, manifest, host capture, or runtime selection is modified.",
             "Wrapper source and delegation sites are pinned; their runtime behavior is not migrated by this inventory.",
+            "Gateway finalizer definitions and _invoke calls are evidence only, "
+            "not extracted bridge code.",
         ],
     }
 

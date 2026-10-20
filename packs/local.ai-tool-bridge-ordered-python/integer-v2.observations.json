@@ -7,8 +7,8 @@
     "unicode": "15.1.0",
     "int_max_str_digits": 4300
   },
-  "oracle_sha256": "c571795b64aa470b12adf719f7946baa11129ed7f70556feb0f1fd3b272dd2fa",
-  "oracle_freeze_sha256": "97dcb9cb15004ecbc3319b6480f48d197f4539587fe1fb0c56c9d634b3cee9da",
+  "oracle_sha256": "9aae37387a6b0758451abe3cb6070d8a3d8106b744de053a5bc16e8715f3481d",
+  "oracle_freeze_sha256": "be98b1b5cc6a20dda6b098c8d7e2f378497f80bcaae8ad96a6f18b18d8e40553",
   "case_inputs_sha256": "39bf861b89825925890e3d1bae5fa99bdd9992323a7d25b19e49f57859366796",
   "source_bindings": [
     {
@@ -24,12 +24,12 @@
     {
       "path": "packs/local.ai-tool-bridge-ordered-python/oracle.freeze.json",
       "bytes": 580,
-      "sha256": "97dcb9cb15004ecbc3319b6480f48d197f4539587fe1fb0c56c9d634b3cee9da"
+      "sha256": "be98b1b5cc6a20dda6b098c8d7e2f378497f80bcaae8ad96a6f18b18d8e40553"
     },
     {
       "path": "packs/local.ai-tool-bridge-ordered-python/oracle.json",
       "bytes": 20051,
-      "sha256": "c571795b64aa470b12adf719f7946baa11129ed7f70556feb0f1fd3b272dd2fa"
+      "sha256": "9aae37387a6b0758451abe3cb6070d8a3d8106b744de053a5bc16e8715f3481d"
     },
     {
       "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json.py",
@@ -53,8 +53,8 @@
     },
     {
       "path": "packs/local.ai-tool-bridge-ordered-python/python/inventory.json",
-      "bytes": 14189,
-      "sha256": "c50e04ca75d826ea51a34fa460af48bbf736b6c5f9772542f67dd47168a167db"
+      "bytes": 16854,
+      "sha256": "512332db549b6ea86b8ae11e827cc5feb520724f13a34b0234b110d6e45e861c"
     },
     {
       "path": "packs/local.ai-tool-bridge-ordered-python/python/original_bridge.py",
@@ -64,7 +64,7 @@
     {
       "path": "packs/local.ai-tool-bridge-ordered-python/python/provenance.json",
       "bytes": 5246,
-      "sha256": "55e6ebe946b9700072f78bc346ac63a9a8a2700f790abaffd537cbf8b1ac0010"
+      "sha256": "4d3d828b00fa49bcba1f2b53a26b0cf98532ebcabaa572602be0738c205ee2d5"
     },
     {
       "path": "scripts/wasm/freeze_ordered_tool_bridge.py",
@@ -78,8 +78,8 @@
     },
     {
       "path": "scripts/wasm/prepare_ordered_tool_bridge.py",
-      "bytes": 15467,
-      "sha256": "8c616046c2698a108236f63d60a020b99e888404ab2cbc2ef53bc58b23e9ef3e"
+      "bytes": 18009,
+      "sha256": "f3034aa6c4296751ba69d820ba8ba688e4c0783f39b48d43e55a2eb38ed3b075"
     },
     {
       "path": "scripts/wasm/stage_ordered_tool_bridge.py",
@@ -107,7 +107,7 @@
       "sha256": "5a1e76765a525058268cd62b23bf6bdd460b53eac2198715ecbb44f03244eed9"
     }
   ],
-  "source_bindings_sha256": "d4f298b941ce1f8a57e5bae3025ea7ec98ae257b5a413c492a8c5de461a8bae1",
+  "source_bindings_sha256": "a09f6539e612744b6b093e56cc3d6d53a01f1e04a8846ecf98552743f051caea",
   "limits": {
     "inner_utf8_bytes": 4194304,
     "independent_depth_cap": null,

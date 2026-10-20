@@ -11,7 +11,7 @@ import stage_ordered_tool_bridge as v1
 from stage_ordered_tool_bridge import PACK, ROOT, bounded_read, strict_json
 
 OBSERVATIONS_SHA256 = (
-    "3387411b6ac46b160e793477d270aa1c110a0d58f033937d58957ffe47a539e4"
+    "438dd64bc9ec1f849739556e2ab25336751022afa24a59fa19ff7e539c22daa8"
 )
 INTERFACE = "local:ai-tool-bridge-ordered-python/bridge@2.0.0"
 PROTOCOL = "ordered-finite-json-v2"

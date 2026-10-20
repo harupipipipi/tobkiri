@@ -101,51 +101,131 @@
     },
     {
       "sha256": "3a633a80b13d133588f87c87965a32ed76e472c2b6087e7b4990e55efaca97fd",
-      "source_end_byte": 57791,
-      "source_end_line": 1517,
+      "source_end_byte": 58499,
+      "source_end_line": 1561,
       "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
-      "source_start_byte": 57115,
-      "source_start_line": 1500,
+      "source_start_byte": 57823,
+      "source_start_line": 1544,
       "symbol": "_tool_intents"
     },
     {
       "sha256": "2931c3cb605bdfdeb1d05ef8f176a3761242d09010a364d530f55a7a7e6da9ce",
-      "source_end_byte": 57113,
-      "source_end_line": 1497,
+      "source_end_byte": 57821,
+      "source_end_line": 1541,
       "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
-      "source_start_byte": 56593,
-      "source_start_line": 1481,
+      "source_start_byte": 57301,
+      "source_start_line": 1525,
       "symbol": "_attach_stream_tool_intents"
+    },
+    {
+      "sha256": "f9d3a1e1a22d879fcf9e675ffdfee55944f465e04a7a1917d72a84c647917124",
+      "source_end_byte": 21320,
+      "source_end_line": 567,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 12295,
+      "source_start_line": 337,
+      "symbol": "_invoke"
+    },
+    {
+      "sha256": "2cba35066aef84a90c331cb9e6512ce02aacda571dc5b1572afb614e61a804f5",
+      "source_end_byte": 22143,
+      "source_end_line": 596,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 21322,
+      "source_start_line": 570,
+      "symbol": "_finalize_generate_result"
+    },
+    {
+      "sha256": "8432afe48e5b6b3d072c9d78721f09dd2f59e13d63dc6323376deba1dc472a94",
+      "source_end_byte": 23737,
+      "source_end_line": 644,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 22145,
+      "source_start_line": 599,
+      "symbol": "_finalize_stream_result"
+    }
+  ],
+  "gateway_finalization_call_sites": [
+    {
+      "caller_symbol": "_invoke",
+      "keyword_arguments": [
+        {
+          "expression": "packvm_response",
+          "name": "packvm_response"
+        }
+      ],
+      "positional_arguments": [
+        "client",
+        "value",
+        "request_id",
+        "attempt_candidate",
+        "attempt_number",
+        "attempts"
+      ],
+      "sha256": "2270acfd00e68dab851e80024613470b7085dba582825aad1f2c9d537e6abd94",
+      "source_end_byte": 19309,
+      "source_end_line": 516,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 18998,
+      "source_start_line": 508,
+      "symbol": "_finalize_stream_result"
+    },
+    {
+      "caller_symbol": "_invoke",
+      "keyword_arguments": [
+        {
+          "expression": "streaming",
+          "name": "streaming"
+        },
+        {
+          "expression": "packvm_response",
+          "name": "packvm_response"
+        }
+      ],
+      "positional_arguments": [
+        "client",
+        "value",
+        "request_id",
+        "attempt_candidate",
+        "attempts"
+      ],
+      "sha256": "cbae4789d35be1975096eb18816449350192fb110ba587d4756321c92ae98b10",
+      "source_end_byte": 19591,
+      "source_end_line": 525,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 19309,
+      "source_start_line": 517,
+      "symbol": "_finalize_generate_result"
     }
   ],
   "gateway_tool_intent_call_sites": [
     {
-      "sha256": "b3a0f06d98c1101672c12bc6f27a1727a84f9cffd4875c8b67985138cd3173a3",
-      "source_end_byte": 20231,
-      "source_end_line": 534,
+      "sha256": "2b383ed95c77238f41beecea58fb0e3efe0d2608485d92f7fffc8ba206ab13fa",
+      "source_end_byte": 21866,
+      "source_end_line": 587,
       "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
-      "source_start_byte": 20042,
-      "source_start_line": 531,
-      "streaming_expression": "True",
-      "symbol": "_tool_intents"
-    },
-    {
-      "sha256": "ca9d74b1da2b4fdb5a200e29bc4286e9a6e7fdbbeeb0cb17fa2db2d40f33d923",
-      "source_end_byte": 20951,
-      "source_end_line": 549,
-      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
-      "source_start_byte": 20756,
-      "source_start_line": 544,
+      "source_start_byte": 21719,
+      "source_start_line": 582,
       "streaming_expression": "streaming",
       "symbol": "_tool_intents"
     },
     {
-      "sha256": "55cdb8a88003118c3c7ea58d3c37c0b8642b5982ffc794ea5767ab6a0697953d",
-      "source_end_byte": 57064,
-      "source_end_line": 1496,
+      "sha256": "71dc0749eb8763d684750f1963ef04d9b024ccb57609aafa7e5556e8878349d3",
+      "source_end_byte": 23385,
+      "source_end_line": 636,
       "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
-      "source_start_byte": 56900,
-      "source_start_line": 1491,
+      "source_start_byte": 23244,
+      "source_start_line": 633,
+      "streaming_expression": "True",
+      "symbol": "_tool_intents"
+    },
+    {
+      "sha256": "55cdb8a88003118c3c7ea58d3c37c0b8642b5982ffc794ea5767ab6a0697953d",
+      "source_end_byte": 57772,
+      "source_end_line": 1540,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 57608,
+      "source_start_line": 1535,
       "streaming_expression": "True",
       "symbol": "_tool_intents"
     }
@@ -155,7 +235,8 @@
     "Gateway stream calls select .stream; other listed edges select .generate.",
     "The original host factory invokes the pure callable as normalize.",
     "No profile, manifest, host capture, or runtime selection is modified.",
-    "Wrapper source and delegation sites are pinned; their runtime behavior is not migrated by this inventory."
+    "Wrapper source and delegation sites are pinned; their runtime behavior is not migrated by this inventory.",
+    "Gateway finalizer definitions and _invoke calls are evidence only, not extracted bridge code."
   ],
   "operations": [
     {
@@ -238,9 +319,9 @@
       "sha256": "a011d0559a5bf485393ed738830e03ab09e54761539ec3c3961feeefc5b9ed29"
     },
     {
-      "bytes": 65389,
+      "bytes": 66097,
       "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
-      "sha256": "6f091cc5230c53d8571a134e3d35d0009a0af6cddd51ef933a5d1ea8dc5f2774"
+      "sha256": "9df95525a3c467ba3313d8b3ea9bc1ddc7de7f8d1d4a14a9cf8d9f3fa849b208"
     },
     {
       "bytes": 5223,

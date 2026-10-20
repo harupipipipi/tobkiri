@@ -43,13 +43,13 @@ DESTINATIONS = {
 # Reviewed source bytes, refreshed only after explicit source review.
 REVIEWED_SHA256 = {
     "app.py": (
-        "5e4b8be7be3fc0909b34e60ecf06094d203387ddf54d65eabd188ed6fd781336"
+        "caf0b4be78264a60588b6f6a85e9e34554440263782e83d0be7047263aaa7081"
     ),
     "gateway_tool_caller_adapter.py": (
-        "3b606a2ae967d41fba880279f0416c1aec05ca08e4cefdbaa9d2c39955c6a583"
+        "743f3b338ecb8a66031fb5b721a4272773ae24552231e0ec8b6d70659aa412df"
     ),
     "inventory.json": (
-        "7416ba4a38059dc3e18452abe947bb8dc6b0cfb82ead6a8a2e2dc95b30d556cc"
+        "10e299bad241d7460881254d94942b2929c4fe701bbe6a7688a3b1e690f7f12c"
     ),
     "ordered_json.py": (
         "7df89c2e5275fdc795c13e0d70d6ec69f7f022aa968c58a3c1b1637e0eee2158"
@@ -61,7 +61,7 @@ REVIEWED_SHA256 = {
         "9b0d671807095cf2211b8bb51db703cea563133b2e8d935a50e9f77ea40ff1b1"
     ),
     "provenance.json": (
-        "569a9f60a6ce0a72b6f23a91611967c09b646f328f60844de79e9b87e1185c36"
+        "b41b85456970098f6fb5bddda3d9ad97db3d23f004c0ec88dc1feeb33b95f155"
     ),
     "wit/deps/bridge-v2.wit": (
         "513454d839ac468205bc5b4ed93032625ed4f5d3064aa17f643f907e80bfeb78"
@@ -74,7 +74,7 @@ REVIEWED_SHA256 = {
     ),
 }
 REVIEWED_EXTRACTOR_SHA256 = (
-    "86abbc22c1fdf1c24634e3adc65c0c286b4c253a9d7db1f6ee8ff8542b3c14aa"
+    "9412b61e277e8247b62965bbe8a40ed2027d3cea4ec2259067422f26f8c7069b"
 )
 
 
@@ -123,9 +123,12 @@ def _caller_tree() -> None:
     found: set[str] = set()
 
     def visit(descriptor: int, prefix: str = "") -> None:
-        names = os.listdir(descriptor)
-        if len(names) > len(allowed) + 2:
-            raise ValueError("caller source tree contains undeclared inputs")
+        names = []
+        with os.scandir(descriptor) as entries:
+            for entry in entries:
+                if len(names) >= len(allowed) + 2:
+                    raise ValueError("caller source tree contains undeclared inputs")
+                names.append(entry.name)
         for name in sorted(names):
             relative = f"{prefix}/{name}" if prefix else name
             info = os.stat(name, dir_fd=descriptor, follow_symlinks=False)

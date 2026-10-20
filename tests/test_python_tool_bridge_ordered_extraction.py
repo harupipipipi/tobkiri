@@ -92,6 +92,11 @@ class OrderedBridgeExtractionTests(unittest.TestCase):
     def test_only_original_stdlib_imports_and_selected_definitions(self) -> None:
         """No host factory, registration shim, emulation, or host import remains."""
         _module.prepare(self.output)
+        self.assertFalse(set(_module.FINALIZERS) & set(_module.SYMBOLS))
+        self.assertEqual(
+            (self.output / "original_bridge.py").read_bytes(),
+            (CHECKED_IN / "original_bridge.py").read_bytes(),
+        )
         tree = ast.parse((self.output / "original_bridge.py").read_bytes())
         imports = [node for node in ast.walk(tree)
                    if isinstance(node, (ast.Import, ast.ImportFrom))]
@@ -149,7 +154,8 @@ class OrderedBridgeExtractionTests(unittest.TestCase):
                     self.assertEqual(entry["target_provider_id"],
                                      item["target_provider_id"])
         for evidence in (inventory["gateway_evidence"]
-                         + inventory["gateway_tool_intent_call_sites"]):
+                         + inventory["gateway_tool_intent_call_sites"]
+                         + inventory["gateway_finalization_call_sites"]):
             content = sources[evidence["source_path"]]
             source_slice = content[
                 evidence["source_start_byte"]:evidence["source_end_byte"]
@@ -157,7 +163,166 @@ class OrderedBridgeExtractionTests(unittest.TestCase):
             self.assertEqual(_digest(source_slice), evidence["sha256"])
         self.assertEqual([item["streaming_expression"]
                           for item in inventory["gateway_tool_intent_call_sites"]],
-                         ["True", "streaming", "True"])
+                         ["streaming", "True", "True"])
+
+    def test_inventory_binds_actual_finalizer_path_and_arguments(self) -> None:
+        """Evidence links the enclosing caller to both original tool paths."""
+        inventory = _module._inventory()
+        definitions = {
+            item["symbol"]: item for item in inventory["gateway_evidence"]
+        }
+        self.assertTrue(
+            {"_invoke", *_module.FINALIZERS} <= definitions.keys()
+        )
+        calls = inventory["gateway_finalization_call_sites"]
+        self.assertEqual([item["symbol"] for item in calls], [
+            "_finalize_stream_result", "_finalize_generate_result",
+        ])
+        self.assertEqual([item["positional_arguments"] for item in calls], [
+            ["client", "value", "request_id", "attempt_candidate",
+             "attempt_number", "attempts"],
+            ["client", "value", "request_id", "attempt_candidate", "attempts"],
+        ])
+        self.assertEqual([item["keyword_arguments"] for item in calls], [
+            [{"name": "packvm_response", "expression": "packvm_response"}],
+            [{"name": "streaming", "expression": "streaming"},
+             {"name": "packvm_response", "expression": "packvm_response"}],
+        ])
+        source = (ROOT / _module.GATEWAY).read_bytes()
+        tree = ast.parse(source)
+        functions = {
+            node.name: node for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+        }
+        for item in calls:
+            self.assertEqual(item["caller_symbol"], "_invoke")
+            self.assertTrue(
+                definitions["_invoke"]["source_start_line"]
+                <= item["source_start_line"] <= item["source_end_line"]
+                <= definitions["_invoke"]["source_end_line"]
+            )
+            selected = source[item["source_start_byte"]:item["source_end_byte"]]
+            self.assertEqual(selected, b"".join(source.splitlines(keepends=True)[
+                item["source_start_line"] - 1:item["source_end_line"]
+            ]))
+            self.assertEqual(_digest(selected), item["sha256"])
+            self.assertEqual(_module._source_slice(
+                _module.GATEWAY, source, functions[item["symbol"]], item["symbol"],
+            )[1], definitions[item["symbol"]])
+        for item, owner in zip(inventory["gateway_tool_intent_call_sites"], (
+            "_finalize_generate_result", "_finalize_stream_result",
+            "_attach_stream_tool_intents",
+        )):
+            self.assertTrue(
+                definitions[owner]["source_start_line"]
+                <= item["source_start_line"] <= item["source_end_line"]
+                <= definitions[owner]["source_end_line"]
+            )
+        downstream = {
+            "_finalize_generate_result": [
+                ("_tool_intents", ["client", 'result["tool_intents"]', "request_id"],
+                 [("streaming", "streaming")]),
+            ],
+            "_finalize_stream_result": [
+                ("_attach_stream_tool_intents",
+                 ["client", "events", "request_id"], []),
+                ("_tool_intents",
+                 ["client", 'value.get("tool_intents", [])', "request_id"],
+                 [("streaming", "True")]),
+            ],
+            "_attach_stream_tool_intents": [
+                ("_tool_intents", ["client", "[intent]", "request_id"],
+                 [("streaming", "True")]),
+            ],
+        }
+        for owner, expected in downstream.items():
+            nodes = sorted((
+                node for node in ast.walk(functions[owner])
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id in {"_tool_intents", "_attach_stream_tool_intents"}
+            ), key=lambda node: node.lineno)
+            self.assertEqual([(
+                node.func.id,
+                [ast.get_source_segment(source.decode(), item) for item in node.args],
+                [(item.arg, ast.get_source_segment(source.decode(), item.value))
+                 for item in node.keywords],
+            ) for node in nodes], expected)
+
+    def test_changed_finalizer_call_path_is_rejected(self) -> None:
+        """Unrelated references cannot replace missing, duplicated or changed edges."""
+        capture = _module._capture
+        source = capture(_module.GATEWAY)
+        for mutation in (
+            "missing", "duplicate", "identity", "candidate", "attempt", "streaming",
+            "packvm_response", "outside_invoke", "nested_invoke",
+        ):
+            if mutation in {"missing", "outside_invoke", "nested_invoke"}:
+                changed = source.replace(
+                    b"return _finalize_generate_result(",
+                    b"return unrelated_generate_result(", 1,
+                )
+                if mutation == "outside_invoke":
+                    changed += (
+                        b"\ndef unrelated_finalizer_reference():\n"
+                        b"    return _finalize_generate_result(\n"
+                        b"        client, value, request_id, "
+                        b"attempt_candidate, attempts,\n"
+                        b"        streaming=streaming, "
+                        b"packvm_response=packvm_response)\n"
+                    )
+                elif mutation == "nested_invoke":
+                    changed = changed.replace(
+                        b"    resolve_only = bool(payload.get(\"resolve_only\"))",
+                        b"    def unrelated_finalizer_reference():\n"
+                        b"        return _finalize_generate_result(\n"
+                        b"            client, value, request_id, "
+                        b"attempt_candidate, attempts,\n"
+                        b"            streaming=streaming, "
+                        b"packvm_response=packvm_response)\n"
+                        b"    resolve_only = bool(payload.get(\"resolve_only\"))", 1,
+                    )
+            elif mutation == "duplicate":
+                changed = source.replace(
+                    b"                return _finalize_stream_result(",
+                    b"                _finalize_stream_result()\n"
+                    b"                return _finalize_stream_result(", 1,
+                )
+            elif mutation == "identity":
+                changed = source.replace(
+                    b"return _finalize_stream_result(",
+                    b"return _finalize_generate_result(", 1,
+                )
+            else:
+                tree = ast.parse(source)
+                target = (
+                    "_finalize_generate_result"
+                    if mutation in {"candidate", "streaming"}
+                    else "_finalize_stream_result"
+                )
+                call = next(
+                    node for node in ast.walk(_module._symbol(tree, "_invoke"))
+                    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id == target
+                )
+                expression = ast.get_source_segment(source.decode(), call).encode()
+                before, after = {
+                    "candidate": (b"attempt_candidate", b"selected"),
+                    "attempt": (b"attempt_number", b"1"),
+                    "streaming": (b"streaming=streaming", b"streaming=False"),
+                    "packvm_response": (
+                        b"packvm_response=packvm_response", b"packvm_response=False",
+                    ),
+                }[mutation]
+                changed = source.replace(
+                    expression, expression.replace(before, after, 1), 1,
+                )
+            with self.subTest(mutation=mutation):
+                self.assertNotEqual(changed, source)
+                with patch.object(_module, "_capture", lambda path: (
+                    changed if path == _module.GATEWAY else capture(path)
+                )):
+                    with self.assertRaisesRegex(ValueError, "finalization"):
+                        _module._inventory()
 
     def test_deterministic_preparation_does_not_change_originals(self) -> None:
         """Output directory is not evidence, and source files remain untouched."""

@@ -80,6 +80,11 @@ def test_complete_lines_and_bytes_are_exact(tmp_path: Path) -> None:
 
 def test_extraction_has_no_host_authority_or_normalizer() -> None:
     """Only the original error, four constants and two callers are executable."""
+    assert not set(prepare.FINALIZERS) & set(prepare.SYMBOLS)
+    files, _ = prepare._prepared_files()
+    assert files["original_gateway_tool_caller.py"] == (
+        PACK / "python/original_gateway_tool_caller.py"
+    ).read_bytes()
     tree = ast.parse((PACK / "python/original_gateway_tool_caller.py").read_bytes())
     assert [(node.module, [item.name for item in node.names])
             for node in tree.body if isinstance(node, ast.ImportFrom)] == [
@@ -110,7 +115,10 @@ def test_inventory_keeps_four_edges_not_four_exports() -> None:
     assert inventory["exported_helper_operations"] == [
         "generate-intents", "stream-intents", "stream-event-intents",
     ]
-    assert "_invoke" in inventory["not_migrated"]
+    assert {"_invoke", *prepare.FINALIZERS} <= set(inventory["not_migrated"])
+    assert {"_invoke", *prepare.FINALIZERS} <= {
+        item["symbol"] for item in inventory["gateway_evidence"]
+    }
     sources = {}
     for item in inventory["sources"]:
         content = (ROOT / item["path"]).read_bytes()
@@ -127,6 +135,7 @@ def test_inventory_keeps_four_edges_not_four_exports() -> None:
                 assert entry["target_provider_id"] == item["target_provider_id"]
     evidence = (
         inventory["gateway_evidence"] + inventory["gateway_tool_intent_call_sites"]
+        + inventory["gateway_finalization_call_sites"]
     )
     for wrapper in inventory["wrapper_evidence"]:
         assert wrapper["migrated"] is False
@@ -140,8 +149,160 @@ def test_inventory_keeps_four_edges_not_four_exports() -> None:
         ]) == item["sha256"]
     assert [item["streaming_expression"]
             for item in inventory["gateway_tool_intent_call_sites"]] == [
-        "True", "streaming", "True",
+        "streaming", "True", "True",
     ]
+
+
+def test_inventory_binds_actual_finalizer_calls_and_original_arguments() -> None:
+    """The inventory links _invoke to each complete evidence-only helper body."""
+    files, _ = prepare._prepared_files()
+    inventory = json.loads(files["inventory.json"])
+    definitions = {item["symbol"]: item for item in inventory["gateway_evidence"]}
+    calls = inventory["gateway_finalization_call_sites"]
+    assert [item["symbol"] for item in calls] == [
+        "_finalize_stream_result", "_finalize_generate_result",
+    ]
+    assert [item["positional_arguments"] for item in calls] == [
+        ["client", "value", "request_id", "attempt_candidate",
+         "attempt_number", "attempts"],
+        ["client", "value", "request_id", "attempt_candidate", "attempts"],
+    ]
+    assert [item["keyword_arguments"] for item in calls] == [
+        [{"name": "packvm_response", "expression": "packvm_response"}],
+        [{"name": "streaming", "expression": "streaming"},
+         {"name": "packvm_response", "expression": "packvm_response"}],
+    ]
+    source = (ROOT / prepare.GATEWAY).read_bytes()
+    tree = ast.parse(source)
+    function_nodes = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    for item in calls:
+        assert item["caller_symbol"] == "_invoke"
+        assert (
+            definitions["_invoke"]["source_start_line"]
+            <= item["source_start_line"] <= item["source_end_line"]
+            <= definitions["_invoke"]["source_end_line"]
+        )
+        selected = source[item["source_start_byte"]:item["source_end_byte"]]
+        assert selected == b"".join(source.splitlines(keepends=True)[
+            item["source_start_line"] - 1:item["source_end_line"]
+        ])
+        assert _digest(selected) == item["sha256"]
+        definition = next(
+            node for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == item["symbol"]
+        )
+        assert prepare._slice(
+            prepare.GATEWAY, source, definition, definition.name,
+        )[1] == definitions[definition.name]
+    for item, owner in zip(inventory["gateway_tool_intent_call_sites"], (
+        "_finalize_generate_result", "_finalize_stream_result",
+        "_attach_stream_tool_intents",
+    )):
+        assert (
+            definitions[owner]["source_start_line"]
+            <= item["source_start_line"] <= item["source_end_line"]
+            <= definitions[owner]["source_end_line"]
+        )
+    downstream = {
+        "_finalize_generate_result": [
+            ("_tool_intents", ["client", 'result["tool_intents"]', "request_id"],
+             [("streaming", "streaming")]),
+        ],
+        "_finalize_stream_result": [
+            ("_attach_stream_tool_intents", ["client", "events", "request_id"], []),
+            ("_tool_intents", ["client", 'value.get("tool_intents", [])', "request_id"],
+             [("streaming", "True")]),
+        ],
+        "_attach_stream_tool_intents": [
+            ("_tool_intents", ["client", "[intent]", "request_id"],
+             [("streaming", "True")]),
+        ],
+    }
+    for owner, expected in downstream.items():
+        nodes = sorted((
+            node for node in ast.walk(function_nodes[owner])
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id in {"_tool_intents", "_attach_stream_tool_intents"}
+        ), key=lambda node: node.lineno)
+        assert [(
+            node.func.id,
+            [ast.get_source_segment(source.decode(), item) for item in node.args],
+            [(item.arg, ast.get_source_segment(source.decode(), item.value))
+             for item in node.keywords],
+        ) for node in nodes] == expected
+
+
+@pytest.mark.parametrize("mutation", [
+    "missing", "duplicate", "identity", "candidate", "attempt", "streaming",
+    "packvm_response", "outside_invoke", "nested_invoke",
+])
+def test_changed_finalizer_call_path_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, mutation: str,
+) -> None:
+    """Fresh generation must reject broken edges, even if definitions survive."""
+    capture = prepare._capture
+    source = capture(prepare.GATEWAY)
+    if mutation in {"missing", "outside_invoke", "nested_invoke"}:
+        changed = source.replace(
+            b"return _finalize_generate_result(",
+            b"return unrelated_generate_result(", 1,
+        )
+        if mutation == "outside_invoke":
+            changed += (
+                b"\ndef unrelated_finalizer_reference():\n"
+                b"    return _finalize_generate_result(\n"
+                b"        client, value, request_id, attempt_candidate, attempts,\n"
+                b"        streaming=streaming, packvm_response=packvm_response)\n"
+            )
+        elif mutation == "nested_invoke":
+            changed = changed.replace(
+                b"    resolve_only = bool(payload.get(\"resolve_only\"))",
+                b"    def unrelated_finalizer_reference():\n"
+                b"        return _finalize_generate_result(\n"
+                b"            client, value, request_id, attempt_candidate, attempts,\n"
+                b"            streaming=streaming, packvm_response=packvm_response)\n"
+                b"    resolve_only = bool(payload.get(\"resolve_only\"))", 1,
+            )
+    elif mutation == "duplicate":
+        changed = source.replace(
+            b"                return _finalize_stream_result(",
+            b"                _finalize_stream_result()\n"
+            b"                return _finalize_stream_result(", 1,
+        )
+    elif mutation == "identity":
+        changed = source.replace(
+            b"return _finalize_stream_result(",
+            b"return _finalize_generate_result(", 1,
+        )
+    else:
+        tree = ast.parse(source)
+        target = (
+            "_finalize_generate_result" if mutation in {"candidate", "streaming"}
+            else "_finalize_stream_result"
+        )
+        call = next(
+            node for node in ast.walk(prepare._symbol(tree, "_invoke"))
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id == target
+        )
+        expression = ast.get_source_segment(source.decode(), call).encode()
+        before, after = {
+            "candidate": (b"attempt_candidate", b"selected"),
+            "attempt": (b"attempt_number", b"1"),
+            "streaming": (b"streaming=streaming", b"streaming=False"),
+            "packvm_response": (
+                b"packvm_response=packvm_response", b"packvm_response=False",
+            ),
+        }[mutation]
+        changed = source.replace(expression, expression.replace(before, after, 1), 1)
+    assert changed != source
+    monkeypatch.setattr(prepare, "_capture", lambda path: (
+        changed if path == prepare.GATEWAY else capture(path)
+    ))
+    with pytest.raises(ValueError, match="finalization"):
+        prepare._prepared_files()
 
 
 def test_required_import_and_own_helper_exports_only() -> None:

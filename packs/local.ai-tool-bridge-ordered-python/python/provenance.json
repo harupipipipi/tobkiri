@@ -4,9 +4,9 @@
   "extraction": "verbatim-complete-source-lines",
   "generator": "scripts/wasm/prepare_ordered_tool_bridge.py",
   "inventory": {
-    "bytes": 14189,
+    "bytes": 16854,
     "path": "inventory.json",
-    "sha256": "c50e04ca75d826ea51a34fa460af48bbf736b6c5f9772542f67dd47168a167db"
+    "sha256": "512332db549b6ea86b8ae11e827cc5feb520724f13a34b0234b110d6e45e861c"
   },
   "line_numbers": "one-based-inclusive",
   "output": {
