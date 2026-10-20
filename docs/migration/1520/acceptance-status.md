@@ -24,6 +24,36 @@ These results do not constitute Rust, native UI, or migration acceptance.
 The earlier [Audit/Census checkpoint 1041](rust-progress.md#applied-auditcensus-checkpoint-1041)
 is historical, source-bound evidence, not a current full-workspace result.
 
+## Bounded Python-on-Wasm checkpoint, 2026-10-20
+
+The [finalization trial](../../../tools/python313-producer/trials/2026-10-20-finalization/)
+preserves actual current-source component builds, 33-case replays for each
+ordered bridge version, and a ten-case five-component development composition.
+The separate [current caller trial](../../../tools/python313-producer/trials/2026-10-20-current-caller/)
+preserves the thirty-case original-Python caller/bridge replay. Declared
+invalid/nonfinite transport boundaries and exclusions remain explicit; these
+are not full legacy HTTP-error, retry or billing parity claims.
+
+The [two-Pack static trial](../../../tools/python313-producer/trials/2026-10-20-native-caller-static/)
+then validates the two separate actual components through production WIT
+inspection and Profile compilation. It also retains the failed split-WIT
+attempt and its reversible packaging correction. It opens no Core or Session
+and executes no guest. The [native replay route](../../../tools/python313-producer/TWO_PACK_NATIVE_CHECK.md)
+is a separate requirement, not a result implied by static validation.
+
+At source checkpoint `fb8f87b0ab9e277f42e91a63687a11051478755b`, the foundation
+gate remains at zero failures and the complete gate remains at **1,044**:
+208 source findings, 836 unresolved inventory entries, and zero dependency
+findings. No inventory unit or acceptance item is closed by these trials.
+
+Two-Pack component source is 35,798,851 bytes. The five separate finalization
+components total 89,513,931 bytes and exceed the unchanged 64 MiB compilation
+catalog limit. A successful development composition is not proof that this
+five-Pack set can be admitted by Core. Native Core/Gate replay, deterministic
+in-flight guest cancellation, production registration/activation, complete
+Gateway migration and Host retirement remain open. The shutdown-admission
+negative test is deliberately not described as in-flight cancellation.
+
 ## Acceptance checklist
 
 1. [ ] **CI rejects Pack IDs and Pack-owned shape names in core and hosts.**
