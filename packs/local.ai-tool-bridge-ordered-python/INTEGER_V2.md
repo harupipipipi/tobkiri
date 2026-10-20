@@ -54,8 +54,9 @@ Host replay or whole-unit parity.
 
 ## Pending component and production proof
 
-No v2 component is built or staged by this change. The existing v1 build plan
-and receipt remain byte-identical and must continue to validate. Do not modify
+The separate v2 guest source and staging helper bind a versioned ABI; their
+source tests are not component execution. The existing v1 build plan and
+receipt remain byte-identical and must continue to validate. Do not modify
 their source hashes or relabel their observations as v2 evidence.
 
 A replacement requires an explicit versioned v2 Pack/WIT route and caller,

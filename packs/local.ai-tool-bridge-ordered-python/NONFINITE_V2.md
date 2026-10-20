@@ -41,14 +41,16 @@ localhost HTTP surface.
 ## Pending guest and caller integration
 
 The v1 codec, original source extraction, oracle, app, WIT, component, receipt and
-staging remain unchanged. This addition is not wired into a v2 Wasm entry point,
-and no guest, native Core, production caller, or full Host replay is claimed.
+staging remain unchanged. The separate `app_v2.py` source entrypoint now wires
+the v2 adapter into the versioned WIT route. Source-level mapping tests are not
+actual guest, native Core, production caller, or full Host replay.
 The three historical NaN cases remain outside the v1 parity claim; the new result
 is source-level terminal-provider-failure handling, not successful-output parity.
 
-A future versioned guest must catch `NonFiniteProviderOutputError` before its
-generic invalid/transport mapping and return the existing canonical Core
-`INTERNAL` error with a fixed non-secret message. Native Core currently projects
+The versioned source entrypoint catches `NonFiniteProviderOutputError` before
+its generic invalid/transport mapping and raises the existing canonical Core
+`INTERNAL` error with a fixed non-secret message. This mapping still requires
+actual generated bindings, component execution and native dispatch proof. Native Core currently projects
 that to `internal` / `provider reported an internal error`, deliberately distinct
 from the legacy exception class and code. Do not add `provider_failed` to Core's
 closed enum, weaken CoreStrictV1, emit NaN DATA, or turn the failure into an

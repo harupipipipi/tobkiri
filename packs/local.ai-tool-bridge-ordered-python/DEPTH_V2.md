@@ -49,10 +49,11 @@ claim preservation of all historical Host/HTTP resource failures. Existing
 canonical/seal/digest byte compatibility is a separate requirement, not changed
 by this transport revision.
 
-A future v2 component boundary must map actual recursion/resource failures to
-the existing WIT `limit-exceeded` code with a fixed public message, independently
-of invalid input and the reviewed nonfinite-provider failure mapping. This
-document does not claim that the new component entrypoint is built or wired.
+The separate `app_v2.py` source boundary maps `RecursionError` to the existing
+WIT `limit-exceeded` code with a fixed public message, independently of invalid
+input and the reviewed nonfinite-provider failure mapping. Other resource
+exceptions are not silently relabeled. Source tests do not establish that this
+entrypoint has been built or executed in a component.
 Wasm traps and exhaustion still require their real Core handling and evidence.
 
 ## Proof and remaining integration
