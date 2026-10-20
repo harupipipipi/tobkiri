@@ -3,8 +3,8 @@ use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs::{File, OpenOptions},
-    io::{Read, Write},
+    fs::OpenOptions,
+    io::Write,
     path::{Path, PathBuf},
 };
 use tobkiri_canon::{Digest, Variant, ids::ShapeRef};
@@ -39,21 +39,16 @@ pub(super) fn no_links(path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn bounded_read(path: &Path, limit: usize) -> Result<Vec<u8>> {
-    no_links(path)?;
-    let file = File::open(path)?;
-    ensure!(
-        file.metadata()?.is_file(),
-        "evidence must be a regular file"
-    );
-    ensure!(
-        file.metadata()?.len() <= limit as u64,
-        "evidence exceeds size bound"
-    );
-    let mut bytes = Vec::new();
-    file.take(limit as u64 + 1).read_to_end(&mut bytes)?;
-    ensure!(bytes.len() <= limit, "evidence grew beyond size bound");
-    Ok(bytes)
+pub(super) fn bounded_read(root: &Path, relative: &str, limit: usize) -> Result<Vec<u8>> {
+    no_links(root)?;
+    // Keep source traversal beneath the opened repository descriptor. The
+    // shared reader rejects child symlinks and nonregular files without a
+    // blocking open, and checks file identity and length across the read.
+    Ok(tobkiri_canon::files::read_relative(
+        root,
+        relative,
+        limit as u64,
+    )?)
 }
 
 pub(super) fn strict_json(bytes: &[u8]) -> Result<Value> {
@@ -78,7 +73,7 @@ pub(super) fn environment_hash(name: &str) -> Result<String> {
 /// Bind every staged source to the reviewed source set and the current original
 /// files. No host Python, producer, guest, or expected output is executed.
 pub fn reviewed_sources(repo: &Path) -> Result<Value> {
-    let candidate = repo.join("packs").join(PACK);
+    let candidate = format!("packs/{PACK}");
     let mut sources = BTreeMap::new();
     for name in [
         "app.py",
@@ -89,27 +84,32 @@ pub fn reviewed_sources(repo: &Path) -> Result<Value> {
     ] {
         sources.insert(
             name,
-            bounded_read(&candidate.join("python").join(name), EVIDENCE_LIMIT)?,
+            bounded_read(repo, &format!("{candidate}/python/{name}"), EVIDENCE_LIMIT)?,
         );
     }
     sources.insert(
         "ordered_json.py",
-        bounded_read(&candidate.join("ordered_json.py"), EVIDENCE_LIMIT)?,
+        bounded_read(
+            repo,
+            &format!("{candidate}/ordered_json.py"),
+            EVIDENCE_LIMIT,
+        )?,
     );
     sources.insert(
         "reviewed-inputs.json",
-        bounded_read(&candidate.join("oracle.freeze.json"), EVIDENCE_LIMIT)?,
+        bounded_read(
+            repo,
+            &format!("{candidate}/oracle.freeze.json"),
+            EVIDENCE_LIMIT,
+        )?,
     );
     sources.insert(
         "wit/pack.wit",
-        bounded_read(&candidate.join("wit/pack.wit"), EVIDENCE_LIMIT)?,
+        bounded_read(repo, &format!("{candidate}/wit/pack.wit"), EVIDENCE_LIMIT)?,
     );
     sources.insert(
         "wit/deps/core.wit",
-        bounded_read(
-            &repo.join("crates/tobkiri-wit/wit/core/core.wit"),
-            EVIDENCE_LIMIT,
-        )?,
+        bounded_read(repo, "crates/tobkiri-wit/wit/core/core.wit", EVIDENCE_LIMIT)?,
     );
     let manifest = Value::Array(
         sources
@@ -138,7 +138,7 @@ pub fn reviewed_sources(repo: &Path) -> Result<Value> {
                     .all(|part| matches!(part, std::path::Component::Normal(_))),
                 "non-relative source provenance"
             );
-            let bytes = bounded_read(&repo.join(relative), 16 * 1024 * 1024)?;
+            let bytes = bounded_read(repo, relative, 16 * 1024 * 1024)?;
             ensure!(
                 record["sha256"] == digest(&bytes) && record["bytes"] == bytes.len(),
                 "original source changed since extraction"
@@ -151,7 +151,8 @@ pub fn reviewed_sources(repo: &Path) -> Result<Value> {
         "reviewed oracle binding changed"
     );
     let freeze_script = bounded_read(
-        &repo.join("scripts/wasm/freeze_ordered_tool_bridge.py"),
+        repo,
+        "scripts/wasm/freeze_ordered_tool_bridge.py",
         EVIDENCE_LIMIT,
     )?;
     ensure!(
@@ -280,10 +281,7 @@ pub fn load(repo: &Path) -> Result<Inputs> {
             == ["normalize", "runtime-info"].into_iter().collect(),
         "runtime-info or normalize is not a verified public operation"
     );
-    let oracle_bytes = bounded_read(
-        &repo.join("packs").join(PACK).join("oracle.json"),
-        EVIDENCE_LIMIT,
-    )?;
+    let oracle_bytes = bounded_read(repo, &format!("packs/{PACK}/oracle.json"), EVIDENCE_LIMIT)?;
     ensure!(
         digest(&oracle_bytes) == ORACLE_SHA,
         "the frozen 33-case oracle changed"
@@ -363,3 +361,7 @@ fn diagnostic_receipt_never_overwrites_an_existing_result() -> Result<()> {
     );
     Ok(())
 }
+
+#[cfg(unix)]
+#[path = "evidence_files.rs"]
+mod filesystem_tests;
