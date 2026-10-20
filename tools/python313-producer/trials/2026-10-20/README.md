@@ -64,3 +64,13 @@ trap if called. This is not real Core/Gate or consumer-permission acceptance.
 Native public session cleanup is also distinct from the guest shutdown export
 checked here. The real Gateway callers still use the old Host path; passing this
 probe neither retires that path nor completes the migration inventory.
+
+## Inactive native candidate
+
+`materialization.json` records the actual inactive v2 Pack. Its canonical
+manifest hash is `659328e7bf0af0bf34bdb14935e61eb6b49aac1632b1403e2e7fe94efbbe75dd`.
+Rust `verify_directory` independently confirmed that exact VerifiedPack hash;
+static inspection of the actual component also passed without instantiating it.
+This is not native Core acceptance. Publication is atomic and no-replace on
+supported Linux/macOS APIs; Linux behavior was executed, whereas macOS ABI tests
+remain mocked until a supported runner executes them. No Profile was activated.

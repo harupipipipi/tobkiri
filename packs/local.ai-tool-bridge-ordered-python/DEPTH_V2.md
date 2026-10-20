@@ -78,3 +78,13 @@ and staging plan, followed by a producer receipt, actual guest replay under the
 existing runtime bounds, and native owner/consumer permission/audit acceptance.
 Expected outputs remain outside the guest. None of those execution or activation
 gates is established by pure-Python source tests.
+
+## Separate component evidence
+
+The dated `tools/python313-producer/trials/2026-10-20/` records a later real v2
+component build and Wasmtime 48 development replay. All 33 reviewed cases ran:
+18 exact success strings, 12 typed INVALID mappings and three distinct INTERNAL
+nonfinite checks; each case completed guest init and shutdown. The running guest
+reported Python 3.13.16 / Unicode 15.1.0. This does not retroactively turn the
+source-observation flags into execution evidence. Native Core dispatch, actual
+Gateway integration and production activation remain separate pending gates.

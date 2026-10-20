@@ -69,3 +69,13 @@ Finally perform the native Core owner/consumer, permission-denial and exact
 audit acceptance with the new artifact and pins. Keep the old provider/gateway
 until those gates and the remaining behavior gaps are closed. This source-only
 proof does not close the migration inventory or authorize provider retirement.
+
+## Separate component evidence
+
+The dated `tools/python313-producer/trials/2026-10-20/` records a later real v2
+component build and Wasmtime 48 development replay. All 33 reviewed cases ran:
+18 exact success strings, 12 typed INVALID mappings and three distinct INTERNAL
+nonfinite checks; each case completed guest init and shutdown. The running guest
+reported Python 3.13.16 / Unicode 15.1.0. This does not retroactively turn the
+source-observation flags into execution evidence. Native Core dispatch, actual
+Gateway integration and production activation remain separate pending gates.
