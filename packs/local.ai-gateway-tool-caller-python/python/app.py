@@ -26,7 +26,7 @@ def _call(operation: str, payload: str) -> str:
         raise Err(failure.core_error) from None
     except (BridgeTransportFailure, BridgeResponseFailure):
         raise Err(Error(ErrorCode.INTERNAL, "Gateway tool bridge failed")) from None
-    except RecursionError:
+    except (RecursionError, MemoryError):
         raise Err(Error(
             ErrorCode.LIMIT_EXCEEDED, "Gateway tool caller resource limit exceeded",
         )) from None

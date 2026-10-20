@@ -61,6 +61,8 @@ class ImportedBridgeClient:
             raise CallerInputError("unsupported Gateway dependency")
         try:
             encoded = dumps(payload)
+        except (RecursionError, MemoryError):
+            raise
         except Exception:
             raise BridgeTransportFailure("bridge request cannot be encoded") from None
         try:
@@ -70,10 +72,14 @@ class ImportedBridgeClient:
             # ProviderExecutionError. INVALID must NOT become the original
             # GlobalContractInvocationError, which _invoke could retry.
             raise ImportedBridgeFailure(error.value) from None
+        except (RecursionError, MemoryError):
+            raise
         except Exception:
             raise BridgeTransportFailure("bridge import transport failed") from None
         try:
             return loads(result)
+        except (RecursionError, MemoryError):
+            raise
         except Exception:
             raise BridgeResponseFailure("bridge response cannot be decoded") from None
 
@@ -124,5 +130,7 @@ def invoke(operation: str, payload: str) -> str:
         ) from None
     try:
         return dumps(result)
+    except (RecursionError, MemoryError):
+        raise
     except Exception:
         raise BridgeResponseFailure("helper result cannot be encoded") from None

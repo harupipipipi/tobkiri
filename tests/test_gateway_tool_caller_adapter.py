@@ -255,8 +255,7 @@ def test_every_imported_core_error_is_terminal_and_rethrown_unchanged(
 
 
 @pytest.mark.parametrize("failure", [ValueError("private parser detail"),
-                                     RuntimeError("private transport detail"),
-                                     RecursionError("private recursion detail")])
+                                     RuntimeError("private transport detail")])
 def test_unknown_transport_failure_is_terminal_not_retryable_original_error(
     source_transport: SimpleNamespace, failure: Exception,
 ) -> None:
@@ -273,6 +272,55 @@ def test_unknown_transport_failure_is_terminal_not_retryable_original_error(
     with pytest.raises(Err) as result:
         state.app.Caller().generate_intents(payload)
     assert result.value.value == Error(ErrorCode.INTERNAL, "Gateway tool bridge failed")
+    assert len(state.calls) == 1
+
+
+@pytest.mark.parametrize("failure_type", [RecursionError, MemoryError])
+@pytest.mark.parametrize("phase", ["input", "encode", "import", "decode", "output"])
+def test_injected_resource_failure_is_terminal_and_not_reclassified(
+    source_transport: SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception], phase: str,
+) -> None:
+    """Mapping-only injection; this does not claim genuine memory exhaustion."""
+    state = source_transport
+    failure = failure_type("private resource detail")
+    count = 0
+    original = (
+        state.adapter.loads if phase in ("input", "decode") else state.adapter.dumps
+    )
+
+    def fail_at_phase(value: Any) -> Any:
+        nonlocal count
+        count += 1
+        target = 2 if phase in ("decode", "output") else 1
+        if count == target:
+            raise failure
+        return original(value)
+
+    if phase == "import":
+        state.failure = failure
+    else:
+        monkeypatch.setattr(
+            state.adapter, "loads" if phase in ("input", "decode") else "dumps",
+            fail_at_phase,
+        )
+    with pytest.raises(Err) as caught:
+        state.app.Caller().generate_intents('{"request_id":"r","intents":[]}')
+    assert caught.value.value == Error(
+        ErrorCode.LIMIT_EXCEEDED, "Gateway tool caller resource limit exceeded",
+    )
+    assert len(state.calls) == (0 if phase in ("input", "encode") else 1)
+
+
+def test_real_deep_dependency_reply_is_terminal_resource_failure(
+    source_transport: SimpleNamespace,
+) -> None:
+    """Exercise native decoder recursion, without changing its recursion limit."""
+    state = source_transport
+    state.response = '{"intents":' + "[" * 10000 + "0" + "]" * 10000 + "}"
+    with pytest.raises(Err) as caught:
+        state.app.Caller().generate_intents('{"request_id":"r","intents":[]}')
+    assert caught.value.value.code is ErrorCode.LIMIT_EXCEEDED
     assert len(state.calls) == 1
 
 

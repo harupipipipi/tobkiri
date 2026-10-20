@@ -70,6 +70,9 @@ Every imported typed Core error, including INVALID, DENIED, APPROVAL_REQUIRED,
 CANCELLED, and all other arms, is retained unchanged in a terminal exception
 that is **not** `GlobalContractInvocationError`. The app rethrows the same typed
 error record. No error arm is mapped into a locally retryable Gateway failure.
+Actual local Python `RecursionError` and `MemoryError` remain terminal and map
+to `LIMIT_EXCEEDED`, including during dependency transport. Other transport or
+malformed-success failures remain `INTERNAL`; neither classification retries.
 The real legacy nested Host Broker wraps provider exceptions into terminal
 `ProviderExecutionError`; pre-dispatch authorization failures remain distinct.
 A direct fake-client/source call can have different retry behavior and is not
