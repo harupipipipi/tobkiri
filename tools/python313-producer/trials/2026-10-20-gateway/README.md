@@ -35,3 +35,37 @@ composition with the preserved bridge, observed runtime identity from both
 guests, native Core/Gate acceptance, and production Gateway routing are separate
 pending gates. The raw component and exact receipt are preserved separately;
 this directory records source and evidence, not a production binary default.
+
+
+## Composed replay diagnostic checkpoint
+
+The original caller and bridge components now compose directly, with exactly the
+five canonical Core imports (all trapping), both public interfaces, and separate
+provider/caller lifecycles. Composition SHA-256 is
+`2530b6a090f6584cfc6ffeef131b070af429c0b120381be463c767f47bb2fe67`.
+The frozen source reference contains 30 cases; its observations are not guest
+execution, import counts, retry proof, or full Host parity.
+
+The first two attempts stopped at an overly broad expected type surface. Exact
+introspection and bounded input-section inspection show that both pinned input
+components already omit unused `risk`, `pending`, and `verdict` declarations.
+Their consumers, approvals and gate-mediator, are not imported. The matcher now
+requires exactly the five referenced types and every nested function signature;
+it does not accept arbitrary subsets or change canonical WIT.
+
+Attempt 3 passed that exact ABI check but could not reserve the default roughly
+4 GiB virtual address range for each Python memory within the unchanged 8 GiB
+process cap. The development runner now uses Wasmtime 48's supported 128 MiB
+initial reservation, matching the existing per-memory Store limit. This changes
+neither guards nor growth/trap settings nor OS/Store resource caps. The separately
+supervised synthetic probe verifies two instances, exact out-of-bounds traps, and
+rejected growth beyond the Store cap. See the [Wasmtime 48 configuration
+reference](https://docs.rs/wasmtime/48.0.0/wasmtime/struct.Config.html#method.memory_reservation).
+
+Attempt 4 passes ABI and memory reservation but reaches the original single-
+component core-instance cap at instance 65. All 30 cases fail during instantiation;
+no explicit guest export was attempted or returned. Fuel consumed during failed
+instantiation is retained. Actual caller/provider replay is therefore **not yet
+successful** at this checkpoint. The failed receipts, input identities and cleanup
+results are retained rather than replaced with successful-looking evidence.
+Native Core/Gate acceptance and production/default Profile routing remain false.
