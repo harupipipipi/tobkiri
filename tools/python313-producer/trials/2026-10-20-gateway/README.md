@@ -69,3 +69,41 @@ instantiation is retained. Actual caller/provider replay is therefore **not yet
 successful** at this checkpoint. The failed receipts, input identities and cleanup
 results are retained rather than replaced with successful-looking evidence.
 Native Core/Gate acceptance and production/default Profile routing remain false.
+
+
+## Successful composed replay
+
+The subsequent fifth run passes the complete frozen 30-case corpus: 16 exact
+successful output strings, 7 provider-invalid typed error boundaries, and 7
+provider-nonfinite typed error boundaries. Both real guests report Python 3.13.16
+and Unicode 15.1.0. All initialization, runtime-info, operation, canonical
+post-return and reverse-order shutdown paths complete. This is actual
+caller-to-provider component execution, with no Python fake bridge.
+
+The only Store capacity change is a disclosed development-fixture instance
+allowance of 128 instead of the original single-provider 64. Static inspection
+finds 38 encoded core instantiations per producer and 76 in the composition;
+compiler-generated adapter modules are additional, so 128 is a bounded allowance,
+not a measured minimum. Memory/table caps, fuel (2 billion per whole case),
+30-second case deadline and all OS/guard settings remain unchanged. The separate
+128 MiB initial virtual reservation is described above. No production default
+or native runtime limit is changed.
+
+The full composition/compile/replay took 35.75 seconds under the separately
+recorded process supervisor, with sampled peak RSS 763,891,712 bytes. All 1,599
+mounted input records were unchanged and no known processes survived cleanup.
+The maximum observed fuel consumption was 65,845,246. Sampling is not a hard RSS
+or PID cap; the 8 GiB per-process address-space limit remains enforced.
+
+`replay.json` SHA-256:
+`0fac9e2d7b6864f7aaaa2414ba9d3cdb474ea4853968fe041aaf2632313f18c1`.
+Executed runner SHA-256:
+`839ef1f516856237934c8818d774716d9883c4974d639eb80554575638cb6696`.
+All earlier failed attempts remain unchanged in `replay-attempts/`.
+
+This result does **not** establish independent Pack CodeOwner/Gate boundaries,
+Core/CLI execution, native platform acceptance, all nine typed error arms,
+dynamic import counts or retries, partially mutated event lists after errors,
+full Gateway generation/billing, or default Profile activation. Those flags
+remain false. Source tests establish additional semantics separately; the
+actual composed fixture is not a replacement for production dependency dispatch.

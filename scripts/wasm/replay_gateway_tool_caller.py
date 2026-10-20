@@ -50,6 +50,10 @@ REVIEWED_PINS = {
 DEFAULT_TIMEOUT = 30.0
 DEFAULT_FUEL = provider_replay.DEFAULT_FUEL
 STORE_LIMITS = provider_replay.STORE_LIMITS.copy()
+# Two-producer DEVELOPMENT fixture only: bounded 2x single-provider allowance,
+# not a measured minimum. Every other Store/fuel/epoch/OS/guard limit is retained.
+# The failed 64-instance replay is preserved separately, never overwritten.
+STORE_LIMITS["instances"] = 128
 WAC_SOURCE = b'''package local:gateway-tool-caller-development-replay;
 let provider = new local:provider { ... };
 let caller = new local:caller {
@@ -422,6 +426,13 @@ def _base_result() -> dict[str, Any]:
                 "execution flags report explicit export calls attempted/returned, "
                 "not instantiation starts or instruction-level execution"
             ),
+            "store_limit_difference_from_single_provider": {
+                "instances": {"single_provider": 64, "two_producer_fixture": 128},
+            },
+            "instance_limit_scope": (
+                "bounded two-producer DEVELOPMENT fixture allowance: twice the "
+                "single-provider instance cap, not a measured minimum"
+            ),
             "store_limit_scope": (
                 "memory_size is per linear memory, not an aggregate process bound; "
                 "native compilation requires separate external supervision"
@@ -601,14 +612,16 @@ def _compose_and_replay(
     # DEVELOPMENT fixture only. The prior default-reservation ENOMEM replay is
     # retained separately, not overwritten. The default 4 GiB virtual reservation
     # per memory cannot fit both guests under the unchanged 8 GiB process cap.
-    # A smaller reservation uses explicit bounds checks; no guards, growth/trap
-    # settings, compiler safety flags, Store caps or OS limits are changed.
+    # A smaller reservation uses explicit bounds checks. Guard/growth/trap,
+    # compiler safety settings and memory/table/OS caps remain unchanged; the
+    # separate fixture instance-cap allowance is explicitly disclosed above.
     # https://docs.rs/wasmtime/48.0.0/wasmtime/struct.Config.html#method.memory_reservation
     config.memory_reservation = STORE_LIMITS["memory_size"]
     result["engine_memory_reservation_bytes"] = STORE_LIMITS["memory_size"]
     result["engine_memory_reservation_scope"] = (
-        "development fixture virtual reservation only; unchanged Store/OS caps "
-        "and default guards, memory-growth, trap and compiler safety settings"
+        "development fixture virtual reservation only; memory/table/OS caps and "
+        "default guards, memory-growth, trap and compiler safety settings remain "
+        "unchanged; the separate instance allowance is explicitly disclosed"
     )
     engine = Engine(config)
     component = Component(engine, binary)  # Only external supervisor bounds compile.

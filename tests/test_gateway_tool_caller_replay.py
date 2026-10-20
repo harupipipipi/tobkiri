@@ -507,7 +507,7 @@ def test_harness_new_stores_each_case_and_timer_finishes_before_next(store_harne
         ]
     events = state.store_events
     assert events.index((0, "timer-finish")) < events.index((0, "exit")) < events.index((1, "enter"))
-    assert replay.STORE_LIMITS == replay.provider_replay.STORE_LIMITS
+    assert replay.STORE_LIMITS == {**replay.provider_replay.STORE_LIMITS, "instances": 128}
     assert replay.DEFAULT_FUEL == replay.provider_replay.DEFAULT_FUEL
 
 
@@ -841,7 +841,7 @@ def test_unused_or_arbitrary_canonical_type_additions_are_rejected(name: str) ->
         replay.validate_surface(shape)
 
 
-def test_composition_harness_only_lowers_virtual_reservation_with_unchanged_caps(
+def test_composition_harness_reservation_with_explicit_bounded_instance_allowance(
     composition_harness: Any,
 ) -> None:
     state = composition_harness
@@ -853,7 +853,7 @@ def test_composition_harness_only_lowers_virtual_reservation_with_unchanged_caps
     assert state.reservation_before_engine == 128 * 1024 * 1024
     assert result["engine_memory_reservation_bytes"] == 128 * 1024 * 1024
     assert "virtual reservation only" in result["engine_memory_reservation_scope"]
-    assert replay.STORE_LIMITS == replay.provider_replay.STORE_LIMITS == {
+    assert replay.provider_replay.STORE_LIMITS == {
         "memory_size": 128 * 1024 * 1024, "table_elements": 65536,
         "instances": 64, "tables": 64, "memories": 4,
     }
@@ -874,3 +874,27 @@ def test_engine_creation_failure_retains_reservation_diagnostic_without_executio
     assert state.result["observations"] == []
     assert state.result["wasm_execution_performed"] is False
     assert state.result["replay_succeeded"] is False
+
+
+def test_only_instance_capacity_differs_for_two_producer_development_fixture() -> None:
+    baseline = replay.provider_replay.STORE_LIMITS
+    assert replay.STORE_LIMITS is not baseline
+    assert baseline == {
+        "memory_size": 128 * 1024 * 1024, "table_elements": 65536,
+        "instances": 64, "tables": 64, "memories": 4,
+    }
+    assert set(replay.STORE_LIMITS) == set(baseline)
+    changed = {key: (baseline[key], replay.STORE_LIMITS[key]) for key in baseline
+               if baseline[key] != replay.STORE_LIMITS[key]}
+    assert changed == {"instances": (64, 128)}
+    result = replay._base_result()
+    assert result["store_limit_difference_from_single_provider"] == {
+        "instances": {"single_provider": 64, "two_producer_fixture": 128},
+    }
+    assert result["instance_limit_scope"] == (
+        "bounded two-producer DEVELOPMENT fixture allowance: twice the "
+        "single-provider instance cap, not a measured minimum"
+    )
+    assert replay.DEFAULT_FUEL == replay.provider_replay.DEFAULT_FUEL == 2_000_000_000
+    assert replay.DEFAULT_TIMEOUT == replay.provider_replay.DEFAULT_TIMEOUT == 30
+    assert all(result[key] is False for key in replay.NO_AUTHORITY)
