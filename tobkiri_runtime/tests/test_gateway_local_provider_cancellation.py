@@ -21,6 +21,9 @@ from core_runtime.bootstrap.profile_capture import (
     prepare_default_profile_confirmation,
 )
 from core_runtime.host_provider_backend_v4 import ExactHostProviderBackendV4
+from core_runtime.native_generation_budget import (
+    owner_startup_generation_budget_template,
+)
 from ecosystem.defaultspack.defaultspack.runtime_composition import (
     defaultspack_activation_snapshot_loader,
 )
@@ -33,6 +36,7 @@ from tests.test_live_production_v4_dispatch import (
     _CapturedBackend,
     _ai_bridge_request,
     _bundle_root,
+    _credential_store_factory,
     _digest,
 )
 from tests.test_local_provider_http_lifetime import _reply, _server, _watchers
@@ -189,16 +193,35 @@ def test_root_stop_waits_for_real_gateway_adapter_future_and_broker_release(
             "endpoint": endpoint,
             "enabled": True,
         }, expected_revision=0)
+        authority = AuthorityStore(user_data / "authority" / "v4.sqlite3")
         session = capture_production_dispatch(
             active,
             bundle_root=_bundle_root(),
             ecosystem_root=Path(__file__).resolve().parents[1] / "ecosystem",
-            authority_store=AuthorityStore(user_data / "authority" / "v4.sqlite3"),
+            authority_store=authority,
             activation_snapshot_loader=defaultspack_activation_snapshot_loader,
             runtime_surface_factory=create_runtime_surface_services,
+            credential_store_factory=_credential_store_factory,
             backends=BackendRegistry((backend,)),
             target_backend_digests={target.principal_id: backend.status.backend_digest},
         )
+        # Local credential-free HTTP must retain the real Host budget owner.
+        budget_template = owner_startup_generation_budget_template()
+        assert budget_template is not None
+        budget_effect = authority.get_host_pending_effect(budget_template.effect_id)
+        assert budget_effect is not None
+        assert budget_effect[1] == {
+            "effect_id": budget_template.effect_id,
+            "state": "required",
+            "kind": "native_generation_budget_template_v1",
+            "template": budget_template.to_dict(),
+        }
+        with AuthorityStore(
+            user_data / "credentials" / "generation-budget-witness.sqlite3"
+        ) as witness:
+            assert witness.get_host_pending_effect(
+                budget_template.effect_id
+            ) == budget_effect
         admission = session.broker._admission
         original_acquire, original_release = admission.acquire, admission.release
 
@@ -292,3 +315,6 @@ def test_root_stop_waits_for_real_gateway_adapter_future_and_broker_release(
         assert all(response.isclosed() for response in owned_io.responses)
         assert _watchers() == before_watchers
         assert not session.broker.has_undrained_requests()
+        material_root = user_data / "credentials" / "material-store"
+        assert not (material_root / "credentials.store.json").exists()
+        assert not (material_root / ".credential-store.key").exists()
