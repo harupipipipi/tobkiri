@@ -18,6 +18,14 @@ process, or enable Proc/PTY. A later move-only authorized handoff and admitted
 native physical owner remain necessary. Earlier dated sections below retain
 their own execution cutoffs; their missing-snapshot statements are historical.
 
+The subsequent private authorization capsule now joins that same snapshot,
+original unconsumed Grant, exact CallCx and Gate after normal process approval.
+All [nine real Gate/Approvals/AuditLog tests](../../../crates/tobkiri-core/evidence/process-authorization-20261021.json)
+passed, including consent/policy denial, metadata exhaustion, binding mismatch,
+pending cancellation and Drop. Unused custody abandons the original Grant
+before releasing its snapshot and budget. This adds no consume or physical
+backend; Proc/PTY availability and final native-owner handoff remain open.
+
 
 Latest execution cutoff: **587**. See the [current boundary below](#current-process-and-native-boundary-through-587). Earlier sections retain their historical source and execution boundaries. Current counts: 316 validation records, 16 focused FS records, 1/837 closed and 836 TODO. Later588+ executions are excluded.
 

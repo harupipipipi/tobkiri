@@ -37,6 +37,7 @@ mod journal;
 mod outcomes;
 #[cfg(test)]
 mod policy_tests;
+mod process_authorization;
 mod process_catalog;
 mod profiles;
 mod session;
