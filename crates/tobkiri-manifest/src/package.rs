@@ -2,9 +2,10 @@ use crate::*;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::SigningKey;
 use std::{
+    cell::{Cell, RefCell},
     collections::{BTreeMap, BTreeSet},
     fs::{self, OpenOptions},
-    io::{Cursor, Read},
+    io::{self, Cursor, Read, Write},
     path::Path,
 };
 use tobkiri_canon::{
@@ -448,12 +449,15 @@ pub fn sign_manifest(
         signature: URL_SAFE_NO_PAD.encode(sign(&value, signing)?),
     })
 }
-fn archive(entries: &BTreeMap<String, Vec<u8>>) -> Result<Vec<u8>, ManifestError> {
+fn archive_into<W: Write>(
+    entries: &BTreeMap<String, Vec<u8>>,
+    output: W,
+) -> Result<W, ManifestError> {
     let mut budget = PackageBudget::new();
     for content in entries.values() {
         budget.add(content.len() as u64)?;
     }
-    let mut builder = tar::Builder::new(Vec::new());
+    let mut builder = tar::Builder::new(output);
     for (path, content) in entries {
         portable_path(path)?;
         let mut header = tar::Header::new_ustar();
@@ -468,6 +472,9 @@ fn archive(entries: &BTreeMap<String, Vec<u8>>) -> Result<Vec<u8>, ManifestError
     }
     builder.finish()?;
     Ok(builder.into_inner()?)
+}
+fn archive(entries: &BTreeMap<String, Vec<u8>>) -> Result<Vec<u8>, ManifestError> {
+    archive_into(entries, Vec::new())
 }
 /// Produce sorted, timestamp-free ustar bytes with a complete file inventory.
 pub fn build_tpk(
@@ -505,25 +512,9 @@ pub fn build_tpk(
     }
     archive(&entries)
 }
-fn read_tpk_bytes(
-    reader: &mut impl Read,
-    metadata_bytes: u64,
-    max_bytes: u64,
-) -> Result<Vec<u8>, ManifestError> {
-    if metadata_bytes > max_bytes {
-        return Err(invalid("package exceeds 512 MiB"));
-    }
-    let mut bytes = Vec::new();
-    reader.take(max_bytes + 1).read_to_end(&mut bytes)?;
-    if bytes.len() as u64 > max_bytes {
-        return Err(invalid("package exceeds 512 MiB"));
-    }
-    Ok(bytes)
-}
-
-/// Capture and verify a local regular package file within the package byte limit.
-/// The opened descriptor is checked before allocation, and the read remains
-/// capped if that same file grows after its metadata was checked.
+/// Verify one bounded snapshot read from an opened regular package descriptor.
+/// Payloads are retained once; original framing is captured separately so the
+/// canonical comparison neither reopens nor rereads a possibly changed file.
 pub fn verify_tpk_file(
     path: &Path,
     publishers: &BTreeMap<String, String>,
@@ -542,8 +533,243 @@ pub fn verify_tpk_file(
     if !metadata.is_file() {
         return Err(invalid("package artifact is not a regular file"));
     }
-    let bytes = read_tpk_bytes(&mut file, metadata.len(), MAX_PACKAGE_BYTES)?;
-    verify_tpk(&bytes, publishers)
+    verify_tpk_reader(&mut file, metadata.len(), MAX_PACKAGE_BYTES, publishers)
+}
+
+// At most one header and 511 padding bytes per ordinary entry, plus EOF.
+// Hidden extension records or arbitrary trailing data may exceed this small
+// snapshot bound; keep draining within the input envelope, then reject them.
+const MAX_PACKAGE_FRAMING_BYTES: usize =
+    MAX_PACKAGE_ENTRIES * TAR_BLOCK_BYTES as usize * 2 + TAR_END_BYTES as usize;
+
+#[derive(Default)]
+struct InputSnapshot {
+    capture: Cell<bool>,
+    framing: RefCell<Vec<u8>>,
+    bytes: Cell<u64>,
+    framing_overflow: Cell<bool>,
+    input_failed: Cell<bool>,
+}
+
+struct SnapshotInput<'a, R> {
+    input: R,
+    state: &'a InputSnapshot,
+    maximum: u64,
+}
+impl<R: Read> Read for SnapshotInput<'_, R> {
+    fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+        let remaining = self.maximum.saturating_add(1) - self.state.bytes.get();
+        let limit = output.len().min(remaining as usize);
+        if limit == 0 {
+            return Ok(0);
+        }
+        // tar's header reader forwards Interrupted directly. The former
+        // read_to_end capture retried it, so keep that behavior at this seam.
+        let count = loop {
+            match self.input.read(&mut output[..limit]) {
+                Ok(count) => break count,
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error) => {
+                    self.state.input_failed.set(true);
+                    return Err(error);
+                }
+            }
+        };
+        self.state.bytes.set(self.state.bytes.get() + count as u64);
+        if self.state.capture.get() && !self.state.framing_overflow.get() {
+            let mut framing = self.state.framing.borrow_mut();
+            let length = framing.len() + count;
+            if length > MAX_PACKAGE_FRAMING_BYTES {
+                self.state.framing_overflow.set(true);
+            } else {
+                if length > framing.capacity() {
+                    let capacity = framing
+                        .capacity()
+                        .saturating_mul(2)
+                        .max(length)
+                        .min(MAX_PACKAGE_FRAMING_BYTES);
+                    let additional = capacity - framing.len();
+                    framing
+                        .try_reserve_exact(additional)
+                        .map_err(io::Error::other)?;
+                }
+                framing.extend_from_slice(&output[..count]);
+            }
+        }
+        Ok(count)
+    }
+}
+
+/// Borrow the exact first-pass byte snapshot: original framing interleaved
+/// with the same owned payloads that verification will return. No FD contents
+/// or metadata are trusted as immutable, and no payload is copied for replay.
+struct SnapshotReplay<'a> {
+    framing: &'a [u8],
+    frame_ends: std::slice::Iter<'a, usize>,
+    contents: std::collections::btree_map::Values<'a, String, Vec<u8>>,
+    pending: &'a [u8],
+    payload_next: bool,
+    ended: bool,
+}
+impl Read for SnapshotReplay<'_> {
+    fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+        if output.is_empty() {
+            return Ok(0);
+        }
+        loop {
+            if !self.pending.is_empty() {
+                let count = output.len().min(self.pending.len());
+                output[..count].copy_from_slice(&self.pending[..count]);
+                self.pending = &self.pending[count..];
+                return Ok(count);
+            }
+            if self.ended {
+                return Ok(0);
+            }
+            if self.payload_next {
+                self.pending = self.contents.next().expect("one payload per framing span");
+                self.payload_next = false;
+            } else if let Some(&end) = self.frame_ends.next() {
+                let (before, after) = self.framing.split_at(end);
+                self.pending = before;
+                self.framing = after;
+                self.payload_next = true;
+            } else {
+                self.pending = self.framing;
+                self.framing = &[];
+                self.ended = true;
+            }
+        }
+    }
+}
+
+struct ComparingWriter<R> {
+    original: R,
+    mismatch: Cell<bool>,
+}
+impl<R: Read> Write for ComparingWriter<R> {
+    fn write(&mut self, expected: &[u8]) -> io::Result<usize> {
+        // Returning a short write is deliberate. The authoritative tar writer
+        // uses write_all, while this sink needs only fixed stack scratch.
+        let mut actual = [0u8; 8192];
+        let count = expected.len().min(actual.len());
+        if let Err(error) = self.original.read_exact(&mut actual[..count]) {
+            if error.kind() == io::ErrorKind::UnexpectedEof {
+                self.mismatch.set(true);
+            }
+            return Err(error);
+        }
+        if actual[..count] != expected[..count] {
+            self.mismatch.set(true);
+            return Err(io::Error::other("noncanonical package bytes"));
+        }
+        Ok(count)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+fn verify_tpk_reader(
+    input: &mut impl Read,
+    metadata_bytes: u64,
+    maximum: u64,
+    publishers: &BTreeMap<String, String>,
+) -> Result<VerifiedPack, ManifestError> {
+    if metadata_bytes > maximum {
+        return Err(invalid("package exceeds 512 MiB"));
+    }
+    let state = InputSnapshot::default();
+    state.capture.set(true);
+    let mut archive = tar::Archive::new(SnapshotInput {
+        input,
+        state: &state,
+        maximum,
+    });
+    let mut entries = BTreeMap::new();
+    let mut frame_ends = Vec::new();
+    let mut captured_framing = 0;
+    let mut previous = String::new();
+    let mut budget = PackageBudget::new();
+    let parsed = (|| -> Result<(), ManifestError> {
+        for entry in archive.entries()? {
+            let mut entry = entry?;
+            if !entry.header().entry_type().is_file() || entry.header().as_ustar().is_none() {
+                return Err(invalid("package requires bounded regular ustar entries"));
+            }
+            let path = String::from_utf8(entry.path_bytes().into_owned())
+                .map_err(|_| invalid("package path is not UTF-8"))?;
+            portable_path(&path)?;
+            if path <= previous {
+                return Err(invalid("package entries are duplicated or not sorted"));
+            }
+            previous = path.clone();
+            budget.add(entry.size())?;
+            // Store span lengths rather than offsets so replay can borrow the
+            // remaining framing slice without arithmetic over payload sizes.
+            let framing = state.framing.borrow().len();
+            frame_ends.push(framing - captured_framing);
+            captured_framing = framing;
+            // Let actual reads drive growth even for a large legal declaration.
+            let mut content = Vec::new();
+            state.capture.set(false);
+            let read = entry.read_to_end(&mut content);
+            state.capture.set(true);
+            read?;
+            entries.insert(path, content);
+        }
+        Ok(())
+    })();
+    if state.input_failed.get() {
+        // An underlying IO failure ends the original read. Do not retry it
+        // while draining and accidentally replace the first physical error.
+        return match parsed {
+            Err(error) => Err(error),
+            Ok(()) => Err(invalid("package input read failed")),
+        };
+    }
+    // tar stops at its first EOF block. Read every remaining input byte within
+    // the same envelope so extra zeros, late nonzero data and growth fail the
+    // exact comparison. Do this even after a parse error, preserving the old
+    // bounded capture's input-size/IO precedence without retaining raw input.
+    let trailing = io::copy(&mut archive.into_inner(), &mut io::sink());
+    if state.bytes.get() > maximum {
+        return Err(invalid("package exceeds 512 MiB"));
+    }
+    trailing?;
+    parsed?;
+    let noncanonical = || invalid("package headers/padding are not deterministic ustar");
+    if state.framing_overflow.get() {
+        return Err(noncanonical());
+    }
+    let framing = state.framing.into_inner();
+    let snapshot = SnapshotReplay {
+        framing: &framing,
+        frame_ends: frame_ends.iter(),
+        contents: entries.values(),
+        pending: &[],
+        payload_next: false,
+        ended: false,
+    };
+    // Keep the sink borrowed across a writer error so its mismatch reason is
+    // distinguishable from an actual writer/reader IO error.
+    let mut comparison = ComparingWriter {
+        original: snapshot,
+        mismatch: Cell::new(false),
+    };
+    let canonical = archive_into(&entries, &mut comparison).map(|_| ());
+    if comparison.mismatch.get() {
+        return Err(noncanonical());
+    }
+    canonical?;
+    if comparison.original.read(&mut [0u8; 1])? != 0 {
+        return Err(noncanonical());
+    }
+    let raw = entries
+        .remove("pack.json")
+        .ok_or_else(|| invalid("package has no pack.json"))?;
+    let signature = entries.remove("signature.json");
+    verify(raw, signature, entries, publishers)
 }
 
 /// Verify an untrusted package in memory; extraction never runs before admission.
@@ -551,40 +777,12 @@ pub fn verify_tpk(
     bytes: &[u8],
     publishers: &BTreeMap<String, String>,
 ) -> Result<VerifiedPack, ManifestError> {
-    if bytes.len() as u64 > MAX_PACKAGE_BYTES {
-        return Err(invalid("package exceeds 512 MiB"));
-    }
-    let mut entries = BTreeMap::new();
-    let mut previous = String::new();
-    let mut budget = PackageBudget::new();
-    let mut reader = tar::Archive::new(Cursor::new(bytes));
-    for entry in reader.entries()? {
-        let mut entry = entry?;
-        if !entry.header().entry_type().is_file() || entry.header().as_ustar().is_none() {
-            return Err(invalid("package requires bounded regular ustar entries"));
-        }
-        let path = String::from_utf8(entry.path_bytes().into_owned())
-            .map_err(|_| invalid("package path is not UTF-8"))?;
-        portable_path(&path)?;
-        if path <= previous {
-            return Err(invalid("package entries are duplicated or not sorted"));
-        }
-        previous = path.clone();
-        budget.add(entry.size())?;
-        let mut content = Vec::new();
-        entry.read_to_end(&mut content)?;
-        entries.insert(path, content);
-    }
-    if archive(&entries)? != bytes {
-        return Err(invalid(
-            "package headers/padding are not deterministic ustar",
-        ));
-    }
-    let raw = entries
-        .remove("pack.json")
-        .ok_or_else(|| invalid("package has no pack.json"))?;
-    let signature = entries.remove("signature.json");
-    verify(raw, signature, entries, publishers)
+    verify_tpk_reader(
+        &mut Cursor::new(bytes),
+        bytes.len() as u64,
+        MAX_PACKAGE_BYTES,
+        publishers,
+    )
 }
 
 #[cfg(test)]
@@ -605,6 +803,35 @@ mod budget_tests {
         }
         assert_eq!(budget.bytes, 5120);
         assert_eq!(archive(&entries).unwrap().len() as u64, budget.bytes);
+    }
+
+    #[test]
+    fn canonical_writer_handles_partial_writes_and_interrupted_sinks() {
+        #[derive(Default)]
+        struct Choppy {
+            bytes: Vec<u8>,
+            calls: usize,
+        }
+        impl Write for Choppy {
+            fn write(&mut self, input: &[u8]) -> io::Result<usize> {
+                self.calls += 1;
+                if self.calls.is_multiple_of(3) {
+                    return Err(io::ErrorKind::Interrupted.into());
+                }
+                let count = input.len().min(7);
+                self.bytes.extend_from_slice(&input[..count]);
+                Ok(count)
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        let entries = BTreeMap::from([("a.txt".into(), vec![42; 8193])]);
+        let canonical = archive(&entries).unwrap();
+        assert_eq!(
+            archive_into(&entries, Choppy::default()).unwrap().bytes,
+            canonical
+        );
     }
 
     #[test]
@@ -649,6 +876,24 @@ mod file_tests {
     use super::*;
 
     #[test]
+    fn truncated_large_declared_member_is_rejected_from_a_tiny_input() {
+        let mut header = tar::Header::new_ustar();
+        header.set_path("a.txt").unwrap();
+        header.set_size(MAX_PACKAGE_MEMBER_BYTES);
+        header.set_mode(0o644);
+        header.set_cksum();
+        // A legal large declaration provides no permission to reserve its
+        // payload capacity. This fixture contains only three actual bytes.
+        let mut bytes = header.as_bytes().to_vec();
+        bytes.extend_from_slice(b"abc");
+        assert!(verify_tpk(&bytes, &BTreeMap::new()).is_err());
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("truncated-large-member.tpk");
+        fs::write(&path, &bytes).unwrap();
+        assert!(verify_tpk_file(&path, &BTreeMap::new()).is_err());
+    }
+
+    #[test]
     fn oversized_metadata_rejects_before_requesting_any_content_bytes() {
         struct Unreadable;
         impl Read for Unreadable {
@@ -656,18 +901,50 @@ mod file_tests {
                 panic!("oversized package must be rejected before any read")
             }
         }
-        let error =
-            read_tpk_bytes(&mut Unreadable, MAX_PACKAGE_BYTES + 1, MAX_PACKAGE_BYTES).unwrap_err();
+        let error = verify_tpk_reader(
+            &mut Unreadable,
+            MAX_PACKAGE_BYTES + 1,
+            MAX_PACKAGE_BYTES,
+            &BTreeMap::new(),
+        )
+        .unwrap_err();
         assert!(error.to_string().contains("package exceeds 512 MiB"));
     }
 
     #[test]
-    fn capture_accepts_the_exact_limit_and_rejects_a_growing_stream_at_one_extra_byte() {
-        let expected = vec![42; 8];
-        assert_eq!(
-            read_tpk_bytes(&mut Cursor::new(&expected), 8, 8).unwrap(),
-            expected
+    fn physical_read_error_is_preserved_without_retrying_during_tail_drain() {
+        struct Failed(bool);
+        impl Read for Failed {
+            fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+                assert!(!self.0, "a failed physical read must not be retried");
+                self.0 = true;
+                Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "original read failure",
+                ))
+            }
+        }
+        let error = verify_tpk_reader(&mut Failed(false), 0, MAX_PACKAGE_BYTES, &BTreeMap::new())
+            .unwrap_err();
+        assert!(
+            matches!(&error, ManifestError::Io(error) if error.kind() == io::ErrorKind::PermissionDenied)
         );
+        assert!(error.to_string().contains("original read failure"));
+    }
+
+    #[test]
+    fn input_envelope_accepts_the_exact_limit_and_stops_growth_at_one_extra_byte() {
+        let expected = vec![42; 8];
+        let state = InputSnapshot::default();
+        let mut input = SnapshotInput {
+            input: Cursor::new(&expected),
+            state: &state,
+            maximum: 8,
+        };
+        let mut captured = Vec::new();
+        input.read_to_end(&mut captured).unwrap();
+        assert_eq!(captured, expected);
+        assert_eq!(state.bytes.get(), 8);
 
         // This reader never reaches EOF, as a growing file could. A tiny limit
         // exercises the production cap without allocating a large package.
@@ -682,9 +959,208 @@ mod file_tests {
             }
         }
         let mut reader = GrowingReader { consumed: 0 };
-        let error = read_tpk_bytes(&mut reader, 0, 8).unwrap_err();
+        let error = verify_tpk_reader(&mut reader, 0, 8, &BTreeMap::new()).unwrap_err();
         assert!(error.to_string().contains("package exceeds 512 MiB"));
         assert_eq!(reader.consumed, 9);
+    }
+
+    fn sample(
+        payload: &[u8],
+        signed: bool,
+    ) -> (Vec<u8>, BTreeMap<String, Vec<u8>>, BTreeMap<String, String>) {
+        let files: BTreeMap<String, Vec<u8>> = BTreeMap::from([
+            ("a.txt".into(), payload.to_vec()),
+            ("z-empty".into(), Vec::new()),
+        ]);
+        let signer = SigningKey::from_bytes(&[7; 32]);
+        let public = format!(
+            "ed25519:{}",
+            URL_SAFE_NO_PAD.encode(signer.verifying_key().to_bytes())
+        );
+        let manifest = PackManifest {
+            format: "tobkiri.pack/1".into(),
+            id: PackId::parse(if signed {
+                "acme.streaming"
+            } else {
+                "local.streaming"
+            })
+            .unwrap(),
+            version: "1.0.0".into(),
+            publisher_key: signed.then(|| public.clone()),
+            runtime: RuntimeSpec::Data,
+            shapes: vec![],
+            ports: Ports::default(),
+            inputs: vec![],
+            flows: vec![],
+            overlays: vec![],
+            stores: vec![],
+            permissions: tobkiri_gate::PermissionSet::default(),
+            ui: None,
+            files: files
+                .iter()
+                .map(|(path, content)| FileEntry {
+                    path: path.clone(),
+                    sha256: hash_bytes(content),
+                    size: content.len() as u64,
+                })
+                .collect(),
+        };
+        let signature = signed.then(|| sign_manifest(&manifest, &signer).unwrap());
+        let bytes = build_tpk(&manifest, &files, signature.as_ref()).unwrap();
+        let publishers = if signed {
+            BTreeMap::from([("acme".into(), public)])
+        } else {
+            BTreeMap::new()
+        };
+        (bytes, files, publishers)
+    }
+
+    #[test]
+    fn file_and_forward_only_short_interrupted_reads_match_signed_and_unsigned_bytes() {
+        struct Choppy<R> {
+            input: R,
+            calls: usize,
+        }
+        impl<R: Read> Read for Choppy<R> {
+            fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+                self.calls += 1;
+                if self.calls.is_multiple_of(3) {
+                    return Err(io::ErrorKind::Interrupted.into());
+                }
+                let count = output.len().min(37);
+                self.input.read(&mut output[..count])
+            }
+        }
+        for signed in [false, true] {
+            // Cross both the comparison sink's 8 KiB chunk and tar padding.
+            let (bytes, files, publishers) = sample(&vec![42; 10_003], signed);
+            let memory = verify_tpk(&bytes, &publishers).unwrap();
+            let forward = verify_tpk_reader(
+                &mut Choppy {
+                    input: Cursor::new(&bytes),
+                    calls: 0,
+                },
+                0,
+                bytes.len() as u64,
+                &publishers,
+            )
+            .unwrap();
+            let root = tempfile::tempdir().unwrap();
+            let path = root.path().join("sample.tpk");
+            fs::write(&path, &bytes).unwrap();
+            let disk = verify_tpk_file(&path, &publishers).unwrap();
+            assert_eq!(memory.files, files);
+            assert_eq!(forward.files, files);
+            assert_eq!(disk.files, files);
+            assert_eq!(memory.hash, forward.hash);
+            assert_eq!(memory.hash, disk.hash);
+            assert_eq!(
+                canonical_manifest(&disk.manifest).unwrap(),
+                canonical_manifest(&memory.manifest).unwrap()
+            );
+            let error = verify_tpk_reader(
+                &mut Cursor::new(&bytes),
+                0,
+                bytes.len() as u64 - 1,
+                &publishers,
+            )
+            .unwrap_err();
+            assert!(error.to_string().contains("package exceeds 512 MiB"));
+        }
+    }
+
+    #[test]
+    fn original_header_padding_and_exact_eof_are_compared_without_normalization() {
+        let (bytes, _, publishers) = sample(b"hello", false);
+        let mut changed_header = bytes.clone();
+        let mut header = tar::Header::new_ustar();
+        header
+            .as_mut_bytes()
+            .copy_from_slice(&changed_header[..512]);
+        header.set_mode(0o755);
+        header.set_cksum();
+        changed_header[..512].copy_from_slice(header.as_bytes());
+        let mut changed_padding = bytes.clone();
+        changed_padding[512 + 5] = 1;
+        let mut changed_end = bytes.clone();
+        *changed_end.last_mut().unwrap() = 1;
+        let mut extra_zeros = bytes.clone();
+        extra_zeros.extend_from_slice(&[0; 512]);
+        let mut extra_nonzero = bytes.clone();
+        extra_nonzero.push(1);
+        let mut truncated = bytes;
+        truncated.pop();
+        for malformed in [
+            changed_header,
+            changed_padding,
+            changed_end,
+            extra_zeros,
+            extra_nonzero,
+            truncated,
+        ] {
+            let memory = verify_tpk(&malformed, &publishers).unwrap_err();
+            assert!(
+                memory
+                    .to_string()
+                    .contains("headers/padding are not deterministic ustar")
+            );
+            let root = tempfile::tempdir().unwrap();
+            let path = root.path().join("malformed.tpk");
+            fs::write(&path, &malformed).unwrap();
+            let disk = verify_tpk_file(&path, &publishers).unwrap_err();
+            assert_eq!(memory.to_string(), disk.to_string());
+        }
+    }
+
+    #[test]
+    fn same_inode_rewrite_cannot_rebind_extracted_payloads_to_a_later_manifest() {
+        struct Rewrite {
+            input: fs::File,
+            path: std::path::PathBuf,
+            replacement: Vec<u8>,
+            read: usize,
+            changed: bool,
+        }
+        impl Read for Rewrite {
+            fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+                let limit = output.len().min(31);
+                let count = self.input.read(&mut output[..limit])?;
+                self.read += count;
+                if self.read > 512 && !self.changed {
+                    // Truncate/overwrite the same inode after part of a.txt
+                    // was extracted. Its later manifest describes only B.
+                    fs::write(&self.path, &self.replacement)?;
+                    self.changed = true;
+                }
+                Ok(count)
+            }
+        }
+        let (first, _, publishers) = sample(&vec![b'A'; 10_003], false);
+        let (second, _, _) = sample(&vec![b'B'; 10_003], false);
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("changing.tpk");
+        fs::write(&path, &first).unwrap();
+        let input = fs::File::open(&path).unwrap();
+        let mut changing = Rewrite {
+            input,
+            path,
+            replacement: second,
+            read: 0,
+            changed: false,
+        };
+        let error = verify_tpk_reader(
+            &mut changing,
+            first.len() as u64,
+            MAX_PACKAGE_BYTES,
+            &publishers,
+        )
+        .unwrap_err();
+        assert!(changing.changed);
+        assert!(
+            error
+                .to_string()
+                .contains("file digest/size mismatch: a.txt")
+        );
     }
 
     #[test]
