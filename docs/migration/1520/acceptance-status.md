@@ -49,10 +49,27 @@ findings. No inventory unit or acceptance item is closed by these trials.
 Two-Pack component source is 35,798,851 bytes. The five separate finalization
 components total 89,513,931 bytes and exceed the unchanged 64 MiB compilation
 catalog limit. A successful development composition is not proof that this
-five-Pack set can be admitted by Core. Native Core/Gate replay, deterministic
+five-Pack set can be admitted by Core. Five-Pack native Core/Gate replay, deterministic
 in-flight guest cancellation, production registration/activation, complete
 Gateway migration and Host retirement remain open. The shutdown-admission
 negative test is deliberately not described as in-flight cancellation.
+
+## Additional two-Pack native checkpoint, 2026-10-21
+
+The [native caller trial](../../../tools/python313-producer/trials/2026-10-21-native-caller/)
+now records an actual arm64 macOS 15.6 / Darwin 24.6.0 / local APFS Core/Gate
+replay of the separate caller and bridge Packs. All 30 cases matched; removing
+only the caller's bridge permission prevented provider dispatch, and a Session
+shutdown request rejected a subsequent call before dispatch. All created
+Sessions closed successfully. The archived execution patch and supervision
+bind this result to its exact source tree, not to arbitrary later changes.
+
+Both guests reported CPython 3.13.16; the frozen source oracle records CPython
+3.13.5. The receipt labels these independently. Its Host and data root are test
+fixtures, so this does not accept the Launcher GUI approval path or production
+Gate wiring. The unchanged five-Pack size limit, in-flight cancellation,
+production activation, full original UI functionality and final retirement
+obligations above remain open. No inventory unit or checklist item is closed.
 
 ## Acceptance checklist
 

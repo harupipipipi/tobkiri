@@ -99,3 +99,8 @@ results are not full legacy HTTP-error parity. Neither a passing check nor its
 receipt establishes production enablement, full Gateway migration, live model
 generation, retry/billing parity, all typed error arms, or complete Host
 retirement. No native result is supplied by this document.
+
+A separately archived [2026-10-21 native trial](trials/2026-10-21-native-caller/)
+records this route on its exact source tree, with all 30 cases matched. Its
+execution patch, receipt index and explicit test-Host scope are part of that
+result; later code and the full Launcher workflow require their own validation.

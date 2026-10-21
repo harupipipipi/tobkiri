@@ -2,8 +2,9 @@
 //! Existing WAT consumers are unchanged. This is not the finalizer graph, the
 //! complete Gateway, or a substitute for the historical 92f38e3 replay.
 use super::{
-    audit_rows, canon, evidence, evidence_gateway_tool_caller as inputs, pack_events, parse_output,
-    physical_temp, repo, require_runtime, runtime, terminal_pair_with_outcome,
+    EXPECTED_RUNTIME, EXPECTED_UNICODE, audit_rows, canon, evidence,
+    evidence_gateway_tool_caller as inputs, pack_events, parse_output, physical_temp, repo,
+    require_runtime, runtime, terminal_pair_with_outcome,
 };
 use anyhow::{Context, Result, ensure};
 use inputs::{BRIDGE, BRIDGE_SHAPE, CALLER, CALLER_SHAPE, Graph};
@@ -360,7 +361,10 @@ async fn runtime_probe(root: &Path, graph: &Graph, report: &mut Value) -> Result
                 .await?;
             let observed = runtime(parse_output(&value)?)?;
             drop(value);
-            require_runtime(&observed)?;
+            // Preserve the observed identity even when it fails the reviewed
+            // guest-version requirement below.
+            report[name] = json!({"runtime":observed.clone(),"guest_runtime":observed});
+            require_runtime(&report[name]["guest_runtime"])?;
             let rows = audit_rows(&data, &profile)?;
             let effect = effect(shape, "runtime-info")?;
             let terminal = terminal_pair_with_outcome(
@@ -371,8 +375,8 @@ async fn runtime_probe(root: &Path, graph: &Graph, report: &mut Value) -> Result
                 &Outcome::Succeeded,
             )?;
             let init = initialized(&rows, pack)?;
-            report[name] =
-                json!({"runtime":observed,"exact_terminal":terminal,"provider_initialized":init});
+            report[name]["exact_terminal"] = json!(terminal);
+            report[name]["provider_initialized"] = json!(init);
             ensure!(terminal && init, "actual runtime/init receipt missing");
         }
         Ok(())
@@ -509,8 +513,12 @@ fn complete(report: &Value, oracle: &Value) -> bool {
 async fn original_python_tool_caller_replays_through_real_core() -> Result<()> {
     let destination = inputs::receipt_destination(&repo())?;
     let mut report = json!({"format":"tobkiri.gateway-tool-caller-native-core-replay/1","scope":"two-separate-python-packs-not-finalizer",
+        "acceptance_scope":"actual separately pinned Python Wasm Packs through Core/Gate using the test Host and test data root; no Launcher GUI approval flow or production Gate wiring",
         "protocol":"ordered-finite-json-v2","host_os":std::env::consts::OS,"host_arch":std::env::consts::ARCH,
         "required_owner_platform":{"os":"macos","arch":"aarch64","darwin":"24.6.0","filesystem":"local APFS"},
+        "original_reference_runtime":{"implementation":"CPython","python":"3.13.5","unicode":"15.1.0","int_max_str_digits":4300},
+        "expected_guest_runtime":{"implementation":"CPython","python":EXPECTED_RUNTIME,"unicode":EXPECTED_UNICODE},
+        "gate_runtime_acceptance_scope":"Core/Gate runtime under the test Host::default() fixture; not production Gate or Launcher acceptance",
         "source_oracle_sha256":inputs::ORACLE_SHA,"source_counts":inputs::counts(),"core_runtime_path_passed":false,
         "native_core_acceptance":false,"gate_runtime_acceptance":false,"production_enabled":false,"full_gateway_migration_claimed":false,
         "five_pack_finalizer_acceptance":false,"all_typed_error_arms_executed":false,"in_flight_guest_cancellation_verified":false,
@@ -522,6 +530,7 @@ async fn original_python_tool_caller_replays_through_real_core() -> Result<()> {
             "native caller acceptance requires arm64 macOS; Linux is source/static-only"
         );
         let graph = inputs::load(&repo()).await?;
+        report["original_reference_runtime"] = graph.oracle["runtime"].clone();
         report["identity"] = graph.identity.clone();
         let temp = physical_temp()?;
         // Core retains authoritative OS/filesystem/physical-owner guards.
