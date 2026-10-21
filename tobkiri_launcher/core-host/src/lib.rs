@@ -5,6 +5,7 @@ mod commands;
 mod debug_scope;
 mod isolation;
 mod native_contract;
+mod profile_inspection;
 mod runtime;
 mod transport;
 
@@ -17,6 +18,7 @@ pub use native_contract::{
     ShutdownCompletion, ShutdownObservation, TrustedReview, observe_shutdown,
     preserve_primary_close, restore_primary, startup_ui_embedding, trusted_review,
 };
+pub use profile_inspection::{ProfileCandidateCheck, ProfileInspection};
 pub use runtime::{
     LauncherCore, PackAsset, UiFrame, UiOperationRegistration, UiRoute, UiTransportResponse,
     UiTransportTicket,

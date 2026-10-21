@@ -1746,6 +1746,35 @@ impl LauncherCore {
         self.generation_is_active(generation).then_some(generation)
     }
 
+    /// Return bounded, non-secret metadata for one persisted Profile revision.
+    pub fn inspect_profile(
+        &self,
+        caller: HostCaller<'_>,
+        profile: &str,
+    ) -> Result<crate::ProfileInspection, HostError> {
+        caller.check()?;
+        let id = ProfileId::parse(profile).map_err(|_| HostError::Invalid)?;
+        let (profile, revision) = self.core.profile(&id).map_err(core_error)?;
+        crate::profile_inspection::inspect(&profile, revision)
+    }
+
+    /// Structurally check a Profile candidate of at most 1 MiB without saving
+    /// it, approving it, or creating a Session. Its Core-compatible canonical
+    /// identity is bounded before Core reads any Pack source.
+    pub fn check_profile_candidate(
+        &self,
+        caller: HostCaller<'_>,
+        candidate: &[u8],
+    ) -> Result<crate::ProfileCandidateCheck, HostError> {
+        caller.check()?;
+        crate::profile_inspection::check_candidate_size(candidate)?;
+        let profile =
+            tobkiri_core::profile::parse_profile(candidate).map_err(|_| HostError::Invalid)?;
+        let canonical_digest = crate::profile_inspection::candidate_digest(&profile)?;
+        let report = self.core.check_profile(&profile).map_err(core_error)?;
+        crate::profile_inspection::check_candidate(canonical_digest, report)
+    }
+
     pub async fn start(
         &self,
         caller: HostCaller<'_>,
