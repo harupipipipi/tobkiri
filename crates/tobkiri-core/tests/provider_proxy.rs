@@ -2675,6 +2675,184 @@ async fn cancelling_stream_retires_locked_instance_and_drops_pending_host_future
 }
 
 #[tokio::test]
+async fn session_close_cancels_guest_waiting_in_imported_host_effect() -> TestResult {
+    let fixture = Fixture::new(Options::default())?;
+    let session = fixture.start().await?;
+    let reads_before = fixture.host.reads.load(Ordering::SeqCst);
+    fixture.host.block_input.store(true, Ordering::SeqCst);
+    let pending_session = session.clone();
+    let pending = tokio::spawn(async move {
+        pending_session
+            .call_user_port(shape("arithmetic"), op("wait"), &args(&[]))
+            .await
+    });
+
+    // This notification is emitted inside the real terminal-read HostIo import,
+    // immediately before its future remains pending. Closing before it fires
+    // would only test admission refusal, not cancellation of entered guest work.
+    tokio::time::timeout(Duration::from_secs(2), fixture.host.read_started.notified()).await?;
+    assert_eq!(fixture.host.reads.load(Ordering::SeqCst), reads_before + 1);
+    assert!(
+        !pending.is_finished(),
+        "guest call finished before Session::close"
+    );
+
+    let close = tokio::time::timeout(Duration::from_secs(3), session.close()).await;
+    let pending_result = tokio::time::timeout(Duration::from_secs(3), pending).await;
+    close??;
+    let call_result = pending_result??;
+    let call_error = call_result.expect_err("cancelled guest call unexpectedly succeeded");
+    let observed_code = error_code(&call_error);
+    assert!(
+        matches!(&call_error, CoreError::Step(error) if error.message.contains("context=cancelled")),
+        "Session::close must return a Core error with cancellation context, not a fuel or pre-entry error; observed code={observed_code}, error={call_error}"
+    );
+    assert_eq!(fixture.host.read_dropped.load(Ordering::SeqCst), 1);
+
+    let rows = fixture.audit_rows(&session).await?;
+    let port_call = EffectRequest::PortCall {
+        shape: shape("arithmetic"),
+        op: op("wait"),
+    };
+    let host_read = EffectRequest::HostIo {
+        operation: "terminal-read-line".into(),
+    };
+    for effect in [&port_call, &host_read] {
+        let dispatches = effect_rows(&rows, effect, "dispatch")?;
+        let outcomes = effect_rows(&rows, effect, "outcome")?;
+        assert_eq!(
+            dispatches.len(),
+            1,
+            "expected one actual dispatch for {effect:?}"
+        );
+        assert_eq!(outcomes.len(), 1, "expected one terminal for {effect:?}");
+        assert_eq!(
+            outcomes[0].event.payload.get("outcome"),
+            Some(&args(&[("status", CanonValue::Str("cancelled".into()))])),
+            "Session::close must select the cancelled terminal for {effect:?}"
+        );
+    }
+    assert!(matches!(
+        &effect_rows(&rows, &port_call, "dispatch")?[0]
+            .event
+            .principal,
+        Principal::User
+    ));
+    assert!(matches!(
+        &effect_rows(&rows, &host_read, "dispatch")?[0].event.principal,
+        Principal::Pack { pack, .. } if pack.as_str() == PROVIDER
+    ));
+    Ok(())
+}
+
+#[tokio::test]
+async fn session_close_surfaces_host_io_terminal_audit_failure() -> TestResult {
+    let fixture = Fixture::new(Options::default())?;
+    let session = fixture.start().await?;
+    let reads_before = fixture.host.reads.load(Ordering::SeqCst);
+    fixture.host.block_input.store(true, Ordering::SeqCst);
+    let pending_session = session.clone();
+    let pending = tokio::spawn(async move {
+        pending_session
+            .call_user_port(shape("arithmetic"), op("wait"), &args(&[]))
+            .await
+    });
+
+    // Observe the actual imported HostIo read before faulting terminal writes;
+    // this excludes admission refusal and pre-entry cancellation.
+    tokio::time::timeout(Duration::from_secs(2), fixture.host.read_started.notified()).await?;
+    assert_eq!(fixture.host.reads.load(Ordering::SeqCst), reads_before + 1);
+    assert!(
+        !pending.is_finished(),
+        "guest call finished before Session::close"
+    );
+    let host_read = EffectRequest::HostIo {
+        operation: "terminal-read-line".into(),
+    };
+    let before = fixture.audit_rows(&session).await?;
+    let dispatches = effect_rows(&before, &host_read, "dispatch")?;
+    assert_eq!(dispatches.len(), 1, "expected one actual HostIo grant");
+    let original_grant = dispatches[0]
+        .event
+        .payload
+        .get("grant")
+        .and_then(CanonValue::as_str)
+        .expect("HostIo dispatch must carry its original grant ID")
+        .to_owned();
+    let original_grant_id: tobkiri_gate::GrantId =
+        serde_json::from_value(serde_json::Value::String(original_grant.clone()))?;
+
+    // Reuse the real SQLite terminal-INSERT fault. Dispatch and guest entry
+    // have already happened; the fault targets terminal delivery only.
+    let mut fault = OutcomeAuditFault::install(&fixture)?;
+    let close_result = tokio::time::timeout(Duration::from_secs(3), session.close()).await;
+    let pending_result = tokio::time::timeout(Duration::from_secs(3), pending).await;
+    fault.clear()?;
+
+    let close_error = close_result?.err().map(|error| error.to_string());
+    let call_result = pending_result??;
+    let call_error = call_result.expect_err(
+        "Session::close plus failed HostIo terminal persistence must not report caller success",
+    );
+    let call_message = call_error.to_string();
+    assert_eq!(fixture.host.read_dropped.load(Ordering::SeqCst), 1);
+
+    // Gate records the immutable terminal winner before attempting the
+    // physical audit insert. Before retrying delivery, this exact original
+    // grant must remain unacknowledged and its cancellation must not vanish.
+    let root = DataRoot::open(&fixture.data_root)?;
+    let approvals = Approvals::open(&root, &fixture.profile.id)?;
+    let failed_delivery = approvals
+        .terminal_delivery(&original_grant_id)?
+        .expect("the consumed HostIo grant must retain its failed terminal receipt");
+    assert_eq!(
+        failed_delivery.decision.reservation.id.as_str(),
+        original_grant
+    );
+    assert_eq!(failed_delivery.decision.outcome, Outcome::Cancelled);
+    assert!(
+        !failed_delivery.acknowledged,
+        "a rejected physical outcome INSERT must not be acknowledged"
+    );
+
+    // Cleanup must expose either the real SQLite failure or its conservative
+    // completion-unknown result; cancellation alone is not a cleanup proof.
+    assert!(
+        call_message.contains("provider proxy outcome sink failure")
+            || call_message.contains("unknown")
+            || close_error.as_deref().is_some_and(|message| {
+                message.contains("provider proxy outcome sink failure")
+                    || message.contains("unknown")
+            }),
+        "HostIo terminal persistence failure was hidden; caller={call_message}, close={close_error:?}"
+    );
+
+    // Removing the fault allows only the already-selected receipt to be
+    // delivered. Verify the persisted outcome still names the original grant.
+    fixture.flush_outbox().await?;
+    let rows = fixture.audit_rows(&session).await?;
+    let dispatches = effect_rows(&rows, &host_read, "dispatch")?;
+    let outcomes = effect_rows(&rows, &host_read, "outcome")?;
+    assert_eq!(dispatches.len(), 1);
+    assert_eq!(outcomes.len(), 1);
+    assert_eq!(
+        outcomes[0].event.payload.get("grant"),
+        Some(&CanonValue::Str(original_grant.clone()))
+    );
+    assert_eq!(
+        outcomes[0].event.payload.get("outcome"),
+        Some(&args(&[("status", CanonValue::Str("cancelled".into()))]))
+    );
+    let delivered = approvals
+        .terminal_delivery(&original_grant_id)?
+        .expect("retried HostIo terminal receipt must remain queryable");
+    assert!(delivered.acknowledged);
+    assert_eq!(delivered.decision.outcome, Outcome::Cancelled);
+    tokio::time::timeout(Duration::from_secs(3), session.close()).await??;
+    Ok(())
+}
+
+#[tokio::test]
 async fn stream_preserves_its_source_output_budget_across_multiple_pulls() -> TestResult {
     let fixture = Fixture::new(Options {
         provider_output_bytes: 32,

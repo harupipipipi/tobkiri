@@ -31,6 +31,8 @@ use wasmtime::{AsContextMut, StoreContextMut};
 mod audit_imports;
 #[path = "filesystem_imports.rs"]
 pub mod filesystem_imports;
+#[path = "host_io_imports.rs"]
+mod host_io_imports;
 #[path = "secrets_imports.rs"]
 mod secrets_imports;
 
@@ -643,18 +645,68 @@ pub(crate) async fn invoke(
                 .gate
                 .authorize(&cx, request.clone(), args.clone())
                 .await?;
+            if operation == "terminal-read-line" {
+                // The actual generation admits the owner before consumption.
+                // Dropping this import cannot drop its consumed terminal.
+                let spawner = host.native_work_spawner(&store.data().data).await?;
+                return host_io_imports::read_line(
+                    &host,
+                    &cx,
+                    spawner,
+                    grant,
+                    text(&params[0])?,
+                    &owners,
+                )
+                .await;
+            }
             let id = grant.id().clone();
             let permit = grant.consume(&cx, &request, &args)?;
             let cx = cx.narrow_limits(permit.limits());
             let producer_frame = store.data().data.frame.clone();
-            let result=async{match operation{
-                "display"=>{let value=codec.parse(&params[1])?;let frame=producer_frame.as_ref().context("display lacks live producer frame")?;let output=host.allocation_owners_for_frame(&cx,frame.allocation_scope(tobkiri_gate::AllocationReason::OutputBuffer).map_err(anyhow::Error::new)?)?;let buffer=value.encode_guest(output.graph())?;if buffer.len()as u64>cx.limits().output_bytes{bail!("display output limit exceeded")};host.shared.io.display_budgeted(text(&params[0])?,&buffer)?;codec.ok(None)},
-                "terminal-write"=>{let value=text(&params[0])?;if value.len()as u64>cx.limits().output_bytes{bail!("terminal output limit exceeded")};let buffer=CoreBuffer::copy_from(value.as_bytes(),owners.graph())?;host.shared.io.terminal_write_budgeted(&buffer)?;codec.ok(None)},
-                "terminal-read-line"=>{let max=usize::try_from(cx.limits().output_bytes.min(1024*1024))?;let line=tokio::select!{_=cx.cancel().cancelled()=>bail!("terminal input cancelled"),_=tokio::time::sleep_until(cx.deadline().into())=>bail!("terminal input deadline elapsed"),line=host.shared.io.terminal_read_line_budgeted(text(&params[0])?,max,owners.graph().clone())=>line?};if line.len()>max{bail!("terminal input exceeds its bound")};codec.ok(Some(codec.string(line.as_str()?)?))},
-                "request-ui-embed"=>Err(StepError::new("unavailable","guest UI embedding requires the Core Session registration bridge").into()),
-                "pick-directory"=>filesystem_imports::pick_directory(&host,&cx,text(&params[0])?,&owners).await,
-                _=>bail!("unknown host I/O operation"),
-            }}.await;
+            let result = async {
+                match operation {
+                    "display" => {
+                        let value = codec.parse(&params[1])?;
+                        let frame = producer_frame
+                            .as_ref()
+                            .context("display lacks live producer frame")?;
+                        let output = host.allocation_owners_for_frame(
+                            &cx,
+                            frame
+                                .allocation_scope(tobkiri_gate::AllocationReason::OutputBuffer)
+                                .map_err(anyhow::Error::new)?,
+                        )?;
+                        let buffer = value.encode_guest(output.graph())?;
+                        if buffer.len() as u64 > cx.limits().output_bytes {
+                            bail!("display output limit exceeded")
+                        };
+                        host.shared
+                            .io
+                            .display_budgeted(text(&params[0])?, &buffer)?;
+                        codec.ok(None)
+                    }
+                    "terminal-write" => {
+                        let value = text(&params[0])?;
+                        if value.len() as u64 > cx.limits().output_bytes {
+                            bail!("terminal output limit exceeded")
+                        };
+                        let buffer = CoreBuffer::copy_from(value.as_bytes(), owners.graph())?;
+                        host.shared.io.terminal_write_budgeted(&buffer)?;
+                        codec.ok(None)
+                    }
+                    "request-ui-embed" => Err(StepError::new(
+                        "unavailable",
+                        "guest UI embedding requires the Core Session registration bridge",
+                    )
+                    .into()),
+                    "pick-directory" => {
+                        filesystem_imports::pick_directory(&host, &cx, text(&params[0])?, &owners)
+                            .await
+                    }
+                    _ => bail!("unknown host I/O operation"),
+                }
+            }
+            .await;
             outcome(&host, id, &result, &cx).await?;
             result
         }

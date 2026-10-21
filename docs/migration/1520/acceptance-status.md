@@ -71,6 +71,24 @@ Gate wiring. The unchanged five-Pack size limit, in-flight cancellation,
 production activation, full original UI functionality and final retirement
 obligations above remain open. No inventory unit or checklist item is closed.
 
+## Native Rust HostIo cancellation checkpoint, 2026-10-21
+
+A separate [focused receipt](../../../crates/tobkiri-core/evidence/host-read-cancellation-20261021.json)
+records a real missing terminal: after a started Wasm `terminal-read-line`,
+Session close dropped the read but left its dispatched HostIo grant without an
+outcome. The generation now retains an owner for that actual read and original
+grant. The failed export releases its Store and instance lock before awaiting
+only the same operation's marked read completions.
+
+The corrected focused test passed, then all 32 provider-proxy regressions
+passed. An additional real SQLite outcome-write fault test passed: the caller
+cannot claim success, the original cancelled receipt remains unacknowledged,
+and flushing the outbox after fault removal delivers that same receipt once.
+Both bounded Session close and the pending caller join are observed. This does
+not prove a standalone close joins every plain call, Python guest in-flight
+cancellation, native GUI Stop/Quit, or full Gateway cleanup. Those broader
+requirements and every unchecked acceptance item remain open.
+
 ## Acceptance checklist
 
 1. [ ] **CI rejects Pack IDs and Pack-owned shape names in core and hosts.**

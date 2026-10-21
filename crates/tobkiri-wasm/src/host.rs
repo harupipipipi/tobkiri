@@ -447,6 +447,8 @@ struct NativeCompletion {
     children: StdMutex<NativeChildLinks>,
     unknown: AtomicBool,
     started: AtomicBool,
+    // Set only before publishing a leaf terminal-read supervisor.
+    host_io_read: AtomicBool,
     result: Mutex<Option<Result<(), StepError>>>,
     _reservation: Arc<tobkiri_gate::ControlReservation>,
 }
@@ -545,6 +547,9 @@ struct ProviderOperationIdentity {
     registry: Arc<ProviderOperationRegistry>,
     index: usize,
     unknown: Arc<AtomicBool>,
+    // Only an admitted terminal-read owner sets this. It adds an exact native
+    // completion wait to failed exports, never permission or a new task.
+    host_io_read: AtomicBool,
     disposal: Arc<StoreDisposal>,
 }
 
@@ -664,6 +669,7 @@ impl ProviderOperationScope {
                 registry,
                 index,
                 unknown,
+                host_io_read: AtomicBool::new(false),
                 disposal,
             }),
             frame_control,
@@ -806,6 +812,37 @@ impl ProviderOperationScope {
         }
     }
 
+    async fn wait_host_io_reads(identity: &ProviderOperationIdentity) -> Result<(), StepError> {
+        let length = {
+            let records =
+                identity.registry.state.try_lock().map_err(|_| {
+                    StepError::new("unavailable", "provider operation inventory busy")
+                })?;
+            if !records[identity.index].closed {
+                return Err(StepError::new(
+                    "unavailable",
+                    "terminal read operation has not been sealed",
+                ));
+            }
+            records[identity.index].native.len()
+        };
+        for child in 0..length {
+            let completion = {
+                let records = identity.registry.state.try_lock().map_err(|_| {
+                    StepError::new("unavailable", "provider operation inventory busy")
+                })?;
+                records[identity.index].native[child].clone()
+            };
+            if completion.host_io_read.load(Ordering::Acquire) {
+                // Only read supervisors carry this marker. They never call a
+                // Wasm export or spawn descendants, so this exact leaf receipt
+                // cannot include the native task awaiting the current export.
+                tobkiri_flow::RunTaskCompletion::wait(completion.as_ref()).await?;
+            }
+        }
+        Ok(())
+    }
+
     fn physical_completion(&self) -> tobkiri_flow::StreamPhysicalCompletion {
         tobkiri_flow::StreamPhysicalCompletion::with_control(
             self.inner.clone(),
@@ -898,6 +935,7 @@ impl NativeWorkSpawner {
             }),
             unknown: AtomicBool::new(false),
             started: AtomicBool::new(false),
+            host_io_read: AtomicBool::new(false),
             result: Mutex::new(None),
             _reservation: reservation,
         });
@@ -1188,6 +1226,17 @@ impl NativeWorkSpawner {
             cancel.cancel();
         }
         Ok(())
+    }
+    pub(crate) fn require_host_io_read_join(&self) {
+        self.inner
+            .completion
+            .host_io_read
+            .store(true, Ordering::Release);
+        self.inner
+            .operation
+            .inner
+            .host_io_read
+            .store(true, Ordering::Release);
     }
     pub(crate) fn spawn<F>(self, future: F) -> Result<()>
     where
@@ -2583,10 +2632,13 @@ impl PackHost {
                 instance.live.take();
                 instance.store_disposal.complete();
                 instance.physical.take();
-                return Err(error);
+                let operation = frame.provider_operation().ok();
+                drop(instance);
+                return finish_host_io_read_failure(Err(error), operation).await;
             }
         }
         ensure_provider_operation(&self.shared, &slot.retirement, &frame).await?;
+        let operation = frame.provider_operation().ok();
         if let Some((store, _)) = instance.live.as_mut() {
             store.data_mut().data.frame = Some(frame);
         }
@@ -2621,9 +2673,11 @@ impl PackHost {
             retirement.token.cancel();
             instance.live.take();
             instance.store_disposal.complete();
-            return Err(error);
+            drop(instance);
+            return finish_host_io_read_failure(Err(error), operation).await;
         }
-        result.map(|values| (values, generation))
+        drop(instance);
+        finish_host_io_read_failure(result.map(|values| (values, generation)), operation).await
     }
     fn retire_generation(
         &self,
@@ -2805,6 +2859,35 @@ impl PackHost {
             .context("component retirement completion unknown")?
             .context("component retirement task did not complete")??;
         disposal.wait().await
+    }
+}
+
+/// A cancelled Wasm call has already dropped its importer future. Its admitted
+/// terminal-read owner remains in this exact provider-operation inventory.
+/// Wait only after actual Store destruction and release of the instance lock;
+/// only marked read leaves in the original operation are joined. Its native
+/// caller, other children and generation roots are excluded. Successful
+/// exports and operations without a read keep their
+/// existing behavior. Cleanup uncertainty adds context to the original error.
+async fn finish_host_io_read_failure<T>(
+    result: Result<T>,
+    operation: Option<ProviderOperationScope>,
+) -> Result<T> {
+    let Some(operation) = operation.filter(|operation| {
+        result.is_err() && operation.inner.host_io_read.load(Ordering::Acquire)
+    }) else {
+        return result;
+    };
+    let cleanup = match operation.seal() {
+        Ok(()) => ProviderOperationScope::wait_host_io_reads(&operation.inner).await,
+        Err(_) => Err(StepError::new(
+            "unavailable",
+            "terminal read operation could not be sealed",
+        )),
+    };
+    match cleanup {
+        Ok(()) => result,
+        Err(error) => result.context(error),
     }
 }
 
