@@ -1,8 +1,8 @@
 {
-  "artifact_set_digest": "sha256:2a7b6917eca8a5b0e5fe5ce41452cba58d590e781bdc268296424a4e38f91e64",
+  "artifact_set_digest": "sha256:2b02cdc6251e994d6834494827a04b2fc535f500bf84f2f928c37d14412a86fd",
   "artifacts": [
     {
-      "digest": "sha256:0fb6a14c1e65f8ac8e8af41db84e634179be75a9d47cf4e90712989b69155775",
+      "digest": "sha256:98dad6d11b2d203bd865745c1d7e0bc87bd0421c488f0f2bfc527bea88256df5",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
@@ -42,7 +42,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:a03be95001f95cf44648aa87d92fdfa6346ae5e1f5aa4d82fe42a2da83bd3fd6",
+      "digest": "sha256:383be00109bfb3c87c2dde91942801791ac2bc34e87eb6569152c4c115e4c388",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -62,7 +62,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:99ab22319f14d04b9a6058e8fe04ba48f098c7b27fb049343301b92c7cf2d28a",
+      "digest": "sha256:e99a8c666683ec60cd8f47bb46ae06518eefd468cf71f15e7b5288b3c7cc6ad2",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -742,7 +742,7 @@
       "role": "asset"
     },
     {
-      "digest": "sha256:2b06de1e837121c62bfeddebbe6be362afa12333fa3ec01f01c8885ff3b65a34",
+      "digest": "sha256:2cc5938759d28b06d0c47164a81ca167f0caebfeee45d2cbf045fc310bbcbddb",
       "path": "ui/shell-defaultspack-app.js",
       "role": "asset"
     },
@@ -752,7 +752,7 @@
       "role": "asset"
     },
     {
-      "digest": "sha256:6f5330f281c713c1b765ec52977b36599538b8d52c5dd3ce94d211f5b0e7debf",
+      "digest": "sha256:d4a36920c7bab6ec97d0bdc5d1233622f28fe010198ca32bcdd80c8cb6b64aae",
       "path": "ui/shell-rolldown-runtime.js",
       "role": "asset"
     },
@@ -775,8 +775,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:9656b4fd8b08f7497e7125034e2b6872705b1039e490154997b655d2e80e1138"
+    "signed_digest": "sha256:ff5e3c0bee8cdb1db20049f5b6c7a7c9ebc5c90e9950344b4e59704d69a3db61"
   },
   "pack_id": "defaultspack",
-  "source_identity": "sha256:a306e2967c0dd1331153585a53c09dcfe88fd6b9ee6633cdcd9148922763b1d1"
+  "source_identity": "sha256:3010bf75e5783dc3fd125aec9ed97b38432b5fc653fa4fa0960b791535f384a2"
 }

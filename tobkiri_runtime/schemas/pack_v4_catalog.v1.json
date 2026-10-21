@@ -1484,7 +1484,7 @@
           "path": "ui/shell-app.js"
         },
         {
-          "digest": "sha256:2b06de1e837121c62bfeddebbe6be362afa12333fa3ec01f01c8885ff3b65a34",
+          "digest": "sha256:2cc5938759d28b06d0c47164a81ca167f0caebfeee45d2cbf045fc310bbcbddb",
           "index_role": "asset",
           "kind": "asset",
           "path": "ui/shell-defaultspack-app.js"
@@ -1496,7 +1496,7 @@
           "path": "ui/shell-icons.js"
         },
         {
-          "digest": "sha256:6f5330f281c713c1b765ec52977b36599538b8d52c5dd3ce94d211f5b0e7debf",
+          "digest": "sha256:d4a36920c7bab6ec97d0bdc5d1233622f28fe010198ca32bcdd80c8cb6b64aae",
           "index_role": "asset",
           "kind": "asset",
           "path": "ui/shell-rolldown-runtime.js"
