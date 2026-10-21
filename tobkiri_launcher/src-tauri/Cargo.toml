@@ -4,7 +4,7 @@ version = "1.0.0-beta.3"
 edition = "2021"
 
 [features]
-default = ["core-host"]
+default = []
 core-host = ["dep:tobkiri-launcher-core-host", "dep:async-trait", "dep:tokio", "dep:ulid"]
 
 [lib]

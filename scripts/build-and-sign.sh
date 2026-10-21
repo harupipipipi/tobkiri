@@ -266,7 +266,7 @@ outer_args+=(--target "$target")
 echo "=== Building sealed Tobkiri Launcher package ($target) ==="
 (cd "$LAUNCHER_ROOT" && \
   TOBKIRI_PRESENTATION_RELEASE_ROOT="$release_root" \
-  cargo tauri build "${outer_args[@]}")
+  cargo tauri build "${outer_args[@]}" -- --no-default-features)
 
 if [[ "$presentation_platform" == "macos" ]]; then
   app_bundle="$LAUNCHER_ROOT/src-tauri/target/$target/release/bundle/macos/Tobkiri Launcher.app"

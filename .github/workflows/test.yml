@@ -1099,9 +1099,13 @@ jobs:
           --target "$TOBKIRI_RUST_HOST_TARGET"
           --profile debug
 
-      - name: Run rumi viewer tests
+      - name: Run Tobkiri Launcher tests
         working-directory: tobkiri_launcher/src-tauri
         run: cargo test --locked
+
+      - name: Run explicit CoreHost tests
+        working-directory: tobkiri_launcher/src-tauri
+        run: cargo test --locked --no-default-features --features core-host
 
   mac-computer-driver-smoke:
     if: >

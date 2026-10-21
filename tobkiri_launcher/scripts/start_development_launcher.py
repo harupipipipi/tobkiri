@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and run the Core desktop, or explicitly select the legacy desktop."""
+"""Build and run the complete Launcher, or opt into the CoreHost preview."""
 
 from __future__ import annotations
 
@@ -62,11 +62,11 @@ def build_core_development_launcher(repo_root: Path) -> Path:
     return executable
 
 
-def build_development_launcher(repo_root: Path, *, legacy: bool = False) -> Path:
-    """Select Core normally; use the compatibility desktop only when requested."""
-    if legacy:
-        return build_legacy_development_launcher(repo_root)
-    return build_core_development_launcher(repo_root)
+def build_development_launcher(repo_root: Path, *, core_host: bool = False) -> Path:
+    """Build the complete Launcher by default, with CoreHost available by opt-in."""
+    if core_host:
+        return build_core_development_launcher(repo_root)
+    return build_legacy_development_launcher(repo_root)
 
 
 def build_legacy_development_launcher(repo_root: Path) -> Path:
@@ -190,17 +190,26 @@ def main(argv: list[str] | None = None) -> int:
     """Start the selected local desktop, or only build it when requested."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-only", action="store_true")
-    parser.add_argument(
+    route = parser.add_mutually_exclusive_group()
+    route.add_argument(
+        "--core-host",
+        action="store_true",
+        help="Opt into the in-process CoreHost preview",
+    )
+    route.add_argument(
         "--legacy",
         action="store_true",
-        help="Use the legacy desktop and its full Python/PackVM verification path",
+        help="Compatibility alias for the default complete Launcher",
     )
     args = parser.parse_args(argv)
     try:
-        executable = build_development_launcher(REPO_ROOT, legacy=args.legacy)
-        route = "legacy" if args.legacy else "Core"
-        print(f"Verified Tobkiri {route} development desktop: {executable}", flush=True)
-        if not args.legacy:
+        executable = build_development_launcher(REPO_ROOT, core_host=args.core_host)
+        route_name = "CoreHost" if args.core_host else "complete"
+        print(
+            f"Verified Tobkiri {route_name} development desktop: {executable}",
+            flush=True,
+        )
+        if args.core_host:
             print(
                 "Select a reviewed local Profile ID in the desktop. To create or "
                 "import one, use the CLI from the repository root:\n"

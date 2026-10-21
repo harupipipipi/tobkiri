@@ -130,40 +130,21 @@ class DevelopmentCoreRouteTests(unittest.TestCase):
             result = self.launcher.main(argv)
         return result, stdout.getvalue(), stderr.getvalue()
 
-    def test_default_build_uses_only_core_and_needs_no_legacy_files(self) -> None:
-        executable = self.app_executable()
-        self.assertFalse((self.root / ".venv").exists())
+    def test_default_build_uses_complete_launcher_and_verification_chain(self) -> None:
+        executable = self.legacy_checkout()
         self.assertEqual(
             self.launcher.build_development_launcher(self.root), executable
         )
-        self.assertEqual(len(self.commands), 2)
-        self.assertEqual(
-            self.commands[0],
-            (
-                [
-                    "npm", "exec", "--prefix", "frontend", "--", "tauri", "build",
-                    "--debug", "--features", "core-host",
-                    "--target", TARGET, "--config",
-                    "src-tauri/tauri.core-host.macos.dev.conf.json",
-                    "--bundles", "app", "--ci", "--", "--no-default-features",
-                ],
-                {"cwd": self.root / "tobkiri_launcher"},
-            ),
-        )
-        app = executable.parents[2]
-        self.assertEqual(
-            self.commands[1],
-            (
-                [
-                    "/usr/bin/codesign", "--verify", "--strict",
-                    "--all-architectures", str(app),
-                ],
-                {},
-            ),
-        )
-        self.assertFalse((self.root / ".venv").exists())
+        commands = [parts for parts, _ in self.commands]
+        self.assertEqual(len(commands), 8)
+        self.assertEqual(commands[0][-2:], ["--", "--no-default-features"])
+        self.assertNotIn("--features", commands[0])
+        self.assertIn("src-tauri/tauri.macos.dev.conf.json", commands[0])
+        self.assertTrue(commands[1][1].endswith("build_packvm_vz_helper.sh"))
+        self.assertIn("write-packvm-bundle-manifest", commands[4])
+        self.assertIn("verify-packvm-bundle", commands[7])
 
-    def test_core_build_failure_never_falls_back_to_legacy(self) -> None:
+    def test_core_build_failure_never_falls_back_to_complete_launcher(self) -> None:
         self.legacy_checkout()
 
         def fail(command, **kwargs):
@@ -172,21 +153,21 @@ class DevelopmentCoreRouteTests(unittest.TestCase):
 
         self.launcher.run_command.side_effect = fail
         with self.assertRaises(subprocess.CalledProcessError):
-            self.launcher.build_development_launcher(self.root)
+            self.launcher.build_development_launcher(self.root, core_host=True)
         self.assertEqual(len(self.commands), 1)
         self.assertIn(
             "src-tauri/tauri.core-host.macos.dev.conf.json", self.commands[0][0]
         )
 
-    def test_missing_core_output_does_not_select_existing_legacy_output(self) -> None:
+    def test_missing_core_output_does_not_select_complete_launcher_output(self) -> None:
         self.legacy_checkout()
         with self.assertRaisesRegex(
             RuntimeError, "Core development Launcher was not produced"
         ):
-            self.launcher.build_development_launcher(self.root)
+            self.launcher.build_development_launcher(self.root, core_host=True)
         self.assertEqual(len(self.commands), 1)
 
-    def test_core_signature_failure_never_starts_legacy_verification(self) -> None:
+    def test_core_signature_failure_stops_without_complete_route_fallback(self) -> None:
         self.app_executable()
         self.legacy_checkout()
 
@@ -198,72 +179,88 @@ class DevelopmentCoreRouteTests(unittest.TestCase):
 
         self.launcher.run_command.side_effect = fail_verification
         with self.assertRaises(subprocess.CalledProcessError):
-            self.launcher.build_development_launcher(self.root)
+            self.launcher.build_development_launcher(self.root, core_host=True)
         self.assertEqual(len(self.commands), 2)
         self.assertEqual(self.commands[-1][0][0], "/usr/bin/codesign")
 
-    def test_default_build_only_verifies_core_without_running_it(self) -> None:
-        self.app_executable()
+    def test_default_build_only_verifies_complete_launcher_without_cli_setup(self) -> None:
+        executable = self.legacy_checkout()
         code, stdout, stderr = self.invoke_main(["--build-only"])
         self.assertEqual(code, 0)
         self.assertEqual(stderr, "")
-        self.assertEqual(len(self.commands), 2)
-        self.assertIn("Verified Tobkiri Core development desktop", stdout)
-        self.assertIn(CREATE, stdout)
-        self.assertIn(IMPORT, stdout)
-        self.assertIn("ordinary verification and approval", stdout)
+        self.assertEqual(len(self.commands), 8)
+        self.assertIn(
+            f"Verified Tobkiri complete development desktop: {executable}", stdout
+        )
+        self.assertNotIn(CREATE, stdout)
+        self.assertNotIn(IMPORT, stdout)
+        self.assertNotIn("ordinary verification and approval", stdout)
 
-    def test_default_main_launches_only_the_verified_core_executable(self) -> None:
-        executable = self.app_executable()
+    def test_default_main_launches_complete_launcher_after_verification(self) -> None:
+        executable = self.legacy_checkout()
         code, _, stderr = self.invoke_main([])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(len(self.commands), 9)
+        self.assertEqual(self.commands[-1], ([str(executable)], {"cwd": self.root}))
+
+    def test_failed_default_main_does_not_run_or_fallback(self) -> None:
+        python = self.root / ".venv/bin/python3"
+        python.parent.mkdir(parents=True)
+        python.touch()
+        code, _, stderr = self.invoke_main([])
+        self.assertEqual(code, 1)
+        self.assertIn("Development Launcher was not produced", stderr)
+        self.assertEqual(len(self.commands), 1)
+
+    def test_explicit_core_host_preserves_opt_in_tauri_feature_and_config(self) -> None:
+        executable = self.app_executable()
+        self.assertEqual(
+            self.launcher.build_development_launcher(self.root, core_host=True),
+            executable,
+        )
+        command = self.commands[0][0]
+        self.assertIn("--features", command)
+        self.assertEqual(command[command.index("--features") + 1], "core-host")
+        self.assertIn("src-tauri/tauri.core-host.macos.dev.conf.json", command)
+        self.assertEqual(command[-2:], ["--", "--no-default-features"])
+        self.assertNotIn(
+            "--no-default-features", command[command.index("tauri") + 1:-2]
+        )
+        self.assertEqual(len(self.commands), 2)
+        self.assertTrue(self.commands[1][0][0].endswith("codesign"))
+
+    def test_explicit_core_host_main_launches_only_after_core_verification(self) -> None:
+        executable = self.app_executable()
+        code, stdout, stderr = self.invoke_main(["--core-host"])
         self.assertEqual(code, 0)
         self.assertEqual(stderr, "")
         self.assertEqual(len(self.commands), 3)
         self.assertEqual(self.commands[-1], ([str(executable)], {"cwd": self.root}))
+        self.assertIn("Verified Tobkiri CoreHost development desktop", stdout)
+        self.assertIn(CREATE, stdout)
+        self.assertIn(IMPORT, stdout)
 
-    def test_failed_default_main_does_not_run_or_fallback(self) -> None:
-        self.legacy_checkout()
-        code, _, stderr = self.invoke_main([])
-        self.assertEqual(code, 1)
-        self.assertIn("Core development Launcher was not produced", stderr)
-        self.assertEqual(len(self.commands), 1)
+    def test_core_host_and_legacy_flags_are_rejected_as_conflicting(self) -> None:
+        with self.assertRaises(SystemExit) as raised:
+            self.invoke_main(["--core-host", "--legacy"])
+        self.assertEqual(raised.exception.code, 2)
+        self.assertEqual(self.commands, [])
 
-    def test_explicit_legacy_preserves_the_complete_verification_chain(self) -> None:
-        executable = self.legacy_checkout()
-        self.assertEqual(
-            self.launcher.build_development_launcher(self.root, legacy=True), executable
-        )
-        commands = [parts for parts, _ in self.commands]
-        self.assertEqual(len(commands), 8)
-        self.assertEqual(commands[0][-2:], ["--", "--no-default-features"])
-        self.assertNotIn(
-            "--no-default-features", commands[0][commands[0].index("tauri") + 1:-2]
-        )
-        self.assertNotIn("--features", commands[0])
-        self.assertIn("src-tauri/tauri.macos.dev.conf.json", commands[0])
-        self.assertTrue(commands[1][1].endswith("build_packvm_vz_helper.sh"))
-        self.assertIn("--entitlements", commands[2])
-        self.assertIn("--verify", commands[3])
-        self.assertIn("write-packvm-bundle-manifest", commands[4])
-        self.assertEqual(commands[4][-2:], ["--expected-signing-mode", "ad-hoc"])
-        self.assertIn("--sign", commands[5])
-        self.assertIn("--verify", commands[6])
-        self.assertIn("verify-packvm-bundle", commands[7])
-
-    def test_explicit_legacy_main_launches_only_after_legacy_verification(self) -> None:
+    def test_legacy_flag_remains_a_compatibility_alias_for_default_route(self) -> None:
         executable = self.legacy_checkout()
         code, stdout, stderr = self.invoke_main(["--legacy"])
         self.assertEqual(code, 0)
         self.assertEqual(stderr, "")
         self.assertEqual(len(self.commands), 9)
         self.assertEqual(self.commands[-1], ([str(executable)], {"cwd": self.root}))
-        self.assertIn("Verified Tobkiri legacy development desktop", stdout)
+        self.assertIn("Verified Tobkiri complete development desktop", stdout)
         self.assertNotIn(CREATE, stdout)
 
-    def test_explicit_legacy_still_requires_its_interpreter(self) -> None:
+    def test_default_complete_route_still_requires_its_interpreter(self) -> None:
         self.app_executable(legacy=True)
         with self.assertRaisesRegex(RuntimeError, "Create .venv"):
-            self.launcher.build_development_launcher(self.root, legacy=True)
+            self.launcher.build_development_launcher(self.root)
         self.assertEqual(self.commands, [])
 
     def test_legacy_verification_stops_before_attestation(self) -> None:
@@ -277,7 +274,7 @@ class DevelopmentCoreRouteTests(unittest.TestCase):
 
         self.launcher.run_command.side_effect = fail_verification
         with self.assertRaises(subprocess.CalledProcessError):
-            self.launcher.build_development_launcher(self.root, legacy=True)
+            self.launcher.build_development_launcher(self.root)
         self.assertEqual(len(self.commands), 4)
         self.assertFalse(
             any(
@@ -288,18 +285,22 @@ class DevelopmentCoreRouteTests(unittest.TestCase):
 
     def test_routes_reject_unbound_target_directory(self) -> None:
         os.environ["CARGO_TARGET_DIR"] = str(self.root / "external")
-        for legacy in (False, True):
-            with self.subTest(legacy=legacy):
+        for core_host in (False, True):
+            with self.subTest(core_host=core_host):
                 with self.assertRaisesRegex(RuntimeError, "default Cargo target"):
-                    self.launcher.build_development_launcher(self.root, legacy=legacy)
+                    self.launcher.build_development_launcher(
+                        self.root, core_host=core_host
+                    )
         self.assertEqual(self.commands, [])
 
     def test_each_route_preserves_the_development_host_target_boundary(self) -> None:
         self.launcher.host_target.return_value = "x86_64-unknown-linux-gnu"
-        for legacy in (False, True):
-            with self.subTest(legacy=legacy):
+        for core_host in (False, True):
+            with self.subTest(core_host=core_host):
                 with self.assertRaisesRegex(RuntimeError, "Apple Silicon macOS"):
-                    self.launcher.build_development_launcher(self.root, legacy=legacy)
+                    self.launcher.build_development_launcher(
+                        self.root, core_host=core_host
+                    )
         self.assertEqual(self.commands, [])
 
     def test_dev_config_changes_only_the_core_bundle_development_settings(self) -> None:
@@ -348,11 +349,11 @@ class DevelopmentCoreRouteTests(unittest.TestCase):
                     True,
                 )
 
-    def test_cargo_defaults_core_with_explicit_feature_definition(self) -> None:
+    def test_cargo_defaults_to_full_launcher_with_core_host_opt_in(self) -> None:
         cargo = tomllib.loads(
             (ROOT / "tobkiri_launcher/src-tauri/Cargo.toml").read_text()
         )
-        self.assertEqual(cargo["features"]["default"], ["core-host"])
+        self.assertEqual(cargo["features"]["default"], [])
         self.assertEqual(
             cargo["features"]["core-host"],
             [
