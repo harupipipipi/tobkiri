@@ -772,6 +772,7 @@ jobs:
             capture-guards)
               tests=(
                 tests/test_pack_control_v4.py::test_control_operation_reuses_only_its_scoped_capture
+                tests/test_pack_control_v4.py::test_dashboard_rejects_control_state_change_before_return
                 tests/test_pack_control_v4.py::test_unapproved_revoke_does_not_hold_session_lock_during_slow_capture
                 tests/test_pack_control_v4.py::test_slow_catalog_capture_does_not_own_the_control_session_lock
                 tests/test_pack_control_v4.py::test_enable_does_not_require_unrelated_pack_install_or_approval
