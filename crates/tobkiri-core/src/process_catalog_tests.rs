@@ -12,6 +12,7 @@ use std::{
     io::{Seek, SeekFrom},
     os::unix::fs::{FileExt, MetadataExt, PermissionsExt},
     path::PathBuf,
+    sync::atomic::{AtomicU64, Ordering},
 };
 use tobkiri_gate::CoreControlLimits;
 
@@ -617,4 +618,483 @@ fn recorded_binding_is_owner_specific_and_commits_labels_arguments_and_limits() 
         let failure = ProcessRegistrationError::InvalidProgramId;
         assert!(!format!("{failure} {failure:?}").contains(secret));
     }
+}
+
+struct SnapshotBudget {
+    used: AtomicU64,
+    calls: AtomicU64,
+    limit: u64,
+    requests: Mutex<Vec<AllocationRequest>>,
+}
+impl SnapshotBudget {
+    fn new(limit: u64) -> Self {
+        Self {
+            used: AtomicU64::new(0),
+            calls: AtomicU64::new(0),
+            limit,
+            requests: Mutex::new(Vec::new()),
+        }
+    }
+    fn used(&self) -> u64 {
+        self.used.load(Ordering::SeqCst)
+    }
+    fn calls(&self) -> u64 {
+        self.calls.load(Ordering::SeqCst)
+    }
+}
+impl AllocationBudget for SnapshotBudget {
+    fn reserve(&self, request: AllocationRequest) -> Result<(), AllocationError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        self.requests.lock().unwrap().push(request);
+        self.used
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |used| {
+                used.checked_add(request.bytes)
+                    .filter(|next| *next <= self.limit)
+            })
+            .map(|_| ())
+            .map_err(|_| AllocationError::Limit)
+    }
+    fn release(&self, bytes: u64) {
+        let prior = self.used.fetch_sub(bytes, Ordering::SeqCst);
+        assert!(prior >= bytes, "snapshot allocation refunded twice");
+    }
+}
+
+fn snapshot_limits() -> ResourceLimits {
+    ResourceLimits {
+        fuel_per_call: 2_000,
+        memory_mib: 32,
+        wall_ms: 1_000,
+        table_elements: 512,
+        output_bytes: 2_048,
+    }
+}
+
+#[test]
+fn prepared_snapshot_owns_args_files_and_charges_after_catalog_drop() {
+    let control = CoreControl::default();
+    let fixture = Fixture::with_control(control.clone());
+    fixture.register("tool").unwrap();
+    let budget = Arc::new(SnapshotBudget::new(2 * 1024 * 1024));
+    let owner: Arc<dyn AllocationBudget> = budget.clone();
+    let mut argv = vec!["SECRET_FIRST".to_owned(), "SECRET_SECOND".to_owned()];
+    // Duplicated names and order must survive exactly; no normalization occurs.
+    let mut env = vec![
+        ("SECRET_NAME".to_owned(), "SECRET_VALUE_1".to_owned()),
+        ("SECRET_NAME".to_owned(), "SECRET_VALUE_2".to_owned()),
+    ];
+    let mut limits = snapshot_limits();
+    let snapshot = fixture
+        .catalog
+        .prepare_snapshot("tool", &argv, &env, &limits, None, &owner)
+        .unwrap();
+    assert_eq!(fixture.catalog.verify_snapshot(&snapshot), Ok(()));
+    let charged = budget.used();
+    let data = snapshot.data.get();
+    let actual_allocated = data.argv.capacity() * std::mem::size_of::<String>()
+        + data.env.capacity() * std::mem::size_of::<(String, String)>()
+        + data.argv.iter().map(String::capacity).sum::<usize>()
+        + data
+            .env
+            .iter()
+            .map(|(name, value)| name.capacity() + value.capacity())
+            .sum::<usize>();
+    assert_eq!(charged, u64::try_from(actual_allocated).unwrap());
+    assert_eq!(budget.requests.lock().unwrap().len(), 1);
+    assert_eq!(
+        budget.requests.lock().unwrap()[0].kind,
+        AllocationKind::Clone
+    );
+    assert_eq!(control.usage().count(ControlKind::Task), 1);
+    assert_eq!(snapshot.binding().argv_count(), 2);
+    assert_eq!(snapshot.binding().env_count(), 2);
+    let cwd = fixture.dir().metadata().unwrap();
+    argv[0] = "CALLER_CHANGED_ARG".to_owned();
+    env.reverse();
+    env[0].1 = "CALLER_CHANGED_ENV".to_owned();
+    limits.wall_ms += 1;
+    assert_eq!(fixture.catalog.verify_snapshot(&snapshot), Ok(()));
+    let data = snapshot.data.get();
+    assert_eq!(data.argv[0], "SECRET_FIRST");
+    assert_eq!(data.env[0].1, "SECRET_VALUE_1");
+    assert_eq!(data.env[1].1, "SECRET_VALUE_2");
+    assert_eq!(data.limits.wall_ms, snapshot_limits().wall_ms);
+    assert_ne!(data.limits.wall_ms, limits.wall_ms);
+    std::fs::rename(
+        &fixture.executable,
+        fixture.temp.path().join("old-executable"),
+    )
+    .unwrap();
+    std::fs::write(&fixture.executable, b"unapproved replacement").unwrap();
+    std::fs::rename(&fixture.cwd, fixture.temp.path().join("old-cwd")).unwrap();
+    std::fs::create_dir(&fixture.cwd).unwrap();
+    // The fixture drops the catalog and removes every pathname. The snapshot's
+    // duplicated actual open objects and their own original charges survive.
+    drop(fixture);
+    assert_eq!(control.usage().count(ControlKind::Catalog), 0);
+    assert_eq!(control.usage().count(ControlKind::Registration), 0);
+    assert_eq!(control.usage().count(ControlKind::Task), 1);
+    assert_eq!(control.usage().bytes, snapshot._control.bytes());
+    assert_eq!(budget.used(), charged);
+    let mut bytes = [0u8; 16];
+    let count = snapshot
+        .data
+        .get()
+        .executable
+        .read_at(&mut bytes, 0)
+        .unwrap();
+    assert_eq!(&bytes[..count], DATA);
+    let retained_cwd = snapshot.data.get().cwd.metadata().unwrap();
+    assert!(retained_cwd.is_dir());
+    assert_eq!(
+        (retained_cwd.dev(), retained_cwd.ino()),
+        (cwd.dev(), cwd.ino())
+    );
+    let rendered = format!("{snapshot:?}");
+    for secret in [
+        "SECRET_FIRST",
+        "SECRET_SECOND",
+        "SECRET_NAME",
+        "SECRET_VALUE_1",
+        "SECRET_VALUE_2",
+    ] {
+        assert!(!rendered.contains(secret));
+    }
+    drop(snapshot);
+    assert_eq!(budget.used(), 0);
+    assert_eq!(control.usage().bytes, 0);
+    assert_eq!(control.usage().count(ControlKind::Task), 0);
+}
+
+#[test]
+fn prepared_snapshot_rejects_foreign_catalog_key_with_identical_descriptor_facts() {
+    let fixture = Fixture::new();
+    fixture.register("tool").unwrap();
+    let foreign = ProcessCatalog::new(CoreControl::default()).unwrap();
+    // Both catalogs register clones of the same underlying executable and cwd,
+    // the same required digest, id and labels. Only their private keys differ.
+    let (executable, cwd) = {
+        let state = fixture.catalog.state.lock().unwrap();
+        let entry = state.entries[0].as_ref().unwrap();
+        (
+            entry.executable.try_clone().unwrap(),
+            entry.cwd.try_clone().unwrap(),
+        )
+    };
+    foreign
+        .register("tool", executable, &Digest::hash(DATA), "Tool", cwd, "Work")
+        .unwrap();
+    {
+        let first = fixture.catalog.state.lock().unwrap();
+        let second = foreign.state.lock().unwrap();
+        let first = first.entries[0].as_ref().unwrap();
+        let second = second.entries[0].as_ref().unwrap();
+        assert_eq!(
+            first.executable_identity.bytes(),
+            second.executable_identity.bytes()
+        );
+        assert_eq!(first.cwd_identity.bytes(), second.cwd_identity.bytes());
+        assert_eq!(first.executable_digest, second.executable_digest);
+    }
+    let budget = Arc::new(SnapshotBudget::new(4096));
+    let owner: Arc<dyn AllocationBudget> = budget.clone();
+    let snapshot = fixture
+        .catalog
+        .prepare_snapshot(
+            "tool",
+            &["private".to_owned()],
+            &[],
+            &snapshot_limits(),
+            None,
+            &owner,
+        )
+        .unwrap();
+    assert_eq!(fixture.catalog.verify_snapshot(&snapshot), Ok(()));
+    assert_eq!(
+        foreign.verify_snapshot(&snapshot),
+        Err(LaunchBindingError::Mismatch)
+    );
+    drop(snapshot);
+    assert_eq!(budget.used(), 0);
+}
+
+#[test]
+fn snapshot_input_bounds_reject_before_owned_copy_budget_or_descriptor_duplication() {
+    let control = CoreControl::default();
+    let fixture = Fixture::with_control(control.clone());
+    fixture.register("tool").unwrap();
+    let baseline = control.usage();
+    let budget = Arc::new(SnapshotBudget::new(2 * 1024 * 1024));
+    let owner: Arc<dyn AllocationBudget> = budget.clone();
+    let cases = [
+        (
+            vec![String::new(); tobkiri_gate::MAX_ARGV_ENTRIES + 1],
+            vec![],
+            LaunchBindingError::ArgvCount,
+        ),
+        (
+            vec![],
+            vec![("N".to_owned(), String::new()); tobkiri_gate::MAX_ENV_ENTRIES + 1],
+            LaunchBindingError::EnvCount,
+        ),
+        (
+            vec!["x".repeat(tobkiri_gate::MAX_STRING_BYTES + 1)],
+            vec![],
+            LaunchBindingError::StringBytes,
+        ),
+        (
+            vec![
+                "x".repeat(tobkiri_gate::MAX_STRING_BYTES);
+                tobkiri_gate::MAX_TOTAL_BYTES / tobkiri_gate::MAX_STRING_BYTES + 1
+            ],
+            vec![],
+            LaunchBindingError::TotalBytes,
+        ),
+        (
+            vec!["ARG_SECRET\0TAIL".to_owned()],
+            vec![],
+            LaunchBindingError::NulByte,
+        ),
+        (
+            vec![],
+            vec![("N".to_owned(), "ENV_SECRET\0TAIL".to_owned())],
+            LaunchBindingError::NulByte,
+        ),
+        (
+            vec![],
+            vec![("SECRET=NAME".to_owned(), "value".to_owned())],
+            LaunchBindingError::EnvName,
+        ),
+        (
+            vec![],
+            vec![(
+                "x".repeat(tobkiri_gate::MAX_STRING_BYTES + 1),
+                "value".to_owned(),
+            )],
+            LaunchBindingError::StringBytes,
+        ),
+    ];
+    for (argv, env, expected) in cases {
+        let duplicates = Cell::new(0);
+        let result = fixture.catalog.prepare_snapshot_inner(
+            "tool",
+            &argv,
+            &env,
+            &snapshot_limits(),
+            None,
+            &owner,
+            &mut |file| {
+                duplicates.set(duplicates.get() + 1);
+                file.try_clone()
+            },
+        );
+        let error = result.unwrap_err();
+        assert_eq!(error, ProcessSnapshotError::Binding(expected));
+        let rendered = format!("{error:?} {error}");
+        for secret in ["ARG_SECRET", "ENV_SECRET", "SECRET=NAME"] {
+            assert!(!rendered.contains(secret));
+        }
+        assert_eq!(duplicates.get(), 0);
+        assert_eq!(budget.calls(), 0);
+        assert_eq!(budget.used(), 0);
+        assert_eq!(control.usage(), baseline);
+    }
+    assert!(matches!(
+        fixture
+            .catalog
+            .prepare_snapshot("missing", &[], &[], &snapshot_limits(), None, &owner),
+        Err(ProcessSnapshotError::UnknownProgram)
+    ));
+    assert_eq!(budget.calls(), 0);
+    assert_eq!(control.usage(), baseline);
+}
+
+#[test]
+fn snapshot_existing_count_string_and_total_boundaries_are_not_narrowed() {
+    let fixture = Fixture::new();
+    fixture.register("tool").unwrap();
+    let budget = Arc::new(SnapshotBudget::new(2 * 1024 * 1024));
+    let owner: Arc<dyn AllocationBudget> = budget.clone();
+    let mut argv = vec![String::new(); tobkiri_gate::MAX_ARGV_ENTRIES];
+    argv[0] = "x".repeat(tobkiri_gate::MAX_STRING_BYTES);
+    let env = vec![("N".to_owned(), String::new()); tobkiri_gate::MAX_ENV_ENTRIES];
+    let snapshot = fixture
+        .catalog
+        .prepare_snapshot(
+            "tool",
+            &argv,
+            &env,
+            &snapshot_limits(),
+            Some(PtyDimensions::new(80, 24).unwrap()),
+            &owner,
+        )
+        .unwrap();
+    assert_eq!(fixture.catalog.verify_snapshot(&snapshot), Ok(()));
+    assert_eq!(
+        snapshot.binding().argv_count(),
+        tobkiri_gate::MAX_ARGV_ENTRIES
+    );
+    assert_eq!(
+        snapshot.binding().env_count(),
+        tobkiri_gate::MAX_ENV_ENTRIES
+    );
+    drop(snapshot);
+    assert_eq!(budget.used(), 0);
+    let argv = vec![
+        "x".repeat(tobkiri_gate::MAX_STRING_BYTES);
+        tobkiri_gate::MAX_TOTAL_BYTES / tobkiri_gate::MAX_STRING_BYTES
+    ];
+    assert_eq!(
+        argv.iter().map(String::len).sum::<usize>(),
+        tobkiri_gate::MAX_TOTAL_BYTES
+    );
+    let snapshot = fixture
+        .catalog
+        .prepare_snapshot("tool", &argv, &[], &snapshot_limits(), None, &owner)
+        .unwrap();
+    assert_eq!(fixture.catalog.verify_snapshot(&snapshot), Ok(()));
+    drop(snapshot);
+    assert_eq!(budget.used(), 0);
+}
+
+#[test]
+fn snapshot_layout_rejects_overflow_without_allocation_or_fake_input_slices() {
+    for (argv, env, raw) in [
+        (usize::MAX, 0, 0),
+        (0, usize::MAX, 0),
+        (1, 0, usize::MAX),
+        (0, 0, usize::MAX),
+    ] {
+        assert_eq!(
+            snapshot_payload_layout(argv, env, raw),
+            Err(AllocationError::Overflow)
+        );
+    }
+    assert_eq!(snapshot_payload_layout(0, 0, 0).unwrap().bytes, 0);
+}
+
+#[test]
+fn snapshot_budget_and_real_descriptor_failures_rollback_all_new_storage() {
+    let control = CoreControl::default();
+    let fixture = Fixture::with_control(control.clone());
+    fixture.register("tool").unwrap();
+    let baseline = control.usage();
+    let denied = Arc::new(SnapshotBudget::new(0));
+    let denied_owner: Arc<dyn AllocationBudget> = denied.clone();
+    let argv = vec!["SECRET_ARG".to_owned()];
+    let env = vec![("SECRET_NAME".to_owned(), "SECRET_ENV".to_owned())];
+    let duplicates = Cell::new(0);
+    let result = fixture.catalog.prepare_snapshot_inner(
+        "tool",
+        &argv,
+        &env,
+        &snapshot_limits(),
+        None,
+        &denied_owner,
+        &mut |file| {
+            duplicates.set(duplicates.get() + 1);
+            file.try_clone()
+        },
+    );
+    assert!(matches!(
+        result,
+        Err(ProcessSnapshotError::Allocation(AllocationError::Limit))
+    ));
+    assert_eq!(duplicates.get(), 0);
+    assert_eq!(denied.used(), 0);
+    assert_eq!(control.usage(), baseline);
+
+    let budget = Arc::new(SnapshotBudget::new(4096));
+    let owner: Arc<dyn AllocationBudget> = budget.clone();
+    let result = fixture.catalog.prepare_snapshot_inner(
+        "tool",
+        &argv,
+        &env,
+        &snapshot_limits(),
+        None,
+        &owner,
+        &mut |file| {
+            duplicates.set(duplicates.get() + 1);
+            assert!(budget.used() > 0);
+            assert_eq!(control.usage().count(ControlKind::Task), 1);
+            if duplicates.get() == 2 {
+                // Fail the cwd duplication after argv/env were copied and an
+                // actual executable duplicate was acquired; no invalid FD exists.
+                Err(std::io::Error::other("PRIVATE_OS_ERROR"))
+            } else {
+                file.try_clone()
+            }
+        },
+    );
+    assert_eq!(result.unwrap_err(), ProcessSnapshotError::Descriptor);
+    assert_eq!(duplicates.get(), 2);
+    assert_eq!(budget.used(), 0);
+    assert_eq!(control.usage(), baseline);
+    fixture.retained_data("tool");
+    let successful = fixture
+        .catalog
+        .prepare_snapshot("tool", &argv, &env, &snapshot_limits(), None, &owner)
+        .unwrap();
+    assert_eq!(fixture.catalog.verify_snapshot(&successful), Ok(()));
+    drop(successful);
+    assert_eq!(budget.used(), 0);
+    assert_eq!(control.usage(), baseline);
+}
+
+#[test]
+fn snapshot_control_denial_precedes_argument_budget_and_file_duplicates() {
+    let control = CoreControl::new(CoreControlLimits {
+        max_tasks: 0,
+        ..CoreControlLimits::default()
+    })
+    .unwrap();
+    let fixture = Fixture::with_control(control.clone());
+    fixture.register("tool").unwrap();
+    let baseline = control.usage();
+    let budget = Arc::new(SnapshotBudget::new(4096));
+    let owner: Arc<dyn AllocationBudget> = budget.clone();
+    let duplicates = Cell::new(0);
+    let result = fixture.catalog.prepare_snapshot_inner(
+        "tool",
+        &["private".to_owned()],
+        &[],
+        &snapshot_limits(),
+        None,
+        &owner,
+        &mut |file| {
+            duplicates.set(duplicates.get() + 1);
+            file.try_clone()
+        },
+    );
+    assert_eq!(result.unwrap_err(), ProcessSnapshotError::Capacity);
+    assert_eq!(duplicates.get(), 0);
+    assert_eq!(budget.calls(), 0);
+    assert_eq!(control.usage(), baseline);
+}
+
+#[test]
+fn empty_snapshot_retains_the_original_budget_owner_until_unused_drop() {
+    let control = CoreControl::default();
+    let fixture = Fixture::with_control(control.clone());
+    fixture.register("tool").unwrap();
+    let baseline = control.usage();
+    let budget = Arc::new(SnapshotBudget::new(0));
+    let weak_budget = Arc::downgrade(&budget);
+    let owner: Arc<dyn AllocationBudget> = budget.clone();
+    let snapshot = fixture
+        .catalog
+        .prepare_snapshot("tool", &[], &[], &snapshot_limits(), None, &owner)
+        .unwrap();
+    assert_eq!(fixture.catalog.verify_snapshot(&snapshot), Ok(()));
+    assert_eq!(snapshot.binding().argv_count(), 0);
+    assert_eq!(snapshot.binding().env_count(), 0);
+    assert_eq!(budget.used(), 0);
+    assert_eq!(budget.calls(), 1);
+    drop(owner);
+    drop(budget);
+    assert!(weak_budget.upgrade().is_some());
+    assert_eq!(control.usage().count(ControlKind::Task), 1);
+    drop(snapshot);
+    assert!(weak_budget.upgrade().is_none());
+    assert_eq!(control.usage(), baseline);
 }

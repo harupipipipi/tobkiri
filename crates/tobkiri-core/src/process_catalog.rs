@@ -5,8 +5,9 @@
 //! those retained descriptors: stat identity, a SHA-256 streamed from
 //! offset zero and matched against a required expected digest, and a
 //! before/after stability sample. Program ids and the two labels are
-//! trusted non-secret metadata; argv/env are only borrowed by the private
-//! commitment helper and are never copied, retained, or rendered.
+//! trusted non-secret metadata. Private preparation may retain bounded owned
+//! argv/env under their original allocation budget; their buffers are zeroized
+//! on destruction and never rendered. The commitment helper only borrows them.
 //!
 //! This is a bounded commitment foundation only. Descriptor custody, stat
 //! identity, digest equality and a before/after sample do NOT prove
@@ -15,23 +16,29 @@
 //! liveness, current policy, approval, a jail, launch/reap/cleanup, or
 //! executable and interpreter platform support. Mode bits are only an
 //! admission fact, not an effective-access or exec-readiness proof.
-//! Nothing here authorizes, prepares, or performs a physical launch;
+//! A prepared snapshot fixes owned data and descriptor custody only. Nothing
+//! here authorizes, consumes a grant, or performs a physical launch;
 //! `proc`/`pty` stay `Unavailable`.
 
-use std::{fmt, fs::File, sync::Mutex};
+use std::{
+    fmt,
+    fs::File,
+    sync::{Arc, Mutex},
+};
 
 #[cfg(unix)]
 use sha2::{Digest as _, Sha256};
 #[cfg(unix)]
 use std::os::unix::fs::{FileExt, MetadataExt};
 
-use tobkiri_canon::Digest;
-#[cfg(unix)]
-use tobkiri_gate::ControlKind;
-use tobkiri_gate::{
-    ControlReservation, CoreControl, LaunchBindingError, NativeIdentity, ProcessLaunchBinding,
-    ProcessLaunchKey, ProcessLaunchSnapshot, PtyDimensions, ResourceLimits,
+use tobkiri_canon::{
+    AllocationBudget, AllocationError, AllocationKind, AllocationRequest, Digest, LeasedShared,
 };
+use tobkiri_gate::{
+    ControlKind, ControlReservation, CoreControl, LaunchBindingError, NativeIdentity,
+    ProcessLaunchBinding, ProcessLaunchKey, ProcessLaunchSnapshot, PtyDimensions, ResourceLimits,
+};
+use zeroize::Zeroizing;
 
 /// Published catalog entries per Core owner; append-only, never evicted.
 const MAX_ENTRIES: usize = 16;
@@ -155,6 +162,7 @@ impl fmt::Display for ProcessRegistrationError {
 impl std::error::Error for ProcessRegistrationError {}
 
 /// Bounded inline copy of already-validated non-secret text; never heap.
+#[derive(Clone)]
 struct BoundedText<const N: usize> {
     bytes: [u8; N],
     len: usize,
@@ -399,6 +407,165 @@ pub(crate) struct ProcessCatalog {
     /// Owner storage permit, released only after the state, descriptors
     /// and key above have been destroyed.
     _catalog_permit: ControlReservation,
+}
+
+/// Fixed, non-secret failures from private snapshot preparation. Preparation
+/// grants no authority and never records a dispatched or completed process.
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+pub(crate) enum ProcessSnapshotError {
+    #[error("process catalog is unavailable")]
+    Unavailable,
+    #[error("program is not registered in this process catalog")]
+    UnknownProgram,
+    #[error("process snapshot binding rejected: {0}")]
+    Binding(LaunchBindingError),
+    #[error("process snapshot control capacity exhausted")]
+    Capacity,
+    #[error("process snapshot allocation rejected: {0}")]
+    Allocation(AllocationError),
+    #[error("process snapshot descriptor duplication failed")]
+    Descriptor,
+}
+
+/// One Core-private, non-Clone owned snapshot, still entirely unauthorised.
+/// Only this catalog can construct one. No key, descriptor, mutable payload or
+/// execution/consume operation is exposed. Dropping an unused snapshot destroys
+/// its zeroizing arguments and descriptor duplicates before refunding storage.
+#[allow(dead_code)]
+pub(crate) struct PreparedProcessSnapshot {
+    binding: ProcessLaunchBinding,
+    data: LeasedShared<SnapshotData, SnapshotPayloadLease>,
+    // Last: pays for this carrier and the complete LeasedShared block until
+    // the block, payload, FDs and its allocation release plan are all gone.
+    _control: ControlReservation,
+}
+
+#[allow(dead_code)]
+impl PreparedProcessSnapshot {
+    /// An inert data commitment, never a grant or proof of physical execution.
+    pub(crate) fn binding(&self) -> &ProcessLaunchBinding {
+        &self.binding
+    }
+}
+
+impl fmt::Debug for PreparedProcessSnapshot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Binding Debug already omits argv/env values and native identities.
+        // Never derive Debug for SnapshotData or expose its Zeroizing wrappers.
+        f.debug_struct("PreparedProcessSnapshot")
+            .field("binding", &self.binding)
+            .finish_non_exhaustive()
+    }
+}
+
+/// The immutable owned preimage and duplicates of the actual retained Files.
+/// Duplication retains the same open objects; it performs no pathname lookup.
+/// Recorded identities/digest remain registration facts, not content freshness
+/// or atomic executable-byte snapshot evidence.
+#[allow(dead_code)]
+struct SnapshotData {
+    argv: Zeroizing<Vec<String>>,
+    env: Zeroizing<Vec<(String, String)>>,
+    executable: File,
+    cwd: File,
+    program_id: BoundedText<MAX_PROGRAM_ID_BYTES>,
+    catalog_label: BoundedText<MAX_LABEL_BYTES>,
+    cwd_label: BoundedText<MAX_LABEL_BYTES>,
+    executable_digest: Digest,
+    executable_identity: NativeIdentity,
+    cwd_identity: NativeIdentity,
+    limits: ResourceLimits,
+    pty: Option<PtyDimensions>,
+}
+
+impl SnapshotData {
+    fn borrowed(&self) -> ProcessLaunchSnapshot<'_> {
+        ProcessLaunchSnapshot {
+            program_id: self.program_id.as_str(),
+            executable_digest: &self.executable_digest,
+            executable_identity: &self.executable_identity,
+            argv: &self.argv,
+            env: &self.env,
+            cwd_identity: &self.cwd_identity,
+            pty: self.pty,
+            limits: &self.limits,
+            catalog_label: self.catalog_label.as_str(),
+            cwd_label: self.cwd_label.as_str(),
+        }
+    }
+}
+
+/// Release plan for argv/env allocations under the supplied original owner.
+/// LeasedShared destroys the actual payload and block before dropping this
+/// plan; the snapshot's separate CoreControl charge covers that fixed block.
+struct SnapshotPayloadLease {
+    budget: Arc<dyn AllocationBudget>,
+    bytes: u64,
+}
+
+impl Drop for SnapshotPayloadLease {
+    fn drop(&mut self) {
+        self.budget.release(self.bytes);
+    }
+}
+
+/// Layout arithmetic only; the existing binding validator supplies all input
+/// count, string, total-byte and character limits before this function runs.
+fn snapshot_payload_layout(
+    argv_count: usize,
+    env_count: usize,
+    raw_bytes: usize,
+) -> Result<AllocationRequest, AllocationError> {
+    let argv_storage = argv_count
+        .checked_mul(std::mem::size_of::<String>())
+        .ok_or(AllocationError::Overflow)?;
+    let env_storage = env_count
+        .checked_mul(std::mem::size_of::<(String, String)>())
+        .ok_or(AllocationError::Overflow)?;
+    let bytes = argv_storage
+        .checked_add(env_storage)
+        .and_then(|bytes| bytes.checked_add(raw_bytes))
+        .ok_or(AllocationError::Overflow)?;
+    if bytes > isize::MAX as usize {
+        return Err(AllocationError::Overflow);
+    }
+    let elements = env_count
+        .checked_mul(2)
+        .and_then(|count| count.checked_add(argv_count))
+        .ok_or(AllocationError::Overflow)?;
+    Ok(AllocationRequest {
+        kind: AllocationKind::Clone,
+        bytes: u64::try_from(bytes).map_err(|_| AllocationError::Overflow)?,
+        elements: u64::try_from(elements).map_err(|_| AllocationError::Overflow)?,
+        depth: 0,
+        work: u64::try_from(raw_bytes.max(elements)).map_err(|_| AllocationError::Overflow)?,
+    })
+}
+
+/// Exact storage is precharged before either allocator is reached. Fail
+/// closed on an unsupported usable capacity before copying any secret bytes.
+fn snapshot_vec<T>(count: usize) -> Result<Vec<T>, AllocationError> {
+    let mut value = Vec::new();
+    value
+        .try_reserve_exact(count)
+        .map_err(|_| AllocationError::Allocator)?;
+    if value.capacity() != count {
+        return Err(AllocationError::Unavailable);
+    }
+    Ok(value)
+}
+
+fn snapshot_string(text: &str) -> Result<String, AllocationError> {
+    let mut value = String::new();
+    value
+        .try_reserve_exact(text.len())
+        .map_err(|_| AllocationError::Allocator)?;
+    if value.capacity() != text.len() {
+        return Err(AllocationError::Unavailable);
+    }
+    value.push_str(text);
+    Ok(value)
 }
 
 impl ProcessCatalog {
@@ -652,6 +819,143 @@ impl ProcessCatalog {
             &state.entries,
         );
         Err(ProcessRegistrationError::UnsupportedPlatform)
+    }
+
+    /// Fix an owned, bounded pre-authorization snapshot using this catalog's
+    /// retained executable and required cwd. This neither authorizes execution
+    /// nor checks a live caller, current policy, approval or content freshness.
+    /// The original allocation owner is retained; control memory is charged to
+    /// this catalog's existing Core account, never used to fund argument bytes.
+    #[allow(dead_code)]
+    pub(crate) fn prepare_snapshot(
+        &self,
+        program_id: &str,
+        argv: &[String],
+        env: &[(String, String)],
+        limits: &ResourceLimits,
+        pty: Option<PtyDimensions>,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<PreparedProcessSnapshot, ProcessSnapshotError> {
+        self.prepare_snapshot_inner(program_id, argv, env, limits, pty, budget, &mut |file| {
+            file.try_clone()
+        })
+    }
+
+    /// Production uses File::try_clone only. The private test seam supplies
+    /// actual duplicates or errors, never invalid or externally closed FDs.
+    #[allow(clippy::too_many_arguments)]
+    fn prepare_snapshot_inner(
+        &self,
+        program_id: &str,
+        argv: &[String],
+        env: &[(String, String)],
+        limits: &ResourceLimits,
+        pty: Option<PtyDimensions>,
+        budget: &Arc<dyn AllocationBudget>,
+        duplicate: &mut dyn FnMut(&File) -> std::io::Result<File>,
+    ) -> Result<PreparedProcessSnapshot, ProcessSnapshotError> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| ProcessSnapshotError::Unavailable)?;
+        let entry = state
+            .entries
+            .iter()
+            .flatten()
+            .find(|entry| entry.program_id.as_str() == program_id)
+            .ok_or(ProcessSnapshotError::UnknownProgram)?;
+
+        // Reuse Gate's existing bounded validator and streaming recipe as an
+        // allocation-free preflight. No parallel validator, codec, HMAC scheme
+        // or caller key is introduced. A second commit below reads the owned
+        // snapshot itself; this preflight binding never escapes or authorizes.
+        let borrowed = launch_snapshot(entry, argv, env, limits, pty);
+        ProcessLaunchBinding::commit(&self.key, &borrowed)
+            .map_err(ProcessSnapshotError::Binding)?;
+        let raw_bytes = argv
+            .iter()
+            .chain(env.iter().flat_map(|(name, value)| [name, value]))
+            .try_fold(0usize, |sum, text| {
+                sum.checked_add(text.len()).ok_or(AllocationError::Overflow)
+            })
+            .map_err(ProcessSnapshotError::Allocation)?;
+        let request = snapshot_payload_layout(argv.len(), env.len(), raw_bytes)
+            .map_err(ProcessSnapshotError::Allocation)?;
+        let fixed_bytes = std::mem::size_of::<PreparedProcessSnapshot>()
+            .checked_add(LeasedShared::<SnapshotData, SnapshotPayloadLease>::storage_bytes())
+            .and_then(|bytes| u64::try_from(bytes).ok())
+            .ok_or(ProcessSnapshotError::Capacity)?;
+        // Admission precedes every Vec/String/block allocation and FD duplicate.
+        // Local declaration order makes partial construction drop payload/FDs
+        // before the allocation lease and finally its fixed control charge.
+        let control = self
+            .control
+            .reserve(ControlKind::Task, fixed_bytes)
+            .map_err(|_| ProcessSnapshotError::Capacity)?;
+        budget
+            .reserve(request)
+            .map_err(ProcessSnapshotError::Allocation)?;
+        let payload = SnapshotPayloadLease {
+            budget: budget.clone(),
+            bytes: request.bytes,
+        };
+        let mut owned_argv =
+            Zeroizing::new(snapshot_vec(argv.len()).map_err(ProcessSnapshotError::Allocation)?);
+        let mut owned_env =
+            Zeroizing::new(snapshot_vec(env.len()).map_err(ProcessSnapshotError::Allocation)?);
+        for arg in argv {
+            owned_argv.push(snapshot_string(arg).map_err(ProcessSnapshotError::Allocation)?);
+        }
+        for (index, (name, value)) in env.iter().enumerate() {
+            // Install the name in its zeroizing owner before the next fallible
+            // copy, so a value-allocation failure cannot leave a plain secret
+            // temporary outside that owner's destruction path.
+            owned_env.push((
+                snapshot_string(name).map_err(ProcessSnapshotError::Allocation)?,
+                String::new(),
+            ));
+            owned_env[index].1 =
+                snapshot_string(value).map_err(ProcessSnapshotError::Allocation)?;
+        }
+        let executable =
+            duplicate(&entry.executable).map_err(|_| ProcessSnapshotError::Descriptor)?;
+        let cwd = duplicate(&entry.cwd).map_err(|_| ProcessSnapshotError::Descriptor)?;
+        let data = SnapshotData {
+            argv: owned_argv,
+            env: owned_env,
+            executable,
+            cwd,
+            program_id: entry.program_id.clone(),
+            catalog_label: entry.catalog_label.clone(),
+            cwd_label: entry.cwd_label.clone(),
+            executable_digest: entry.executable_digest.clone(),
+            executable_identity: entry.executable_identity.clone(),
+            cwd_identity: entry.cwd_identity.clone(),
+            limits: limits.clone(),
+            pty,
+        };
+        let binding = ProcessLaunchBinding::commit(&self.key, &data.borrowed())
+            .map_err(ProcessSnapshotError::Binding)?;
+        let data = LeasedShared::try_new_precharged(data, payload)
+            .map_err(ProcessSnapshotError::Allocation)?;
+        Ok(PreparedProcessSnapshot {
+            binding,
+            data,
+            _control: control,
+        })
+    }
+
+    /// Check data consistency only under this catalog's private key. Even
+    /// identical descriptor facts in a different catalog cannot verify it.
+    /// This is not grant consumption or an authority/liveness refresh.
+    #[allow(dead_code)]
+    pub(crate) fn verify_snapshot(
+        &self,
+        snapshot: &PreparedProcessSnapshot,
+    ) -> Result<(), LaunchBindingError> {
+        snapshot
+            .binding
+            .verify(&self.key, &snapshot.data.get().borrowed())
     }
 
     /// Internal borrowed commitment helper for a later launch slice. Builds

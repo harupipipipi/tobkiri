@@ -1,5 +1,24 @@
 # Proc/PTY next-slice handoff
 
+## Preauthorization snapshot checkpoint, 2026-10-21
+
+The [current focused replay](../../../crates/tobkiri-core/evidence/process-snapshot-20261021.json)
+passes all 21 process-catalog tests. Core now has a private, non-Clone
+`PreparedProcessSnapshot`: it owns bounded, zeroizing argv/environment under the
+original allocation owner, retained executable/cwd File duplicates, and the
+existing keyed binding. Copying and descriptor duplication occur after input
+validation and capacity admission; failed preparation releases the new custody.
+Tests cover original-owner retention, private verification, foreign-key refusal,
+input/budget bounds, real descriptor-duplication failure and unused Drop.
+
+This snapshot can exist before approval so that approval and later dispatch can
+refer to the same candidate. Its private verification is not authorization. It
+does not consume a Grant, establish an immutable native executable, launch a
+process, or enable Proc/PTY. A later move-only authorized handoff and admitted
+native physical owner remain necessary. Earlier dated sections below retain
+their own execution cutoffs; their missing-snapshot statements are historical.
+
+
 Latest execution cutoff: **587**. See the [current boundary below](#current-process-and-native-boundary-through-587). Earlier sections retain their historical source and execution boundaries. Current counts: 316 validation records, 16 focused FS records, 1/837 closed and 836 TODO. Later588+ executions are excluded.
 
 Status: **incomplete; no Proc/PTY backend availability is established here**.

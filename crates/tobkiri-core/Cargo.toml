@@ -16,6 +16,7 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 ulid.workspace = true
+zeroize.workspace = true
 tobkiri-canon.workspace = true
 tobkiri-flow.workspace = true
 tobkiri-gate.workspace = true
