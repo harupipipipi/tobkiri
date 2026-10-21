@@ -4,6 +4,7 @@ mod shapes;
 mod wit_preflight;
 pub use package::{
     build_tpk, canonical_manifest, parse_manifest, sign_manifest, verify_directory, verify_tpk,
+    verify_tpk_file,
 };
 pub use shapes::{
     PackCoreErrorBindings, PackWitInspection, WitBindingDirection, allowed_imports,

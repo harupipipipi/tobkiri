@@ -3,7 +3,7 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::SigningKey;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs,
+    fs::{self, OpenOptions},
     io::{Cursor, Read},
     path::Path,
 };
@@ -505,6 +505,47 @@ pub fn build_tpk(
     }
     archive(&entries)
 }
+fn read_tpk_bytes(
+    reader: &mut impl Read,
+    metadata_bytes: u64,
+    max_bytes: u64,
+) -> Result<Vec<u8>, ManifestError> {
+    if metadata_bytes > max_bytes {
+        return Err(invalid("package exceeds 512 MiB"));
+    }
+    let mut bytes = Vec::new();
+    reader.take(max_bytes + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(invalid("package exceeds 512 MiB"));
+    }
+    Ok(bytes)
+}
+
+/// Capture and verify a local regular package file within the package byte limit.
+/// The opened descriptor is checked before allocation, and the read remains
+/// capped if that same file grows after its metadata was checked.
+pub fn verify_tpk_file(
+    path: &Path,
+    publishers: &BTreeMap<String, String>,
+) -> Result<VerifiedPack, ManifestError> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // Opening a replaced path or FIFO must not block before the descriptor's
+        // regular-file check. Preserve the existing symlink-to-file behavior.
+        options.custom_flags(libc::O_NONBLOCK);
+    }
+    let mut file = options.open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        return Err(invalid("package artifact is not a regular file"));
+    }
+    let bytes = read_tpk_bytes(&mut file, metadata.len(), MAX_PACKAGE_BYTES)?;
+    verify_tpk(&bytes, publishers)
+}
+
 /// Verify an untrusted package in memory; extraction never runs before admission.
 pub fn verify_tpk(
     bytes: &[u8],
@@ -600,5 +641,75 @@ mod budget_tests {
         };
         assert!(overflow.add(0).is_err());
         assert!(overflow.remaining_member_limit().is_err());
+    }
+}
+
+#[cfg(test)]
+mod file_tests {
+    use super::*;
+
+    #[test]
+    fn oversized_metadata_rejects_before_requesting_any_content_bytes() {
+        struct Unreadable;
+        impl Read for Unreadable {
+            fn read(&mut self, _output: &mut [u8]) -> std::io::Result<usize> {
+                panic!("oversized package must be rejected before any read")
+            }
+        }
+        let error =
+            read_tpk_bytes(&mut Unreadable, MAX_PACKAGE_BYTES + 1, MAX_PACKAGE_BYTES).unwrap_err();
+        assert!(error.to_string().contains("package exceeds 512 MiB"));
+    }
+
+    #[test]
+    fn capture_accepts_the_exact_limit_and_rejects_a_growing_stream_at_one_extra_byte() {
+        let expected = vec![42; 8];
+        assert_eq!(
+            read_tpk_bytes(&mut Cursor::new(&expected), 8, 8).unwrap(),
+            expected
+        );
+
+        // This reader never reaches EOF, as a growing file could. A tiny limit
+        // exercises the production cap without allocating a large package.
+        struct GrowingReader {
+            consumed: usize,
+        }
+        impl Read for GrowingReader {
+            fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+                output.fill(42);
+                self.consumed += output.len();
+                Ok(output.len())
+            }
+        }
+        let mut reader = GrowingReader { consumed: 0 };
+        let error = read_tpk_bytes(&mut reader, 0, 8).unwrap_err();
+        assert!(error.to_string().contains("package exceeds 512 MiB"));
+        assert_eq!(reader.consumed, 9);
+    }
+
+    #[test]
+    fn sparse_oversized_package_is_rejected_before_tar_parsing_or_content_capture() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("oversized.tpk");
+        let file = fs::File::create(&path).unwrap();
+        file.set_len(MAX_PACKAGE_BYTES + 1).unwrap();
+        // The sparse file has no tar header. Rejection must come from the
+        // opened-file size check, before reading its large logical contents.
+        let error = verify_tpk_file(&path, &BTreeMap::new()).unwrap_err();
+        assert!(error.to_string().contains("package exceeds 512 MiB"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fifo_package_is_rejected_without_waiting_for_a_writer() {
+        use std::{ffi::CString, os::unix::ffi::OsStrExt};
+
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("pipe.tpk");
+        let name = CString::new(path.as_os_str().as_bytes()).unwrap();
+        // SAFETY: name is a NUL-terminated temporary path with no existing file.
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        let error = verify_tpk_file(&path, &BTreeMap::new()).unwrap_err();
+        assert!(error.to_string().contains("not a regular file"));
     }
 }

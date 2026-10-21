@@ -3,7 +3,7 @@ use anyhow::{Context, Result, bail};
 use base64::Engine as _;
 use std::{
     collections::BTreeMap,
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -368,10 +368,40 @@ async fn pack(command: PackCommand) -> Result<()> {
 }
 
 fn bounded_read(path: &Path, max: usize) -> Result<Vec<u8>> {
-    if std::fs::metadata(path)?.len() > max as u64 {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // Inspect the opened descriptor without waiting for a FIFO writer.
+        // Following a symlink to a regular file remains supported.
+        options.custom_flags(libc::O_NONBLOCK);
+    }
+    let mut file = options.open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        bail!("input is not a regular file: {}", path.display());
+    }
+    capture_bounded_input(&mut file, metadata.len(), max, path)
+}
+
+fn capture_bounded_input(
+    reader: &mut impl Read,
+    metadata_bytes: u64,
+    max: usize,
+    path: &Path,
+) -> Result<Vec<u8>> {
+    let max_bytes = u64::try_from(max).context("input size limit is unsupported")?;
+    let read_limit = max_bytes
+        .checked_add(1)
+        .context("input size limit is too large")?;
+    if metadata_bytes > max_bytes {
         bail!("file exceeds the allowed input size: {}", path.display());
     }
-    let bytes = std::fs::read(path)?;
+    // Metadata is an early rejection only: cap the descriptor read as well so
+    // growth after that snapshot cannot cause an unbounded allocation.
+    let mut bytes = Vec::new();
+    reader.take(read_limit).read_to_end(&mut bytes)?;
     if bytes.len() > max {
         bail!("file grew beyond the allowed input size");
     }
@@ -439,6 +469,11 @@ fn complete_with_cleanup<T>(
         }
     }
 }
+
+#[cfg(test)]
+#[path = "bounded_read_tests.rs"]
+mod bounded_read_tests;
+
 #[cfg(test)]
 mod tests {
     use super::*;

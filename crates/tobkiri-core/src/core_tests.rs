@@ -155,6 +155,46 @@ fn user_prompts(host: &Host) -> usize {
         .filter(|p| matches!(p.effect, EffectRequest::UserPermissions { .. }))
         .count()
 }
+
+#[tokio::test]
+async fn add_and_update_reject_oversized_tpk_without_changing_profile_or_authority() {
+    let (core, host, profile, dir) = fixture();
+    let head = core.save_profile(profile.clone(), None).await.unwrap();
+    let before = crate::profiles::strict_bytes(&core.profile(&profile.id).unwrap().0).unwrap();
+    let head_snapshot = core
+        .profiles
+        .root
+        .profile_head_snapshot(&profile.id)
+        .unwrap();
+    let prompt_count = host.prompts.lock().unwrap().len();
+    // A newly requested permission would be denied. Invalid package capture
+    // must finish before even reaching that approval surface.
+    host.deny.store(true, Ordering::SeqCst);
+
+    let path = dir.path().join("oversized.tpk");
+    let file = std::fs::File::create(&path).unwrap();
+    file.set_len(512 * 1024 * 1024 + 1).unwrap();
+    let source = format!("file:{}", path.display());
+    for update in [false, true] {
+        let error = core
+            .add_pack(&profile.id, source.clone(), update)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("package exceeds 512 MiB"));
+        let (stored, current_head) = core.profile(&profile.id).unwrap();
+        assert_eq!(current_head, head);
+        assert_eq!(crate::profiles::strict_bytes(&stored).unwrap(), before);
+        assert_eq!(
+            core.profiles
+                .root
+                .profile_head_snapshot(&profile.id)
+                .unwrap(),
+            head_snapshot
+        );
+        assert_eq!(host.prompts.lock().unwrap().len(), prompt_count);
+    }
+}
+
 #[tokio::test]
 async fn user_approval_is_bound_to_committed_document_revision_and_epoch() {
     let (core, host, mut profile, _dir) = fixture();

@@ -408,7 +408,7 @@ impl Core {
         let pack = if path.is_dir() {
             tobkiri_manifest::verify_directory(path, &profile.publishers)?
         } else {
-            tobkiri_manifest::verify_tpk(&std::fs::read(path)?, &profile.publishers)?
+            tobkiri_manifest::verify_tpk_file(path, &profile.publishers)?
         };
         let existing = profile
             .packs

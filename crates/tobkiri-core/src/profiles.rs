@@ -3,7 +3,7 @@ use tobkiri_canon::{
     Digest, Variant,
     ids::{PackHash, PackId, ProfileId},
 };
-use tobkiri_manifest::{VerifiedPack, verify_directory, verify_tpk};
+use tobkiri_manifest::{VerifiedPack, verify_directory, verify_tpk_file};
 use tobkiri_profile::{Profile, PublishedProfile, parse_profile, parse_published};
 use tobkiri_store::DataRoot;
 
@@ -107,7 +107,7 @@ pub(crate) fn load_packs(profile: &Profile) -> Result<Vec<VerifiedPack>, CoreErr
             let pack = if path.is_dir() {
                 verify_directory(path, &profile.publishers)?
             } else {
-                verify_tpk(&std::fs::read(path)?, &profile.publishers)?
+                verify_tpk_file(path, &profile.publishers)?
             };
             if pack.manifest.id != pin.id
                 || pack.hash != pin.sha256
@@ -132,4 +132,99 @@ pub(crate) fn old_hashes(profile: Option<&Profile>) -> BTreeMap<PackId, PackHash
                 .map(|pin| (pin.id.clone(), pin.sha256.clone()))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tobkiri_gate::PermissionSet;
+    use tobkiri_manifest::{FileEntry, PackManifest, Ports, RuntimeSpec, build_tpk, verify_tpk};
+    use tobkiri_profile::{PackPin, Startup};
+
+    fn profile(path: &Path) -> Profile {
+        Profile {
+            format: "tobkiri.profile/1".into(),
+            id: ProfileId::parse("bounded_tpk").unwrap(),
+            name: "Bounded package fixture".into(),
+            packs: vec![PackPin {
+                id: PackId::parse("local.bounded-tpk").unwrap(),
+                version: "1.0.0".into(),
+                sha256: Digest::hash(&[]).into(),
+                source: format!("file:{}", path.display()),
+            }],
+            publishers: BTreeMap::new(),
+            ceiling: PermissionSet::default(),
+            user_permissions: None,
+            pack_limits: BTreeMap::new(),
+            bindings: BTreeMap::new(),
+            overlay_order: vec![],
+            user_overlays: vec![],
+            startup: Startup {
+                inputs: vec![],
+                ui: None,
+            },
+        }
+    }
+
+    #[test]
+    fn load_packs_rejects_a_sparse_oversized_tpk_before_parsing_or_pin_validation() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("oversized.tpk");
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(512 * 1024 * 1024 + 1).unwrap();
+        let error = load_packs(&profile(&path)).unwrap_err();
+        assert!(error.to_string().contains("package exceeds 512 MiB"));
+    }
+
+    #[test]
+    fn load_packs_preserves_valid_tpk_bytes_hash_and_profile_pin_checks() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("valid.tpk");
+        let mut profile = profile(&path);
+        let files = BTreeMap::from([("a.txt".into(), b"hello".to_vec())]);
+        let manifest = PackManifest {
+            format: "tobkiri.pack/1".into(),
+            id: profile.packs[0].id.clone(),
+            version: profile.packs[0].version.clone(),
+            publisher_key: None,
+            runtime: RuntimeSpec::Data,
+            shapes: vec![],
+            ports: Ports::default(),
+            inputs: vec![],
+            flows: vec![],
+            overlays: vec![],
+            stores: vec![],
+            permissions: PermissionSet::default(),
+            ui: None,
+            files: vec![FileEntry {
+                path: "a.txt".into(),
+                sha256: Digest::hash(b"hello"),
+                size: 5,
+            }],
+        };
+        let bytes = build_tpk(&manifest, &files, None).unwrap();
+        let expected = verify_tpk(&bytes, &profile.publishers).unwrap();
+        std::fs::write(&path, &bytes).unwrap();
+        profile.packs[0].sha256 = expected.hash.clone();
+        let loaded = load_packs(&profile).unwrap();
+        assert_eq!(loaded[0].hash, expected.hash);
+        assert_eq!(loaded[0].files, expected.files);
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+
+        #[cfg(unix)]
+        {
+            let alias = root.path().join("alias.tpk");
+            std::os::unix::fs::symlink(&path, &alias).unwrap();
+            profile.packs[0].source = alias.to_str().unwrap().into();
+            assert_eq!(load_packs(&profile).unwrap()[0].hash, expected.hash);
+        }
+
+        profile.packs[0].version = "2.0.0".into();
+        let error = load_packs(&profile).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Pack bytes do not match the Profile pin")
+        );
+    }
 }
