@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import math
 import re
+from decimal import Decimal
 from typing import Any, Mapping
 from urllib.parse import urlencode, urlsplit
 
@@ -23,6 +23,37 @@ _CATEGORIES = {
 }
 _QUANTIZATIONS = {"int4", "int8", "fp4", "mxfp4", "nvfp4", "fp6", "fp8", "mxfp8", "fp16", "bf16", "fp32", "unknown"}
 _SAFE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
+_PLAIN_PRICE = re.compile(r"(?:0|[1-9][0-9]{0,9})(?:\.[0-9]{1,6})?\Z")
+_MICRO_USD = 1_000_000
+_MAX_PRICE_MICRO_USD = 2**53 - 1
+
+
+def _normalize_price(price: Any) -> str | int:
+    """Keep exact bounded USD in canonical policy JSON, without binary floats."""
+    error = "native price must be bounded nonnegative plain-decimal USD"
+    if type(price) is int:
+        if not 0 <= price <= _MAX_PRICE_MICRO_USD // _MICRO_USD:
+            raise ValueError(error)
+        # Preserve existing integer-zero policies and their approved digests.
+        return price
+    if not isinstance(price, str) or not _PLAIN_PRICE.fullmatch(price):
+        raise ValueError(error)
+    whole, _, fraction = price.partition(".")
+    micro_usd = int(whole) * _MICRO_USD + int(fraction.ljust(6, "0") or "0")
+    if micro_usd > _MAX_PRICE_MICRO_USD:
+        raise ValueError(error)
+    fraction = fraction.rstrip("0")
+    return f"{whole}.{fraction}" if fraction else whole
+
+
+def _wire_price(price: str | int) -> float | int:
+    """Reject any provider number that changes the approved exact USD limit."""
+    if isinstance(price, str) and "." in price:
+        numeric = float(price)
+        if Decimal(str(numeric)) != Decimal(price):
+            raise ValueError("native price cannot be represented exactly for transport")
+        return numeric
+    return int(price)
 
 
 def is_official_openrouter(connection: Mapping[str, Any]) -> bool:
@@ -107,12 +138,9 @@ def normalize_native_filters(
                 "prompt", "completion", "request", "image",
             }:
                 raise ValueError("native price fields are invalid")
-            prices: dict[str, float] = {}
-            for unit, price in item.items():
-                if type(price) not in {int, float} or not math.isfinite(price) or price < 0:
-                    raise ValueError("native price must be finite nonnegative USD")
-                prices[unit] = float(price)
-            result_routing[key] = prices
+            result_routing[key] = {
+                unit: _normalize_price(price) for unit, price in item.items()
+            }
     if set(result_routing.get("only", [])) & set(result_routing.get("ignore", [])):
         raise ValueError("a provider cannot be allowed and excluded")
     return {
@@ -140,5 +168,12 @@ def apply_native_routing(
         raise ValueError("saved native routing cannot be overridden")
     result = dict(parameters)
     if normalized["routing"]:
-        result["provider"] = {**normalized["routing"], "allow_fallbacks": False}
+        routing = dict(normalized["routing"])
+        if "max_price" in routing:
+            # OpenRouter's numeric wire format belongs only at this boundary.
+            routing["max_price"] = {
+                unit: _wire_price(price)
+                for unit, price in routing["max_price"].items()
+            }
+        result["provider"] = {**routing, "allow_fallbacks": False}
     return result

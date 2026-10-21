@@ -381,7 +381,7 @@
       "path": "catalog/setup/xiaomi-token-plan-sgp.json"
     },
     {
-      "digest": "sha256:a07bd68178dbdd737629da1e183341fc6b5c55d46b94a27bf5313a15fcd7777e",
+      "digest": "sha256:7f3cbf48ca35aac793e96e2033aefc0eb14f406289ab1c31cd04a442ef24b975",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -901,7 +901,7 @@
       "path": "runtime/catalog.py"
     },
     {
-      "digest": "sha256:fd32bed6784ed05a9216aedf753c882d015ddc1641912a0b3a03ffaa7a741561",
+      "digest": "sha256:7738868e45ca6b334d3b95d541a2f4f0ddfebd98ada7eff82cc653f481446f03",
       "kind": "executable",
       "path": "runtime/native_filters.py"
     }
@@ -932,9 +932,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:69a919ad719694135d9ebc218efe53e7d1abf28e03530ed9ab34a7fc6d032081",
-    "contract_catalog_digest": "sha256:6053cbc60c242ef76f365000894981515cc86f0100f11bb0db7510da3e31cffb",
-    "source_identity": "sha256:5ce5790ac67808ae05541a0443235980eb69e724854e7bc93878edd4897efa16"
+    "artifact_set_digest": "sha256:b6c09612f6f69813f8dccabd53b4c65e84427ab2ec88ce2768a81d9a63ba6398",
+    "contract_catalog_digest": "sha256:ee34e34e8a87d9b01eb810a7d0ac22da8b12026c4aa9aa6bee290eb4362ee5be",
+    "source_identity": "sha256:dc0e8f725990c1816a5c3911a24610fd1e9f843c017e56aca737111c4a945d50"
   },
   "migration": {
     "compatibility": "read_only",
@@ -982,7 +982,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:69a919ad719694135d9ebc218efe53e7d1abf28e03530ed9ab34a7fc6d032081",
+    "artifact_digest": "sha256:b6c09612f6f69813f8dccabd53b4c65e84427ab2ec88ce2768a81d9a63ba6398",
     "display_name": "Rumi Model Catalog",
     "id": "rumi_model_catalog_pack",
     "kind": "host_extension",
@@ -992,7 +992,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:5ce5790ac67808ae05541a0443235980eb69e724854e7bc93878edd4897efa16",
+        "digest": "sha256:dc0e8f725990c1816a5c3911a24610fd1e9f843c017e56aca737111c4a945d50",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -1003,7 +1003,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:5ce5790ac67808ae05541a0443235980eb69e724854e7bc93878edd4897efa16",
+    "source_digest": "sha256:dc0e8f725990c1816a5c3911a24610fd1e9f843c017e56aca737111c4a945d50",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_model_catalog_pack"
   },

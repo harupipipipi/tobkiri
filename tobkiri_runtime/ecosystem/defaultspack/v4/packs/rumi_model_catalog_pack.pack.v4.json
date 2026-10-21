@@ -381,7 +381,7 @@
       "path": "catalog/setup/xiaomi-token-plan-sgp.json"
     },
     {
-      "digest": "sha256:7d7ac18d44b2c9380c003f9a0aecd0cf15e0f8855bb4c350f09ba81566b0a25d",
+      "digest": "sha256:4e88c03b7f2bb93624ffcda8104f0425066213e85358866d0ee5a8c402d55674",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -901,7 +901,7 @@
       "path": "runtime/catalog.py"
     },
     {
-      "digest": "sha256:fd32bed6784ed05a9216aedf753c882d015ddc1641912a0b3a03ffaa7a741561",
+      "digest": "sha256:7738868e45ca6b334d3b95d541a2f4f0ddfebd98ada7eff82cc653f481446f03",
       "kind": "executable",
       "path": "runtime/native_filters.py"
     }
@@ -932,8 +932,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:a2335a4b1dc5ec33a0b7f84a16da3eb459266641c1e7f2176fe1dfdafbc538c6",
-    "artifact_set_digest": "sha256:3668d854f73c806f886b7a42c22d6d5a7b48bc4bf22b6b7ba51fdd6ea3a4c6b5",
+    "source_identity": "sha256:26b23da73a4c5ba18659e056fd897cf843ccfd663a18be390fe059caebcb687a",
+    "artifact_set_digest": "sha256:ddf3c3e6cb6fd4326f7c9a26e1fc639426c3ef3612191dba0d7847f2798dbcfc",
     "contract_catalog_digest": "sha256:ae4a44704cd9214256e3c28f3a0959a20dea63590b3c20ab6899ad3997f8fa62"
   },
   "migration": {
@@ -973,7 +973,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:69a919ad719694135d9ebc218efe53e7d1abf28e03530ed9ab34a7fc6d032081",
+    "artifact_digest": "sha256:b6c09612f6f69813f8dccabd53b4c65e84427ab2ec88ce2768a81d9a63ba6398",
     "display_name": "Rumi Model Catalog",
     "id": "rumi_model_catalog_pack",
     "kind": "host_extension",
@@ -984,15 +984,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_model_catalog_pack/pack.v4.json",
-    "source_digest": "sha256:a2335a4b1dc5ec33a0b7f84a16da3eb459266641c1e7f2176fe1dfdafbc538c6",
+    "source_digest": "sha256:26b23da73a4c5ba18659e056fd897cf843ccfd663a18be390fe059caebcb687a",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:818137380bc808758b473c0cbd197a1d4b33f7c1c23af57d9c66a153205716ca",
+    "content_root_digest": "sha256:78f41e8b957df0ca47a33e9bf137cdbbf55be5b5ae1cd1e6652e49df3c6a9375",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:72e5fe4e8f670a1618d79b16dfc9896b6e9f4276616d87632022b726ec01735a",
-    "input_inventory_digest": "sha256:badec7a1572185c2ca0b6b04d17be94a118650a4f4ea94364dcef7c08ce3a287",
+    "input_inventory_digest": "sha256:a09e5d8150bbeee571ac8af099ca965ebb4f7e75c243eee22aa483b193e22549",
     "normative": true,
     "evidence": [
       {
@@ -1003,7 +1003,7 @@
       {
         "path": "ecosystem/rumi_model_catalog_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:a2335a4b1dc5ec33a0b7f84a16da3eb459266641c1e7f2176fe1dfdafbc538c6"
+        "digest": "sha256:26b23da73a4c5ba18659e056fd897cf843ccfd663a18be390fe059caebcb687a"
       }
     ]
   },
