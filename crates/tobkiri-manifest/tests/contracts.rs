@@ -113,6 +113,54 @@ fn only_exact_known_core_versions_resolve_aliases_and_permission_imports() {
     assert!(!imports.contains("tobkiri:core/storage@1.3.0"));
 }
 #[test]
+fn a_shape_document_stays_independent_of_the_worlds_cross_pack_import_closure() {
+    let shape = b"package local:profile-probe@1.0.0; interface probe { use tobkiri:core/types@1.2.0.{error}; read: func() -> result<string, error>; }";
+    let world = b"package local:profile-probe-component@1.0.0; world pack { include tobkiri:core/pack-minimal@1.2.0; import local:profile-owner/probe@1.0.0; export local:profile-probe/probe@1.0.0; }";
+    let f = BTreeMap::from([
+        ("wit/probe.wit".into(), shape.to_vec()),
+        ("wit/pack.wit".into(), world.to_vec()),
+        ("wit/deps/owner.wit".into(), b"package local:profile-owner@1.0.0; interface probe { use tobkiri:core/types@1.2.0.{error}; read: func() -> result<string, error>; }".to_vec()),
+        ("wit/probe.shape.json".into(), br#"{"cardinality":"one","streams":{},"callbacks":{}}"#.to_vec()),
+    ]);
+    let mut m = manifest("local.profile-probe", &f);
+    m.shapes.push(ShapeDefinition {
+        name: ShapeName::parse("local.profile-probe.probe").unwrap(),
+        version: ShapeVersion::new(1, 0),
+        kind: ShapeKind::Port,
+        wit: "wit/probe.wit".into(),
+    });
+    m.ports.provides.push(PortDeclaration {
+        shape: ShapeName::parse("local.profile-probe.probe").unwrap(),
+        version: ShapeVersion::new(1, 0),
+        optional: false,
+    });
+    m.ports.consumes.push(PortDeclaration {
+        shape: ShapeName::parse("local.profile-owner.probe").unwrap(),
+        version: ShapeVersion::new(1, 0),
+        optional: false,
+    });
+    m.permissions
+        .ports
+        .insert("local.profile-owner.probe@1.0".into());
+    let p = verify(&m, &f).unwrap();
+    assert_eq!(p.shapes.len(), 1);
+    assert_eq!(p.shapes[0].functions.len(), 1);
+    let imports = allowed_imports_for_pack(&p).unwrap();
+    assert!(imports.contains("local:profile-owner/probe@1.0.0"));
+    assert!(imports.contains("tobkiri:core/types@1.2.0"));
+    // A standalone Shape document cannot resolve a world-only foreign Pack.
+    // Keeping the world out of that document is part of fixture packaging.
+    let mut combined = f;
+    combined
+        .get_mut("wit/probe.wit")
+        .unwrap()
+        .extend_from_slice(
+            b" world pack { import local:profile-owner/probe@1.0.0; export probe; }",
+        );
+    assert!(load_shapes(&m, &combined).is_err());
+}
+
+#[test]
 fn signed_artifact_requires_real_publisher_binding_and_matching_key() {
     let f = BTreeMap::new();
     let mut m = manifest("acme.sample", &f);

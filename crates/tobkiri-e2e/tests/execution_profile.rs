@@ -21,26 +21,34 @@ const OWNER: &str = "local.execution-profile-owner";
 const CALLER_SHAPE: &str = "local.execution-profile-caller.probe@1.0";
 const OWNER_SHAPE: &str = "local.execution-profile-owner.probe@1.0";
 
-fn wit(pack: &str, caller: bool) -> String {
+fn shape_wit(pack: &str, caller: bool) -> String {
     format!(
         "package local:{}@1.0.0;\ninterface probe {{\n\
          use tobkiri:core/types@1.2.0.{{error}};\n\
          read: func() -> result<string, error>;\n\
          verify: func(payload-profile: string, snapshot-profile: string) -> result<string, error>;\n\
-         {}\n}}\nworld pack {{\n\
-         include tobkiri:core/pack-minimal@1.2.0;\n\
-         {}\nexport probe;\n}}",
+         {}\n}}",
         pack.strip_prefix("local.").unwrap(),
         if caller {
             "relay: func() -> result<string, error>;"
         } else {
             ""
         },
+    )
+}
+
+fn world_wit(pack: &str, caller: bool) -> String {
+    format!(
+        "package local:{}-component@1.0.0;\nworld pack {{\n\
+         include tobkiri:core/pack-minimal@1.2.0;\n\
+         {}\nexport local:{}/probe@1.0.0;\n}}",
+        pack.strip_prefix("local.").unwrap(),
         if caller {
             "import local:execution-profile-owner/probe@1.0.0;"
         } else {
             ""
         },
+        pack.strip_prefix("local.").unwrap(),
     )
 }
 
@@ -237,7 +245,8 @@ fn pack(root: &Path, caller: bool) -> Result<(VerifiedPack, PackPin)> {
     }
     let mut files: BTreeMap<String, Vec<u8>> = BTreeMap::from([
         ("component.wasm".into(), component(caller)?),
-        ("wit/pack.wit".into(), wit(id, caller).into_bytes()),
+        ("wit/pack.wit".into(), world_wit(id, caller).into_bytes()),
+        ("wit/probe.wit".into(), shape_wit(id, caller).into_bytes()),
         ("wit/deps/core.wit".into(), tobkiri_wit_source()),
         (
             "config.json".into(),
@@ -249,7 +258,10 @@ fn pack(root: &Path, caller: bool) -> Result<(VerifiedPack, PackPin)> {
         ),
     ]);
     if caller {
-        files.insert("wit/deps/owner.wit".into(), wit(OWNER, false).into_bytes());
+        files.insert(
+            "wit/deps/owner.wit".into(),
+            shape_wit(OWNER, false).into_bytes(),
+        );
     }
     let manifest = PackManifest {
         format: "tobkiri.pack/1".into(),
@@ -268,7 +280,10 @@ fn pack(root: &Path, caller: bool) -> Result<(VerifiedPack, PackPin)> {
             name: shape.name.clone(),
             version: shape.version,
             kind: ShapeKind::Port,
-            wit: "wit/pack.wit".into(),
+            // Shape loading resolves its own document plus the closed Core
+            // packages. The complete world/dependency closure is verified
+            // separately from all sealed WIT files by inspect_pack_wit.
+            wit: "wit/probe.wit".into(),
         }],
         ports: Ports {
             provides: vec![PortDeclaration {
