@@ -1,5 +1,5 @@
-//! Opt-in unit-fixture timing of the unchanged, real AuditLog append path.
-//! No timings, cache, observer state or branches exist in production builds.
+//! Opt-in unit-fixture timing of the real AuditLog append path.
+//! No timings or observer state exist in production builds.
 
 #[cfg(unix)]
 use super::*;
@@ -8,7 +8,7 @@ use std::{
     time::Instant,
 };
 
-const PHASES: usize = 8;
+const PHASES: usize = 9;
 
 #[derive(Clone, Copy)]
 pub(super) enum AuditPhase {
@@ -20,6 +20,7 @@ pub(super) enum AuditPhase {
     Queries,
     EncodeInsert,
     Commit,
+    FullVerify,
 }
 
 #[derive(Default)]
@@ -75,6 +76,7 @@ impl AuditPhaseTiming {
             "queries",
             "encode_insert",
             "commit",
+            "full_verify",
         ]
         .into_iter()
         .zip(&self.phases)
@@ -135,6 +137,7 @@ fn audit_phase_costs_preserve_chain_and_idempotency() {
     assert_eq!(timing.calls(AuditPhase::Verify), 64);
     assert_eq!(timing.calls(AuditPhase::EncodeInsert), 64);
     assert_eq!(timing.calls(AuditPhase::Commit), 64);
+    assert_eq!(timing.calls(AuditPhase::FullVerify), 0);
     timing.report("unique", 320);
     audit.verify().unwrap();
 
@@ -149,6 +152,8 @@ fn audit_phase_costs_preserve_chain_and_idempotency() {
     assert_eq!(timing.calls(AuditPhase::Verify), 64);
     assert_eq!(timing.calls(AuditPhase::EncodeInsert), 0);
     assert_eq!(timing.calls(AuditPhase::Commit), 64);
+    // Explicit verify cleared the proof, so the first retry fully verifies.
+    assert_eq!(timing.calls(AuditPhase::FullVerify), 1);
     timing.report("exact_retry", 320);
     audit.verify().unwrap();
 

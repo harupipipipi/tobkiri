@@ -12,6 +12,14 @@ use tobkiri_gate::{AuditEvent, AuditSink, CallCx, EffectRequest, GateError, Gran
 mod audit_guest;
 pub use audit_guest::*;
 
+#[path = "audit_prefix.rs"]
+mod audit_prefix;
+use audit_prefix::VerifiedPrefix;
+
+#[cfg(all(test, unix))]
+#[path = "audit_prefix_tests.rs"]
+mod prefix_tests;
+
 #[cfg(test)]
 #[path = "audit_phase_tests.rs"]
 mod phase_tests;
@@ -71,6 +79,8 @@ impl AuditRow {
 pub struct AuditLog {
     profile: ProfileId,
     connection: Mutex<rusqlite::Connection>,
+    // Acquired only AFTER connection. Fixed-size proof, no event/row cache.
+    verified_prefix: Mutex<Option<VerifiedPrefix>>,
     _directory: crate::vfs::DatabaseGuard,
     quota: AuditQuota,
     #[cfg(test)]
@@ -92,6 +102,7 @@ impl AuditLog {
         let log = Self {
             profile: profile.clone(),
             connection: Mutex::new(conn),
+            verified_prefix: Mutex::new(None),
             _directory: directory,
             quota,
             #[cfg(test)]
@@ -109,9 +120,16 @@ impl AuditLog {
             .connection
             .lock()
             .map_err(|_| StoreError::Conflict("audit lock poisoned".into()))?;
+        // Explicit verification never relies on or publishes cached evidence.
+        *self
+            .verified_prefix
+            .lock()
+            .map_err(|_| StoreError::Conflict("audit proof lock poisoned".into()))? = None;
         self.verify_connection(&conn)
     }
     fn verify_connection(&self, conn: &rusqlite::Connection) -> Result<(), StoreError> {
+        #[cfg(test)]
+        let _full_verify = self.phase(AuditPhase::FullVerify);
         let mut statement =
             conn.prepare("SELECT seq,prev_digest,digest,body,event_id FROM audit ORDER BY seq")?;
         let mut rows = statement.query([])?;
@@ -187,6 +205,13 @@ impl AuditLog {
             .connection
             .lock()
             .map_err(|_| StoreError::Conflict("audit lock poisoned".into()))?;
+        let mut verified = self
+            .verified_prefix
+            .lock()
+            .map_err(|_| StoreError::Conflict("audit proof lock poisoned".into()))?;
+        // Any TX/verification/quota/identity/commit error leaves no proof.
+        // In particular an unknown commit never publishes evidence or an ACK.
+        let previous = verified.take();
         #[cfg(test)]
         drop(lock);
         #[cfg(test)]
@@ -198,7 +223,10 @@ impl AuditLog {
         // domain only while this independent audit chain is still verified.
         #[cfg(test)]
         let verify = self.phase(AuditPhase::Verify);
-        self.verify_connection(&tx)?;
+        let mut prefix = VerifiedPrefix::scan(&tx, &self.profile)?;
+        if !previous.as_ref().is_some_and(|old| old.matches(&prefix)) {
+            self.verify_connection(&tx)?;
+        }
         #[cfg(test)]
         drop(verify);
         #[cfg(test)]
@@ -222,6 +250,7 @@ impl AuditLog {
                 #[cfg(test)]
                 let _commit = self.phase(AuditPhase::Commit);
                 tx.commit()?;
+                *verified = Some(prefix);
                 return Ok(());
             }
         }
@@ -248,7 +277,9 @@ impl AuditLog {
             .optional()?;
         let (seq, prev) = match last {
             Some((n, h)) => (
-                n + 1,
+                n.checked_add(1)
+                    .filter(|seq| *seq <= i64::MAX as u64)
+                    .ok_or(StoreError::Quota)?,
                 Digest::parse(&h).map_err(|e| StoreError::Canon(e.to_string()))?,
             ),
             None => (1, Digest::hash(&[])),
@@ -259,11 +290,21 @@ impl AuditLog {
         let insert = self.phase(AuditPhase::EncodeInsert);
         let digest = AuditRow::digest(seq, &prev, &event, event_id)?;
         tx.execute("INSERT INTO audit(seq,prev_digest,digest,body,writer,minute,size,event_id) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![seq as i64,prev.as_str(),digest.as_str(),body,writer,minute as i64,body.len()as i64,event_id.map(Digest::as_str)])?;
+        prefix.extend(seq as i64, &prev, &digest, &body, event_id)?;
+        // Prove the actual stored extension, including possible SQL triggers,
+        // against the verified prefix plus this exact canonical new row.
+        let stored = VerifiedPrefix::scan(&tx, &self.profile)?;
+        if !prefix.matches(&stored) {
+            return Err(StoreError::Integrity(
+                tobkiri_gate::IntegrityFaultCode::AuditChain,
+            ));
+        }
         #[cfg(test)]
         drop(insert);
         #[cfg(test)]
         let _commit = self.phase(AuditPhase::Commit);
         tx.commit()?;
+        *verified = Some(stored);
         Ok(())
     }
     pub fn read_digest(after: u64, max: u32) -> Result<Digest, StoreError> {
