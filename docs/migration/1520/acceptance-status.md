@@ -91,38 +91,84 @@ requirements and every unchecked acceptance item remain open.
 
 ## Rust provider and terminal-owner checkpoint, 2026-10-22
 
-The source oracle in
-[`python_provider_compat`](../../../tools/quality/python_provider_compat/)
-executed the original adapters under CPython 3.13.9 / Unicode 15.1.0. A native
-Rust differential replay matched all 94 observations: 41 usage-cost and 53
-stream-normalizer cases, including the retained deep-input cases. The 24 scalar
-observations and strict codec boundary tests also passed. The unchanged
-historical CPython 3.13.5 oracle remains a separate reference.
+These are local candidate trials. Production registration, the complete original
+Launcher/Setup/GUI approval/settings/chat path, and VM retirement remain open.
+The original user-facing flow has not been replaced with the migration fixtures.
 
-Release component-build trials produced actual Rust usage-cost, stream and
-finalizer Wasm components. Native finalizer tests explicitly distinguish its
-two dependency-free observations from eight unavailable imported-dependency
-cases; those eight are **not** parity successes. Fresh Core/Gate replays and
-five-role composition remain required, as do rebuilds after later source edits.
+The independent original-Python oracles in
+[`python_provider_compat`](../../../tools/quality/python_provider_compat/) and
+[`python_tool_bridge_compat`](../../../tools/quality/python_tool_bridge_compat/)
+ran under CPython 3.13.9 / Unicode 15.1.0. Native Rust replays matched all 175
+observations: 41 usage-cost, 53 stream-normalizer and 81 bridge-v2 cases. Scalar,
+strict codec and opaque-JSON tests also passed. The frozen CPython 3.13.5 and
+bridge-v1 expectations remain separate, unchanged references.
 
-The separate original-v2
-[`tool-bridge oracle`](../../../tools/quality/python_tool_bridge_compat/)
-now records 81 fresh source observations. Its 33 historical records contribute
-inputs only; their v1 expectations are not reused as v2 expectations. Rust
-bridge execution against these observations has not yet passed validation.
+Five Rust Wasm candidates built successfully, totaling 1,386,704 component
+bytes under the unchanged 64 MiB catalog limit. An actual five-Pack Core/Gate
+fixture attempted all 185 cases. All 81 bridge and ten finalizer observations,
+and 91 of 94 provider observations, matched. All five runtime identities reported
+Rust and the Session closed successfully. This includes actual typed imports;
+native finalizer dependency-unavailable results are not counted as guest parity.
+The fixture uses scripted native approvals and does not establish GUI acceptance.
+A fresh current-source five-component build and replay subsequently attempted
+all 215 cases, adding the unchanged thirty-case caller corpus. All thirty caller
+cases, 81 bridge cases, ten finalizer cases, and 91 provider cases matched:
+**212 matches, three mismatches**, with successful Session close. Every actual
+runtime reported Rust. The replay remains failed, not full guest parity.
 
-The terminal-owner candidate prepays metadata custody before source grant
-consumption and retains the original Join through cancellation. Source review
-found the consumed-but-unpublished custody gap corrected. Its first unit run
-passed four tests, then exposed a test driver awaiting one retained observer
-without polling the other. The driver was corrected to join both observers;
-the full Core regression run is still pending. A further reviewed candidate
-retains the actual reaper Join and its result separately from metadata delivery;
-its fourteen regression tests remain unexecuted. Terminal metadata delivery
-alone is not proof of the reaper's independent physical cleanup.
-Disk capacity currently prevents further heavy validation. No checklist item,
-inventory unit, production activation, complete GUI flow, or VM retirement is
-accepted by this checkpoint.
+The three remaining cases were rejected while Core checked the outer StrictV1
+argument record. Their complete arguments are 4,194,369, 4,194,337 and 4,194,363
+bytes, exceeding the existing 4,194,304-byte limit by 65, 33 and 59 bytes. Their
+expected direct-adapter errors are therefore unobserved through this Core path.
+Every attempt and mismatch is retained; no case or expected value was removed,
+and the replay remains failed. The harness's unavailable argument digest is its
+own digest calculation, not Core-internal instrumentation. Old Python components
+and their pinned producer inputs are not presently available for the same-Core
+baseline, so these observations do not establish absence of a migration regression.
+
+A separate actual two-component admission test passed all nine observations:
+for each provider, independently encoded outer records at 4 MiB minus one byte,
+exactly 4 MiB, and 4 MiB plus one byte, followed by the same three pinned original
+oversized inputs. Accepted arguments reached a User dispatch and terminal outcome
+for the same Grant; guest success is a separate observation. Oversized arguments
+returned the exact argument-verification limit error without an audit delta.
+Source-bound validation order establishes that rejection precedes guest dispatch;
+an empty audit alone is not used as its proof. This transport result does not
+resolve or rewrite any of the three original replay mismatches.
+
+The separate
+[`finalizer-normalization observer`](../../../tools/quality/python_finalizer_normalize_compat/)
+ran 24 original `_normalize_result` inputs under the explicitly recorded 3.13.9
+runtime. It preserves dictionary key types and order, and records ordered-DATA
+serialization failures. Its native Rust consumer now passed all 24 string-key
+projections and the non-string-key marker/native Terminal-versus-Unavailable
+checks. This does not establish full numeric-key intermediate dictionary parity,
+actual dependency-import timing, or Wasm acceptance for those added observations.
+
+Terminal-owner validation passed all 165 Wasm library tests, including eighteen
+metadata/reaper regressions. Funding precedes consume; the original physical
+cleanup report and the original metadata Join are both required. Acknowledging
+metadata cannot repair a panic, missing report or physical failure. Transient
+audit-delivery failures and reported source failures retain their diagnostic
+classification separately from physical completion.
+
+The first full Core trial completed 219 of 222 tests successfully and exposed
+three recovery errors. The corrected candidate passed those three in the next
+trial, but that run was interrupted at the disk safety floor after other deadline,
+cleanup-grace and uncertain-cleanup failures. Audit callbacks reached 6.47 seconds
+and the 64-source audit total reached 224.8 seconds. The cause of this latency is
+not established. Neither the deadlines nor the safety floor were increased.
+After the user freed disk space, a resource-stable run passed all **222 Core
+library tests** in 57.483 seconds, including the earlier recovery and callback
+failures. Minimum free space was 20.479 GB; deadlines, cleanup grace periods and
+resource limits were unchanged. The exact source then received one nonsemantic
+`then`-to-`then_some` lint correction. Current Core/Flow/Store/Wasm/manifest and
+six native candidates/five Wasip2 candidates passed strict Clippy; the expanded
+Core replay/admission harness passed its own strict check.
+
+The [portable checkpoint](../../../crates/tobkiri-e2e/evidence/rust-provider-translation-20261022.json)
+records source and artifact hashes, actual receipt hashes, counts, mismatches,
+and the distinct scopes above. No acceptance item or inventory unit is closed.
 
 ## Acceptance checklist
 

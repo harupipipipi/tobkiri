@@ -1,0 +1,529 @@
+{
+  "schema": "tobkiri.issue1520.provider-model-access-cases.v1",
+  "description": "Inputs for direct calls into the canonical provider compiler source. This file contains no expected results.",
+  "source_functions": [
+    "normalize_model_access",
+    "effective_model_access",
+    "model_is_allowed",
+    "compile_connection_parameters",
+    "is_official_openrouter",
+    "normalize_native_filters",
+    "discovery_url",
+    "apply_native_routing"
+  ],
+  "special_values": {
+    "{\"$python_float\":\"nan\"}": "Construct a Python float('nan') at this exact input position. The object is test data syntax, not provider policy syntax."
+  },
+  "cases": [
+    {
+      "id": "effective-absent-legacy-policy",
+      "operation": "effective_model_access",
+      "arguments": {
+        "connection": {
+          "provider_instance_id": "connection/alpha",
+          "adapter_id": "openai-compatible",
+          "endpoint": "https://openrouter.ai/api/v1",
+          "metadata": {"catalog_provider_id": "openrouter"}
+        }
+      }
+    },
+    {
+      "id": "effective-empty-legacy-list-denies",
+      "operation": "effective_model_access",
+      "arguments": {
+        "connection": {
+          "provider_instance_id": "connection/alpha",
+          "adapter_id": "openai-compatible",
+          "endpoint": "https://openrouter.ai/api/v1",
+          "allowed_models": [],
+          "metadata": {"catalog_provider_id": "openrouter"}
+        }
+      }
+    },
+    {
+      "id": "effective-metadata-legacy-list-normalizes",
+      "operation": "effective_model_access",
+      "arguments": {
+        "connection": {
+          "provider_instance_id": "connection/alpha",
+          "adapter_id": "openai-compatible",
+          "endpoint": "https://openrouter.ai/api/v1",
+          "metadata": {
+            "catalog_provider_id": "openrouter",
+            "allowed_models": ["vendor/z", "vendor/a", "vendor/z"]
+          }
+        }
+      }
+    },
+    {
+      "id": "effective-current-policy-takes-precedence-over-legacy",
+      "operation": "effective_model_access",
+      "arguments": {
+        "connection": {
+          "provider_instance_id": "connection/alpha",
+          "adapter_id": "openai-compatible",
+          "endpoint": "https://openrouter.ai/api/v1",
+          "model_access": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": []},
+          "allowed_models": ["legacy/model"],
+          "metadata": {"catalog_provider_id": "openrouter"}
+        }
+      }
+    },
+    {
+      "id": "effective-invalid-current-policy-precedes-legacy-list",
+      "operation": "effective_model_access",
+      "arguments": {
+        "connection": {
+          "provider_instance_id": "connection/alpha",
+          "adapter_id": "openai-compatible",
+          "endpoint": "https://openrouter.ai/api/v1",
+          "model_access": null,
+          "allowed_models": ["legacy/model"],
+          "metadata": {"catalog_provider_id": "openrouter"}
+        }
+      }
+    },
+    {
+      "id": "normalize-all-is-dynamic",
+      "operation": "normalize_model_access",
+      "arguments": {
+        "value": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": []},
+        "connection": {"adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}}
+      }
+    },
+    {
+      "id": "normalize-explicit-sorts-and-deduplicates",
+      "operation": "normalize_model_access",
+      "arguments": {
+        "value": {"version": "tobkiri.connection-model-access.v1", "mode": "explicit", "model_ids": ["vendor/z", "vendor/a", "vendor/z"]},
+        "connection": {"adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}}
+      }
+    },
+    {
+      "id": "normalize-missing-model-ids-defaults-to-empty",
+      "operation": "normalize_model_access",
+      "arguments": {
+        "value": {"version": "tobkiri.connection-model-access.v1", "mode": "explicit"},
+        "connection": {"adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}}
+      }
+    },
+    {
+      "id": "normalize-schema-rejects-unknown-field",
+      "operation": "normalize_model_access",
+      "arguments": {
+        "value": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": [], "credential_handle": "synthetic-never-a-secret"},
+        "connection": {"adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}}
+      }
+    },
+    {
+      "id": "normalize-mode-error-precedes-invalid-ids",
+      "operation": "normalize_model_access",
+      "arguments": {
+        "value": {"version": "tobkiri.connection-model-access.v1", "mode": "unknown", "model_ids": ["bad id"]},
+        "connection": {"adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}}
+      }
+    },
+    {
+      "id": "normalize-id-error-precedes-all-mode-pinning-error",
+      "operation": "normalize_model_access",
+      "arguments": {
+        "value": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": ["bad id"]},
+        "connection": {"adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}}
+      }
+    },
+    {
+      "id": "normalize-all-mode-rejects-valid-pinned-id",
+      "operation": "normalize_model_access",
+      "arguments": {
+        "value": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": ["vendor/model"]},
+        "connection": {"adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}}
+      }
+    },
+    {
+      "id": "allowed-all-mode-accepts-future-id",
+      "operation": "model_is_allowed",
+      "arguments": {
+        "connection": {"model_access": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": []}, "adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}},
+        "model_id": "future/vendor-new-v99"
+      }
+    },
+    {
+      "id": "allowed-empty-explicit-mode-denies",
+      "operation": "model_is_allowed",
+      "arguments": {
+        "connection": {"model_access": {"version": "tobkiri.connection-model-access.v1", "mode": "explicit", "model_ids": []}, "adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}},
+        "model_id": "future/vendor-new-v99"
+      }
+    },
+    {
+      "id": "allowed-explicit-membership",
+      "operation": "model_is_allowed",
+      "arguments": {
+        "connection": {"model_access": {"version": "tobkiri.connection-model-access.v1", "mode": "explicit", "model_ids": ["vendor/a", "vendor/b"]}, "adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}},
+        "model_id": "vendor/b"
+      }
+    },
+    {
+      "id": "compile-invalid-model-precedes-denial-and-reserved-parameter",
+      "operation": "compile_connection_parameters",
+      "arguments": {
+        "connection": {"model_access": {"version": "tobkiri.connection-model-access.v1", "mode": "explicit", "model_ids": []}, "adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}},
+        "model_id": "bad model",
+        "parameters": {"provider": "caller-override"}
+      }
+    },
+    {
+      "id": "compile-policy-denial-precedes-reserved-parameter",
+      "operation": "compile_connection_parameters",
+      "arguments": {
+        "connection": {"model_access": {"version": "tobkiri.connection-model-access.v1", "mode": "explicit", "model_ids": []}, "adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}},
+        "model_id": "vendor/model",
+        "parameters": {"provider": "caller-override"}
+      }
+    },
+    {
+      "id": "compile-valid-allows-ordinary-parameters-and-accepts-null",
+      "operation": "compile_connection_parameters",
+      "arguments": {
+        "connection": {"model_access": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": []}, "adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}},
+        "model_id": "vendor/model",
+        "parameters": null
+      }
+    },
+    {
+      "id": "compile-valid-preserves-ordinary-parameter-order-and-float-types",
+      "operation": "compile_connection_parameters",
+      "arguments": {
+        "connection": {"model_access": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": []}, "adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}},
+        "model_id": "vendor/model",
+        "parameters": {"temperature": 0.2, "stream": false, "top_p": 1.0}
+      }
+    },
+    {
+      "id": "compile-reserved-provider-key-rejected",
+      "operation": "compile_connection_parameters",
+      "arguments": {
+        "connection": {"model_access": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": []}, "adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}},
+        "model_id": "vendor/model",
+        "parameters": {"provider": {"only": ["caller/provider"]}}
+      }
+    },
+    {
+      "id": "compile-reserved-model-key-rejected",
+      "operation": "compile_connection_parameters",
+      "arguments": {
+        "connection": {"model_access": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": []}, "adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}},
+        "model_id": "vendor/model",
+        "parameters": {"model": "caller-value"}
+      }
+    },
+    {
+      "id": "compile-reserved-models-key-rejected",
+      "operation": "compile_connection_parameters",
+      "arguments": {
+        "connection": {"model_access": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": []}, "adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}},
+        "model_id": "vendor/model",
+        "parameters": {"models": []}
+      }
+    },
+    {
+      "id": "compile-reserved-route-key-rejected",
+      "operation": "compile_connection_parameters",
+      "arguments": {
+        "connection": {"model_access": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": []}, "adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}},
+        "model_id": "vendor/model",
+        "parameters": {"route": "caller-value"}
+      }
+    },
+    {
+      "id": "compile-reserved-extra-body-key-rejected",
+      "operation": "compile_connection_parameters",
+      "arguments": {
+        "connection": {"model_access": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": []}, "adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}},
+        "model_id": "vendor/model",
+        "parameters": {"extra_body": {}}
+      }
+    },
+    {
+      "id": "compile-reserved-fallbacks-key-rejected",
+      "operation": "compile_connection_parameters",
+      "arguments": {
+        "connection": {"model_access": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": []}, "adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}},
+        "model_id": "vendor/model",
+        "parameters": {"fallbacks": []}
+      }
+    },
+    {
+      "id": "compile-reserved-provider-id-key-rejected",
+      "operation": "compile_connection_parameters",
+      "arguments": {
+        "connection": {"model_access": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": []}, "adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}},
+        "model_id": "vendor/model",
+        "parameters": {"provider_id": "caller-value"}
+      }
+    },
+    {
+      "id": "compile-reserved-provider-connection-id-key-rejected",
+      "operation": "compile_connection_parameters",
+      "arguments": {
+        "connection": {"model_access": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": []}, "adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}},
+        "model_id": "vendor/model",
+        "parameters": {"provider_connection_id": "caller-value"}
+      }
+    },
+    {
+      "id": "compile-reserved-endpoint-key-rejected",
+      "operation": "compile_connection_parameters",
+      "arguments": {
+        "connection": {"model_access": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": []}, "adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}},
+        "model_id": "vendor/model",
+        "parameters": {"endpoint": "https://caller.invalid/v1"}
+      }
+    },
+    {
+      "id": "compile-reserved-credential-handle-key-rejected",
+      "operation": "compile_connection_parameters",
+      "arguments": {
+        "connection": {"model_access": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": []}, "adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}},
+        "model_id": "vendor/model",
+        "parameters": {"credential_handle": "synthetic-marker"}
+      }
+    },
+    {
+      "id": "official-openrouter-canonical-origin",
+      "operation": "is_official_openrouter",
+      "arguments": {"connection": {"adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}}}
+    },
+    {
+      "id": "official-openrouter-supported-adapter-alias",
+      "operation": "is_official_openrouter",
+      "arguments": {"connection": {"adapter_id": "openai", "endpoint": "https://openrouter.ai/api/v1/", "metadata": {"catalog_provider_id": "openrouter"}}}
+    },
+    {
+      "id": "official-openrouter-explicit-default-port-accepted",
+      "operation": "is_official_openrouter",
+      "arguments": {"connection": {"adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai:443/api/v1", "metadata": {"catalog_provider_id": "openrouter"}}}
+    },
+    {
+      "id": "official-openrouter-wrong-scheme",
+      "operation": "is_official_openrouter",
+      "arguments": {"connection": {"adapter_id": "openai-compatible", "endpoint": "http://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}}}
+    },
+    {
+      "id": "official-openrouter-host-suffix-rejected",
+      "operation": "is_official_openrouter",
+      "arguments": {"connection": {"adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai.example/api/v1", "metadata": {"catalog_provider_id": "openrouter"}}}
+    },
+    {
+      "id": "official-openrouter-unexpected-port-rejected",
+      "operation": "is_official_openrouter",
+      "arguments": {"connection": {"adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai:444/api/v1", "metadata": {"catalog_provider_id": "openrouter"}}}
+    },
+    {
+      "id": "official-openrouter-userinfo-rejected",
+      "operation": "is_official_openrouter",
+      "arguments": {"connection": {"adapter_id": "openai-compatible", "endpoint": "https://user:pass@openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}}}
+    },
+    {
+      "id": "official-openrouter-query-rejected",
+      "operation": "is_official_openrouter",
+      "arguments": {"connection": {"adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1?x=1", "metadata": {"catalog_provider_id": "openrouter"}}}
+    },
+    {
+      "id": "official-openrouter-fragment-rejected",
+      "operation": "is_official_openrouter",
+      "arguments": {"connection": {"adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1#fragment", "metadata": {"catalog_provider_id": "openrouter"}}}
+    },
+    {
+      "id": "official-openrouter-catalog-identity-required",
+      "operation": "is_official_openrouter",
+      "arguments": {"connection": {"adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "other"}}}
+    },
+    {
+      "id": "official-openrouter-protocol-identity-required",
+      "operation": "is_official_openrouter",
+      "arguments": {"connection": {"adapter_id": "anthropic", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}}}
+    },
+    {
+      "id": "official-openrouter-nonmapping-connection-preserves-source-error",
+      "operation": "is_official_openrouter",
+      "arguments": {"connection": null}
+    },
+    {
+      "id": "official-openrouter-malformed-port-preserves-urlsplit-error",
+      "operation": "is_official_openrouter",
+      "arguments": {"connection": {"adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai:not-a-port/api/v1", "metadata": {"catalog_provider_id": "openrouter"}}}
+    },
+    {
+      "id": "official-openrouter-malformed-ipv6-preserves-urlsplit-error",
+      "operation": "is_official_openrouter",
+      "arguments": {"connection": {"adapter_id": "openai-compatible", "endpoint": "https://[::1/api/v1", "metadata": {"catalog_provider_id": "openrouter"}}}
+    },
+    {
+      "id": "source-signature-missing-connection-keyword",
+      "operation": "is_official_openrouter",
+      "arguments": {}
+    },
+    {
+      "id": "source-signature-extra-keyword",
+      "operation": "is_official_openrouter",
+      "arguments": {"connection": {"adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}}, "unexpected": true}
+    },
+    {
+      "id": "normalize-native-unverified-precedes-unknown-revision",
+      "operation": "normalize_native_filters",
+      "arguments": {"value": {"revision": "future", "routing": {"unknown": true}}, "verified_openrouter": false}
+    },
+    {
+      "id": "normalize-native-null-is-empty-before-verification",
+      "operation": "normalize_native_filters",
+      "arguments": {"value": null, "verified_openrouter": false}
+    },
+    {
+      "id": "normalize-native-unknown-revision",
+      "operation": "normalize_native_filters",
+      "arguments": {"value": {"revision": "future"}, "verified_openrouter": true}
+    },
+    {
+      "id": "normalize-native-discovery-error-precedes-routing-error",
+      "operation": "normalize_native_filters",
+      "arguments": {"value": {"revision": "openrouter.official-filters.2026-10-07.v1", "discovery": {"unknown": true}, "routing": {"unknown": true}}, "verified_openrouter": true}
+    },
+    {
+      "id": "normalize-native-invalid-category",
+      "operation": "normalize_native_filters",
+      "arguments": {"value": {"revision": "openrouter.official-filters.2026-10-07.v1", "discovery": {"category": "unknown-category"}}, "verified_openrouter": true}
+    },
+    {
+      "id": "normalize-native-empty-list-rejected",
+      "operation": "normalize_native_filters",
+      "arguments": {"value": {"revision": "openrouter.official-filters.2026-10-07.v1", "discovery": {"output_modalities": []}}, "verified_openrouter": true}
+    },
+    {
+      "id": "normalize-native-invalid-token-rejected",
+      "operation": "normalize_native_filters",
+      "arguments": {"value": {"revision": "openrouter.official-filters.2026-10-07.v1", "discovery": {"output_modalities": ["bad token"]}}, "verified_openrouter": true}
+    },
+    {
+      "id": "normalize-native-all-modality-cannot-combine",
+      "operation": "normalize_native_filters",
+      "arguments": {"value": {"revision": "openrouter.official-filters.2026-10-07.v1", "discovery": {"output_modalities": ["all", "text"]}}, "verified_openrouter": true}
+    },
+    {
+      "id": "normalize-native-boolean-requires-bool-not-integer",
+      "operation": "normalize_native_filters",
+      "arguments": {"value": {"revision": "openrouter.official-filters.2026-10-07.v1", "routing": {"zdr": 1}}, "verified_openrouter": true}
+    },
+    {
+      "id": "normalize-native-invalid-enum",
+      "operation": "normalize_native_filters",
+      "arguments": {"value": {"revision": "openrouter.official-filters.2026-10-07.v1", "routing": {"data_collection": "sometimes"}}, "verified_openrouter": true}
+    },
+    {
+      "id": "normalize-native-unknown-routing-field",
+      "operation": "normalize_native_filters",
+      "arguments": {"value": {"revision": "openrouter.official-filters.2026-10-07.v1", "routing": {"unknown": true}}, "verified_openrouter": true}
+    },
+    {
+      "id": "normalize-native-empty-price-fields-rejected",
+      "operation": "normalize_native_filters",
+      "arguments": {"value": {"revision": "openrouter.official-filters.2026-10-07.v1", "routing": {"max_price": {}}}, "verified_openrouter": true}
+    },
+    {
+      "id": "normalize-native-nan-price-rejected",
+      "operation": "normalize_native_filters",
+      "comparison": "source-only-nonfinite",
+      "arguments": {"value": {"revision": "openrouter.official-filters.2026-10-07.v1", "routing": {"max_price": {"prompt": {"$python_float": "nan"}}}}, "verified_openrouter": true}
+    },
+    {
+      "id": "normalize-native-exponent-price-rejected",
+      "operation": "normalize_native_filters",
+      "arguments": {"value": {"revision": "openrouter.official-filters.2026-10-07.v1", "routing": {"max_price": {"prompt": "1e-3"}}}, "verified_openrouter": true}
+    },
+    {
+      "id": "normalize-native-boolean-is-not-an-integer-price",
+      "operation": "normalize_native_filters",
+      "arguments": {"value": {"revision": "openrouter.official-filters.2026-10-07.v1", "routing": {"max_price": {"prompt": true}}}, "verified_openrouter": true}
+    },
+    {
+      "id": "normalize-native-price-one-microusd-above-bound-rejected",
+      "operation": "normalize_native_filters",
+      "arguments": {"value": {"revision": "openrouter.official-filters.2026-10-07.v1", "routing": {"max_price": {"prompt": "9007199254.740992"}}}, "verified_openrouter": true}
+    },
+    {
+      "id": "normalize-native-maximum-price-bound-canonical",
+      "operation": "normalize_native_filters",
+      "arguments": {"value": {"revision": "openrouter.official-filters.2026-10-07.v1", "routing": {"max_price": {"prompt": "9007199254.740991", "completion": "0.000001", "request": 9007199254, "image": 0}}}, "verified_openrouter": true}
+    },
+    {
+      "id": "normalize-native-only-ignore-overlap-rejected",
+      "operation": "normalize_native_filters",
+      "arguments": {"value": {"revision": "openrouter.official-filters.2026-10-07.v1", "routing": {"only": ["provider/a", "provider/b"], "ignore": ["provider/b"]}}, "verified_openrouter": true}
+    },
+    {
+      "id": "normalize-native-preserves-order-deduplicates-and-exact-prices",
+      "operation": "normalize_native_filters",
+      "arguments": {"value": {"revision": "openrouter.official-filters.2026-10-07.v1", "discovery": {"supported_parameters": ["tools", "temperature", "tools"], "output_modalities": ["image", "text", "image"], "category": "programming"}, "routing": {"order": ["provider/z", "provider/a", "provider/z"], "zdr": true, "max_price": {"prompt": "0.435000", "completion": "2.700000", "request": 0}}}, "verified_openrouter": true}
+    },
+    {
+      "id": "normalize-model-native-filters-require-official-origin",
+      "operation": "normalize_model_access",
+      "arguments": {
+        "value": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": [], "native_filters": {"revision": "openrouter.official-filters.2026-10-07.v1"}},
+        "connection": {"adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai.example/api/v1", "metadata": {"catalog_provider_id": "openrouter"}}
+      }
+    },
+    {
+      "id": "normalize-model-verified-native-filters",
+      "operation": "normalize_model_access",
+      "arguments": {
+        "value": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": [], "native_filters": {"revision": "openrouter.official-filters.2026-10-07.v1", "discovery": {"category": "programming"}, "routing": {"only": ["provider/a"], "max_price": {"prompt": "0.435000"}}}},
+        "connection": {"adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}}
+      }
+    },
+    {
+      "id": "compile-active-native-routing-uses-source-wire-conversion",
+      "operation": "compile_connection_parameters",
+      "arguments": {
+        "connection": {"model_access": {"version": "tobkiri.connection-model-access.v1", "mode": "all", "model_ids": [], "native_filters": {"revision": "openrouter.official-filters.2026-10-07.v1", "discovery": {"category": "programming"}, "routing": {"only": ["provider/a"], "max_price": {"prompt": "0.435000", "completion": "2.700000", "request": 0}}}}, "adapter_id": "openai-compatible", "endpoint": "https://openrouter.ai/api/v1", "metadata": {"catalog_provider_id": "openrouter"}},
+        "model_id": "vendor/model",
+        "parameters": {"temperature": 0.2}
+      }
+    },
+    {
+      "id": "discovery-url-default-all-modalities",
+      "operation": "discovery_url",
+      "arguments": {"native_filters": {"revision": "openrouter.official-filters.2026-10-07.v1"}}
+    },
+    {
+      "id": "discovery-url-preserves-discovery-order-and-excludes-routing",
+      "operation": "discovery_url",
+      "arguments": {"native_filters": {"revision": "openrouter.official-filters.2026-10-07.v1", "discovery": {"category": "programming", "output_modalities": ["image", "text"], "supported_parameters": ["tools", "temperature"]}, "routing": {"only": ["provider/a"], "zdr": true, "max_price": {"prompt": "0.435"}}}}
+    },
+    {
+      "id": "apply-native-routing-converts-only-at-wire-boundary",
+      "operation": "apply_native_routing",
+      "arguments": {"native_filters": {"revision": "openrouter.official-filters.2026-10-07.v1", "discovery": {"category": "programming"}, "routing": {"only": ["provider/z", "provider/a", "provider/z"], "zdr": true, "max_price": {"prompt": "0.435000", "completion": "2.700000", "request": 0}}}, "parameters": {"temperature": 0.2, "stream": false}}
+    },
+    {
+      "id": "apply-native-routing-empty-routing-leaves-parameters",
+      "operation": "apply_native_routing",
+      "arguments": {"native_filters": {"revision": "openrouter.official-filters.2026-10-07.v1", "discovery": {"output_modalities": ["text"]}}, "parameters": {"temperature": 0.2}}
+    },
+    {
+      "id": "apply-native-routing-provider-override-rejected",
+      "operation": "apply_native_routing",
+      "arguments": {"native_filters": {"revision": "openrouter.official-filters.2026-10-07.v1", "routing": {"only": ["provider/a"]}}, "parameters": {"provider": {"only": ["caller/provider"]}}}
+    },
+    {
+      "id": "apply-invalid-native-filter-precedes-provider-override",
+      "operation": "apply_native_routing",
+      "arguments": {"native_filters": {"revision": "unknown", "routing": {"only": ["provider/a"]}}, "parameters": {"provider": {"only": ["caller/provider"]}}}
+    },
+    {
+      "id": "apply-native-price-unrepresentable-float-is-rejected",
+      "operation": "apply_native_routing",
+      "arguments": {"native_filters": {"revision": "openrouter.official-filters.2026-10-07.v1", "routing": {"max_price": {"prompt": "9007199254.740991"}}}, "parameters": {}}
+    }
+  ]
+}

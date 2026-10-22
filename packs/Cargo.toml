@@ -2,6 +2,12 @@
 resolver = "3"
 members = [
   "guest-sdk",
+  "ordered-python-compat",
+  "local.ai-usage-cost-rust",
+  "local.ai-stream-normalizer-rust",
+  "local.ai-gateway-finalizer-rust",
+  "local.ai-gateway-tool-caller-rust",
+  "local.ai-tool-bridge-rust",
   "local.openai-compat-provider",
   "local.mock-llm",
   "local.harness-conversation-store",
