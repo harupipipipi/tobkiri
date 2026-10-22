@@ -206,6 +206,26 @@ class RuntimeRoutingTests(unittest.TestCase):
                      "ordered-python-parity.receipt.json"):
             self.assertIn(name, retain)
 
+    def test_execution_profile_observation_requires_one_actual_native_case(self) -> None:
+        replay = step(self.native, "Observe execution Profile through actual Core")
+        for required in (
+            "issue_1520_ci.py cargo-test", "--expected-passed 1 --",
+            "cargo test --locked -p tobkiri-e2e --test execution_profile",
+            "current_profile_uses_two_actual_sessions_and_inter_pack_destination_frames",
+            "-- --exact",
+        ):
+            self.assertIn(required, replay)
+        self.assertNotIn("--ignored", replay)
+        condition = re.search(r"^        if: (.+)$", replay, re.MULTILINE).group(1)
+        self.assertIn("!cancelled()", condition)
+        for prerequisite in ("native_platform", "rust_toolchain"):
+            self.assertIn(f"steps.{prerequisite}.outcome == 'success'", condition)
+        self.assertNotIn("workspace", condition)
+        retain = step(self.native, "Retain actual runtime test output")
+        self.assertIn("if: always()", retain)
+        for name in ("execution-profile.log", "execution-profile.receipt.json"):
+            self.assertIn(name, retain)
+
     def test_replay_survives_other_failures_but_requires_prerequisites(self) -> None:
         replay = step(
             self.native, "Replay the original 91 cases through actual Rust Core")

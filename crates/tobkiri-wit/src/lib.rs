@@ -13,6 +13,10 @@ pub const CORE_PACKAGE: &str = "tobkiri:core@1.0.0";
 pub const CORE_V1_1_WIT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/wit/core-v1-1");
 pub const CORE_V1_1_WIT_SOURCE: &str = include_str!("../wit/core-v1-1/core.wit");
 pub const CORE_V1_1_PACKAGE: &str = "tobkiri:core@1.1.0";
+/// Unpromoted draft: exact-source consumers must be rebuilt after any change.
+pub const CORE_V1_2_WIT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/wit/core-v1-2");
+pub const CORE_V1_2_WIT_SOURCE: &str = include_str!("../wit/core-v1-2/core.wit");
+pub const CORE_V1_2_PACKAGE: &str = "tobkiri:core@1.2.0";
 
 /// The frozen 17 interfaces and their issue R1.2 categories.
 pub const CORE_INTERFACES: &[(&str, &str)] = &[
@@ -48,6 +52,7 @@ pub fn resolve_core_version(version: &str) -> Result<(Resolve, PackageId)> {
     let (directory, expected) = match version {
         "1.0.0" => (CORE_WIT_DIR, CORE_PACKAGE),
         "1.1.0" => (CORE_V1_1_WIT_DIR, CORE_V1_1_PACKAGE),
+        "1.2.0" => (CORE_V1_2_WIT_DIR, CORE_V1_2_PACKAGE),
         _ => bail!("unsupported core ABI version"),
     };
     let mut resolve = Resolve::default();
@@ -143,5 +148,26 @@ mod tests {
             assert!(!old["storage"].functions.contains_key(method));
         }
         assert!(!old["storage"].resources.contains_key("sql-transaction"));
+    }
+
+    #[test]
+    fn unpromoted_profile_observation_is_only_in_exact_core_1_2() {
+        let old = core_abi().unwrap();
+        let previous = core_abi_version("1.1.0").unwrap();
+        let draft = core_abi_version("1.2.0").unwrap();
+        assert_eq!(draft.len(), 17);
+        assert!(!old["flow"].functions.contains_key("current-profile"));
+        assert!(!previous["flow"].functions.contains_key("current-profile"));
+        let getter = &draft["flow"].functions["current-profile"];
+        assert!(getter.params.is_empty());
+        assert!(matches!(
+            getter.result.as_ref(),
+            Some(AbiType::Result(Some(ok), Some(_)))
+                if matches!(ok.as_ref(), AbiType::Primitive("string"))
+        ));
+        assert!(draft["storage"].resources.contains_key("sql-transaction"));
+        let (resolve, package) = resolve_core_version("1.2.0").unwrap();
+        assert_eq!(resolve.packages[package].interfaces.len(), 17);
+        assert!(resolve_core_version("1.3.0").is_err());
     }
 }

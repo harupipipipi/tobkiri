@@ -20,6 +20,7 @@ pub(crate) fn validate_abi(
     let packages = BTreeMap::from([
         ("1.0.0", tobkiri_wit::core_abi_version("1.0.0")?),
         ("1.1.0", tobkiri_wit::core_abi_version("1.1.0")?),
+        ("1.2.0", tobkiri_wit::core_abi_version("1.2.0")?),
     ]);
     let mut resources: BTreeMap<&str, BTreeMap<usize, ResourceType>> = BTreeMap::new();
     let ty = component.component_type();
@@ -144,7 +145,7 @@ pub(crate) fn validate_abi(
 fn core_interface(name: &str) -> Option<(&str, &str)> {
     let rest = name.strip_prefix("tobkiri:core/")?;
     let (interface, version) = rest.rsplit_once('@')?;
-    matches!(version, "1.0.0" | "1.1.0").then_some((interface, version))
+    matches!(version, "1.0.0" | "1.1.0" | "1.2.0").then_some((interface, version))
 }
 fn check_function(
     actual: &ComponentFunc,

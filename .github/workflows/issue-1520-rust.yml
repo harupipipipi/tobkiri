@@ -182,6 +182,13 @@ jobs:
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/supported-workspace.log" -- cargo test --workspace --locked --no-fail-fast
+      - name: Observe execution Profile through actual Core
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/execution-profile.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-e2e --test execution_profile
+          current_profile_uses_two_actual_sessions_and_inter_pack_destination_frames -- --exact
       - name: Strict workspace lint
         if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
         run: cargo clippy --workspace --all-targets --locked --no-deps -- -D warnings
@@ -350,6 +357,8 @@ jobs:
           path: |
             ${{ runner.temp }}/supported-workspace.log
             ${{ runner.temp }}/supported-workspace.receipt.json
+            ${{ runner.temp }}/execution-profile.log
+            ${{ runner.temp }}/execution-profile.receipt.json
           if-no-files-found: warn
 
   official-python-parity:

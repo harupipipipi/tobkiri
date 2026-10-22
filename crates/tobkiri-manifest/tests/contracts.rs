@@ -102,13 +102,15 @@ fn only_exact_known_core_versions_resolve_aliases_and_permission_imports() {
     let imports = allowed_imports_for_pack(&p).unwrap();
     assert!(imports.contains("tobkiri:core/types@1.0.0"));
     assert!(imports.contains("tobkiri:core/types@1.1.0"));
-    assert!(!imports.contains("tobkiri:core/types@1.2.0"));
+    assert!(imports.contains("tobkiri:core/types@1.2.0"));
+    assert!(!imports.contains("tobkiri:core/types@1.3.0"));
     assert!(!imports.contains("tobkiri:core/storage@1.1.0"));
     m.permissions.storage.private = true;
     let imports = allowed_imports(&m).unwrap();
     assert!(imports.contains("tobkiri:core/storage@1.0.0"));
     assert!(imports.contains("tobkiri:core/storage@1.1.0"));
-    assert!(!imports.contains("tobkiri:core/storage@1.2.0"));
+    assert!(imports.contains("tobkiri:core/storage@1.2.0"));
+    assert!(!imports.contains("tobkiri:core/storage@1.3.0"));
 }
 #[test]
 fn signed_artifact_requires_real_publisher_binding_and_matching_key() {

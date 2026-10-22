@@ -1748,6 +1748,7 @@ impl PackHost {
                             .checked_add(shape.wit.len())
                             .and_then(|n| n.checked_add(tobkiri_wit::CORE_WIT_SOURCE.len()))
                             .and_then(|n| n.checked_add(tobkiri_wit::CORE_V1_1_WIT_SOURCE.len()))
+                            .and_then(|n| n.checked_add(tobkiri_wit::CORE_V1_2_WIT_SOURCE.len()))
                             .context("error provenance parse size overflow")?,
                         largest.max(shape.wit.len()),
                     ))
@@ -1781,6 +1782,7 @@ impl PackHost {
             let input = max_provenance_document
                 .checked_add(tobkiri_wit::CORE_WIT_SOURCE.len())
                 .and_then(|n| n.checked_add(tobkiri_wit::CORE_V1_1_WIT_SOURCE.len()))
+                .and_then(|n| n.checked_add(tobkiri_wit::CORE_V1_2_WIT_SOURCE.len()))
                 .context("error provenance scratch size overflow")?;
             let bytes = input
                 .checked_mul(16)
@@ -1900,6 +1902,7 @@ impl PackHost {
             let scratch = wit_bytes
                 .checked_add(tobkiri_wit::CORE_WIT_SOURCE.len())
                 .and_then(|n| n.checked_add(tobkiri_wit::CORE_V1_1_WIT_SOURCE.len()))
+                .and_then(|n| n.checked_add(tobkiri_wit::CORE_V1_2_WIT_SOURCE.len()))
                 .and_then(|n| n.checked_mul(16))
                 .and_then(|n| {
                     n.checked_add(65_536 * std::mem::size_of::<tobkiri_manifest::WitType>() * 4)
@@ -1924,8 +1927,10 @@ impl PackHost {
                 let source = match name {
                     "tobkiri:core/stream-source@1.0.0" => Some((HandleKind::Stream, "1.0.0")),
                     "tobkiri:core/stream-source@1.1.0" => Some((HandleKind::Stream, "1.1.0")),
+                    "tobkiri:core/stream-source@1.2.0" => Some((HandleKind::Stream, "1.2.0")),
                     "tobkiri:core/callback-sink@1.0.0" => Some((HandleKind::Callback, "1.0.0")),
                     "tobkiri:core/callback-sink@1.1.0" => Some((HandleKind::Callback, "1.1.0")),
+                    "tobkiri:core/callback-sink@1.2.0" => Some((HandleKind::Callback, "1.2.0")),
                     _ => None,
                 };
                 if let Some((kind, version)) = source
@@ -3255,9 +3260,13 @@ impl PackInstance {
             .map_err(|error|entry_phase_error(error.into(),"lifecycle-config",&init_cx,owners))?);
         let mut lifecycle=None;
         for (name,_) in self.component.component_type().exports(shared.engine.engine()) {
-            if matches!(name,"tobkiri:core/lifecycle@1.0.0"|"tobkiri:core/lifecycle@1.1.0")
-                && lifecycle.replace(if name.ends_with("@1.0.0"){"tobkiri:core/lifecycle@1.0.0"}else{"tobkiri:core/lifecycle@1.1.0"}).is_some()
-            {
+            let exact=match name {
+                "tobkiri:core/lifecycle@1.0.0"=>Some("tobkiri:core/lifecycle@1.0.0"),
+                "tobkiri:core/lifecycle@1.1.0"=>Some("tobkiri:core/lifecycle@1.1.0"),
+                "tobkiri:core/lifecycle@1.2.0"=>Some("tobkiri:core/lifecycle@1.2.0"),
+                _=>None,
+            };
+            if let Some(exact)=exact && lifecycle.replace(exact).is_some() {
                 bail!("component exports ambiguous lifecycle package versions")
             }
         }

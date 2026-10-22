@@ -31,7 +31,7 @@ pub(crate) fn link_core_and_ports(
         };
         let core = name.strip_prefix("tobkiri:core/").and_then(|rest| {
             let (interface, version) = rest.rsplit_once('@')?;
-            matches!(version, "1.0.0" | "1.1.0").then_some((interface, version))
+            matches!(version, "1.0.0" | "1.1.0" | "1.2.0").then_some((interface, version))
         });
         let shape: Option<ShapeDef> = if core.is_none() {
             let port = pack.manifest.ports.consumes.iter().find(|p| {
@@ -1436,8 +1436,8 @@ mod error_tests {
         }
     }
     #[test]
-    fn source_cancel_ack_matches_both_frozen_void_abis_without_claiming_resource_cleanup() {
-        for version in ["1.0.0", "1.1.0"] {
+    fn source_cancel_ack_matches_supported_void_abis_without_claiming_resource_cleanup() {
+        for version in ["1.0.0", "1.1.0", "1.2.0"] {
             let abi = tobkiri_wit::core_abi_version(version).unwrap();
             let cancel = &abi["stream-source"].functions["cancel"];
             assert!(cancel.result.is_none());

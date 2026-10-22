@@ -87,7 +87,7 @@ fn resolved_core_error_result(resolve: &Resolve, result: Option<Type>) -> bool {
         && interface.package.is_some_and(|package| {
             matches!(
                 resolve.packages[package].name.to_string().as_str(),
-                "tobkiri:core@1.0.0" | "tobkiri:core@1.1.0"
+                "tobkiri:core@1.0.0" | "tobkiri:core@1.1.0" | "tobkiri:core@1.2.0"
             )
         })
 }
@@ -96,6 +96,9 @@ fn resolve_known_core() -> Result<Resolve, ManifestError> {
     let (newer, _) =
         tobkiri_wit::resolve_core_version("1.1.0").map_err(|e| invalid(e.to_string()))?;
     resolve.merge(newer).map_err(|e| invalid(e.to_string()))?;
+    let (draft, _) =
+        tobkiri_wit::resolve_core_version("1.2.0").map_err(|e| invalid(e.to_string()))?;
+    resolve.merge(draft).map_err(|e| invalid(e.to_string()))?;
     Ok(resolve)
 }
 /// The only forbidden mapping is onto the closed core WIT package.
@@ -154,6 +157,7 @@ pub fn allowed_imports(manifest: &PackManifest) -> Result<BTreeSet<String>, Mani
             [
                 format!("tobkiri:core/{i}@1.0.0"),
                 format!("tobkiri:core/{i}@1.1.0"),
+                format!("tobkiri:core/{i}@1.2.0"),
             ]
         })
         .collect();
@@ -198,7 +202,7 @@ fn convert(
                             && resolve.packages[p].name.name == "core"
                             && resolve.packages[p].name.version.as_ref().is_some_and(|v| {
                                 v.major == 1
-                                    && matches!(v.minor, 0 | 1)
+                                    && matches!(v.minor, 0..=2)
                                     && v.patch == 0
                                     && v.pre.is_empty()
                                     && v.build.is_empty()
@@ -315,6 +319,7 @@ fn resolve_pack_wit(pack: &VerifiedPack) -> Result<Resolve, ManifestError> {
         if [
             tobkiri_wit::CORE_WIT_SOURCE,
             tobkiri_wit::CORE_V1_1_WIT_SOURCE,
+            tobkiri_wit::CORE_V1_2_WIT_SOURCE,
         ]
         .iter()
         .any(|source| text.trim() == source.trim())
@@ -710,7 +715,7 @@ pub fn core_error_result_operations(shape: &ShapeDef) -> Result<BTreeSet<OpName>
         .filter(|(_, p)| {
             matches!(
                 p.name.to_string().as_str(),
-                "tobkiri:core@1.0.0" | "tobkiri:core@1.1.0"
+                "tobkiri:core@1.0.0" | "tobkiri:core@1.1.0" | "tobkiri:core@1.2.0"
             )
         })
         .map(|(_, package)| {

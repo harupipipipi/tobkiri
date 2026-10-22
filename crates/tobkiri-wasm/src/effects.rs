@@ -225,6 +225,19 @@ pub(crate) fn link_resource(
                         Ok(())
                     },
                 )?,
+                "1.2.0" => instance.resource(
+                    name,
+                    ResourceType::host::<Nominal<$ty, 2>>(),
+                    |mut store, rep| {
+                        store
+                            .data_mut()
+                            .data
+                            .wasi
+                            .table
+                            .delete(Resource::<Nominal<$ty, 2>>::new_own(rep))?;
+                        Ok(())
+                    },
+                )?,
                 _ => bail!("unknown exact core resource package"),
             }
         }};
@@ -236,7 +249,9 @@ pub(crate) fn link_resource(
         ("fs" | "proc" | "pty", "dir") => link!(HostDirectory),
         ("proc", "process") => link!(UnavailableProcess),
         ("pty", "terminal") => link!(UnavailableTerminal),
-        ("storage", "sql-transaction") if version == "1.1.0" => link!(Arc<NativeSqlTransaction>),
+        ("storage", "sql-transaction") if matches!(version, "1.1.0" | "1.2.0") => {
+            link!(Arc<NativeSqlTransaction>)
+        }
         _ => bail!("unknown core resource"),
     }
     Ok(())
@@ -271,6 +286,18 @@ fn push<T: Send + 'static>(
                 store.as_context_mut(),
             )?)
         }
+        "1.2.0" => {
+            let value = store
+                .data_mut()
+                .data
+                .wasi
+                .table
+                .push(Nominal::<T, 2>(value))?;
+            Val::Resource(ResourceAny::try_from_resource(
+                value,
+                store.as_context_mut(),
+            )?)
+        }
         _ => bail!("unknown exact core resource package"),
     })
 }
@@ -288,6 +315,9 @@ fn resource_rep<T: Send + 'static>(
             .rep(),
         "1.1.0" => value
             .try_into_resource::<Nominal<T, 1>>(store.as_context_mut())?
+            .rep(),
+        "1.2.0" => value
+            .try_into_resource::<Nominal<T, 2>>(store.as_context_mut())?
             .rep(),
         _ => bail!("unknown exact core resource package"),
     })
@@ -316,6 +346,15 @@ fn get_resource<'a, T: Send + 'static>(
                 .get(&Resource::<Nominal<T, 1>>::new_borrow(rep))?
                 .0
         }
+        "1.2.0" => {
+            &store
+                .data()
+                .data
+                .wasi
+                .table
+                .get(&Resource::<Nominal<T, 2>>::new_borrow(rep))?
+                .0
+        }
         _ => bail!("unknown exact core resource package"),
     })
 }
@@ -341,6 +380,15 @@ fn get_resource_mut<'a, T: Send + 'static>(
                 .wasi
                 .table
                 .get_mut(&Resource::<Nominal<T, 1>>::new_borrow(rep))?
+                .0
+        }
+        "1.2.0" => {
+            &mut store
+                .data_mut()
+                .data
+                .wasi
+                .table
+                .get_mut(&Resource::<Nominal<T, 2>>::new_borrow(rep))?
                 .0
         }
         _ => bail!("unknown exact core resource package"),
@@ -428,7 +476,7 @@ pub(crate) async fn invoke(
     let cx = store.data().cx.clone();
     let owners = store.data().data.owners.clone();
     let codec = EffectValues(&owners);
-    if !matches!(version, "1.0.0" | "1.1.0") {
+    if !matches!(version, "1.0.0" | "1.1.0" | "1.2.0") {
         bail!("unknown exact core package")
     }
     if interface == "flow" && operation == "is-cancelled" {
@@ -441,6 +489,33 @@ pub(crate) async fn invoke(
     host.shared.gate.check_context(&cx)?;
     match interface {
         "flow" => match operation {
+            "current-profile" if version == "1.2.0" => {
+                if !params.is_empty() {
+                    bail!("current-profile takes no arguments")
+                }
+                let frame = store
+                    .data()
+                    .data
+                    .frame
+                    .as_ref()
+                    .context("current-profile requires an actual current provider frame")?;
+                let current = frame.context();
+                if current.profile() != cx.profile()
+                    || current.principal() != cx.principal()
+                    || current.request() != cx.request()
+                    || current.revision() != cx.revision()
+                    || current.security_epoch() != cx.security_epoch()
+                {
+                    bail!("current-profile frame differs from the current invocation")
+                }
+                host.shared.gate.check_context(current)?;
+                // Core derives the native identity in a fixed 2048-byte
+                // scratch area. Fund it before calling, as the existing
+                // provider-operation preparation does, including on errors.
+                let _identity_control = current.control().reserve(ControlKind::Frame, 2048)?;
+                frame.native_execution_id().map_err(anyhow::Error::new)?;
+                codec.ok(Some(codec.string(cx.profile().as_str())?))
+            }
             "call-port" | "call-port-stream" => {
                 let shape = ShapeRef::parse(text(&params[0])?)?;
                 let op = OpName::parse(text(&params[1])?)?;
@@ -1053,7 +1128,7 @@ async fn storage(
         return result;
     }
     if operation.starts_with("[method]sql-transaction.") {
-        if version != "1.1.0" {
+        if !matches!(version, "1.1.0" | "1.2.0") {
             bail!("typed SQL transaction is not a storage@1.0 resource")
         }
         let rep = resource_rep::<Arc<NativeSqlTransaction>>(store, version, &params[0])?;
@@ -1143,7 +1218,7 @@ async fn storage(
             | "[method]store.sql-query-typed"
             | "[method]store.sql-begin"
     ) {
-        if version != "1.1.0" {
+        if !matches!(version, "1.1.0" | "1.2.0") {
             bail!("typed SQL methods are not storage@1.0 operations")
         }
         let mut delivery = WriteDeliveryReceipt::prepare(cx, None, false, handle)?;

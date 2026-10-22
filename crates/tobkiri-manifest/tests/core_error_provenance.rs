@@ -60,7 +60,7 @@ interface check {{
 
 #[test]
 fn only_outer_result_type_aliases_to_exact_core_error_receive_provenance() {
-    for version in ["1.0.0", "1.1.0"] {
+    for version in ["1.0.0", "1.1.0", "1.2.0"] {
         let shape = verified_shape(version);
         assert_eq!(
             core_error_result_operations(&shape).unwrap(),
@@ -84,7 +84,7 @@ fn core_package_spoofs_unknown_versions_and_changed_result_metadata_are_rejected
     let mut changed = shape.clone();
     changed.wit = tobkiri_wit::CORE_WIT_SOURCE.into();
     assert!(core_error_result_operations(&changed).is_err());
-    changed.wit = shape.wit.replace("types@1.0.0", "types@1.2.0");
+    changed.wit = shape.wit.replace("types@1.0.0", "types@1.3.0");
     assert!(core_error_result_operations(&changed).is_err());
     changed = shape.clone();
     changed
