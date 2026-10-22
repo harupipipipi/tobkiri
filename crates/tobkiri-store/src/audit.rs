@@ -291,6 +291,10 @@ impl AuditLog {
         let digest = AuditRow::digest(seq, &prev, &event, event_id)?;
         tx.execute("INSERT INTO audit(seq,prev_digest,digest,body,writer,minute,size,event_id) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![seq as i64,prev.as_str(),digest.as_str(),body,writer,minute as i64,body.len()as i64,event_id.map(Digest::as_str)])?;
         prefix.extend(seq as i64, &prev, &digest, &body, event_id)?;
+        #[cfg(test)]
+        drop(insert);
+        #[cfg(test)]
+        let verify_stored = self.phase(AuditPhase::VerifyStored);
         // Prove the actual stored extension, including possible SQL triggers,
         // against the verified prefix plus this exact canonical new row.
         let stored = VerifiedPrefix::scan(&tx, &self.profile)?;
@@ -300,7 +304,7 @@ impl AuditLog {
             ));
         }
         #[cfg(test)]
-        drop(insert);
+        drop(verify_stored);
         #[cfg(test)]
         let _commit = self.phase(AuditPhase::Commit);
         tx.commit()?;

@@ -8,7 +8,7 @@ use std::{
     time::Instant,
 };
 
-const PHASES: usize = 9;
+const PHASES: usize = 10;
 
 #[derive(Clone, Copy)]
 pub(super) enum AuditPhase {
@@ -19,6 +19,7 @@ pub(super) enum AuditPhase {
     Verify,
     Queries,
     EncodeInsert,
+    VerifyStored,
     Commit,
     FullVerify,
 }
@@ -75,6 +76,7 @@ impl AuditPhaseTiming {
             "verify",
             "queries",
             "encode_insert",
+            "verify_stored",
             "commit",
             "full_verify",
         ]
@@ -136,6 +138,7 @@ fn audit_phase_costs_preserve_chain_and_idempotency() {
     assert_eq!(timing.calls(AuditPhase::Total), 64);
     assert_eq!(timing.calls(AuditPhase::Verify), 64);
     assert_eq!(timing.calls(AuditPhase::EncodeInsert), 64);
+    assert_eq!(timing.calls(AuditPhase::VerifyStored), 64);
     assert_eq!(timing.calls(AuditPhase::Commit), 64);
     assert_eq!(timing.calls(AuditPhase::FullVerify), 0);
     timing.report("unique", 320);
@@ -151,6 +154,7 @@ fn audit_phase_costs_preserve_chain_and_idempotency() {
     assert_eq!(timing.calls(AuditPhase::Total), 64);
     assert_eq!(timing.calls(AuditPhase::Verify), 64);
     assert_eq!(timing.calls(AuditPhase::EncodeInsert), 0);
+    assert_eq!(timing.calls(AuditPhase::VerifyStored), 0);
     assert_eq!(timing.calls(AuditPhase::Commit), 64);
     // Explicit verify cleared the proof, so the first retry fully verifies.
     assert_eq!(timing.calls(AuditPhase::FullVerify), 1);
@@ -205,4 +209,88 @@ fn audit_phase_costs_preserve_chain_and_idempotency() {
         audit.verify(),
         Err(StoreError::Integrity(IntegrityFaultCode::AuditChain))
     ));
+}
+
+#[test]
+#[cfg(unix)]
+fn audit_concurrent_phase_costs_keep_all_original_records() {
+    use std::os::unix::fs::PermissionsExt;
+    use tobkiri_canon::{CanonValue, ids::RequestId};
+    use tobkiri_gate::Principal;
+
+    let dir = tempfile::Builder::new()
+        .permissions(std::fs::Permissions::from_mode(0o700))
+        .tempdir()
+        .unwrap();
+    let root = DataRoot::open(dir.path().canonicalize().unwrap()).unwrap();
+    let profile = ProfileId::parse("prof_audit_concurrent_phase").unwrap();
+    let mut audit = AuditLog::open(&root, &profile, AuditQuota::default()).unwrap();
+    let event = |index: u64| AuditEvent {
+        profile: profile.clone(),
+        principal: Principal::User,
+        request: RequestId::parse(&format!("req_concurrent_phase_{index}")).unwrap(),
+        kind: "phase_fixture".into(),
+        payload: CanonValue::Obj(
+            [
+                ("index".into(), CanonValue::Int(index as i64)),
+                ("status".into(), CanonValue::Str("cancelled".into())),
+            ]
+            .into(),
+        ),
+    };
+    for index in 0..256 {
+        audit.append(event(index)).unwrap();
+    }
+    audit.phase_timing = Some(AuditPhaseTiming::default());
+    let elapsed = Instant::now();
+    // Match the 64 ready appends, with small bounded fixture-only stacks.
+    // No barrier can strand already-started workers if a later spawn fails.
+    std::thread::scope(|scope| {
+        let mut workers = Vec::with_capacity(64);
+        for index in 256_u64..320 {
+            let audit = &audit;
+            let event = &event;
+            workers.push(
+                std::thread::Builder::new()
+                    .stack_size(512 * 1024)
+                    .spawn_scoped(scope, move || {
+                        audit
+                            .append_idempotent(&Digest::hash(&index.to_le_bytes()), event(index))
+                            .unwrap();
+                    })
+                    .unwrap(),
+            );
+        }
+        for worker in workers {
+            worker.join().unwrap();
+        }
+    });
+    let timing = audit.phase_timing.take().unwrap();
+    for phase in [
+        AuditPhase::Total,
+        AuditPhase::Verify,
+        AuditPhase::EncodeInsert,
+        AuditPhase::VerifyStored,
+        AuditPhase::Commit,
+    ] {
+        assert_eq!(timing.calls(phase), 64);
+    }
+    assert_eq!(timing.calls(AuditPhase::FullVerify), 0);
+    eprintln!(
+        "AUDIT_CONCURRENT append_count=64 elapsed_us={}",
+        elapsed.elapsed().as_micros()
+    );
+    timing.report("concurrent64_unique", 320);
+    audit.verify().unwrap();
+    assert_eq!(
+        audit
+            .connection
+            .lock()
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM audit", [], |row| crate::sql_u64(
+                row, 0
+            ))
+            .unwrap(),
+        320
+    );
 }
