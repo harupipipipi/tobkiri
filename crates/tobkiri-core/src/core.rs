@@ -365,9 +365,10 @@ impl Core {
                 .intersect(&profile.ceiling),
         )
         .await?;
-        self.profiles.root.compare_and_swap_profile_head(
+        self.profiles.root.compare_and_swap_profile_head_at_epoch(
             &profile.id,
             expected.as_ref(),
+            cx.security_epoch(),
             &digest,
         )?;
         Ok(digest)

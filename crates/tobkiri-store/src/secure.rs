@@ -285,6 +285,40 @@ impl DataRoot {
         expected: Option<&Digest>,
         new: &Digest,
     ) -> Result<(), StoreError> {
+        self.compare_and_swap_profile_head_inner(profile, expected, None, new, File::sync_all)
+            .map(|_| ())
+    }
+    /// Commit only if both the head and approval epoch still match the reviewed
+    /// state. Returns the new head and the epoch acquired by this commit.
+    ///
+    /// The Profile lock orders head writers and snapshots; the epoch comparison
+    /// and advancement share one SQLite transaction. A later revocation may
+    /// advance the epoch before this call returns, so activation still requires
+    /// an exact current snapshot. An I/O error may follow epoch advancement or
+    /// head replacement and does not establish that this commit had no effect.
+    pub fn compare_and_swap_profile_head_at_epoch(
+        &self,
+        profile: &ProfileId,
+        expected: Option<&Digest>,
+        expected_epoch: u64,
+        new: &Digest,
+    ) -> Result<(Digest, u64), StoreError> {
+        self.compare_and_swap_profile_head_inner(
+            profile,
+            expected,
+            Some(expected_epoch),
+            new,
+            File::sync_all,
+        )
+    }
+    fn compare_and_swap_profile_head_inner(
+        &self,
+        profile: &ProfileId,
+        expected: Option<&Digest>,
+        expected_epoch: Option<u64>,
+        new: &Digest,
+        sync_directory: impl FnOnce(&File) -> std::io::Result<()>,
+    ) -> Result<(Digest, u64), StoreError> {
         #[cfg(unix)]
         {
             let lock = self.profile_lock(profile, ".revision.lock")?;
@@ -302,17 +336,25 @@ impl DataRoot {
             if current.as_ref() != expected {
                 return Err(StoreError::Conflict("Profile head changed".into()));
             }
-            // Same revision lock orders head snapshots and epoch advancement.
+            // The revision lock orders this commit with head writers/snapshots.
             // On I/O failure an advanced epoch still fails closed for old grants.
-            crate::Approvals::open_pinned(&lock.directory, profile)?
-                .advance_security_epoch(profile)?;
-            lock.directory
-                .write_atomic("head", new.as_str().as_bytes())?;
-            Ok(())
+            let approvals = crate::Approvals::open_pinned(&lock.directory, profile)?;
+            let epoch = match expected_epoch {
+                Some(expected_epoch) => {
+                    approvals.compare_and_advance_security_epoch(profile, expected_epoch)?
+                }
+                None => approvals.advance_security_epoch(profile)?,
+            };
+            lock.directory.write_atomic_with_directory_sync(
+                Path::new("head"),
+                new.as_str().as_bytes(),
+                sync_directory,
+            )?;
+            Ok((new.clone(), epoch))
         }
         #[cfg(not(unix))]
         {
-            let _ = (profile, expected, new);
+            let _ = (profile, expected, expected_epoch, new, sync_directory);
             Err(StoreError::Unavailable(
                 "Profile CAS locking unavailable".into(),
             ))
@@ -547,9 +589,17 @@ impl DataRoot {
     }
     /// Atomic same-directory replace, private file mode, fsynced before rename.
     pub fn write_atomic(&self, path: impl AsRef<Path>, bytes: &[u8]) -> Result<(), StoreError> {
+        self.write_atomic_with_directory_sync(path.as_ref(), bytes, File::sync_all)
+    }
+    fn write_atomic_with_directory_sync(
+        &self,
+        path: &Path,
+        bytes: &[u8],
+        sync_directory: impl FnOnce(&File) -> std::io::Result<()>,
+    ) -> Result<(), StoreError> {
         #[cfg(unix)]
         {
-            let (dir, last) = self.parent(path.as_ref(), true)?;
+            let (dir, last) = self.parent(path, true)?;
             let tmp = temporary_name()?;
             let mut file = open_file(&dir, &tmp, true, true)?;
             file.write_all(bytes)?;
@@ -568,12 +618,12 @@ impl DataRoot {
                 let _ = unsafe { libc::unlinkat(dir.as_raw_fd(), source.as_ptr(), 0) };
                 return Err(std::io::Error::last_os_error().into());
             }
-            dir.sync_all()?;
+            sync_directory(&dir)?;
             Ok(())
         }
         #[cfg(not(unix))]
         {
-            let _ = (path, bytes);
+            let _ = (path, bytes, sync_directory);
             Err(StoreError::Unavailable(
                 "atomic nofollow write unavailable".into(),
             ))
@@ -891,6 +941,217 @@ mod database_lock_tests {
 mod revision_lock_tests {
     use super::*;
     use std::{sync::mpsc, time::Duration};
+
+    fn epoch_cas_fixture() -> (tempfile::TempDir, DataRoot, ProfileId) {
+        let temp = tempfile::tempdir().unwrap();
+        let root = DataRoot::open(temp.path().canonicalize().unwrap()).unwrap();
+        let profile = ProfileId::parse("prof_epoch_cas").unwrap();
+        (temp, root, profile)
+    }
+
+    #[test]
+    fn epoch_bound_cas_returns_the_exact_acquired_epoch_and_commits_once() {
+        let (_temp, root, profile) = epoch_cas_fixture();
+        let first = Digest::hash(b"first");
+        let next = Digest::hash(b"next");
+        assert_eq!(
+            root.compare_and_swap_profile_head_at_epoch(&profile, None, 0, &first)
+                .unwrap(),
+            (first.clone(), 1)
+        );
+        let reviewed = root.profile_head_snapshot(&profile).unwrap();
+        let committed = root
+            .compare_and_swap_profile_head_at_epoch(&profile, Some(&reviewed.0), reviewed.1, &next)
+            .unwrap();
+        assert_eq!(committed, (next, reviewed.1 + 1));
+        assert_eq!(root.profile_head_snapshot(&profile).unwrap(), committed);
+        assert!(matches!(
+            root.compare_and_swap_profile_head_at_epoch(
+                &profile,
+                Some(&reviewed.0),
+                reviewed.1,
+                &Digest::hash(b"replay"),
+            ),
+            Err(StoreError::Conflict(_))
+        ));
+        assert_eq!(root.profile_head_snapshot(&profile).unwrap(), committed);
+    }
+
+    #[test]
+    fn epoch_only_revocation_rejects_a_stale_review_without_changing_the_head() {
+        let (_temp, root, profile) = epoch_cas_fixture();
+        let first = Digest::hash(b"first");
+        root.compare_and_swap_profile_head(&profile, None, &first)
+            .unwrap();
+        let reviewed = root.profile_head_snapshot(&profile).unwrap();
+        let revoked_epoch = crate::Approvals::open(&root, &profile)
+            .unwrap()
+            .advance_security_epoch(&profile)
+            .unwrap();
+        assert!(matches!(
+            root.compare_and_swap_profile_head_at_epoch(
+                &profile,
+                Some(&reviewed.0),
+                reviewed.1,
+                &Digest::hash(b"unreviewed epoch"),
+            ),
+            Err(StoreError::Conflict(_))
+        ));
+        assert_eq!(
+            root.profile_head_snapshot(&profile).unwrap(),
+            (first, revoked_epoch)
+        );
+    }
+
+    #[test]
+    fn returning_to_the_same_head_does_not_accept_a_stale_epoch() {
+        let (_temp, root, profile) = epoch_cas_fixture();
+        let first = Digest::hash(b"first");
+        let intermediate = Digest::hash(b"intermediate");
+        root.compare_and_swap_profile_head(&profile, None, &first)
+            .unwrap();
+        let reviewed = root.profile_head_snapshot(&profile).unwrap();
+        root.compare_and_swap_profile_head(&profile, Some(&first), &intermediate)
+            .unwrap();
+        root.compare_and_swap_profile_head(&profile, Some(&intermediate), &first)
+            .unwrap();
+        assert!(matches!(
+            root.compare_and_swap_profile_head_at_epoch(
+                &profile,
+                Some(&reviewed.0),
+                reviewed.1,
+                &Digest::hash(b"stale edit"),
+            ),
+            Err(StoreError::Conflict(_))
+        ));
+        assert_eq!(root.profile_head_snapshot(&profile).unwrap(), (first, 3));
+    }
+
+    #[test]
+    fn epoch_bound_cas_keeps_head_conflicts_side_effect_free() {
+        let (_temp, root, profile) = epoch_cas_fixture();
+        let first = Digest::hash(b"first");
+        root.compare_and_swap_profile_head(&profile, None, &first)
+            .unwrap();
+        let before = root.profile_head_snapshot(&profile).unwrap();
+        assert!(matches!(
+            root.compare_and_swap_profile_head_at_epoch(
+                &profile,
+                Some(&Digest::hash(b"other head")),
+                before.1,
+                &Digest::hash(b"next"),
+            ),
+            Err(StoreError::Conflict(_))
+        ));
+        assert_eq!(root.profile_head_snapshot(&profile).unwrap(), before);
+    }
+
+    #[test]
+    fn competing_epoch_bound_commits_acquire_the_target_epoch_only_once() {
+        let (_temp, root, profile) = epoch_cas_fixture();
+        let first = Digest::hash(b"first");
+        root.compare_and_swap_profile_head(&profile, None, &first)
+            .unwrap();
+        let reviewed = root.profile_head_snapshot(&profile).unwrap();
+        let workers: Vec<_> = [Digest::hash(b"one"), Digest::hash(b"two")]
+            .into_iter()
+            .map(|next| {
+                let root = root.clone();
+                let profile = profile.clone();
+                let reviewed = reviewed.clone();
+                std::thread::spawn(move || {
+                    root.compare_and_swap_profile_head_at_epoch(
+                        &profile,
+                        Some(&reviewed.0),
+                        reviewed.1,
+                        &next,
+                    )
+                })
+            })
+            .collect();
+        let results: Vec<_> = workers
+            .into_iter()
+            .map(|worker| worker.join().unwrap())
+            .collect();
+        assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+        assert_eq!(
+            results
+                .iter()
+                .filter(|result| matches!(result, Err(StoreError::Conflict(_))))
+                .count(),
+            1
+        );
+        let acquired = results.into_iter().find_map(Result::ok).unwrap();
+        assert_eq!(acquired.1, reviewed.1 + 1);
+        assert_eq!(root.profile_head_snapshot(&profile).unwrap(), acquired);
+    }
+
+    #[test]
+    fn directory_sync_failure_after_head_replace_is_not_a_rollback() {
+        let (_temp, root, profile) = epoch_cas_fixture();
+        let first = Digest::hash(b"first");
+        let next = Digest::hash(b"next");
+        root.compare_and_swap_profile_head(&profile, None, &first)
+            .unwrap();
+        let reviewed = root.profile_head_snapshot(&profile).unwrap();
+        let error = root
+            .compare_and_swap_profile_head_inner(
+                &profile,
+                Some(&reviewed.0),
+                Some(reviewed.1),
+                &next,
+                |_| Err(std::io::Error::other("injected directory fsync failure")),
+            )
+            .unwrap_err();
+        assert!(matches!(error, StoreError::Io(_)));
+        // The real rename preceded the failed directory fsync. Observe state
+        // instead of treating the error as evidence that nothing committed.
+        let observed = root.profile_head_snapshot(&profile).unwrap();
+        assert_eq!(observed, (next.clone(), reviewed.1 + 1));
+        assert!(matches!(
+            root.compare_and_swap_profile_head_at_epoch(
+                &profile,
+                Some(&reviewed.0),
+                reviewed.1,
+                &next,
+            ),
+            Err(StoreError::Conflict(_))
+        ));
+        assert_eq!(root.profile_head_snapshot(&profile).unwrap(), observed);
+    }
+
+    #[test]
+    fn acquired_epoch_receipt_does_not_hide_a_later_revocation() {
+        let (_temp, root, profile) = epoch_cas_fixture();
+        let first = Digest::hash(b"first");
+        let next = Digest::hash(b"next");
+        root.compare_and_swap_profile_head(&profile, None, &first)
+            .unwrap();
+        let reviewed = root.profile_head_snapshot(&profile).unwrap();
+        let acquired = root
+            .compare_and_swap_profile_head_inner(
+                &profile,
+                Some(&reviewed.0),
+                Some(reviewed.1),
+                &next,
+                |directory| {
+                    directory.sync_all()?;
+                    // Revocation has its own SQLite transaction and can occur
+                    // after this commit acquired its epoch, even before return.
+                    crate::Approvals::open(&root, &profile)
+                        .unwrap()
+                        .advance_security_epoch(&profile)
+                        .unwrap();
+                    Ok(())
+                },
+            )
+            .unwrap();
+        assert_eq!(acquired, (next.clone(), reviewed.1 + 1));
+        assert_eq!(
+            root.profile_head_snapshot(&profile).unwrap(),
+            (next, reviewed.1 + 2)
+        );
+    }
 
     #[test]
     fn replacing_legacy_lock_file_cannot_split_the_profile_directory_cas_domain() {

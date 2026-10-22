@@ -128,6 +128,43 @@ impl Approvals {
             Err(GateError::Denied("approval store Profile mismatch".into()))
         }
     }
+    /// Compare and advance the epoch in one transaction while the caller holds
+    /// the Profile revision lock. Revocation may still advance it afterwards.
+    #[cfg(unix)]
+    pub(crate) fn compare_and_advance_security_epoch(
+        &self,
+        profile: &ProfileId,
+        expected: u64,
+    ) -> Result<u64, StoreError> {
+        self.local(profile)?;
+        let mut conn = self.connection.lock().map_err(persistence)?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(persistence)?;
+        let epoch: u64 = tx
+            .query_row(
+                "SELECT epoch FROM security_epoch WHERE singleton=1",
+                [],
+                |r| crate::sql_u64(r, 0),
+            )
+            .map_err(persistence)?;
+        if epoch != expected {
+            return Err(StoreError::Conflict(
+                "Profile security epoch changed".into(),
+            ));
+        }
+        let next = epoch
+            .checked_add(1)
+            .filter(|v| *v <= i64::MAX as u64)
+            .ok_or_else(|| GateError::Limit("epoch exhausted".into()))?;
+        tx.execute(
+            "UPDATE security_epoch SET epoch=?1 WHERE singleton=1",
+            [next as i64],
+        )
+        .map_err(persistence)?;
+        tx.commit().map_err(persistence)?;
+        Ok(next)
+    }
     /// Core user operation after explicit device pairing, never a guest import.
     pub fn pair_device(
         &self,
