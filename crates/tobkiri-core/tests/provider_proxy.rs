@@ -2369,9 +2369,14 @@ async fn callback_reentry_returns_conflict_instead_of_waiting_for_ancestor_lock(
 
 #[tokio::test]
 async fn guest_run_flow_uses_actual_core_bridge_and_manifest_flow_typed_port() -> TestResult {
+    let measured = Instant::now();
     let fixture = Fixture::new(Options::default())?;
     let session = fixture.start().await?;
     let ui = fixture.ui(&session).await?;
+    eprintln!(
+        "FLOW_BRIDGE_PHASE test=core_run_flow stage=ui_ready elapsed_ms={}",
+        measured.elapsed().as_millis()
+    );
     let buffer = fixture
         .ui_call(
             &session,
@@ -2388,6 +2393,10 @@ async fn guest_run_flow_uses_actual_core_bridge_and_manifest_flow_typed_port() -
         )
         .await?;
     let opened = parse_output(&buffer)?;
+    eprintln!(
+        "FLOW_BRIDGE_PHASE test=core_run_flow stage=opened elapsed_ms={}",
+        measured.elapsed().as_millis()
+    );
     assert_eq!(
         opened.get("kind").and_then(CanonValue::as_str),
         Some("stream")
@@ -2399,7 +2408,15 @@ async fn guest_run_flow_uses_actual_core_bridge_and_manifest_flow_typed_port() -
             .ok_or("missing Flow stream handle")?,
     )?;
     let mut completed = false;
+    let mut observations = 0_u8;
     loop {
+        if observations < 4 {
+            observations += 1;
+            eprintln!(
+                "FLOW_BRIDGE_PHASE test=core_run_flow stage=pull completed={completed} elapsed_ms={}",
+                measured.elapsed().as_millis()
+            );
+        }
         let batch = fixture.pull(&session, &ui, handle, 8).await?;
         let frames = batch.as_array().ok_or("Flow batch is not an array")?;
         if frames.is_empty() {
@@ -2417,6 +2434,10 @@ async fn guest_run_flow_uses_actual_core_bridge_and_manifest_flow_typed_port() -
     let rows = fixture.audit_rows(&session).await?;
     assert!(has_pack_event(&rows, "dispatch", CONSUMER));
     assert!(has_pack_event(&rows, "dispatch", PROVIDER));
+    eprintln!(
+        "FLOW_BRIDGE_PHASE test=core_run_flow stage=session_close elapsed_ms={}",
+        measured.elapsed().as_millis()
+    );
     session.close().await?;
     Ok(())
 }

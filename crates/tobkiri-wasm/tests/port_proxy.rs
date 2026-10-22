@@ -1696,9 +1696,14 @@ async fn callback_reentry_returns_conflict_instead_of_waiting_for_ancestor_lock(
 
 #[tokio::test]
 async fn guest_run_flow_uses_weak_bridge_and_real_flow_engine_typed_port() -> TestResult {
+    let measured = Instant::now();
     let fixture = Fixture::new(Options::default())?;
     let session = fixture.start().await?;
     let ui = fixture.ui(&session).await?;
+    eprintln!(
+        "FLOW_BRIDGE_PHASE test=weak_run_flow stage=ui_ready elapsed_ms={}",
+        measured.elapsed().as_millis()
+    );
     let buffer = fixture
         .ui_call(
             &session,
@@ -1715,6 +1720,10 @@ async fn guest_run_flow_uses_weak_bridge_and_real_flow_engine_typed_port() -> Te
         )
         .await?;
     let opened = parse_output(&buffer)?;
+    eprintln!(
+        "FLOW_BRIDGE_PHASE test=weak_run_flow stage=opened elapsed_ms={}",
+        measured.elapsed().as_millis()
+    );
     assert_eq!(
         opened.get("kind").and_then(CanonValue::as_str),
         Some("stream")
@@ -1726,7 +1735,15 @@ async fn guest_run_flow_uses_weak_bridge_and_real_flow_engine_typed_port() -> Te
             .ok_or("missing Flow stream handle")?,
     )?;
     let mut completed = false;
+    let mut observations = 0_u8;
     loop {
+        if observations < 4 {
+            observations += 1;
+            eprintln!(
+                "FLOW_BRIDGE_PHASE test=weak_run_flow stage=pull completed={completed} elapsed_ms={}",
+                measured.elapsed().as_millis()
+            );
+        }
         let batch = fixture.pull(&session, &ui, handle, 8).await?;
         let frames = batch.as_array().ok_or("Flow batch is not an array")?;
         if frames.is_empty() {
@@ -1744,18 +1761,27 @@ async fn guest_run_flow_uses_weak_bridge_and_real_flow_engine_typed_port() -> Te
     let rows = fixture.audit_rows(&session).await?;
     assert!(has_pack_event(&rows, "dispatch", CONSUMER));
     assert!(has_pack_event(&rows, "dispatch", PROVIDER));
+    eprintln!(
+        "FLOW_BRIDGE_PHASE test=weak_run_flow stage=session_close elapsed_ms={}",
+        measured.elapsed().as_millis()
+    );
     session.close().await?;
     Ok(())
 }
 
 #[tokio::test]
 async fn flow_step_failure_keeps_original_unavailable_port_outcome() -> TestResult {
+    let measured = Instant::now();
     let fixture = Fixture::new(Options {
         flow_request_ui: true,
         ..Options::default()
     })?;
     let session = fixture.start().await?;
     let ui = fixture.ui(&session).await?;
+    eprintln!(
+        "FLOW_BRIDGE_PHASE test=failed_run_flow stage=ui_ready elapsed_ms={}",
+        measured.elapsed().as_millis()
+    );
     let buffer = fixture
         .ui_call(
             &session,
@@ -1772,6 +1798,10 @@ async fn flow_step_failure_keeps_original_unavailable_port_outcome() -> TestResu
         )
         .await?;
     let opened = parse_output(&buffer)?;
+    eprintln!(
+        "FLOW_BRIDGE_PHASE test=failed_run_flow stage=opened elapsed_ms={}",
+        measured.elapsed().as_millis()
+    );
     assert_eq!(
         opened.get("kind").and_then(CanonValue::as_str),
         Some("stream")
@@ -1785,7 +1815,15 @@ async fn flow_step_failure_keeps_original_unavailable_port_outcome() -> TestResu
     let mut step_failed = false;
     let mut failed = false;
     let mut completed = false;
+    let mut observations = 0_u8;
     loop {
+        if observations < 4 {
+            observations += 1;
+            eprintln!(
+                "FLOW_BRIDGE_PHASE test=failed_run_flow stage=pull step_failed={step_failed} failed={failed} completed={completed} elapsed_ms={}",
+                measured.elapsed().as_millis()
+            );
+        }
         let batch = match fixture.pull(&session, &ui, handle, 8).await {
             Ok(batch) => batch,
             Err(error) => {
