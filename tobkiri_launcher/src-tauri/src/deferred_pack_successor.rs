@@ -417,7 +417,22 @@ mod tests {
             fixture.predecessor["pack"]["artifact_digest"],
             fixture.artifact
         );
-        assert_eq!(fixture.plan["bindings"].as_array().unwrap().len(), 4);
+        assert_eq!(
+            fixture.plan["bindings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|binding| binding["operation_id"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            [
+                "rumi_provider_adapters_pack.provider-audio-speech",
+                "rumi_provider_adapters_pack.provider-audio-transcribe",
+                "rumi_provider_adapters_pack.provider-embedding",
+                "rumi_provider_adapters_pack.provider-generate",
+                "rumi_provider_adapters_pack.provider-image",
+                "rumi_provider_adapters_pack.provider-stream",
+            ]
+        );
         assert_eq!(fixture.deferred(), Some(fixture.artifact.clone()));
         let mut unchanged = Fixture::provider_adapters();
         unchanged.predecessor["pack"]["artifact_digest"] = json!(unchanged.artifact);
