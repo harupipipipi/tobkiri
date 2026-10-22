@@ -76,6 +76,26 @@ class RuntimeRoutingTests(unittest.TestCase):
             "unproven_allocation_owner_platform_is_unavailable -- --exact", denial)
         self.assertNotIn("--ignored", denial)
 
+    def test_decoded_registry_runs_the_pinned_source_consumer_and_retains_evidence(self) -> None:
+        comparison = step(self.linux, "Decoded Registry original-source comparison")
+        for required in (
+            "TOBKIRI_PROVIDER_REGISTRY_ORACLE_RECEIPT:",
+            "/evidence/original-python/receipt.json",
+            "TOBKIRI_PROVIDER_REGISTRY_ORACLE_SHA256: "
+            "3da27b9590f4e0fdcbfe71a017fa95c8173afe5401348ff57b3b51f68f991684",
+            "TOBKIRI_PROVIDER_REGISTRY_EVIDENCE_DIR:",
+            "--expected-passed 30", "--expected-passed 1",
+            "cargo test --locked --manifest-path packs/Cargo.toml",
+            "oracle_tests::provider_registry_decoded_source_consumer -- --ignored --exact",
+            "cargo clippy --locked --manifest-path packs/Cargo.toml",
+        ):
+            self.assertIn(required, comparison)
+        self.assertNotIn("continue-on-error", comparison)
+        retention = step(self.linux, "Retain decoded Registry comparison evidence")
+        self.assertIn("if: always()", retention)
+        self.assertIn("uses: actions/upload-artifact@v4", retention)
+        self.assertIn("/provider-registry-native/", retention)
+
     def test_registry_only_packager_runs_python_and_actual_worker_tests(self) -> None:
         command = step(self.linux, "Python 3.13 asset packager regression")
         self.assertIn("unittest discover -s tools/python313-producer/packager/tests", command)

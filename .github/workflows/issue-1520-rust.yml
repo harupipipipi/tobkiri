@@ -77,6 +77,33 @@ jobs:
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-handle-metadata.log" --
           cargo test -p tobkiri-wasm --lib handle_metadata_tests --locked
+      - name: Decoded Registry original-source comparison
+        env:
+          TOBKIRI_PROVIDER_REGISTRY_ORACLE_RECEIPT: ${{ github.workspace }}/packs/local.provider-registry-rust/evidence/original-python/receipt.json
+          TOBKIRI_PROVIDER_REGISTRY_ORACLE_SHA256: 3da27b9590f4e0fdcbfe71a017fa95c8173afe5401348ff57b3b51f68f991684
+          TOBKIRI_PROVIDER_REGISTRY_EVIDENCE_DIR: ${{ runner.temp }}/provider-registry-native
+        run: |
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/provider-registry-units.log" --expected-passed 30 -- \
+            cargo test --locked --manifest-path packs/Cargo.toml \
+            -p tobkiri-pack-provider-registry-rust --lib
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/provider-registry-source.log" --expected-passed 1 -- \
+            cargo test --locked --manifest-path packs/Cargo.toml \
+            -p tobkiri-pack-provider-registry-rust --lib \
+            oracle_tests::provider_registry_decoded_source_consumer -- --ignored --exact
+          cargo clippy --locked --manifest-path packs/Cargo.toml \
+            -p tobkiri-pack-provider-registry-rust --all-targets -- -D warnings
+      - name: Retain decoded Registry comparison evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-registry-decoded-source-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/provider-registry-native/
+            ${{ runner.temp }}/provider-registry-units.log*
+            ${{ runner.temp }}/provider-registry-source.log*
+          if-no-files-found: warn
       - name: Portable Wasm engine integration tests
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test

@@ -1,0 +1,1 @@
+{"case_id":"empty-snapshot-health","purpose":"Read a new profile and retain empty provider collections.","profile_id":"defaults","initial_store_text":null,"actions":[{"action_id":"snapshot-empty","operation":"registry.snapshot","payload":{}},{"action_id":"health-empty","operation":"registry.health","payload":{}}]}

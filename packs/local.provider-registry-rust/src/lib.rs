@@ -8,3 +8,6 @@ pub mod host;
 pub mod record;
 pub mod registry;
 pub mod state;
+
+#[cfg(test)]
+mod oracle_tests;

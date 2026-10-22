@@ -643,7 +643,10 @@ dependencies = [
 name = "tobkiri-pack-provider-registry-rust"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "ordered-python-compat",
+ "serde_json",
+ "sha2",
  "tobkiri-pack-provider-model-access-rust",
 ]
 

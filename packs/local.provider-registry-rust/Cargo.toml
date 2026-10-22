@@ -13,3 +13,8 @@ crate-type = ["rlib"]
 ordered-python-compat = { path = "../ordered-python-compat" }
 provider_model_access = { package = "tobkiri-pack-provider-model-access-rust", path = "../local.provider-model-access-rust", default-features = false }
 
+[dev-dependencies]
+anyhow = "=1.0.104"
+serde_json = "=1.0.154"
+sha2 = "=0.10.9"
+
