@@ -1223,6 +1223,146 @@
       "executable": false
     },
     {
+      "path": "ecosystem/defaultspack/ui/assets/tobkiri-startup-blade-cut.svg",
+      "type": "regular-file",
+      "size": 98583,
+      "sha256": "705b03aa96998b10affc7ed2d1b45aee639aa1bb7e2bce48248cbf0ed95e60af",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/ui/codex.png",
+      "type": "regular-file",
+      "size": 493468,
+      "sha256": "de7d43f3386105ab20952958c2c25beb0d903e2aeb6e1aef57c49a648c0d1c07",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/ui/dev_panel.js",
+      "type": "regular-file",
+      "size": 9775,
+      "sha256": "fc4029a648877c8fcc29da22a49ec7e495aafacd0848e5f4a2c5647c261bc25b",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/ui/licenses/Beautiful-UI-MIT.txt",
+      "type": "regular-file",
+      "size": 1114,
+      "sha256": "27aa18de562bc702c2b88e3548cb1823661a3077c4951f132e103cbaa24ca1eb",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/ui/mediapipe/NOTICE.md",
+      "type": "regular-file",
+      "size": 1466,
+      "sha256": "b72c00e3990064d4f87009d62fb1fbd3e7154c39d41eb23c94342d209f6defc0",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/ui/mediapipe/wasm/vision_wasm_internal.js",
+      "type": "regular-file",
+      "size": 322027,
+      "sha256": "11fdcbe35b15e222bd60f02c1be7e5f8dd8a73721a0a55cf8adcf38b88977b9e",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/ui/mediapipe/wasm/vision_wasm_internal.wasm",
+      "type": "regular-file",
+      "size": 11153617,
+      "sha256": "6a5c64584c2ab61c763b6e204afbdbc7ce1caf7f5216187322bca8df94f646bc",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/ui/mediapipe/wasm/vision_wasm_module_internal.js",
+      "type": "regular-file",
+      "size": 322065,
+      "sha256": "e23be0c990685926cc0a13a46936015527f36e95adf965250ea08d3b9fd28ef2",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/ui/mediapipe/wasm/vision_wasm_module_internal.wasm",
+      "type": "regular-file",
+      "size": 11153641,
+      "sha256": "617b8e0248dbd27e9d7ece4218004eae4cefb499196d1bb4fa0e3fef21708756",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/ui/mediapipe/wasm/vision_wasm_nosimd_internal.js",
+      "type": "regular-file",
+      "size": 321830,
+      "sha256": "df375e4da93bbc1078481da6e2e519fd55ea125a14a00379a9b7bb395fb56c80",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/ui/mediapipe/wasm/vision_wasm_nosimd_internal.wasm",
+      "type": "regular-file",
+      "size": 10481398,
+      "sha256": "8a3092d34c79d3f57e6ba8592105e8a90f6b07c27891ffecd14cca428bfd3e31",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/ui/models/hand_landmarker.task",
+      "type": "regular-file",
+      "size": 7819105,
+      "sha256": "fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/ui/pet/tobkiri-pet.png",
+      "type": "regular-file",
+      "size": 92860,
+      "sha256": "45506ec23dc49905a1ba7387454e558a33e3fca8833b072fde0fe6b908bf0ab0",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/ui/shell-app.css",
+      "type": "regular-file",
+      "size": 246674,
+      "sha256": "aaa384dfbad2ab3cb07258b2926578aac0046354ca927fad5651d0aec929c3b1",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/ui/shell-app.js",
+      "type": "regular-file",
+      "size": 32286,
+      "sha256": "b8515d23cd2f3a09b88fdd9bccafeb165ff36486c75a2804fe1999f97c0e09e1",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/ui/shell-defaultspack-app.js",
+      "type": "regular-file",
+      "size": 2687246,
+      "sha256": "2cc5938759d28b06d0c47164a81ca167f0caebfeee45d2cbf045fc310bbcbddb",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/ui/shell-icons.js",
+      "type": "regular-file",
+      "size": 508,
+      "sha256": "8c9df56aeeebf2c268ac745246696c22b4ef074941a55802de5d1c88fab83807",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/ui/shell-rolldown-runtime.js",
+      "type": "regular-file",
+      "size": 879,
+      "sha256": "d4a36920c7bab6ec97d0bdc5d1233622f28fe010198ca32bcdd80c8cb6b64aae",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/ui/shell-vendor.js",
+      "type": "regular-file",
+      "size": 182015,
+      "sha256": "2710d017c11571b9cb3dd7fb175ccfb6c0b085d6c06e99b1b221da67d44a6562",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/ui/shell.html",
+      "type": "regular-file",
+      "size": 2063,
+      "sha256": "ad5457b00ad44c84874d969d129f1094e4d5d86d772ba7f926f9278b19b5b44b",
+      "executable": false
+    },
+    {
       "path": "ecosystem/defaultspack/update_metadata.v1.json",
       "type": "regular-file",
       "size": 104,
@@ -3521,8 +3661,8 @@
     {
       "path": "scripts/generator_source_manifest.py",
       "type": "regular-file",
-      "size": 33901,
-      "sha256": "1f988e8dbde967ae56b3e7d22644a023712927cc2ed482ac2444924a7f7c6e9d",
+      "size": 35108,
+      "sha256": "f0519da10afa6b7e08e61014293aeb64dac71ccf423d549ab55ae6194be636f8",
       "executable": false
     },
     {
