@@ -391,6 +391,19 @@ def _runtime_identity() -> dict[str, Any]:
         "platform_details": platform.platform(),
         "python_compiler": platform.python_compiler(),
         "unicode_version": unicodedata.unidata_version,
+        "int_max_str_digits": sys.get_int_max_str_digits(),
+        "recursion_limit": sys.getrecursionlimit(),
+    }
+
+
+def _producer_identity() -> dict[str, Any]:
+    path = Path(__file__).resolve(strict=True)
+    content = path.read_bytes()
+    return {
+        "path": str(path),
+        "name": path.name,
+        "bytes": len(content),
+        "sha256": "sha256:" + hashlib.sha256(content).hexdigest(),
     }
 
 
@@ -565,6 +578,7 @@ def main() -> int:
     output = {
         "schema": SCHEMA,
         "producer": "direct-canonical-python-source-call",
+        "producer_artifact": _producer_identity(),
         "runtime_root": str(runtime_root),
         "cases": {
             "path": cases_path.name,

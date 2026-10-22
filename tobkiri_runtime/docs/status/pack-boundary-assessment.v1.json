@@ -409,7 +409,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/ecosystem.json",
-          "sha256": "7171e75122de626742cf929643223af8836b82f7b474a6c803896cb1748baaf6"
+          "sha256": "344ef2681bde7fd1847759994b3b7e5eea25e4d14fb05c9a43e0750083da4d9a"
         }
       ]
     },
@@ -2305,7 +2305,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/ecosystem.json",
-          "sha256": "366b1fcb68062a1b6b0647c466fa4eb2545ff806017c21c4a73f8b78d3adc1e9"
+          "sha256": "9741df326595f29771912751c3aa4b18a631159f99503d77b18d847089596bf1"
         }
       ]
     },
