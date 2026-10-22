@@ -89,6 +89,41 @@ not prove a standalone close joins every plain call, Python guest in-flight
 cancellation, native GUI Stop/Quit, or full Gateway cleanup. Those broader
 requirements and every unchecked acceptance item remain open.
 
+## Rust provider and terminal-owner checkpoint, 2026-10-22
+
+The source oracle in
+[`python_provider_compat`](../../../tools/quality/python_provider_compat/)
+executed the original adapters under CPython 3.13.9 / Unicode 15.1.0. A native
+Rust differential replay matched all 94 observations: 41 usage-cost and 53
+stream-normalizer cases, including the retained deep-input cases. The 24 scalar
+observations and strict codec boundary tests also passed. The unchanged
+historical CPython 3.13.5 oracle remains a separate reference.
+
+Release component-build trials produced actual Rust usage-cost, stream and
+finalizer Wasm components. Native finalizer tests explicitly distinguish its
+two dependency-free observations from eight unavailable imported-dependency
+cases; those eight are **not** parity successes. Fresh Core/Gate replays and
+five-role composition remain required, as do rebuilds after later source edits.
+
+The separate original-v2
+[`tool-bridge oracle`](../../../tools/quality/python_tool_bridge_compat/)
+now records 81 fresh source observations. Its 33 historical records contribute
+inputs only; their v1 expectations are not reused as v2 expectations. Rust
+bridge execution against these observations has not yet passed validation.
+
+The terminal-owner candidate prepays metadata custody before source grant
+consumption and retains the original Join through cancellation. Source review
+found the consumed-but-unpublished custody gap corrected. Its first unit run
+passed four tests, then exposed a test driver awaiting one retained observer
+without polling the other. The driver was corrected to join both observers;
+the full Core regression run is still pending. A further reviewed candidate
+retains the actual reaper Join and its result separately from metadata delivery;
+its fourteen regression tests remain unexecuted. Terminal metadata delivery
+alone is not proof of the reaper's independent physical cleanup.
+Disk capacity currently prevents further heavy validation. No checklist item,
+inventory unit, production activation, complete GUI flow, or VM retirement is
+accepted by this checkpoint.
+
 ## Acceptance checklist
 
 1. [ ] **CI rejects Pack IDs and Pack-owned shape names in core and hosts.**
