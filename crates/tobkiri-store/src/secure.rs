@@ -13,6 +13,10 @@ use std::{
 use tobkiri_canon::{Digest, ids::ProfileId};
 use tobkiri_gate::ApprovalStore;
 
+#[cfg(all(test, unix))]
+#[path = "profile_inventory_tests.rs"]
+mod profile_inventory_tests;
+
 /// Native stat fields differ in width and signedness across supported Unix
 /// platforms. Reject an unrepresentable field instead of truncating identity.
 #[cfg(unix)]
@@ -173,6 +177,14 @@ impl DataRoot {
     }
     /// Inventory only descriptor-bound Profile directories; never follow a symlink.
     pub fn list_profiles(&self) -> Result<Vec<ProfileId>, StoreError> {
+        self.list_profiles_bounded(usize::MAX)
+    }
+
+    /// Enumerate at most `maximum` descriptor-bound Profile directory identities.
+    /// A larger inventory fails with `Quota` before retaining another entry;
+    /// callers never receive a partial list. This does not validate Profile
+    /// heads or establish saved, approved, active, or ready state.
+    pub fn list_profiles_bounded(&self, maximum: usize) -> Result<Vec<ProfileId>, StoreError> {
         #[cfg(unix)]
         {
             let directory = match open_dir(&self.directory, "profiles", false) {
@@ -189,10 +201,11 @@ impl DataRoot {
             }
             let pointer = unsafe { libc::fdopendir(fd) };
             if pointer.is_null() {
+                let error = std::io::Error::last_os_error();
                 unsafe {
                     libc::close(fd);
                 }
-                return Err(std::io::Error::last_os_error().into());
+                return Err(error.into());
             }
             struct Stream(*mut libc::DIR);
             impl Drop for Stream {
@@ -205,8 +218,15 @@ impl DataRoot {
             let stream = Stream(pointer);
             let mut profiles = Vec::new();
             loop {
+                // readdir uses the same null result for EOF and failure.
+                // Neither a stale errno nor a failed scan proves completeness.
+                errno::set_errno(errno::Errno(0));
                 let entry = unsafe { libc::readdir(stream.0) };
                 if entry.is_null() {
+                    let error = errno::errno();
+                    if error.0 != 0 {
+                        return Err(std::io::Error::from_raw_os_error(error.0).into());
+                    }
                     break;
                 }
                 let bytes = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
@@ -219,6 +239,9 @@ impl DataRoot {
                 let profile =
                     ProfileId::parse(value).map_err(|e| StoreError::Invalid(e.to_string()))?;
                 let _pinned = open_dir(&directory, value, false)?;
+                if profiles.len() == maximum {
+                    return Err(StoreError::Quota);
+                }
                 profiles.push(profile);
             }
             profiles.sort();
@@ -226,6 +249,7 @@ impl DataRoot {
         }
         #[cfg(not(unix))]
         {
+            let _ = maximum;
             Err(StoreError::Unavailable(
                 "descriptor-bound Profile inventory unavailable".into(),
             ))

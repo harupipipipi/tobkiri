@@ -118,12 +118,7 @@ impl Core {
             #[cfg(test)]
             audit_timing: None,
         };
-        let profiles = core.profiles.root.list_profiles()?;
-        if profiles.len() > 4096 {
-            return Err(CoreError::Invalid(
-                "Profile recovery registry is full".into(),
-            ));
-        }
+        let profiles = core.profile_ids()?;
         for profile in profiles {
             // Expire only fully verified persisted deadlines before opening the
             // audit sink. A corrupt record is never guessed or repaired here.
@@ -377,6 +372,22 @@ impl Core {
     /// Load a Profile and its current revision digest.
     pub fn profile(&self, id: &ProfileId) -> Result<(Profile, Digest), CoreError> {
         self.profiles.load(id)
+    }
+
+    /// Enumerate sorted Profile directory identities within the existing
+    /// 4096-entry recovery bound. This read-only inventory does not load or
+    /// approve a revision, create a Session, select an active Profile or prove
+    /// readiness. Call `profile` separately to inspect each current revision.
+    pub fn profile_ids(&self) -> Result<Vec<ProfileId>, CoreError> {
+        self.profiles
+            .root
+            .list_profiles_bounded(4096)
+            .map_err(|error| match error {
+                tobkiri_store::StoreError::Quota => {
+                    CoreError::Invalid("Profile recovery registry is full".into())
+                }
+                error => error.into(),
+            })
     }
 
     /// Create a fresh Profile from a structural definition, with no inherited

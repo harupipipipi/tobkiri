@@ -364,6 +364,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn profile_inventory_has_no_host_effects_or_activation_state() {
+        let directory = tempfile::tempdir().unwrap();
+        let calls = Arc::new(HostCalls::default());
+        save_profile_with_core(
+            &directory,
+            parsed_profile(&base_profile("defaults")),
+            calls.clone(),
+        )
+        .await;
+        let launcher = open_launcher(&directory, calls.clone());
+        let files_before = file_snapshot(directory.path());
+        let calls_before = calls.snapshot();
+        assert_eq!(
+            launcher.profile_ids(trusted_caller()).unwrap(),
+            [tobkiri_core::ids::ProfileId::parse("defaults").unwrap()]
+        );
+        assert_eq!(launcher.current_generation(), None);
+        assert_eq!(files_before, file_snapshot(directory.path()));
+        assert_eq!(calls_before, calls.snapshot());
+    }
+
+    #[tokio::test]
+    async fn untrusted_inventory_is_denied_before_scanning_profile_directories() {
+        let (launcher, directory, calls) = launcher_fixture().await;
+        // A trusted scan would fail on this actual invalid directory entry.
+        let profiles = directory.path().join("profiles");
+        std::fs::create_dir(&profiles).unwrap();
+        std::fs::write(profiles.join("prof_not_a_directory"), b"not a directory").unwrap();
+        let calls_before = calls.snapshot();
+        assert!(matches!(
+            launcher.profile_ids(trusted_caller()),
+            Err(HostError::Rejected("unavailable"))
+        ));
+        assert!(matches!(
+            launcher.profile_ids(untrusted_caller()),
+            Err(HostError::Caller)
+        ));
+        assert_eq!(calls_before, calls.snapshot());
+        assert_eq!(launcher.current_generation(), None);
+    }
+
+    #[tokio::test]
     async fn candidate_check_rejects_malformed_and_oversized_input() {
         let (launcher, _, _) = launcher_fixture().await;
         assert!(matches!(

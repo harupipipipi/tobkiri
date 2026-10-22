@@ -1746,6 +1746,13 @@ impl LauncherCore {
         self.generation_is_active(generation).then_some(generation)
     }
 
+    /// List bounded Profile directory identities for a trusted native caller.
+    /// Inventory does not establish revision validity, selection or readiness.
+    pub fn profile_ids(&self, caller: HostCaller<'_>) -> Result<Vec<ProfileId>, HostError> {
+        caller.check()?;
+        self.core.profile_ids().map_err(core_error)
+    }
+
     /// Return bounded, non-secret metadata for one persisted Profile revision.
     pub fn inspect_profile(
         &self,

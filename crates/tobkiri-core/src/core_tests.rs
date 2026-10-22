@@ -147,6 +147,45 @@ fn fixture() -> (Core, Arc<Host>, Profile, tempfile::TempDir) {
     };
     (core, host, profile, dir)
 }
+
+#[test]
+#[cfg(unix)]
+fn profile_inventory_preserves_the_existing_recovery_bound_before_opening_authority() {
+    use std::os::unix::fs::DirBuilderExt;
+    let (core, host, _, temporary) = fixture();
+    let data = temporary.path().canonicalize().unwrap().join("data");
+    let profiles = data.join("profiles");
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&profiles)
+        .unwrap();
+    for index in (0..4096).rev() {
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(profiles.join(format!("prof_{index:04}")))
+            .unwrap();
+    }
+    let ids = core.profile_ids().unwrap();
+    assert_eq!(ids.len(), 4096);
+    assert_eq!(ids.first().unwrap().as_str(), "prof_0000");
+    assert_eq!(ids.last().unwrap().as_str(), "prof_4095");
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(profiles.join("prof_overflow"))
+        .unwrap();
+    for result in [
+        core.profile_ids().map(|_| ()),
+        Core::open(CoreConfig::for_test_data_root(data), host.clone()).map(|_| ()),
+    ] {
+        assert!(
+            matches!(result, Err(CoreError::Invalid(message)) if message == "Profile recovery registry is full")
+        );
+    }
+    assert!(host.prompts.lock().unwrap().is_empty());
+    for entry in std::fs::read_dir(profiles).unwrap() {
+        assert_eq!(std::fs::read_dir(entry.unwrap().path()).unwrap().count(), 0);
+    }
+}
 fn user_prompts(host: &Host) -> usize {
     host.prompts
         .lock()

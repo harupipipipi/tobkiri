@@ -40,6 +40,7 @@ chacha20poly1305 = { version = "=0.10.1" }
 clap = { version = "=4.6.7", features = ["derive"] }
 dirs = { version = "=6.0.0" }
 ed25519-dalek = { version = "=2.2.0", features = ["rand_core"] }
+errno = { version = "=0.3.14" }
 futures = { version = "=0.3.34" }
 futures-util = { version = "=0.3.34" }
 getrandom = { version = "=0.3.4" }
