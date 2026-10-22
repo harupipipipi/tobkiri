@@ -647,6 +647,8 @@ dependencies = [
  "ordered-python-compat",
  "serde_json",
  "sha2",
+ "tobkiri-canon",
+ "zeroize",
  "tobkiri-pack-provider-model-access-rust",
 ]
 

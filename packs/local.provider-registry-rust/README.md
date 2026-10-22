@@ -1,34 +1,29 @@
-# Provider Registry translation candidate
+# Provider Registry translation
 
-This library translates the original Python Provider Registry's record
-normalization, six state operations, Host request checks and redacted UI
-projection. The original runtime remains authoritative and active. This crate
-is not a registered production Pack and does not change Launcher, Setup,
-approval, settings or chat routing.
+The Registry and provider-configuration logic are translated from the existing
+Python Pack. The application still uses its original setup and settings flow;
+this crate is not yet registered as the production replacement.
 
-`Registry<S, C>` uses explicit document-storage and clock ports. `MemoryStore`
-retains ordered, decoded values and distinguishes an absent document from an
-initialized store. It is a sequential test adapter, not an implementation of
-the original filesystem lock, atomic write or Core transaction. A pure success
-must not be used as proof that a native write was applied. Future Core storage
-and authority failures must remain separate from source-level Python errors.
+`configuration::prepare_configuration` validates the request and freezes its
+original canonical digest, normalized endpoint and Registry revision.
+`execute_configuration` checks that plan again before requesting a credential.
+An unknown create acknowledgement is neither retried nor compensated. After a
+failed connection save, only a newly created handle proven absent from a
+readable snapshot may be revoked. Credentialless local connections never call
+the credential port. Local known policy/CAS failures short-circuit before a
+snapshot read; remote failures retain the original compensation evidence order.
 
-The model-access compiler is reused with its default `component` feature
-disabled. The compiler's default component build remains enabled for its
-existing consumers. The Registry library supplies no synthetic profile
-authority, credential owner, network port, Core contribution or Wasm export.
+The caller still owns approval, budgets, operation identity, pending-effect
+retry/status, storage locking and real credential/network adapters. This crate
+does not replace those owners or grant authority from a submitted plan.
 
-Run its focused native checks from the repository root:
+The fixed `evidence/configuration-prepare-python.json` records 23 actual
+preparation outcomes from unchanged original Python 3.13 source. Its test checks
+the fixture hash, all 345 source hashes and producer hash, then compares native
+results, errors and request digests with those observations. Preparation writes
+no Registry document. Execute tests use explicit fault-injected ports and do
+not establish real credential, persistent-store, Wasm or GUI integration parity.
 
-```sh
-cargo test --manifest-path packs/Cargo.toml --locked \
-  -p tobkiri-pack-provider-registry-rust
-```
-
-These checks do not establish original-source differential parity. The separate
-observer in `tools/quality/python_provider_registry_compat` records the original
-Python behavior; a full native and Wasm consumer is still required. Remaining
-work includes raw JSON parser diagnostics and exact serialization effects,
-transaction and contention behavior, actual Core Profile binding, Host
-contribution authority, credential lifecycle, configuration integration and the
-complete existing GUI flow.
+The ordinary package tests include this comparison. The broader decoded
+Registry source consumer remains separately invoked with its authenticated
+receipt and private evidence directory; an ignored test is not a passing replay.

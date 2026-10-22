@@ -84,7 +84,7 @@ class RuntimeRoutingTests(unittest.TestCase):
             "TOBKIRI_PROVIDER_REGISTRY_ORACLE_SHA256: "
             "3da27b9590f4e0fdcbfe71a017fa95c8173afe5401348ff57b3b51f68f991684",
             "TOBKIRI_PROVIDER_REGISTRY_EVIDENCE_DIR:",
-            "--expected-passed 30", "--expected-passed 1",
+            "--expected-passed 49", "--expected-passed 1",
             "cargo test --locked --manifest-path packs/Cargo.toml",
             "oracle_tests::provider_registry_decoded_source_consumer -- --ignored --exact",
             "cargo clippy --locked --manifest-path packs/Cargo.toml",
