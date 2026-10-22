@@ -1477,7 +1477,15 @@ mod tests {
     #[test]
     fn record_initialization_failure_preserves_funding_until_unpublished_storage_drops() {
         let control = CoreControl::default();
-        let owner = owner(&control, b"partial-record");
+        // This constructor-failure test publishes neither the record nor its
+        // anchor. A process-global anchor would invite unrelated maintenance
+        // readers, for which removable() correctly rejects lock uncertainty.
+        let owner = UiDeliveryOwner::prepare_unpublished(
+            &Digest::hash(b"partial-record"),
+            &control,
+            warm_new_mutex,
+        )
+        .unwrap();
         let token = CoreCancellation::new_with_control(&control).unwrap();
         let external = tokio_util::sync::CancellationToken::new();
         let baseline = control.usage();
@@ -1536,6 +1544,74 @@ mod tests {
         }
         owner.close();
         assert!(owner.anchor.removable());
+    }
+
+    #[tokio::test]
+    async fn published_empty_anchor_reader_defers_removal_without_releasing_its_funding() {
+        use crate::tracked_stream::UiNotificationRegistrationAttempt as Attempt;
+        let control = CoreControl::default();
+        let baseline = control.usage();
+        let cx = startup_context(&control);
+        let context_usage = control.usage();
+        let owner = UiDeliveryOwner::prepare_unpublished(
+            &Digest::hash(b"published-empty-reader"),
+            &control,
+            warm_new_mutex,
+        )
+        .unwrap();
+        // Exercise the actual publication path with an isolated registry
+        // port. Process-global poll_native_cleanup scans every notification
+        // anchor, so publishing this fixture there would add uncontrolled
+        // readers even after our explicit reader's barrier was released.
+        let mut registered = None;
+        owner
+            .publish_with(&cx, |anchor| {
+                assert!(registered.is_none());
+                registered = Some(anchor.clone());
+                Attempt::Registered
+            })
+            .await
+            .unwrap();
+        let published_usage = control.usage();
+        assert_eq!(published_usage.count(ControlKind::Waiter), 0);
+        let weak = owner.weak();
+        let entered = Arc::new(Barrier::new(2));
+        let release = Arc::new(Barrier::new(2));
+        let reader = {
+            let anchor = registered.as_ref().unwrap().clone();
+            let entered = entered.clone();
+            let release = release.clone();
+            std::thread::spawn(move || {
+                // Same proof-only empty-slot observation as maintenance;
+                // no record/source is constructed, cloned or signalled.
+                let slot = anchor.slots[0].lock().unwrap();
+                assert!(slot.is_none());
+                entered.wait();
+                release.wait();
+                drop(slot);
+            })
+        };
+        entered.wait();
+        owner.close();
+        assert!(owner.anchor.retired.load(Ordering::Acquire));
+        assert!(!owner.anchor.removable());
+        assert_eq!(control.usage(), published_usage);
+        release.wait();
+        reader.join().unwrap();
+        assert!(owner.anchor.removable());
+        assert_eq!(control.usage(), published_usage);
+        drop(owner);
+        // The exact publication owner still retains all original storage.
+        assert!(weak.upgrade().is_some());
+        assert_eq!(control.usage(), published_usage);
+        drop(registered.take());
+        assert!(weak.upgrade().is_none());
+        // Even the final Weak's Arc backing must keep the original charge.
+        assert_eq!(control.usage(), published_usage);
+        drop(weak);
+        assert_eq!(control.usage(), context_usage);
+        drop(cx);
+        assert_eq!(control.usage(), baseline);
     }
 
     #[test]
