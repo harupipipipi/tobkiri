@@ -964,10 +964,9 @@ mod file_tests {
         assert_eq!(reader.consumed, 9);
     }
 
-    fn sample(
-        payload: &[u8],
-        signed: bool,
-    ) -> (Vec<u8>, BTreeMap<String, Vec<u8>>, BTreeMap<String, String>) {
+    type SamplePackage = (Vec<u8>, BTreeMap<String, Vec<u8>>, BTreeMap<String, String>);
+
+    fn sample(payload: &[u8], signed: bool) -> SamplePackage {
         let files: BTreeMap<String, Vec<u8>> = BTreeMap::from([
             ("a.txt".into(), payload.to_vec()),
             ("z-empty".into(), Vec::new()),
