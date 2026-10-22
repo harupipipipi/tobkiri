@@ -2,8 +2,8 @@
 //! source cleanup remains separate: it must finish before proposing metadata.
 use anyhow::{Context, Result, bail};
 use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
+    Arc, Mutex, OnceLock, Weak,
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 use tobkiri_flow::StepError;
 use tobkiri_gate::{ControlKind, ControlReservation, CoreControl};
@@ -12,16 +12,154 @@ const MAX_SETTLEMENTS: usize = 1024;
 const MAX_METADATA_FUTURE: usize = 64 * 1024;
 const METADATA_TASK_BYTES: u64 = (MAX_METADATA_FUTURE + 4096) as u64;
 const MAX_REAPER_FUTURE: usize = 256 * 1024;
-type QueuedMetadata =
+pub(crate) type QueuedMetadata =
     std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'static>>;
 
 enum MetadataState {
     Pending,
     Running(tokio::task::JoinHandle<Result<()>>),
+    Finalizing,
     Complete {
         error: Option<anyhow::Error>,
         failed: bool,
+        retryable: bool,
+        failure_stamp: u64,
     },
+}
+
+/// Trusted, bounded constructor for a fresh delivery attempt. Implementations
+/// retain authority objects but never a Host or its inventory. Constructing a
+/// future only boxes captures; it cannot execute delivery or acquire Gate locks.
+pub(crate) trait RetainedMetadata: Send + Sync + 'static {
+    fn future(self: Arc<Self>) -> QueuedMetadata;
+    fn future_bytes(&self) -> usize;
+    fn owned_heap_bytes(&self) -> usize;
+}
+
+/// The exact original Gate/lease/frame and first proposal, without Entry's
+/// source/control/Host edges. Outcome heap moves into the original receipt on
+/// the first attempt; retries cannot propose another winner.
+pub(crate) struct HandleDelivery {
+    gate: Arc<dyn tobkiri_gate::Gate>,
+    lease: Arc<crate::handles::HandleLease>,
+    source_frame: Option<Arc<dyn crate::ProviderFrame>>,
+    proposal: Mutex<Option<tobkiri_gate::Outcome>>,
+}
+impl HandleDelivery {
+    pub(crate) fn new(
+        gate: Arc<dyn tobkiri_gate::Gate>,
+        entry: &crate::HandleEntry,
+        outcome: tobkiri_gate::Outcome,
+    ) -> Self {
+        Self {
+            gate,
+            lease: entry.lease.clone(),
+            source_frame: entry.source_frame.clone(),
+            proposal: Mutex::new(Some(outcome)),
+        }
+    }
+
+    pub(crate) async fn deliver(&self) -> Result<()> {
+        let mut receipt = self.lease.close.lock().await;
+        if receipt.outcome.is_none() {
+            if self
+                .lease
+                .permit
+                .as_ref()
+                .is_some_and(|permit| std::time::Instant::now() >= permit.deadline())
+            {
+                receipt.deadline_settlement = true;
+            }
+            receipt.outcome = self.proposal.lock().map_err(|_| unavailable())?.take();
+            if receipt.outcome.is_none() {
+                bail!("terminal proposal missing")
+            }
+        }
+        if !receipt.delivered {
+            if let Some(id) = &self.lease.grant {
+                if receipt.deadline_settlement {
+                    let permit = self
+                        .lease
+                        .permit
+                        .as_ref()
+                        .context("deadline proof missing")?;
+                    let terminal = self.gate.settle_deadline(permit).await?;
+                    receipt.outcome = Some(terminal.decision.outcome);
+                } else if let Err(error) = self
+                    .gate
+                    .record_outcome(
+                        id.clone(),
+                        receipt
+                            .outcome
+                            .clone()
+                            .context("terminal proposal missing")?,
+                    )
+                    .await
+                {
+                    if matches!(error, tobkiri_gate::GateError::Deadline) {
+                        // Durable wall-time expiry may win between the Instant
+                        // check and CAS. Deliver that same winner without changing
+                        // its disposition or replaying physical cleanup.
+                        receipt.deadline_settlement = true;
+                        let permit = self
+                            .lease
+                            .permit
+                            .as_ref()
+                            .context("deadline proof missing")?;
+                        let terminal = self.gate.settle_deadline(permit).await?;
+                        receipt.outcome = Some(terminal.decision.outcome);
+                    } else {
+                        return Err(error.into());
+                    }
+                }
+            }
+            if let (Some(frame), Some(permit)) = (&self.source_frame, &self.lease.permit) {
+                let acknowledged = self.gate.acknowledged_terminal(permit)?;
+                frame
+                    .terminal_acknowledged(&acknowledged)
+                    .map_err(anyhow::Error::new)?;
+                receipt.outcome = Some(acknowledged.outcome().clone());
+            }
+            receipt.delivered = true;
+        }
+        Ok(())
+    }
+}
+async fn deliver_retained(delivery: Arc<HandleDelivery>) -> Result<()> {
+    delivery.deliver().await
+}
+impl RetainedMetadata for HandleDelivery {
+    fn future(self: Arc<Self>) -> QueuedMetadata {
+        Box::pin(deliver_retained(self))
+    }
+    fn future_bytes(&self) -> usize {
+        fn size<F: std::future::Future>(_: fn(Arc<HandleDelivery>) -> F) -> usize {
+            std::mem::size_of::<F>()
+        }
+        size(deliver_retained)
+    }
+    fn owned_heap_bytes(&self) -> usize {
+        match self
+            .proposal
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .as_ref()
+        {
+            // The first attempt moves this heap to the receipt; record_outcome
+            // may hold one ordinary clone while it is live. Count both.
+            Some(tobkiri_gate::Outcome::Failed { code }) => {
+                code.capacity().checked_mul(2).unwrap_or(usize::MAX)
+            }
+            _ => 0,
+        }
+    }
+}
+
+/// Inventory holds this sidecar strongly; metadata holds only Weak. In
+/// particular, capsule -> original lease -> metadata never returns to capsule.
+struct MetadataCustody {
+    metadata: Arc<HandleMetadata>,
+    delivery: Mutex<Option<Arc<dyn RetainedMetadata>>>,
 }
 
 enum CleanupPublication {
@@ -205,6 +343,10 @@ pub(crate) struct HandleMetadata {
     queued: Mutex<Option<QueuedMetadata>>,
     task_funding: Mutex<Option<Arc<ControlReservation>>>,
     source_cleanup: Mutex<Option<Arc<SourceCleanupOwner>>>,
+    custody: OnceLock<Weak<MetadataCustody>>,
+    failure_stamp: AtomicU64,
+    rejected: AtomicBool,
+    retiring: AtomicBool,
     // Receipt storage outlives the actual task and is independently prepaid.
     _receipt_funding: ControlReservation,
 }
@@ -212,6 +354,14 @@ impl HandleMetadata {
     pub(crate) fn prepare(control: &CoreControl) -> Result<Arc<Self>> {
         let runtime = tokio::runtime::Handle::try_current()
             .context("handle metadata runtime is unavailable before admission")?;
+        // Both Arc headers and the sidecar live in the original receipt budget.
+        if std::mem::size_of::<Self>()
+            + std::mem::size_of::<MetadataCustody>()
+            + 4 * std::mem::size_of::<usize>()
+            > 4096
+        {
+            bail!("handle metadata receipt exceeds its prepaid bound")
+        }
         let receipt_funding = control.reserve(ControlKind::Frame, 4096)?;
         let task_funding = control.reserve(ControlKind::Task, METADATA_TASK_BYTES)?;
         Ok(Arc::new(Self {
@@ -223,6 +373,10 @@ impl HandleMetadata {
             queued: Mutex::new(None),
             task_funding: Mutex::new(Some(Arc::new(task_funding))),
             source_cleanup: Mutex::new(None),
+            custody: OnceLock::new(),
+            failure_stamp: AtomicU64::new(0),
+            rejected: AtomicBool::new(false),
+            retiring: AtomicBool::new(false),
             _receipt_funding: receipt_funding,
         }))
     }
@@ -299,10 +453,119 @@ impl HandleMetadata {
         let _ = std::future::Future::poll(future.as_mut(), &mut context);
     }
 
-    /// Cancellation of a consumed-but-unpublished source transfers its exact
-    /// permit/receipt here synchronously. A close already observing Pending
-    /// is notified and drives this SAME funded work; there is no detached
-    /// async task or success inferred from an absent producer.
+    fn retain<T: RetainedMetadata>(&self, delivery: T) -> Result<()> {
+        // Admission may already have pruned the successful sidecar while an
+        // old lease still owns metadata. Repeated finish remains idempotent;
+        // it must not require reconstructing custody or a replacement task.
+        if self.retiring.load(Ordering::Acquire) || self.settled.load(Ordering::Acquire) {
+            drop(delivery);
+            return Ok(());
+        }
+        let custody = match self.custody.get().and_then(Weak::upgrade) {
+            Some(custody) => custody,
+            None if self.retiring.load(Ordering::Acquire)
+                || self.settled.load(Ordering::Acquire) =>
+            {
+                // Success/prune may race the entry check above. Recheck its
+                // release-published receipt before interpreting inventory loss.
+                drop(delivery);
+                return Ok(());
+            }
+            None => bail!("handle delivery inventory is unavailable"),
+        };
+        let mut retained = custody.delivery.lock().map_err(|_| unavailable())?;
+        if self.rejected.load(Ordering::Acquire) {
+            drop(retained);
+            bail!("handle delivery publication is permanently unknown")
+        }
+        if retained.is_some()
+            || self.retiring.load(Ordering::Acquire)
+            || self.settled.load(Ordering::Acquire)
+        {
+            // Never drop losing authority captures while a sidecar is locked.
+            drop(retained);
+            drop(delivery);
+            return Ok(());
+        }
+        // The original Task allowance covers the capsule, its Arc header,
+        // owned heap (including a Failed code's capacity), and ONE live boxed
+        // future together. The existing extra 4096 remains runtime overhead.
+        let bytes = std::mem::size_of::<T>()
+            .checked_add(2 * std::mem::size_of::<usize>())
+            .and_then(|bytes| bytes.checked_add(delivery.owned_heap_bytes()))
+            .and_then(|bytes| bytes.checked_add(delivery.future_bytes()));
+        if bytes.is_none_or(|bytes| bytes > MAX_METADATA_FUTURE) {
+            // Latch under the SAME slot guard that admits a capsule. A later
+            // valid proposal cannot race this rejection into a fresh start.
+            self.rejected.store(true, Ordering::Release);
+            drop(retained);
+            bail!("handle delivery exceeds its prepaid bound")
+        }
+        *retained = Some(Arc::new(delivery));
+        Ok(())
+    }
+
+    fn retained_future(&self) -> Option<QueuedMetadata> {
+        let custody = self.custody.get().and_then(Weak::upgrade)?;
+        let delivery = custody
+            .delivery
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone()?;
+        let bytes = delivery.future_bytes();
+        let future = delivery.future();
+        // Check the actual boxed concrete future against the preadmission
+        // accounting too. No second task/future may overlap the original Join.
+        assert!(std::mem::size_of_val(future.as_ref().get_ref()) <= bytes);
+        Some(future)
+    }
+
+    fn release_delivery(&self) {
+        let retired = self
+            .custody
+            .get()
+            .and_then(Weak::upgrade)
+            .and_then(|custody| {
+                custody
+                    .delivery
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .take()
+            });
+        drop(retired);
+    }
+
+    /// Synchronous consumed-custody transfer, also used by Drop. A pending
+    /// close observes this SAME capsule and original funding without a Host
+    /// capture or detached producer. Complete failures are retried by wait.
+    pub(crate) fn queue_delivery<T: RetainedMetadata>(&self, delivery: T) -> Result<()> {
+        if let Err(error) = self.retain(delivery) {
+            // A consumed Drop cannot await or discard a failed publication.
+            // Pending close must observe permanent uncertainty, not hang.
+            self.rejected.store(true, Ordering::Release);
+            self.ready.notify_waiters();
+            return Err(error);
+        }
+        if let Ok(mut state) = self.state.try_lock()
+            && !self.rejected.load(Ordering::Acquire)
+            && matches!(*state, MetadataState::Pending)
+            && let Some(future) = self.retained_future()
+        {
+            *state = self.start_queued(future);
+        }
+        self.ready.notify_waiters();
+        Ok(())
+    }
+
+    pub(crate) async fn run_delivery<T: RetainedMetadata>(&self, delivery: T) -> Result<()> {
+        let observed = self.failure_stamp.load(Ordering::Acquire);
+        self.queue_delivery(delivery)?;
+        self.wait_after(observed).await
+    }
+
+    // Kept only for tests of the original single-Join ownership primitive.
+    // Production always retains a bounded original delivery capsule instead.
+    #[cfg(test)]
     pub(crate) fn queue(
         &self,
         metadata: impl std::future::Future<Output = Result<()>> + Send + 'static,
@@ -319,14 +582,9 @@ impl HandleMetadata {
             }
         }
         drop(metadata);
-        // Publish the actual blocking Join synchronously whenever its slot
-        // is available. If an observer currently holds the slot, its original
-        // Join or the queued owned future remains retained for close to join.
         if let Ok(mut state) = self.state.try_lock()
-            && matches!(
-                *state,
-                MetadataState::Pending | MetadataState::Complete { failed: true, .. }
-            )
+            && !self.rejected.load(Ordering::Acquire)
+            && matches!(*state, MetadataState::Pending)
             && let Some(metadata) = self.take_queued()
         {
             *state = self.start_queued(metadata);
@@ -339,6 +597,16 @@ impl HandleMetadata {
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .take()
+    }
+
+    fn failed_state(&self, error: anyhow::Error, retryable: bool) -> MetadataState {
+        let failure_stamp = self.failure_stamp.fetch_add(1, Ordering::AcqRel) + 1;
+        MetadataState::Complete {
+            error: Some(error),
+            failed: true,
+            retryable,
+            failure_stamp,
+        }
     }
 
     fn start_queued(&self, metadata: QueuedMetadata) -> MetadataState {
@@ -357,74 +625,48 @@ impl HandleMetadata {
             })
         })) {
             Ok(task) => MetadataState::Running(task),
-            Err(_) => MetadataState::Complete {
-                error: Some(unavailable().into()),
-                failed: true,
-            },
+            // No proof that a submitted task did not run: permanent Unknown.
+            Err(_) => self.failed_state(unavailable().into(), false),
         }
     }
 
+    #[cfg(test)]
     pub(crate) async fn run(
         &self,
         metadata: impl std::future::Future<Output = Result<()>> + Send + 'static,
     ) -> Result<()> {
         if std::mem::size_of_val(&metadata) > MAX_METADATA_FUTURE {
-            let mut state = self.state.lock().await;
-            if matches!(*state, MetadataState::Pending) {
-                *state = MetadataState::Complete {
-                    error: Some(anyhow::anyhow!(
-                        "handle metadata payload exceeds its prepaid bound"
-                    )),
-                    failed: true,
-                };
-            }
-            drop(state);
-            self.ready.notify_waiters();
             bail!("handle metadata payload exceeds its prepaid bound")
         }
-        // Keep unused captures outside the state guard even on a losing
-        // concurrent observer; their actual frame/lease destruction may lock.
-        let mut metadata = Some(metadata);
-        let launch = {
+        let observed = self.failure_stamp.load(Ordering::Acquire);
+        let mut metadata: Option<QueuedMetadata> = Some(Box::pin(metadata));
+        {
             let mut state = self.state.lock().await;
-            match &*state {
-                MetadataState::Pending | MetadataState::Complete { failed: true, .. } => {
-                    let metadata = metadata.take().expect("metadata taken twice");
-                    let runtime = self.runtime.clone();
-                    let funding = self
-                        .task_funding
-                        .lock()
-                        .map_err(|_| unavailable())?
-                        .as_ref()
-                        .context("handle metadata task funding is missing")?
-                        .clone();
-                    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        self.runtime.spawn_blocking(move || {
-                            let _funding = funding;
-                            runtime.block_on(metadata)
-                        })
-                    })) {
-                        Ok(task) => *state = MetadataState::Running(task),
-                        Err(_) => {
-                            *state = MetadataState::Complete {
-                                error: Some(anyhow::Error::new(unavailable())),
-                                failed: true,
-                            };
+            if !self.rejected.load(Ordering::Acquire)
+                && matches!(
+                    *state,
+                    MetadataState::Pending
+                        | MetadataState::Complete {
+                            failed: true,
+                            retryable: true,
+                            ..
                         }
-                    }
-                    true
-                }
-                _ => false,
+                )
+            {
+                *state = self.start_queued(metadata.take().expect("metadata taken twice"));
             }
-        };
-        drop(metadata);
-        if launch {
-            self.ready.notify_waiters();
         }
-        self.wait().await
+        drop(metadata);
+        self.ready.notify_waiters();
+        self.wait_after(observed).await
     }
 
     pub(crate) async fn wait(&self) -> Result<()> {
+        self.wait_after(self.failure_stamp.load(Ordering::Acquire))
+            .await
+    }
+
+    pub(crate) async fn wait_after(&self, observed_failure: u64) -> Result<()> {
         loop {
             let ready = self.ready.notified();
             tokio::pin!(ready);
@@ -433,9 +675,20 @@ impl HandleMetadata {
                 return Ok(());
             }
             let mut state = self.state.lock().await;
+            // A later observer may already have replaced Complete with its
+            // retry Join before an older waiter reacquires this guard. The
+            // older waiter still reports the failed attempt it began under,
+            // never success (or another retry) from the replacement attempt.
+            if self.failure_stamp.load(Ordering::Acquire) > observed_failure {
+                return Err(unavailable().into());
+            }
             match &mut *state {
                 MetadataState::Pending => {
-                    if let Some(metadata) = self.take_queued() {
+                    if self.rejected.load(Ordering::Acquire) {
+                        *state = self.failed_state(unavailable().into(), false);
+                        continue;
+                    }
+                    if let Some(metadata) = self.take_queued().or_else(|| self.retained_future()) {
                         *state = self.start_queued(metadata);
                         continue;
                     }
@@ -443,40 +696,73 @@ impl HandleMetadata {
                     ready.await;
                 }
                 MetadataState::Running(task) => {
-                    // Await by mutable reference. An abandoned waiter drops
-                    // only this mutex guard; the original Join stays here.
-                    let result = task.await.unwrap_or_else(|_| Err(unavailable().into()));
-                    let failed = result.is_err();
-                    *state = MetadataState::Complete {
-                        error: result.err(),
-                        failed,
+                    // Borrow the SAME actual Join. Observer cancellation leaves
+                    // it here; no retry reuses funding until it has completed.
+                    let (result, retryable) = match task.await {
+                        // An ordinary returned error is a completed attempt,
+                        // not lost execution. Preserve the existing ability to
+                        // retry any such failure (including frame ACK capacity
+                        // StepError) with this SAME capsule on a later observer.
+                        Ok(result) => {
+                            let retryable = result.is_err();
+                            (result, retryable)
+                        }
+                        Err(_) => (Err(unavailable().into()), false),
                     };
+                    let failed = result.is_err();
+                    let complete = if let Err(error) = result {
+                        self.failed_state(error, retryable)
+                    } else {
+                        // Seal retain before releasing the sidecar slot. No
+                        // later proposal can enter the retired funded owner.
+                        self.retiring.store(true, Ordering::Release);
+                        MetadataState::Finalizing
+                    };
+                    let joined = std::mem::replace(&mut *state, complete);
+                    let result = match &mut *state {
+                        MetadataState::Complete { error, .. } if failed => {
+                            Err(error.take().unwrap_or_else(|| unavailable().into()))
+                        }
+                        _ => Ok(()),
+                    };
+                    // The completed Join has no live future/captures left.
+                    // Retire that task shell before another observer can
+                    // enter the state guard and reuse its reservation.
+                    drop(joined);
+                    drop(state);
                     if !failed {
-                        // The actual Join resolved, including destruction of
-                        // the metadata future and its original Grant/lease
-                        // captures. Only the separately funded receipt stays.
+                        self.release_delivery();
+                        drop(self.take_queued());
                         let funding = self.task_funding.lock().map_err(|_| unavailable())?.take();
                         drop(funding);
                         self.settled.store(true, Ordering::Release);
                     }
-                    // Return this exact attempt before another observer can
-                    // admit its retry into the same prepaid slot.
-                    if let MetadataState::Complete { error, failed } = &mut *state {
-                        let result = if *failed {
-                            Err(error.take().unwrap_or_else(|| unavailable().into()))
-                        } else {
-                            Ok(())
-                        };
-                        drop(state);
-                        if result.is_ok() {
-                            drop(self.take_queued());
-                        }
-                        return result;
-                    }
-                    unreachable!("joined metadata must have a completion receipt");
+                    self.ready.notify_waiters();
+                    // No failure loop: this observer returns its ONE attempt.
+                    return result;
                 }
-                MetadataState::Complete { error, failed } => {
-                    if *failed && let Some(metadata) = self.take_queued() {
+                MetadataState::Finalizing => {
+                    if self.settled.load(Ordering::Acquire) {
+                        return Ok(());
+                    }
+                    drop(state);
+                    ready.await;
+                }
+                MetadataState::Complete {
+                    error,
+                    failed,
+                    retryable,
+                    failure_stamp,
+                } => {
+                    // An observer that began while the failed attempt was
+                    // running returns that attempt's error. Only a later
+                    // observer can start one fresh delivery-only attempt.
+                    if *failed
+                        && *retryable
+                        && observed_failure == *failure_stamp
+                        && let Some(metadata) =
+                            self.take_queued().or_else(|| self.retained_future())
+                    {
                         *state = self.start_queued(metadata);
                         continue;
                     }
@@ -490,12 +776,27 @@ impl HandleMetadata {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn retirement_guards_available(&self) -> bool {
+        self.state.try_lock().is_ok()
+            && self.queued.try_lock().is_ok()
+            && self.task_funding.try_lock().is_ok()
+            && self
+                .custody
+                .get()
+                .and_then(Weak::upgrade)
+                .is_none_or(|custody| custody.delivery.try_lock().is_ok())
+    }
+
     fn abandon_unregistered(&self) {
         // The admission guard cannot coexist with a published handle. Close
         // may already be observing Pending, so publish without acquiring its
         // async mutex or attempting an asynchronous Drop.
+        self.retiring.store(true, Ordering::Release);
         self.unregistered.store(true, Ordering::Release);
         self.finish_unpublished_source(false);
+        self.release_delivery();
+        drop(self.take_queued());
         let funding = self
             .task_funding
             .lock()
@@ -513,7 +814,7 @@ fn unavailable() -> StepError {
 
 struct RegistryState {
     closed: bool,
-    entries: Vec<Arc<HandleMetadata>>,
+    entries: Vec<Arc<MetadataCustody>>,
 }
 
 /// This inventory is owned by the actual Session's PackHost. Admission and
@@ -526,7 +827,7 @@ pub(crate) struct HandleMetadataRegistry {
 impl HandleMetadataRegistry {
     pub(crate) fn new(control: &CoreControl) -> Result<Self> {
         let bytes = MAX_SETTLEMENTS
-            .checked_mul(std::mem::size_of::<Arc<HandleMetadata>>())
+            .checked_mul(std::mem::size_of::<Arc<MetadataCustody>>())
             .and_then(|bytes| bytes.checked_add(1024))
             .context("handle terminal inventory bound overflow")?;
         let funding = control.reserve(ControlKind::Registration, u64::try_from(bytes)?)?;
@@ -558,7 +859,7 @@ impl HandleMetadataRegistry {
                 state.entries.get(index).cloned()
             };
             if let Some(metadata) = metadata {
-                metadata.poll_source_cleanup();
+                metadata.metadata.poll_source_cleanup();
             }
         }
         // Release completed original captures/funding outside the registry.
@@ -571,24 +872,34 @@ impl HandleMetadataRegistry {
                 state
                     .entries
                     .iter()
-                    .position(|entry| entry.fully_settled())
+                    .position(|entry| entry.metadata.fully_settled())
                     .map(|index| state.entries.swap_remove(index))
             };
             let Some(removed) = removed else { break };
             drop(removed);
         }
         let metadata = HandleMetadata::prepare(control)?;
+        let custody = Arc::new(MetadataCustody {
+            metadata: metadata.clone(),
+            delivery: Mutex::new(None),
+        });
+        assert!(metadata.custody.set(Arc::downgrade(&custody)).is_ok());
         {
             let mut state = self.state.lock().map_err(|_| unavailable())?;
             if state.closed || state.entries.len() == MAX_SETTLEMENTS {
                 bail!("handle source registration is closed or full")
             }
-            state.entries.push(metadata.clone());
+            state.entries.push(custody);
         }
         Ok(HandleMetadataAdmission {
             metadata,
             registered: false,
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn guard_available(&self) -> bool {
+        self.state.try_lock().is_ok()
     }
 
     pub(crate) async fn close(&self) -> Result<(), StepError> {
@@ -601,7 +912,7 @@ impl HandleMetadataRegistry {
         for index in 0..length {
             let metadata = {
                 let state = self.state.lock().map_err(|_| unavailable())?;
-                state.entries[index].clone()
+                state.entries[index].metadata.clone()
             };
             if metadata.wait().await.is_err() {
                 failure.get_or_insert_with(unavailable);
@@ -723,15 +1034,14 @@ impl ConsumedHandleMetadata {
     pub(crate) async fn settle_failure(&mut self) -> Result<()> {
         self.metadata.finish_unpublished_source(self.published);
         let entry = self.entry();
-        let host = self.host.clone();
-        let outcome = tobkiri_gate::Outcome::Failed {
-            code: self.failure.into(),
-        };
-        self.metadata
-            .run(async move {
-                crate::core_imports::finish_handle_metadata(&host, &entry, outcome).await
-            })
-            .await?;
+        let delivery = HandleDelivery::new(
+            self.host.shared.gate.clone(),
+            &entry,
+            tobkiri_gate::Outcome::Failed {
+                code: self.failure.into(),
+            },
+        );
+        self.metadata.run_delivery(delivery).await?;
         self.transferred = true;
         Ok(())
     }
@@ -751,12 +1061,18 @@ impl Drop for ConsumedHandleMetadata {
         }
         self.metadata.finish_unpublished_source(self.published);
         let entry = self.entry();
-        let host = self.host.clone();
-        let outcome = tobkiri_gate::Outcome::Failed {
-            code: self.failure.into(),
-        };
-        self.metadata.queue(async move {
-            crate::core_imports::finish_handle_metadata(&host, &entry, outcome).await
-        });
+        let delivery = HandleDelivery::new(
+            self.host.shared.gate.clone(),
+            &entry,
+            tobkiri_gate::Outcome::Failed {
+                code: self.failure.into(),
+            },
+        );
+        // This fixed-size native capsule is bounded before any submission.
+        // If admission is unavailable, preserve failure rather than inventing
+        // terminal acknowledgement or a detached fallback task.
+        if self.metadata.queue_delivery(delivery).is_err() {
+            self.metadata.ready.notify_waiters();
+        }
     }
 }

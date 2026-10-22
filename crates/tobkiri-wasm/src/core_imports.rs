@@ -299,10 +299,12 @@ async fn finish_handle(
         .as_ref()
         .context("admitted handle metadata owner is missing")?
         .clone();
-    let host = host.clone();
-    let entry = entry.clone();
     metadata
-        .run(async move { finish_handle_metadata(&host, &entry, outcome).await })
+        .run_delivery(crate::handle_metadata::HandleDelivery::new(
+            host.shared.gate.clone(),
+            entry,
+            outcome,
+        ))
         .await
 }
 
@@ -311,67 +313,9 @@ pub(crate) async fn finish_handle_metadata(
     entry: &crate::HandleEntry,
     outcome: Outcome,
 ) -> Result<()> {
-    let mut receipt = entry.lease.close.lock().await;
-    if receipt.outcome.is_none() {
-        if entry
-            .lease
-            .permit
-            .as_ref()
-            .is_some_and(|permit| std::time::Instant::now() >= permit.deadline())
-        {
-            receipt.deadline_settlement = true;
-        }
-        receipt.outcome = Some(outcome);
-    }
-    if !receipt.delivered {
-        if let Some(id) = &entry.lease.grant {
-            if receipt.deadline_settlement {
-                let permit = entry
-                    .lease
-                    .permit
-                    .as_ref()
-                    .context("deadline proof missing")?;
-                let terminal = host.shared.gate.settle_deadline(permit).await?;
-                receipt.outcome = Some(terminal.decision.outcome);
-            } else if let Err(error) = host
-                .shared
-                .gate
-                .record_outcome(
-                    id.clone(),
-                    receipt
-                        .outcome
-                        .clone()
-                        .context("terminal proposal missing")?,
-                )
-                .await
-            {
-                if matches!(error, tobkiri_gate::GateError::Deadline) {
-                    // Durable wall-time expiry may win between the Instant
-                    // check and CAS. Deliver that same winner without changing
-                    // its disposition or replaying physical cleanup.
-                    receipt.deadline_settlement = true;
-                    let permit = entry
-                        .lease
-                        .permit
-                        .as_ref()
-                        .context("deadline proof missing")?;
-                    let terminal = host.shared.gate.settle_deadline(permit).await?;
-                    receipt.outcome = Some(terminal.decision.outcome);
-                } else {
-                    return Err(error.into());
-                }
-            }
-        }
-        if let (Some(frame), Some(permit)) = (&entry.source_frame, &entry.lease.permit) {
-            let acknowledged = host.shared.gate.acknowledged_terminal(permit)?;
-            frame
-                .terminal_acknowledged(&acknowledged)
-                .map_err(anyhow::Error::new)?;
-            receipt.outcome = Some(acknowledged.outcome().clone());
-        }
-        receipt.delivered = true;
-    }
-    Ok(())
+    crate::handle_metadata::HandleDelivery::new(host.shared.gate.clone(), entry, outcome)
+        .deliver()
+        .await
 }
 
 #[cfg(test)]
