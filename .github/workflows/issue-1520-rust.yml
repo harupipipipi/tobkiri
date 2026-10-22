@@ -72,6 +72,11 @@ jobs:
           --log "$RUNNER_TEMP/portable-packages.log" -- cargo test --locked
           -p tobkiri-canon -p tobkiri-wit -p tobkiri-manifest
           -p tobkiri-profile -p tobkiri-flow -p tobkiri-gate -p tobkiri-cli
+      - name: Portable handle metadata owner regressions
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/portable-handle-metadata.log" --
+          cargo test -p tobkiri-wasm --lib handle_metadata_tests --locked
       - name: Portable Wasm engine integration tests
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
