@@ -55,6 +55,7 @@ pub(crate) struct Shared {
     pub(crate) verified: BTreeMap<PackId, Arc<VerifiedPack>>,
     pub(crate) instances: StdMutex<BTreeMap<PackId, Arc<InstanceSlot>>>,
     pub(crate) handles: StdMutex<HandleTable>,
+    handle_metadata: crate::handle_metadata::HandleMetadataRegistry,
     pub(crate) effective_limits: BTreeMap<(PackId, PackHash), ResourceLimits>,
     pub(crate) flow_runner: OnceLock<Weak<dyn FlowRunner>>,
     pub(crate) provider_entry: OnceLock<Arc<dyn crate::ProviderEntryBridge>>,
@@ -1839,6 +1840,9 @@ impl PackHost {
             verified,
             instances: StdMutex::new(BTreeMap::new()),
             handles: StdMutex::new(HandleTable::new(1024)),
+            handle_metadata: crate::handle_metadata::HandleMetadataRegistry::new(
+                init_cx.control(),
+            )?,
             effective_limits,
             flow_runner: OnceLock::new(),
             provider_entry: OnceLock::new(),
@@ -2168,6 +2172,27 @@ impl PackHost {
         });
     }
 
+    fn reap_captured_handle(
+        &self,
+        recipient: &CallCx,
+        id: u64,
+        entry: crate::HandleEntry,
+    ) -> Result<()> {
+        let metadata = entry
+            .lease
+            .metadata
+            .as_ref()
+            .context("authorized source cleanup owner is missing")?
+            .clone();
+        metadata.spawn_reported_source_cleanup(reap_captured_source(
+            self.clone(),
+            recipient.clone(),
+            id,
+            entry,
+            metadata.clone(),
+        ))
+    }
+
     fn instance(&self, id: &PackId) -> Result<Arc<InstanceSlot>> {
         self.shared
             .instances
@@ -2246,50 +2271,66 @@ impl PackHost {
             entry,
         };
         let args = request.digest()?;
+        // Admit terminal custody before this source may consume its grant.
+        // Close seals the SAME inventory; an in-flight registration is already
+        // represented even before its handle reaches the public table.
+        let metadata = self.shared.handle_metadata.admit(&self.shared.control)?;
+        metadata.prepare_source_cleanup(
+            &self.shared.control,
+            source_reaper_future_bytes(reap_captured_source),
+        )?;
         let grant = self
             .shared
             .gate
             .authorize(owner, request.clone(), args.clone())
             .await?;
-        let grant_id = grant.id().clone();
-        let mut permit = grant.consume(owner, &request, &args)?;
+        let permit = grant.consume(owner, &request, &args)?;
         let owner = owner.clone().narrow_limits(permit.limits());
-        if let Err(error) = self.shared.gate.narrow_lease(&mut permit, &owner).await {
-            self.shared
-                .gate
-                .record_outcome(
-                    grant_id,
-                    Outcome::Failed {
-                        code: "lease-narrowing".into(),
-                    },
-                )
-                .await?;
+        let mut metadata = crate::handle_metadata::ConsumedHandleMetadata::new(
+            self.clone(),
+            metadata,
+            permit,
+            kind,
+            owner.clone(),
+            recipient.clone(),
+            authority.clone(),
+            id,
+            generation,
+            version,
+        );
+        metadata.failure = "lease-narrowing";
+        if let Err(error) = self
+            .shared
+            .gate
+            .narrow_lease(
+                metadata
+                    .permit
+                    .as_mut()
+                    .expect("consumed source permit missing"),
+                &owner,
+            )
+            .await
+        {
+            metadata.settle_failure().await?;
             return Err(error.into());
         }
-        if let Err(error) = self.shared.gate.watch_lease(&owner, &permit) {
-            self.shared
-                .gate
-                .record_outcome(
-                    grant_id,
-                    Outcome::Failed {
-                        code: "lease-supervision".into(),
-                    },
-                )
-                .await?;
+        metadata.failure = "lease-supervision";
+        if let Err(error) = self.shared.gate.watch_lease(
+            &owner,
+            metadata
+                .permit
+                .as_ref()
+                .expect("consumed source permit missing"),
+        ) {
+            metadata.settle_failure().await?;
             return Err(error.into());
         }
+        metadata.failure = "source-retired";
         if let Err(error) = self.check_generation(pack, generation) {
-            self.shared
-                .gate
-                .record_outcome(
-                    grant_id,
-                    Outcome::Failed {
-                        code: "source-retired".into(),
-                    },
-                )
-                .await?;
+            metadata.settle_failure().await?;
             return Err(error);
         }
+        metadata.failure = "source-entry";
         let source_frame = match self
             .shared
             .provider_entry
@@ -2305,22 +2346,20 @@ impl PackHost {
                     authority,
                     generation,
                 },
-                &permit,
+                metadata
+                    .permit
+                    .as_ref()
+                    .expect("consumed source permit missing"),
             ) {
             Ok(frame) => frame,
             Err(error) => {
-                self.shared
-                    .gate
-                    .record_outcome(
-                        grant_id,
-                        Outcome::Failed {
-                            code: "source-entry".into(),
-                        },
-                    )
-                    .await?;
+                metadata.settle_failure().await?;
                 return Err(anyhow::Error::new(error));
             }
         };
+        metadata.frame = Some(source_frame.clone());
+        metadata.failure = "handle-quota";
+        let lease = metadata.lease();
         let result = self
             .shared
             .handles
@@ -2332,23 +2371,17 @@ impl PackHost {
                 id,
                 recipient.clone(),
                 authority.clone(),
-                permit,
+                lease,
                 generation,
                 source_frame.clone(),
                 version,
             );
         if result.is_err() {
-            self.shared
-                .gate
-                .record_outcome(
-                    grant_id,
-                    Outcome::Failed {
-                        code: "handle-quota".into(),
-                    },
-                )
-                .await?;
+            metadata.settle_failure().await?;
         }
         if let Ok(id) = &result {
+            metadata.handle_published();
+            let mut reaper_entry = metadata.entry();
             let binding = (|| -> Result<()> {
                 let registration = self
                     .shared
@@ -2365,23 +2398,19 @@ impl PackHost {
                         .map_err(|_| anyhow::anyhow!("generation state unavailable"))?;
                     (lifetime.native_children.clone(), lifetime.disposal.clone())
                 };
-                let mut captured = self
-                    .shared
-                    .handles
-                    .lock()
-                    .map_err(|_| anyhow::anyhow!("handle table poisoned"))?
-                    .resolve_cleanup(*id, kind, recipient)?;
-                captured.native_children = Some(children.clone());
-                captured.store_disposal = Some(disposal.clone());
+                reaper_entry.native_children = Some(children.clone());
+                reaper_entry.store_disposal = Some(disposal.clone());
                 // The typed selector shares this exact Arc; it is built from
                 // the entry clone BEFORE any binding so no
                 // entry->selector->entry strong cycle can exist.
                 let selector = Arc::new(ComponentCloseControl {
                     shared: Arc::downgrade(&self.shared),
-                    entry: captured,
+                    entry: reaper_entry.clone(),
                     _registration: registration,
                 });
                 let control: Arc<dyn tobkiri_flow::StreamCloseControl> = selector.clone();
+                reaper_entry.close_control = Some(control.clone());
+                reaper_entry.close_selector = Some(selector.clone());
                 {
                     let mut lifetime = source_slot
                         .retirement
@@ -2413,6 +2442,8 @@ impl PackHost {
                 let operation = source_frame
                     .provider_operation()
                     .map_err(anyhow::Error::new)?;
+                reaper_entry.operation = Some(operation.clone());
+                reaper_entry.physical_completion = Some(operation.physical_completion());
                 self.shared
                     .handles
                     .lock()
@@ -2432,6 +2463,7 @@ impl PackHost {
                 // terminal custody. No completion is claimed without proof.
                 if kind == HandleKind::Stream {
                     let cache = self.prefund_terminal_empty(&source_frame)?;
+                    reaper_entry.terminal_empty = Some(cache.clone());
                     self.shared
                         .handles
                         .lock()
@@ -2442,7 +2474,8 @@ impl PackHost {
             })();
             // On registration failure the same consumed lease remains in the
             // bounded table, and its reaper retains cleanup/terminal custody.
-            self.reap_handle(&owner, recipient, *id, kind);
+            self.reap_captured_handle(recipient, *id, reaper_entry)?;
+            metadata.transfer_to_handle();
             binding?;
         }
         result
@@ -2860,6 +2893,39 @@ impl PackHost {
             .context("component retirement task did not complete")??;
         disposal.wait().await
     }
+}
+
+// The builder's concrete future type is known without constructing an entry,
+// cloning a permit or beginning cleanup. Fund precisely that type before the
+// original source can consume; the hard trusted-future cap stays independent.
+fn source_reaper_future_bytes<F>(
+    _builder: impl FnOnce(
+        PackHost,
+        CallCx,
+        u64,
+        crate::HandleEntry,
+        Arc<crate::handle_metadata::HandleMetadata>,
+    ) -> F,
+) -> usize {
+    std::mem::size_of::<F>()
+}
+
+async fn reap_captured_source(
+    host: PackHost,
+    recipient: CallCx,
+    id: u64,
+    entry: crate::HandleEntry,
+    terminal: Arc<crate::handle_metadata::HandleMetadata>,
+) -> Result<Option<crate::core_imports::SourceCleanupReport>> {
+    let reason = tokio::select! {
+        _=tokio::time::sleep_until(entry.owner.deadline().into())=>crate::core_imports::ExpiryReason::Deadline,
+        _=entry.owner.cancel().cancelled()=>crate::core_imports::ExpiryReason::Unknown,
+        _=terminal.wait()=>crate::core_imports::ExpiryReason::Unknown,
+    };
+    // Actual captured entry/lease/frame survives table removal and alias use.
+    crate::core_imports::reap_captured_handle(&host, &recipient, id, &entry, reason)
+        .await
+        .map(Some)
 }
 
 /// A cancelled Wasm call has already dropped its importer future. Its admitted
@@ -3338,6 +3404,10 @@ fn gate_audit_code(error: &tobkiri_gate::GateError) -> &'static str {
 
 #[async_trait]
 impl PortInvoker for PackHost {
+    async fn drain_source_settlements(&self) -> Result<(), StepError> {
+        self.shared.handle_metadata.close().await
+    }
+
     fn reserve_frame_control(
         &self,
         cx: &CallCx,

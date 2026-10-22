@@ -150,6 +150,14 @@ pub trait FlowUserInvocationPreparation: Send + Sync {
 /// The mandatory dispatch boundary used by all Flow and overlay calls.
 #[async_trait]
 pub trait PortInvoker: Send + Sync {
+    /// Seal this Session's source admission and join its already-owned terminal
+    /// metadata work. This is distinct from physical operation cleanup: source
+    /// release may itself await that physical census. Hosts without separately
+    /// owned source settlements have nothing to drain.
+    async fn drain_source_settlements(&self) -> Result<(), StepError> {
+        Ok(())
+    }
+
     /// Transfer the verified, nonclone frame scope to the producer adapter.
     /// The adapter must retain the scope alongside the physical owner lease
     /// and recheck its live capacity on every reserve. An implementation that

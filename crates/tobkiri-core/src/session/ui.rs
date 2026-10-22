@@ -1437,6 +1437,26 @@ impl Session {
         {
             failure.get_or_insert(error.into());
         }
+        // A source can have been cancelled before a Flow cleanup receipt was
+        // created. Join its original terminal owner before Gate snapshots the
+        // final audit watermark. Timeout drops only this observer; the host
+        // retains the same owner and its actual completion evidence.
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            self.invoker.drain_source_settlements(),
+        )
+        .await
+        {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                failure.get_or_insert(error.into());
+            }
+            Err(_) => {
+                failure.get_or_insert_with(|| {
+                    StepError::new("unavailable", "source terminal cleanup did not finish").into()
+                });
+            }
+        }
         // Cleanup producers must finish their durable handoff before Gate's
         // final watermark/drain. Attempt that drain even if cleanup is unknown.
         if let Err(error) = self.admission.close().await {

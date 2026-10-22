@@ -605,3 +605,35 @@ async fn physical_input_cancel_before_transfer_keeps_parent_ack_and_closes_origi
         Some("succeeded")
     );
 }
+
+#[tokio::test]
+async fn physical_input_saturated_tasks_keep_original_child_terminal_delivery() {
+    let fixture = Fixture::new(Kind::Stream).await;
+    let session = fixture.core.start(&fixture.profile.id).await.unwrap();
+    let input = read(&session).await;
+    let control = input.context.control().clone();
+    let limit = tobkiri_gate::CoreControlLimits::default().max_tasks;
+    let mut occupied = Vec::new();
+    for _ in 0..limit {
+        match control.reserve(tobkiri_gate::ControlKind::Task, 1) {
+            Ok(reservation) => occupied.push(reservation),
+            Err(_) => break,
+        }
+    }
+    assert_eq!(
+        control.usage().count(tobkiri_gate::ControlKind::Task),
+        limit
+    );
+    input.context.cancel().cancel();
+    assert!(session.submit_native_input(input).await.is_err());
+    // Task saturation can independently make physical disposal unavailable.
+    // That must remain an error/unknown in the original outcome; it must not
+    // prevent delivery of the already-admitted child's terminal audit record.
+    let closed = tokio::time::timeout(std::time::Duration::from_secs(5), session.close())
+        .await
+        .expect("terminal delivery must not wait for a new Task reservation");
+    let child = fixture.source_effect(Kind::Stream);
+    assert_eq!(fixture.events("dispatch", &child).len(), 1);
+    assert_eq!(fixture.events("outcome", &child).len(), 1, "{closed:?}");
+    drop(occupied);
+}

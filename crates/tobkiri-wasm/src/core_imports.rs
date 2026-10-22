@@ -282,6 +282,35 @@ async fn finish_handle(
     outcome: Outcome,
 ) -> Result<()> {
     entry.lease.begin_close();
+    if entry.lease.grant.is_none() {
+        return finish_handle_metadata(host, entry, outcome).await;
+    }
+    // Gate's terminal outbox, audit verification and acknowledgement perform
+    // synchronous persistence even though the Gate API is async. A shutdown
+    // can wake every source reaper at once; doing this work on the async
+    // executor can prevent an unrelated source's cleanup Join/timer from being
+    // polled for its entire grace. Retain the exact original lease/frame and
+    // await the actual preadmitted metadata job without moving physical
+    // cleanup. Its original Join is also retained by Session's terminal
+    // inventory, so cancellation cannot move terminal work past final drain.
+    let metadata = entry
+        .lease
+        .metadata
+        .as_ref()
+        .context("admitted handle metadata owner is missing")?
+        .clone();
+    let host = host.clone();
+    let entry = entry.clone();
+    metadata
+        .run(async move { finish_handle_metadata(&host, &entry, outcome).await })
+        .await
+}
+
+pub(crate) async fn finish_handle_metadata(
+    host: &PackHost,
+    entry: &crate::HandleEntry,
+    outcome: Outcome,
+) -> Result<()> {
     let mut receipt = entry.lease.close.lock().await;
     if receipt.outcome.is_none() {
         if entry
@@ -344,6 +373,10 @@ async fn finish_handle(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "handle_metadata_tests.rs"]
+mod handle_metadata_tests;
 
 struct StreamRelease {
     source_report: Option<tobkiri_flow::StreamCloseReport>,
@@ -1039,21 +1072,136 @@ pub(crate) async fn expire_handle(
     kind: HandleKind,
     reason: ExpiryReason,
 ) -> Result<()> {
-    if kind == HandleKind::Stream {
-        return cancel_stream_reason(host, cx, id, reason).await;
-    }
     let entry = host
         .shared
         .handles
         .lock()
         .map_err(|_| anyhow::anyhow!("handle table poisoned"))?
         .resolve_cleanup(id, kind, cx)?;
-    let selection = select_cleanup_cause_bounded(&entry, reason).await;
-    let cleanup = release_callback_once(host, &entry).await;
+    expire_captured_handle(host, cx, id, &entry, reason).await
+}
+
+fn completed_eof_cleanup(
+    receipt: &crate::handles::HandleCloseReceipt,
+    cause_uncertain: bool,
+) -> bool {
+    receipt.cleanup_done
+        && receipt.delivered
+        && !receipt.deadline_settlement
+        && !cause_uncertain
+        && receipt.outcome.as_ref().is_some_and(|outcome| {
+            matches!(outcome, Outcome::Succeeded)
+                && receipt
+                    .source_report
+                    .is_none_or(|report| report.matches_outcome(outcome))
+        })
+}
+
+/// Physical completion and the reaper's reported business/delivery failure
+/// are independent. Only this adapter can construct a positive report, from
+/// the original lease receipt after its real cleanup path has returned.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SourceCleanupReport {
+    // Retain the original diagnostic in the cached Join receipt, including
+    // after delivery repair. Production consumes only its physical proof;
+    // test accessors verify that repair never overwrites this observation.
+    _observation: SourceCleanupObservation,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SourceCleanupObservation {
+    Complete,
+    TerminalUnacknowledged,
+    SourceReportedFailure,
+}
+impl SourceCleanupReport {
+    #[cfg(test)]
+    pub(crate) fn joined_fixture_work() -> Self {
+        // Task-custody unit fixtures contain no Wasm source or consumed Grant.
+        // Their completed unit work cannot manufacture a production receipt.
+        Self {
+            _observation: SourceCleanupObservation::Complete,
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn observation(self) -> SourceCleanupObservation {
+        self._observation
+    }
+    #[cfg(test)]
+    pub(crate) fn reported_failure(self) -> bool {
+        self._observation != SourceCleanupObservation::Complete
+    }
+}
+
+fn source_cleanup_report(
+    receipt: &crate::handles::HandleCloseReceipt,
+    reported_failure: bool,
+) -> Option<SourceCleanupReport> {
+    (receipt.cleanup_started && receipt.cleanup_done && receipt.cleanup_error.is_none()).then_some(
+        SourceCleanupReport {
+            _observation: if !receipt.delivered {
+                SourceCleanupObservation::TerminalUnacknowledged
+            } else if reported_failure {
+                SourceCleanupObservation::SourceReportedFailure
+            } else {
+                SourceCleanupObservation::Complete
+            },
+        },
+    )
+}
+
+pub(crate) async fn reap_captured_handle(
+    host: &PackHost,
+    cx: &CallCx,
+    id: u64,
+    entry: &crate::HandleEntry,
+    reason: ExpiryReason,
+) -> Result<SourceCleanupReport> {
+    let result = expire_captured_handle(host, cx, id, entry, reason).await;
+    let report = source_cleanup_report(&*entry.lease.close.lock().await, result.is_err());
+    if let Some(report) = report {
+        // Preserve the normal reaper failure as typed diagnostic evidence.
+        // Delivery is still independently required by this lease's original
+        // metadata Join. Neither a repaired outbox nor an ordinary source
+        // business failure can replace a missing physical cleanup receipt.
+        return Ok(report);
+    }
+    result?;
+    bail!("source reaper has no original physical cleanup receipt")
+}
+
+/// The owning reaper captures this exact entry before exposure completes.
+/// Its physical/result receipt remains valid after every table alias is gone.
+pub(crate) async fn expire_captured_handle(
+    host: &PackHost,
+    cx: &CallCx,
+    id: u64,
+    entry: &crate::HandleEntry,
+    reason: ExpiryReason,
+) -> Result<()> {
+    if !entry.recipient_matches(cx) {
+        bail!("captured cleanup outside the recipient scope")
+    }
+    // A source that already reached EOF needs no new cancellation cause. This
+    // requires its original successful physical cleanup AND delivered winner;
+    // metadata acknowledgement alone never takes this branch.
+    if completed_eof_cleanup(
+        &*entry.lease.close.lock().await,
+        entry
+            .lease
+            .cause_uncertain
+            .load(std::sync::atomic::Ordering::Acquire),
+    ) {
+        return Ok(());
+    }
+    if entry.kind == HandleKind::Stream {
+        return cancel_captured_stream_reason(host, cx, id, entry, reason).await;
+    }
+    let selection = select_cleanup_cause_bounded(entry, reason).await;
+    let cleanup = release_callback_once(host, entry).await;
     finish_handle(
         host,
-        &entry,
-        cancellation_outcome(&entry, reason, cleanup.is_ok() && selection.is_ok()).await,
+        entry,
+        cancellation_outcome(entry, reason, cleanup.is_ok() && selection.is_ok()).await,
     )
     .await?;
     if cleanup.is_ok() {
@@ -1061,12 +1209,12 @@ pub(crate) async fn expire_handle(
             .handles
             .lock()
             .map_err(|_| anyhow::anyhow!("handle table poisoned"))?
-            .remove(id, kind, cx)?;
+            .remove_captured(id, cx, entry)?;
     }
     cleanup?;
     selection?;
-    let observed = observe_cause_bounded(&entry).await;
-    if !cleanup_cause_confirmed(&entry, &*entry.lease.close.lock().await, observed) {
+    let observed = observe_cause_bounded(entry).await;
+    if !cleanup_cause_confirmed(entry, &*entry.lease.close.lock().await, observed) {
         bail!("callback cleanup outcome is uncertain or failed")
     }
     Ok(())

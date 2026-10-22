@@ -11,6 +11,7 @@ mod engine;
 mod entry;
 pub mod filesystem;
 pub use effects::filesystem_imports::FilesystemAccess;
+mod handle_metadata;
 mod handle_transfer;
 mod input_forwarding;
 pub use input_forwarding::NativeInputHandles;

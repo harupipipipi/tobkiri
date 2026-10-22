@@ -53,6 +53,7 @@ pub(crate) struct PendingIntent {
 pub(crate) struct HandleLease {
     pub(crate) grant: Option<GrantId>,
     pub(crate) permit: Option<DispatchPermit>,
+    pub(crate) metadata: Option<Arc<crate::handle_metadata::HandleMetadata>>,
     closed: AtomicBool,
     output: AtomicU64,
     pub(crate) close: tokio::sync::Mutex<HandleCloseReceipt>,
@@ -77,6 +78,7 @@ impl HandleLease {
         Self {
             grant: permit.as_ref().map(|permit| permit.id().clone()),
             permit,
+            metadata: None,
             closed: AtomicBool::new(false),
             output: AtomicU64::new(0),
             close: tokio::sync::Mutex::new(HandleCloseReceipt::default()),
@@ -91,6 +93,14 @@ impl HandleLease {
     pub(crate) fn native(registration: tobkiri_gate::ControlReservation) -> Self {
         let mut lease = Self::new(None);
         lease._native_registration = Some(registration);
+        lease
+    }
+    pub(crate) fn authorized(
+        permit: DispatchPermit,
+        metadata: Arc<crate::handle_metadata::HandleMetadata>,
+    ) -> Self {
+        let mut lease = Self::new(Some(permit));
+        lease.metadata = Some(metadata);
         lease
     }
     /// The single shared cleanup-episode bound for this lease: the first
@@ -179,6 +189,38 @@ pub struct HandleEntry {
     pub(crate) physical_completion: Option<tobkiri_flow::StreamPhysicalCompletion>,
 }
 impl HandleEntry {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn unpublished(
+        kind: HandleKind,
+        owner: CallCx,
+        local_id: u64,
+        recipient: CallCx,
+        authority: ShapeRef,
+        lease: Arc<HandleLease>,
+        generation: u64,
+        source_frame: Option<Arc<dyn crate::ProviderFrame>>,
+        version: &'static str,
+    ) -> Self {
+        Self {
+            kind,
+            owner,
+            local_id,
+            recipient,
+            authority,
+            lease,
+            source: None,
+            generation: Some(generation),
+            source_frame,
+            source_version: Some(version),
+            close_control: None,
+            close_selector: None,
+            native_children: None,
+            store_disposal: None,
+            terminal_empty: None,
+            operation: None,
+            physical_completion: None,
+        }
+    }
     pub(crate) fn recipient_matches(&self, cx: &CallCx) -> bool {
         same_scope(&self.recipient, cx)
     }
@@ -209,7 +251,7 @@ impl HandleTable {
         local_id: u64,
         recipient: CallCx,
         authority: ShapeRef,
-        permit: DispatchPermit,
+        lease: Arc<HandleLease>,
         generation: u64,
         frame: Arc<dyn crate::ProviderFrame>,
         version: &'static str,
@@ -220,7 +262,7 @@ impl HandleTable {
             local_id,
             recipient,
             authority,
-            Arc::new(HandleLease::new(Some(permit))),
+            lease,
             None,
             Some(generation),
             Some(frame),
