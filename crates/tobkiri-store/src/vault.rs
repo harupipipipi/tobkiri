@@ -6,12 +6,15 @@ use chacha20poly1305::{
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, sync::Arc};
 use tobkiri_canon::{Digest, ids::ProfileId};
-use tobkiri_gate::{CallCx, DispatchPermit, EffectRequest, Grant, Principal};
+use tobkiri_gate::{CallCx, EffectRequest, Grant, Principal};
 use zeroize::{Zeroize, Zeroizing};
 
 #[path = "vault_secret_work.rs"]
 mod vault_secret_work;
 pub use vault_secret_work::*;
+
+#[path = "vault_secret_network.rs"]
+mod vault_secret_network;
 
 const MAGIC: &[u8; 8] = b"TBKVLT01";
 /// Key custody belongs to core; Packs never receive a key-provider object.
@@ -104,37 +107,6 @@ impl std::fmt::Debug for SecretRef {
         f.debug_struct("SecretRef")
             .field("name", &self.name)
             .finish_non_exhaustive()
-    }
-}
-impl SecretRef {
-    /// Network host only: consume secret bytes through an already-bound network effect.
-    pub fn with_network_value<R>(
-        &self,
-        cx: &CallCx,
-        permit: &DispatchPermit,
-        prefix: &str,
-        use_value: impl FnOnce(&[u8]) -> R,
-    ) -> Result<R, StoreError> {
-        if self.profile != *cx.profile()
-            || self.principal != *cx.principal()
-            || !permit.matches_context(cx)
-            || !matches!(permit.effect(), EffectRequest::Network { .. })
-        {
-            return Err(StoreError::Denied(
-                "secret reference context/network mismatch".into(),
-            ));
-        }
-        if prefix.contains(['\r', '\n'])
-            || self.bytes.0.contains(&b'\r')
-            || self.bytes.0.contains(&b'\n')
-        {
-            return Err(StoreError::Invalid("secret header contains newline".into()));
-        }
-        let mut header = Zeroizing::new(Vec::with_capacity(prefix.len() + self.bytes.0.len()));
-        header.extend_from_slice(prefix.as_bytes());
-        header.extend_from_slice(&self.bytes.0);
-        let result = use_value(&header);
-        Ok(result)
     }
 }
 /// XChaCha20-Poly1305 encrypted per-Profile vault. No data-export API exists.

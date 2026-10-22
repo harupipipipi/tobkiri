@@ -971,6 +971,22 @@ async fn network(
     if resources.len() > 32 {
         bail!("secret reference count exceeded")
     };
+    // Reject out-of-bounds metadata BEFORE network/secret Grant consumption, DNS or
+    // keychain work. A huge prefix must never reach the native join buffer.
+    for descriptor in descriptors {
+        let index = usize::try_from(uint(field(descriptor, "index")?)?)?;
+        if index >= resources.len() {
+            bail!("secret header index outside resource list")
+        }
+        let name = text(field(descriptor, "name")?)?;
+        let prefix = text(field(descriptor, "prefix")?)?;
+        if name.len() > 256 || prefix.len() > SecretRef::MAX_NETWORK_HEADER_BYTES {
+            bail!("network headers exceed their bound")
+        }
+        if prefix.contains(['\r', '\n']) {
+            bail!("secret header contains newline")
+        }
+    }
     let mut names = Vec::with_capacity(resources.len());
     for value in resources {
         let rep = resource_rep::<HostSecret>(store, version, value)?;
@@ -1033,6 +1049,7 @@ async fn network(
                     cx,
                     client.permit(),
                     text(field(descriptor, "prefix")?)?,
+                    owners.graph(),
                     |value| -> Result<Val> { codec.string(std::str::from_utf8(value)?) },
                 )??;
                 let name = text(field(descriptor, "name")?)?;

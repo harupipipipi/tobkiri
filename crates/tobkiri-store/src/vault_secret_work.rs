@@ -197,7 +197,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
     use tobkiri_canon::{
-        Digest,
+        AllocationBudget, AllocationError, AllocationRequest, Digest,
         ids::{PackHash, PackId, RequestId},
     };
     use tobkiri_gate::{
@@ -206,6 +206,35 @@ mod tests {
         SecretPermission, StoragePermissions, TrustedPrompt,
     };
     struct TestKeys;
+    struct HeaderBudget {
+        used: AtomicUsize,
+        calls: AtomicUsize,
+        limit: usize,
+    }
+    impl HeaderBudget {
+        fn new(limit: usize) -> Self {
+            Self {
+                used: AtomicUsize::new(0),
+                calls: AtomicUsize::new(0),
+                limit,
+            }
+        }
+    }
+    impl AllocationBudget for HeaderBudget {
+        fn reserve(&self, request: AllocationRequest) -> Result<(), AllocationError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            let bytes = usize::try_from(request.bytes).map_err(|_| AllocationError::Overflow)?;
+            self.used
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |used| {
+                    used.checked_add(bytes).filter(|used| *used <= self.limit)
+                })
+                .map_err(|_| AllocationError::Limit)?;
+            Ok(())
+        }
+        fn release(&self, bytes: u64) {
+            self.used.fetch_sub(bytes as usize, Ordering::SeqCst);
+        }
+    }
     impl VaultKeyProvider for TestKeys {
         fn key(&self, _: &ProfileId) -> Result<[u8; 32], StoreError> {
             Ok([7; 32])
@@ -353,6 +382,151 @@ mod tests {
             Vault::secret_digest("api-key").unwrap(),
         )
     }
+    async fn network_reference(f: &Fixture, cx: &CallCx, bytes: &[u8]) -> SecretRef {
+        Vault::open(&f.root, &f.profile, Arc::new(TestKeys))
+            .unwrap()
+            .set("api-key", bytes)
+            .unwrap();
+        let (request, args) = secret_request(false);
+        let (_, permit) = f.permit(cx, request, args).await;
+        let mut completion = SecretWork::new(f.root.clone(), cx.clone(), permit)
+            .execute_with(&Mutex::new(None), |root, profile| {
+                Vault::open(root, profile, Arc::new(TestKeys))
+            });
+        match completion.take().unwrap() {
+            SecretWorkResult::Opaque(value) => value,
+            _ => panic!("opaque secret required"),
+        }
+    }
+    fn network_request() -> EffectRequest {
+        EffectRequest::Network {
+            origin: "https://api.example".into(),
+            method: "POST".into(),
+            url: "https://api.example/v1".into(),
+        }
+    }
+    #[tokio::test]
+    async fn network_secret_scratch_is_precharged_retained_and_refunded_on_success_or_unwind() {
+        let f = Fixture::new();
+        let cx = f.pack("local.owner").await;
+        let secret = network_reference(&f, &cx, b"token").await;
+        let (_, permit) = f
+            .permit(&cx, network_request(), Digest::hash(b"request"))
+            .await;
+        let accounting = Arc::new(HeaderBudget::new(12));
+        let budget: Arc<dyn AllocationBudget> = accounting.clone();
+        let length = secret
+            .with_network_value(&cx, &permit, "Bearer ", &budget, |value| {
+                assert_eq!(accounting.used.load(Ordering::SeqCst), 12);
+                assert_eq!(value, b"Bearer token");
+                value.len()
+            })
+            .unwrap();
+        assert_eq!(length, 12);
+        assert_eq!(accounting.used.load(Ordering::SeqCst), 0);
+        let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = secret.with_network_value(&cx, &permit, "Bearer ", &budget, |_| {
+                assert_eq!(accounting.used.load(Ordering::SeqCst), 12);
+                panic!("injected conversion unwind");
+            });
+        }));
+        assert!(unwind.is_err());
+        assert_eq!(accounting.used.load(Ordering::SeqCst), 0);
+        assert_eq!(accounting.calls.load(Ordering::SeqCst), 2);
+    }
+    #[tokio::test]
+    async fn network_secret_header_limits_and_owner_denial_precede_material_conversion() {
+        let f = Fixture::new();
+        let cx = f.pack("local.owner").await;
+        let secret = network_reference(&f, &cx, b"x").await;
+        let (_, permit) = f
+            .permit(&cx, network_request(), Digest::hash(b"request"))
+            .await;
+        let accounting = Arc::new(HeaderBudget::new(SecretRef::MAX_NETWORK_HEADER_BYTES));
+        let budget: Arc<dyn AllocationBudget> = accounting.clone();
+        let prefix = "p".repeat(SecretRef::MAX_NETWORK_HEADER_BYTES - 1);
+        secret
+            .with_network_value(&cx, &permit, &prefix, &budget, |value| {
+                assert_eq!(value.len(), SecretRef::MAX_NETWORK_HEADER_BYTES);
+                assert_eq!(value.last(), Some(&b'x'));
+            })
+            .unwrap();
+        let calls = accounting.calls.load(Ordering::SeqCst);
+        assert!(matches!(
+            secret.with_network_value(&cx, &permit, &(prefix + "p"), &budget, |_| panic!(
+                "oversized header copied"
+            )),
+            Err(StoreError::Quota)
+        ));
+        assert_eq!(accounting.calls.load(Ordering::SeqCst), calls);
+        let denied = Arc::new(HeaderBudget::new(0));
+        let denied_budget: Arc<dyn AllocationBudget> = denied.clone();
+        assert!(matches!(
+            secret.with_network_value(&cx, &permit, "", &denied_budget, |_| panic!(
+                "denied owner copied secret"
+            )),
+            Err(StoreError::Quota)
+        ));
+        assert_eq!(denied.used.load(Ordering::SeqCst), 0);
+        assert_eq!(accounting.used.load(Ordering::SeqCst), 0);
+    }
+    #[tokio::test]
+    async fn network_secret_rejects_foreign_cancelled_or_expired_context_before_funding() {
+        let f = Fixture::new();
+        let cx = f.pack("local.owner").await;
+        let secret = network_reference(&f, &cx, b"token").await;
+        let (_, permit) = f
+            .permit(&cx, network_request(), Digest::hash(b"request"))
+            .await;
+        let accounting = Arc::new(HeaderBudget::new(16384));
+        let budget: Arc<dyn AllocationBudget> = accounting.clone();
+        assert!(matches!(
+            secret.with_network_value(&f.cx(Principal::User), &permit, "", &budget, |_| panic!(
+                "foreign conversion"
+            )),
+            Err(StoreError::Denied(_))
+        ));
+        let expired = cx
+            .clone()
+            .cap_deadline(Instant::now() - Duration::from_millis(1));
+        assert!(matches!(
+            secret.with_network_value(&expired, &permit, "", &budget, |_| panic!(
+                "expired conversion"
+            )),
+            Err(StoreError::Gate(GateError::Deadline))
+        ));
+        cx.cancel().cancel();
+        assert!(matches!(
+            secret.with_network_value(&cx, &permit, "", &budget, |_| panic!(
+                "cancelled conversion"
+            )),
+            Err(StoreError::Gate(GateError::Cancelled))
+        ));
+        assert_eq!(accounting.calls.load(Ordering::SeqCst), 0);
+    }
+    #[tokio::test]
+    async fn network_secret_honors_the_consumed_permits_earlier_deadline() {
+        let f = Fixture::new();
+        let cx = f.pack("local.owner").await;
+        let secret = network_reference(&f, &cx, b"token").await;
+        let narrowed = cx
+            .clone()
+            .cap_deadline(Instant::now() + Duration::from_secs(1));
+        let (_, permit) = f
+            .permit(&narrowed, network_request(), Digest::hash(b"request"))
+            .await;
+        tokio::time::sleep_until((permit.deadline() + Duration::from_millis(1)).into()).await;
+        cx.check_active().unwrap();
+        let accounting = Arc::new(HeaderBudget::new(16384));
+        let budget: Arc<dyn AllocationBudget> = accounting.clone();
+        assert!(matches!(
+            secret.with_network_value(&cx, &permit, "", &budget, |_| panic!(
+                "expired permit conversion"
+            )),
+            Err(StoreError::Gate(GateError::Deadline))
+        ));
+        assert_eq!(accounting.calls.load(Ordering::SeqCst), 0);
+    }
     #[tokio::test]
     async fn rejected_permits_return_retained_failures_without_key_io() {
         let f = Fixture::new();
@@ -431,9 +605,10 @@ mod tests {
         let (_, permit) = f
             .permit(&cx, request, Digest::hash(b"opaque ref request"))
             .await;
+        let budget: Arc<dyn AllocationBudget> = Arc::new(HeaderBudget::new(16384));
         assert_eq!(
             opaque
-                .with_network_value(&cx, &permit, "Bearer ", |v| v.to_vec())
+                .with_network_value(&cx, &permit, "Bearer ", &budget, |v| v.to_vec())
                 .unwrap(),
             [b"Bearer ".as_slice(), secret].concat()
         );

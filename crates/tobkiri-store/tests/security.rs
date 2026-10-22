@@ -993,9 +993,10 @@ async fn secrets_are_opaque_encrypted_profile_bound_and_only_revealed_after_trus
     let args = Digest::hash(b"opaque ref request");
     let g = f.grant(&cx, req.clone(), args.clone()).await;
     let permit = g.consume(&cx, &req, &args).unwrap();
+    let header_budget: Arc<dyn AllocationBudget> = Arc::new(SqlTestValues(AtomicUsize::new(0)));
     assert_eq!(
         opaque
-            .with_network_value(&cx, &permit, "Bearer ", |v| v.to_vec())
+            .with_network_value(&cx, &permit, "Bearer ", &header_budget, |v| v.to_vec())
             .unwrap(),
         [b"Bearer ".as_slice(), secret].concat()
     );
