@@ -147,9 +147,7 @@ impl RetainedMetadata for HandleDelivery {
         {
             // The first attempt moves this heap to the receipt; record_outcome
             // may hold one ordinary clone while it is live. Count both.
-            Some(tobkiri_gate::Outcome::Failed { code }) => {
-                code.capacity().checked_mul(2).unwrap_or(usize::MAX)
-            }
+            Some(tobkiri_gate::Outcome::Failed { code }) => code.capacity().saturating_mul(2),
             _ => 0,
         }
     }
