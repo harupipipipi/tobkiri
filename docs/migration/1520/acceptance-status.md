@@ -170,6 +170,39 @@ The [portable checkpoint](../../../crates/tobkiri-e2e/evidence/rust-provider-tra
 records source and artifact hashes, actual receipt hashes, counts, mismatches,
 and the distinct scopes above. No acceptance item or inventory unit is closed.
 
+## Pure provider settings compiler checkpoint, 2026-10-22
+
+The additive
+[`provider-model-access Rust candidate`](../../../packs/local.provider-model-access-rust/README.md)
+translates eight pure functions from the original `model_access.py` and
+`native_filters.py`. The independent
+[`source observer`](../../../tests/fixtures/issue1520/provider-model-access/README.md)
+recorded 80 observations under CPython 3.13.9 / Unicode 15.1.0, with integer
+conversion limited to 4,300 digits. All 79 finite inputs matched in native Rust
+and again through the actual Wasm/Core route. The nonfinite NaN observation
+remains labelled source-only; it was neither converted into a finite input nor
+counted as a Core attempt.
+
+The current component is 359,075 bytes. Each of the 79 Core attempts required
+the same User Grant, request and effect arguments to reach `Outcome::Succeeded`;
+Session close and evidence writes also succeeded. Comparisons retain exact ABI
+bytes, source exceptions, recursive type/float-bit observations and key order.
+The [separate portable checkpoint](../../../crates/tobkiri-e2e/evidence/provider-model-access-20261022.json)
+binds the original observations, candidate source, build and actual results.
+Native and Wasip2 strict Clippy passed for this candidate; the entire Rust root
+workspace and all its targets also passed strict Clippy at the recorded source.
+This static check is not a complete workspace test run.
+
+The helper is unpromoted and owns no Registry, credentials, network transport,
+approval state or GUI. Its finite observation boundary does not establish the
+fuller Python domain with non-string dictionary keys or independent URL edge
+coverage. Original Provider/Model Registry ownership, revision checks,
+credential creation/revocation, scoped bindings and failure recovery still need
+faithful integration. The complete original Setup, dedicated GUI approval,
+API/model settings and chat flow remain the required acceptance path. This
+checkpoint closes no inventory unit or acceptance item and does not resolve
+the three oversized cases in the earlier five-component replay.
+
 ## Acceptance checklist
 
 1. [ ] **CI rejects Pack IDs and Pack-owned shape names in core and hosts.**

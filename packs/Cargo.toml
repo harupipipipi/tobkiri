@@ -3,6 +3,7 @@ resolver = "3"
 members = [
   "guest-sdk",
   "ordered-python-compat",
+  "local.provider-model-access-rust",
   "local.ai-usage-cost-rust",
   "local.ai-stream-normalizer-rust",
   "local.ai-gateway-finalizer-rust",

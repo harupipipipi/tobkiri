@@ -629,6 +629,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobkiri-pack-provider-model-access-rust"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+ "serde",
+ "serde_json",
+ "sha2",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "tobkiri-pack-terminal-input"
 version = "0.1.0"
 dependencies = [
