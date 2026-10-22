@@ -39,6 +39,7 @@ mod outcomes;
 mod policy_tests;
 mod process_authorization;
 mod process_catalog;
+mod profile_review;
 mod profiles;
 mod session;
 #[cfg(test)]
@@ -53,6 +54,12 @@ pub use execution_frames::UiOperationPublishAttempt;
 pub use filesystem_registry::{FilesystemRights, FilesystemRoot};
 pub use journal::AuditRunJournal;
 pub use process_catalog::ProcessRegistrationError;
+pub use profile_review::{
+    FilesystemPermissionReview, PermissionReview, ProfileReview, ProfileReviewCapacity,
+    ProfileReviewConflict, ProfileReviewError, ProfileReviewIdentity, ProfileReviewPack,
+    ProfileReviewPackLimit, ReviewedTarget, SecretPermissionReview, StoragePermissionReview,
+    TargetReviewStatus, UserOriginReview,
+};
 pub use session::{
     NativeInput, NativeInputCompletion, NativeInputEvent, NativeInputRouteResult,
     NativeInputRouteStatus, NativeInputRunHandle, NativeInputStatus, Session, UI_STREAM_MAX_BATCH,
