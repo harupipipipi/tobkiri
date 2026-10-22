@@ -226,6 +226,38 @@ class RuntimeRoutingTests(unittest.TestCase):
         for name in ("execution-profile.log", "execution-profile.receipt.json"):
             self.assertIn(name, retain)
 
+    def test_flow_bridge_observations_keep_original_cases_and_workspace_check(self) -> None:
+        cases = (
+            ("Core", "core", "provider_proxy", "core-flow-bridge",
+             "guest_run_flow_uses_actual_core_bridge_and_manifest_flow_typed_port"),
+            ("Wasm", "wasm", "port_proxy", "wasm-flow-bridge",
+             "guest_run_flow_uses_weak_bridge_and_real_flow_engine_typed_port"),
+            ("failed", "wasm", "port_proxy", "failed-flow-bridge",
+             "flow_step_failure_keeps_original_unavailable_port_outcome"),
+        )
+        retain = step(self.native, "Retain actual runtime test output")
+        self.assertIn("if: always()", retain)
+        for label, package, target, log, case in cases:
+            with self.subTest(case=case):
+                replay = step(self.native, f"Observe original {label} Flow bridge in isolation")
+                for required in (
+                    "issue_1520_ci.py cargo-test", "--expected-passed 1 --",
+                    f"cargo test --locked -p tobkiri-{package} --test {target}",
+                    case, "-- --exact --nocapture --test-threads=1",
+                    f'--log "$RUNNER_TEMP/{log}.log"',
+                ):
+                    self.assertIn(required, replay)
+                self.assertNotIn("--ignored", replay)
+                self.assertIn("!cancelled()", replay)
+                for prerequisite in ("native_platform", "rust_toolchain"):
+                    self.assertIn(f"steps.{prerequisite}.outcome == 'success'", replay)
+                self.assertNotIn("workspace", replay)
+                for name in (f"{log}.log", f"{log}.receipt.json"):
+                    self.assertIn(name, retain)
+        workspace = step(self.native, "Execute complete Rust workspace on the supported platform")
+        self.assertIn("cargo test --workspace --locked --no-fail-fast", workspace)
+        self.assertNotIn("--test-threads", workspace)
+
     def test_replay_survives_other_failures_but_requires_prerequisites(self) -> None:
         replay = step(
             self.native, "Replay the original 91 cases through actual Rust Core")

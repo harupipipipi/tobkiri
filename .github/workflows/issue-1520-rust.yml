@@ -189,6 +189,30 @@ jobs:
           --log "$RUNNER_TEMP/execution-profile.log" --expected-passed 1 --
           cargo test --locked -p tobkiri-e2e --test execution_profile
           current_profile_uses_two_actual_sessions_and_inter_pack_destination_frames -- --exact
+      - name: Observe original Core Flow bridge in isolation
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/core-flow-bridge.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-core --test provider_proxy
+          guest_run_flow_uses_actual_core_bridge_and_manifest_flow_typed_port
+          -- --exact --nocapture --test-threads=1
+      - name: Observe original Wasm Flow bridge in isolation
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/wasm-flow-bridge.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-wasm --test port_proxy
+          guest_run_flow_uses_weak_bridge_and_real_flow_engine_typed_port
+          -- --exact --nocapture --test-threads=1
+      - name: Observe original failed Flow bridge in isolation
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/failed-flow-bridge.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-wasm --test port_proxy
+          flow_step_failure_keeps_original_unavailable_port_outcome
+          -- --exact --nocapture --test-threads=1
       - name: Strict workspace lint
         if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
         run: cargo clippy --workspace --all-targets --locked --no-deps -- -D warnings
@@ -359,6 +383,12 @@ jobs:
             ${{ runner.temp }}/supported-workspace.receipt.json
             ${{ runner.temp }}/execution-profile.log
             ${{ runner.temp }}/execution-profile.receipt.json
+            ${{ runner.temp }}/core-flow-bridge.log
+            ${{ runner.temp }}/core-flow-bridge.receipt.json
+            ${{ runner.temp }}/wasm-flow-bridge.log
+            ${{ runner.temp }}/wasm-flow-bridge.receipt.json
+            ${{ runner.temp }}/failed-flow-bridge.log
+            ${{ runner.temp }}/failed-flow-bridge.receipt.json
           if-no-files-found: warn
 
   official-python-parity:

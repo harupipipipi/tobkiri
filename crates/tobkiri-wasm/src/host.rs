@@ -486,7 +486,8 @@ impl tobkiri_flow::RunTaskCompletion for NativeCompletion {
         if let Some(result) = &*cached {
             return result.clone();
         }
-        let mut unknown = self.own.wait_joined().await.is_err();
+        let own_error = self.own.wait_joined().await.err();
+        let mut child_unknown = false;
         let length = {
             let mut links = self
                 .children
@@ -506,11 +507,11 @@ impl tobkiri_flow::RunTaskCompletion for NativeCompletion {
                 .await
                 .is_err()
             {
-                unknown = true;
+                child_unknown = true;
             }
         }
-        unknown |= self.unknown.load(Ordering::Acquire);
-        let result = if unknown {
+        let marked_unknown = self.unknown.load(Ordering::Acquire);
+        let result = if own_error.is_some() || child_unknown || marked_unknown {
             Err(StepError::new(
                 "unavailable",
                 "native task or descendant physical completion remains unknown",
@@ -519,6 +520,17 @@ impl tobkiri_flow::RunTaskCompletion for NativeCompletion {
             Ok(())
         };
         *cached = Some(result.clone());
+        drop(cached);
+        // Fixed native metadata only, after releasing the result guard. Never
+        // print a guest error, identity, payload or credential. Release builds
+        // keep the existing error and emit no diagnostic output.
+        #[cfg(debug_assertions)]
+        if result.is_err() {
+            eprintln!(
+                "NATIVE_TASK_COMPLETION_UNKNOWN own={own_error:?} child_unknown={child_unknown} marked_unknown={marked_unknown} cleanup={}",
+                self.paired_body.is_some()
+            );
+        }
         result
     }
 }

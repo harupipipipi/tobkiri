@@ -846,6 +846,8 @@ async fn release_stream(host: &PackHost, entry: &crate::HandleEntry) -> Result<S
                 // original request after the grace bound so cleanup cannot wait
                 // indefinitely for its own producer.
                 entry.owner.cancel().cancel();
+                #[cfg(debug_assertions)]
+                eprintln!("CORE_STREAM_CLEANUP_UNKNOWN stage=original-grace");
                 bail!("core stream cleanup exceeded its cancellation grace")
             }
         };

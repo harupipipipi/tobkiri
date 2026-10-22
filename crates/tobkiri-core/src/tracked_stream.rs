@@ -627,6 +627,16 @@ async fn supervise_native_cleanup(state: Arc<NativeCleanupState>) -> RunTaskPhys
     };
     drop(terminal_slot);
     let physical_proved = physical.is_ok();
+    // Only fixed booleans from the retained native receipts, outside source,
+    // terminal and receipt guards. Business text is not diagnostic metadata.
+    #[cfg(debug_assertions)]
+    if !physical_proved || !handed_off {
+        eprintln!(
+            "FLOW_CLEANUP_UNKNOWN physical_proved={physical_proved} terminal_handoff={handed_off} business_failed={} audit_failed={}",
+            cleanup.is_err(),
+            delivery_error.is_some()
+        );
+    }
     *state
         .receipt
         .lock()
