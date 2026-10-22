@@ -640,6 +640,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobkiri-pack-provider-registry-rust"
+version = "0.1.0"
+dependencies = [
+ "ordered-python-compat",
+ "tobkiri-pack-provider-model-access-rust",
+]
+
+[[package]]
 name = "tobkiri-pack-terminal-input"
 version = "0.1.0"
 dependencies = [

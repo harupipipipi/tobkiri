@@ -8,6 +8,17 @@ mod python_url;
 use failure::{SourceFailure, SourceResult};
 use ordered_python_compat::{CodecError, PyValue, dumps, loads, pytruthy};
 
+/// Pure source helpers shared with the additive Registry translation.
+/// This module supplies no component, storage, credentials or authority.
+pub mod registry_support {
+    pub use crate::failure::{SourceFailure, SourceResult, contains, get, mapping, type_name};
+    pub use crate::model_access::{
+        effective as effective_model_access, identifier, normalize as normalize_model_access,
+    };
+    pub use crate::python_url::{Parts as UrlParts, split as split_url};
+}
+
+#[cfg(feature = "component")]
 wit_bindgen::generate!({
     path: ["../../crates/tobkiri-wit/wit/core/core.wit", "wit"],
     world: "local:provider-model-access-rust/pack@1.0.0",
@@ -43,6 +54,7 @@ impl BoundaryFailure {
             Self::Limit => "provider compiler observation resource limit exceeded",
         }
     }
+    #[cfg(feature = "component")]
     fn into_wit(self) -> tobkiri::core::types::Error {
         use tobkiri::core::types::{Error, ErrorCode};
         Error {
@@ -222,14 +234,18 @@ fn python_dict(value: &PyValue) -> SourceResult<(Vec<(String, PyValue)>, bool)> 
     Ok((result, unrepresented_key))
 }
 
+#[cfg(feature = "component")]
 const RUNTIME_INFO: &str = "{\"implementation\":\"rust\",\"candidate\":\"local.provider-model-access-rust\",\"source_owner\":\"tobkiri_protocol.provider_compiler\",\"protocol\":\"ordered-finite-json-v2\",\"promotion\":\"not-promoted\"}";
+#[cfg(feature = "component")]
 struct Pack;
+#[cfg(feature = "component")]
 impl exports::tobkiri::core::lifecycle::Guest for Pack {
     fn init(_config: String) -> Result<(), tobkiri::core::types::Error> {
         Ok(())
     }
     fn shutdown() {}
 }
+#[cfg(feature = "component")]
 impl exports::local::provider_model_access_rust::compiler::Guest for Pack {
     fn runtime_info() -> String {
         RUNTIME_INFO.into()
@@ -238,5 +254,5 @@ impl exports::local::provider_model_access_rust::compiler::Guest for Pack {
         invoke(&operation, &payload).map_err(BoundaryFailure::into_wit)
     }
 }
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "component"))]
 export!(Pack);

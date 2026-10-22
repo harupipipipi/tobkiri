@@ -1,0 +1,15 @@
+[package]
+name = "tobkiri-pack-provider-registry-rust"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "MIT"
+
+# Additive pure translation only. Core integration belongs to the caller.
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+ordered-python-compat = { path = "../ordered-python-compat" }
+provider_model_access = { package = "tobkiri-pack-provider-model-access-rust", path = "../local.provider-model-access-rust", default-features = false }
+

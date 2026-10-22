@@ -4,6 +4,7 @@ members = [
   "guest-sdk",
   "ordered-python-compat",
   "local.provider-model-access-rust",
+  "local.provider-registry-rust",
   "local.ai-usage-cost-rust",
   "local.ai-stream-normalizer-rust",
   "local.ai-gateway-finalizer-rust",

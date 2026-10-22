@@ -1,0 +1,215 @@
+{
+  "schema": "tobkiri.provider-registry-pure-translation-checkpoint.v1",
+  "date": "2026-10-22",
+  "production_activated": false,
+  "scope": "Pure decoded sequential ProviderRegistry/Host translation; no Core/SQL/credential/GUI route or full original-source comparison for Registry.",
+  "native_registry_unit_tests": 26,
+  "compiler_native_finite_comparisons": 79,
+  "compiler_actual_core_finite_comparisons": 79,
+  "compiler_source_only_nan_probe_replayed": false,
+  "compiler_component": {
+    "bytes": 359325,
+    "sha256": "52dedfd3ec11de12d0a2015748376359b0c9f2fbbf92908cb61bb1d7a082339e",
+    "build_receipt_sha256": "2b2bce23f8eaea246a93f109cacd6eb0ab48d02654323f1fa93cce546a3f25ab"
+  },
+  "source_files": [
+    {
+      "path": "packs/Cargo.toml",
+      "sha256": "de6f85f7187eed3fe0ffbb7c8f2af9edd16b6f2dd5b8d5d9948a5b3cf38833b1"
+    },
+    {
+      "path": "packs/Cargo.lock",
+      "sha256": "df935935604c1c0ae753c9486508b951e322c4d6cfb8eb460f6aab91f100977c"
+    },
+    {
+      "path": "packs/local.provider-model-access-rust/Cargo.toml",
+      "sha256": "a5e8dc4c81fbc536babfd5fcbe7759a7cb5886974b357739ece33b3bfa36b11e"
+    },
+    {
+      "path": "packs/local.provider-model-access-rust/src/lib.rs",
+      "sha256": "3a1cb46412ab21ebf6dbcec75016ac8e491f83460873bac713bd12e3a0b2962c"
+    },
+    {
+      "path": "packs/local.provider-registry-rust/Cargo.toml",
+      "sha256": "7edc010874536bf314573133a7cbdca1bf27827f9045ca56efbc5fabe96825f3"
+    },
+    {
+      "path": "packs/local.provider-registry-rust/README.md",
+      "sha256": "fc3f9b6eebddcff32b469bb4756ded4a3fff74db05c7283d93f5ce67c99df8b7"
+    },
+    {
+      "path": "packs/local.provider-registry-rust/src/failure.rs",
+      "sha256": "76976b3ae5927e7935bec8daaf87edc7721a963a7f3007f38b2b7478d1c0aa7d"
+    },
+    {
+      "path": "packs/local.provider-registry-rust/src/host.rs",
+      "sha256": "4fa1b1a341e6be730d93ded55755ea398adeca384f0a83d593ef27512b8eaa74"
+    },
+    {
+      "path": "packs/local.provider-registry-rust/src/lib.rs",
+      "sha256": "6bcfddaf92cf49ffd3224a515f7f37c72194553a94650642f176202da450b7d1"
+    },
+    {
+      "path": "packs/local.provider-registry-rust/src/record.rs",
+      "sha256": "87de2b0a105f4da50209cbded405049437150e4bc374aef45f0b81867dd1cc16"
+    },
+    {
+      "path": "packs/local.provider-registry-rust/src/registry.rs",
+      "sha256": "4c40df4d846a761bb61190ce4c202c5039056b8d3bb3c04e94b1a4e1eb5cdde9"
+    },
+    {
+      "path": "packs/local.provider-registry-rust/src/state.rs",
+      "sha256": "33216ac766b925be8e19354840c303fc691e363c8291dc59cb3c79368442954d"
+    }
+  ],
+  "checks": [
+    {
+      "name": "provider-registry-pure-native-20261022-01",
+      "passed": true,
+      "command": [
+        "cargo",
+        "+1.94.0",
+        "test",
+        "--manifest-path",
+        "packs/Cargo.toml",
+        "--offline",
+        "--locked",
+        "-j1",
+        "-p",
+        "tobkiri-pack-provider-registry-rust"
+      ],
+      "receipt_sha256": "356f19b1298ea954073a0e2b7aad77f9b3e964da250260616fd706828256a61d",
+      "log_sha256": "3115fa96b141d8d65e4bd9c19bd9cf3242fc437e550f2500ce240ae5da1e0c5e",
+      "seconds": 23.16,
+      "source_head": "042f2bf493e6303a338fccfeb6428d1dd5de2b87",
+      "source_diff_sha256": "dc56ad1497ae3c8f19d81dd566e9166e217e6ab165ee5ddcda6fa46dfd4f3e6b"
+    },
+    {
+      "name": "provider-registry-pure-strict-20261022-01",
+      "passed": true,
+      "command": [
+        "cargo",
+        "+1.94.0",
+        "clippy",
+        "--manifest-path",
+        "packs/Cargo.toml",
+        "--offline",
+        "--locked",
+        "-j1",
+        "-p",
+        "tobkiri-pack-provider-registry-rust",
+        "-p",
+        "tobkiri-pack-provider-model-access-rust",
+        "--all-targets",
+        "--no-deps",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "receipt_sha256": "1e90e9017176726df81aff4f050dd97e841733808027c5c04c1039524f2c5da8",
+      "log_sha256": "79bfea246be2051c067f3b4399979d662151ad69b930c2ff700dd21cbd3746a1",
+      "seconds": 2.152,
+      "source_head": "042f2bf493e6303a338fccfeb6428d1dd5de2b87",
+      "source_diff_sha256": "dc56ad1497ae3c8f19d81dd566e9166e217e6ab165ee5ddcda6fa46dfd4f3e6b"
+    },
+    {
+      "name": "provider-model-access-feature-default-native-20261022-01",
+      "passed": true,
+      "command": [
+        "env",
+        "TOBKIRI_PROVIDER_MODEL_ACCESS_ORACLE_RECEIPT=/Users/haru/Desktop/puroguramukei/tobkiri-tatenaosi/.work/evidence/handoff-42dfc6e0-20261021/original-python-provider-model-access-02/observations.json",
+        "TOBKIRI_PROVIDER_MODEL_ACCESS_ORACLE_SHA256=b9102e0d0bd65238e5e3ec55540abc0a1d31c3cdc454aaa99d0b818da8377e7e",
+        "TOBKIRI_PROVIDER_MODEL_ACCESS_ACTUAL_DIR=/Users/haru/Desktop/puroguramukei/tobkiri-tatenaosi/.work/evidence/handoff-42dfc6e0-20261021/provider-model-access-feature-default-native-20261022-01",
+        "cargo",
+        "+1.94.0",
+        "test",
+        "--offline",
+        "--locked",
+        "-j1",
+        "--manifest-path",
+        "packs/Cargo.toml",
+        "-p",
+        "tobkiri-pack-provider-model-access-rust",
+        "--test",
+        "oracle_receipt",
+        "all_finite_original_observations_match_or_retain_exact_mismatches",
+        "--",
+        "--ignored",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "receipt_sha256": "0648cf63e4d1eef77448ee31a77115a9acc504918ea7e0298fa421af48e317ec",
+      "log_sha256": "354aa867fde5f23ba6f2768035927ae6ef40f799032124f000290e82f830ea6a",
+      "seconds": 4.196,
+      "source_head": "042f2bf493e6303a338fccfeb6428d1dd5de2b87",
+      "source_diff_sha256": "dc56ad1497ae3c8f19d81dd566e9166e217e6ab165ee5ddcda6fa46dfd4f3e6b"
+    },
+    {
+      "name": "provider-model-access-feature-default-wasip2-20261022-01",
+      "passed": true,
+      "command": [
+        "cargo",
+        "+1.94.0",
+        "build",
+        "--offline",
+        "--locked",
+        "-j1",
+        "--release",
+        "--target",
+        "wasm32-wasip2",
+        "--manifest-path",
+        "packs/Cargo.toml",
+        "-p",
+        "tobkiri-pack-provider-model-access-rust"
+      ],
+      "receipt_sha256": "2a9b87c234ed2f5e2fb91604439c9e432517b4a484bfa9f7c6e915a9de74e159",
+      "log_sha256": "1faae3ab6797bb3e25e4151314bb0597c084e8633ed07d060692d0672e2ed1e7",
+      "seconds": 3.139,
+      "source_head": "042f2bf493e6303a338fccfeb6428d1dd5de2b87",
+      "source_diff_sha256": "dc56ad1497ae3c8f19d81dd566e9166e217e6ab165ee5ddcda6fa46dfd4f3e6b"
+    },
+    {
+      "name": "provider-model-access-feature-default-core-20261022-01",
+      "passed": true,
+      "command": [
+        "env",
+        "TOBKIRI_PROVIDER_MODEL_ACCESS_COMPONENT=/Users/haru/Desktop/puroguramukei/tobkiri-tatenaosi/.work/evidence/handoff-42dfc6e0-20261021/provider-model-access-feature-default-stage-20261022-01/component.wasm",
+        "TOBKIRI_PROVIDER_MODEL_ACCESS_COMPONENT_SHA256=52dedfd3ec11de12d0a2015748376359b0c9f2fbbf92908cb61bb1d7a082339e",
+        "TOBKIRI_PROVIDER_MODEL_ACCESS_BUILD_RECEIPT=/Users/haru/Desktop/puroguramukei/tobkiri-tatenaosi/.work/evidence/handoff-42dfc6e0-20261021/provider-model-access-feature-default-stage-20261022-01/build-receipt.json",
+        "TOBKIRI_PROVIDER_MODEL_ACCESS_BUILD_RECEIPT_SHA256=2b2bce23f8eaea246a93f109cacd6eb0ab48d02654323f1fa93cce546a3f25ab",
+        "TOBKIRI_PROVIDER_MODEL_ACCESS_ORACLE_RECEIPT=/Users/haru/Desktop/puroguramukei/tobkiri-tatenaosi/.work/evidence/handoff-42dfc6e0-20261021/original-python-provider-model-access-02/observations.json",
+        "TOBKIRI_PROVIDER_MODEL_ACCESS_ORACLE_SHA256=b9102e0d0bd65238e5e3ec55540abc0a1d31c3cdc454aaa99d0b818da8377e7e",
+        "TOBKIRI_PROVIDER_MODEL_ACCESS_EVIDENCE_DIR=/Users/haru/Desktop/puroguramukei/tobkiri-tatenaosi/.work/evidence/handoff-42dfc6e0-20261021/provider-model-access-feature-default-core-20261022-01",
+        "cargo",
+        "+1.94.0",
+        "test",
+        "--offline",
+        "--locked",
+        "-j1",
+        "-p",
+        "tobkiri-e2e",
+        "--test",
+        "provider_model_access",
+        "all_finite_source_observations_cross_actual_core",
+        "--",
+        "--ignored",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "receipt_sha256": "e466021187e9429f197a3e786dda83f488711e9a3c72c75fc0409ae8c1aaf797",
+      "log_sha256": "719bd6bea702b0c7f16a57cb2b6ae23ca5c467270fd9ed600233aa8a12c75874",
+      "seconds": 18.311,
+      "source_head": "042f2bf493e6303a338fccfeb6428d1dd5de2b87",
+      "source_diff_sha256": "dc56ad1497ae3c8f19d81dd566e9166e217e6ab165ee5ddcda6fa46dfd4f3e6b"
+    }
+  ],
+  "remaining": [
+    "Registry native/Wasm source-receipt differential consumer",
+    "raw JSON errors and exact serialization/side effects",
+    "transaction locks and original contention semantics",
+    "actual Core profile/capture and authority binding",
+    "credentials/configuration and full GUI integration"
+  ]
+}
