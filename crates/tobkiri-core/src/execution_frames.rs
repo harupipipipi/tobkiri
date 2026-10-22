@@ -43,6 +43,10 @@ use tobkiri_wasm::{
     UiInvocation,
 };
 
+#[cfg(test)]
+#[path = "execution_frames_shutdown_tests.rs"]
+mod shutdown_tests;
+
 /// Shared authentication state has no Gate, invoker or active frame edge.
 /// Gate/PackHost may retain projections of this allocation without forming a
 /// Gate/host -> verifier/bridge -> frame/host ownership cycle.
@@ -701,6 +705,9 @@ impl CoreProviderFrame {
             live: lifecycle.live && !lifecycle.acknowledged,
             closing: auth.closing.load(Ordering::Acquire) || global.is_some() || retired,
             requested,
+            shutdown_scope: (global == Some(StreamCloseReason::Shutdown)
+                && requested == Some(StreamCloseReason::Shutdown))
+            .then(|| auth.identity.clone()),
         })
         .map_err(CoreCleanupLifecycleError::Uncertain)
     }
@@ -905,9 +912,19 @@ pub(crate) struct CoreProviderAuthority {
 }
 impl CoreProviderAuthority {
     pub(crate) fn close(&self) {
+        // Publish the original global intent independently of optional
+        // snapshot funding/try-locks, and before any cancellation wake. This
+        // is the same admission guard already required by final retirement.
+        if let Ok(_admission) = self.auth.admission.lock() {
+            if let Ok(mut request) = self.auth.cleanup_request.lock() {
+                *request = Some(StreamCloseReason::Shutdown);
+            }
+            self.auth.closing.store(true, Ordering::Release);
+        } else {
+            self.auth.closing.store(true, Ordering::Release);
+        }
         let snapshot = (|| {
             let _admission = self.auth.admission.try_lock().ok()?;
-            *self.auth.cleanup_request.try_lock().ok()? = Some(StreamCloseReason::Shutdown);
             let frames = self.auth.live_provider_frames.try_lock().ok()?;
             let operations = self.auth.cleanup_operations.try_lock().ok()?;
             let bytes = frames

@@ -1008,6 +1008,20 @@ async fn stream_uses_own_entry_mediator_budget_across_multiple_pulls() {
 // private-field access inside this existing cfg(test) child module; these
 // helpers create no authority, replacement owner or production API.
 impl Session {
+    pub(crate) async fn stream_physical_completion_for_test(
+        &self,
+        handle: u64,
+    ) -> tobkiri_flow::StreamPhysicalCompletion {
+        let entry = self.streams.lock().unwrap().get(&handle).unwrap().clone();
+        let source = entry.state.lock().await;
+        source
+            .as_ref()
+            .unwrap()
+            .stream
+            .physical_completion()
+            .expect("actual component source physical receipt")
+    }
+
     pub(crate) fn operation_intent_factory_for_test(&self) -> Arc<ExecutionFactory> {
         self.execution_factory
             .as_ref()

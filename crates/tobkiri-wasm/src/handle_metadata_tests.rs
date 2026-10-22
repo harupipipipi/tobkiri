@@ -2,7 +2,8 @@
 //! delivery. Core's source tests exercise Grant/lease and acknowledged outcome.
 use super::*;
 use crate::handle_metadata::{
-    HandleMetadata, HandleMetadataRegistry, QueuedMetadata, RetainedMetadata,
+    FailureCategory, FailureStage, HandleMetadata, HandleMetadataRegistry, QueuedMetadata,
+    RetainedMetadata, metadata_failure,
 };
 use std::{
     sync::{
@@ -236,10 +237,10 @@ async fn metadata_failure_and_lost_join_cannot_report_delivery_success() {
         .run(async { Err(anyhow::Error::new(tobkiri_gate::GateError::Unavailable)) })
         .await
         .unwrap_err();
-    assert!(matches!(
-        failure.downcast_ref::<tobkiri_gate::GateError>(),
-        Some(tobkiri_gate::GateError::Unavailable)
-    ));
+    let source = metadata_failure(&failure).expect("same typed Gate failure receipt");
+    assert_eq!(source.category, FailureCategory::Unavailable);
+    assert_eq!(source._stage, FailureStage::Legacy);
+    assert_eq!(source.audit_code(), "denied");
     assert!(registry.close().await.is_err());
     assert_eq!(control.usage().count(ControlKind::Task), 1);
     // Ordinary returned Err preserves the existing explicit repair behavior.
@@ -897,9 +898,9 @@ async fn earlier_observer_cannot_join_a_later_replacement_attempt() {
         let metadata = registry.admit(&control).unwrap().register();
         let state = Arc::new(RetryDeliveryState::default());
         let dropped = Arc::new(AtomicUsize::new(0));
-        // Model a waiter paused after capturing the admission's original
-        // failure stamp, before acquiring the state guard.
-        let earlier_observation = 0;
+        // Pin actual participation before the first producer. Advancing the
+        // inventory generation cannot substitute its later Result.
+        let earlier_observation = metadata.pin_generation();
         assert!(
             metadata
                 .run_delivery(retry_delivery(&metadata, &state, 1, &dropped))
@@ -917,15 +918,23 @@ async fn earlier_observer_cannot_join_a_later_replacement_attempt() {
         let retry_metadata = metadata.clone();
         let retry = tokio::spawn(async move { retry_metadata.wait().await });
         blocking.entered().await;
-        let earlier = metadata.wait_after(earlier_observation);
-        tokio::pin!(earlier);
-        // The retry holds the state guard across the actual Join. Cancelling
-        // this stale observer does not take it; after completion it must still
-        // return the older failure, regardless of the retry's result.
-        assert!(futures_util::poll!(&mut earlier).is_pending());
+        let earlier = metadata
+            .wait_pinned(earlier_observation.clone())
+            .await
+            .unwrap_err();
+        assert_eq!(
+            metadata_failure(&earlier).unwrap().category,
+            FailureCategory::Persistence
+        );
+        assert!(
+            earlier
+                .to_string()
+                .contains("original terminal delivery failed")
+        );
         blocking.release();
         assert_eq!(retry.await.unwrap().is_ok(), replacement_succeeds);
-        assert!(earlier.await.is_err());
+        let still_earlier = metadata.wait_pinned(earlier_observation).await.unwrap_err();
+        assert_eq!(still_earlier.to_string(), earlier.to_string());
         assert_eq!(state.attempts.load(Ordering::Acquire), 2);
         if replacement_succeeds {
             registry.close().await.unwrap();
@@ -1012,4 +1021,463 @@ async fn repeated_finish_stays_successful_after_admission_prunes_the_retired_sid
     assert_eq!(state.winner.load(Ordering::Acquire), 1);
     assert_eq!(dropped.load(Ordering::Acquire), 2);
     assert_eq!(control.usage().count(ControlKind::Task), 0);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn standing_reaper_and_caller_share_the_original_failure_and_old_result_survives_repair() {
+    let control = CoreControl::new(CoreControlLimits {
+        max_tasks: 2,
+        ..Default::default()
+    })
+    .unwrap();
+    let registry = HandleMetadataRegistry::new(&control).unwrap();
+    let admission = registry.admit(&control).unwrap();
+    admission
+        .prepare_source_cleanup(&control, 16 * 1024)
+        .unwrap();
+    let metadata = admission.register();
+    let state = Arc::new(RetryDeliveryState::default());
+    let dropped = Arc::new(AtomicUsize::new(0));
+    let blocked = Arc::new(BlockingMetadata::default());
+    let _release = ReleaseOnDrop(blocked.clone());
+    *state.blocking.lock().unwrap() = Some(blocked.clone());
+    let old = metadata.pin_generation();
+    let standing_metadata = metadata.clone();
+    let standing = tokio::spawn(async move { standing_metadata.observe().await });
+    tokio::task::yield_now().await;
+    // Same publication/standing observer wiring as reap_captured_source.
+    metadata
+        .queue_delivery(retry_delivery(&metadata, &state, 1, &dropped))
+        .unwrap();
+    blocked.entered().await;
+    let caller_metadata = metadata.clone();
+    let caller_generation = old.clone();
+    let caller = tokio::spawn(async move { caller_metadata.wait_pinned(caller_generation).await });
+    tokio::task::yield_now().await;
+    blocked.release();
+    let reaper_failure = standing.await.unwrap().unwrap_err();
+    let caller_failure = caller.await.unwrap().unwrap_err();
+    for error in [&reaper_failure, &caller_failure] {
+        let failure = metadata_failure(error).unwrap();
+        assert_eq!(failure.category, FailureCategory::Persistence);
+        assert_eq!(failure.audit_code(), "denied");
+        assert!(
+            failure
+                .message()
+                .contains("original terminal delivery failed")
+        );
+    }
+    assert_eq!(reaper_failure.to_string(), caller_failure.to_string());
+    assert_eq!(state.attempts.load(Ordering::Acquire), 1);
+    // Neither notification nor the reaper's subsequent finish requests retry.
+    assert!(metadata.observe().await.is_err());
+    assert!(
+        metadata
+            .run_delivery_mode(retry_delivery(&metadata, &state, 2, &dropped), false)
+            .await
+            .is_err()
+    );
+    assert_eq!(state.attempts.load(Ordering::Acquire), 1);
+    let cleanup_calls = Arc::new(AtomicUsize::new(0));
+    let physical = cleanup_calls.clone();
+    metadata
+        .spawn_source_cleanup(async move {
+            physical.fetch_add(1, Ordering::AcqRel);
+            Ok(())
+        })
+        .unwrap();
+    state.mode.store(1, Ordering::Release);
+    state.outbox_repaired.store(true, Ordering::Release);
+    state.acknowledged.store(true, Ordering::Release);
+    registry.close().await.unwrap();
+    assert_eq!(state.attempts.load(Ordering::Acquire), 2);
+    assert_eq!(state.winner.load(Ordering::Acquire), 1);
+    assert_eq!(cleanup_calls.load(Ordering::Acquire), 1);
+    assert_eq!(control.usage().count(ControlKind::Task), 0);
+    let old_failure = metadata.wait_pinned(old).await.unwrap_err();
+    assert_eq!(old_failure.to_string(), caller_failure.to_string());
+    assert_eq!(
+        metadata_failure(&old_failure).unwrap().category,
+        FailureCategory::Persistence
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn two_held_result_generations_defer_retry_and_release_the_original_frame_last() {
+    let control = CoreControl::new(CoreControlLimits {
+        max_tasks: 1,
+        ..Default::default()
+    })
+    .unwrap();
+    let registry = HandleMetadataRegistry::new(&control).unwrap();
+    let metadata = registry.admit(&control).unwrap().register();
+    let weak_metadata = Arc::downgrade(&metadata);
+    let state = Arc::new(RetryDeliveryState::default());
+    let dropped = Arc::new(AtomicUsize::new(0));
+    let first = metadata
+        .run_delivery(retry_delivery(&metadata, &state, 1, &dropped))
+        .await
+        .unwrap_err();
+    let second = metadata.wait().await.unwrap_err();
+    let deferred = metadata.wait().await.unwrap_err();
+    let limit = deferred
+        .downcast_ref::<StepError>()
+        .expect("separate retry admission limit");
+    assert_eq!(limit.code, "limit-exceeded");
+    assert_eq!(state.attempts.load(Ordering::Acquire), 2);
+    assert_eq!(
+        metadata_failure(&first).unwrap().category,
+        FailureCategory::Persistence
+    );
+    assert_eq!(
+        metadata_failure(&second).unwrap().category,
+        FailureCategory::Persistence
+    );
+    drop(first);
+    state.mode.store(1, Ordering::Release);
+    state.outbox_repaired.store(true, Ordering::Release);
+    state.acknowledged.store(true, Ordering::Release);
+    registry.close().await.unwrap();
+    assert_eq!(state.attempts.load(Ordering::Acquire), 3);
+    assert_eq!(control.usage().count(ControlKind::Task), 0);
+    drop(metadata);
+    drop(registry);
+    assert!(weak_metadata.upgrade().is_none());
+    // The old immutable error has no metadata/Host backlink, but keeps the
+    // SAME prepaid Frame receipt while its bounded bytes remain observable.
+    assert_eq!(control.usage().count(ControlKind::Frame), 1);
+    assert!(
+        second
+            .to_string()
+            .contains("original terminal delivery failed")
+    );
+    drop(second);
+    assert_eq!(control.usage().count(ControlKind::Frame), 0);
+    assert_eq!(control.usage().bytes, 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn replacement_is_atomic_for_a_concurrent_observer_after_closed_cell_retirement() {
+    let control = CoreControl::default();
+    let registry = HandleMetadataRegistry::new(&control).unwrap();
+    let metadata = registry.admit(&control).unwrap().register();
+    let state = Arc::new(RetryDeliveryState::default());
+    let dropped = Arc::new(AtomicUsize::new(0));
+    let first = metadata
+        .run_delivery(retry_delivery(&metadata, &state, 1, &dropped))
+        .await
+        .unwrap_err();
+    // Allow the completed current cell itself to be reused. The pause is
+    // after its Arc AND inventory Weak have been retired, before allocation.
+    drop(first);
+    let transition = Arc::new(BlockingMetadata::default());
+    let _release = ReleaseOnDrop(transition.clone());
+    let replacing = metadata.clone();
+    let paused = transition.clone();
+    let replacement = tokio::task::spawn_blocking(move || {
+        replacing.pin_retry_after_retirement(|| paused.run().unwrap())
+    });
+    transition.entered().await;
+    assert!(
+        !metadata.retirement_guards_available(),
+        "the replacement state guard must cover retirement through publication"
+    );
+    let observing = metadata.clone();
+    let entered = Arc::new(std::sync::Barrier::new(2));
+    let observer_entered = entered.clone();
+    let (sent, mut received) = tokio::sync::oneshot::channel();
+    let observer = tokio::task::spawn_blocking(move || {
+        observer_entered.wait();
+        let attempt = observing.pin_generation();
+        sent.send(attempt).unwrap();
+    });
+    entered.wait();
+    // The observer must wait on the state guard; it cannot report a false
+    // capacity error from a transient empty current slot.
+    assert!(matches!(
+        received.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+    ));
+    transition.release();
+    let replacement = replacement.await.unwrap().unwrap();
+    let observed = received.await.unwrap();
+    observer.await.unwrap();
+    assert!(Arc::ptr_eq(&replacement, &observed));
+    state.mode.store(1, Ordering::Release);
+    state.outbox_repaired.store(true, Ordering::Release);
+    state.acknowledged.store(true, Ordering::Release);
+    metadata.wait_pinned(observed).await.unwrap();
+    assert_eq!(state.attempts.load(Ordering::Acquire), 2);
+    assert_eq!(control.usage().count(ControlKind::Task), 0);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn concurrent_inventory_drop_retires_final_custody_after_the_state_guard() {
+    struct GuardedDelivery {
+        metadata: Arc<HandleMetadata>,
+        dropped: Arc<AtomicBool>,
+        guards_free: Arc<AtomicBool>,
+    }
+    impl GuardedDelivery {
+        async fn fail() -> Result<()> {
+            Err(tobkiri_gate::GateError::Unavailable.into())
+        }
+    }
+    impl Drop for GuardedDelivery {
+        fn drop(&mut self) {
+            self.guards_free.store(
+                self.metadata.retirement_guards_available(),
+                Ordering::Release,
+            );
+            self.dropped.store(true, Ordering::Release);
+        }
+    }
+    impl RetainedMetadata for GuardedDelivery {
+        fn future(self: Arc<Self>) -> QueuedMetadata {
+            Box::pin(Self::fail())
+        }
+        fn future_bytes(&self) -> usize {
+            fn size<F: std::future::Future>(_: fn() -> F) -> usize {
+                std::mem::size_of::<F>()
+            }
+            size(Self::fail)
+        }
+        fn owned_heap_bytes(&self) -> usize {
+            0
+        }
+    }
+    let control = CoreControl::default();
+    let registry = HandleMetadataRegistry::new(&control).unwrap();
+    let metadata = registry.admit(&control).unwrap().register();
+    let dropped = Arc::new(AtomicBool::new(false));
+    let guards_free = Arc::new(AtomicBool::new(false));
+    assert!(
+        metadata
+            .run_delivery(GuardedDelivery {
+                metadata: metadata.clone(),
+                dropped: dropped.clone(),
+                guards_free: guards_free.clone(),
+            })
+            .await
+            .is_err()
+    );
+    let attempt = metadata
+        .pin_retry_after_retirement(|| {
+            drop(registry);
+            assert!(!dropped.load(Ordering::Acquire));
+            assert!(!metadata.retirement_guards_available());
+        })
+        .unwrap();
+    assert!(dropped.load(Ordering::Acquire));
+    assert!(guards_free.load(Ordering::Acquire));
+    drop(attempt);
+    drop(metadata);
+    assert_eq!(control.usage().bytes, 0);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn ordinary_invariant_and_oversized_step_errors_preserve_retry_and_explicit_projection() {
+    let control = CoreControl::default();
+    let invariant = HandleMetadata::prepare(&control).unwrap();
+    let error = invariant
+        .run(async {
+            Err(anyhow::Error::new(
+                crate::handle_metadata::DeliveryError::Invariant("terminal proposal missing"),
+            ))
+        })
+        .await
+        .unwrap_err();
+    let failure = metadata_failure(&error).unwrap();
+    assert_eq!(failure.category, FailureCategory::Invariant);
+    assert_eq!(failure.step_error().code, "component");
+    assert_eq!(failure.audit_code(), "internal");
+    assert_eq!(failure.wit_code(), "unavailable");
+    assert_eq!(failure.message(), "terminal proposal missing");
+    invariant.run(async { Ok(()) }).await.unwrap();
+    // The old immutable error is still its first ordinary failure.
+    assert_eq!(
+        metadata_failure(&error).unwrap().category,
+        FailureCategory::Invariant
+    );
+
+    let oversized = HandleMetadata::prepare(&control).unwrap();
+    let code = "界".repeat(40);
+    let code_length = code.len();
+    let error = oversized
+        .run(async move { Err(StepError::new(code, "small original message").into()) })
+        .await
+        .unwrap_err();
+    let failure = metadata_failure(&error).unwrap();
+    assert_eq!(failure.category, FailureCategory::Step);
+    assert_eq!(failure._code_original_length, Some(code_length));
+    assert!(failure._code_truncated);
+    assert!(failure.truncated());
+    assert_eq!(failure.step_error().code, "component");
+    assert_eq!(failure.audit_code(), "internal");
+    assert_eq!(failure.wit_code(), "internal");
+    assert_eq!(failure.message(), "small original message [truncated]");
+    oversized.run(async { Ok(()) }).await.unwrap();
+    assert!(metadata_failure(&error).unwrap()._code_truncated);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn omitted_audit_sibling_causes_are_explicit_when_the_message_bound_is_reached() {
+    let control = CoreControl::default();
+    let metadata = HandleMetadata::prepare(&control).unwrap();
+    let error = metadata
+        .run(async {
+            Err(tobkiri_gate::GateError::AuditFailure {
+                denial: Box::new(tobkiri_gate::GateError::Persistence("x".repeat(1024))),
+                audit: Box::new(tobkiri_gate::GateError::Cancelled),
+            }
+            .into())
+        })
+        .await
+        .unwrap_err();
+    let failure = metadata_failure(&error).unwrap();
+    assert_eq!(failure.category, FailureCategory::AuditFailure);
+    assert_eq!(failure.cause_count(), 2);
+    assert!(failure._causes_truncated);
+    assert!(failure.truncated());
+    assert!(failure.message().len() <= 512);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn native_boundary_projection_keeps_small_gate_and_frame_error_classification() {
+    let control = CoreControl::default();
+    let gate = HandleMetadata::prepare(&control).unwrap();
+    let error = gate
+        .run(async {
+            Err(anyhow::Error::new(
+                crate::handle_metadata::DeliveryError::Gate(
+                    FailureStage::RecordOutcome,
+                    tobkiri_gate::GateError::Persistence("small physical sink failure".into()),
+                ),
+            ))
+        })
+        .await
+        .unwrap_err();
+    let failure = metadata_failure(&error).unwrap();
+    assert_eq!(failure._stage, FailureStage::RecordOutcome);
+    assert_eq!(failure.category, FailureCategory::Persistence);
+    assert_eq!(failure.wit_code(), "denied");
+    assert!(!failure.truncated());
+    assert_eq!(
+        failure.message(),
+        "authority persistence unavailable: small physical sink failure"
+    );
+    assert_eq!(crate::host::step_audit_code(&error), "denied");
+    let projected = crate::host::step_error(error);
+    assert_eq!(projected.code, "denied");
+    assert_eq!(
+        projected.message,
+        "authority persistence unavailable: small physical sink failure"
+    );
+    let frame = HandleMetadata::prepare(&control).unwrap();
+    let error = frame
+        .run(async {
+            Err(anyhow::Error::new(
+                crate::handle_metadata::DeliveryError::Frame(StepError::new(
+                    "allocation-unavailable",
+                    "original frame ACK capacity failure",
+                )),
+            ))
+        })
+        .await
+        .unwrap_err();
+    let failure = metadata_failure(&error).unwrap();
+    assert_eq!(failure._stage, FailureStage::FrameAcknowledged);
+    assert_eq!(failure.category, FailureCategory::Step);
+    assert_eq!(failure.wit_code(), "internal");
+    assert_eq!(crate::host::step_audit_code(&error), "internal");
+    let projected = crate::host::step_error(error);
+    assert_eq!(projected.code, "allocation-unavailable");
+    assert_eq!(projected.message, "original frame ACK capacity failure");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn retained_diagnostic_bounds_utf8_and_cause_depth_without_formatting_unknown_errors() {
+    let control = CoreControl::default();
+    let metadata = HandleMetadata::prepare(&control).unwrap();
+    let source = "界".repeat(600);
+    let original_length = source.len();
+    let error = metadata
+        .run(async move {
+            Err(anyhow::Error::new(
+                crate::handle_metadata::DeliveryError::Gate(
+                    FailureStage::SettleDeadline,
+                    tobkiri_gate::GateError::Persistence(source),
+                ),
+            ))
+        })
+        .await
+        .unwrap_err();
+    let failure = metadata_failure(&error).unwrap();
+    assert_eq!(failure._stage, FailureStage::SettleDeadline);
+    assert_eq!(failure._original_length, Some(original_length));
+    assert!(failure.truncated());
+    assert!(failure.message().len() <= 512);
+    assert!(failure.message().ends_with(" [truncated]"));
+    assert!(failure.message().is_char_boundary(failure.message().len()));
+    let deep = HandleMetadata::prepare(&control).unwrap();
+    let mut source = tobkiri_gate::GateError::Persistence("leaf".into());
+    for _ in 0..12 {
+        source = tobkiri_gate::GateError::AuditFailure {
+            denial: Box::new(source),
+            audit: Box::new(tobkiri_gate::GateError::Cancelled),
+        };
+    }
+    let error = deep
+        .run(async move {
+            Err(anyhow::Error::new(
+                crate::handle_metadata::DeliveryError::Gate(FailureStage::RecordOutcome, source),
+            ))
+        })
+        .await
+        .unwrap_err();
+    let failure = metadata_failure(&error).unwrap();
+    assert_eq!(failure.category, FailureCategory::AuditFailure);
+    assert_eq!(failure._original_length, None);
+    assert!(failure._causes_truncated);
+    assert!(failure.truncated());
+    assert!(failure.cause_count() <= 7);
+    #[derive(Debug)]
+    struct UnknownDisplay;
+    impl std::fmt::Display for UnknownDisplay {
+        fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            panic!("unknown Display must never be called")
+        }
+    }
+    impl std::error::Error for UnknownDisplay {}
+    let unknown = HandleMetadata::prepare(&control).unwrap();
+    let error = unknown
+        .run(async { Err(anyhow::Error::new(UnknownDisplay)) })
+        .await
+        .unwrap_err();
+    assert_eq!(
+        metadata_failure(&error).unwrap().category,
+        FailureCategory::Unknown
+    );
+    assert_eq!(metadata_failure(&error).unwrap()._original_length, None);
+    let ran = Arc::new(AtomicUsize::new(0));
+    let retry_ran = ran.clone();
+    assert_eq!(crate::host::step_audit_code(&error), "internal");
+    assert_eq!(metadata_failure(&error).unwrap().wit_code(), "unavailable");
+    assert_eq!(
+        metadata_failure(&error).unwrap().step_error().code,
+        "component"
+    );
+    assert!(metadata_failure(&error).unwrap()._diagnostic_unavailable);
+    unknown
+        .run(async move {
+            retry_ran.fetch_add(1, Ordering::AcqRel);
+            Ok(())
+        })
+        .await
+        .unwrap();
+    assert_eq!(ran.load(Ordering::Acquire), 1);
+    assert_eq!(
+        metadata_failure(&error).unwrap().category,
+        FailureCategory::Unknown
+    );
 }

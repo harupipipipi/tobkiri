@@ -175,6 +175,8 @@ pub enum StreamCloseReason {
 /// Implementations select under their original authority/lifecycle guards and
 /// must release every guard before their caller wakes cancellation.
 pub trait StreamCloseControl: Send + Sync {
+    /// Accept the original close intent. Success acknowledges notification
+    /// only; it does not establish cause selection or physical completion.
     fn record_close(&self, reason: StreamCloseReason) -> Result<(), StepError>;
     /// Preserve an actual producer failure separately from cleanup uncertainty.
     /// Implementations may retain only the existing closed audit category.

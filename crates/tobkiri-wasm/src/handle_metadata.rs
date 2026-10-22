@@ -3,7 +3,7 @@
 use anyhow::{Context, Result, bail};
 use std::sync::{
     Arc, Mutex, OnceLock, Weak,
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicBool, Ordering},
 };
 use tobkiri_flow::StepError;
 use tobkiri_gate::{ControlKind, ControlReservation, CoreControl};
@@ -15,16 +15,429 @@ const MAX_REAPER_FUTURE: usize = 256 * 1024;
 pub(crate) type QueuedMetadata =
     std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'static>>;
 
-enum MetadataState {
-    Pending,
-    Running(tokio::task::JoinHandle<Result<()>>),
-    Finalizing,
-    Complete {
-        error: Option<anyhow::Error>,
-        failed: bool,
+const RESULT_CELLS: usize = 2;
+const DIAGNOSTIC_BYTES: usize = 512;
+const STEP_CODE_BYTES: usize = 64;
+const CAUSE_NODES: usize = 7;
+const CAUSE_DEPTH: usize = 3;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FailureStage {
+    RecordOutcome,
+    SettleDeadline,
+    ReadAcknowledged,
+    FrameAcknowledged,
+    Invariant,
+    Legacy,
+    Join,
+    Admission,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FailureCategory {
+    Denied,
+    ApprovalRequired,
+    Cancelled,
+    Deadline,
+    Invalid,
+    StaleEpoch,
+    Consumed,
+    Limit,
+    Persistence,
+    Integrity,
+    AuditFailure,
+    Unavailable,
+    Step,
+    Invariant,
+    Unknown,
+    JoinCancelled,
+    JoinPanicked,
+    SpawnUnknown,
+    PublicationRejected,
+}
+
+/// Inline UTF-8 prefix. The flag/marker distinguish bounded diagnostics from
+/// a complete original message. No arbitrary Display/source chain is formatted.
+#[derive(Debug)]
+struct Diagnostic<const N: usize> {
+    bytes: [u8; N],
+    len: usize,
+    truncated: bool,
+}
+impl<const N: usize> Diagnostic<N> {
+    fn new() -> Self {
+        Self {
+            bytes: [0; N],
+            len: 0,
+            truncated: false,
+        }
+    }
+    fn push(&mut self, value: &str) -> bool {
+        let remaining = N - self.len;
+        let mut take = value.len().min(remaining);
+        while !value.is_char_boundary(take) {
+            take -= 1;
+        }
+        self.bytes[self.len..self.len + take].copy_from_slice(&value.as_bytes()[..take]);
+        self.len += take;
+        if take != value.len() {
+            self.truncated = true;
+            false
+        } else {
+            true
+        }
+    }
+    fn finish(&mut self) {
+        if !self.truncated {
+            return;
+        }
+        const MARKER: &str = " [truncated]";
+        let mut end = self.len.min(N - MARKER.len());
+        while !self.as_str().is_char_boundary(end) {
+            end -= 1;
+        }
+        self.len = end;
+        self.bytes[end..end + MARKER.len()].copy_from_slice(MARKER.as_bytes());
+        self.len += MARKER.len();
+    }
+    fn as_str(&self) -> &str {
+        std::str::from_utf8(&self.bytes[..self.len]).expect("bounded UTF-8 diagnostic")
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct FailureCause {
+    _category: FailureCategory,
+    _integrity: Option<tobkiri_gate::IntegrityFaultCode>,
+    _depth: usize,
+}
+#[derive(Debug)]
+pub(crate) struct MetadataFailure {
+    pub(crate) _stage: FailureStage,
+    pub(crate) category: FailureCategory,
+    diagnostic: Diagnostic<DIAGNOSTIC_BYTES>,
+    step_code: Diagnostic<STEP_CODE_BYTES>,
+    audit_code: &'static str,
+    wit_code: &'static str,
+    // Only the length of an already-existing String, never a full formatted
+    // arbitrary error. Recursive causes have a separate fixed depth/node cap.
+    pub(crate) _original_length: Option<usize>,
+    pub(crate) _code_original_length: Option<usize>,
+    pub(crate) _code_truncated: bool,
+    pub(crate) _diagnostic_unavailable: bool,
+    _causes: [FailureCause; CAUSE_NODES],
+    cause_len: usize,
+    pub(crate) _causes_truncated: bool,
+    retryable: bool,
+}
+impl MetadataFailure {
+    fn empty(
+        stage: FailureStage,
+        category: FailureCategory,
+        code: &'static str,
         retryable: bool,
-        failure_stamp: u64,
-    },
+    ) -> Self {
+        let mut step_code = Diagnostic::new();
+        step_code.push(code);
+        Self {
+            _stage: stage,
+            category,
+            diagnostic: Diagnostic::new(),
+            step_code,
+            audit_code: if code == "component" {
+                "internal"
+            } else {
+                code
+            },
+            wit_code: if code == "component" {
+                "unavailable"
+            } else {
+                code
+            },
+            _original_length: None,
+            _code_original_length: None,
+            _code_truncated: false,
+            _diagnostic_unavailable: false,
+            _causes: [FailureCause {
+                _category: FailureCategory::Unknown,
+                _integrity: None,
+                _depth: 0,
+            }; CAUSE_NODES],
+            cause_len: 0,
+            _causes_truncated: false,
+            retryable,
+        }
+    }
+    fn gate(stage: FailureStage, error: &tobkiri_gate::GateError) -> Self {
+        let code = crate::host::gate_audit_code(error);
+        let mut failure = Self::empty(stage, gate_category(error), code, true);
+        failure._original_length = match error {
+            tobkiri_gate::GateError::Denied(value)
+            | tobkiri_gate::GateError::Invalid(value)
+            | tobkiri_gate::GateError::Limit(value)
+            | tobkiri_gate::GateError::Persistence(value) => Some(value.len()),
+            _ => None,
+        };
+        failure.write_gate(error, 0);
+        failure.diagnostic.finish();
+        failure
+    }
+    fn write_gate(&mut self, error: &tobkiri_gate::GateError, depth: usize) {
+        use tobkiri_gate::GateError as E;
+        if depth > CAUSE_DEPTH || self.cause_len == CAUSE_NODES {
+            self._causes_truncated = true;
+            self.diagnostic.truncated = true;
+            return;
+        }
+        self._causes[self.cause_len] = FailureCause {
+            _category: gate_category(error),
+            _integrity: if let tobkiri_gate::GateError::Integrity(code) = error {
+                Some(*code)
+            } else {
+                None
+            },
+            _depth: depth,
+        };
+        self.cause_len += 1;
+        let (prefix, value) = match error {
+            E::Denied(value) => ("permission denied: ", Some(value.as_str())),
+            E::Invalid(value) => ("invalid request: ", Some(value.as_str())),
+            E::Limit(value) => ("limit exceeded: ", Some(value.as_str())),
+            E::Persistence(value) => ("authority persistence unavailable: ", Some(value.as_str())),
+            E::ApprovalRequired => ("trusted approval required", None),
+            E::Cancelled => ("request cancelled", None),
+            E::Deadline => ("original request deadline elapsed", None),
+            E::StaleEpoch => ("security policy changed", None),
+            E::Consumed => ("grant has already been consumed", None),
+            E::Unavailable => ("trusted approval surface unavailable", None),
+            E::Integrity(code) => {
+                self.diagnostic.push("authority integrity fault: ");
+                self.diagnostic.push(match code {
+                    tobkiri_gate::IntegrityFaultCode::TerminalRecord => "TerminalRecord",
+                    tobkiri_gate::IntegrityFaultCode::ReservationRecord => "ReservationRecord",
+                    tobkiri_gate::IntegrityFaultCode::AuditIdentityConflict => {
+                        "AuditIdentityConflict"
+                    }
+                    tobkiri_gate::IntegrityFaultCode::AuditChain => "AuditChain",
+                    tobkiri_gate::IntegrityFaultCode::AuthorityDatabase => "AuthorityDatabase",
+                });
+                return;
+            }
+            E::AuditFailure { denial, audit } => {
+                if !self.diagnostic.push("request denied (") {
+                    self._causes_truncated = true;
+                    return;
+                }
+                self.write_gate(denial, depth + 1);
+                if self.diagnostic.truncated || !self.diagnostic.push("); denial audit failed (") {
+                    self._causes_truncated = true;
+                    return;
+                }
+                self.write_gate(audit, depth + 1);
+                if !self.diagnostic.truncated {
+                    self.diagnostic.push(")");
+                }
+                return;
+            }
+        };
+        if self.diagnostic.push(prefix)
+            && let Some(value) = value
+        {
+            self.diagnostic.push(value);
+        }
+    }
+    fn step(stage: FailureStage, error: &StepError) -> Self {
+        let mut failure = Self::empty(stage, FailureCategory::Step, "component", true);
+        failure.audit_code = error.audit_code();
+        failure.wit_code = error.audit_code();
+        failure.step_code = Diagnostic::new();
+        failure.step_code.push(&error.code);
+        failure._code_original_length = Some(error.code.len());
+        if failure.step_code.truncated {
+            // An oversized nonstandard code cannot become a known category.
+            failure.step_code = Diagnostic::new();
+            failure.step_code.push("component");
+            failure._code_truncated = true;
+        }
+        failure._original_length = Some(error.message.len());
+        failure.diagnostic.push(&error.message);
+        if failure._code_truncated {
+            failure.diagnostic.truncated = true;
+        }
+        failure.diagnostic.finish();
+        failure
+    }
+    fn unknown(category: FailureCategory) -> Self {
+        let stage = match category {
+            FailureCategory::PublicationRejected => FailureStage::Admission,
+            FailureCategory::Unknown => FailureStage::Legacy,
+            _ => FailureStage::Join,
+        };
+        let mut failure = Self::empty(stage, category, "unavailable", false);
+        failure
+            .diagnostic
+            .push("handle metadata task did not finish");
+        failure
+    }
+    fn capture(error: &anyhow::Error) -> Self {
+        if let Some(error) = error.downcast_ref::<DeliveryError>() {
+            return match error {
+                DeliveryError::Gate(stage, source) => Self::gate(*stage, source),
+                DeliveryError::Frame(source) => Self::step(FailureStage::FrameAcknowledged, source),
+                DeliveryError::Invariant(message) => {
+                    let mut failure = Self::empty(
+                        FailureStage::Invariant,
+                        FailureCategory::Invariant,
+                        "component",
+                        true,
+                    );
+                    failure.diagnostic.push(message);
+                    failure
+                }
+            };
+        }
+        // Legacy unit futures exercise the same receipt with concrete native
+        // errors. Unknown errors are not classified from Display/message text.
+        if let Some(error) = error.downcast_ref::<tobkiri_gate::GateError>() {
+            return Self::gate(FailureStage::Legacy, error);
+        }
+        if let Some(error) = error.downcast_ref::<StepError>() {
+            return Self::step(FailureStage::Legacy, error);
+        }
+        // A normal returned Err has a known execution outcome even when its
+        // diagnostic type is opaque. Do not inspect arbitrary Display/source
+        // chains or misclassify its cause; a later explicit retry is allowed.
+        let mut failure = Self::empty(
+            FailureStage::Legacy,
+            FailureCategory::Unknown,
+            "component",
+            true,
+        );
+        failure._diagnostic_unavailable = true;
+        failure
+            .diagnostic
+            .push("handle metadata returned an unclassified error (diagnostic unavailable)");
+        failure
+    }
+    #[cfg(test)]
+    pub(crate) fn message(&self) -> &str {
+        self.diagnostic.as_str()
+    }
+    #[cfg(test)]
+    pub(crate) fn truncated(&self) -> bool {
+        self.diagnostic.truncated
+    }
+    #[cfg(test)]
+    pub(crate) fn cause_count(&self) -> usize {
+        self.cause_len
+    }
+    pub(crate) fn audit_code(&self) -> &'static str {
+        self.audit_code
+    }
+    pub(crate) fn wit_code(&self) -> &'static str {
+        self.wit_code
+    }
+    pub(crate) fn step_error(&self) -> StepError {
+        StepError::new(self.step_code.as_str(), self.diagnostic.as_str())
+    }
+}
+fn gate_category(error: &tobkiri_gate::GateError) -> FailureCategory {
+    use tobkiri_gate::GateError as E;
+    match error {
+        E::Denied(_) => FailureCategory::Denied,
+        E::ApprovalRequired => FailureCategory::ApprovalRequired,
+        E::Cancelled => FailureCategory::Cancelled,
+        E::Deadline => FailureCategory::Deadline,
+        E::Invalid(_) => FailureCategory::Invalid,
+        E::StaleEpoch => FailureCategory::StaleEpoch,
+        E::Consumed => FailureCategory::Consumed,
+        E::Limit(_) => FailureCategory::Limit,
+        E::Persistence(_) => FailureCategory::Persistence,
+        E::Integrity(_) => FailureCategory::Integrity,
+        E::AuditFailure { .. } => FailureCategory::AuditFailure,
+        E::Unavailable => FailureCategory::Unavailable,
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum DeliveryError {
+    Gate(FailureStage, tobkiri_gate::GateError),
+    Frame(StepError),
+    Invariant(&'static str),
+}
+impl DeliveryError {
+    pub(crate) fn into_original(self) -> anyhow::Error {
+        match self {
+            Self::Gate(_, error) => error.into(),
+            Self::Frame(error) => error.into(),
+            Self::Invariant(message) => anyhow::anyhow!(message),
+        }
+    }
+}
+impl std::fmt::Display for DeliveryError {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Gate(_, error) => std::fmt::Display::fmt(error, output),
+            Self::Frame(error) => std::fmt::Display::fmt(error, output),
+            Self::Invariant(message) => output.write_str(message),
+        }
+    }
+}
+impl std::error::Error for DeliveryError {}
+
+type AttemptResult = std::result::Result<(), MetadataFailure>;
+pub(crate) struct MetadataAttempt {
+    generation: u64,
+    join: tokio::sync::Mutex<Option<tokio::task::JoinHandle<AttemptResult>>>,
+    result: OnceLock<AttemptResult>,
+    ready: tokio::sync::Notify,
+    _receipt_funding: Arc<ControlReservation>,
+}
+impl MetadataAttempt {
+    fn new(generation: u64, receipt_funding: Arc<ControlReservation>) -> Arc<Self> {
+        Arc::new(Self {
+            generation,
+            join: tokio::sync::Mutex::new(None),
+            result: OnceLock::new(),
+            ready: tokio::sync::Notify::new(),
+            _receipt_funding: receipt_funding,
+        })
+    }
+}
+struct MetadataState {
+    current: Option<Arc<MetadataAttempt>>,
+    slots: [Weak<MetadataAttempt>; RESULT_CELLS],
+    generation: u64,
+}
+#[derive(Debug)]
+struct SharedMetadataFailure(Arc<MetadataAttempt>);
+impl std::fmt::Debug for MetadataAttempt {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        output
+            .debug_struct("MetadataAttempt")
+            .field("generation", &self.generation)
+            .finish_non_exhaustive()
+    }
+}
+impl std::fmt::Display for SharedMetadataFailure {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0.result.get() {
+            Some(Err(failure)) if failure.category == FailureCategory::Step => {
+                write!(
+                    output,
+                    "{}: {}",
+                    failure.step_code.as_str(),
+                    failure.diagnostic.as_str()
+                )
+            }
+            Some(Err(failure)) => output.write_str(failure.diagnostic.as_str()),
+            _ => output.write_str("handle metadata task did not finish"),
+        }
+    }
+}
+impl std::error::Error for SharedMetadataFailure {}
+pub(crate) fn metadata_failure(error: &anyhow::Error) -> Option<&MetadataFailure> {
+    let shared = error.downcast_ref::<SharedMetadataFailure>()?;
+    shared.0.result.get()?.as_ref().err()
 }
 
 /// Trusted, bounded constructor for a fresh delivery attempt. Implementations
@@ -59,7 +472,7 @@ impl HandleDelivery {
         }
     }
 
-    pub(crate) async fn deliver(&self) -> Result<()> {
+    pub(crate) async fn deliver(&self) -> std::result::Result<(), DeliveryError> {
         let mut receipt = self.lease.close.lock().await;
         if receipt.outcome.is_none() {
             if self
@@ -70,9 +483,13 @@ impl HandleDelivery {
             {
                 receipt.deadline_settlement = true;
             }
-            receipt.outcome = self.proposal.lock().map_err(|_| unavailable())?.take();
+            receipt.outcome = self
+                .proposal
+                .lock()
+                .map_err(|_| DeliveryError::Invariant("metadata proposal mutex poisoned"))?
+                .take();
             if receipt.outcome.is_none() {
-                bail!("terminal proposal missing")
+                return Err(DeliveryError::Invariant("terminal proposal missing"));
             }
         }
         if !receipt.delivered {
@@ -82,8 +499,10 @@ impl HandleDelivery {
                         .lease
                         .permit
                         .as_ref()
-                        .context("deadline proof missing")?;
-                    let terminal = self.gate.settle_deadline(permit).await?;
+                        .ok_or(DeliveryError::Invariant("deadline proof missing"))?;
+                    let terminal = self.gate.settle_deadline(permit).await.map_err(|error| {
+                        DeliveryError::Gate(FailureStage::SettleDeadline, error)
+                    })?;
                     receipt.outcome = Some(terminal.decision.outcome);
                 } else if let Err(error) = self
                     .gate
@@ -92,7 +511,7 @@ impl HandleDelivery {
                         receipt
                             .outcome
                             .clone()
-                            .context("terminal proposal missing")?,
+                            .ok_or(DeliveryError::Invariant("terminal proposal missing"))?,
                     )
                     .await
                 {
@@ -105,19 +524,25 @@ impl HandleDelivery {
                             .lease
                             .permit
                             .as_ref()
-                            .context("deadline proof missing")?;
-                        let terminal = self.gate.settle_deadline(permit).await?;
+                            .ok_or(DeliveryError::Invariant("deadline proof missing"))?;
+                        let terminal =
+                            self.gate.settle_deadline(permit).await.map_err(|error| {
+                                DeliveryError::Gate(FailureStage::SettleDeadline, error)
+                            })?;
                         receipt.outcome = Some(terminal.decision.outcome);
                     } else {
-                        return Err(error.into());
+                        return Err(DeliveryError::Gate(FailureStage::RecordOutcome, error));
                     }
                 }
             }
             if let (Some(frame), Some(permit)) = (&self.source_frame, &self.lease.permit) {
-                let acknowledged = self.gate.acknowledged_terminal(permit)?;
+                let acknowledged = self
+                    .gate
+                    .acknowledged_terminal(permit)
+                    .map_err(|error| DeliveryError::Gate(FailureStage::ReadAcknowledged, error))?;
                 frame
                     .terminal_acknowledged(&acknowledged)
-                    .map_err(anyhow::Error::new)?;
+                    .map_err(DeliveryError::Frame)?;
                 receipt.outcome = Some(acknowledged.outcome().clone());
             }
             receipt.delivered = true;
@@ -126,7 +551,7 @@ impl HandleDelivery {
     }
 }
 async fn deliver_retained(delivery: Arc<HandleDelivery>) -> Result<()> {
-    delivery.deliver().await
+    delivery.deliver().await.map_err(anyhow::Error::new)
 }
 impl RetainedMetadata for HandleDelivery {
     fn future(self: Arc<Self>) -> QueuedMetadata {
@@ -334,7 +759,7 @@ fn cleanup_unknown() -> StepError {
 /// the Join in the lease/host inventory, rather than detaching it from close.
 pub(crate) struct HandleMetadata {
     runtime: tokio::runtime::Handle,
-    state: tokio::sync::Mutex<MetadataState>,
+    state: Mutex<MetadataState>,
     ready: tokio::sync::Notify,
     settled: AtomicBool,
     unregistered: AtomicBool,
@@ -342,29 +767,36 @@ pub(crate) struct HandleMetadata {
     task_funding: Mutex<Option<Arc<ControlReservation>>>,
     source_cleanup: Mutex<Option<Arc<SourceCleanupOwner>>>,
     custody: OnceLock<Weak<MetadataCustody>>,
-    failure_stamp: AtomicU64,
     rejected: AtomicBool,
     retiring: AtomicBool,
     // Receipt storage outlives the actual task and is independently prepaid.
-    _receipt_funding: ControlReservation,
+    receipt_funding: Arc<ControlReservation>,
 }
 impl HandleMetadata {
     pub(crate) fn prepare(control: &CoreControl) -> Result<Arc<Self>> {
         let runtime = tokio::runtime::Handle::try_current()
             .context("handle metadata runtime is unavailable before admission")?;
-        // Both Arc headers and the sidecar live in the original receipt budget.
-        if std::mem::size_of::<Self>()
+        // One original Frame funds metadata/custody, the shared reservation,
+        // and at most TWO actual immutable result cells including Arc headers.
+        let receipt_bytes = std::mem::size_of::<Self>()
             + std::mem::size_of::<MetadataCustody>()
-            + 4 * std::mem::size_of::<usize>()
-            > 4096
-        {
+            + RESULT_CELLS * std::mem::size_of::<MetadataAttempt>()
+            + std::mem::size_of::<ControlReservation>()
+            + (6 + 2 * RESULT_CELLS) * std::mem::size_of::<usize>();
+        if receipt_bytes > 4096 {
             bail!("handle metadata receipt exceeds its prepaid bound")
         }
-        let receipt_funding = control.reserve(ControlKind::Frame, 4096)?;
+        let receipt_funding = Arc::new(control.reserve(ControlKind::Frame, 4096)?);
         let task_funding = control.reserve(ControlKind::Task, METADATA_TASK_BYTES)?;
+        let initial = MetadataAttempt::new(1, receipt_funding.clone());
+        let slots = [Arc::downgrade(&initial), Weak::new()];
         Ok(Arc::new(Self {
             runtime,
-            state: tokio::sync::Mutex::new(MetadataState::Pending),
+            state: Mutex::new(MetadataState {
+                current: Some(initial),
+                slots,
+                generation: 1,
+            }),
             ready: tokio::sync::Notify::new(),
             settled: AtomicBool::new(false),
             unregistered: AtomicBool::new(false),
@@ -372,10 +804,9 @@ impl HandleMetadata {
             task_funding: Mutex::new(Some(Arc::new(task_funding))),
             source_cleanup: Mutex::new(None),
             custody: OnceLock::new(),
-            failure_stamp: AtomicU64::new(0),
             rejected: AtomicBool::new(false),
             retiring: AtomicBool::new(false),
-            _receipt_funding: receipt_funding,
+            receipt_funding,
         }))
     }
 
@@ -491,7 +922,8 @@ impl HandleMetadata {
         let bytes = std::mem::size_of::<T>()
             .checked_add(2 * std::mem::size_of::<usize>())
             .and_then(|bytes| bytes.checked_add(delivery.owned_heap_bytes()))
-            .and_then(|bytes| bytes.checked_add(delivery.future_bytes()));
+            .and_then(|bytes| bytes.checked_add(delivery.future_bytes()))
+            .and_then(|bytes| bytes.checked_add(std::mem::size_of::<AttemptResult>()));
         if bytes.is_none_or(|bytes| bytes > MAX_METADATA_FUTURE) {
             // Latch under the SAME slot guard that admits a capsule. A later
             // valid proposal cannot race this rejection into a fresh start.
@@ -533,81 +965,122 @@ impl HandleMetadata {
         drop(retired);
     }
 
-    /// Synchronous consumed-custody transfer, also used by Drop. A pending
-    /// close observes this SAME capsule and original funding without a Host
-    /// capture or detached producer. Complete failures are retried by wait.
-    pub(crate) fn queue_delivery<T: RetainedMetadata>(&self, delivery: T) -> Result<()> {
-        if let Err(error) = self.retain(delivery) {
-            // A consumed Drop cannot await or discard a failed publication.
-            // Pending close must observe permanent uncertainty, not hang.
-            self.rejected.store(true, Ordering::Release);
-            self.ready.notify_waiters();
-            return Err(error);
-        }
-        if let Ok(mut state) = self.state.try_lock()
-            && !self.rejected.load(Ordering::Acquire)
-            && matches!(*state, MetadataState::Pending)
-            && let Some(future) = self.retained_future()
-        {
-            *state = self.start_queued(future);
-        }
-        self.ready.notify_waiters();
-        Ok(())
-    }
-
-    pub(crate) async fn run_delivery<T: RetainedMetadata>(&self, delivery: T) -> Result<()> {
-        let observed = self.failure_stamp.load(Ordering::Acquire);
-        self.queue_delivery(delivery)?;
-        self.wait_after(observed).await
-    }
-
-    // Kept only for tests of the original single-Join ownership primitive.
-    // Production always retains a bounded original delivery capsule instead.
-    #[cfg(test)]
-    pub(crate) fn queue(
-        &self,
-        metadata: impl std::future::Future<Output = Result<()>> + Send + 'static,
-    ) {
-        assert!(std::mem::size_of_val(&metadata) <= MAX_METADATA_FUTURE);
-        let mut metadata: Option<QueuedMetadata> = Some(Box::pin(metadata));
-        {
-            let mut queued = self
-                .queued
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
-            if !self.settled.load(Ordering::Acquire) && queued.is_none() {
-                *queued = metadata.take();
-            }
-        }
-        drop(metadata);
-        if let Ok(mut state) = self.state.try_lock()
-            && !self.rejected.load(Ordering::Acquire)
-            && matches!(*state, MetadataState::Pending)
-            && let Some(metadata) = self.take_queued()
-        {
-            *state = self.start_queued(metadata);
-        }
-        self.ready.notify_waiters();
-    }
-
-    fn take_queued(&self) -> Option<QueuedMetadata> {
-        self.queued
+    fn factory_available(&self, custody: Option<&MetadataCustody>) -> bool {
+        if self
+            .queued
             .lock()
             .unwrap_or_else(|error| error.into_inner())
-            .take()
-    }
-
-    fn failed_state(&self, error: anyhow::Error, retryable: bool) -> MetadataState {
-        let failure_stamp = self.failure_stamp.fetch_add(1, Ordering::AcqRel) + 1;
-        MetadataState::Complete {
-            error: Some(error),
-            failed: true,
-            retryable,
-            failure_stamp,
+            .is_some()
+        {
+            return true;
         }
+        custody.is_some_and(|custody| {
+            custody
+                .delivery
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .is_some()
+        })
     }
 
-    fn start_queued(&self, metadata: QueuedMetadata) -> MetadataState {
+    fn generation_limit() -> anyhow::Error {
+        StepError::new(
+            "limit-exceeded",
+            "handle metadata result generation capacity unavailable",
+        )
+        .into()
+    }
+
+    /// Participation pins an actual cell before awaiting any Join. A new
+    /// explicit observer can request a retry only after a completed ordinary
+    /// failure. Passive source-reaper observation never creates a generation.
+    fn participate(&self, retry: bool) -> Result<Arc<MetadataAttempt>> {
+        self.participate_after_retirement(retry, || {})
+    }
+
+    fn participate_after_retirement(
+        &self,
+        retry: bool,
+        after_retirement: impl FnOnce(),
+    ) -> Result<Arc<MetadataAttempt>> {
+        // An external metadata Arc may outlive its Registry. If the inventory
+        // is dropped concurrently, this could be the final custody owner.
+        // Declare it BEFORE state so every return unlocks before dropping
+        // any retained capsule/authority captures.
+        let custody = self.custody.get().and_then(Weak::upgrade);
+        let mut state = self.state.lock().map_err(|_| unavailable())?;
+        let current = state.current.as_ref().ok_or_else(Self::generation_limit)?;
+        let eligible = retry
+            && current
+                .result
+                .get()
+                .is_some_and(|result| result.as_ref().err().is_some_and(|error| error.retryable))
+            && self.factory_available(custody.as_deref());
+        if !eligible {
+            return Ok(current.clone());
+        }
+        let slot = if Arc::strong_count(current) == 1 {
+            state
+                .slots
+                .iter()
+                .position(|slot| slot.as_ptr() == Arc::as_ptr(current))
+                .expect("current receipt owns one admitted slot")
+        } else {
+            state
+                .slots
+                .iter()
+                .position(|slot| slot.strong_count() == 0)
+                .ok_or_else(Self::generation_limit)?
+        };
+        let generation = state
+            .generation
+            .checked_add(1)
+            .ok_or_else(Self::generation_limit)?;
+        // Replacing a Weak alone does not retire its allocation. Remove the
+        // selected backing BEFORE allocating so there are physically at most
+        // two cells, including when the sole current cell is reused.
+        // These closed cells contain only bounded inline results/Notify and
+        // a non-final Frame Arc (self still owns it). No capsule, authority,
+        // live future, opaque error or user destructor is dropped here.
+        let retired_slot = std::mem::take(&mut state.slots[slot]);
+        drop(state.current.take());
+        drop(retired_slot);
+        // Production passes only an empty closure. The test entry below
+        // pauses here to prove other observers cannot see the transition.
+        after_retirement();
+        let attempt = MetadataAttempt::new(generation, self.receipt_funding.clone());
+        state.generation = generation;
+        state.slots[slot] = Arc::downgrade(&attempt);
+        state.current = Some(attempt.clone());
+        // No observer can see an artificial current=None transition.
+        drop(state);
+        self.ready.notify_waiters();
+        Ok(attempt)
+    }
+
+    fn start_attempt(
+        &self,
+        attempt: &Arc<MetadataAttempt>,
+        join: &mut Option<tokio::task::JoinHandle<AttemptResult>>,
+    ) {
+        if attempt.result.get().is_some() || join.is_some() {
+            return;
+        }
+        if self.rejected.load(Ordering::Acquire) {
+            assert!(
+                attempt
+                    .result
+                    .set(Err(MetadataFailure::unknown(
+                        FailureCategory::PublicationRejected
+                    )))
+                    .is_ok()
+            );
+            attempt.ready.notify_waiters();
+            return;
+        }
+        let Some(metadata) = self.take_queued().or_else(|| self.retained_future()) else {
+            return;
+        };
         let funding = self
             .task_funding
             .lock()
@@ -617,160 +1090,235 @@ impl HandleMetadata {
             .clone();
         let runtime = self.runtime.clone();
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.runtime.spawn_blocking(move || {
+            #[expect(
+                clippy::result_large_err,
+                reason = "The bounded inline diagnostic is prepaid by the original Task; boxing would add an allocation outside the fixed result-cell layout"
+            )]
+            let work = move || {
                 let _funding = funding;
-                runtime.block_on(metadata)
-            })
+                // The pre-existing producer may allocate a large source error.
+                // This change bounds only metadata RETAINED diagnostic heap:
+                // no opaque anyhow/context/backtrace escapes the actual task.
+                runtime
+                    .block_on(metadata)
+                    .map_err(|error| MetadataFailure::capture(&error))
+            };
+            self.runtime.spawn_blocking(work)
         })) {
-            Ok(task) => MetadataState::Running(task),
-            // No proof that a submitted task did not run: permanent Unknown.
-            Err(_) => self.failed_state(unavailable().into(), false),
+            Ok(task) => *join = Some(task),
+            Err(_) => {
+                assert!(
+                    attempt
+                        .result
+                        .set(Err(MetadataFailure::unknown(FailureCategory::SpawnUnknown)))
+                        .is_ok()
+                );
+            }
         }
+        attempt.ready.notify_waiters();
     }
 
+    fn notify_current(&self) {
+        let attempt = self
+            .state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .current
+            .clone();
+        if let Some(attempt) = attempt {
+            attempt.ready.notify_waiters();
+        }
+        self.ready.notify_waiters();
+    }
+
+    pub(crate) fn queue_delivery<T: RetainedMetadata>(&self, delivery: T) -> Result<()> {
+        if let Err(error) = self.retain(delivery) {
+            self.rejected.store(true, Ordering::Release);
+            self.notify_current();
+            return Err(error);
+        }
+        let attempt = self.participate(false)?;
+        if let Ok(mut join) = attempt.join.try_lock() {
+            self.start_attempt(&attempt, &mut join);
+        }
+        self.notify_current();
+        Ok(())
+    }
+
+    pub(crate) async fn run_delivery<T: RetainedMetadata>(&self, delivery: T) -> Result<()> {
+        self.run_delivery_mode(delivery, true).await
+    }
+    pub(crate) async fn run_delivery_mode<T: RetainedMetadata>(
+        &self,
+        delivery: T,
+        retry: bool,
+    ) -> Result<()> {
+        // Pin before making the capsule visible to the standing observer.
+        // Even if that observer finishes first, this caller owns the same
+        // original attempt rather than accidentally requesting a repair.
+        let attempt = self.participate(retry)?;
+        if let Err(error) = self.retain(delivery) {
+            self.rejected.store(true, Ordering::Release);
+            self.notify_current();
+            return Err(error);
+        }
+        self.wait_pinned(attempt).await
+    }
+
+    #[cfg(test)]
+    pub(crate) fn queue(
+        &self,
+        metadata: impl std::future::Future<Output = Result<()>> + Send + 'static,
+    ) {
+        assert!(
+            std::mem::size_of_val(&metadata) + std::mem::size_of::<AttemptResult>()
+                <= MAX_METADATA_FUTURE
+        );
+        let mut metadata: Option<QueuedMetadata> = Some(Box::pin(metadata));
+        {
+            let mut queued = self
+                .queued
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            if !self.retiring.load(Ordering::Acquire) && queued.is_none() {
+                *queued = metadata.take();
+            }
+        }
+        drop(metadata);
+        if let Ok(attempt) = self.participate(false)
+            && let Ok(mut join) = attempt.join.try_lock()
+        {
+            self.start_attempt(&attempt, &mut join);
+        }
+        self.notify_current();
+    }
+    fn take_queued(&self) -> Option<QueuedMetadata> {
+        self.queued
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take()
+    }
     #[cfg(test)]
     pub(crate) async fn run(
         &self,
         metadata: impl std::future::Future<Output = Result<()>> + Send + 'static,
     ) -> Result<()> {
-        if std::mem::size_of_val(&metadata) > MAX_METADATA_FUTURE {
+        if std::mem::size_of_val(&metadata) + std::mem::size_of::<AttemptResult>()
+            > MAX_METADATA_FUTURE
+        {
             bail!("handle metadata payload exceeds its prepaid bound")
         }
-        let observed = self.failure_stamp.load(Ordering::Acquire);
-        let mut metadata: Option<QueuedMetadata> = Some(Box::pin(metadata));
-        {
-            let mut state = self.state.lock().await;
-            if !self.rejected.load(Ordering::Acquire)
-                && matches!(
-                    *state,
-                    MetadataState::Pending
-                        | MetadataState::Complete {
-                            failed: true,
-                            retryable: true,
-                            ..
-                        }
-                )
-            {
-                *state = self.start_queued(metadata.take().expect("metadata taken twice"));
-            }
-        }
-        drop(metadata);
-        self.ready.notify_waiters();
-        self.wait_after(observed).await
+        self.queue(metadata);
+        let attempt = self.participate(true)?;
+        self.wait_pinned(attempt).await
     }
-
     pub(crate) async fn wait(&self) -> Result<()> {
-        self.wait_after(self.failure_stamp.load(Ordering::Acquire))
-            .await
+        let attempt = self.participate(true)?;
+        self.wait_pinned(attempt).await
+    }
+    /// Standing reaper: observe/drive the SAME first submitted work, but do
+    /// not request a retry or consume any other waiter's error/cause.
+    pub(crate) async fn observe(&self) -> Result<()> {
+        let attempt = self.participate(false)?;
+        self.wait_pinned(attempt).await
+    }
+    #[cfg(test)]
+    pub(crate) fn pin_generation(&self) -> Arc<MetadataAttempt> {
+        self.participate(false)
+            .expect("pinned admitted metadata generation")
     }
 
-    pub(crate) async fn wait_after(&self, observed_failure: u64) -> Result<()> {
+    #[cfg(test)]
+    pub(crate) fn pin_retry_after_retirement(
+        &self,
+        after_retirement: impl FnOnce(),
+    ) -> Result<Arc<MetadataAttempt>> {
+        self.participate_after_retirement(true, after_retirement)
+    }
+
+    async fn retire_success(&self) -> Result<()> {
+        if self
+            .retiring
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            self.release_delivery();
+            drop(self.take_queued());
+            let funding = self.task_funding.lock().map_err(|_| unavailable())?.take();
+            drop(funding);
+            self.settled.store(true, Ordering::Release);
+            self.ready.notify_waiters();
+        }
         loop {
             let ready = self.ready.notified();
+            tokio::pin!(ready);
+            ready.as_mut().enable();
+            if self.settled.load(Ordering::Acquire) {
+                return Ok(());
+            }
+            ready.await;
+        }
+    }
+
+    pub(crate) async fn wait_pinned(&self, attempt: Arc<MetadataAttempt>) -> Result<()> {
+        loop {
+            let ready = attempt.ready.notified();
             tokio::pin!(ready);
             ready.as_mut().enable();
             if self.unregistered.load(Ordering::Acquire) {
                 return Ok(());
             }
-            let mut state = self.state.lock().await;
-            // A later observer may already have replaced Complete with its
-            // retry Join before an older waiter reacquires this guard. The
-            // older waiter still reports the failed attempt it began under,
-            // never success (or another retry) from the replacement attempt.
-            if self.failure_stamp.load(Ordering::Acquire) > observed_failure {
-                return Err(unavailable().into());
-            }
-            match &mut *state {
-                MetadataState::Pending => {
-                    if self.rejected.load(Ordering::Acquire) {
-                        *state = self.failed_state(unavailable().into(), false);
-                        continue;
-                    }
-                    if let Some(metadata) = self.take_queued().or_else(|| self.retained_future()) {
-                        *state = self.start_queued(metadata);
-                        continue;
-                    }
-                    drop(state);
-                    ready.await;
-                }
-                MetadataState::Running(task) => {
-                    // Borrow the SAME actual Join. Observer cancellation leaves
-                    // it here; no retry reuses funding until it has completed.
-                    let (result, retryable) = match task.await {
-                        // An ordinary returned error is a completed attempt,
-                        // not lost execution. Preserve the existing ability to
-                        // retry any such failure (including frame ACK capacity
-                        // StepError) with this SAME capsule on a later observer.
-                        Ok(result) => {
-                            let retryable = result.is_err();
-                            (result, retryable)
-                        }
-                        Err(_) => (Err(unavailable().into()), false),
-                    };
-                    let failed = result.is_err();
-                    let complete = if let Err(error) = result {
-                        self.failed_state(error, retryable)
-                    } else {
-                        // Seal retain before releasing the sidecar slot. No
-                        // later proposal can enter the retired funded owner.
-                        self.retiring.store(true, Ordering::Release);
-                        MetadataState::Finalizing
-                    };
-                    let joined = std::mem::replace(&mut *state, complete);
-                    let result = match &mut *state {
-                        MetadataState::Complete { error, .. } if failed => {
-                            Err(error.take().unwrap_or_else(|| unavailable().into()))
-                        }
-                        _ => Ok(()),
-                    };
-                    // The completed Join has no live future/captures left.
-                    // Retire that task shell before another observer can
-                    // enter the state guard and reuse its reservation.
-                    drop(joined);
-                    drop(state);
-                    if !failed {
-                        self.release_delivery();
-                        drop(self.take_queued());
-                        let funding = self.task_funding.lock().map_err(|_| unavailable())?.take();
-                        drop(funding);
-                        self.settled.store(true, Ordering::Release);
-                    }
-                    self.ready.notify_waiters();
-                    // No failure loop: this observer returns its ONE attempt.
-                    return result;
-                }
-                MetadataState::Finalizing => {
-                    if self.settled.load(Ordering::Acquire) {
-                        return Ok(());
-                    }
-                    drop(state);
-                    ready.await;
-                }
-                MetadataState::Complete {
-                    error,
-                    failed,
-                    retryable,
-                    failure_stamp,
-                } => {
-                    // An observer that began while the failed attempt was
-                    // running returns that attempt's error. Only a later
-                    // observer can start one fresh delivery-only attempt.
-                    if *failed
-                        && *retryable
-                        && observed_failure == *failure_stamp
-                        && let Some(metadata) =
-                            self.take_queued().or_else(|| self.retained_future())
+            if let Some(result) = attempt.result.get() {
+                return match result {
+                    Ok(()) => self.retire_success().await,
+                    Err(failure)
+                        if matches!(
+                            failure.category,
+                            FailureCategory::JoinCancelled
+                                | FailureCategory::JoinPanicked
+                                | FailureCategory::SpawnUnknown
+                        ) =>
                     {
-                        *state = self.start_queued(metadata);
-                        continue;
+                        Err(unavailable().into())
                     }
-                    return if *failed {
-                        Err(error.take().unwrap_or_else(|| unavailable().into()))
-                    } else {
-                        Ok(())
-                    };
-                }
+                    Err(_) => Err(anyhow::Error::new(SharedMetadataFailure(attempt.clone()))),
+                };
             }
+            let mut join = attempt.join.lock().await;
+            if attempt.result.get().is_some() {
+                drop(join);
+                continue;
+            }
+            self.start_attempt(&attempt, &mut join);
+            if let Some(task) = join.as_mut() {
+                // The original Join remains borrowed in the cell on observer
+                // cancellation. Publish one immutable bounded result exactly
+                // once; every observer pins and reads this SAME generation.
+                let (result, join_failure) = match task.await {
+                    Ok(result) => (result, None),
+                    Err(error) => {
+                        let category = if error.is_panic() {
+                            FailureCategory::JoinPanicked
+                        } else {
+                            FailureCategory::JoinCancelled
+                        };
+                        (Err(MetadataFailure::unknown(category)), Some(error))
+                    }
+                };
+                drop(join.take());
+                assert!(attempt.result.set(result).is_ok());
+                drop(join);
+                // Panic payload destruction can run arbitrary Drop code.
+                drop(join_failure);
+                attempt.ready.notify_waiters();
+                self.ready.notify_waiters();
+                continue;
+            }
+            drop(join);
+            if attempt.result.get().is_some() {
+                continue;
+            }
+            ready.await;
         }
     }
 
@@ -802,7 +1350,7 @@ impl HandleMetadata {
             .take();
         drop(funding);
         self.settled.store(true, Ordering::Release);
-        self.ready.notify_waiters();
+        self.notify_current();
     }
 }
 

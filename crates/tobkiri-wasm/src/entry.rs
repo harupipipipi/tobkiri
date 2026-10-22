@@ -147,11 +147,14 @@ pub trait NativeInputPreparation: Send + Sync {
 }
 
 /// Borrowed actual Core lifecycle state, held coherent through selection.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct CleanupLifecycle {
     pub live: bool,
     pub closing: bool,
     pub requested: Option<tobkiri_flow::StreamCloseReason>,
+    /// Original native factory identity for its coherent global shutdown.
+    /// This is lifetime provenance only; it supplies no effect authority.
+    pub shutdown_scope: Option<tobkiri_canon::Digest>,
 }
 
 /// Result of one synchronous lifecycle inspection. `Selected` means only that
@@ -375,6 +378,7 @@ mod cleanup_lifecycle_tests {
             live: true,
             closing: false,
             requested: None,
+            shutdown_scope: None,
         }
     }
 

@@ -242,6 +242,8 @@ pub(crate) fn error_result(
     let storage_failure = storage_failure_metadata(error);
     let code = if storage_failure.is_some() {
         "internal"
+    } else if let Some(failure) = crate::handle_metadata::metadata_failure(error) {
+        failure.wit_code()
     } else {
         match error.downcast_ref::<tobkiri_gate::GateError>() {
             Some(error) => match error {
@@ -281,6 +283,14 @@ async fn finish_handle(
     entry: &crate::HandleEntry,
     outcome: Outcome,
 ) -> Result<()> {
+    finish_handle_mode(host, entry, outcome, true).await
+}
+async fn finish_handle_mode(
+    host: &PackHost,
+    entry: &crate::HandleEntry,
+    outcome: Outcome,
+    retry_metadata: bool,
+) -> Result<()> {
     entry.lease.begin_close();
     if entry.lease.grant.is_none() {
         return finish_handle_metadata(host, entry, outcome).await;
@@ -300,11 +310,10 @@ async fn finish_handle(
         .context("admitted handle metadata owner is missing")?
         .clone();
     metadata
-        .run_delivery(crate::handle_metadata::HandleDelivery::new(
-            host.shared.gate.clone(),
-            entry,
-            outcome,
-        ))
+        .run_delivery_mode(
+            crate::handle_metadata::HandleDelivery::new(host.shared.gate.clone(), entry, outcome),
+            retry_metadata,
+        )
         .await
 }
 
@@ -316,6 +325,7 @@ pub(crate) async fn finish_handle_metadata(
     crate::handle_metadata::HandleDelivery::new(host.shared.gate.clone(), entry, outcome)
         .deliver()
         .await
+        .map_err(crate::handle_metadata::DeliveryError::into_original)
 }
 
 #[cfg(test)]
@@ -559,7 +569,7 @@ async fn cancellation_outcome(
         // Cancelled is the shared cancellation disposition. The independently
         // observed Revoked cause remains immutable; it is never relabelled as
         // manual intent and still requires actual physical completion.
-        CauseObservation::Observed(Some(Cause::Manual | Cause::Shutdown | Cause::Revoked))
+        CauseObservation::Observed(Some(Cause::Manual | Cause::Shutdown(_) | Cause::Revoked))
             if proven
                 && !entry
                     .lease
@@ -607,7 +617,7 @@ fn cleanup_cause_confirmed(
     }
     match observed {
         CauseObservation::Observed(Some(
-            Cause::Manual | Cause::Shutdown | Cause::Revoked | Cause::ProducerFailure(_),
+            Cause::Manual | Cause::Shutdown(_) | Cause::Revoked | Cause::ProducerFailure(_),
         )) => true,
         CauseObservation::Observed(Some(Cause::Terminal(
             Outcome::Succeeded | Outcome::Cancelled,
@@ -954,6 +964,16 @@ async fn cancel_captured_stream_reason(
     entry: &crate::HandleEntry,
     reason: ExpiryReason,
 ) -> Result<()> {
+    cancel_captured_stream_reason_mode(host, cx, id, entry, reason, true).await
+}
+async fn cancel_captured_stream_reason_mode(
+    host: &PackHost,
+    cx: &CallCx,
+    id: u64,
+    entry: &crate::HandleEntry,
+    reason: ExpiryReason,
+    retry_metadata: bool,
+) -> Result<()> {
     if entry.kind != HandleKind::Stream || !entry.recipient_matches(cx) {
         bail!("captured stream outside the recipient scope")
     }
@@ -984,10 +1004,11 @@ async fn cancel_captured_stream_reason(
         };
     }
     let result = release_stream_once(host, entry).await;
-    finish_handle(
+    finish_handle_mode(
         host,
         entry,
         cancellation_outcome(entry, reason, result.is_ok() && selection.is_ok()).await,
+        retry_metadata,
     )
     .await?;
     if result.is_ok() {
@@ -1100,7 +1121,9 @@ pub(crate) async fn reap_captured_handle(
     entry: &crate::HandleEntry,
     reason: ExpiryReason,
 ) -> Result<SourceCleanupReport> {
-    let result = expire_captured_handle(host, cx, id, entry, reason).await;
+    // The owning reaper joins an existing failure; notification must not
+    // create another delivery generation. Explicit close drives recovery.
+    let result = expire_captured_handle_mode(host, cx, id, entry, reason, false).await;
     let report = source_cleanup_report(&*entry.lease.close.lock().await, result.is_err());
     if let Some(report) = report {
         // Preserve the normal reaper failure as typed diagnostic evidence.
@@ -1122,6 +1145,16 @@ pub(crate) async fn expire_captured_handle(
     entry: &crate::HandleEntry,
     reason: ExpiryReason,
 ) -> Result<()> {
+    expire_captured_handle_mode(host, cx, id, entry, reason, true).await
+}
+async fn expire_captured_handle_mode(
+    host: &PackHost,
+    cx: &CallCx,
+    id: u64,
+    entry: &crate::HandleEntry,
+    reason: ExpiryReason,
+    retry_metadata: bool,
+) -> Result<()> {
     if !entry.recipient_matches(cx) {
         bail!("captured cleanup outside the recipient scope")
     }
@@ -1138,14 +1171,16 @@ pub(crate) async fn expire_captured_handle(
         return Ok(());
     }
     if entry.kind == HandleKind::Stream {
-        return cancel_captured_stream_reason(host, cx, id, entry, reason).await;
+        return cancel_captured_stream_reason_mode(host, cx, id, entry, reason, retry_metadata)
+            .await;
     }
     let selection = select_cleanup_cause_bounded(entry, reason).await;
     let cleanup = release_callback_once(host, entry).await;
-    finish_handle(
+    finish_handle_mode(
         host,
         entry,
         cancellation_outcome(entry, reason, cleanup.is_ok() && selection.is_ok()).await,
+        retry_metadata,
     )
     .await?;
     if cleanup.is_ok() {

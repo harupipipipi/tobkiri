@@ -7,6 +7,7 @@ use std::{
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
 };
+use tobkiri_canon::Digest;
 use tobkiri_canon::ids::{OpName, PackHash, PackId, ProfileId, ShapeRef};
 use tobkiri_flow::{CoreStream, FlowRunner, PortInvoker, StepError, StepOutput, StreamSource};
 use tobkiri_gate::{
@@ -88,8 +89,15 @@ pub(crate) struct StoreDisposal {
     changed: tokio::sync::Notify,
     census: Option<GenerationChildCensus>,
     retirement: StdMutex<Option<GenerationRetirement>>,
+    // Frozen by the first retirement of this exact Store, before invalidating
+    // its generation. General retirement stores None and cannot be promoted.
+    retirement_cause: OnceLock<StoreRetirementCause>,
     legacy_children: Arc<AtomicBool>,
     _reservation: tobkiri_gate::ControlReservation,
+}
+struct StoreRetirementCause {
+    generation: u64,
+    shutdown_scope: Option<Digest>,
 }
 impl StoreDisposal {
     fn new(
@@ -97,6 +105,10 @@ impl StoreDisposal {
         census: Option<GenerationChildCensus>,
         legacy_children: Arc<AtomicBool>,
     ) -> Result<Self> {
+        // Include the Arc header inside the existing fixed reservation. The
+        // native factory Digest has fixed inline storage, not a heap String.
+        const _: () =
+            assert!(std::mem::size_of::<StoreDisposal>() + 2 * std::mem::size_of::<usize>() <= 512);
         let reservation = control.reserve(tobkiri_gate::ControlKind::Frame, 512)?;
         Ok(Self {
             done: AtomicBool::new(false),
@@ -104,9 +116,16 @@ impl StoreDisposal {
             changed: tokio::sync::Notify::new(),
             census,
             retirement: StdMutex::new(None),
+            retirement_cause: OnceLock::new(),
             legacy_children,
             _reservation: reservation,
         })
+    }
+    fn shutdown_retirement_matches(&self, generation: Option<u64>, scope: Option<&Digest>) -> bool {
+        let (Some(scope), Some(cause)) = (scope, self.retirement_cause.get()) else {
+            return false;
+        };
+        generation == Some(cause.generation) && cause.shutdown_scope.as_ref() == Some(scope)
     }
     fn complete(&self) {
         self.done.store(true, Ordering::Release);
@@ -2692,7 +2711,8 @@ impl PackHost {
                 // an unrelated provider failure onto another stream.
                 let _ = control.record_failure(&step_error_ref(error));
             }
-            let retirement = self.retire_generation(&slot, Some(instance.current_generation))?;
+            let retirement =
+                self.retire_generation(&slot, Some(instance.current_generation), None)?;
             retirement.token.cancel();
             instance.live.take();
             instance.store_disposal.complete();
@@ -2702,7 +2722,8 @@ impl PackHost {
         if result.is_ok()
             && let Err(error) = self.check_generation(id, generation)
         {
-            let retirement = self.retire_generation(&slot, Some(instance.current_generation))?;
+            let retirement =
+                self.retire_generation(&slot, Some(instance.current_generation), None)?;
             retirement.token.cancel();
             instance.live.take();
             instance.store_disposal.complete();
@@ -2716,6 +2737,7 @@ impl PackHost {
         &self,
         slot: &InstanceSlot,
         expected: Option<u64>,
+        shutdown_scope: Option<Digest>,
     ) -> Result<RetiredGeneration> {
         let (retirement, controls, _snapshot_reservation) = {
             let mut lifetime = slot
@@ -2768,6 +2790,15 @@ impl PackHost {
             }
             // Both writers of this counter hold the same generation mutex.
             // All fallible native admission/receipt work preceded retirement.
+            // A later inline custodian keeps the first receipt's provenance;
+            // it cannot replace a general retirement or another factory.
+            lifetime
+                .disposal
+                .retirement_cause
+                .get_or_init(|| StoreRetirementCause {
+                    generation,
+                    shutdown_scope,
+                });
             lifetime.retiring = true;
             slot.generation.store(next_generation, Ordering::Release);
             (
@@ -2818,13 +2849,24 @@ impl PackHost {
         operation.seal()?;
         let _ = operation.notify_native_close();
         if !disposal.is_complete() {
+            // Observe inside the original cleanup episode, without blocking
+            // the executor on a synchronous cause mutex. The observation owns
+            // no guard when generation retirement begins (selection takes
+            // those guards in the opposite order). An unavailable or uncertain
+            // cause never supplies shutdown provenance.
+            let shutdown_scope = match crate::core_imports::observe_cause_bounded(entry).await {
+                crate::core_imports::CauseObservation::Observed(Some(
+                    crate::handles::SelectedCloseCause::Shutdown(scope),
+                )) if !entry.lease.cause_uncertain.load(Ordering::Acquire) => scope,
+                _ => None,
+            };
             let (pack, _) = entry
                 .owner
                 .principal()
                 .pack()
                 .context("source physical owner missing")?;
             if let Err(error) = self
-                .discard_generation_mode(pack, entry.generation, false)
+                .discard_generation_mode(pack, entry.generation, false, shutdown_scope)
                 .await
             {
                 // A rejection does not establish that another cleanup worker
@@ -2846,10 +2888,11 @@ impl PackHost {
         id: &PackId,
         expected: Option<u64>,
         wait_native: bool,
+        shutdown_scope: Option<Digest>,
     ) -> Result<()> {
         let slot = self.instance(id)?;
         let (prepared, retirement) = PreparedDisposalTask::prepare(&self.shared.control, || {
-            self.retire_generation(&slot, expected)
+            self.retire_generation(&slot, expected, shutdown_scope)
         })?;
         retirement.token.cancel();
         let disposal = retirement.disposal.clone();
@@ -2920,7 +2963,7 @@ async fn reap_captured_source(
     let reason = tokio::select! {
         _=tokio::time::sleep_until(entry.owner.deadline().into())=>crate::core_imports::ExpiryReason::Deadline,
         _=entry.owner.cancel().cancelled()=>crate::core_imports::ExpiryReason::Unknown,
-        _=terminal.wait()=>crate::core_imports::ExpiryReason::Unknown,
+        _=terminal.observe()=>crate::core_imports::ExpiryReason::Unknown,
     };
     // Actual captured entry/lease/frame survives table removal and alias use.
     crate::core_imports::reap_captured_handle(&host, &recipient, id, &entry, reason)
@@ -3081,6 +3124,13 @@ impl PackInstance {
             if !Arc::ptr_eq(&lifetime.disposal, &self.store_disposal) {
                 bail!("native generation receipt changed")
             }
+            lifetime
+                .disposal
+                .retirement_cause
+                .get_or_init(|| StoreRetirementCause {
+                    generation: self.current_generation,
+                    shutdown_scope: None,
+                });
             lifetime.retiring = true;
             let snapshot = lifetime
                 .disposal
@@ -3370,6 +3420,9 @@ pub(crate) fn step_audit_code(error: &anyhow::Error) -> &'static str {
     if crate::core_imports::storage_failure_metadata(error).is_some() {
         return "internal";
     }
+    if let Some(failure) = crate::handle_metadata::metadata_failure(error) {
+        return failure.audit_code();
+    }
     if let Some(error) = error.downcast_ref::<StepError>() {
         return error.audit_code();
     }
@@ -3382,6 +3435,9 @@ fn step_error_ref(error: &anyhow::Error) -> StepError {
     if let Some((code, message)) = crate::core_imports::storage_failure_metadata(error) {
         return StepError::new(code, message);
     }
+    if let Some(failure) = crate::handle_metadata::metadata_failure(error) {
+        return failure.step_error();
+    }
     if let Some(error) = error.downcast_ref::<StepError>() {
         return error.clone();
     }
@@ -3393,7 +3449,7 @@ fn step_error_ref(error: &anyhow::Error) -> StepError {
 }
 /// Closed Gate-to-audit mapping shared by the StepError projection and the
 /// borrowed audit classifier. It intentionally differs from GateError::code().
-fn gate_audit_code(error: &tobkiri_gate::GateError) -> &'static str {
+pub(crate) fn gate_audit_code(error: &tobkiri_gate::GateError) -> &'static str {
     match error {
         tobkiri_gate::GateError::Limit(_) | tobkiri_gate::GateError::Deadline => "limit-exceeded",
         tobkiri_gate::GateError::Cancelled => "cancelled",
@@ -3616,11 +3672,13 @@ pub(crate) struct ComponentCloseControl {
 impl tobkiri_flow::StreamCloseControl for ComponentCloseControl {
     fn record_close(&self, reason: tobkiri_flow::StreamCloseReason) -> Result<(), StepError> {
         match self.select_typed(reason, None) {
-            CleanupSelection::Selected | CleanupSelection::Vacant => Ok(()),
-            CleanupSelection::Busy => Err(StepError::new(
-                "unavailable",
-                "cleanup authority snapshot is busy",
-            )),
+            // Busy occurs only after the original pending intent is stored.
+            // This companion acknowledges notification, never a selected
+            // cause. The original async owner still retries select_typed and
+            // must prove physical cleanup and terminal acknowledgement.
+            CleanupSelection::Selected | CleanupSelection::Vacant | CleanupSelection::Busy => {
+                Ok(())
+            }
             CleanupSelection::Uncertain(error) => Err(error),
         }
     }
@@ -3629,11 +3687,9 @@ impl tobkiri_flow::StreamCloseControl for ComponentCloseControl {
             tobkiri_flow::StreamCloseReason::Unknown,
             Some(error.audit_code()),
         ) {
-            CleanupSelection::Selected | CleanupSelection::Vacant => Ok(()),
-            CleanupSelection::Busy => Err(StepError::new(
-                "unavailable",
-                "cleanup authority snapshot is busy",
-            )),
+            CleanupSelection::Selected | CleanupSelection::Vacant | CleanupSelection::Busy => {
+                Ok(())
+            }
             CleanupSelection::Uncertain(error) => Err(error),
         }
     }
@@ -3806,6 +3862,13 @@ impl ComponentCloseControl {
             let generation_live = entry.generation == Some(slot.generation.load(Ordering::Acquire))
                 && !generation.retiring
                 && !generation.token.is_cancelled();
+            let same_shutdown_retirement = requested == Reason::Shutdown
+                && entry.store_disposal.as_ref().is_some_and(|disposal| {
+                    disposal.shutdown_retirement_matches(
+                        entry.generation,
+                        lifecycle.shutdown_scope.as_ref(),
+                    )
+                });
             let original_epoch = entry.owner.security_epoch();
             let Some(permit) = entry.lease.permit.as_ref() else {
                 return Err(StepError::new("unavailable", "cleanup permit unavailable"));
@@ -3823,10 +3886,10 @@ impl ComponentCloseControl {
                         Cause::Deadline
                     } else if snapshot.authority.current_epoch != original_epoch {
                         Cause::Revoked
-                    } else if !generation_live || !lifecycle.live {
+                    } else if !lifecycle.live || (!generation_live && !same_shutdown_retirement) {
                         Cause::Retired
                     } else if requested == Reason::Shutdown {
-                        Cause::Shutdown
+                        Cause::Shutdown(lifecycle.shutdown_scope.clone())
                     } else if !source_live {
                         Cause::Retired
                     } else if let Some(code) = intent.failure {

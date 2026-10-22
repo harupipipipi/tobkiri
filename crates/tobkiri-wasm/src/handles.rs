@@ -13,7 +13,7 @@ use tobkiri_gate::{CallCx, DispatchPermit, GrantId, Outcome};
 #[derive(Clone, Debug)]
 pub(crate) enum SelectedCloseCause {
     Manual,
-    Shutdown,
+    Shutdown(Option<tobkiri_canon::Digest>),
     ProducerFailure(&'static str),
     Deadline,
     Revoked,

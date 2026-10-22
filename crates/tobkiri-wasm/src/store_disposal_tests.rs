@@ -7,6 +7,60 @@ fn receipt(control: &CoreControl) -> Arc<StoreDisposal> {
     Arc::new(StoreDisposal::new(control, None, Arc::new(AtomicBool::new(false))).unwrap())
 }
 
+#[test]
+fn shutdown_provenance_requires_the_original_store_generation_and_nonempty_factory_scope() {
+    let control = CoreControl::default();
+    let original = receipt(&control);
+    let replacement = receipt(&control);
+    let scope = Digest::hash(b"original-factory-instance");
+    let other = Digest::hash(b"other-factory-instance");
+    original
+        .retirement_cause
+        .get_or_init(|| StoreRetirementCause {
+            generation: 7,
+            shutdown_scope: Some(scope.clone()),
+        });
+    assert!(original.shutdown_retirement_matches(Some(7), Some(&scope)));
+    assert!(!original.shutdown_retirement_matches(Some(8), Some(&scope)));
+    assert!(!original.shutdown_retirement_matches(Some(7), Some(&other)));
+    assert!(!original.shutdown_retirement_matches(Some(7), None));
+    assert!(!replacement.shutdown_retirement_matches(Some(7), Some(&scope)));
+    // A later inline observer cannot downgrade or replace the first receipt.
+    original
+        .retirement_cause
+        .get_or_init(|| StoreRetirementCause {
+            generation: 8,
+            shutdown_scope: None,
+        });
+    assert!(original.shutdown_retirement_matches(Some(7), Some(&scope)));
+    drop(original);
+    drop(replacement);
+    assert_eq!(control.usage().bytes, 0);
+}
+
+#[test]
+fn general_retirement_cannot_be_promoted_to_a_later_shutdown() {
+    let control = CoreControl::default();
+    let original = receipt(&control);
+    let scope = Digest::hash(b"later-factory-shutdown");
+    original
+        .retirement_cause
+        .get_or_init(|| StoreRetirementCause {
+            generation: 7,
+            shutdown_scope: None,
+        });
+    original
+        .retirement_cause
+        .get_or_init(|| StoreRetirementCause {
+            generation: 7,
+            shutdown_scope: Some(scope.clone()),
+        });
+    assert!(!original.shutdown_retirement_matches(Some(7), Some(&scope)));
+    assert!(!original.shutdown_retirement_matches(Some(7), None));
+    drop(original);
+    assert_eq!(control.usage().bytes, 0);
+}
+
 #[tokio::test]
 async fn denied_task_funding_cannot_enter_retirement_or_cancel_generation() {
     let control = CoreControl::new(CoreControlLimits {
@@ -377,7 +431,7 @@ async fn actual_host_task_rejection_leaves_generation_and_token_untouched() {
     let baseline = fixture.control.usage();
     let error = fixture
         .host
-        .discard_generation_mode(&fixture.pack, Some(initial_generation), false)
+        .discard_generation_mode(&fixture.pack, Some(initial_generation), false, None)
         .await
         .err()
         .unwrap();
@@ -392,7 +446,43 @@ async fn actual_host_task_rejection_leaves_generation_and_token_untouched() {
     assert!(!lifetime.token.is_cancelled());
     assert_eq!(lifetime.disposal.custodians.load(Ordering::Acquire), 0);
     assert!(!lifetime.disposal.is_complete());
+    assert!(lifetime.disposal.retirement_cause.get().is_none());
     assert_eq!(fixture.control.usage().bytes, baseline.bytes);
+}
+
+#[tokio::test]
+async fn failed_inline_generation_seal_freezes_general_provenance_without_completion() {
+    let fixture = CatalogFixture::new(1).await;
+    let slot = fixture.host.instance(&fixture.pack).unwrap();
+    let instance = slot.instance.lock().await;
+    // This catalog has no initialized Store/census. The production inline
+    // seal must still fix its first retirement cause before that failure;
+    // neither the stamp nor the retiring flag proves physical completion.
+    assert!(instance.seal_native_generation().is_err());
+    let disposal = instance.store_disposal.clone();
+    let cause = disposal.retirement_cause.get().unwrap();
+    assert_eq!(cause.generation, instance.current_generation);
+    assert!(cause.shutdown_scope.is_none());
+    assert!(slot.retirement.lock().unwrap().retiring);
+    assert!(!disposal.is_complete());
+    assert!(
+        fixture
+            .host
+            .retire_generation(
+                &slot,
+                Some(instance.current_generation),
+                Some(Digest::hash(b"later-shutdown")),
+            )
+            .is_err()
+    );
+    assert!(
+        disposal
+            .retirement_cause
+            .get()
+            .unwrap()
+            .shutdown_scope
+            .is_none()
+    );
 }
 
 #[tokio::test]
@@ -402,18 +492,37 @@ async fn actual_retirement_owner_is_exclusive_and_loss_is_not_completion() {
     let generation = slot.generation.load(Ordering::Acquire);
     let retirement = fixture
         .host
-        .retire_generation(&slot, Some(generation))
+        .retire_generation(
+            &slot,
+            Some(generation),
+            Some(Digest::hash(b"original-shutdown")),
+        )
         .unwrap();
     let disposal = retirement.disposal.clone();
     assert_eq!(slot.generation.load(Ordering::Acquire), generation + 1);
     assert!(slot.retirement.lock().unwrap().retiring);
     assert_eq!(disposal.custodians.load(Ordering::Acquire), 1);
     assert!(!disposal.is_complete());
+    let cause = disposal.retirement_cause.get().unwrap();
+    assert_eq!(cause.generation, generation);
+    assert_eq!(
+        cause.shutdown_scope,
+        Some(Digest::hash(b"original-shutdown"))
+    );
+    // The actual inline seal overlaps an already-admitted retirement. Its
+    // later conservative None must preserve the original exact cause.
+    assert!(slot.instance.lock().await.seal_native_generation().is_err());
+    assert!(
+        disposal.shutdown_retirement_matches(
+            Some(generation),
+            Some(&Digest::hash(b"original-shutdown")),
+        )
+    );
     let baseline = fixture.control.usage();
     assert!(
         fixture
             .host
-            .discard_generation_mode(&fixture.pack, Some(generation), false)
+            .discard_generation_mode(&fixture.pack, Some(generation), false, None)
             .await
             .is_err()
     );
