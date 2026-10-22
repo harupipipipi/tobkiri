@@ -26,6 +26,7 @@ pub mod profile {
 mod admission;
 mod capacity;
 mod completion;
+mod consumed_entry_terminal;
 mod core;
 mod error;
 mod execution_frames;

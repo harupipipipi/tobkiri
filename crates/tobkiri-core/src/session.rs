@@ -21,13 +21,14 @@ use tobkiri_flow::{
     GuestFlowFrame, PortInvoker, RunEvent, RunHandle, RunJournal, StepError,
 };
 use tobkiri_gate::{
-    BudgetContext, CallCx, CancellationToken, ControlKind, ControlReservation, DispatchPermit,
-    EffectRequest, Gate, GateEngine, GateError, HostIo, IngressRoute, Outcome, Principal,
+    BudgetContext, CallCx, CancellationToken, ControlKind, ControlReservation, EffectRequest, Gate,
+    GateEngine, GateError, HostIo, IngressRoute, Outcome, Principal,
 };
 use tobkiri_profile::{CompiledInputEntry, CompiledProfile, ResolvedFlow};
 use tokio_util::sync::CancellationToken as TokioCancellationToken;
 
 use crate::CoreError;
+pub(crate) use crate::consumed_entry_terminal::ConsumedEntryTerminal;
 pub use crate::execution_frames::{UiOperationCloseControl, UiOperationCloseHandle};
 
 /// The serialized result for a channel bound to a Core UI session.
@@ -197,89 +198,6 @@ impl AllocationBudget for NativeInputTransportBudget {
     }
 }
 
-/// Sole owner of one already-consumed FlowRun or virtual-ingress permit while
-/// Core prepares/executes the exact entry. A frame may borrow the permit only
-/// synchronously during prepared verification; terminalization consumes this
-/// wrapper so the same grant cannot acquire a second outcome owner.
-pub(crate) struct ConsumedEntryTerminal {
-    permit: DispatchPermit,
-    gate: Arc<GateEngine>,
-    proposal: Option<Outcome>,
-    finished: bool,
-}
-impl ConsumedEntryTerminal {
-    pub(crate) fn new(permit: DispatchPermit, gate: Arc<GateEngine>) -> Self {
-        Self {
-            permit,
-            gate,
-            proposal: None,
-            finished: false,
-        }
-    }
-
-    /// Borrow the exact consumed permit for Core's synchronous frame verifier.
-    pub(crate) fn permit(&self) -> &DispatchPermit {
-        &self.permit
-    }
-
-    /// Supervise the original lease before execution or any other fallible
-    /// post-consume work. The owner retains this wrapper if supervision fails
-    /// and must still submit one terminal proposal.
-    pub(crate) fn watch(&self, cx: &CallCx) -> Result<(), GateError> {
-        if self.finished {
-            return Err(GateError::Consumed);
-        }
-        self.gate.watch_lease(cx, &self.permit)
-    }
-
-    /// Submit the immutable terminal proposal. Once the original deadline is
-    /// due, Gate settles the deadline family from this exact permit instead of
-    /// accepting a caller-selected cancellation or success outcome.
-    pub(crate) async fn finish(&mut self, outcome: Outcome) -> Result<(), GateError> {
-        if let Some(proposal) = &self.proposal {
-            if proposal != &outcome {
-                return Err(GateError::Denied(
-                    "consumed Flow terminal proposal is immutable".into(),
-                ));
-            }
-        } else {
-            self.proposal = Some(outcome.clone());
-        }
-        if self.finished {
-            return Ok(());
-        }
-        if std::time::Instant::now() >= self.permit.deadline() {
-            self.gate.settle_deadline(&self.permit).await.map(|_| ())
-        } else {
-            self.gate
-                .record_outcome(self.permit.id().clone(), outcome)
-                .await
-        }?;
-        self.finished = true;
-        Ok(())
-    }
-
-    /// Read-only transfer to the existing durable terminal outbox/recovery
-    /// owner. Exclusive custody of this sealed permit is retained throughout;
-    /// this selects no native cause, performs no notification and creates no
-    /// reservation, effect or terminal. Pending audit ACK is allowed.
-    pub(crate) fn durable_handoff(&mut self) -> Result<Outcome, GateError> {
-        let mut winner = None;
-        self.gate.with_cleanup_snapshot(&self.permit, &mut |snapshot| {
-            let terminal = snapshot.authority.terminal.ok_or(GateError::Unavailable)?;
-            if matches!(&terminal.decision.outcome, Outcome::Failed { code } if code.len() > 128) {
-                return Err(GateError::Unavailable);
-            }
-            // Gate has validated the exact original consumed reservation,
-            // effect, args, revision, epoch and retained terminal identity.
-            winner = Some(terminal.decision.outcome.clone());
-            Ok(())
-        })?;
-        let winner = winner.ok_or(GateError::Unavailable)?;
-        self.proposal = Some(winner.clone());
-        Ok(winner)
-    }
-}
 /// Maximum number of events accepted by one UI stream pull.
 pub const UI_STREAM_MAX_BATCH: u32 = 32;
 const UI_STREAMS_PER_FRAME: usize = 64;

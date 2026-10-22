@@ -1,3 +1,4 @@
+use crate::consumed_entry_terminal::{NATIVE_CLEANUP_GRACE, observe_durable_handoff};
 use crate::funded_arc::FundedArc;
 use crate::{execution_frames::ExecutionFactory, session::ConsumedEntryTerminal};
 use async_trait::async_trait;
@@ -7,6 +8,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
     task::{Context, Poll, Waker},
+    time::Instant,
 };
 use tobkiri_canon::{ControlHandle, CoreBuffer, CoreValue, Digest};
 use tobkiri_flow::{
@@ -193,6 +195,13 @@ struct NativeCleanupIntent {
     // permit a closer to observe no source while attach observes no cause.
     source_control: Option<Arc<dyn StreamCloseControl>>,
     abandon_failed: bool,
+    close_deadline: Option<Instant>,
+}
+impl NativeCleanupIntent {
+    fn begin_close(&mut self) {
+        self.close_deadline
+            .get_or_insert_with(|| Instant::now() + NATIVE_CLEANUP_GRACE);
+    }
 }
 struct NativeCleanupState {
     // These are independently owned BEFORE a supervisor can panic. Neither the
@@ -217,6 +226,7 @@ impl NativeCleanupState {
             .intent
             .lock()
             .unwrap_or_else(|error| error.into_inner());
+        intent.begin_close();
         if intent.outcome.is_none() {
             intent.outcome = Some(outcome);
         }
@@ -231,6 +241,7 @@ impl NativeCleanupState {
         if intent.handoff == SourceHandoff::Pending {
             intent.handoff = SourceHandoff::NoSource;
         }
+        intent.begin_close();
         if intent.outcome.is_none() {
             intent.outcome = Some(outcome);
         }
@@ -282,6 +293,7 @@ impl StreamCloseControl for NativeCleanupState {
                 .intent
                 .lock()
                 .unwrap_or_else(|error| error.into_inner());
+            intent.begin_close();
             let control = intent.source_control.clone();
             // Deterministic test seam at the former split-lock window. This
             // hook and its storage do not exist in production builds.
@@ -309,12 +321,14 @@ impl StreamCloseControl for NativeCleanupState {
         result
     }
     fn record_failure(&self, error: &StepError) -> Result<(), StepError> {
-        let control = self
-            .intent
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .source_control
-            .clone();
+        let control = {
+            let mut intent = self
+                .intent
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            intent.begin_close();
+            intent.source_control.clone()
+        };
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             control.map_or(Ok(()), |control| control.record_failure(error))
         }))
@@ -499,7 +513,7 @@ impl Drop for PreparedNativeCleanup {
 async fn supervise_native_cleanup(state: Arc<NativeCleanupState>) -> RunTaskPhysicalResult {
     let mut cancelled = false;
     let mut deadline_seen = false;
-    let (handoff, proposed, abandon_failed) = loop {
+    let (handoff, proposed, abandon_failed, close_deadline) = loop {
         let notified = state.ready.notified();
         let ready = {
             let intent = state
@@ -510,7 +524,10 @@ async fn supervise_native_cleanup(state: Arc<NativeCleanupState>) -> RunTaskPhys
                 intent
                     .outcome
                     .clone()
-                    .map(|outcome| (intent.handoff, outcome, intent.abandon_failed))
+                    .zip(intent.close_deadline)
+                    .map(|(outcome, deadline)| {
+                        (intent.handoff, outcome, intent.abandon_failed, deadline)
+                    })
             } else {
                 None
             }
@@ -591,41 +608,42 @@ async fn supervise_native_cleanup(state: Arc<NativeCleanupState>) -> RunTaskPhys
             code: error.audit_code().into(),
         },
     };
-    let mut terminal_slot = state.terminal.lock().await;
-    let (delivery_error, handed_off) = match terminal_slot.as_mut() {
-        Some(terminal) => {
-            let delivery =
-                terminal.finish(outcome.clone()).await.err().map(|error| {
+    let delivery_error =
+        {
+            let mut terminal_slot = state.terminal.lock().await;
+            match terminal_slot.as_mut() {
+                Some(terminal) => terminal.finish(outcome.clone()).await.err().map(|error| {
                     StepError::new(error.code(), "Flow outcome could not be recorded")
-                });
-            // An Err alone cannot distinguish pre-commit failure from an
-            // already committed pending-ACK outbox record. Inspect exact sealed
-            // custody; the existing Gate supervisor/startup recovery owns retry.
-            match terminal.durable_handoff() {
-                Ok(winner) => {
-                    outcome = winner;
-                    (delivery, true)
-                }
-                Err(error) => (
-                    delivery.or_else(|| {
+                }),
+                None => Some(StepError::new(
+                    "internal",
+                    "Flow terminal custody is missing",
+                )),
+            }
+        };
+    // A write error may follow a committed pending-ACK terminal. Only an exact
+    // sealed snapshot proves its handoff; callback/teardown uncertainty is not
+    // retryable. Observe under the same original close deadline and custody.
+    let (delivery_error, handed_off) =
+        match observe_durable_handoff(&state.terminal, close_deadline).await {
+            Ok(winner) => {
+                outcome = winner;
+                (delivery_error, true)
+            }
+            Err(error) => {
+                #[cfg(debug_assertions)]
+                eprintln!("FLOW_TERMINAL_HANDOFF_UNPROVEN code={}", error.code());
+                (
+                    delivery_error.or_else(|| {
                         Some(StepError::new(
                             error.code(),
                             "Flow terminal custody remains unknown",
                         ))
                     }),
                     false,
-                ),
+                )
             }
-        }
-        None => (
-            Some(StepError::new(
-                "internal",
-                "Flow terminal custody is missing",
-            )),
-            false,
-        ),
-    };
-    drop(terminal_slot);
+        };
     let physical_proved = physical.is_ok();
     // Only fixed booleans from the retained native receipts, outside source,
     // terminal and receipt guards. Business text is not diagnostic metadata.
@@ -810,6 +828,7 @@ impl TrackedStream {
                 early_close: None,
                 source_control: None,
                 abandon_failed: false,
+                close_deadline: None,
             }),
             receipt: Mutex::new(None),
             cleanup_proved: AtomicBool::new(false),
@@ -1453,6 +1472,7 @@ mod native_close_handoff_tests {
                 early_close: None,
                 source_control: None,
                 abandon_failed: false,
+                close_deadline: None,
             }),
             receipt: Mutex::new(None),
             cleanup_proved: AtomicBool::new(false),
@@ -1524,6 +1544,24 @@ mod native_close_handoff_tests {
             check_unlocked,
             panic,
         })
+    }
+
+    #[test]
+    fn first_close_intent_owns_one_deadline_across_all_later_causes() {
+        let state = state();
+        let before = Instant::now();
+        state.request_close(Outcome::Succeeded);
+        let first = state.intent.lock().unwrap().close_deadline.unwrap();
+        assert!(first >= before + NATIVE_CLEANUP_GRACE);
+        assert!(first <= Instant::now() + NATIVE_CLEANUP_GRACE);
+        state.record_close(StreamCloseReason::Shutdown).unwrap();
+        state
+            .record_failure(&StepError::new("trap", "later failure"))
+            .unwrap();
+        state.no_source(Outcome::Cancelled, false);
+        let intent = state.intent.lock().unwrap();
+        assert_eq!(intent.close_deadline, Some(first));
+        assert_eq!(intent.outcome, Some(Outcome::Succeeded));
     }
 
     #[test]
