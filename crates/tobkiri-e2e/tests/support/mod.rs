@@ -148,6 +148,46 @@ pub fn failure_events<'a>(events: impl IntoIterator<Item = &'a RunEvent>) -> Vec
         .collect()
 }
 
+/// A bounded lifecycle tail for timeout diagnosis. Only fixture-owned step
+/// names are exposed; values, shapes, cancellation reasons and error text stay
+/// uninspected. Unknown step names are replaced with a fixed marker.
+fn progress_events(events: &[RunEvent]) -> Vec<String> {
+    fn known_step(step: &str) -> &'static str {
+        match step {
+            "load" => "load",
+            "prompt" => "prompt",
+            "generate" => "generate",
+            "save" => "save",
+            _ => "other",
+        }
+    }
+    events
+        .iter()
+        .skip(events.len().saturating_sub(12))
+        .map(|event| {
+            let detail = match &event.kind {
+                RunEventKind::Started => "Started".into(),
+                RunEventKind::StepStarted { step } => {
+                    format!("StepStarted step={}", known_step(step))
+                }
+                RunEventKind::StepValue { step, .. } => {
+                    format!("StepValue step={}", known_step(step))
+                }
+                RunEventKind::Emitted { .. } => "Emitted".into(),
+                RunEventKind::StepFailed { step, error, .. } => format!(
+                    "StepFailed step={} code={}",
+                    known_step(step),
+                    error.audit_code()
+                ),
+                RunEventKind::Completed { .. } => "Completed".into(),
+                RunEventKind::Cancelled { .. } => "Cancelled".into(),
+                RunEventKind::Failed { error } => format!("Failed code={}", error.audit_code()),
+            };
+            format!("sequence={} {detail}", event.sequence)
+        })
+        .collect()
+}
+
 /// Bound one actual Session operation. On timeout, retain its pinned future
 /// while requesting close on that same Session; never replay the operation.
 pub async fn within_session<F: Future>(session: &Session, stage: &str, future: F) -> F::Output {
@@ -162,7 +202,7 @@ pub async fn within_session<F: Future>(session: &Session, stage: &str, future: F
                 Err(_) => "close still pending after 5s",
             };
             panic!(
-                "{stage}: timed out after 30s; same Session close requested; {observation}; physical cleanup not established"
+                "{stage}: timed out after 30s; same Session close requested; {observation}; physical cleanup observation=unknown (not established by this close observation)"
             );
         }
     }
@@ -171,15 +211,21 @@ pub async fn within_session<F: Future>(session: &Session, stage: &str, future: F
 async fn native_timeout(run: &mut NativeInputRunHandle, stage: &str) -> anyhow::Error {
     run.cancel.cancel();
     let observation = match tokio::time::timeout(Duration::from_secs(5), &mut run.result).await {
-        Ok(Ok(completion)) => format!(
-            "completion status={:?} routes={:?}",
-            completion.status, completion.routes
-        ),
+        Ok(Ok(completion)) => {
+            // This observes the original result after requesting cancellation;
+            // a result that already won may still be Succeeded or Failed.
+            let routes = &completion.routes[..completion.routes.len().min(12)];
+            format!(
+                "completion status={:?} routes_total={} routes={routes:?}",
+                completion.status,
+                completion.routes.len(),
+            )
+        }
         Ok(Err(error)) => format!("completion error_code={}", error.audit_code()),
         Err(_) => "completion still pending after 5s".into(),
     };
     anyhow::anyhow!(
-        "{stage}: timed out; original run cancelled; same completion observed: {observation}; physical cleanup not established"
+        "{stage}: timed out; original run cancellation requested; same completion observation: {observation}; physical cleanup observation=unknown (not established by this completion observation)"
     )
 }
 
@@ -615,8 +661,15 @@ impl Fixture {
         let plan_digest = run.routes()[0].target.plan_digest.clone();
         let mut events = Vec::new();
         let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-        while let Some(tagged) =
-            next_native_event(&mut run, "turn: Flow progress", deadline).await?
+        while let Some(tagged) = next_native_event(&mut run, "turn: Flow progress", deadline)
+            .await
+            .with_context(|| {
+                format!(
+                    "turn: progress_events_count={} last_progress_events={:?}",
+                    events.len(),
+                    progress_events(&events)
+                )
+            })?
         {
             assert_eq!(tagged.route_index, 0, "event left the frozen route");
             assert_eq!(tagged.event.plan_digest, plan_digest);

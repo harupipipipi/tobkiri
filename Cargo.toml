@@ -81,3 +81,10 @@ wasmtime-internal-fiber = { path = "vendor/wasmtime-internal-fiber" }
 [profile.test]
 debug = 0
 incremental = false
+
+# Actual Core tests compile components inside their original operation budget.
+# Optimize the host compiler while keeping its debug and overflow checks.
+[profile.test.package.cranelift-codegen]
+opt-level = 2
+debug-assertions = true
+overflow-checks = true

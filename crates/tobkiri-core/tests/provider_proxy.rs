@@ -2069,7 +2069,11 @@ async fn actual_component_close_and_cancelled_pull_surface_physical_audit_failur
             .await
             .is_err()
     );
-    session.close().await?;
+    fixture_stage(
+        "audit recovery: close after two cancelled streams",
+        session.close(),
+    )
+    .await?;
     Ok(())
 }
 
@@ -2143,7 +2147,11 @@ async fn actual_component_cancel_winner_survives_physical_audit_retry_after_dead
             .await
             .is_err()
     );
-    session.close().await?;
+    fixture_stage(
+        "audit recovery: close after original winner acknowledgement",
+        session.close(),
+    )
+    .await?;
     Ok(())
 }
 
