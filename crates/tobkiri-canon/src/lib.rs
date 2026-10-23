@@ -76,7 +76,9 @@ impl Digest {
     pub fn hash(bytes: &[u8]) -> Self {
         Self::from_sha256(Sha256::digest(bytes).into())
     }
-    fn from_sha256(hash: [u8; 32]) -> Self {
+    /// Format an already finalized SHA-256 digest without allocating a string.
+    /// This is a byte identity, not evidence of admission or execution authority.
+    pub fn from_sha256(hash: [u8; 32]) -> Self {
         const HEX: &[u8; 16] = b"0123456789abcdef";
         let mut bytes = [b'0'; 71];
         bytes[..7].copy_from_slice(b"sha256:");

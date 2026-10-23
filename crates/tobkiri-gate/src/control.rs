@@ -227,6 +227,33 @@ impl ControlReservation {
     pub fn kind(&self) -> ControlKind {
         self.kind
     }
+
+    /// Prepay additional storage in the SAME account and category record.
+    /// A source catalog can grow its retained index without creating another
+    /// Load/Catalog slot or a second byte allowance. Call BEFORE allocating
+    /// the additional storage; denial leaves this reservation unchanged.
+    ///
+    /// There is deliberately no partial refund: all admitted storage must be
+    /// destroyed before this move-only reservation is finally dropped.
+    pub fn try_grow(&mut self, additional_bytes: u64) -> Result<(), CoreControlError> {
+        if additional_bytes == 0 {
+            return Err(CoreControlError::Invalid);
+        }
+        let next = self
+            .bytes
+            .checked_add(additional_bytes)
+            .ok_or(CoreControlError::Limit)?;
+        self.state
+            .bytes
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |bytes| {
+                bytes
+                    .checked_add(additional_bytes)
+                    .filter(|total| *total <= self.state.bytes_limit)
+            })
+            .map_err(|_| CoreControlError::Limit)?;
+        self.bytes = next;
+        Ok(())
+    }
 }
 impl fmt::Debug for ControlReservation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -246,6 +273,96 @@ impl Drop for ControlReservation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn growing_a_retained_catalog_uses_the_same_slot_and_byte_account() {
+        let control = CoreControl::new(CoreControlLimits {
+            total_bytes: 100,
+            max_catalogs: 1,
+            ..CoreControlLimits::default()
+        })
+        .unwrap();
+        let mut catalog = control.reserve(ControlKind::Catalog, 20).unwrap();
+        catalog.try_grow(60).unwrap();
+        assert_eq!(catalog.bytes(), 80);
+        assert_eq!(catalog.kind(), ControlKind::Catalog);
+        assert_eq!(control.usage().bytes, 80);
+        assert_eq!(control.usage().count(ControlKind::Catalog), 1);
+        assert!(matches!(
+            control.reserve(ControlKind::Catalog, 1),
+            Err(CoreControlError::Limit)
+        ));
+        let other = control.reserve(ControlKind::Task, 20).unwrap();
+        assert_eq!(catalog.try_grow(1), Err(CoreControlError::Limit));
+        assert_eq!(catalog.bytes(), 80);
+        assert_eq!(control.usage().bytes, 100);
+        assert_eq!(control.usage().count(ControlKind::Catalog), 1);
+        drop(other);
+        catalog.try_grow(20).unwrap();
+        assert_eq!(control.usage().bytes, 100);
+        drop(catalog);
+        assert_eq!(control.usage().bytes, 0);
+        assert_eq!(control.usage().count(ControlKind::Catalog), 0);
+    }
+
+    #[test]
+    fn invalid_or_overflowing_growth_retains_the_original_charge() {
+        let control = CoreControl::new(CoreControlLimits {
+            total_bytes: u64::MAX,
+            ..CoreControlLimits::default()
+        })
+        .unwrap();
+        let mut load = control.reserve(ControlKind::Load, u64::MAX - 1).unwrap();
+        assert_eq!(load.try_grow(0), Err(CoreControlError::Invalid));
+        assert_eq!(load.try_grow(2), Err(CoreControlError::Limit));
+        assert_eq!(load.bytes(), u64::MAX - 1);
+        assert_eq!(control.usage().bytes, u64::MAX - 1);
+        load.try_grow(1).unwrap();
+        assert_eq!(control.usage().bytes, u64::MAX);
+        drop(load);
+        assert_eq!(control.usage().bytes, 0);
+        assert_eq!(control.usage().count(ControlKind::Load), 0);
+    }
+
+    #[test]
+    fn concurrent_growth_cannot_create_a_second_byte_allowance() {
+        let control = CoreControl::new(CoreControlLimits {
+            total_bytes: 100,
+            max_catalogs: 2,
+            ..CoreControlLimits::default()
+        })
+        .unwrap();
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let workers = (0..2)
+            .map(|_| {
+                let mut reservation = control.reserve(ControlKind::Catalog, 20).unwrap();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    let result = reservation.try_grow(40);
+                    (reservation, result)
+                })
+            })
+            .collect::<Vec<_>>();
+        let records = workers
+            .into_iter()
+            .map(|worker| worker.join().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            records.iter().filter(|(_, result)| result.is_ok()).count(),
+            1
+        );
+        assert_eq!(control.usage().bytes, 80);
+        assert_eq!(control.usage().count(ControlKind::Catalog), 2);
+        assert_eq!(
+            records.iter().map(|(held, _)| held.bytes()).sum::<u64>(),
+            80
+        );
+        drop(records);
+        assert_eq!(control.usage().bytes, 0);
+        assert_eq!(control.usage().count(ControlKind::Catalog), 0);
+    }
+
     #[test]
     fn admission_denial_rolls_back_category_and_byte_capacity() {
         let control = CoreControl::new(CoreControlLimits {

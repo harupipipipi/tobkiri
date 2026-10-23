@@ -1,6 +1,7 @@
 //! Pack identity, integrity and authoritative WIT shape documents.
 mod package;
 mod shapes;
+pub mod source;
 mod wit_preflight;
 pub use package::{
     build_tpk, canonical_manifest, parse_manifest, sign_manifest, verify_directory, verify_tpk,

@@ -16,9 +16,7 @@ ed25519-dalek.workspace = true
 thiserror.workspace = true
 tar.workspace = true
 wit-parser.workspace = true
+tempfile.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true
-
-[dev-dependencies]
-tempfile.workspace = true
