@@ -24,6 +24,14 @@ These results do not constitute Rust, native UI, or migration acceptance.
 The earlier [Audit/Census checkpoint 1041](rust-progress.md#applied-auditcensus-checkpoint-1041)
 is historical, source-bound evidence, not a current full-workspace result.
 
+## Credential transport source audit, 2026-10-23
+
+The [credential transport source audit](credential-transport-parity.md)
+records original enrollment, policy-witness and lifetime-attempt obligations
+that remain open in the native path. Execution accounting alone does not
+establish these existing credential semantics. No acceptance item is closed by
+that source audit.
+
 ## Bounded Python-on-Wasm checkpoint, 2026-10-20
 
 The [finalization trial](../../../tools/python313-producer/trials/2026-10-20-finalization/)
