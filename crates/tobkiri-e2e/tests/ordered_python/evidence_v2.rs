@@ -29,7 +29,7 @@ pub fn counts() -> Value {
 }
 
 fn source_record(path: &str, bytes: &[u8]) -> Value {
-    json!({"path":path, "bytes":bytes.len(), "sha256":digest(&bytes)})
+    json!({"path":path, "bytes":bytes.len(), "sha256":digest(bytes)})
 }
 
 fn read_relative(repo: &Path, path: &str) -> Result<Vec<u8>> {
@@ -289,7 +289,7 @@ pub fn reviewed_sources(repo: &Path) -> Result<(Value, Value)> {
         .iter()
         .map(|(name, bytes)| {
             json!({
-                "source":name, "destination":name, "sha256":digest(&bytes), "bytes":bytes.len()
+                "source":name, "destination":name, "sha256":digest(bytes), "bytes":bytes.len()
             })
         })
         .collect();

@@ -116,7 +116,7 @@ pub fn reviewed_sources(repo: &Path) -> Result<Value> {
             .iter()
             .map(|(name, bytes)| {
                 json!({
-                    "source":name, "destination":name, "sha256":digest(&bytes), "bytes":bytes.len()
+                    "source":name, "destination":name, "sha256":digest(bytes), "bytes":bytes.len()
                 })
             })
             .collect(),
