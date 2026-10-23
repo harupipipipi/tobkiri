@@ -8401,6 +8401,15 @@ mod control_admission_tests {
             .await
             .unwrap();
         factory.gate.watch_lease(&bounded, &permit).unwrap();
+        // The argument phase has ended. Its value adapter stays in the
+        // process-wide physical-custody table until an explicit reap or a
+        // later allocation (possibly in a parallel test). Retire that idle
+        // adapter before callers measure this frame's exact control charge.
+        // The live provider frame and its original funding remain retained.
+        drop(args);
+        drop(budget);
+        drop(preparation);
+        tobkiri_wasm::reap_allocation_owners().unwrap();
         (frame, permit, args_digest)
     }
 

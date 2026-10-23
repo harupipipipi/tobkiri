@@ -236,6 +236,13 @@ mod tests {
             .unwrap();
         let control = frame.context().control();
         let before = control.usage();
+        // Reproduce another test's opportunistic process-wide collection.
+        // Completed argument custody must already be gone; the actual live
+        // frame must remain charged, with no looser counter comparison.
+        std::thread::spawn(|| tobkiri_wasm::reap_allocation_owners().unwrap())
+            .join()
+            .unwrap();
+        assert_eq!(control.usage(), before);
         let reference = factory
             .gate
             .inspect_reached_evidence(frame.context(), &scope)
