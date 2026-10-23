@@ -1339,6 +1339,37 @@ impl GateEngine {
         self.approvals.advance_security_epoch(profile)
     }
     pub fn effective_permissions(&self, cx: &CallCx) -> Result<PermissionSet, GateError> {
+        self.with_effective_permission_layers(cx, |layers| {
+            if layers.len() == 1 {
+                return layers[0].clone();
+            }
+            layers[2..]
+                .iter()
+                .fold(layers[0].intersect(layers[1]), |effective, layer| {
+                    effective.intersect(layer)
+                })
+        })
+    }
+    /// Read and validate the same original layers on every call. Computing
+    /// only numeric limits avoids copying discarded effect-permission sets;
+    /// this is neither cached authority nor a substitute for any live check.
+    fn effective_execution_limits(&self, cx: &CallCx) -> Result<ResourceLimits, GateError> {
+        self.with_effective_permission_layers(cx, |layers| {
+            layers[1..]
+                .iter()
+                .fold(layers[0].wasm.clone(), |limits, layer| {
+                    limits.intersect(&layer.wasm)
+                })
+        })
+    }
+    /// Fixed internal projections run under the original policy guard, after
+    /// the current approval read and every original view validation. Each
+    /// branch supplies at least one borrowed layer; no references escape.
+    fn with_effective_permission_layers<T>(
+        &self,
+        cx: &CallCx,
+        project: impl FnOnce(&[&PermissionSet]) -> T,
+    ) -> Result<T, GateError> {
         if let Some((pack, hash)) = cx.principal().pack() {
             let policies = self
                 .policies
@@ -1355,14 +1386,21 @@ impl GateEngine {
             self.validate_permission_views(cx, &policy.ceiling)?;
             self.validate_permission_views(cx, &policy.pack_limits)?;
             self.validate_permission_views(cx, &approved)?;
-            Ok(policy.maximum().intersect(&approved))
+            Ok(project(&[
+                &policy.declaration,
+                &policy.ceiling,
+                &policy.pack_limits,
+                &approved,
+            ]))
         } else if let Principal::Input { source } = cx.principal() {
-            self.inputs
+            let inputs = self
+                .inputs
                 .lock()
-                .map_err(|_| GateError::Persistence("input policy lock poisoned".into()))?
+                .map_err(|_| GateError::Persistence("input policy lock poisoned".into()))?;
+            let permissions = inputs
                 .get(&(cx.profile().to_string(), source.to_string()))
-                .cloned()
-                .ok_or_else(|| GateError::Denied("unbound input source".into()))
+                .ok_or_else(|| GateError::Denied("unbound input source".into()))?;
+            Ok(project(&[permissions]))
         } else {
             let revision = cx
                 .revision()
@@ -1390,7 +1428,7 @@ impl GateEngine {
             self.validate_permission_views(cx, &policy.declaration)?;
             self.validate_permission_views(cx, &policy.ceiling)?;
             self.validate_permission_views(cx, &approved)?;
-            Ok(policy.maximum.intersect(&approved))
+            Ok(project(&[&policy.maximum, &approved]))
         }
     }
     /// Read the actual creator's four original layers without manufacturing a
@@ -2383,13 +2421,13 @@ impl Gate for GateEngine {
         {
             return Err(GateError::Denied("unregistered compiled revision".into()));
         }
-        let effective = self.effective_permissions(cx)?;
+        let effective = self.effective_execution_limits(cx)?;
         if let Some((pack, hash)) = cx.principal().pack() {
             let limits = self.frozen_limits(cx, pack, hash)?;
             if limits.fuel_per_call == 0
                 || limits.memory_mib == 0
                 || limits.wall_ms == 0
-                || !limits.is_subset_of(&effective.wasm)
+                || !limits.is_subset_of(&effective)
                 || !cx.limits().is_subset_of(&limits)
             {
                 return Err(GateError::Denied(

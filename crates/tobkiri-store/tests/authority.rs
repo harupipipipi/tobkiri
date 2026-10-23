@@ -1206,6 +1206,134 @@ async fn exact_operation_views_and_original_authority_layers_cannot_be_masked_by
         "unknown approval view must not disappear in meet"
     );
 }
+
+fn narrow_execution_limit(limits: &mut ResourceLimits, field: usize) {
+    match field {
+        0 => limits.fuel_per_call /= 2,
+        1 => limits.memory_mib /= 2,
+        2 => limits.wall_ms /= 2,
+        3 => limits.table_elements /= 2,
+        4 => limits.output_bytes /= 2,
+        _ => unreachable!("five execution limits"),
+    }
+}
+
+#[test]
+fn context_budget_checks_retain_every_original_layer_and_live_approval() {
+    for layer in 0..4 {
+        for field in 0..5 {
+            let f = Fixture::new(true);
+            let gate = f.engine(MediatorChain::default());
+            let pack = PackId::parse("local.context-budget").unwrap();
+            let hash = PackHash::new(Digest::hash(b"context-budget"));
+            let revision = Digest::hash(b"context-budget-revision");
+            let mut layers = [perms(), perms(), perms(), perms()];
+            narrow_execution_limit(&mut layers[layer].wasm, field);
+            gate.register_pack(
+                &f.profile,
+                &pack,
+                &hash,
+                PackPolicy {
+                    declaration: layers[0].clone(),
+                    ceiling: layers[1].clone(),
+                    pack_limits: layers[2].clone(),
+                },
+            )
+            .unwrap();
+            f.approvals
+                .set_permissions(&f.profile, &pack, &hash, &layers[3])
+                .unwrap();
+            let mut frozen = limits();
+            narrow_execution_limit(&mut frozen, field);
+            gate.register_revision(
+                &f.profile,
+                &revision,
+                std::collections::BTreeMap::from([((pack.clone(), hash.clone()), frozen.clone())]),
+            )
+            .unwrap();
+            let cx = CallCx::root(
+                f.profile.clone(),
+                Principal::Pack {
+                    pack: pack.clone(),
+                    hash: hash.clone(),
+                },
+                RequestId::parse("req_context_budget").unwrap(),
+                CancellationToken::new(),
+                Instant::now() + Duration::from_secs(30),
+                frozen.clone(),
+            )
+            .with_revision(revision);
+            assert_eq!(gate.effective_permissions(&cx).unwrap().wasm, frozen);
+            gate.check_context(&cx).unwrap();
+
+            // A later durable approval reduction must invalidate the same
+            // context; neither its previous success nor the frozen budget is
+            // authority to retain any of the five now-unapproved limits.
+            let mut reduced = layers[3].clone();
+            reduced.wasm = frozen;
+            narrow_execution_limit(&mut reduced.wasm, field);
+            f.approvals
+                .set_permissions(&f.profile, &pack, &hash, &reduced)
+                .unwrap();
+            assert!(
+                gate.check_context(&cx).is_err(),
+                "layer={layer} field={field}: live approval reduction was ignored"
+            );
+            f.approvals
+                .set_permissions(&f.profile, &pack, &hash, &layers[3])
+                .unwrap();
+            gate.check_context(&cx).unwrap();
+            gate.revoke_epoch(&f.profile).unwrap();
+            assert!(matches!(
+                gate.check_context(&cx),
+                Err(GateError::StaleEpoch)
+            ));
+            assert_eq!(f.prompt.count.load(Ordering::SeqCst), 0);
+        }
+    }
+}
+
+#[test]
+fn context_budget_checks_do_not_hide_unknown_views_in_any_original_layer() {
+    for layer in 0..4 {
+        let f = Fixture::new(true);
+        let gate = f.engine(MediatorChain::default());
+        let pack = PackId::parse("local.context-views").unwrap();
+        let hash = PackHash::new(Digest::hash(b"context-views"));
+        let revision = Digest::hash(b"context-views-revision");
+        let mut layers = [perms(), perms(), perms(), perms()];
+        layers[layer].ports.insert("local.missing.iface@1.0".into());
+        gate.register_pack(
+            &f.profile,
+            &pack,
+            &hash,
+            PackPolicy {
+                declaration: layers[0].clone(),
+                ceiling: layers[1].clone(),
+                pack_limits: layers[2].clone(),
+            },
+        )
+        .unwrap();
+        f.approvals
+            .set_permissions(&f.profile, &pack, &hash, &layers[3])
+            .unwrap();
+        gate.register_revision(
+            &f.profile,
+            &revision,
+            std::collections::BTreeMap::from([((pack.clone(), hash.clone()), limits())]),
+        )
+        .unwrap();
+        gate.register_operation_views(&f.profile, &revision, Default::default())
+            .unwrap();
+        let cx = f.cx(Principal::Pack { pack, hash }).with_revision(revision);
+        // Other layers erase this view from the meet. Both complete effect
+        // permissions and numeric-only context checks must still reject it.
+        assert!(gate.effective_permissions(&cx).is_err());
+        assert!(gate.check_context(&cx).is_err());
+        assert_eq!(f.prompt.count.load(Ordering::SeqCst), 0);
+    }
+}
+
 #[tokio::test]
 async fn user_authority_requires_fresh_document_revision_epoch_bound_approval_and_per_effect_prompt()
  {
