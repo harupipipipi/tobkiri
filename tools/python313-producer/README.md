@@ -67,6 +67,17 @@ not a claim of ordinary SQLite or cryptographic-random parity. Core-Wasm magic
 is only an encoding sanity check. Wasmtime validation, producer runtimes/CLI,
 componentization and actual guest behavior still require their later stages.
 
+`fetch_registry.py` separately restores all 410 registry dependencies in the
+original hash-bound Cargo.lock. Each archive must match its locked SHA-256
+before the complete tar inventory is checked and extracted into private source
+storage. The source extractor retains its traversal, link, collision, special
+mode and file-size checks; additional aggregate download/member/expanded-byte
+limits cover the whole closure. Cargo directory-source checksums and the actual
+file identities are recorded. Neither Cargo nor any dependency program runs.
+This is only the registry portion: the sole pinned Git dependency, Rust 1.94.0
+toolchain, target, offline build configuration and runtime builds remain separate
+steps. Registry acquisition alone is not a complete offline environment.
+
 ## Pinned inputs and reproducibility
 
 - Official CPython 3.13.16 archive:
