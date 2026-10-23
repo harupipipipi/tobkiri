@@ -109,7 +109,7 @@ mod tests {
         admit_native_frame, core_frame, finish_native_frame, new_factory,
     };
     use super::*;
-    use tobkiri_gate::{ControlKind, Outcome};
+    use tobkiri_gate::{ControlKind, Gate, Outcome};
     use tobkiri_wasm::NativeIdAttempt;
 
     #[tokio::test]
