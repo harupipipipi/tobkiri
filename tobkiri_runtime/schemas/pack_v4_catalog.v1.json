@@ -12038,7 +12038,7 @@
         {
           "contract_id": "tobkiri.service.git.publish.v1",
           "function_id": "rumi_git_publish_pack.git-push-prepare.service",
-          "implementation_digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89",
+          "implementation_digest": "sha256:338495006a72fae8648303e808dc6db2de2b53ede646e7e8af787c98c802d405",
           "operation_ids": [
             "rumi_git_publish_pack.git-push-prepare"
           ]
@@ -12046,7 +12046,7 @@
         {
           "contract_id": "tobkiri.service.git.publish.v1",
           "function_id": "rumi_git_publish_pack.git-publish.service",
-          "implementation_digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89",
+          "implementation_digest": "sha256:338495006a72fae8648303e808dc6db2de2b53ede646e7e8af787c98c802d405",
           "operation_ids": [
             "rumi_git_publish_pack.git-push"
           ]
@@ -12087,7 +12087,7 @@
               ],
               "entrypoint_id": "git-push-prepare",
               "id": "rumi_git_publish_pack.git-push-prepare",
-              "implementation_digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89"
+              "implementation_digest": "sha256:338495006a72fae8648303e808dc6db2de2b53ede646e7e8af787c98c802d405"
             },
             {
               "effect_ceiling": [
@@ -12098,7 +12098,7 @@
               ],
               "entrypoint_id": "git-push",
               "id": "rumi_git_publish_pack.git-push",
-              "implementation_digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89"
+              "implementation_digest": "sha256:338495006a72fae8648303e808dc6db2de2b53ede646e7e8af787c98c802d405"
             }
           ],
           "owner": "rumi_git_publish_pack",
@@ -12160,7 +12160,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89",
+          "digest": "sha256:338495006a72fae8648303e808dc6db2de2b53ede646e7e8af787c98c802d405",
           "kind": "executable",
           "path": "runtime/publish.py"
         }
