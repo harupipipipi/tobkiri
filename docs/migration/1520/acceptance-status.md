@@ -369,3 +369,24 @@ Mobile/P2P local-gate preservation, the three legacy mediator conversions, seven
 published preset examples, and contradictory legacy-document cleanup remain
 issue requirements even though they are not separate entries in its 20-item
 acceptance list. A green checklist subset cannot silently waive those obligations.
+
+## Original component sharing investigation, 2026-10-23
+
+A bounded, read-only section/hash inventory of the preserved original Python
+caller and bridge found 26 byte-identical embedded core modules totaling
+6,865,307 bytes. The two complete components total 35,798,851 bytes. The
+[inventory tool](../../../tools/quality/component_module_inventory.py) records
+full module hashes and nesting locations, and CI retains its report alongside
+the authenticated original graph replay. It checks framing, not Wasm validity,
+transformation equivalence, admission or execution. Its extraction lower bound
+does not include new module-type/import overhead and is not an acceptance claim.
+
+The existing engine supports core-module linker imports, while the current
+Host deliberately rejects non-interface imports. A generic shared-code path
+would need exact declared dependency closure, authenticated transformed
+artifacts, shared immutable bytes from the reading stage, prepaid cache custody,
+and independent per-Pack instances, memory, tables, globals, WASI and Gate
+contexts. Sharing an interpreter service Pack would change the CodeOwner.
+The original 32 MiB per-component and 64 MiB catalog limits remain unchanged;
+the five original components are still not admitted. The complete five-source
+closure, transformation, loader and runtime parity remain open.

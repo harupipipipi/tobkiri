@@ -33,6 +33,8 @@ jobs:
         run: python3 -B tools/quality/test_issue_1520_ci.py
       - name: Workflow platform and artifact routing regression
         run: python3 -B tools/quality/test_issue_1520_workflow.py
+      - name: Bounded component module inventory regression
+        run: python3 -B tools/quality/test_component_module_inventory.py
       - name: Gateway tool-caller native routing regression
         run: python3 -B tools/quality/test_gateway_tool_caller_workflow.py
       - name: Python 3.13 asset packager regression
@@ -342,6 +344,13 @@ jobs:
               for name, value in values.items():
                   environment.write(f"TOBKIRI_TEST_GATEWAY_TOOL_CALLER_{name}={value}\n")
           PY
+      - name: Inventory exact original component module sharing
+        if: ${{ !cancelled() && steps.stage_gateway_tool_caller.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/component_module_inventory.py
+          "$TOBKIRI_TEST_GATEWAY_TOOL_CALLER_GRAPH_DIR/caller/component.wasm"
+          "$TOBKIRI_TEST_GATEWAY_TOOL_CALLER_GRAPH_DIR/bridge/component.wasm"
+          > "$RUNNER_TEMP/issue-1520-gateway-tool-caller/module-inventory.json"
       - name: Replay the original Python tool caller through actual Rust Core
         # Independent of the official producer, old WAT route, and earlier failures.
         if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' && steps.stage_gateway_tool_caller.outcome == 'success' }}
@@ -365,6 +374,7 @@ jobs:
             ${{ runner.temp }}/issue-1520-gateway-tool-caller/graph/caller/pack.json
             ${{ runner.temp }}/issue-1520-gateway-tool-caller/graph/caller/component.build.json
             ${{ runner.temp }}/issue-1520-gateway-tool-caller/native-replay.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/module-inventory.json
             ${{ runner.temp }}/gateway-tool-caller-stage.log
             ${{ runner.temp }}/gateway-tool-caller-native.log
             ${{ runner.temp }}/gateway-tool-caller-native.receipt.json
