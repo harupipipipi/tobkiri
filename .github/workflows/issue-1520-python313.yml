@@ -19,7 +19,9 @@ permissions:
 
 jobs:
   pinned-producer-native:
-    runs-on: ubuntu-24.04
+    # The 24.04 image rejects bwrap's private loopback setup. Keep namespace
+    # isolation and use the supported older image; never disable host policy.
+    runs-on: ubuntu-22.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4

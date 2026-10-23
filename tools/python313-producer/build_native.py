@@ -133,6 +133,10 @@ def run(source: Path, destination: Path) -> None:
     receipt["supervisor_exit_code"] = result.returncode
     try:
         if result.returncode != 0:
+            with (destination / "build.log").open("rb") as log:
+                log.seek(0, os.SEEK_END)
+                log.seek(max(0, log.tell() - 8192))
+                print(log.read(8192).decode("utf-8", errors="replace"))
             raise RuntimeError("isolated native build failed; inspect build.log")
         supervision = json.loads((destination / "supervision.json").read_text())
         if supervision["outcome"] != "success":
