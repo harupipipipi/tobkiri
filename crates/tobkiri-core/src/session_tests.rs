@@ -321,7 +321,7 @@ async fn open_stream(
 
 #[tokio::test]
 async fn actual_stream_retains_its_original_parent_metadata_after_native_retirement() {
-    let (_fixture, session, attachment) = setup().await;
+    let (fixture, session, attachment) = setup().await;
     open_stream(
         &session,
         &attachment.session,
@@ -335,6 +335,12 @@ async fn actual_stream_retains_its_original_parent_metadata_after_native_retirem
         .unwrap()
         .retained_stream_parent_check();
     session.close().await.unwrap();
+    // Session/PackHost may still own producer budget proofs after execution
+    // closes. Release those real containers before asserting the final record
+    // release; the observer itself keeps only funded historical metadata.
+    drop(attachment);
+    drop(session);
+    drop(fixture);
     check_retired_metadata();
 }
 

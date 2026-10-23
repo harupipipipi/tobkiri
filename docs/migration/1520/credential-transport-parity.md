@@ -99,14 +99,23 @@ through payload destruction and any remaining weak allocation.
 
 This description is not itself a live invocation or parent-chain proof, a GUI
 surface identity, a durable enrollment or a Pack policy digest. Core privately
-holds the actual leaf Grant and arguments, but its public Provider frame API
-does not yet expose an authenticated borrow or traversal of that evidence and
-its private parent links. The declared `TypedReachedInvocation` interface has
-no Core implementation. An authenticated live leaf and the original current
-revocation, expiry, context and policy checks remain required; retaining
-historical metadata does not extend authority. These gaps must be resolved
-before a Broker can rely on approval ancestry; copying a description or a
-path digest cannot resolve them.
+holds the actual leaf Grant and arguments. A fixed native Gate inspection now
+authenticates an existing registered allocation scope, locks Core's original
+admission and node mutexes, and uses a stack `TypedReachedInvocation` proof
+borrowing those same guards. It returns an opaque, prepaid metadata reference.
+Views and parent selection freshly check the same original live leaf, factory,
+context, epoch, entry deadline and terminal state. Selecting an ancestor keeps
+the original leaf binding; the historical ancestor need not still execute.
+No caller-selected Grant, parent ID or serialized evidence is accepted. The
+reference retains only metadata and its original funding, not native owners.
+
+This native read-only API is not yet exposed through a Wasm host resource or
+used by the Broker. It grants no effect authority. Secrets/network/storage must
+independently retain their ordinary permissions and perform evidence
+revalidation atomically with their actual admission; reading a view and later
+submitting its JSON or Grant ID cannot supply that check. That effect-side
+integration and the original durable enrollment/policy/witness semantics remain
+open. Retaining historical metadata never extends authority or validity.
 
 Keep these obligations open until the production create/use/revoke and
 compensation path uses the same backend and passes original GUI-to-chat,

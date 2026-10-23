@@ -128,7 +128,7 @@ mod tests {
     impl super::super::ExecutionFactory {
         /// Read-only observation of frames minted by the real Wasm/Core path.
         /// The returned check retains metadata only, never a native frame.
-        pub(crate) fn retained_stream_parent_check(&self) -> impl FnOnce() + 'static {
+        pub(crate) fn retained_stream_parent_check(&self) -> impl FnOnce() + 'static + use<> {
             // Release the index lock before any upgraded frame can be dropped.
             let frames = self
                 .provider
@@ -176,6 +176,66 @@ mod tests {
                 EffectRequest::PortCall { .. }
             ));
             assert_eq!(record.context.request(), parent.context.request());
+            // Exercise the public Gate seam against the SAME actual Wasm
+            // StreamOpen frame; no test-created provider can replace it.
+            let scope = tobkiri_wasm::ProviderFrame::allocation_scope(
+                source.as_ref(),
+                tobkiri_gate::AllocationReason::RuntimeValue,
+            )
+            .unwrap();
+            let evidence = self
+                .gate
+                .inspect_reached_evidence(&record.context, &scope)
+                .unwrap();
+            let parent_evidence = self
+                .gate
+                .reached_evidence_parent(&record.context, &scope, &evidence)
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                self.gate
+                    .reached_evidence_view(&record.context, &scope, &evidence)
+                    .unwrap()
+                    .entry
+                    .grant(),
+                source_entry.grant()
+            );
+            assert_eq!(
+                self.gate
+                    .reached_evidence_view(&record.context, &scope, &parent_evidence)
+                    .unwrap()
+                    .entry
+                    .grant(),
+                parent_entry.grant()
+            );
+            assert!(
+                self.gate
+                    .reached_evidence_parent(&record.context, &scope, &parent_evidence)
+                    .unwrap()
+                    .is_none()
+            );
+            // Parent selection must not rebind this reference to its ancestor
+            // even when that caller is still executing in the same CallCx.
+            if let Some(actual_parent) = frames
+                .iter()
+                .find(|frame| FundedArc::ptr_eq(&frame.state.invocation, parent))
+            {
+                if let Ok(parent_scope) = tobkiri_wasm::ProviderFrame::allocation_scope(
+                    actual_parent.as_ref(),
+                    tobkiri_gate::AllocationReason::RuntimeValue,
+                ) {
+                    assert!(
+                        self.gate
+                            .reached_evidence_view(
+                                &actual_parent.state.context,
+                                &parent_scope,
+                                &parent_evidence
+                            )
+                            .is_err()
+                    );
+                }
+            }
+            drop(scope);
             let source_native = Arc::downgrade(source);
             let parent_grant = parent_entry.grant().clone();
             let parent_weak = parent.downgrade();
@@ -194,6 +254,8 @@ mod tests {
                     retained_parent,
                     &parent_weak.upgrade().unwrap()
                 ));
+                drop(evidence);
+                drop(parent_evidence);
                 drop(record);
                 assert!(parent_weak.upgrade().is_none());
             }

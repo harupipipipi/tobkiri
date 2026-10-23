@@ -10,6 +10,8 @@ use crate::CoreError;
 mod input_forwarding;
 use crate::funded_arc::{FundedArc, FundedWeak, Funding, new_funding};
 use input_forwarding::NativeInputForwarding;
+#[path = "invocation_evidence.rs"]
+mod invocation_evidence;
 #[path = "invocation_record.rs"]
 mod invocation_record;
 use invocation_record::{
@@ -3154,6 +3156,45 @@ impl ActiveFrameVerifier for CoreVerifier {
             return Err(GateError::Unavailable);
         }
         Ok(&proof.node.context)
+    }
+    fn with_reached_invocation(
+        &self,
+        cx: &CallCx,
+        proof: &(dyn std::any::Any + Send + Sync),
+        reason: AllocationReason,
+        inspect: &mut dyn FnMut(&dyn tobkiri_gate::TypedReachedInvocation) -> Result<(), GateError>,
+    ) -> Result<(), GateError> {
+        invocation_evidence::with_invocation(self, cx, proof, reason, inspect)
+    }
+    fn reached_evidence_storage_bytes(&self) -> Result<u64, GateError> {
+        invocation_evidence::storage_bytes()
+    }
+    fn retain_reached_evidence(
+        &self,
+        proof: &(dyn std::any::Any + Send + Sync),
+        funding: ControlReservation,
+    ) -> Result<ControlHandle<dyn std::any::Any + Send + Sync>, GateError> {
+        invocation_evidence::retain_leaf(self, proof, funding)
+    }
+    fn match_reached_evidence(
+        &self,
+        proof: &(dyn std::any::Any + Send + Sync),
+        reference: &(dyn std::any::Any + Send + Sync),
+    ) -> Result<(), GateError> {
+        invocation_evidence::matches_leaf(self, proof, reference)
+    }
+    fn reached_evidence_view<'a>(
+        &self,
+        reference: &'a (dyn std::any::Any + Send + Sync),
+    ) -> Result<tobkiri_gate::ReachedEvidenceView<'a>, GateError> {
+        invocation_evidence::view(self, reference)
+    }
+    fn retain_reached_parent(
+        &self,
+        reference: &(dyn std::any::Any + Send + Sync),
+        funding: ControlReservation,
+    ) -> Result<ControlHandle<dyn std::any::Any + Send + Sync>, GateError> {
+        invocation_evidence::retain_parent(self, reference, funding)
     }
     fn retained_control_bytes(
         &self,

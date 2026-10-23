@@ -10,6 +10,9 @@ use tobkiri_canon::{
     ControlHandle, Digest,
     ids::{PackHash, ProfileId, RequestId},
 };
+#[path = "reached_evidence.rs"]
+mod reached_evidence;
+pub use reached_evidence::{ReachedContextView, ReachedEvidenceRef, ReachedEvidenceView};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AllocationReason {
@@ -239,6 +242,55 @@ pub trait ActiveFrameVerifier: Send + Sync {
         &self,
         _proof: &'a (dyn Any + Send + Sync),
     ) -> Result<&'a CallCx, GateError> {
+        Err(GateError::Unavailable)
+    }
+    /// Fixed Gate inspection only, under the original admission and SAME node
+    /// mutex. The stack proof borrows those guards and never recursively locks.
+    /// No guest/effect callback, await or cascading final-owner drop is allowed.
+    fn with_reached_invocation(
+        &self,
+        _cx: &CallCx,
+        _proof: &(dyn Any + Send + Sync),
+        _reason: AllocationReason,
+        _inspect: &mut dyn FnMut(&dyn TypedReachedInvocation) -> Result<(), GateError>,
+    ) -> Result<(), GateError> {
+        Err(GateError::Unavailable)
+    }
+    /// Exact private carrier layout, including its original release plan.
+    fn reached_evidence_storage_bytes(&self) -> Result<u64, GateError> {
+        Err(GateError::Unavailable)
+    }
+    /// Called only by Gate's fixed inspection while its live proof is locked.
+    /// Retain metadata only; native execution/terminal custody must stay out.
+    fn retain_reached_evidence(
+        &self,
+        _proof: &(dyn Any + Send + Sync),
+        _funding: ControlReservation,
+    ) -> Result<ControlHandle<dyn Any + Send + Sync>, GateError> {
+        Err(GateError::Unavailable)
+    }
+    /// Compare actual private leaf object identity, never descriptive fields.
+    fn match_reached_evidence(
+        &self,
+        _proof: &(dyn Any + Send + Sync),
+        _reference: &(dyn Any + Send + Sync),
+    ) -> Result<(), GateError> {
+        Err(GateError::Unavailable)
+    }
+    /// Immutable historical description only; this grants no current work.
+    fn reached_evidence_view<'a>(
+        &self,
+        _reference: &'a (dyn Any + Send + Sync),
+    ) -> Result<ReachedEvidenceView<'a>, GateError> {
+        Err(GateError::Unavailable)
+    }
+    /// The parent is fixed by the original authenticated dispatch. The caller
+    /// prepaid this carrier and keeps the original leaf binding separately.
+    fn retain_reached_parent(
+        &self,
+        _reference: &(dyn Any + Send + Sync),
+        _funding: ControlReservation,
+    ) -> Result<ControlHandle<dyn Any + Send + Sync>, GateError> {
         Err(GateError::Unavailable)
     }
     /// Borrow the original Input caller inside a completed source proof.
