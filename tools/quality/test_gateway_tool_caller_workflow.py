@@ -144,6 +144,7 @@ class GatewayToolCallerWorkflowTests(unittest.TestCase):
                 "graph/source-observations.json", "graph/bridge/pack.json",
                 "graph/bridge/component.build.json", "graph/caller/pack.json",
                 "graph/caller/component.build.json", "native-replay.json",
+                "module-inventory.json",
             )
         } | {
             "${{ runner.temp }}/" + name for name in (
@@ -155,6 +156,22 @@ class GatewayToolCallerWorkflowTests(unittest.TestCase):
         self.assertEqual(actual, expected)
         self.assertNotIn(".wasm", retained)
         self.assertNotIn("**", retained)
+
+    def test_module_inventory_uses_only_the_authenticated_original_graph(self) -> None:
+        name = "Inventory exact original component module sharing"
+        inspected = step(self.native, name)
+        self.assertIn("steps.stage_gateway_tool_caller.outcome == 'success'", inspected)
+        self.assertIn("tools/quality/component_module_inventory.py", inspected)
+        for pack in ("caller", "bridge"):
+            self.assertIn(
+                f'"$TOBKIRI_TEST_GATEWAY_TOOL_CALLER_GRAPH_DIR/{pack}/component.wasm"',
+                inspected,
+            )
+        self.assertIn("/module-inventory.json", inspected)
+        self.assertNotIn("cargo ", inspected)
+        self.assertNotIn("stage_preserved_", inspected)
+        self.assertLess(self.native.index(name), self.native.index(REPLAY))
+        self.assertIn("tools/quality/test_component_module_inventory.py", self.linux)
 
     def run_export(
         self, *, metadata_change: dict | None = None,
