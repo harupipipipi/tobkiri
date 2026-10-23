@@ -1549,6 +1549,18 @@ impl ConsumedHandleMetadata {
         }
     }
 
+    /// Move the two existing owner contexts onto the actual consumed source
+    /// deadline. No extra context copy or funding owner is created.
+    pub(crate) fn bind_source_frame(
+        &mut self,
+        frame: Arc<dyn crate::ProviderFrame>,
+        owner: tobkiri_gate::CallCx,
+    ) -> tobkiri_gate::CallCx {
+        let deadline = frame.context().deadline();
+        self.frame = Some(frame);
+        std::mem::replace(&mut self.owner, owner.cap_deadline(deadline)).cap_deadline(deadline)
+    }
+
     pub(crate) fn lease(&mut self) -> Arc<crate::handles::HandleLease> {
         self.lease
             .get_or_insert_with(|| {

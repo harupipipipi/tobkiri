@@ -2393,7 +2393,7 @@ impl PackHost {
                 return Err(anyhow::Error::new(error));
             }
         };
-        metadata.frame = Some(source_frame.clone());
+        let owner = metadata.bind_source_frame(source_frame.clone(), owner);
         metadata.failure = "handle-quota";
         let lease = metadata.lease();
         let result = self

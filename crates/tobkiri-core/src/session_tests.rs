@@ -341,6 +341,10 @@ async fn actual_stream_retains_its_original_parent_metadata_after_native_retirem
     drop(attachment);
     drop(session);
     drop(fixture);
+    // Process custody intentionally retains fully charged idle adapters until
+    // explicit collection. Release those actual holders of the frame proof;
+    // this collector cannot evict adapters with live strong or weak users.
+    tobkiri_wasm::reap_allocation_owners().unwrap();
     check_retired_metadata();
 }
 
@@ -861,6 +865,8 @@ async fn native_input_trigger_cannot_skip_flow_run_authority() {
     )
     .await
     .unwrap();
+    assert!(input.context.deadline() <= input.receipt.deadline());
+    input.receipt.validate_context(&input.context).unwrap();
     let target = session
         .gate
         .resolve_frozen_flow_target(

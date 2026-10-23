@@ -257,7 +257,9 @@ mod tests {
         assert_eq!(view.entry.effect(), permit.effect());
         assert_eq!(view.entry.trusted_approval(), permit.trusted_approval());
         assert_eq!(view.entry_context.profile, frame.context().profile());
-        assert_eq!(view.entry_context.request, frame.context().request());
+        // Entry records the real caller; try_callee creates its own request.
+        assert_eq!(view.entry_context.request.as_str(), "evidence-original");
+        assert_ne!(view.entry_context.request, frame.context().request());
         assert_eq!(
             view.entry_context.principal,
             core_frame(&frame).state.entry_context.principal()

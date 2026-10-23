@@ -65,7 +65,7 @@ fn reap_locked(slots: &mut [Option<Custody>; MAX_CUSTODY]) -> usize {
 }
 /// Opportunistic collection cannot use timeouts to refund still-owned memory.
 /// With no subsequent factory/reap call, custody and its OS lock remain charged.
-pub(crate) fn reap_custody() -> anyhow::Result<usize> {
+pub fn reap_custody() -> anyhow::Result<usize> {
     check_custody_process()?;
     let mut slots = CUSTODY
         .lock()

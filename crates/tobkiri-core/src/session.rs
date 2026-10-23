@@ -679,7 +679,10 @@ impl Session {
             source,
             view: shape,
             operation,
-            context: cx,
+            // The actual consumed source lease can be earlier than the
+            // caller's original wall-time deadline. Preserve the same root
+            // identity and budget while carrying that sealed bound forward.
+            context: cx.cap_deadline(receipt.deadline()),
             payload,
             receipt,
             custody,

@@ -55,6 +55,13 @@ impl SourceReadReceipt {
         self.metadata.get()
     }
 
+    /// Original source binding's deadline. Carrying the physical read into
+    /// native routing may only shorten its context to this bound; this value
+    /// grants no routing or dispatch authority.
+    pub fn deadline(&self) -> std::time::Instant {
+        self.binding.get().deadline()
+    }
+
     /// Verify the original immutable Input context after Core carries this
     /// private receipt through a native route claim. The receipt has no public
     /// constructor and this check grants no routing or dispatch authority.

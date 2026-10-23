@@ -28,6 +28,9 @@ mod values;
 mod wasi;
 mod wasi_effects;
 
+/// Collect only physically idle allocation owners, including after the final
+/// PackHost is dropped. Live strong/weak users retain their original funding.
+pub use allocation::reap_custody as reap_allocation_owners;
 pub use child_census::NativeExecutionId;
 pub use engine::{InvocationState, WasmEngine};
 pub use entry::{
