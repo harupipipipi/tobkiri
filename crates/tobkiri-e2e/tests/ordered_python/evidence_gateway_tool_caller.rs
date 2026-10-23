@@ -756,7 +756,7 @@ pub async fn load(repo: &Path) -> Result<Graph> {
         let pack = &packs[pin.name];
         let component = wasmtime::component::Component::new(
             engine.engine(),
-            &pack.files["component.wasm"].read().unwrap(),
+            pack.files["component.wasm"].read().unwrap(),
         )?;
         let allowed = tobkiri_manifest::allowed_imports_for_pack(pack)?;
         let imports: BTreeSet<_> =

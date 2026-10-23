@@ -242,7 +242,7 @@ impl Core {
         let revision = Digest::hash(&canonical);
         drop(canonical);
 
-        let packs = load_packs(candidate, &self.control)?;
+        let packs = load_packs(candidate, self.source_control())?;
         let conflicts = tobkiri_profile::compile(candidate, &packs)
             .err()
             .unwrap_or_default();

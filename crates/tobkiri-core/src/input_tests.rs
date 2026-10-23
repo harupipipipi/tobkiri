@@ -478,15 +478,26 @@ fn source_hash_pin_and_revision_cannot_be_substituted() {
     let mut fixture = fixture(None);
     let old = fixture.packs[0].hash.clone();
     let mut replacement = fixture.packs[0].manifest.clone();
-    replacement.version = "2.0.0".into();
-    let artifact = tobkiri_manifest::build_tpk(
-        &replacement,
-        &fixture.packs[0].files.materialize_for_pack_build().unwrap(),
-        None,
-    )
-    .unwrap();
+    let mut files = fixture.packs[0].files.materialize_for_pack_build().unwrap();
+    // Keep version, permissions and Input signatures identical: only source
+    // bytes change, so a version mismatch cannot mask the hash/revision checks.
+    let wit_path = replacement.shapes[0].wit.clone();
+    files
+        .get_mut(&wit_path)
+        .unwrap()
+        .extend_from_slice(b"\n// new source revision\n");
+    let entry = replacement
+        .files
+        .iter_mut()
+        .find(|entry| entry.path == wit_path)
+        .unwrap();
+    entry.sha256 = Digest::hash(&files[&wit_path]);
+    entry.size = files[&wit_path].len() as u64;
+    let artifact = tobkiri_manifest::build_tpk(&replacement, &files, None).unwrap();
     fixture.packs[0] = tobkiri_manifest::verify_tpk(&artifact, &BTreeMap::new()).unwrap();
     let new = fixture.packs[0].hash.clone();
+    assert_ne!(new, old);
+    assert_eq!(fixture.packs[0].manifest.version, replacement.version);
     assert!(
         register_inputs(
             &fixture.gate,

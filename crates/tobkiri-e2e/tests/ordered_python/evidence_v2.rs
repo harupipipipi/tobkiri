@@ -320,10 +320,9 @@ fn validate_manifest(pack: &VerifiedPack) -> Result<()> {
             && manifest["runtime"]["kind"] == "wasm"
             && manifest["runtime"]["component"] == "component.wasm"
             && manifest["runtime"]["config"]["path"] == "config.json"
-            && pack
-                .files
-                .get("config.json")
-                .is_some_and(|bytes| bytes == b"{}"),
+            && pack.files.get("config.json").is_some_and(|artifact| {
+                artifact.read().is_ok_and(|bytes| bytes.as_ref() == b"{}")
+            }),
         "not the reviewed version-two Python wasm Pack"
     );
     let no_authority = tobkiri_gate::PermissionSet {

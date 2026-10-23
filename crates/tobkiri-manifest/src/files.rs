@@ -12,7 +12,8 @@ struct Index {
     catalog: SourceCatalog,
 }
 
-/// Immutable verified-file index; clones retain the same physical storage.
+/// Immutable artifact index; clones retain the same physical storage.
+/// Admission remains the verifier's responsibility.
 #[derive(Clone, Debug)]
 pub struct ArtifactFiles(LeasedShared<Index, SourceCatalog>);
 impl ArtifactFiles {

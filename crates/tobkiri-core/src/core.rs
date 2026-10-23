@@ -45,7 +45,7 @@ pub struct Core {
     capacity: tobkiri_gate::CapacityLedger,
     /// One bounded native-control account shared by all Profile Gates,
     /// contexts, retained catalogs and execution records owned by this Core.
-    pub(crate) control: CoreControl,
+    control: CoreControl,
     filesystem: Option<Arc<crate::filesystem_registry::CoreFilesystem>>,
     /// Per-Core trusted process descriptor catalog: one bounded owner holding
     /// the append-only entry slots, the move-only launch key and every
@@ -91,6 +91,11 @@ impl TrustedPrompt for Prompt {
 }
 
 impl Core {
+    /// Borrow the original account for sibling source-admission paths.
+    pub(crate) fn source_control(&self) -> &CoreControl {
+        &self.control
+    }
+
     /// Open the in-process Core with no listener and no provider-specific route.
     pub fn open(config: CoreConfig, host: Arc<dyn HostIo>) -> Result<Self, CoreError> {
         let default = dirs::data_local_dir()
