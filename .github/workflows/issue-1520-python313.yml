@@ -7,6 +7,8 @@ on:
       - '.github/workflows/issue-1520-python313.yml'
       - 'tools/python313-producer/fetch_sources.py'
       - 'tools/python313-producer/build_native.py'
+      - 'tools/python313-producer/build_wasi.py'
+      - 'tools/python313-producer/fetch_sdk.py'
       - 'tools/python313-producer/stage_sources.py'
       - 'tools/python313-producer/verify_source.py'
       - 'tools/python313-producer/source-manifest.json'
@@ -22,7 +24,7 @@ jobs:
     # The 24.04 image rejects bwrap's private loopback setup. Keep namespace
     # isolation and use the supported older image; never disable host policy.
     runs-on: ubuntu-22.04
-    timeout-minutes: 35
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,7 +50,13 @@ jobs:
           python3 -B tools/python313-producer/build_native.py
           --source "$RUNNER_TEMP/python313-source"
           --destination "$RUNNER_TEMP/python313-native"
-      - name: Retain source and native-build receipts without binaries
+      - name: Restore the pinned SDK and rebuild original WASI libraries
+        run: >-
+          python3 -B tools/python313-producer/build_wasi.py
+          --source "$RUNNER_TEMP/python313-source"
+          --native "$RUNNER_TEMP/python313-native"
+          --destination "$RUNNER_TEMP/python313-wasi"
+      - name: Retain source and build receipts without binaries
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -60,4 +68,15 @@ jobs:
             ${{ runner.temp }}/python313-native/supervision.json
             ${{ runner.temp }}/python313-native/host-packages.txt
             ${{ runner.temp }}/python313-native/build.log
+            ${{ runner.temp }}/python313-wasi/sdk-input/sdk-manifest.json
+            ${{ runner.temp }}/python313-wasi/wasi-build.json
+            ${{ runner.temp }}/python313-wasi/wasi-zlib/command.json
+            ${{ runner.temp }}/python313-wasi/wasi-zlib/supervision.json
+            ${{ runner.temp }}/python313-wasi/wasi-zlib/build.log
+            ${{ runner.temp }}/python313-wasi/wasi-sqlite/command.json
+            ${{ runner.temp }}/python313-wasi/wasi-sqlite/supervision.json
+            ${{ runner.temp }}/python313-wasi/wasi-sqlite/build.log
+            ${{ runner.temp }}/python313-wasi/wasi-cpython/command.json
+            ${{ runner.temp }}/python313-wasi/wasi-cpython/supervision.json
+            ${{ runner.temp }}/python313-wasi/wasi-cpython/build.log
           if-no-files-found: warn

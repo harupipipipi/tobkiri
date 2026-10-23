@@ -64,7 +64,8 @@ def verify_tree(root: Path) -> dict:
     return {**identity, "files": len(observed)}
 
 
-def sandbox_command(source: Path, work: Path, recipe: Path) -> list[str]:
+def sandbox_command(source: Path, work: Path, recipe: Path,
+                    readonly: tuple[tuple[Path, str], ...] = ()) -> list[str]:
     """Expose only read-only tools/source and this stage's private scratch."""
     command = [
         "/usr/bin/bwrap", "--unshare-all", "--die-with-parent", "--new-session",
@@ -76,7 +77,12 @@ def sandbox_command(source: Path, work: Path, recipe: Path) -> list[str]:
         "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
         "--dir", "/source", "--ro-bind", str(source / "cpython"),
         "/source/cpython", "--ro-bind", str(recipe), "/recipe.sh",
-        "--bind", str(work), "/work", "--chdir", "/work",
+        "--bind", str(work), "/work",
+    ]
+    for path, mount in readonly:
+        command += ["--ro-bind", str(path), mount]
+    command += [
+        "--chdir", "/work",
         "--setenv", "PATH", "/usr/bin:/bin", "--setenv", "LC_ALL", "C",
         "--setenv", "CONFIG_SITE", "/dev/null", "--setenv", "TMPDIR", "/tmp",
         "--setenv", "CC", "/usr/bin/gcc", "--setenv", "CXX", "/usr/bin/g++",

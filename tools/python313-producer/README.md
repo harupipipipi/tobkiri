@@ -49,6 +49,24 @@ hashlib/json imports. WASI libraries, producer CLI, componentization and guest
 execution remain separate stages. These receipts neither replace native Core
 replay nor permit changing historical component pins.
 
+The next workflow step restores the exact WASI SDK 33.0 Linux archive from the
+historical trial (193,563,606 bytes, SHA-256
+`0ba8b5bfaeb2adf3f29bab5841d76cf5318ab8e1642ea195f88baba1abd47bce`).
+SDK acquisition has separate bounds; the original 100 MiB source-archive limit
+is unchanged. The full download is verified before bounded private extraction.
+Only regular files/directories and internal links are accepted, and all links
+must resolve within the new tree before any tool is invoked.
+
+`build_wasi.py` replays the three hash-bound historical zlib, SQLite and CPython
+WASI scripts. The SDK, source and preceding native build are read-only. The
+previous zlib outputs become read-only for SQLite, and all dependency outputs
+become read-only for CPython. Each stage retains the original supervisor and
+resource limits, records actual output hashes, and checks that earlier inputs
+remain unchanged. The existing SQLite feature flags are preserved; this is
+not a claim of ordinary SQLite or cryptographic-random parity. Core-Wasm magic
+is only an encoding sanity check. Wasmtime validation, producer runtimes/CLI,
+componentization and actual guest behavior still require their later stages.
+
 ## Pinned inputs and reproducibility
 
 - Official CPython 3.13.16 archive:
