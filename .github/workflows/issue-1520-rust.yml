@@ -29,6 +29,8 @@ jobs:
           components: rustfmt, clippy
       - name: Boundary checker regression
         run: python3 tools/quality/test_issue_1520_gate.py
+      - name: Launcher runtime dependency lock
+        run: python3 -B tools/quality/check_launcher_runtime_lock.py
       - name: CI execution and producer receipt regression
         run: python3 -B tools/quality/test_issue_1520_ci.py
       - name: Workflow platform and artifact routing regression
