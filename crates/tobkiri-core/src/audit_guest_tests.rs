@@ -207,9 +207,16 @@ impl Fixture {
         }
     }
     async fn invoke(&self, operation: &str) -> Result<CoreBuffer, CoreError> {
-        tokio::time::timeout(Duration::from_secs(10), self.session.call_user_port(
+        let started = std::time::Instant::now();
+        let result = tokio::time::timeout(Duration::from_secs(10), self.session.call_user_port(
             ShapeRef::parse(SHAPE).unwrap(), OpName::parse(operation).unwrap(), &CanonValue::Obj(BTreeMap::new()),
-        )).await.expect("actual Audit import must finish or report failure within its original finite fixture deadline")
+        )).await.expect("actual Audit import must finish or report failure within its original finite fixture deadline");
+        eprintln!(
+            "AUDIT_GUEST_INVOCATION elapsed_us={} succeeded={}",
+            started.elapsed().as_micros(),
+            result.is_ok()
+        );
+        result
     }
     fn approvals(&self) -> Approvals {
         Approvals::open(&self.core.profiles.root, &self.profile.id).unwrap()

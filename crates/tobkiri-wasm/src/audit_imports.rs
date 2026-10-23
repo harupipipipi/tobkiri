@@ -29,6 +29,12 @@ use wasmtime::component::{
 };
 use wasmtime::{AsContextMut, StoreContextMut};
 
+#[cfg(debug_assertions)]
+#[path = "audit_timing.rs"]
+mod audit_timing;
+#[cfg(debug_assertions)]
+use audit_timing::{AuditPhase, AuditTiming};
+
 // Each endpoint and inline capture drops before its last shared metadata owner.
 type Funding = LeasedShared<(), ControlReservation>;
 
@@ -158,6 +164,8 @@ struct CallerCustody {
     _funding: Funding,
 }
 struct AuditCustody {
+    #[cfg(debug_assertions)]
+    timing: AuditTiming,
     prepared: Prepared,
     grant: Grant,
     log: Arc<AuditLog>,
@@ -407,6 +415,8 @@ impl Executed {
 }
 
 async fn supervise(mut custody: AuditCustody) -> std::result::Result<(), NativeWorkError> {
+    #[cfg(debug_assertions)]
+    custody.timing.mark(AuditPhase::Scheduled);
     // Admission/waiter construction and its first fallible poll finish before
     // consume. No refresh, new CallCx root, new grant or replacement deadline.
     let active = custody
@@ -457,6 +467,8 @@ async fn supervise(mut custody: AuditCustody) -> std::result::Result<(), NativeW
             return Err(NativeWorkError::CompletionUnknown);
         }
     };
+    #[cfg(debug_assertions)]
+    custody.timing.mark(AuditPhase::Consumed);
     let narrowed = custody
         .cx
         .clone()
@@ -476,6 +488,8 @@ async fn supervise(mut custody: AuditCustody) -> std::result::Result<(), NativeW
     };
     // SQL resources are ALL gone before output sharing, conversion, terminal
     // outcome allocation, Gate callbacks or destruction of retained custody.
+    #[cfg(debug_assertions)]
+    custody.timing.mark(AuditPhase::Executed);
     custody.deadline.as_mut().reset(executed.deadline().into());
     let handed = custody.output.send(executed.output()).is_ok();
     let conversion = if handed {
@@ -487,11 +501,15 @@ async fn supervise(mut custody: AuditCustody) -> std::result::Result<(), NativeW
     } else {
         Conversion::Failed
     };
+    #[cfg(debug_assertions)]
+    custody.timing.mark(AuditPhase::ConversionObserved);
     let ready = tokio::select! {
         ready = &mut custody.ready => ready.ok(),
         _ = custody.cancelled.as_mut() => None,
         _ = custody.deadline.as_mut() => None,
     };
+    #[cfg(debug_assertions)]
+    custody.timing.mark(AuditPhase::CanonicalReady);
     let live = ready.is_some()
         && !custody.complete.is_closed()
         && Instant::now() < executed.deadline()
@@ -504,11 +522,15 @@ async fn supervise(mut custody: AuditCustody) -> std::result::Result<(), NativeW
         .gate
         .record_outcome(custody.id, outcome.clone())
         .await;
+    #[cfg(debug_assertions)]
+    custody.timing.mark(AuditPhase::Recorded);
     let acknowledged = if recorded.is_ok() {
         custody.gate.acknowledged_terminal(executed.permit()).ok()
     } else {
         None
     };
+    #[cfg(debug_assertions)]
+    custody.timing.mark(AuditPhase::AckInspected);
     let verified = acknowledged.as_ref().is_some_and(|ack| {
         ack.grant_id() == executed.permit().id()
             && ack.outcome() == &outcome
@@ -537,10 +559,14 @@ async fn supervise(mut custody: AuditCustody) -> std::result::Result<(), NativeW
     };
     let accepted = completion.is_ok();
     let sent = custody.complete.send(completion).is_ok();
+    #[cfg(debug_assertions)]
+    custody.timing.mark(AuditPhase::CompletionSent);
     // The ABI wait must actually return the capability and be destroyed; its
     // Drop notification is metadata only. Retain the original permit, result,
     // frame and funding until this same final wait ends, including cancellation.
     let ended = custody.wait_end.await.ok();
+    #[cfg(debug_assertions)]
+    custody.timing.mark(AuditPhase::WaitEnded);
     drop(acknowledged);
     drop(executed);
     if accepted && sent && ended == Some(WaitEnd::Returned) {
@@ -558,6 +584,10 @@ pub(super) async fn invoke(
     params: &[Val],
     owners: &ValueOwners,
 ) -> Result<Vec<Val>> {
+    #[cfg(debug_assertions)]
+    let timing = AuditTiming::new(operation, cx.deadline());
+    #[cfg(debug_assertions)]
+    timing.mark(AuditPhase::Invoked);
     let codec = EffectValues(owners);
     let prepared = match (operation, params) {
         ("append", [kind, payload]) => Prepared::Append(GuestAuditAppend::prepare(
@@ -574,6 +604,8 @@ pub(super) async fn invoke(
         )?),
         _ => return Err(StepError::new("invalid", "invalid audit operation").into()),
     };
+    #[cfg(debug_assertions)]
+    timing.mark(AuditPhase::Prepared);
     let frame = store
         .data()
         .data
@@ -586,6 +618,8 @@ pub(super) async fn invoke(
         .gate
         .authorize(cx, prepared.request(), prepared.args().clone())
         .await?;
+    #[cfg(debug_assertions)]
+    timing.mark(AuditPhase::Authorized);
     let spawner = host.native_work_spawner(&store.data().data).await?;
     let bytes = metadata_bytes()
         .and_then(|n| n.checked_add(grant.id().clone_storage_bytes()))
@@ -621,6 +655,8 @@ pub(super) async fn invoke(
         _funding: funding.clone(),
     };
     let custody = AuditCustody {
+        #[cfg(debug_assertions)]
+        timing,
         prepared,
         grant,
         log: host.audit_log().clone(),
@@ -641,10 +677,14 @@ pub(super) async fn invoke(
     // Rejection drops the still-unconsumed original Grant after native guards.
     spawner.bind_cancel(cx.cancel().clone())?;
     spawner.spawn(supervise(custody))?;
+    #[cfg(debug_assertions)]
+    timing.mark(AuditPhase::Submitted);
     let output = caller
         .output
         .await
         .unwrap_or_else(|_| AuditOutput::failed(Failure::Unavailable));
+    #[cfg(debug_assertions)]
+    timing.mark(AuditPhase::OutputReceived);
     let result = output
         .result
         .and_then(|output| {
@@ -681,6 +721,8 @@ pub(super) async fn invoke(
         Conversion::Failed
     };
     let _ = caller.converted.send(converted);
+    #[cfg(debug_assertions)]
+    timing.mark(AuditPhase::Converted);
     result.map_err(|failure| {
         if output.no_replay {
             StoreError::CommitUnknown.into()

@@ -258,6 +258,29 @@ class RuntimeRoutingTests(unittest.TestCase):
         self.assertIn("cargo test --workspace --locked --no-fail-fast", workspace)
         self.assertNotIn("--test-threads", workspace)
 
+    def test_audit_round_trip_observation_preserves_the_original_case_and_limits(self) -> None:
+        replay = step(self.native, "Observe original Audit round trip in isolation")
+        for required in (
+            "issue_1520_ci.py cargo-test", "--expected-passed 1 --",
+            "cargo test --locked -p tobkiri-core --lib",
+            "core::audit_guest_tests::verified_guest_audit_round_trip_has_original_nested_ack_and_provenance",
+            "-- --exact --nocapture --test-threads=1",
+            'TOBKIRI_TEST_AUDIT_PHASE_TIMING: "1"',
+        ):
+            self.assertIn(required, replay)
+        self.assertIn("!cancelled()", replay)
+        for prerequisite in ("native_platform", "rust_toolchain"):
+            self.assertIn(f"steps.{prerequisite}.outcome == 'success'", replay)
+        self.assertNotIn("--ignored", replay)
+        self.assertNotIn("success()", replay)
+        workspace = step(self.native, "Execute complete Rust workspace on the supported platform")
+        self.assertIn('TOBKIRI_TEST_AUDIT_PHASE_TIMING: "1"', workspace)
+        self.assertIn("cargo test --workspace --locked --no-fail-fast", workspace)
+        self.assertNotIn("--test-threads", workspace)
+        retain = step(self.native, "Retain actual runtime test output")
+        for name in ("audit-round-trip.log", "audit-round-trip.receipt.json"):
+            self.assertIn(name, retain)
+
     def test_replay_survives_other_failures_but_requires_prerequisites(self) -> None:
         replay = step(
             self.native, "Replay the original 91 cases through actual Rust Core")

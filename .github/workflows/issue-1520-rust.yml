@@ -179,6 +179,8 @@ jobs:
       - name: Build and bind real Pack fixtures
         run: python3 -B packs/build.py --target-dir "$CARGO_TARGET_DIR"
       - name: Execute complete Rust workspace on the supported platform
+        env:
+          TOBKIRI_TEST_AUDIT_PHASE_TIMING: "1"
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/supported-workspace.log" -- cargo test --workspace --locked --no-fail-fast
@@ -189,6 +191,16 @@ jobs:
           --log "$RUNNER_TEMP/execution-profile.log" --expected-passed 1 --
           cargo test --locked -p tobkiri-e2e --test execution_profile
           current_profile_uses_two_actual_sessions_and_inter_pack_destination_frames -- --exact
+      - name: Observe original Audit round trip in isolation
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        env:
+          TOBKIRI_TEST_AUDIT_PHASE_TIMING: "1"
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/audit-round-trip.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-core --lib
+          core::audit_guest_tests::verified_guest_audit_round_trip_has_original_nested_ack_and_provenance
+          -- --exact --nocapture --test-threads=1
       - name: Observe original Core Flow bridge in isolation
         if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
         run: >-
@@ -383,6 +395,8 @@ jobs:
             ${{ runner.temp }}/supported-workspace.receipt.json
             ${{ runner.temp }}/execution-profile.log
             ${{ runner.temp }}/execution-profile.receipt.json
+            ${{ runner.temp }}/audit-round-trip.log
+            ${{ runner.temp }}/audit-round-trip.receipt.json
             ${{ runner.temp }}/core-flow-bridge.log
             ${{ runner.temp }}/core-flow-bridge.receipt.json
             ${{ runner.temp }}/wasm-flow-bridge.log
