@@ -228,6 +228,9 @@ mod tests {
         let session = fixture.session().await;
         let factory = new_factory(&session);
         let (frame, permit, args) = admit_native_frame(&factory, "evidence-original").await;
+        let entry = core_frame(&frame).state.entry_evidence.as_ref().unwrap();
+        assert!(frame.context().deadline() <= entry.deadline());
+        assert!(core_frame(&frame).state.entry_context.deadline() <= entry.deadline());
         let scope = frame
             .allocation_scope(AllocationReason::RuntimeValue)
             .unwrap();

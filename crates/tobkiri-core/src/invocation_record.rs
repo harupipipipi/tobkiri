@@ -163,6 +163,11 @@ mod tests {
             }
             let source_entry = record.entry_evidence.as_ref().unwrap();
             let parent_entry = parent.entry_evidence.as_ref().unwrap();
+            for actual in [&record, parent] {
+                let entry = actual.entry_evidence.as_ref().unwrap();
+                assert!(actual.context.deadline() <= entry.deadline());
+                assert!(actual.entry_context.deadline() <= entry.deadline());
+            }
             assert_ne!(source_entry.grant(), parent_entry.grant());
             assert!(matches!(
                 source_entry.effect(),
@@ -219,21 +224,20 @@ mod tests {
             if let Some(actual_parent) = frames
                 .iter()
                 .find(|frame| FundedArc::ptr_eq(&frame.state.invocation, parent))
-            {
-                if let Ok(parent_scope) = tobkiri_wasm::ProviderFrame::allocation_scope(
+                && let Ok(parent_scope) = tobkiri_wasm::ProviderFrame::allocation_scope(
                     actual_parent.as_ref(),
                     tobkiri_gate::AllocationReason::RuntimeValue,
-                ) {
-                    assert!(
-                        self.gate
-                            .reached_evidence_view(
-                                &actual_parent.state.context,
-                                &parent_scope,
-                                &parent_evidence
-                            )
-                            .is_err()
-                    );
-                }
+                )
+            {
+                assert!(
+                    self.gate
+                        .reached_evidence_view(
+                            &actual_parent.state.context,
+                            &parent_scope,
+                            &parent_evidence
+                        )
+                        .is_err()
+                );
             }
             drop(scope);
             let source_native = Arc::downgrade(source);

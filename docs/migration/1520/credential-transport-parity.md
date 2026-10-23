@@ -108,6 +108,10 @@ context, epoch, entry deadline and terminal state. Selecting an ancestor keeps
 the original leaf binding; the historical ancestor need not still execute.
 No caller-selected Grant, parent ID or serialized evidence is accepted. The
 reference retains only metadata and its original funding, not native owners.
+Provider and handle-source contexts retain the original consumed permit's
+deadline bound, including durable wall-time narrowing, as Flow entry already
+does. Inspection keeps its strict deadline comparisons; it must not accept a
+longer caller deadline to compensate for an unbounded activation context.
 
 This native read-only API is not yet exposed through a Wasm host resource or
 used by the Broker. It grants no effect authority. Secrets/network/storage must

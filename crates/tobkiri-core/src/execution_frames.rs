@@ -2471,6 +2471,8 @@ impl CoreProviderAuthority {
                 },
             )
             .map_err(step)?;
+        // Durable lease binding can shorten the caller's deadline. Preserve
+        // that consumed bound in both actual contexts, as Flow entry does.
         let context = request
             .caller
             .try_callee(
@@ -2484,11 +2486,13 @@ impl CoreProviderAuthority {
                 },
                 owner_limits,
             )
-            .map_err(step)?;
+            .map_err(step)?
+            .cap_deadline(consumed.deadline());
         let entry_context = request
             .caller
             .try_clone_precharged()
-            .map_err(|_| step(GateError::Unavailable))?;
+            .map_err(|_| step(GateError::Unavailable))?
+            .cap_deadline(consumed.deadline());
         let evidence_dynamic = consumed
             .execution_entry_evidence_storage_bytes()
             .map_err(|_| step(GateError::Unavailable))?;
@@ -2917,14 +2921,18 @@ impl CoreProviderAuthority {
             .map_err(|_| step(GateError::Unavailable))?;
         let evidence = ControlHandle::try_new_precharged(evidence, evidence_reservation)
             .map_err(|_| step(GateError::Unavailable))?;
+        // The source owns its own consumed lease, which may be earlier than
+        // its original provider owner after durable wall-time conversion.
         let context = request
             .owner
             .try_clone_precharged()
-            .map_err(|_| step(GateError::Unavailable))?;
+            .map_err(|_| step(GateError::Unavailable))?
+            .cap_deadline(consumed.deadline());
         let entry_context = request
             .owner
             .try_clone_precharged()
-            .map_err(|_| step(GateError::Unavailable))?;
+            .map_err(|_| step(GateError::Unavailable))?
+            .cap_deadline(consumed.deadline());
         let metadata = ActiveFrameMetadata {
             profile: request
                 .owner
