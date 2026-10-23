@@ -1,0 +1,120 @@
+"""Rebuild the original producer CLI through its recorded publishing recipe."""
+import argparse
+import json
+import os
+from pathlib import Path
+import sys
+
+from build_assets import verify_outputs
+from build_native import GIB, HERE, fingerprint, sandbox_command
+from build_runtimes import CARGO_CONFIG
+from build_wasi import run_stage
+import cli_source
+import fetch_sdk
+import runtime_inputs
+from verify_git_checkout import verify_cache
+
+RECIPE_SHA256 = '330ccaa93ee1feba18b881eaeac70fc77013bddd8ef2128e9c7fb866528d1fa4'
+STARTUP_RECIPE = '''set -eu
+/usr/bin/timeout --kill-after=5 15 /producer --version
+/usr/bin/timeout --kill-after=5 15 /producer --help
+'''
+
+
+def run(source: Path, registry: Path, rust: Path, git: Path, wasi: Path,
+        runtimes: Path, assets: Path, destination: Path) -> None:
+    """Compile only with immutable verified source/assets and offline caches."""
+    if sys.platform != 'linux' or os.environ.get('GITHUB_ACTIONS') != 'true':
+        raise ValueError('producer CLI rebuilding is restricted to Linux CI')
+    if (not destination.is_absolute() or not destination.parent.is_dir()
+            or destination.parent.resolve() != destination.parent
+            or any(not p.is_absolute() or p.resolve() != p for p in (runtimes, assets))):
+        raise ValueError('physical input and new destination paths required')
+    destination.mkdir(mode=0o700)
+    inputs, snapshots = runtime_inputs.verify(source, registry, rust, git, wasi)
+    asset_receipt_path = assets / 'assets-build.json'
+    asset_report = runtime_inputs.report(asset_receipt_path)
+    runtime_receipt_path = runtimes / 'runtimes-build.json'
+    runtime_report = runtime_inputs.report(runtime_receipt_path)
+    if (asset_report['inputs'] != inputs or not asset_report['inputs_unchanged']
+            or runtime_report['inputs'] != inputs or not runtime_report['inputs_unchanged']
+            or asset_report['runtime_receipt'] != fingerprint(runtime_receipt_path)):
+        raise ValueError('producer predecessor receipts do not match verified inputs')
+    packaged = assets / 'work/assets'
+    if (fingerprint(packaged / 'package-receipt.json') != asset_report['package_receipt']
+            or verify_outputs(packaged, asset_report['manifest']['sha256'],
+                              asset_report['worker']['sha256']) != asset_report['outputs']):
+        raise ValueError('producer assets differ from successful packaging')
+    cache = runtimes / 'work/runtime-cargo-home/git'
+    runtime_inputs.recorded_files(cache, runtime_report['git_cache_inventory'])
+    checkout = verify_cache(cache.parent, git / 'work')
+    snapshots[str(cache)] = runtime_report['git_cache_inventory']
+    snapshots[str(packaged)] = fetch_sdk.inventory(packaged)
+    stage = destination / 'source'
+    source_receipt = cli_source.stage(source / 'componentize-py', packaged,
+                                     asset_report['outputs'], stage)
+    snapshots[str(stage)] = source_receipt['files']
+    (destination / 'cli-source.json').write_text(json.dumps(source_receipt, indent=2) + '\n')
+    recipe = HERE / 'trials/2026-10-19/producer-cli.sh'
+    if fingerprint(recipe)['sha256'] != RECIPE_SHA256:
+        raise ValueError('original producer CLI recipe changed')
+    work = destination / 'work'
+    work.mkdir(mode=0o700)
+    (work / 'cargo-home').mkdir(mode=0o700)
+    config = work / 'cargo-home/config.toml'
+    config.write_text(CARGO_CONFIG)
+    config_identity = fingerprint(config)
+    predecessor_identities = {str(p): fingerprint(p) for p in (
+        asset_receipt_path, runtime_receipt_path, destination / 'cli-source.json')}
+    receipt = {'format': 'tobkiri.python313-cli-rebuild/1', 'outcome': 'pending',
+               'inputs': inputs, 'predecessors': predecessor_identities,
+               'original_recipe_sha256': RECIPE_SHA256, 'verified_git_checkout': checkout,
+               'source_delta': source_receipt['delta'], 'stages': [],
+               'guest_execution': False, 'componentization': False,
+               'production_enabled': False, 'historical_binary_identity_claimed': False}
+    receipt_path = destination / 'cli-build.json'
+    try:
+        mounts = (
+            (stage, '/source/componentize-py'), (registry / 'sources', '/registry/sources'),
+            (rust / 'toolchain', '/rust'), (config, '/work/cargo-home/config.toml'),
+            (cache, '/work/cargo-home/git'),
+            # Preserve any Git alternates recorded by the runtime cache primer.
+            (cache, '/work/runtime-cargo-home/git'),
+            (git / 'work/wasm-tools.git', '/git-input/wasm-tools.git'),
+            (git / 'work/testsuite.git', '/git-input/testsuite.git'),
+        )
+        command = sandbox_command(source, work, recipe, mounts, address_space_bytes=4 * GIB)
+        receipt['stages'].append({'name': 'producer-cli',
+            'supervision': run_stage('producer-cli', command, work, destination / 'producer-cli')})
+        binary = work / 'target/release/componentize-py'
+        identity = fingerprint(binary, 128 * 1024 * 1024)
+        startup = destination / 'startup.sh'
+        startup.write_text(STARTUP_RECIPE)
+        command = sandbox_command(source, work, startup, ((binary, '/producer'),),
+                                  address_space_bytes=4 * GIB)
+        receipt['stages'].append({'name': 'cli-startup', 'recipe': fingerprint(startup),
+            'supervision': run_stage('cli-startup', command, work, destination / 'cli-startup')})
+        log = destination / 'cli-startup/build.log'
+        fingerprint(log, 64 * 1024)
+        if not log.read_text().startswith('componentize-py 0.25.0\n'):
+            raise ValueError('rebuilt producer reports an unexpected version')
+        runtime_inputs.unchanged(source, inputs, snapshots)
+        for path, expected in predecessor_identities.items():
+            if fingerprint(Path(path)) != expected:
+                raise ValueError('producer predecessor identity changed')
+        if fingerprint(config) != config_identity or fingerprint(binary) != identity:
+            raise ValueError('producer configuration or binary changed during startup')
+        receipt.update(outcome='success', binary=identity, inputs_unchanged=True,
+                       producer_cli=True, reported_version='componentize-py 0.25.0')
+    except BaseException:
+        receipt['outcome'] = 'failed'
+        raise
+    finally:
+        receipt_path.write_text(json.dumps(receipt, indent=2) + '\n')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    for name in ('source', 'registry', 'rust', 'git', 'wasi', 'runtimes', 'assets', 'destination'):
+        parser.add_argument('--' + name, type=Path, required=True)
+    run(**vars(parser.parse_args()))

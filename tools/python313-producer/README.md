@@ -146,6 +146,20 @@ Input identities are checked again after execution. Receipts record this as
 packaging and wasmparser validation only: Wasmtime/runtime compatibility,
 component generation, the producer CLI and guest execution remain separate.
 
+`build_cli.py` verifies those actual assets and prepares a separate publishing
+source tree. Every original file and mode is retained; the only source change
+adds `build = "alt-build.rs"` to the root package, then the thirteen verified
+assets are added. The original top-level build script remains present but is
+not selected. The hash-bound historical CLI recipe builds with frozen inputs,
+one job and a read-only Git cache, preserving its original namespace for Git
+alternates. It retains the 4 GiB address-space limit and the stricter existing
+1,200-second stage supervisor, within the historical 3,600-second maximum.
+Separate isolated `--version` and `--help` checks each have a 15-second timeout.
+All inputs and source bytes are checked again. A successful CLI and its receipts
+are retained as a separate CI artifact for subsequent remote component builds;
+no producer binary is downloaded to the desktop. Startup success does not
+establish componentization, guest behavior, Core acceptance or GUI parity.
+
 ## Pinned inputs and reproducibility
 
 - Official CPython 3.13.16 archive:

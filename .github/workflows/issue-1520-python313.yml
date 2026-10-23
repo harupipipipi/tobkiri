@@ -17,6 +17,8 @@ on:
       - 'tools/python313-producer/build_runtimes.py'
       - 'tools/python313-producer/asset_inputs.py'
       - 'tools/python313-producer/build_assets.py'
+      - 'tools/python313-producer/cli_source.py'
+      - 'tools/python313-producer/build_cli.py'
       - 'tools/python313-producer/packager/**'
       - 'tools/python313-producer/stage_sources.py'
       - 'tools/python313-producer/verify_source.py'
@@ -100,6 +102,26 @@ jobs:
           --wasi "$RUNNER_TEMP/python313-wasi"
           --runtimes "$RUNNER_TEMP/python313-runtimes"
           --destination "$RUNNER_TEMP/python313-assets"
+      - name: Rebuild the original publishing CLI with the verified real assets
+        run: >-
+          python3 -B tools/python313-producer/build_cli.py
+          --source "$RUNNER_TEMP/python313-source"
+          --registry "$RUNNER_TEMP/python313-registry"
+          --rust "$RUNNER_TEMP/python313-rust"
+          --git "$RUNNER_TEMP/python313-git"
+          --wasi "$RUNNER_TEMP/python313-wasi"
+          --runtimes "$RUNNER_TEMP/python313-runtimes"
+          --assets "$RUNNER_TEMP/python313-assets"
+          --destination "$RUNNER_TEMP/python313-cli"
+      - name: Retain the verified producer for subsequent remote component builds
+        uses: actions/upload-artifact@v4
+        with:
+          name: python313-producer-cli
+          path: |
+            ${{ runner.temp }}/python313-cli/work/target/release/componentize-py
+            ${{ runner.temp }}/python313-cli/cli-build.json
+            ${{ runner.temp }}/python313-cli/cli-source.json
+          if-no-files-found: error
       - name: Retain source and build receipts without binaries
         if: always()
         uses: actions/upload-artifact@v4
@@ -149,4 +171,13 @@ jobs:
             ${{ runner.temp }}/python313-assets/package-assets/command.json
             ${{ runner.temp }}/python313-assets/package-assets/supervision.json
             ${{ runner.temp }}/python313-assets/package-assets/build.log
+            ${{ runner.temp }}/python313-cli/cli-build.json
+            ${{ runner.temp }}/python313-cli/cli-source.json
+            ${{ runner.temp }}/python313-cli/startup.sh
+            ${{ runner.temp }}/python313-cli/producer-cli/command.json
+            ${{ runner.temp }}/python313-cli/producer-cli/supervision.json
+            ${{ runner.temp }}/python313-cli/producer-cli/build.log
+            ${{ runner.temp }}/python313-cli/cli-startup/command.json
+            ${{ runner.temp }}/python313-cli/cli-startup/supervision.json
+            ${{ runner.temp }}/python313-cli/cli-startup/build.log
           if-no-files-found: warn
