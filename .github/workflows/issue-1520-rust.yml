@@ -41,6 +41,11 @@ jobs:
         run: |
           python3 -B -m unittest discover -s tools/python313-producer/packager/tests
           cargo test --locked --manifest-path tools/python313-producer/packager/Cargo.toml
+      - name: Bounded component extraction regression
+        run: |
+          python3 -B tools/component-unbundle/test_measure.py
+          cargo fmt --manifest-path tools/component-unbundle/Cargo.toml -- --check
+          cargo test --locked --manifest-path tools/component-unbundle/Cargo.toml
       - name: Preserved ordered Python component transport regression
         run: python3 -B -m unittest discover -s tests -p test_stage_preserved_ordered_python.py
       - name: Preserved Gateway tool-caller transport regression
@@ -351,6 +356,15 @@ jobs:
           "$TOBKIRI_TEST_GATEWAY_TOOL_CALLER_GRAPH_DIR/caller/component.wasm"
           "$TOBKIRI_TEST_GATEWAY_TOOL_CALLER_GRAPH_DIR/bridge/component.wasm"
           > "$RUNNER_TEMP/issue-1520-gateway-tool-caller/module-inventory.json"
+      - name: Extract exact original component modules
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' && steps.stage_gateway_tool_caller.outcome == 'success' }}
+        run: |
+          cargo build --locked --manifest-path tools/component-unbundle/Cargo.toml
+          python3 -B tools/component-unbundle/measure.py \
+            --worker "$CARGO_TARGET_DIR/debug/tobkiri-component-unbundle" \
+            "$TOBKIRI_TEST_GATEWAY_TOOL_CALLER_GRAPH_DIR/caller/component.wasm" \
+            "$TOBKIRI_TEST_GATEWAY_TOOL_CALLER_GRAPH_DIR/bridge/component.wasm" \
+            > "$RUNNER_TEMP/issue-1520-gateway-tool-caller/module-extraction.json"
       - name: Replay the original Python tool caller through actual Rust Core
         # Independent of the official producer, old WAT route, and earlier failures.
         if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' && steps.stage_gateway_tool_caller.outcome == 'success' }}
@@ -375,6 +389,7 @@ jobs:
             ${{ runner.temp }}/issue-1520-gateway-tool-caller/graph/caller/component.build.json
             ${{ runner.temp }}/issue-1520-gateway-tool-caller/native-replay.json
             ${{ runner.temp }}/issue-1520-gateway-tool-caller/module-inventory.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/module-extraction.json
             ${{ runner.temp }}/gateway-tool-caller-stage.log
             ${{ runner.temp }}/gateway-tool-caller-native.log
             ${{ runner.temp }}/gateway-tool-caller-native.receipt.json

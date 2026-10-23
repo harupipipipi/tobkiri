@@ -145,6 +145,7 @@ class GatewayToolCallerWorkflowTests(unittest.TestCase):
                 "graph/bridge/component.build.json", "graph/caller/pack.json",
                 "graph/caller/component.build.json", "native-replay.json",
                 "module-inventory.json",
+                "module-extraction.json",
             )
         } | {
             "${{ runner.temp }}/" + name for name in (
@@ -172,6 +173,22 @@ class GatewayToolCallerWorkflowTests(unittest.TestCase):
         self.assertNotIn("stage_preserved_", inspected)
         self.assertLess(self.native.index(name), self.native.index(REPLAY))
         self.assertIn("tools/quality/test_component_module_inventory.py", self.linux)
+
+    def test_extraction_preserves_authenticated_inputs_and_independent_native_replay(self) -> None:
+        extracted = step(self.native, "Extract exact original component modules")
+        for prerequisite in ("native_platform", "rust_toolchain", "stage_gateway_tool_caller"):
+            self.assertIn(f"steps.{prerequisite}.outcome == 'success'", extracted)
+        self.assertIn("tools/component-unbundle/measure.py", extracted)
+        for pack in ("caller", "bridge"):
+            self.assertIn(
+                f'"$TOBKIRI_TEST_GATEWAY_TOOL_CALLER_GRAPH_DIR/{pack}/component.wasm"',
+                extracted,
+            )
+        self.assertIn("/module-extraction.json", extracted)
+        self.assertNotIn("stage_preserved_", extracted)
+        self.assertNotIn("module-extraction", self.replay)
+        self.assertNotIn("component-unbundle", self.replay)
+        self.assertIn("Bounded component extraction regression", self.linux)
 
     def run_export(
         self, *, metadata_change: dict | None = None,
