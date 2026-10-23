@@ -178,6 +178,19 @@ Core/guest budgets are unchanged. Each produced component must fit the original
 the components only on CI. Production activation, guest runtime-info, actual
 five-Pack dispatch and native Core/Gate acceptance still require their own tests.
 
+The separate `Issue 1520 original five-Pack source sharing` workflow consumes
+the recorded producer run `39956025119` at exact head
+`ae7f83080a36e823ac330342584210243dc38050`. It waits for that run to succeed and
+downloads its component artifact only on CI, avoiding another producer rebuild
+for this measurement. `verify_original_components.py` rechecks every component,
+receipt, original plan, current captured source and producer binding. The two
+existing bridge/caller fixtures retain their independent authentication path.
+The existing bounded unbundler measures all five actual binaries and reports
+whether their extracted code closure fits the unchanged 64 MiB catalog limit.
+A completed measurement does not imply that the size fits or that Core ran the
+graph. Only metadata is uploaded by this consumer workflow; new source changes
+require deliberate producer pin review rather than silently reusing old bytes.
+
 ## Pinned inputs and reproducibility
 
 - Official CPython 3.13.16 archive:
