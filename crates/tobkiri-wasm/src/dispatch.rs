@@ -801,6 +801,12 @@ impl PackHost {
                 .await?;
             return Err(error.into());
         }
+        // Core seals this read's entry to the consumed lease, whose durable
+        // deadline can be earlier than the original Input caller. Preserve
+        // that SAME recipient binding for returned handles and their custody.
+        // Capture it before execution-limit narrowing can shorten the live
+        // terminal again; that later bound belongs to the producing Pack.
+        let input_recipient = cx.clone().cap_deadline(terminal.permit().deadline());
         let frame = match bridge.enter_provider(&request, terminal.permit(), &args) {
             Ok(frame) => frame,
             Err(error) => {
@@ -831,7 +837,7 @@ impl PackHost {
             .context("native Input provider signature missing")?;
         let result = self
             .invoke_owned_frame(
-                cx,
+                &input_recipient,
                 &frame,
                 &target,
                 &target.provided,
@@ -870,16 +876,21 @@ impl PackHost {
                             .allocation_scope(AllocationReason::RuntimeValue)
                             .map_err(anyhow::Error::new)?,
                     )?;
-                    self.capture_native_input_handles(cx, &value, entry.function(), &output_owners)
-                        .and_then(|inventory| {
-                            inventory
-                                .map(|inventory| {
-                                    frame
-                                        .seal_native_input_handles(inventory)
-                                        .map_err(anyhow::Error::new)
-                                })
-                                .transpose()
-                        })
+                    self.capture_native_input_handles(
+                        &input_recipient,
+                        &value,
+                        entry.function(),
+                        &output_owners,
+                    )
+                    .and_then(|inventory| {
+                        inventory
+                            .map(|inventory| {
+                                frame
+                                    .seal_native_input_handles(inventory)
+                                    .map_err(anyhow::Error::new)
+                            })
+                            .transpose()
+                    })
                 })();
                 let custody = match forwarding {
                     Ok(custody) => custody,
