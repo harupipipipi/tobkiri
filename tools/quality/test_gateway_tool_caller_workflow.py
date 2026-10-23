@@ -146,17 +146,48 @@ class GatewayToolCallerWorkflowTests(unittest.TestCase):
                 "graph/caller/component.build.json", "native-replay.json",
                 "module-inventory.json",
                 "module-extraction.json",
+                "shared-code/extraction.json", "shared-native-replay.json",
             )
         } | {
             "${{ runner.temp }}/" + name for name in (
                 "gateway-tool-caller-stage.log", "gateway-tool-caller-native.log",
                 "gateway-tool-caller-native.receipt.json",
+                "shared-python-native.log", "shared-python-native.receipt.json",
             )
         }
         actual = set(re.findall(r"^            (.+)$", retained, re.MULTILINE))
         self.assertEqual(actual, expected)
         self.assertNotIn(".wasm", retained)
         self.assertNotIn("**", retained)
+
+    def test_shared_module_replay_is_separate_and_requires_extracted_originals(self) -> None:
+        staged = step(
+            self.native, "Materialize exact shared modules for the original Python Packs"
+        )
+        replay = step(
+            self.native, "Replay original Python Packs using authenticated shared modules"
+        )
+        for block, dependency in (
+            (staged, "extract_original_modules"), (replay, "stage_shared_modules")
+        ):
+            for prerequisite in ("native_platform", "rust_toolchain", dependency):
+                self.assertIn(f"steps.{prerequisite}.outcome == 'success'", block)
+            self.assertIn("!cancelled()", block)
+            self.assertNotIn("continue-on-error", block)
+        bridge = '"$TOBKIRI_TEST_GATEWAY_TOOL_CALLER_GRAPH_DIR/bridge/component.wasm"'
+        caller = '"$TOBKIRI_TEST_GATEWAY_TOOL_CALLER_GRAPH_DIR/caller/component.wasm"'
+        self.assertLess(staged.index(bridge), staged.index(caller))
+        self.assertIn("tools/component-unbundle/materialize.py", staged)
+        self.assertIn("TOBKIRI_TEST_SHARED_MODULES_SHA256", staged)
+        self.assertIn("hashlib.sha256(receipt).hexdigest()", staged)
+        self.assertIn("/shared-native-replay.json", replay)
+        self.assertNotIn("/native-replay.json", replay)
+        self.assertIn("--expected-passed 1 --", replay)
+        self.assertIn("-- --ignored --exact --nocapture --test-threads=1", replay)
+        name = "original_python_shared_modules_replay_through_real_core"
+        self.assertIn(name, replay)
+        self.assertNotIn(name, self.linux)
+        self.assertIn("/native-replay.json", step(self.native, STAGE))
 
     def test_module_inventory_uses_only_the_authenticated_original_graph(self) -> None:
         name = "Inventory exact original component module sharing"
