@@ -19,6 +19,10 @@ pub(super) struct InvocationRecord {
     pub(super) context: CallCx,
     pub(super) entry_context: CallCx,
     pub(super) entry_evidence: Option<ControlHandle<tobkiri_gate::ExecutionEntryEvidence>>,
+    // The actual authenticated dispatch parent, never a caller-selected ID.
+    // Strong metadata custody preserves history after native execution ends;
+    // it conveys no liveness, entry authority or terminal ownership.
+    pub(super) parent: Option<FundedArc<InvocationRecord>>,
     pub(super) flow_key: String,
     pub(super) code: Option<CodeLocation>,
     pub(super) step_address: Option<usize>,
@@ -32,6 +36,14 @@ pub(super) struct InvocationRecord {
     pub(super) metadata: ActiveFrameMetadata,
     pub(super) origin: ReachedOrigin,
     pub(super) state: Mutex<NodeLifecycle>,
+}
+
+impl Drop for InvocationRecord {
+    fn drop(&mut self) {
+        // Each detached payload has no parent when it is destroyed. Original
+        // funding covers the moved payload and every remaining Weak block.
+        FundedArc::drop_chain(self.parent.take(), |record| record.parent.take());
+    }
 }
 
 pub(super) struct ReachedState {
@@ -76,6 +88,7 @@ pub(super) fn new_reached_state(
             context: prepared.context,
             entry_context: prepared.entry_context,
             entry_evidence: prepared.entry_evidence,
+            parent: prepared.parent,
             flow_key: prepared.flow_key,
             code: prepared.code,
             step_address: prepared.step_address,
@@ -109,8 +122,83 @@ mod tests {
         admit_native_frame, core_frame, finish_native_frame, new_factory,
     };
     use super::*;
-    use tobkiri_gate::{ControlKind, Gate, Outcome};
+    use tobkiri_gate::{ControlKind, EffectRequest, Gate, Outcome};
     use tobkiri_wasm::NativeIdAttempt;
+
+    impl super::super::ExecutionFactory {
+        /// Read-only observation of frames minted by the real Wasm/Core path.
+        /// The returned check retains metadata only, never a native frame.
+        pub(crate) fn retained_stream_parent_check(&self) -> impl FnOnce() + 'static {
+            // Release the index lock before any upgraded frame can be dropped.
+            let frames = self
+                .provider
+                .auth
+                .live_provider_frames
+                .lock()
+                .unwrap()
+                .values()
+                .filter_map(std::sync::Weak::upgrade)
+                .collect::<Vec<_>>();
+            let source = frames
+                .iter()
+                .find(|frame| matches!(frame.state.origin, ReachedOrigin::HandleSource(_)))
+                .expect("real open stream has an authenticated source frame");
+            let record = source.state.invocation.clone();
+            let parent = record
+                .parent
+                .as_ref()
+                .expect("source has its actual caller");
+            let parent_native = frames
+                .iter()
+                .find(|frame| FundedArc::ptr_eq(&frame.state.invocation, parent))
+                .map(Arc::downgrade);
+            assert!(!FundedArc::ptr_eq(&record, parent));
+            assert!(parent.parent.is_none());
+            assert!(matches!(parent.origin, ReachedOrigin::Provider(_)));
+            assert!(ControlHandle::ptr_eq(&record.auth, &parent.auth));
+            if parent_native.is_none() {
+                // The original caller may already have retired while its
+                // actual source stream remains open. Its history must survive.
+                assert!(!parent.state.lock().unwrap().live);
+            }
+            let source_entry = record.entry_evidence.as_ref().unwrap();
+            let parent_entry = parent.entry_evidence.as_ref().unwrap();
+            assert_ne!(source_entry.grant(), parent_entry.grant());
+            assert!(matches!(
+                source_entry.effect(),
+                EffectRequest::WasmEntry {
+                    entry: tobkiri_gate::WasmEntryKind::StreamOpen { .. },
+                    ..
+                }
+            ));
+            assert!(matches!(
+                parent_entry.effect(),
+                EffectRequest::PortCall { .. }
+            ));
+            assert_eq!(record.context.request(), parent.context.request());
+            let source_native = Arc::downgrade(source);
+            let parent_grant = parent_entry.grant().clone();
+            let parent_weak = parent.downgrade();
+            drop(frames);
+            move || {
+                assert!(source_native.upgrade().is_none());
+                assert!(parent_native.is_none_or(|native| native.upgrade().is_none()));
+                assert!(!record.state.lock().unwrap().live);
+                let retained_parent = record.parent.as_ref().unwrap();
+                assert!(!retained_parent.state.lock().unwrap().live);
+                assert_eq!(
+                    retained_parent.entry_evidence.as_ref().unwrap().grant(),
+                    &parent_grant
+                );
+                assert!(FundedArc::ptr_eq(
+                    retained_parent,
+                    &parent_weak.upgrade().unwrap()
+                ));
+                drop(record);
+                assert!(parent_weak.upgrade().is_none());
+            }
+        }
+    }
 
     #[tokio::test]
     async fn retained_invocation_record_does_not_keep_original_execution_live() {
@@ -119,6 +207,7 @@ mod tests {
         let factory = new_factory(&session);
         let (frame, permit, _) = admit_native_frame(&factory, "record-original-retirement").await;
         let record = core_frame(&frame).state.invocation.clone();
+        assert!(record.parent.is_none());
         let weak = record.downgrade();
         let frame_weak = Arc::downgrade(&frame);
         assert!(record.state.lock().unwrap().live);

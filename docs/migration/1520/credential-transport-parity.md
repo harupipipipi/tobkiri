@@ -85,15 +85,28 @@ record reference does not own an execution guard or confer execution
 authority. The state, record and funding blocks are prepaid together, and
 the same original reservation remains charged until the last strong or weak
 record carrier releases its physical storage. This separation supplies no
-parent link or authenticated Pack-facing API by itself.
+authenticated Pack-facing API by itself.
+
+Private record links now retain the actual parent from Core's authenticated
+dispatch objects. The links hold metadata strongly so a surviving child can
+inspect the original entry after its parent's native execution retires. They
+do not hold native execution owners or restore liveness. Flow continuations
+and overlays preserve their entry's actual parent rather than inventing
+intermediate dispatches; a completed native-input receipt is not a parent
+invocation. Inline links are covered by the original size-based reservations.
+Final-owner chains release iteratively, with each original reservation held
+through payload destruction and any remaining weak allocation.
 
 This description is not itself a live invocation or parent-chain proof, a GUI
 surface identity, a durable enrollment or a Pack policy digest. Core privately
 holds the actual leaf Grant and arguments, but its public Provider frame API
-does not yet expose an authenticated borrow of that evidence or an enumerable
-parent dispatch chain. The declared `TypedReachedInvocation` interface has no
-Core implementation. These gaps must be resolved before a Broker can rely on
-approval ancestry; copying a description or a path digest cannot resolve them.
+does not yet expose an authenticated borrow or traversal of that evidence and
+its private parent links. The declared `TypedReachedInvocation` interface has
+no Core implementation. An authenticated live leaf and the original current
+revocation, expiry, context and policy checks remain required; retaining
+historical metadata does not extend authority. These gaps must be resolved
+before a Broker can rely on approval ancestry; copying a description or a
+path digest cannot resolve them.
 
 Keep these obligations open until the production create/use/revoke and
 compensation path uses the same backend and passes original GUI-to-chat,

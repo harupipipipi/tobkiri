@@ -20,6 +20,23 @@ pub(crate) struct FundedWeak<T> {
     value: Option<Weak<T>>,
     funding: Option<Funding>,
 }
+/// A final payload moved out of its Arc, still holding the SAME reservation
+/// until payload destruction. Outstanding Weak carriers fund the Arc block.
+pub(crate) struct FundedOwned<T> {
+    value: Option<T>,
+    funding: Option<Funding>,
+}
+impl<T> FundedOwned<T> {
+    pub(crate) fn get_mut(&mut self) -> &mut T {
+        self.value.as_mut().expect("live funded owned payload")
+    }
+}
+impl<T> Drop for FundedOwned<T> {
+    fn drop(&mut self) {
+        drop(self.value.take());
+        drop(self.funding.take());
+    }
+}
 impl<T> FundedArc<T> {
     /// All owned storage inside value and its Arc layout must already be
     /// covered by this exact original funding. No raw Arc is accepted/exposed.
@@ -52,6 +69,29 @@ impl<T> FundedArc<T> {
             this.value.as_ref().expect("live funded strong carrier"),
             other.value.as_ref().expect("live funded strong carrier"),
         )
+    }
+    /// Atomically consume a strong carrier and take only the final payload.
+    /// Unlike try_unwrap(...).ok(), concurrent consumers cannot accidentally
+    /// drop the final payload recursively on the non-final branch. See
+    /// https://doc.rust-lang.org/std/sync/struct.Arc.html#method.into_inner.
+    pub(crate) fn into_inner(mut self) -> Option<FundedOwned<T>> {
+        let funding = self.funding.take().expect("live original funding");
+        let value = Arc::into_inner(self.value.take().expect("live funded strong carrier"))?;
+        Some(FundedOwned {
+            value: Some(value),
+            funding: Some(funding),
+        })
+    }
+    /// Release immutable linked metadata without recursive final-owner drops.
+    /// `take_parent` is fixed internal field extraction, never an effect or
+    /// guest callback. Callers must release their execution/admission guards
+    /// before destruction can cascade through the detached payloads.
+    pub(crate) fn drop_chain(mut next: Option<Self>, take_parent: fn(&mut T) -> Option<Self>) {
+        while let Some(parent) = next.take() {
+            if let Some(mut parent) = parent.into_inner() {
+                next = take_parent(parent.get_mut());
+            }
+        }
     }
     #[cfg(test)]
     pub(crate) fn strong_count(&self) -> usize {
@@ -212,6 +252,119 @@ mod tests {
         assert_eq!(control.usage().bytes, 4096);
         drop(weak);
         assert_eq!(control.usage().bytes, 0);
+    }
+    #[test]
+    fn final_owned_payload_keeps_funding_until_payload_and_weak_block_are_gone() {
+        let control = CoreControl::default();
+        let dropped = Arc::new(AtomicUsize::new(0));
+        let value = owned(
+            Payload {
+                dropped: dropped.clone(),
+                control: control.clone(),
+                panic: false,
+            },
+            &control,
+        );
+        let weak = value.downgrade();
+        let alias = value.clone();
+        assert!(value.into_inner().is_none());
+        assert_eq!(control.usage().bytes, 4096);
+        assert_eq!(dropped.load(Ordering::Acquire), 0);
+        let payload = alias.into_inner().unwrap();
+        assert!(weak.upgrade().is_none());
+        assert_eq!(dropped.load(Ordering::Acquire), 0);
+        assert_eq!(control.usage().bytes, 4096);
+        drop(payload);
+        assert_eq!(dropped.load(Ordering::Acquire), 1);
+        assert_eq!(control.usage().bytes, 4096);
+        drop(weak);
+        assert_eq!(control.usage().bytes, 0);
+        assert_eq!(control.usage().count(ControlKind::Frame), 0);
+    }
+    #[test]
+    fn moved_payload_unwind_keeps_original_weak_allocation_funded() {
+        let control = CoreControl::default();
+        let dropped = Arc::new(AtomicUsize::new(0));
+        let value = owned(
+            Payload {
+                dropped: dropped.clone(),
+                control: control.clone(),
+                panic: true,
+            },
+            &control,
+        );
+        let weak = value.downgrade();
+        let payload = value.into_inner().unwrap();
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(payload))).is_err());
+        assert_eq!(dropped.load(Ordering::Acquire), 1);
+        assert!(weak.upgrade().is_none());
+        assert_eq!(control.usage().bytes, 4096);
+        drop(weak);
+        assert_eq!(control.usage().bytes, 0);
+        assert_eq!(control.usage().count(ControlKind::Frame), 0);
+    }
+    #[test]
+    fn linked_payloads_release_iteratively_with_concurrent_shared_owners() {
+        struct Link {
+            parent: Option<FundedArc<Link>>,
+            dropped: Arc<AtomicUsize>,
+            control: CoreControl,
+        }
+        impl Drop for Link {
+            fn drop(&mut self) {
+                assert!(self.control.usage().bytes >= 4096);
+                self.dropped.fetch_add(1, Ordering::AcqRel);
+                FundedArc::drop_chain(self.parent.take(), |link| link.parent.take());
+            }
+        }
+        let control = CoreControl::default();
+        let dropped = Arc::new(AtomicUsize::new(0));
+        let mut next = None;
+        let mut shared = Vec::new();
+        let mut weak = None;
+        for index in 0..2048 {
+            let node = owned(
+                Link {
+                    parent: next,
+                    dropped: dropped.clone(),
+                    control: control.clone(),
+                },
+                &control,
+            );
+            if index == 1024 {
+                weak = Some(node.downgrade());
+            }
+            if index % 2 == 0 {
+                shared.push(node.clone());
+            }
+            next = Some(node);
+        }
+        assert_eq!(control.usage().bytes, 2048 * 4096);
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let ready = barrier.clone();
+        let tail = std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(move || {
+                ready.wait();
+                drop(next);
+            })
+            .unwrap();
+        let aliases = std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(move || {
+                barrier.wait();
+                drop(shared);
+            })
+            .unwrap();
+        tail.join().unwrap();
+        aliases.join().unwrap();
+        assert_eq!(dropped.load(Ordering::Acquire), 2048);
+        assert!(weak.as_ref().unwrap().upgrade().is_none());
+        assert_eq!(control.usage().bytes, 4096);
+        assert_eq!(control.usage().count(ControlKind::Frame), 1);
+        drop(weak);
+        assert_eq!(control.usage().bytes, 0);
+        assert_eq!(control.usage().count(ControlKind::Frame), 0);
     }
     #[test]
     fn payload_unwind_cannot_refund_while_original_weak_allocation_remains() {

@@ -318,6 +318,26 @@ async fn open_stream(
         _ => panic!("expected stream"),
     }
 }
+
+#[tokio::test]
+async fn actual_stream_retains_its_original_parent_metadata_after_native_retirement() {
+    let (_fixture, session, attachment) = setup().await;
+    open_stream(
+        &session,
+        &attachment.session,
+        "stream",
+        TokioCancellationToken::new(),
+    )
+    .await;
+    let check_retired_metadata = session
+        .execution_factory
+        .as_ref()
+        .unwrap()
+        .retained_stream_parent_check();
+    session.close().await.unwrap();
+    check_retired_metadata();
+}
+
 fn batch_len(buffer: CoreBuffer) -> usize {
     match tobkiri_canon::parse(buffer.as_bytes(), tobkiri_canon::Variant::StrictV1).unwrap() {
         CanonValue::Arr(values) => values.len(),

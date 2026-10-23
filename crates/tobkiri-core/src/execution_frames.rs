@@ -12,7 +12,9 @@ use crate::funded_arc::{FundedArc, FundedWeak, Funding, new_funding};
 use input_forwarding::NativeInputForwarding;
 #[path = "invocation_record.rs"]
 mod invocation_record;
-use invocation_record::{ReachedState, new_reached_state, reached_state_storage_bytes};
+use invocation_record::{
+    InvocationRecord, ReachedState, new_reached_state, reached_state_storage_bytes,
+};
 use std::{
     collections::{BTreeMap, BTreeSet},
     ptr,
@@ -415,6 +417,7 @@ struct PreparedReachedState {
     context: CallCx,
     entry_context: CallCx,
     entry_evidence: Option<ControlHandle<tobkiri_gate::ExecutionEntryEvidence>>,
+    parent: Option<FundedArc<InvocationRecord>>,
     // Physical lifetime only. A private reached activation inherits the actual
     // source-Wasm task scope; this supplies no authority or allocation proof.
     task_spawner: Option<Arc<dyn RunTaskSpawner>>,
@@ -1272,6 +1275,7 @@ impl CoreProviderAuthority {
                                 .try_clone_precharged()
                                 .map_err(|_| GateError::Unavailable)?,
                             entry_evidence: None,
+                            parent: None,
                             task_spawner: None,
                             provider_operation: None,
                             input_forwarding: None,
@@ -1529,6 +1533,7 @@ impl CoreProviderAuthority {
                                 .try_clone_precharged()
                                 .map_err(|_| GateError::Unavailable)?,
                             entry_evidence: None,
+                            parent: None,
                             task_spawner: None,
                             provider_operation: None,
                             input_forwarding: None,
@@ -1746,6 +1751,7 @@ impl CoreProviderAuthority {
                                 .try_clone_precharged()
                                 .map_err(|_| GateError::Unavailable)?,
                             entry_evidence: None,
+                            parent: None,
                             task_spawner: None,
                             provider_operation: None,
                             input_forwarding: None,
@@ -2623,6 +2629,7 @@ impl CoreProviderAuthority {
                 context,
                 entry_context,
                 entry_evidence: Some(evidence),
+                parent: live_caller.as_ref().map(|caller| caller.invocation.clone()),
                 task_spawner: None,
                 provider_operation: None,
                 input_forwarding,
@@ -2954,6 +2961,7 @@ impl CoreProviderAuthority {
                 context,
                 entry_context,
                 entry_evidence: Some(evidence),
+                parent: Some(parent.invocation.clone()),
                 task_spawner: None,
                 provider_operation: None,
                 input_forwarding: None,
@@ -3037,6 +3045,7 @@ struct ActiveFlowFrame {
     context: CallCx,
     entry_context: CallCx,
     entry_evidence: ControlHandle<tobkiri_gate::ExecutionEntryEvidence>,
+    parent: Option<FundedArc<InvocationRecord>>,
     flow_key: String,
     code: CodeLocation,
     overlay_base_address: Option<usize>,
@@ -4331,6 +4340,7 @@ impl ActiveCodeFrame for ActiveFlowFrame {
                     .try_clone_precharged()
                     .map_err(|_| step(GateError::Unavailable))?,
                 entry_evidence: Some(self.entry_evidence.clone()),
+                parent: self.parent.clone(),
                 task_spawner: self.task_spawner.get().cloned(),
                 provider_operation: self.provider_operation.clone(),
                 input_forwarding: self.input_forwarding.clone(),
@@ -4646,6 +4656,7 @@ impl ActiveCodeFrame for ActiveFlowFrame {
                     .try_clone_precharged()
                     .map_err(|_| step(GateError::Unavailable))?,
                 entry_evidence: self.entry_evidence.clone(),
+                parent: self.parent.clone(),
                 flow_key: try_owned_string(&self.flow_key)
                     .map_err(|_| step(GateError::Unavailable))?,
                 code,
@@ -4774,6 +4785,7 @@ impl ActiveFlowFrame {
                     .try_clone_precharged()
                     .map_err(|_| GateError::Unavailable)?,
                 entry_evidence: self.entry_evidence.clone(),
+                parent: self.parent.clone(),
                 flow_key: try_owned_string(&self.flow_key).map_err(|_| GateError::Unavailable)?,
                 code: clone_code_location(&self.code).map_err(|_| GateError::Unavailable)?,
                 overlay_base_address: self.overlay_base_address,
@@ -7170,6 +7182,33 @@ impl ExecutionFactory {
                         context,
                         entry_context,
                         entry_evidence: evidence,
+                        parent: match prepared.mode {
+                            FlowEntryMode::Guest => Some(
+                                prepared
+                                    .guest
+                                    .as_ref()
+                                    .ok_or(GateError::Unavailable)?
+                                    .provider_frame
+                                    .state
+                                    .invocation
+                                    .clone(),
+                            ),
+                            FlowEntryMode::Provided => Some(
+                                prepared
+                                    .parent
+                                    .as_ref()
+                                    .and_then(|parent| {
+                                        parent.node.core_proof::<ReachedActivationProof>()
+                                    })
+                                    .ok_or(GateError::Unavailable)?
+                                    .node
+                                    .invocation
+                                    .clone(),
+                            ),
+                            // A completed physical read is not a live caller
+                            // invocation. Its receipt remains separately held.
+                            FlowEntryMode::NativeInput => None,
+                        },
                         flow_key,
                         code: CodeLocation::Flow,
                         overlay_base_address: None,
