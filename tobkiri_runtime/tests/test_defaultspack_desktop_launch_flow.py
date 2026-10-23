@@ -175,6 +175,11 @@ def test_defaultspack_ecosystem_registers_desktop_app_metadata():
         for path in (DEFAULTSPACK_ROOT / prefix).glob("*/manifest.json")
     }
     assert tool_paths
+    runtime_paths = {
+        "runtime/application_presentation.py",
+        "runtime/conversation.py",
+        "runtime/python_sandbox_guest.py",
+    }
     # The shipped Shell and its public resources are declared Pack artifacts.
     ui_paths = {
         "ui/assets/tobkiri-startup-blade-cut.svg",
@@ -205,8 +210,6 @@ def test_defaultspack_ecosystem_registers_desktop_app_metadata():
         "contracts.v4.json",
         "executables.v4.json",
         "host_contract_contributions.v1.json",
-        "runtime/conversation.py",
-        "runtime/application_presentation.py",
         "update_metadata.v1.json",
         "defaultspack/chat_reference_presentation.py",
         "defaultspack/frontend_contract_map.v4.json",
@@ -215,7 +218,7 @@ def test_defaultspack_ecosystem_registers_desktop_app_metadata():
         "defaultspack/managed_desktop_presentation.py",
         "defaultspack/provider_status_presentation.py",
         "defaultspack/turn_progress_presentation.py",
-    } | tool_paths | ui_paths
+    } | tool_paths | ui_paths | runtime_paths
     assert all(
         artifact["role"] == "sidecar"
         for artifact in artifact_index["artifacts"]
@@ -244,7 +247,7 @@ def test_defaultspack_ecosystem_registers_desktop_app_metadata():
         "defaultspack/turn_progress_presentation.py",
     }
     for artifact in artifact_index["artifacts"]:
-        if artifact["path"] in presentation_paths | ui_paths:
+        if artifact["path"] in presentation_paths | ui_paths | runtime_paths:
             assert artifact["role"] == (
                 "asset"
                 if artifact["path"] in ui_paths or artifact["path"].endswith(".json")
