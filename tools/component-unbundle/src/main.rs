@@ -84,7 +84,7 @@ mod tests {
         let mut exports = ComponentExportSection::new();
         for index in 0..modules.len() as u32 {
             exports.export(
-                &format!("module-{index}"),
+                &format!("module{index}"),
                 ComponentExportKind::Module,
                 index,
                 None,
