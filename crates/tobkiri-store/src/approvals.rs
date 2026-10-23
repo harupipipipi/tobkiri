@@ -1549,8 +1549,11 @@ impl ApprovalStore for Approvals {
                     "terminal acknowledgement payload conflict".into(),
                 ));
             }
+            // Concurrent delivery paths may have read the same pending row.
+            // Revalidate the durable decision and exact payload above on every
+            // attempt, but do not write an already acknowledged row again.
             tx.execute(
-                "UPDATE terminal_outbox SET delivered=1 WHERE event_id=?1",
+                "UPDATE terminal_outbox SET delivered=1 WHERE event_id=?1 AND delivered=0",
                 [event_id.as_str()],
             )
             .map_err(persistence)?;

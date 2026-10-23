@@ -577,6 +577,64 @@ async fn live_future_expiry_is_preserved_and_watermark_does_not_swallow_later_de
     assert_eq!(f.outcome_count(), 2);
 }
 #[tokio::test]
+async fn repeated_terminal_ack_checks_current_payload_without_rewriting_delivered_row() {
+    let f = Fixture::new();
+    let (id, _, _permit) = f.consumed().await;
+    f.gate
+        .record_outcome(id.clone(), Outcome::Succeeded)
+        .await
+        .unwrap();
+    let delivery = f.approvals.terminal_delivery(&id).unwrap().unwrap();
+    assert!(delivery.acknowledged);
+    let decision = delivery.decision;
+    let raw = f.raw();
+    // The first actual delivery has committed. A second matching ACK must
+    // work even when SQLite rejects any attempt to rewrite that same row.
+    raw.execute_batch(
+        "CREATE TRIGGER reject_duplicate_ack BEFORE UPDATE OF delivered ON terminal_outbox \
+         WHEN OLD.delivered=1 BEGIN SELECT RAISE(FAIL,'duplicate ACK write'); END;",
+    )
+    .unwrap();
+    for _ in 0..2 {
+        f.approvals
+            .acknowledge_terminal(&decision.event_id, &decision.event)
+            .unwrap();
+    }
+    assert_eq!(f.outcome_count(), 1);
+    let mut changed = decision.event.clone();
+    changed.payload = CanonValue::Str("different terminal payload".into());
+    assert!(matches!(
+        f.approvals
+            .acknowledge_terminal(&decision.event_id, &changed),
+        Err(GateError::Denied(message)) if message == "terminal acknowledgement payload conflict"
+    ));
+    assert!(
+        f.approvals
+            .terminal_delivery(&id)
+            .unwrap()
+            .unwrap()
+            .acknowledged
+    );
+
+    // A prior ACK is no cache of authority: corrupting the current durable
+    // record must still latch an integrity fault on the next matching call.
+    raw.execute(
+        "UPDATE terminal_outbox SET body=x'00' WHERE grant_id=?1",
+        [id.as_str()],
+    )
+    .unwrap();
+    assert!(matches!(
+        f.approvals
+            .acknowledge_terminal(&decision.event_id, &decision.event),
+        Err(GateError::Integrity(_))
+    ));
+    assert!(matches!(
+        f.approvals.admission_status(&f.profile).unwrap(),
+        AdmissionStatus::IntegrityFault { .. }
+    ));
+}
+
+#[tokio::test]
 async fn sink_dedup_rejects_conflicting_payload_and_mixed_old_new_chain_survives_reopen() {
     let f = Fixture::new();
     f.audit
