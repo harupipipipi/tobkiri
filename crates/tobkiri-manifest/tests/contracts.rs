@@ -198,6 +198,113 @@ fn signed_artifact_requires_real_publisher_binding_and_matching_key() {
     verify_tpk(&bytes, &BTreeMap::from([("acme".into(), key)])).unwrap();
     assert!(sign_manifest(&m, &SigningKey::from_bytes(&[8; 32])).is_err());
 }
+
+#[test]
+fn core_module_mapping_and_bytes_are_bound_by_the_original_pack_signature() {
+    let mut files = BTreeMap::from([
+        ("root.wasm".into(), b"component".to_vec()),
+        ("code.wasm".into(), b"first-code".to_vec()),
+        ("other.wasm".into(), b"other-code".to_vec()),
+    ]);
+    let mut m = manifest("acme.shared-code", &files);
+    m.runtime = RuntimeSpec::Wasm {
+        component: "root.wasm".into(),
+        toolchain: "test".into(),
+        core_modules: BTreeMap::from([("unbundled-module0".into(), "code.wasm".into())]),
+        config: None,
+    };
+    let signer = SigningKey::from_bytes(&[17; 32]);
+    let key = format!(
+        "ed25519:{}",
+        URL_SAFE_NO_PAD.encode(signer.verifying_key().to_bytes())
+    );
+    m.publisher_key = Some(key.clone());
+    let publishers = BTreeMap::from([("acme".into(), key)]);
+    let signature = sign_manifest(&m, &signer).unwrap();
+    let original = verify_tpk(
+        &build_tpk(&m, &files, Some(&signature)).unwrap(),
+        &publishers,
+    )
+    .unwrap();
+    for mapping in [
+        BTreeMap::from([("unbundled-module1".into(), "code.wasm".into())]),
+        BTreeMap::from([("unbundled-module0".into(), "other.wasm".into())]),
+    ] {
+        let mut changed = m.clone();
+        let RuntimeSpec::Wasm { core_modules, .. } = &mut changed.runtime else {
+            unreachable!()
+        };
+        *core_modules = mapping;
+        canonical_manifest(&changed).unwrap();
+        assert!(build_tpk(&changed, &files, Some(&signature)).is_err());
+    }
+    files.insert("code.wasm".into(), b"other-code".to_vec());
+    assert!(build_tpk(&m, &files, Some(&signature)).is_err());
+    m.files
+        .iter_mut()
+        .find(|f| f.path == "code.wasm")
+        .unwrap()
+        .sha256 = Digest::hash(&files["code.wasm"]);
+    assert!(build_tpk(&m, &files, Some(&signature)).is_err());
+    let new_seal = sign_manifest(&m, &signer).unwrap();
+    let changed = verify_tpk(
+        &build_tpk(&m, &files, Some(&new_seal)).unwrap(),
+        &publishers,
+    )
+    .unwrap();
+    assert_ne!(
+        original.hash, changed.hash,
+        "existing Profile pins must detect changed code"
+    );
+}
+
+#[test]
+fn core_module_declarations_require_bounded_names_and_inventory_paths() {
+    let files = BTreeMap::from([
+        ("root.wasm".into(), b"component".to_vec()),
+        ("code.wasm".into(), b"module".to_vec()),
+    ]);
+    let mut m = manifest("local.shared-code", &files);
+    m.runtime = RuntimeSpec::Wasm {
+        component: "root.wasm".into(),
+        toolchain: "test".into(),
+        core_modules: BTreeMap::new(),
+        config: None,
+    };
+    let canonical = canonical_manifest(&m).unwrap();
+    let legacy: serde_json::Value = serde_json::from_slice(&canonical).unwrap();
+    assert_eq!(
+        legacy["runtime"],
+        serde_json::json!({
+            "kind": "wasm", "component": "root.wasm", "toolchain": "test", "config": null,
+        })
+    );
+    assert_eq!(
+        canonical_manifest(&parse_manifest(&canonical).unwrap()).unwrap(),
+        canonical
+    );
+    for (name, path) in [
+        ("", "code.wasm"),
+        ("wasi:cli/environment@0.2.6", "code.wasm"),
+        ("tobkiri:core/lifecycle@1.2.0", "code.wasm"),
+        ("unbundled-module0", "missing.wasm"),
+        ("unbundled-module0", "../code.wasm"),
+        ("unbundled-module0", "root.wasm"),
+    ] {
+        let RuntimeSpec::Wasm { core_modules, .. } = &mut m.runtime else {
+            unreachable!()
+        };
+        *core_modules = BTreeMap::from([(name.into(), path.into())]);
+        assert!(canonical_manifest(&m).is_err(), "{name}: {path}");
+    }
+    let RuntimeSpec::Wasm { core_modules, .. } = &mut m.runtime else {
+        unreachable!()
+    };
+    *core_modules = (0..=MAX_CORE_MODULE_IMPORTS)
+        .map(|i| (format!("code-{i}"), "code.wasm".into()))
+        .collect();
+    assert!(canonical_manifest(&m).is_err());
+}
 #[test]
 fn unsigned_ids_unknown_fields_duplicates_and_paths_fail_closed() {
     let f = BTreeMap::new();

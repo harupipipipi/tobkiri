@@ -1335,6 +1335,7 @@ fn materialize(repository: &Path, root: &Path, component: &Component) -> Result<
         version: "1.0.0".into(),
         publisher_key: None,
         runtime: RuntimeSpec::Wasm {
+            core_modules: Default::default(),
             component: "component.wasm".into(),
             toolchain: "rust-wasip2/hash-pinned-test-fixture".into(),
             config: None,

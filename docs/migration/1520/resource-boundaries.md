@@ -1,5 +1,33 @@
 # Active resource boundaries for issue #1520
 
+## Shared core-module loading — source change, execution proof pending
+
+`runtime.core_modules` maps exact root component import names to files in the
+ordinary Pack inventory. The manifest signature and Pack hash cover the mapping
+and each dependency's digest and size; Profile pins therefore change with this
+closure. An absent or empty mapping keeps existing canonical manifests unchanged.
+There are at most 256 bindings per Pack. Names cannot shadow Core or WASI
+interfaces, and every binding must match an actual module import. Wasmtime's
+ordinary linker checks complete module types before executing guest code.
+
+The existing Host catalog prepays dependency-index metadata. Root source bytes
+count separately for every logical Pack. Only explicit module dependencies share
+compiled code by their actual captured SHA-256 and length, within one Engine.
+Each Pack's distinct root-plus-module closure remains limited to 32 MiB; all roots
+plus distinct dependencies remain limited to 64 MiB. These input limits do not
+create another heap account. Reads and cache-hit revalidation use the original
+source account and private snapshots, one temporary source buffer at a time.
+
+Only immutable compiled modules are shared. Instantiation still uses each Pack's
+own Store, memory, table, globals, restricted WASI, host callbacks and CallCx under
+the existing initialization grant. No core instance or ambient host module is
+cached. New regressions cover signature/pin changes, source limits, exact imports,
+type rejection, and independent mutable state and cancellation. Their execution
+results, transformed original five-Pack adoption and full production activation
+remain pending; the original Launcher remains the default.
+
+## Earlier execution record
+
 Latest execution cutoff: **587**. See the [current boundary below](#current-resource-and-custody-boundary-through-587). Earlier sections retain their historical source and execution boundaries. Current counts: 316 validation records, 16 focused FS records, 1/837 closed and 836 TODO. Later588+ executions are excluded.
 
 Issue #1520 is authoritative. Astra high corrected the resource boundary on 2026-10-15 after rereading R2.5, R6.1 and R7. Earlier answers that required every trusted native control allocation to be charged to a guest CodeOwner, a universal Wasmtime allocator, or a Wasm implementation of SQLite are superseded. These corrections do not declare implementation complete.

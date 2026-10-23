@@ -50,6 +50,10 @@ pub enum RuntimeSpec {
     Wasm {
         component: String,
         toolchain: String,
+        /// Exact root core-module import names mapped to declared Pack files.
+        /// The ordinary file inventory authenticates every dependency's bytes.
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        core_modules: BTreeMap<String, String>,
         #[serde(default)]
         config: Option<RuntimeConfig>,
     },
@@ -62,6 +66,8 @@ pub enum RuntimeSpec {
     },
     Data,
 }
+/// Finite dependency metadata bound, independent of compilation byte limits.
+pub const MAX_CORE_MODULE_IMPORTS: usize = 256;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RuntimeConfig {

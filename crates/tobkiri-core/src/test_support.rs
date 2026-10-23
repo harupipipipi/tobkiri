@@ -342,6 +342,7 @@ pub(crate) fn runtime_pack(
         version: "1.0.0".into(),
         publisher_key: None,
         runtime: RuntimeSpec::Wasm {
+            core_modules: Default::default(),
             component: "component.wasm".into(),
             toolchain: "wat-test-fixture/1".into(),
             config: None,

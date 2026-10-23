@@ -86,6 +86,11 @@ jobs:
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-handle-metadata.log" --
           cargo test -p tobkiri-wasm --lib handle_metadata_tests --locked
+      - name: Authenticated shared module source and import regressions
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/portable-core-modules.log" --
+          cargo test -p tobkiri-wasm --lib core_modules::tests --locked
       - name: Decoded Registry original-source comparison
         env:
           TOBKIRI_PROVIDER_REGISTRY_ORACLE_RECEIPT: ${{ github.workspace }}/packs/local.provider-registry-rust/evidence/original-python/receipt.json

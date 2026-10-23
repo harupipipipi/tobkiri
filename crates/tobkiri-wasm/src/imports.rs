@@ -1,5 +1,5 @@
 use anyhow::{Result, bail};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use wasmtime::Engine;
 use wasmtime::component::{Component, types::ComponentItem};
 
@@ -42,8 +42,24 @@ pub fn validate_imports(
     component: &Component,
     manifest_allowed: &BTreeSet<String>,
 ) -> Result<Vec<String>> {
+    validate_imports_with_modules(engine, component, manifest_allowed, &BTreeMap::new())
+}
+
+/// Only the verified Pack's exact compiled module bindings may extend the
+/// interface allowlist. Wasmtime checks their full types before instantiation.
+pub(crate) fn validate_imports_with_modules(
+    engine: &Engine,
+    component: &Component,
+    manifest_allowed: &BTreeSet<String>,
+    modules: &BTreeMap<String, wasmtime::Module>,
+) -> Result<Vec<String>> {
     let mut actual = Vec::new();
+    let mut module_count = 0;
     for (name, import) in component.component_type().imports(engine) {
+        if matches!(import.ty, ComponentItem::Module(_)) && modules.contains_key(name) {
+            module_count += 1;
+            continue;
+        }
         if !matches!(import.ty, ComponentItem::ComponentInstance(_)) {
             bail!("component imports a non-interface item: {name}");
         }
@@ -52,6 +68,9 @@ pub fn validate_imports(
             bail!("component import is not declared or permitted: {name}");
         }
         actual.push(name.to_owned());
+    }
+    if module_count != modules.len() {
+        bail!("declared core module is not an actual root module import");
     }
     Ok(actual)
 }

@@ -125,6 +125,7 @@ fn pack(directory: &std::path::Path, permissions: PermissionSet) -> VerifiedPack
         version: "1.0.0".into(),
         publisher_key: None,
         runtime: RuntimeSpec::Wasm {
+            core_modules: Default::default(),
             component: "component.wasm".into(),
             toolchain: "wat-audit-ABI-regression/1".into(),
             config: None,

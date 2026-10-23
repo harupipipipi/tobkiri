@@ -286,6 +286,7 @@ fn write_pack_variant(
         version: "1.0.0".into(),
         publisher_key: None,
         runtime: RuntimeSpec::Wasm {
+            core_modules: Default::default(),
             component: "component.wasm".into(),
             toolchain: "wat-input-lifecycle-fixture/1".into(),
             config: None,

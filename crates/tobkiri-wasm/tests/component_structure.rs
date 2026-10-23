@@ -131,6 +131,83 @@ async fn composed_component_admits_more_than_sixteen_core_instances() {
 }
 
 #[tokio::test]
+async fn shared_module_code_keeps_memory_table_global_and_store_lifetimes_independent() {
+    let control = CoreControl::default();
+    let engine = WasmEngine::new_with_control(&control).unwrap();
+    let code = wasmtime::Module::new(
+        engine.engine(),
+        wat::parse_str(
+            r#"(module
+        (type $value (func (result i32)))
+        (memory 1)
+        (global $count (mut i32) (i32.const 0))
+        (table 1 funcref)
+        (func $one (type $value) i32.const 1)
+        (func $two (type $value) i32.const 2)
+        (elem (i32.const 0) $one)
+        (elem declare func $two)
+        (func (export "bump") (result i32) (local $result i32)
+            i32.const 0 i32.load global.get $count i32.add
+            i32.const 0 call_indirect (type $value) i32.add local.set $result
+            i32.const 0 i32.const 0 i32.load i32.const 1 i32.add i32.store
+            global.get $count i32.const 1 i32.add global.set $count
+            i32.const 0 ref.func $two table.set
+            local.get $result))"#,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let wrapper = Component::new(
+        engine.engine(),
+        wat::parse_str(
+            r#"(component
+        (core module $code (import "unbundled-module0")
+            (export "bump" (func (result i32))))
+        (core instance $instance (instantiate $code))
+        (alias core export $instance "bump" (core func $bump))
+        (func (export "bump") (result u32) (canon lift (core func $bump))))"#,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let mut linker = Linker::new(engine.engine());
+    linker.root().module("unbundled-module0", &code).unwrap();
+    let (mut first, first_meter) = funded_store(&engine, &control);
+    let (mut second, second_meter) = funded_store(&engine, &control);
+    let a = linker
+        .instantiate_async(&mut first, &wrapper)
+        .await
+        .unwrap()
+        .get_typed_func::<(), (u32,)>(&mut first, "bump")
+        .unwrap();
+    let b = linker
+        .instantiate_async(&mut second, &wrapper)
+        .await
+        .unwrap()
+        .get_typed_func::<(), (u32,)>(&mut second, "bump")
+        .unwrap();
+    assert_eq!(a.call_async(&mut first, ()).await.unwrap(), (1,));
+    assert_eq!(a.call_async(&mut first, ()).await.unwrap(), (4,));
+    assert_eq!(b.call_async(&mut second, ()).await.unwrap(), (1,));
+    first.data().cx.cancel().cancel();
+    drop(first);
+    assert_host_allocations_released(&first_meter);
+    assert_eq!(b.call_async(&mut second, ()).await.unwrap(), (4,));
+    let (mut replacement, replacement_meter) = funded_store(&engine, &control);
+    let c = linker
+        .instantiate_async(&mut replacement, &wrapper)
+        .await
+        .unwrap()
+        .get_typed_func::<(), (u32,)>(&mut replacement, "bump")
+        .unwrap();
+    assert_eq!(c.call_async(&mut replacement, ()).await.unwrap(), (1,));
+    drop(replacement);
+    drop(second);
+    assert_host_allocations_released(&replacement_meter);
+    assert_host_allocations_released(&second_meter);
+}
+
+#[tokio::test]
 async fn empty_core_instances_still_have_a_finite_store_limit() {
     let control = CoreControl::default();
     let engine = WasmEngine::new_with_control(&control).unwrap();

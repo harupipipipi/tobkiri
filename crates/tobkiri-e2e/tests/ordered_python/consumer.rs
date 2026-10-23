@@ -308,6 +308,7 @@ pub fn materialize_for(
         version: "0.1.0".into(),
         publisher_key: None,
         runtime: RuntimeSpec::Wasm {
+            core_modules: Default::default(),
             component: "component.wasm".into(),
             toolchain: "wat-test-only-ordered-python-consumer/1".into(),
             config: None,

@@ -61,7 +61,17 @@ pub(crate) fn validate_abi(
             }
         }
     }
-    for (name, item) in ty.imports(engine).chain(ty.exports(engine)) {
+    for (name, item, is_import) in ty
+        .imports(engine)
+        .map(|(name, item)| (name, item, true))
+        .chain(ty.exports(engine).map(|(name, item)| (name, item, false)))
+    {
+        if is_import
+            && matches!(item.ty, ComponentItem::Module(_))
+            && crate::core_modules::declares(pack, name)
+        {
+            continue;
+        }
         if name.starts_with("wasi:") {
             continue;
         }

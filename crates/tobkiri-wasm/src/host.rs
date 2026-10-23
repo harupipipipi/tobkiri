@@ -25,9 +25,7 @@ use crate::child_census::{
     GenerationChildCensus, GenerationRetirement, NativeGenerationId, NativeWorkCompletion,
     NativeWorkError, NativeWorkId, NativeWorkResult, UnstartedCleanupPolicy,
 };
-use crate::{
-    HandleKind, HandleTable, InvocationState, RestrictedWasi, WasmEngine, validate_imports,
-};
+use crate::{HandleKind, HandleTable, InvocationState, RestrictedWasi, WasmEngine};
 
 /// One immutable Profile dispatch plan. No domain knowledge is present here.
 #[derive(Clone)]
@@ -1483,6 +1481,7 @@ impl tobkiri_flow::RunTaskSpawner for NativeWorkSpawner {
 struct PackInstance {
     pack: Arc<VerifiedPack>,
     component: Component,
+    core_modules: BTreeMap<String, wasmtime::Module>,
     config: Vec<u8>,
     live: Option<(Store<InvocationState<PackState>>, Instance)>,
     // Field order is deliberate: Store is destroyed before this external
@@ -1727,24 +1726,7 @@ impl PackHost {
         {
             bail!("bounded artifact WIT evidence catalog exceeded")
         }
-        let source_bytes = packs.iter().try_fold(0usize, |total, pack| {
-            let RuntimeSpec::Wasm { component, .. } = &pack.manifest.runtime else {
-                return Ok(total);
-            };
-            let bytes = pack
-                .files
-                .get(component)
-                .context("verified component bytes missing")?;
-            if bytes.len() > 32 * 1024 * 1024 {
-                bail!("component exceeds bounded compilation input")
-            }
-            total
-                .checked_add(bytes.len() as usize)
-                .context("component catalog source size overflow")
-        })?;
-        if source_bytes > 64 * 1024 * 1024 {
-            bail!("component catalog compilation input exceeded")
-        }
+        let module_metadata = crate::core_modules::metadata_bytes(&packs)?;
         let (operation_count, provenance_parse_bytes, max_provenance_document) =
             views.values().try_fold(
                 (0u64, 0usize, 0usize),
@@ -1783,8 +1765,10 @@ impl PackHost {
                 .and_then(|n| n.checked_add(provider_edges * 512))
                 .and_then(|n| n.checked_add(artifact_ports * 512))
                 .and_then(|n| n.checked_add(artifact_operations * 1024))
+                .and_then(|n| n.checked_add(module_metadata))
                 .context("catalog control size overflow")?,
         )?;
+        crate::core_modules::validate_source_budget(&packs)?;
         // Parser/normalization scratch is bounded native loading work, not a
         // guest-value sponsor. The helper separately caps expanded nodes and
         // copied-name work BEFORE recursively normalizing a result signature.
@@ -1884,6 +1868,7 @@ impl PackHost {
             _catalog_control: catalog_control,
         });
         let mut pack_core_errors = BTreeMap::new();
+        let mut code_cache = crate::core_modules::CodeCache::default();
         for (id, pack) in &shared.verified {
             let RuntimeSpec::Wasm { component, .. } = &pack.manifest.runtime else {
                 continue;
@@ -1910,6 +1895,7 @@ impl PackHost {
             let compiled = Component::new(shared.engine.engine(), bytes.as_ref())?;
             // Component owns its compiled code and does not borrow this input.
             drop(bytes);
+            let core_modules = code_cache.for_pack(shared.engine.engine(), pack)?;
             // One admitted inspection of this exact verified dependency set
             // supplies both import validation and directional nominal evidence.
             // Keep parser scratch bounded and release it before the next Pack.
@@ -1928,10 +1914,11 @@ impl PackHost {
                 .control
                 .reserve(tobkiri_gate::ControlKind::Load, scratch as u64)?;
             let inspection = tobkiri_manifest::inspect_pack_wit(pack, &shared.views)?;
-            validate_imports(
+            crate::imports::validate_imports_with_modules(
                 shared.engine.engine(),
                 &compiled,
                 inspection.allowed_imports(),
+                &core_modules,
             )?;
             // Inspect the retained graph in place instead of copying every
             // Pack's WIT and type metadata again for each component.
@@ -1969,6 +1956,7 @@ impl PackHost {
                         instance: Mutex::new(PackInstance {
                             pack: pack.clone(),
                             component: compiled,
+                            core_modules,
                             config,
                             live: None,
                             physical: None,
@@ -3258,6 +3246,9 @@ impl PackInstance {
         store.data_mut().retirement=Some(retirement.clone());
         store.host_allocation_budget(owners.component().clone());
         let mut linker=Linker::new(shared.engine.engine());
+        for (name, module) in &self.core_modules {
+            linker.root().module(name,module).map_err(|error|entry_phase_error(error.into(),"core-module-link",&init_cx,owners))?;
+        }
         if self.component.component_type().imports(shared.engine.engine()).any(|(name,_)|name.starts_with("wasi:")) {
             crate::wasi::link_restricted_wasi(&mut linker).map_err(|error|entry_phase_error(error,"restricted-wasi-link",&init_cx,owners))?;
             crate::wasi_effects::link_gated_wasi(&mut linker,&self.component,shared.engine.engine()).map_err(|error|entry_phase_error(error,"gated-wasi-link",&init_cx,owners))?;

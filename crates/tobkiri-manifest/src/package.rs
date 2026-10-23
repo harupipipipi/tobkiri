@@ -176,11 +176,32 @@ fn validate_manifest(manifest: &PackManifest) -> Result<(), ManifestError> {
         RuntimeSpec::Wasm {
             component,
             toolchain,
+            core_modules,
             ..
         } => {
             has(component)?;
             if toolchain.trim().is_empty() {
                 return Err(invalid("missing guest toolchain"));
+            }
+            if core_modules.len() > MAX_CORE_MODULE_IMPORTS {
+                return Err(invalid("too many core module imports"));
+            }
+            for (name, path) in core_modules {
+                // Plain dependency names cannot shadow Core/WASI interfaces.
+                // These are immutable code imports, never ambient host modules.
+                if name.is_empty()
+                    || name.len() > 256
+                    || !name.as_bytes()[0].is_ascii_lowercase()
+                    || !name
+                        .bytes()
+                        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+                {
+                    return Err(invalid("invalid core module import name"));
+                }
+                has(path)?;
+                if path == component {
+                    return Err(invalid("root component cannot be its own core module"));
+                }
             }
         }
         RuntimeSpec::Native { executable, .. } => {

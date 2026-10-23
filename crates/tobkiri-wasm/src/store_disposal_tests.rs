@@ -348,6 +348,7 @@ impl CatalogFixture {
             version: "1.0.0".into(),
             publisher_key: None,
             runtime: RuntimeSpec::Wasm {
+                core_modules: Default::default(),
                 component: "component.wasm".into(),
                 toolchain: "wat-catalog-test/1".into(),
                 config: None,

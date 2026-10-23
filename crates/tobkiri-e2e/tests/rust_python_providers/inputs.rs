@@ -594,6 +594,7 @@ pub fn materialize(repo: &Path, root: &Path, role: usize) -> Result<Pack> {
         version: if role == 2 { "2.0.0" } else { "1.0.0" }.into(),
         publisher_key: None,
         runtime: RuntimeSpec::Wasm {
+            core_modules: Default::default(),
             component: "component.wasm".into(),
             toolchain: if rust {
                 "rust-wasip2/hash-pinned-test-fixture"

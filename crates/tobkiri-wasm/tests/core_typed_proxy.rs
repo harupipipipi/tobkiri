@@ -255,6 +255,7 @@ impl Fixture {
             let mut runtime = manifest(
                 id,
                 RuntimeSpec::Wasm {
+                    core_modules: Default::default(),
                     component: "component.wasm".into(),
                     toolchain: "rust-1.94.0/wasm32-wasip2".into(),
                     config: None,

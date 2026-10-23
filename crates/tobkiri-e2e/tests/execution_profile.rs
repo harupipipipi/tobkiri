@@ -269,6 +269,7 @@ fn pack(root: &Path, caller: bool) -> Result<(VerifiedPack, PackPin)> {
         version: "0.1.0".into(),
         publisher_key: None,
         runtime: RuntimeSpec::Wasm {
+            core_modules: Default::default(),
             component: "component.wasm".into(),
             toolchain: "wat/actual-core-execution-profile-test".into(),
             config: Some(RuntimeConfig {

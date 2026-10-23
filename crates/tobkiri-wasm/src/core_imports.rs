@@ -23,6 +23,10 @@ pub(crate) fn link_core_and_ports(
     _owners: &crate::owned_values::ValueOwners,
 ) -> Result<()> {
     for (name, item) in component.component_type().imports(shared.engine.engine()) {
+        if matches!(item.ty, ComponentItem::Module(_)) && crate::core_modules::declares(pack, name)
+        {
+            continue;
+        }
         if name.starts_with("wasi:") {
             continue;
         }

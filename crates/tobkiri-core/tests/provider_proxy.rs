@@ -785,6 +785,7 @@ impl Fixture {
         let mut provider = manifest(
             PROVIDER,
             RuntimeSpec::Wasm {
+                core_modules: Default::default(),
                 component: "component.wasm".into(),
                 toolchain: "wat-fixture".into(),
                 config: None,
@@ -809,6 +810,7 @@ impl Fixture {
             let mut consumer = manifest(
                 CONSUMER,
                 RuntimeSpec::Wasm {
+                    core_modules: Default::default(),
                     component: "component.wasm".into(),
                     toolchain: "wat-fixture".into(),
                     config: None,
@@ -933,6 +935,7 @@ impl Fixture {
         let mut provider = manifest(
             PROVIDER,
             RuntimeSpec::Wasm {
+                core_modules: Default::default(),
                 component: "component.wasm".into(),
                 toolchain: "rust-1.94.0/wasm32-wasip2".into(),
                 config: None,
@@ -977,6 +980,7 @@ impl Fixture {
         let mut consumer = manifest(
             CONSUMER,
             RuntimeSpec::Wasm {
+                core_modules: Default::default(),
                 component: "component.wasm".into(),
                 toolchain: "rust-1.94.0/wasm32-wasip2".into(),
                 config: None,
@@ -1066,6 +1070,7 @@ impl Fixture {
             let mut substitute = manifest(
                 SUBSTITUTE,
                 RuntimeSpec::Wasm {
+                    core_modules: Default::default(),
                     component: "component.wasm".into(),
                     toolchain: "rust-1.94.0/wasm32-wasip2".into(),
                     config: None,

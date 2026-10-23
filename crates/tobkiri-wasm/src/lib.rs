@@ -4,6 +4,7 @@ mod abi;
 mod allocation;
 mod child_census;
 mod core_imports;
+mod core_modules;
 mod dispatch;
 mod effect_values;
 mod effects;
