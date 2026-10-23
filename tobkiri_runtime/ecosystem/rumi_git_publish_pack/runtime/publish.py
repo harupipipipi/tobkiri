@@ -1340,6 +1340,11 @@ def _ssh_executable() -> Path | None:
 
 
 def _askpass_executable() -> Path | None:
+    # Ubuntu also ships GNU utilities under a gnu-prefixed name. Select the
+    # regular helper directly; OS aliases must not relax executable trust.
+    gnu_false = _trusted_executable("gnufalse", (Path("/usr/bin/gnufalse"),))
+    if gnu_false is not None:
+        return gnu_false
     return _trusted_executable("false", (Path("/usr/bin/false"), Path("/bin/false")))
 
 
