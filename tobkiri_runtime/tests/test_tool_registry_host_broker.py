@@ -11,6 +11,7 @@ import pytest
 
 from core_runtime.authority.v4 import AuthorityDenied
 from tests.conformance_support.host_profile import captured_host_profile
+from tests.tool_catalog_expectations import DEFAULT_TOOL_IDS
 from tobkiri_host.errors import ProviderExecutionError, ResolutionError
 
 
@@ -75,7 +76,9 @@ def test_production_registry_uses_only_selected_pack_data(
                 "_session_id": "registry-data",
             },
         )
-        assert len(result["definitions"]) == (152 if selected else 119)
+        assert len(result["definitions"]) == (
+            119 + len(DEFAULT_TOOL_IDS) if selected else 119
+        )
         assert not (tmp_path / "user-data/packs/rumi_tool_registry_pack").exists()
         assert {item["pack_id"] for item in result["pack_data_sources"]} == (
             {"defaultspack", "rumi_default_tools_pack"}
@@ -83,6 +86,10 @@ def test_production_registry_uses_only_selected_pack_data(
             else {"defaultspack"}
         )
         identifiers = {item["tool_id"] for item in result["definitions"]}
+        if selected:
+            assert DEFAULT_TOOL_IDS <= identifiers
+        else:
+            assert identifiers.isdisjoint(DEFAULT_TOOL_IDS)
         assert {
             "artifact_file_read",
             "memo_note_upsert",

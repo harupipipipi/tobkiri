@@ -262,11 +262,21 @@ def test_serial_cancel_has_reserved_capacity_and_root_request_ownership(
         "cancel_token": "2" * 64, "process_group": 1234,
     }
     ownership_reads: list[Path] = []
+    guard_rejected = threading.Event()
 
     def invoke(_payload: dict, **_kwargs: object) -> dict:
         started.set()
         try:
             assert cancelled.wait(2), "cancellation was blocked behind invocation"
+            guard = _kwargs.get("execution_guard")
+            assert callable(guard)
+            try:
+                guard()
+            except InterruptedError:
+                guard_rejected.set()
+            assert guard_rejected.is_set(), (
+                "cancelled request retained execution authority"
+            )
             return {
                 "ok": True, "protocol": runner.PROTOCOL,
                 "guest_artifact_identity": runner._bridge_canonical_digest(
@@ -309,7 +319,12 @@ def test_serial_cancel_has_reserved_capacity_and_root_request_ownership(
     assert not agent.errors
     assert len(ownership_reads) == 2
     by_challenge = {response["guest_challenge"]: response for response in responses}
-    assert by_challenge["1" * 64]["success"] is True
+    assert guard_rejected.is_set()
+    # The serial lane still delivers both signed responses, while the actual
+    # root ledger fences the invocation's late success after cancellation.
+    assert by_challenge["1" * 64]["success"] is False
+    assert by_challenge["1" * 64]["error"]["code"] == "CAPABILITY_UNAVAILABLE"
+    assert "data" not in by_challenge["1" * 64]
     assert by_challenge["3" * 64]["data"]["signals"] == ["TERM"]
     assert {response["request_id"] for response in responses} == {"request-1"}
 

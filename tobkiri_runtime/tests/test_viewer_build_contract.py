@@ -444,7 +444,7 @@ def test_full_ci_macos_launcher_binds_git_before_rust_build():
         "- name: Build rootless sealed packaging Python for viewer build"
     )
     setup_at = macos_job.index("- name: Set up Python")
-    test_at = macos_job.index("- name: Run rumi viewer tests")
+    test_at = macos_job.index("- name: Run Tobkiri Launcher tests")
     assert binding_at < setup_at < test_at
     binding = macos_job[binding_at:setup_at]
     assert '--snapshot-source --snapshot-root "$source_snapshot"' in binding
@@ -640,7 +640,7 @@ def test_debug_pack_shell_is_built_and_sealed_before_launcher_rust_checks():
             TEST_WORKFLOW,
             "Build debug Pack Shell for viewer Rust checks",
             "Seal debug Pack Shell for viewer Rust checks",
-            "Run rumi viewer tests",
+            "Run Tobkiri Launcher tests",
         ),
         (
             RELEASE_WORKFLOW,

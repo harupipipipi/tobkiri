@@ -73,8 +73,11 @@ def test_mcp_guest_supervisor_consumes_one_result_and_preserves_deadline(monkeyp
                     captured["operation_id"], arguments,
                 ))}
 
-    def initial(captured, *, guest_deadline):
-        return execute(captured, captured["payload"], guest_deadline)
+    def initial(captured, *, guest_deadline, execution_guard=None):
+        return execute(
+            captured, captured["payload"], guest_deadline,
+            execution_guard=execution_guard,
+        )
 
     monkeypatch.setattr(runner, "_invoke", initial)
     monkeypatch.setattr(runner, "_execute_invocation_step", execute)

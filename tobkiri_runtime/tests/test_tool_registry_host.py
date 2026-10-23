@@ -10,6 +10,7 @@ from core_runtime.host_provider_backend_v4 import HostProviderCaptureContextV4
 from ecosystem.rumi_tool_registry_pack.runtime import host
 from tests.test_mcp_connection_owner import _Invocation
 from tests.test_pack_architecture_wave6 import _definition
+from tests.tool_catalog_expectations import DEFAULT_TOOL_IDS
 from tobkiri_host.models import OpaqueAuthorityRef
 
 
@@ -291,7 +292,9 @@ def test_registry_uses_real_broker_profile_grants_and_rejects_undeclared_write(
             session.invoke(read_contract, read_operation, {"operation": "list"})
         root = tmp_path / "user-data" / "packs" / host.PACK_ID
         listed = invoke(read_contract, read_operation, {"operation": "list"})
-        assert listed["profile_id"] == "defaults" and len(listed["definitions"]) == 152
+        assert listed["profile_id"] == "defaults"
+        assert len(listed["definitions"]) == 119 + len(DEFAULT_TOOL_IDS)
+        assert DEFAULT_TOOL_IDS <= {item["tool_id"] for item in listed["definitions"]}
         assert {"chat_list_targets", "chat_resolve_target", "chat_send_message"} <= {
             item["tool_id"] for item in listed["definitions"]
         }

@@ -254,44 +254,48 @@ def test_warm_metadata_preserves_both_host_provider_import_captures(
     root, binding = sealed_binding(tmp_path)
     captured = _warm_capture(root, binding, validation_calls)
     implementation = root / captured.implementation_path
-    original_spec = host_provider_hooks_v4.importlib.util.spec_from_file_location
+    original_load = host_provider_hooks_v4.CapturedProviderModules.load
+    modules = host_provider_hooks_v4.CapturedProviderModules.for_capture(
+        root, captured,
+        artifact_digest=binding.artifact.digest,
+        pack_id=binding.artifact.pack_id,
+    )
     imported = False
 
     def mutate() -> None:
         implementation.write_bytes(implementation.read_bytes() + b"\n# changed\n")
 
-    def tracked_spec(*args: Any, **kwargs: Any) -> Any:
+    def tracked_load(captured_modules: Any) -> Any:
+        nonlocal imported
         assert phase == "after_import", "changed bytes must fail before import"
-        spec = original_spec(*args, **kwargs)
-        assert spec is not None and spec.loader is not None
-        original_exec = spec.loader.exec_module
-
-        def tracked_exec(module: Any) -> None:
-            nonlocal imported
-            original_exec(module)
-            imported = True
-            mutate()
-
-        monkeypatch.setattr(spec.loader, "exec_module", tracked_exec)
-        return spec
+        module = original_load(captured_modules)
+        imported = True
+        mutate()
+        return module
 
     monkeypatch.setattr(
-        host_provider_hooks_v4.importlib.util, "spec_from_file_location", tracked_spec
+        host_provider_hooks_v4.CapturedProviderModules, "load", tracked_load
     )
     if phase == "before_import":
         mutate()
-    module_name = (
-        "_tobkiri_host_provider_"
-        + binding.function.implementation_digest.removeprefix("sha256:")
-    )
-    previous_module = sys.modules.get(module_name)
+    prefix = modules.namespace
+    previous_modules = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == prefix or name.startswith(prefix + ".")
+    }
     try:
         with pytest.raises(InvalidArtifactError, match="digest"):
             host_provider_hooks_v4.load_host_provider_factory(root, binding)
         assert imported is (phase == "after_import")
         assert validation_calls == _COLD_CALLS
+        assert {
+            name: module
+            for name, module in sys.modules.items()
+            if name == prefix or name.startswith(prefix + ".")
+        } == previous_modules
     finally:
-        if previous_module is None:
-            sys.modules.pop(module_name, None)
-        else:
-            sys.modules[module_name] = previous_module
+        for name in tuple(sys.modules):
+            if name == prefix or name.startswith(prefix + "."):
+                sys.modules.pop(name, None)
+        sys.modules.update(previous_modules)

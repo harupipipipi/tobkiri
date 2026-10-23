@@ -554,7 +554,13 @@ def _captured_production_server(
 def production_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Capture the unmodified production HTTP server fixture."""
 
-    yield from _captured_production_server(tmp_path, monkeypatch)
+    from tobkiri_host.credential_store import host_credential_store_factory
+
+    yield from _captured_production_server(
+        tmp_path,
+        monkeypatch,
+        credential_store_factory=host_credential_store_factory,
+    )
 
 
 @pytest.fixture

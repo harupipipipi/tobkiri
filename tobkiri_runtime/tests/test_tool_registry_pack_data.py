@@ -13,6 +13,7 @@ from ecosystem.rumi_tool_registry_pack.runtime.pack_data import definitions_from
 from tests.test_declared_pack_data import PACK_ID, _capture, data_pack as data_pack
 from tests.test_pack_architecture_wave6 import _definition
 from tests.test_tool_registry_host import registry_host as registry_host
+from tests.tool_catalog_expectations import DEFAULT_TOOL_IDS
 
 
 @pytest.fixture
@@ -28,8 +29,9 @@ def test_owner_lists_resolves_and_keeps_packaged_schemas_isolated(
 ) -> None:
     invoke, client = registry_host
     result = invoke("definition", {"operation": "list"}, pack_data=captured_data)
-    assert len(result["definitions"]) == 33
     by_id = {item["tool_id"]: item for item in result["definitions"]}
+    assert set(by_id) == DEFAULT_TOOL_IDS
+    assert len(result["definitions"]) == len(DEFAULT_TOOL_IDS)
     for tool_id, provider, operation in (
         ("chat_list_targets", "chat-reference-tools", "chat-reference-operation"),
         ("chat_resolve_target", "chat-reference-tools", "chat-reference-operation"),
@@ -78,7 +80,10 @@ def test_stored_and_selected_contributions_remain_visible(captured_data, registr
         )
     ]
     result = invoke("definition", {"operation": "list"}, pack_data=captured_data)
-    assert len(result["definitions"]) == 35
+    assert {item["tool_id"] for item in result["definitions"]} == (
+        DEFAULT_TOOL_IDS | {"sample.read", "component.read"}
+    )
+    assert len(result["definitions"]) == len(DEFAULT_TOOL_IDS) + 2
     assert result["aliases"]["component.alias"] == "component.read"
     assert result["revision"] == 1
     assert client.calls[0][1] == "component.list"
@@ -224,7 +229,9 @@ def test_captured_pack_names_are_rejected_before_any_mutation(
     assert not (tmp_path / "packs").exists()
     assert client.calls == []
     listed = invoke("definition", {"operation": "list"}, pack_data=captured_data)
-    assert listed["revision"] == 0 and len(listed["definitions"]) == 33
+    assert listed["revision"] == 0
+    assert {item["tool_id"] for item in listed["definitions"]} == DEFAULT_TOOL_IDS
+    assert len(listed["definitions"]) == len(DEFAULT_TOOL_IDS)
 
 
 @pytest.fixture
@@ -255,7 +262,8 @@ def test_defaults_own_descriptors_join_the_selected_catalog(
     invoke, _client = registry_host
     data = (*captured_data, *defaults_data)
     result = invoke("definition", {"operation": "list"}, pack_data=data)
-    assert len(result["definitions"]) == 152
+    assert len(result["definitions"]) == 119 + len(DEFAULT_TOOL_IDS)
+    assert DEFAULT_TOOL_IDS <= {item["tool_id"] for item in result["definitions"]}
     definition = invoke(
         "definition", {"operation": "resolve", "tool_id": "artifact_file_read"},
         pack_data=data,
