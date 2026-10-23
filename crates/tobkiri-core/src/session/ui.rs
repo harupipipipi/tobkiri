@@ -443,7 +443,7 @@ impl Session {
         &self,
         session: &UiSessionId,
         path: &str,
-    ) -> Result<Vec<u8>, CoreError> {
+    ) -> Result<tobkiri_manifest::source::SourceBytes, CoreError> {
         self.check_snapshot()?;
         if path.is_empty()
             || path.starts_with('/')
@@ -465,11 +465,26 @@ impl Session {
             .materials
             .lock()
             .map_err(|_| CoreError::Runtime("UI materials poisoned".into()))?;
-        materials
+        let artifact = materials
             .get(&(ui.pack.clone(), ui.hash.clone()))
             .and_then(|m| m.files.get(path))
-            .cloned()
-            .ok_or_else(|| CoreError::NotFound("verified UI asset is missing".into()))
+            .ok_or_else(|| CoreError::NotFound("verified UI asset is missing".into()))?
+            .clone();
+        drop(materials);
+        drop(sessions);
+        let bytes = artifact.read()?;
+        self.check_snapshot()?;
+        if !self
+            .ui
+            .lock()
+            .map_err(|_| CoreError::Runtime("UI context poisoned".into()))?
+            .contains_key(session)
+        {
+            return Err(CoreError::Invalid(
+                "UI session retired during asset read".into(),
+            ));
+        }
+        Ok(bytes)
     }
 
     /// Compatibility entry for pre-receive callers. This API has no received

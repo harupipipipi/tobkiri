@@ -3,7 +3,8 @@ use tobkiri_canon::{
     Digest, Variant,
     ids::{PackHash, PackId, ProfileId},
 };
-use tobkiri_manifest::{VerifiedPack, verify_directory, verify_tpk_file};
+use tobkiri_manifest::source::SourceCatalog;
+use tobkiri_manifest::{VerifiedPack, verify_directory_in_catalog, verify_tpk_file_in_catalog};
 use tobkiri_profile::{Profile, PublishedProfile, parse_profile, parse_published};
 use tobkiri_store::DataRoot;
 
@@ -87,7 +88,11 @@ pub(crate) fn published(bytes: &[u8]) -> Result<PublishedProfile, CoreError> {
     Ok(parse_published(bytes)?)
 }
 
-pub(crate) fn load_packs(profile: &Profile) -> Result<Vec<VerifiedPack>, CoreError> {
+pub(crate) fn load_packs(
+    profile: &Profile,
+    control: &tobkiri_gate::CoreControl,
+) -> Result<Vec<VerifiedPack>, CoreError> {
+    let catalog = SourceCatalog::new(control)?;
     profile
         .packs
         .iter()
@@ -105,9 +110,9 @@ pub(crate) fn load_packs(profile: &Profile) -> Result<Vec<VerifiedPack>, CoreErr
             }
             let path = Path::new(source);
             let pack = if path.is_dir() {
-                verify_directory(path, &profile.publishers)?
+                verify_directory_in_catalog(path, &profile.publishers, &catalog)?
             } else {
-                verify_tpk_file(path, &profile.publishers)?
+                verify_tpk_file_in_catalog(path, &profile.publishers, &catalog)?
             };
             if pack.manifest.id != pin.id
                 || pack.hash != pin.sha256
@@ -172,7 +177,7 @@ mod tests {
         let path = root.path().join("oversized.tpk");
         let file = std::fs::File::create(&path).unwrap();
         file.set_len(512 * 1024 * 1024 + 1).unwrap();
-        let error = load_packs(&profile(&path)).unwrap_err();
+        let error = load_packs(&profile(&path), &tobkiri_gate::CoreControl::default()).unwrap_err();
         assert!(error.to_string().contains("package exceeds 512 MiB"));
     }
 
@@ -206,9 +211,12 @@ mod tests {
         let expected = verify_tpk(&bytes, &profile.publishers).unwrap();
         std::fs::write(&path, &bytes).unwrap();
         profile.packs[0].sha256 = expected.hash.clone();
-        let loaded = load_packs(&profile).unwrap();
+        let loaded = load_packs(&profile, &tobkiri_gate::CoreControl::default()).unwrap();
         assert_eq!(loaded[0].hash, expected.hash);
-        assert_eq!(loaded[0].files, expected.files);
+        assert_eq!(
+            loaded[0].files.materialize_for_pack_build().unwrap(),
+            expected.files.materialize_for_pack_build().unwrap()
+        );
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
 
         #[cfg(unix)]
@@ -216,11 +224,14 @@ mod tests {
             let alias = root.path().join("alias.tpk");
             std::os::unix::fs::symlink(&path, &alias).unwrap();
             profile.packs[0].source = alias.to_str().unwrap().into();
-            assert_eq!(load_packs(&profile).unwrap()[0].hash, expected.hash);
+            assert_eq!(
+                load_packs(&profile, &tobkiri_gate::CoreControl::default()).unwrap()[0].hash,
+                expected.hash
+            );
         }
 
         profile.packs[0].version = "2.0.0".into();
-        let error = load_packs(&profile).unwrap_err();
+        let error = load_packs(&profile, &tobkiri_gate::CoreControl::default()).unwrap_err();
         assert!(
             error
                 .to_string()

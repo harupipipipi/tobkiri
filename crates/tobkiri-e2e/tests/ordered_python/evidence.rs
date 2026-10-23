@@ -116,7 +116,7 @@ pub fn reviewed_sources(repo: &Path) -> Result<Value> {
             .iter()
             .map(|(name, bytes)| {
                 json!({
-                    "source":name, "destination":name, "sha256":digest(bytes), "bytes":bytes.len()
+                    "source":name, "destination":name, "sha256":digest(&bytes), "bytes":bytes.len()
                 })
             })
             .collect(),
@@ -180,16 +180,18 @@ pub fn load(repo: &Path) -> Result<Inputs> {
     let binary = pack
         .files
         .get("component.wasm")
-        .context("verified component missing")?;
+        .context("verified component missing")?
+        .read()?;
     let receipt_bytes = pack
         .files
         .get("component.build.json")
-        .context("verified build receipt missing")?;
+        .context("verified build receipt missing")?
+        .read()?;
     ensure!(
-        digest(binary) == component_pin && digest(receipt_bytes) == receipt_pin,
+        digest(&binary) == component_pin && digest(&receipt_bytes) == receipt_pin,
         "component or build receipt pin differs"
     );
-    let receipt = strict_json(receipt_bytes)?;
+    let receipt = strict_json(&receipt_bytes)?;
     let sources = reviewed_sources(repo)?;
     ensure!(
         receipt["format"] == "tobkiri.component-build/2"
@@ -225,7 +227,7 @@ pub fn load(repo: &Path) -> Result<Inputs> {
     // supply trap imports. Core::start independently validates and links it.
     {
         let engine = tobkiri_wasm::WasmEngine::new()?;
-        let component = wasmtime::component::Component::new(engine.engine(), binary)?;
+        let component = wasmtime::component::Component::new(engine.engine(), &binary)?;
         let allowed = tobkiri_manifest::allowed_imports_for_pack(&pack)?;
         let actual: BTreeSet<_> =
             tobkiri_wasm::validate_imports(engine.engine(), &component, &allowed)?

@@ -36,7 +36,6 @@ fn capacity(error: impl std::fmt::Display) -> ManifestError {
 
 struct CatalogUsage {
     retained: ControlReservation,
-    staged_bytes: u64,
 }
 struct CatalogState {
     control: CoreControl,
@@ -62,10 +61,7 @@ impl SourceCatalog {
             LeasedShared::try_new_precharged(
                 CatalogState {
                     control: control.clone(),
-                    usage: Mutex::new(CatalogUsage {
-                        retained,
-                        staged_bytes: 0,
-                    }),
+                    usage: Mutex::new(CatalogUsage { retained }),
                 },
                 block,
             )
@@ -87,25 +83,7 @@ impl SourceCatalog {
             .map_err(capacity)
     }
 
-    fn claim_storage(&self, bytes: u64) -> Result<(), ManifestError> {
-        let mut usage = self
-            .0
-            .get()
-            .usage
-            .lock()
-            .map_err(|_| invalid("source accounting poisoned"))?;
-        let next = usage
-            .staged_bytes
-            .checked_add(bytes)
-            .filter(|next| *next <= MAX_STAGED_BYTES)
-            .ok_or_else(|| invalid("private source staging exceeds 512 MiB"))?;
-        // Conservative lifetime accounting includes failed/partial writes.
-        // It cannot be refunded while an uncertain file write still exists.
-        usage.staged_bytes = next;
-        Ok(())
-    }
-
-    fn reserve_read(&self, bytes: u64) -> Result<ControlReservation, ManifestError> {
+    pub(crate) fn reserve_read(&self, bytes: u64) -> Result<ControlReservation, ManifestError> {
         self.0
             .get()
             .control
@@ -161,7 +139,7 @@ impl SourceStaging {
     /// Interrupted reads retry; any other read/write failure prevents sealing.
     pub fn append(
         &mut self,
-        input: &mut impl Read,
+        input: &mut (impl Read + ?Sized),
         maximum: u64,
     ) -> Result<SourceRange, ManifestError> {
         if self.poisoned || maximum > MAX_STAGED_BYTES {
@@ -177,7 +155,7 @@ impl SourceStaging {
 
     fn append_inner(
         &mut self,
-        input: &mut impl Read,
+        input: &mut (impl Read + ?Sized),
         maximum: u64,
     ) -> Result<SourceRange, ManifestError> {
         self.catalog.prepay_metadata(512)?;
@@ -206,11 +184,17 @@ impl SourceStaging {
             if count as u64 > maximum - length {
                 return Err(invalid("source exceeds its declared read bound"));
             }
-            self.catalog.claim_storage(count as u64)?;
+            // The existing 512MiB envelope applies to each package snapshot,
+            // not to all independently admitted Packs sharing one memory account.
+            let next = self
+                .length
+                .checked_add(count as u64)
+                .filter(|next| *next <= MAX_STAGED_BYTES)
+                .ok_or_else(|| invalid("private source staging exceeds 512 MiB"))?;
+            self.length = next;
             self.file.write_all(&buffer[..count])?;
             hash.update(&buffer[..count]);
             length += count as u64;
-            self.length += count as u64;
         }
     }
 
@@ -326,8 +310,49 @@ impl StagedArtifact {
         &self.range.digest
     }
 
+    /// Capture a bounded payload inside this already private snapshot. This
+    /// reads and hashes the actual range; a caller-supplied digest is not used.
+    /// This is how forward-only archive offsets become immutable artifacts.
+    pub fn slice(&self, offset: u64, length: u64) -> Result<Self, ManifestError> {
+        if offset
+            .checked_add(length)
+            .is_none_or(|end| end > self.range.length)
+        {
+            return Err(invalid("artifact slice exceeds its captured source"));
+        }
+        self.catalog().prepay_metadata(512)?;
+        let _scratch = self.catalog().reserve_read(READ_SCRATCH)?;
+        let snapshot = self.snapshot.0.get();
+        snapshot.stable()?;
+        let mut range = SourceRange {
+            source: self.range.source,
+            offset: self.range.offset + offset,
+            length,
+            digest: Digest::hash(&[]),
+            _catalog: self.catalog().clone(),
+        };
+        let mut reader = RangeReader {
+            snapshot,
+            range: &range,
+            position: 0,
+            hash: Sha256::new(),
+        };
+        io::copy(&mut reader, &mut io::sink())?;
+        if reader.position != length {
+            return Err(invalid("artifact slice was truncated"));
+        }
+        let digest = Digest::from_sha256(reader.hash.finalize().into());
+        snapshot.stable()?;
+        range.digest = digest;
+        Ok(Self {
+            snapshot: self.snapshot.clone(),
+            range,
+        })
+    }
+
     /// Inspect without materializing the payload. The callback must separately
     /// prepay any allocations it retains. Its result is usable only on success.
+    /// Do not publish, execute or cache callback bytes before this returns Ok.
     pub fn inspect<T>(
         &self,
         inspect: impl FnOnce(&mut dyn Read) -> Result<T, ManifestError>,
@@ -429,6 +454,11 @@ impl Read for RangeReader<'_> {
 /// Immutable owned bytes whose original Load charge survives every clone.
 #[derive(Clone, Debug)]
 pub struct SourceBytes(ControlHandle<Vec<u8>>);
+impl SourceBytes {
+    pub fn as_slice(&self) -> &[u8] {
+        self
+    }
+}
 impl Deref for SourceBytes {
     type Target = [u8];
     fn deref(&self) -> &Self::Target {
@@ -440,6 +470,12 @@ impl AsRef<[u8]> for SourceBytes {
         self
     }
 }
+impl<B: AsRef<[u8]>> PartialEq<B> for SourceBytes {
+    fn eq(&self, other: &B) -> bool {
+        self.as_ref() == other.as_ref()
+    }
+}
+impl Eq for SourceBytes {}
 
 #[cfg(test)]
 mod tests {
@@ -503,6 +539,32 @@ mod tests {
         let mut second = catalog.begin_snapshot().unwrap();
         second.append(&mut &b"same"[..], 4).unwrap();
         assert!(second.finish().unwrap().artifact(&range).is_err());
+    }
+
+    #[test]
+    fn nested_archive_slices_hash_actual_bytes_without_sharing_cursor() {
+        let control = CoreControl::default();
+        let artifact = captured(&control, b"abcdefgh");
+        let slice = artifact.slice(2, 4).unwrap();
+        assert_eq!(slice.digest(), &Digest::hash(b"cdef"));
+        assert_eq!(slice.read().unwrap().as_ref(), b"cdef");
+        assert_eq!(slice.slice(1, 2).unwrap().read().unwrap().as_ref(), b"de");
+        artifact
+            .inspect(|reader| {
+                let mut first = [0; 2];
+                reader.read_exact(&mut first)?;
+                assert_eq!(slice.read()?.as_ref(), b"cdef");
+                let mut next = [0; 2];
+                reader.read_exact(&mut next)?;
+                assert_eq!(&first, b"ab");
+                assert_eq!(&next, b"cd");
+                Ok(())
+            })
+            .unwrap();
+        let usage = control.usage();
+        assert!(slice.slice(3, 2).is_err());
+        assert!(slice.slice(u64::MAX, 2).is_err());
+        assert_eq!(control.usage(), usage);
     }
 
     #[test]

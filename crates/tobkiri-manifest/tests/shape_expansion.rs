@@ -63,7 +63,16 @@ fn assert_rejected(wit: &str, sidecar: &str) {
 
 fn assert_rejected_with(wit: &str, sidecar: &str, reason: &str) {
     let (manifest, files) = input(wit, sidecar);
-    let error = load_shapes(&manifest, &files).unwrap_err();
+    let error = load_shapes(
+        &manifest,
+        &tobkiri_manifest::ArtifactFiles::capture_for_verification(
+            &files,
+            &tobkiri_manifest::source::SourceCatalog::new(&tobkiri_gate::CoreControl::default())
+                .unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap_err();
     assert!(error.to_string().contains(reason), "{error}");
     // Exercise the actual hash-inventory-verified untrusted Pack reader too;
     // the package is tiny and never expands into its advertised million nodes.
@@ -131,7 +140,16 @@ fn deep_alias_chains_fail_before_recursive_conversion_and_small_aliases_still_lo
         aliases(5, true),
     );
     let (manifest, files) = input(&wit, SIDECAR);
-    let shapes = load_shapes(&manifest, &files).unwrap();
+    let shapes = load_shapes(
+        &manifest,
+        &tobkiri_manifest::ArtifactFiles::capture_for_verification(
+            &files,
+            &tobkiri_manifest::source::SourceCatalog::new(&tobkiri_gate::CoreControl::default())
+                .unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let function = &shapes[0].functions[&OpName::parse("read").unwrap()];
     assert_eq!(function.params[0].1, function.result.clone().unwrap());
     let bytes = build_tpk(&manifest, &files, None).unwrap();

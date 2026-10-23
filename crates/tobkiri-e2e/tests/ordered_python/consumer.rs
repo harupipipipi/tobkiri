@@ -278,17 +278,19 @@ pub fn materialize_for(
     let provider_wit = provider
         .files
         .get(abi.wit_member())
-        .context("verified candidate bridge WIT is missing")?;
+        .context("verified candidate bridge WIT is missing")?
+        .read()?;
     let files: BTreeMap<String, Vec<u8>> = BTreeMap::from([
         ("component.wasm".into(), component_bytes_for(abi)?),
-        ("wit/consumer.wit".into(), packaged_wit(abi, provider_wit)?),
+        ("wit/consumer.wit".into(), packaged_wit(abi, &provider_wit)?),
         (
             "wit/deps/core.wit".into(),
             provider
                 .files
                 .get("wit/deps/core.wit")
                 .context("verified candidate Core WIT is missing")?
-                .clone(),
+                .read()?
+                .to_vec(),
         ),
         (
             "wit/entry.shape.json".into(),
@@ -465,8 +467,11 @@ fn packaged_consumer_versions_pass_production_wit_inspection_without_guest() -> 
                 "wit/entry.shape.json",
             ]
         );
-        assert_eq!(caller.files["component.wasm"], component_bytes_for(abi)?);
-        assert_eq!(caller.files["wit/deps/core.wit"], core_wit);
+        assert_eq!(
+            caller.files["component.wasm"].read().unwrap(),
+            component_bytes_for(abi)?
+        );
+        assert_eq!(caller.files["wit/deps/core.wit"].read().unwrap(), core_wit);
         assert_eq!(
             caller.manifest.permissions.ports,
             [abi.shape().to_owned()].into_iter().collect()
@@ -519,7 +524,7 @@ fn packaged_consumer_versions_pass_production_wit_inspection_without_guest() -> 
             let archive = tobkiri_manifest::build_tpk(&manifest, &files, None)?;
             Ok(tobkiri_manifest::verify_tpk(&archive, &BTreeMap::new())?)
         };
-        let mut duplicate = caller.files.clone();
+        let mut duplicate = caller.files.materialize_for_pack_build().unwrap();
         duplicate.insert("wit/deps/ordered-python.wit".into(), bridge_wit.clone());
         assert!(
             tobkiri_manifest::inspect_pack_wit(&reverify(duplicate)?, &views).is_err(),
@@ -527,7 +532,7 @@ fn packaged_consumer_versions_pass_production_wit_inspection_without_guest() -> 
         );
         let world = WORLD.replace("@BRIDGE_INTERFACE@", abi.interface());
         let declaration = b"package local:ordered-python-consumer@1.0.0;\n";
-        let mut missing = caller.files.clone();
+        let mut missing = caller.files.materialize_for_pack_build().unwrap();
         missing.insert(
             "wit/consumer.wit".into(),
             [
@@ -541,7 +546,7 @@ fn packaged_consumer_versions_pass_production_wit_inspection_without_guest() -> 
             reverify(missing).is_err(),
             "missing dependency must not resolve"
         );
-        let mut old_split = caller.files.clone();
+        let mut old_split = caller.files.materialize_for_pack_build().unwrap();
         old_split.insert("wit/consumer.wit".into(), WIT.as_bytes().to_vec());
         old_split.insert("wit/world.wit".into(), world.into_bytes());
         old_split.insert("wit/deps/ordered-python.wit".into(), bridge_wit.clone());

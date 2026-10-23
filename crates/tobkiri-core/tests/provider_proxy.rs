@@ -1603,7 +1603,8 @@ async fn same_ref_provider_dependency_lookalike_loads_but_does_not_gain_catalog_
         provider.manifest.ports.provides[0].version,
         shape("entry").version
     );
-    let dependency = std::str::from_utf8(&provider.files["wit/provider.wit"])?;
+    let dependency_bytes = provider.files["wit/provider.wit"].read()?;
+    let dependency = std::str::from_utf8(&dependency_bytes)?;
     assert!(dependency.contains("run: func() -> result<_, local-error>"));
     let catalog = fixture
         .verified
@@ -1649,7 +1650,8 @@ async fn generic_guest_caller_uses_its_own_same_ref_dependency_error_identity() 
             consumer.manifest.ports.consumes[0].version,
             shape("entry").version
         );
-        let dependency = std::str::from_utf8(&consumer.files["wit/consumer.wit"])?;
+        let dependency_bytes = consumer.files["wit/consumer.wit"].read()?;
+        let dependency = std::str::from_utf8(&dependency_bytes)?;
         assert!(dependency.contains(if caller_dependency_nominal {
             "run: func() -> result<_, final-error>"
         } else {

@@ -55,7 +55,17 @@ interface check {{
         ui: None,
         files: vec![],
     };
-    load_shapes(&manifest, &files).unwrap().remove(0)
+    load_shapes(
+        &manifest,
+        &tobkiri_manifest::ArtifactFiles::capture_for_verification(
+            &files,
+            &tobkiri_manifest::source::SourceCatalog::new(&tobkiri_gate::CoreControl::default())
+                .unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
+    .remove(0)
 }
 
 #[test]

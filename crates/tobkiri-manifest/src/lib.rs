@@ -1,11 +1,13 @@
 //! Pack identity, integrity and authoritative WIT shape documents.
+mod files;
 mod package;
 mod shapes;
 pub mod source;
+pub use files::ArtifactFiles;
 mod wit_preflight;
 pub use package::{
-    build_tpk, canonical_manifest, parse_manifest, sign_manifest, verify_directory, verify_tpk,
-    verify_tpk_file,
+    build_tpk, canonical_manifest, parse_manifest, sign_manifest, verify_directory,
+    verify_directory_in_catalog, verify_tpk, verify_tpk_file, verify_tpk_file_in_catalog,
 };
 pub use shapes::{
     PackCoreErrorBindings, PackWitInspection, WitBindingDirection, allowed_imports,
@@ -196,21 +198,41 @@ pub struct ShapeSidecar {
 
 /// Verified bytes and authoritative shapes of one independently admitted Pack.
 #[derive(Clone, Debug)]
-pub struct VerifiedPack {
+pub struct VerifiedPack(
+    tobkiri_canon::ownership::LeasedShared<VerifiedPackData, source::SourceCatalog>,
+);
+/// Native verifier output. A shared VerifiedPack retains its prepaid metadata;
+/// cloning it never copies the source catalog, manifest or shape graph.
+#[derive(Debug)]
+pub struct VerifiedPackData {
     pub manifest: PackManifest,
     pub hash: PackHash,
-    pub files: BTreeMap<String, Vec<u8>>,
+    pub files: ArtifactFiles,
     pub shapes: Vec<ShapeDef>,
 }
 impl VerifiedPack {
+    /// Trusted native verifier construction, not a guest admission endpoint.
+    /// The verifier must prepay the owned manifest and shape metadata first.
+    pub fn try_new_precharged(data: VerifiedPackData) -> Result<Self, ManifestError> {
+        let catalog = data.files.catalog().clone();
+        catalog.prepay_metadata(tobkiri_canon::ownership::LeasedShared::<
+            VerifiedPackData,
+            source::SourceCatalog,
+        >::storage_bytes() as u64)?;
+        Ok(Self(
+            tobkiri_canon::ownership::LeasedShared::try_new_precharged(data, catalog)
+                .map_err(|error| ManifestError::Invalid(error.to_string()))?,
+        ))
+    }
     /// Exactly immutable verified defaults; never a host or Profile config map.
     pub fn init_config(&self) -> Result<Vec<u8>, ManifestError> {
         if let Some(config) = self.manifest.runtime.config() {
             let raw = self
                 .files
                 .get(&config.path)
-                .ok_or_else(|| ManifestError::Invalid("config file missing".into()))?;
-            let value = tobkiri_canon::parse(raw, tobkiri_canon::Variant::StrictV1)?;
+                .ok_or_else(|| ManifestError::Invalid("config file missing".into()))?
+                .read()?;
+            let value = tobkiri_canon::parse(&raw, tobkiri_canon::Variant::StrictV1)?;
             Ok(tobkiri_canon::encode(
                 &value,
                 tobkiri_canon::Variant::StrictV1,
@@ -218,6 +240,12 @@ impl VerifiedPack {
         } else {
             Ok(b"{}".to_vec())
         }
+    }
+}
+impl std::ops::Deref for VerifiedPack {
+    type Target = VerifiedPackData;
+    fn deref(&self) -> &Self::Target {
+        self.0.get()
     }
 }
 /// Sidecar stream/callback handles are never inferred from record layout.

@@ -117,15 +117,20 @@ fn fixture() -> Fixture {
         ui: None,
         files: Vec::new(),
     };
+    let source_control = gate.control().clone();
     Fixture {
         gate,
         profile,
-        pack: VerifiedPack {
+        pack: VerifiedPack::try_new_precharged(tobkiri_manifest::VerifiedPackData {
             manifest,
             hash,
-            files: BTreeMap::new(),
+            files: tobkiri_manifest::ArtifactFiles::empty(
+                &tobkiri_manifest::source::SourceCatalog::new(&source_control).unwrap(),
+            )
+            .unwrap(),
             shapes: Vec::new(),
-        },
+        })
+        .unwrap(),
         approved: permissions,
         _dir: dir,
         approvals,

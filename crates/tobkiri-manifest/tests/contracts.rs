@@ -71,7 +71,14 @@ fn package_bytes_are_deterministic_and_complete_inventory_is_enforced() {
     let m = manifest("local.sample", &f);
     let bytes = build_tpk(&m, &f, None).unwrap();
     assert_eq!(bytes, build_tpk(&m, &f, None).unwrap());
-    assert_eq!(verify_tpk(&bytes, &BTreeMap::new()).unwrap().files, f);
+    assert_eq!(
+        verify_tpk(&bytes, &BTreeMap::new())
+            .unwrap()
+            .files
+            .materialize_for_pack_build()
+            .unwrap(),
+        f
+    );
     let mut changed = f.clone();
     changed.insert("a.txt".into(), b"HELLO".to_vec());
     assert!(build_tpk(&m, &changed, None).is_err());
@@ -157,7 +164,7 @@ fn a_shape_document_stays_independent_of_the_worlds_cross_pack_import_closure() 
         .extend_from_slice(
             b" world pack { import local:profile-owner/probe@1.0.0; export probe; }",
         );
-    assert!(load_shapes(&m, &combined).is_err());
+    assert!(load_shapes(&m, &tobkiri_manifest::ArtifactFiles::capture_for_verification(&combined, &tobkiri_manifest::source::SourceCatalog::new(&tobkiri_gate::CoreControl::default()).unwrap()).unwrap()).is_err());
 }
 
 #[test]

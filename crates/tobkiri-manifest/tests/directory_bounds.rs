@@ -127,6 +127,6 @@ fn good_directory_and_archive_keep_the_original_ustar_bytes_and_pin() {
     let directory = verify_directory(root.path(), &BTreeMap::new()).unwrap();
     let archive = verify_tpk(&current, &BTreeMap::new()).unwrap();
     assert_eq!(directory.hash, archive.hash);
-    assert_eq!(directory.files, files);
-    assert_eq!(archive.files, files);
+    assert_eq!(directory.files.materialize_for_pack_build().unwrap(), files);
+    assert_eq!(archive.files.materialize_for_pack_build().unwrap(), files);
 }

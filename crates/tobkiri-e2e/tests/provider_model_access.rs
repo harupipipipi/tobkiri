@@ -1856,7 +1856,7 @@ async fn execute(evidence: &Evidence, report: &mut Value) -> Result<()> {
         "interface":INTERFACE,
         "verified_pack_hash":pack.verified.hash,
         "profile_id":profile.id,
-        "packaged_wit_sha256":digest(pack.verified.files["wit/pack.wit"].as_slice()),
+        "packaged_wit_sha256":digest(pack.verified.files["wit/pack.wit"].read().unwrap().as_slice()),
         "component_sha256":component.hash,
         "verified_one_pack_no_consumes":pack.verified.manifest.ports.consumes.is_empty()
     });

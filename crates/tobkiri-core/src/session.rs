@@ -245,7 +245,7 @@ struct UiStreamState {
 #[derive(Clone)]
 pub(crate) struct UiMaterial {
     pub entry: String,
-    pub files: BTreeMap<String, Vec<u8>>,
+    pub files: tobkiri_manifest::ArtifactFiles,
 }
 
 struct UiPrincipal {

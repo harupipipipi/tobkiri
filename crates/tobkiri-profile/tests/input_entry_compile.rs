@@ -230,7 +230,9 @@ fn duplicate_selection_and_changed_pack_hash_are_rejected() {
 
 #[test]
 fn frozen_routes_match_only_exact_trigger_views() {
-    let mut pack = source("receive: func() -> string;", &["receive"]);
+    let pack = source("receive: func() -> string;", &["receive"]);
+    let mut manifest = pack.manifest.clone();
+    let mut files = pack.files.materialize_for_pack_build().unwrap();
     let flow = FlowDocument {
         format: "tobkiri.flow/1".into(),
         id: "on-input".into(),
@@ -241,15 +243,15 @@ fn frozen_routes_match_only_exact_trigger_views() {
         on_error: ErrorPolicy::default(),
     };
     let bytes = serde_json::to_vec(&flow).unwrap();
-    pack.manifest.flows.push("flow.json".into());
-    pack.manifest.files.push(FileEntry {
+    manifest.flows.push("flow.json".into());
+    manifest.files.push(FileEntry {
         path: "flow.json".into(),
         sha256: Digest::hash(&bytes),
         size: bytes.len() as u64,
     });
-    pack.files.insert("flow.json".into(), bytes);
+    files.insert("flow.json".into(), bytes);
     let pack = verify_tpk(
-        &build_tpk(&pack.manifest, &pack.files, None).unwrap(),
+        &build_tpk(&manifest, &files, None).unwrap(),
         &BTreeMap::new(),
     )
     .unwrap();
@@ -259,19 +261,20 @@ fn frozen_routes_match_only_exact_trigger_views() {
         compiled.input_entries()[0].flow_routes(),
         &["local.physical-input/on-input".to_string()]
     );
-    let mut altered = pack.clone();
+    let mut altered_manifest = pack.manifest.clone();
+    let mut altered_files = pack.files.materialize_for_pack_build().unwrap();
     let mut wrong_flow = flow;
     wrong_flow.trigger.input = ShapeRef::parse("local.physical-input.input@1.1").unwrap();
     let wrong_bytes = serde_json::to_vec(&wrong_flow).unwrap();
-    for file in &mut altered.manifest.files {
+    for file in &mut altered_manifest.files {
         if file.path == "flow.json" {
             file.sha256 = Digest::hash(&wrong_bytes);
             file.size = wrong_bytes.len() as u64;
         }
     }
-    altered.files.insert("flow.json".into(), wrong_bytes);
+    altered_files.insert("flow.json".into(), wrong_bytes);
     let altered = verify_tpk(
-        &build_tpk(&altered.manifest, &altered.files, None).unwrap(),
+        &build_tpk(&altered_manifest, &altered_files, None).unwrap(),
         &BTreeMap::new(),
     )
     .unwrap();
@@ -362,10 +365,12 @@ fn zero_result_empty_record_and_payloadless_result_keep_exact_signatures() {
 fn stream_and_callback_delivery_requires_exactly_one_frozen_flow_route() {
     for handle in ["stream-handle", "callback-handle"] {
         for route_count in 0..=2 {
-            let mut pack = source(
+            let pack = source(
                 &format!("use tobkiri:core/types@1.0.0.{{{handle}}}; receive: func() -> {handle};"),
                 &["receive"],
             );
+            let mut manifest = pack.manifest.clone();
+            let mut files = pack.files.materialize_for_pack_build().unwrap();
             for index in 0..route_count {
                 let path = format!("flow-{index}.json");
                 let flow = FlowDocument {
@@ -378,16 +383,16 @@ fn stream_and_callback_delivery_requires_exactly_one_frozen_flow_route() {
                     on_error: ErrorPolicy::default(),
                 };
                 let bytes = serde_json::to_vec(&flow).unwrap();
-                pack.manifest.flows.push(path.clone());
-                pack.manifest.files.push(FileEntry {
+                manifest.flows.push(path.clone());
+                manifest.files.push(FileEntry {
                     path: path.clone(),
                     sha256: Digest::hash(&bytes),
                     size: bytes.len() as u64,
                 });
-                pack.files.insert(path, bytes);
+                files.insert(path, bytes);
             }
             let pack = verify_tpk(
-                &build_tpk(&pack.manifest, &pack.files, None).unwrap(),
+                &build_tpk(&manifest, &files, None).unwrap(),
                 &BTreeMap::new(),
             )
             .unwrap();

@@ -612,7 +612,7 @@ impl Fixture {
             verified.manifest.id == pin.id && verified.manifest.version == pin.version,
             "private fixture changed its Pack identity"
         );
-        pin.sha256 = verified.hash;
+        pin.sha256 = verified.hash.clone();
         Ok(())
     }
 

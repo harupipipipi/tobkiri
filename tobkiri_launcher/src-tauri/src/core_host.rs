@@ -858,7 +858,10 @@ pub(crate) fn run() {
                     None
                 };
                 let (status, body, mime, csp) = match value {
-                    Some(asset) => (200, asset.bytes, asset.mime, asset.csp),
+                    // The legacy Tauri responder still requires an owned Vec. Its
+                    // transport-copy custody must be completed before native
+                    // staged-source activation is considered production-ready.
+                    Some(asset) => (200, asset.bytes.to_vec(), asset.mime, asset.csp),
                     // Denials keep the closed static policy; a failed lookup
                     // never carries a fabricated per-Pack source.
                     None => (403, Vec::new(), "text/plain", PACK_UI_CSP.to_string()),

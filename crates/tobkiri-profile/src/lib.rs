@@ -387,6 +387,9 @@ pub struct CompiledProfile {
     pub views: BTreeMap<ShapeRef, tobkiri_manifest::ShapeDef>,
     pub flows: BTreeMap<String, ResolvedFlow>,
     pub plan_digest: Digest,
+    // Keep source-derived parser metadata charged after the input Pack handles
+    // are dropped. This is storage custody, never executable authority.
+    pub(crate) _source_catalogs: Vec<tobkiri_manifest::source::SourceCatalog>,
 }
 impl CompiledProfile {
     pub fn input_entries(&self) -> &[CompiledInputEntry] {

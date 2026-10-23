@@ -1531,7 +1531,7 @@ fn pack_wit_size(pack: &VerifiedPack) -> Result<(usize, usize)> {
             .checked_add(1)
             .context("artifact WIT document count overflow")?;
         bytes = bytes
-            .checked_add(input.len())
+            .checked_add(input.len() as usize)
             .context("artifact WIT input size overflow")?;
         if input.len() > 1024 * 1024 || documents > 32 || bytes > 4 * 1024 * 1024 {
             bail!("bounded verified WIT dependency input exceeded")
@@ -1739,7 +1739,7 @@ impl PackHost {
                 bail!("component exceeds bounded compilation input")
             }
             total
-                .checked_add(bytes.len())
+                .checked_add(bytes.len() as usize)
                 .context("component catalog source size overflow")
         })?;
         if source_bytes > 64 * 1024 * 1024 {
@@ -1905,8 +1905,11 @@ impl PackHost {
             let bytes = pack
                 .files
                 .get(component)
-                .context("verified component bytes missing")?;
-            let compiled = Component::new(shared.engine.engine(), bytes)?;
+                .context("verified component bytes missing")?
+                .read()?;
+            let compiled = Component::new(shared.engine.engine(), bytes.as_ref())?;
+            // Component owns its compiled code and does not borrow this input.
+            drop(bytes);
             // One admitted inspection of this exact verified dependency set
             // supplies both import validation and directional nominal evidence.
             // Keep parser scratch bounded and release it before the next Pack.

@@ -414,6 +414,16 @@ pub fn compile(
     profile: &Profile,
     packs: &[VerifiedPack],
 ) -> Result<CompiledProfile, Vec<Conflict>> {
+    let source_catalogs = packs
+        .iter()
+        .map(|pack| {
+            pack.files
+                .catalog()
+                .prepay_metadata(256)
+                .map_err(|error| vec![conflict("source-capacity", error.to_string(), vec![])])?;
+            Ok(pack.files.catalog().clone())
+        })
+        .collect::<Result<Vec<_>, Vec<Conflict>>>()?;
     let mut errors = Vec::new();
     if profile.format != "tobkiri.profile/1"
         || !profile.ceiling.loops.validate()
@@ -757,7 +767,15 @@ pub fn compile(
         for path in &pack.manifest.flows {
             match pack.files.get(path).map_or_else(
                 || Err(ProfileError::Invalid("flow file missing".into())),
-                |b| parse_flow(b),
+                |b| {
+                    pack.files
+                        .catalog()
+                        .prepay_metadata(b.len().saturating_mul(32).saturating_add(8192))
+                        .map_err(|error| ProfileError::Invalid(error.to_string()))?;
+                    b.read()
+                        .map_err(|error| ProfileError::Invalid(error.to_string()))
+                        .and_then(|bytes| parse_flow(&bytes))
+                },
             ) {
                 Ok(mut document) => {
                     if !ids.insert(document.id.clone()) {
@@ -804,7 +822,15 @@ pub fn compile(
         for path in &pack.manifest.overlays {
             match pack.files.get(path).map_or_else(
                 || Err(ProfileError::Invalid("overlay file missing".into())),
-                |b| parse_overlay(b),
+                |b| {
+                    pack.files
+                        .catalog()
+                        .prepay_metadata(b.len().saturating_mul(32).saturating_add(8192))
+                        .map_err(|error| ProfileError::Invalid(error.to_string()))?;
+                    b.read()
+                        .map_err(|error| ProfileError::Invalid(error.to_string()))
+                        .and_then(|bytes| parse_overlay(&bytes))
+                },
             ) {
                 Ok(document) => {
                     if !overlay_ids.insert(document.id.clone()) {
@@ -1247,6 +1273,7 @@ pub fn compile(
         views: shapes,
         flows,
         plan_digest,
+        _source_catalogs: source_catalogs,
     })
 }
 

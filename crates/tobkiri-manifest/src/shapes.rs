@@ -302,7 +302,7 @@ fn resolve_pack_wit(pack: &VerifiedPack) -> Result<Resolve, ManifestError> {
     for (_, bytes) in pack.files.iter().filter(|(path, _)| path.ends_with(".wit")) {
         documents += 1;
         input_bytes = input_bytes
-            .checked_add(bytes.len())
+            .checked_add(bytes.len() as usize)
             .ok_or_else(|| invalid("verified WIT input size overflow"))?;
     }
     if documents > 32 || input_bytes > 4 * 1024 * 1024 {
@@ -315,7 +315,8 @@ fn resolve_pack_wit(pack: &VerifiedPack) -> Result<Resolve, ManifestError> {
     > = BTreeMap::new();
     let mut package_count = 0usize;
     for (path, bytes) in pack.files.iter().filter(|(path, _)| path.ends_with(".wit")) {
-        let text = std::str::from_utf8(bytes).map_err(|_| invalid("WIT is not UTF-8"))?;
+        let bytes = bytes.read()?;
+        let text = std::str::from_utf8(&bytes).map_err(|_| invalid("WIT is not UTF-8"))?;
         if [
             tobkiri_wit::CORE_WIT_SOURCE,
             tobkiri_wit::CORE_V1_1_WIT_SOURCE,
@@ -542,20 +543,44 @@ fn inspect_pack_wit_impl(
 /// Resolve declared interfaces with authoritative wit-parser and verified sidecars.
 pub fn load_shapes(
     manifest: &PackManifest,
-    files: &BTreeMap<String, Vec<u8>>,
+    files: &ArtifactFiles,
 ) -> Result<Vec<ShapeDef>, ManifestError> {
+    if manifest.shapes.is_empty() {
+        return Ok(Vec::new());
+    }
+    let input_bytes = files
+        .iter()
+        .filter(|(path, _)| path.ends_with(".wit"))
+        .try_fold(0u64, |sum, (_, file)| {
+            sum.checked_add(file.len())
+                .ok_or_else(|| invalid("WIT source size overflow"))
+        })?;
+    if input_bytes > 4 * 1024 * 1024 {
+        return Err(invalid("bounded verified WIT dependency input exceeded"));
+    }
+    let scratch = input_bytes
+        .checked_mul(16)
+        .and_then(|n| n.checked_add(4 * 1024 * 1024))
+        .ok_or_else(|| invalid("WIT scratch overflow"))?;
+    let _scratch = files.catalog().reserve_read(scratch)?;
+    if input_bytes > 0 {
+        files.catalog().prepay_metadata(
+            input_bytes
+                .checked_mul(16)
+                .ok_or_else(|| invalid("WIT metadata overflow"))?,
+        )?;
+    }
     let mut cache: BTreeMap<String, (Resolve, wit_parser::PackageId)> = BTreeMap::new();
     let mut result = Vec::new();
-    let mut expansion = TypeExpansion::new();
+    let mut expansion = TypeExpansion::funded(files.catalog());
     for definition in &manifest.shapes {
         if !cache.contains_key(&definition.wit) {
             let mut resolve = resolve_known_core()?;
-            let wit = std::str::from_utf8(
-                files
-                    .get(&definition.wit)
-                    .ok_or_else(|| invalid("missing WIT"))?,
-            )
-            .map_err(|_| invalid("WIT is not UTF-8"))?;
+            let source = files
+                .get(&definition.wit)
+                .ok_or_else(|| invalid("missing WIT"))?
+                .read()?;
+            let wit = std::str::from_utf8(&source).map_err(|_| invalid("WIT is not UTF-8"))?;
             let group = crate::wit_preflight::parse_guest_wit(&definition.wit, wit)?;
             if std::iter::once(&group.main)
                 .chain(&group.nested)
@@ -591,12 +616,17 @@ pub fn load_shapes(
             .get(&definition.name.interface())
             .ok_or_else(|| invalid("declared WIT interface absent"))?];
         let sidecar_path = format!("wit/{}.shape.json", definition.name.interface());
-        let value = tobkiri_canon::parse(
-            files
-                .get(&sidecar_path)
-                .ok_or_else(|| invalid("missing shape sidecar"))?,
-            Variant::StrictV1,
+        let sidecar_source = files
+            .get(&sidecar_path)
+            .ok_or_else(|| invalid("missing shape sidecar"))?
+            .read()?;
+        files.catalog().prepay_metadata(
+            (sidecar_source.len() as u64)
+                .checked_mul(32)
+                .and_then(|n| n.checked_add(4096))
+                .ok_or_else(|| invalid("sidecar metadata overflow"))?,
         )?;
+        let value = tobkiri_canon::parse(&sidecar_source, Variant::StrictV1)?;
         let sidecar: ShapeSidecar =
             serde_json::from_slice(&tobkiri_canon::encode(&value, Variant::StrictV1)?)?;
         let mut functions = BTreeMap::new();
@@ -651,7 +681,7 @@ pub fn load_shapes(
             types,
             streams: sidecar.streams,
             callbacks: sidecar.callbacks,
-            wit: String::from_utf8(files[&definition.wit].clone())
+            wit: String::from_utf8(files[&definition.wit].read()?.to_vec())
                 .map_err(|_| invalid("WIT is not UTF-8"))?,
         });
     }
@@ -767,13 +797,20 @@ pub fn core_error_result_operations(shape: &ShapeDef) -> Result<BTreeSet<OpName>
 struct TypeExpansion {
     nodes: usize,
     work: usize,
+    funding: Option<crate::source::SourceCatalog>,
 }
 impl TypeExpansion {
     fn new() -> Self {
         Self {
             nodes: 65_536,
             work: 4 * 1024 * 1024,
+            funding: None,
         }
+    }
+    fn funded(catalog: &crate::source::SourceCatalog) -> Self {
+        let mut value = Self::new();
+        value.funding = Some(catalog.clone());
+        value
     }
     fn convert(&mut self, resolve: &Resolve, ty: Type) -> Result<WitType, ManifestError> {
         self.check(resolve, ty, 0)?;
@@ -788,6 +825,14 @@ impl TypeExpansion {
             .work
             .checked_sub(bytes.max(1))
             .ok_or_else(|| invalid("bounded WIT type work exceeded"))?;
+        if let Some(catalog) = &self.funding {
+            let charge = (std::mem::size_of::<WitType>() as u64)
+                .checked_mul(4)
+                .and_then(|n| n.checked_add((bytes as u64).checked_mul(4)?))
+                .and_then(|n| n.checked_add(64))
+                .ok_or_else(|| invalid("WIT retained metadata overflow"))?;
+            catalog.prepay_metadata(charge)?;
+        }
         Ok(())
     }
     fn check(&mut self, resolve: &Resolve, ty: Type, depth: usize) -> Result<(), ManifestError> {

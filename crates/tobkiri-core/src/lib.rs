@@ -68,3 +68,6 @@ pub use session::{
     UiStreamCleanupControl, UiStreamCleanupOwner,
 };
 pub use ui_operation_preparation::{UiOperationPreparation, UiOperationTermination};
+
+/// Immutable verified source bytes retaining their original Core load charge.
+pub use tobkiri_manifest::source::SourceBytes as VerifiedSourceBytes;

@@ -907,7 +907,7 @@ fn flow_pack(
     if owner.as_str() == "local.fixture" {
         permissions.ports.insert(child_flow_shape().to_string());
     }
-    let mut pack = verified_pack(
+    let pack = verified_pack(
         owner.as_str(),
         files,
         shapes,
@@ -918,10 +918,16 @@ fn flow_pack(
         },
         paths,
     );
-    pack.manifest.permissions = permissions;
+    let mut manifest = pack.manifest.clone();
+    manifest.permissions = permissions;
     // Re-verify after adding the source Pack's explicit permission declaration.
     verify_tpk(
-        &build_tpk(&pack.manifest, &pack.files, None).unwrap(),
+        &build_tpk(
+            &manifest,
+            &pack.files.materialize_for_pack_build().unwrap(),
+            None,
+        )
+        .unwrap(),
         &BTreeMap::new(),
     )
     .unwrap()

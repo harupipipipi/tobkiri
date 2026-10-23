@@ -1663,7 +1663,7 @@ fn core_error(error: CoreError) -> HostError {
 /// attachment and the verified file map returned the original bytes.
 #[derive(Debug)]
 pub struct PackAsset {
-    pub bytes: Vec<u8>,
+    pub bytes: tobkiri_core::VerifiedSourceBytes,
     pub mime: &'static str,
     pub csp: String,
 }
@@ -2469,7 +2469,10 @@ impl LauncherCore {
         Ok(PackAsset { bytes, mime, csp })
     }
 
-    pub async fn asset(&self, uri: &str) -> Result<(Vec<u8>, &'static str), HostError> {
+    pub async fn asset(
+        &self,
+        uri: &str,
+    ) -> Result<(tobkiri_core::VerifiedSourceBytes, &'static str), HostError> {
         let PackAsset { bytes, mime, .. } = self.asset_with_policy(uri).await?;
         Ok((bytes, mime))
     }

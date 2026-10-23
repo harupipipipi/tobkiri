@@ -373,8 +373,8 @@ impl Fixture {
             write_pack_variant(&physical, "sink", kind, 1, wrong_kind),
         ];
         assert_eq!(
-            packs[0].files["wit/fixture.wit"],
-            packs[1].files["wit/deps/source.wit"]
+            packs[0].files["wit/fixture.wit"].read().unwrap(),
+            packs[1].files["wit/deps/source.wit"].read().unwrap()
         );
         let views = packs
             .iter()

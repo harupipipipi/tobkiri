@@ -404,7 +404,10 @@ fn validate_manifest(pin: Pin, pack: &VerifiedPack) -> Result<()> {
     ensure!(
         runtime
             == json!({"kind":"wasm","component":"component.wasm","toolchain":"python/build-receipt-pinned","config":{"path":"config.json","shape":null}})
-            && pack.files.get("config.json").is_some_and(|v| v == b"{}"),
+            && pack
+                .files
+                .get("config.json")
+                .is_some_and(|v| v.read().is_ok_and(|bytes| bytes.as_ref() == b"{}")),
         "runtime/config differs"
     );
     ensure!(
@@ -482,7 +485,9 @@ fn validate_manifest(pin: Pin, pack: &VerifiedPack) -> Result<()> {
             "wit/caller.shape.json"
         } else {
             "wit/bridge.shape.json"
-        }],
+        }]
+        .read()
+        .unwrap(),
     )?;
     ensure!(
         sidecar == json!({"cardinality":"one","streams":{},"callbacks":{},"conformance":null}),
@@ -658,14 +663,18 @@ pub async fn load(repo: &Path) -> Result<Graph> {
             index["components"][pin.name] == expected_record(pin, &pack),
             "independent Pack/index pin differs"
         );
-        let binary = &pack.files["component.wasm"];
+        let binary = &pack.files["component.wasm"].read().unwrap();
         ensure!(
             binary.len() == pin.bytes
                 && binary.len() <= 32 * 1024 * 1024
                 && digest(binary) == pin.artifact,
             "component bytes differ"
         );
-        validate_receipt(pin, &pack.files["component.build.json"], &sources[pin.name])?;
+        validate_receipt(
+            pin,
+            &pack.files["component.build.json"].read().unwrap(),
+            &sources[pin.name],
+        )?;
         let original = bounded_read(repo, &format!("{PREFIX}/wit/pack.wit"), 1024 * 1024)?;
         let bridge_wit = bounded_read(
             repo,
@@ -674,17 +683,17 @@ pub async fn load(repo: &Path) -> Result<Graph> {
         )?;
         if pin.name == "caller" {
             ensure!(
-                pack.files["wit/pack.wit"] == bundled_wit(&original, &bridge_wit)?,
+                pack.files["wit/pack.wit"].read().unwrap() == bundled_wit(&original, &bridge_wit)?,
                 "packaged original WIT differs"
             );
         } else {
             ensure!(
-                pack.files["wit/pack-v2.wit"] == bridge_wit,
+                pack.files["wit/pack-v2.wit"].read().unwrap() == bridge_wit,
                 "canonical bridge WIT differs"
             );
         }
         ensure!(
-            pack.files["wit/deps/core.wit"]
+            pack.files["wit/deps/core.wit"].read().unwrap()
                 == bounded_read(repo, "crates/tobkiri-wit/wit/core/core.wit", 1024 * 1024)?,
             "canonical Core WIT differs"
         );
@@ -745,14 +754,16 @@ pub async fn load(repo: &Path) -> Result<Graph> {
     let engine = tobkiri_wasm::WasmEngine::new()?;
     for pin in PINS {
         let pack = &packs[pin.name];
-        let component =
-            wasmtime::component::Component::new(engine.engine(), &pack.files["component.wasm"])?;
+        let component = wasmtime::component::Component::new(
+            engine.engine(),
+            &pack.files["component.wasm"].read().unwrap(),
+        )?;
         let allowed = tobkiri_manifest::allowed_imports_for_pack(pack)?;
         let imports: BTreeSet<_> =
             tobkiri_wasm::validate_imports(engine.engine(), &component, &allowed)?
                 .into_iter()
                 .collect();
-        let receipt = strict_json(&pack.files["component.build.json"])?;
+        let receipt = strict_json(&pack.files["component.build.json"].read().unwrap())?;
         ensure!(
             json!(imports) == receipt["imports"],
             "actual imports differ"

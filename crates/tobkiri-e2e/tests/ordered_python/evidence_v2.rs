@@ -29,7 +29,7 @@ pub fn counts() -> Value {
 }
 
 fn source_record(path: &str, bytes: &[u8]) -> Value {
-    json!({"path":path, "bytes":bytes.len(), "sha256":digest(bytes)})
+    json!({"path":path, "bytes":bytes.len(), "sha256":digest(&bytes)})
 }
 
 fn read_relative(repo: &Path, path: &str) -> Result<Vec<u8>> {
@@ -289,7 +289,7 @@ pub fn reviewed_sources(repo: &Path) -> Result<(Value, Value)> {
         .iter()
         .map(|(name, bytes)| {
             json!({
-                "source":name, "destination":name, "sha256":digest(bytes), "bytes":bytes.len()
+                "source":name, "destination":name, "sha256":digest(&bytes), "bytes":bytes.len()
             })
         })
         .collect();
@@ -508,19 +508,21 @@ pub fn load(repo: &Path) -> Result<Inputs> {
     let binary = pack
         .files
         .get("component.wasm")
-        .context("V2 component missing")?;
+        .context("V2 component missing")?
+        .read()?;
     let receipt_bytes = pack
         .files
         .get("component.build.json")
-        .context("V2 receipt missing")?;
+        .context("V2 receipt missing")?
+        .read()?;
     ensure!(
-        digest(binary) == component_pin
+        digest(&binary) == component_pin
             && binary.len() == 17_910_172
-            && digest(receipt_bytes) == receipt_pin,
+            && digest(&receipt_bytes) == receipt_pin,
         "V2 component or receipt bytes differ"
     );
     let (sources, oracle) = reviewed_sources(repo)?;
-    let receipt = strict_json(receipt_bytes)?;
+    let receipt = strict_json(&receipt_bytes)?;
     let imports: BTreeSet<String> = ["types", "flow", "clock", "random", "audit"]
         .into_iter()
         .map(|name| format!("tobkiri:core/{name}@1.0.0"))
@@ -545,7 +547,11 @@ pub fn load(repo: &Path) -> Result<Inputs> {
         "V2 receipt differs from complete reviewed source plan or ABI"
     );
     for member in [BridgeAbi::V2.wit_member(), "wit/deps/core.wit"] {
-        let bytes = pack.files.get(member).context("V2 verified WIT missing")?;
+        let bytes = pack
+            .files
+            .get(member)
+            .context("V2 verified WIT missing")?
+            .read()?;
         let record = sources
             .as_array()
             .context("source manifest missing")?
@@ -553,13 +559,13 @@ pub fn load(repo: &Path) -> Result<Inputs> {
             .find(|record| record["destination"] == member)
             .context("reviewed WIT binding missing")?;
         ensure!(
-            record["sha256"] == digest(bytes) && record["bytes"] == bytes.len(),
+            record["sha256"] == digest(&bytes) && record["bytes"] == bytes.len(),
             "materialized WIT changed"
         );
     }
     // Static component type inspection only. No instantiation or trap imports.
     let engine = tobkiri_wasm::WasmEngine::new()?;
-    let component = wasmtime::component::Component::new(engine.engine(), binary)?;
+    let component = wasmtime::component::Component::new(engine.engine(), &binary)?;
     let allowed = tobkiri_manifest::allowed_imports_for_pack(&pack)?;
     let actual: BTreeSet<_> =
         tobkiri_wasm::validate_imports(engine.engine(), &component, &allowed)?

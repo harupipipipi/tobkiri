@@ -55,7 +55,7 @@ fn native_fanout_source(fixture: &mut Fixture) -> Result<()> {
     let verified = tobkiri_manifest::verify_directory(&source, &Default::default())?;
     assert_eq!(verified.manifest.id, pin.id);
     assert_eq!(verified.manifest.version, pin.version);
-    pin.sha256 = verified.hash;
+    pin.sha256 = verified.hash.clone();
     Ok(())
 }
 
@@ -120,7 +120,7 @@ fn fanout_fixture(first_fails: bool) -> Result<Fixture> {
         .context("echo Flow pin missing")?;
     assert_eq!(verified.manifest.id, pin.id);
     assert_eq!(verified.manifest.version, pin.version);
-    pin.sha256 = verified.hash;
+    pin.sha256 = verified.hash.clone();
     Ok(fixture)
 }
 

@@ -189,10 +189,16 @@ fn provider(id: &str) -> VerifiedPack {
         vec![],
     )
 }
-fn with_permissions(mut pack: VerifiedPack, permissions: PermissionSet) -> VerifiedPack {
-    pack.manifest.permissions = permissions;
+fn with_permissions(pack: VerifiedPack, permissions: PermissionSet) -> VerifiedPack {
+    let mut manifest = pack.manifest.clone();
+    manifest.permissions = permissions;
     verify_tpk(
-        &build_tpk(&pack.manifest, &pack.files, None).unwrap(),
+        &build_tpk(
+            &manifest,
+            &pack.files.materialize_for_pack_build().unwrap(),
+            None,
+        )
+        .unwrap(),
         &BTreeMap::new(),
     )
     .unwrap()
@@ -655,7 +661,7 @@ fn overlay_parallel_without_next_compiles_but_parallel_next_is_rejected() {
 #[test]
 fn compatible_minors_bind_from_verified_snapshots_unknown_minors_are_rejected() {
     let original = contracts();
-    let mut files = original.files.clone();
+    let mut files = original.files.materialize_for_pack_build().unwrap();
     files.insert("wit/newer.wit".into(),b"package local:contracts@1.1.0; interface query { query: func(value: string) -> string; added: func(); }".to_vec());
     let mut definitions = original.manifest.shapes.clone();
     definitions.push(ShapeDefinition {
@@ -958,7 +964,7 @@ fn original_policy_references_require_exact_verified_views_independently() {
 #[test]
 fn structural_role_admission_does_not_require_a_callable_operation() {
     let original = contracts();
-    let mut files = original.files.clone();
+    let mut files = original.files.materialize_for_pack_build().unwrap();
     files.insert("wit/contract.wit".into(),b"package local:contracts@1.0.0; interface query { query: func(value: string) -> string; } interface role {} interface workflow { run: func(); } interface input { read: func() -> string; }".to_vec());
     let contracts = pack(
         "local.contracts",
@@ -1259,7 +1265,7 @@ fn user_overlay_witness_is_user_code_and_next_has_no_forged_call_descriptor() {
 #[test]
 fn literal_stream_emit_has_its_own_exact_witness_without_consumes() {
     let original = contracts();
-    let mut files = original.files.clone();
+    let mut files = original.files.materialize_for_pack_build().unwrap();
     files.insert(
         "wit/stream.wit".into(),
         b"package local:contracts@1.0.0; interface sink { emit: func(value: string); }".to_vec(),
@@ -1599,7 +1605,7 @@ fn dynamic_flow_consume_requires_exactly_one_selected_implementation() {
 #[test]
 fn dynamic_flow_consume_never_widens_to_another_minor() {
     let original = contracts();
-    let mut files = original.files.clone();
+    let mut files = original.files.materialize_for_pack_build().unwrap();
     files.insert(
         "wit/newer.wit".into(),
         b"package local:contracts@1.1.0; interface workflow { run: func(); }".to_vec(),

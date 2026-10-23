@@ -325,7 +325,7 @@ impl Core {
         } else {
             None
         };
-        let packs = load_packs(&profile)?;
+        let packs = load_packs(&profile, &self.control)?;
         let compiled = compile(&profile, &packs).map_err(CoreError::Conflicts)?;
         let (gate, _) = self.authority(&profile)?;
         register_policies(&gate, &profile, &packs)?;
@@ -417,10 +417,19 @@ impl Core {
     ) -> Result<Digest, CoreError> {
         let (mut profile, head) = self.profile(id)?;
         let path = std::path::Path::new(source.strip_prefix("file:").unwrap_or(&source));
+        let source_catalog = tobkiri_manifest::source::SourceCatalog::new(&self.control)?;
         let pack = if path.is_dir() {
-            tobkiri_manifest::verify_directory(path, &profile.publishers)?
+            tobkiri_manifest::verify_directory_in_catalog(
+                path,
+                &profile.publishers,
+                &source_catalog,
+            )?
         } else {
-            tobkiri_manifest::verify_tpk_file(path, &profile.publishers)?
+            tobkiri_manifest::verify_tpk_file_in_catalog(
+                path,
+                &profile.publishers,
+                &source_catalog,
+            )?
         };
         let existing = profile
             .packs
@@ -437,9 +446,9 @@ impl Core {
             ));
         }
         let pin = tobkiri_profile::PackPin {
-            id: pack.manifest.id,
-            version: pack.manifest.version,
-            sha256: pack.hash,
+            id: pack.manifest.id.clone(),
+            version: pack.manifest.version.clone(),
+            sha256: pack.hash.clone(),
             source,
         };
         if let Some(index) = existing {
@@ -466,7 +475,7 @@ impl Core {
     pub async fn approve_profile(&self, id: &ProfileId) -> Result<(), CoreError> {
         self.ensure_admission(id).await?;
         let (profile, profile_hash) = self.profile(id)?;
-        let packs = load_packs(&profile)?;
+        let packs = load_packs(&profile, &self.control)?;
         let compiled = compile(&profile, &packs).map_err(CoreError::Conflicts)?;
         let (gate, _) = self.authority(&profile)?;
         register_policies(&gate, &profile, &packs)?;
@@ -512,7 +521,7 @@ impl Core {
         &self,
         profile: &Profile,
     ) -> Result<tobkiri_profile::ConflictReport, CoreError> {
-        let packs = load_packs(profile)?;
+        let packs = load_packs(profile, &self.control)?;
         let conflicts = compile(profile, &packs).err().unwrap_or_default();
         Ok(tobkiri_profile::ConflictReport {
             repair_pack_available: !conflicts.is_empty(),
@@ -551,7 +560,7 @@ impl Core {
         self.ensure_admission(id).await?;
         let (head, epoch) = self.profiles.root.profile_head_snapshot(id)?;
         let profile = self.profiles.load_revision(id, &head)?;
-        let packs = load_packs(&profile)?;
+        let packs = load_packs(&profile, &self.control)?;
         let compiled = compile(&profile, &packs).map_err(CoreError::Conflicts)?;
         let (gate, audit) = self.authority(&profile)?;
         register_policies(&gate, &profile, &packs)?;

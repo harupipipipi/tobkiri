@@ -1,16 +1,17 @@
+use crate::source::{SourceBytes, SourceCatalog, StagedArtifact};
 use crate::*;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::SigningKey;
 use std::{
-    cell::{Cell, RefCell},
+    cell::Cell,
     collections::{BTreeMap, BTreeSet},
     fs::{self, OpenOptions},
     io::{self, Cursor, Read, Write},
     path::Path,
 };
-use tobkiri_canon::{
-    CanonValue, Variant, digest, encode, hash_bytes, parse, sign, verify_signature,
-};
+#[cfg(test)]
+use tobkiri_canon::hash_bytes;
+use tobkiri_canon::{CanonValue, Variant, digest, encode, parse, sign, verify_signature};
 
 fn invalid(message: impl Into<String>) -> ManifestError {
     ManifestError::Invalid(message.into())
@@ -289,11 +290,17 @@ fn key(value: &str) -> Result<[u8; 32], ManifestError> {
         .map_err(|_| invalid("invalid publisher key length"))
 }
 fn verify(
-    raw: Vec<u8>,
-    signature: Option<Vec<u8>>,
-    files: BTreeMap<String, Vec<u8>>,
+    raw: SourceBytes,
+    signature: Option<SourceBytes>,
+    files: ArtifactFiles,
     publishers: &BTreeMap<String, String>,
 ) -> Result<VerifiedPack, ManifestError> {
+    files.catalog().prepay_metadata(
+        (raw.len() as u64)
+            .checked_mul(32)
+            .and_then(|n| n.checked_add(65536))
+            .ok_or_else(|| invalid("manifest metadata overflow"))?,
+    )?;
     let (value, manifest) = typed(&raw)?;
     if let Some(publisher_key) = &manifest.publisher_key {
         let binding = publishers
@@ -303,6 +310,12 @@ fn verify(
             return Err(invalid("publisher key differs from Profile binding"));
         }
         let signature = signature.ok_or_else(|| invalid("signed Pack has no signature.json"))?;
+        files.catalog().prepay_metadata(
+            (signature.len() as u64)
+                .checked_mul(32)
+                .and_then(|n| n.checked_add(4096))
+                .ok_or_else(|| invalid("signature metadata overflow"))?,
+        )?;
         let signature_value = parse(&signature, Variant::StrictV1)?;
         let signature: PackSignature =
             serde_json::from_slice(&encode(&signature_value, Variant::StrictV1)?)?;
@@ -327,12 +340,15 @@ fn verify(
         let content = files
             .get(&entry.path)
             .ok_or_else(|| invalid("missing declared package file"))?;
-        if content.len() as u64 != entry.size || hash_bytes(content) != entry.sha256 {
+        if content.len() != entry.size || content.digest() != &entry.sha256 {
             return Err(invalid(format!(
                 "file digest/size mismatch: {}",
                 entry.path
             )));
         }
+    }
+    for content in files.values() {
+        content.inspect(|_| Ok(()))?;
     }
     let shapes = load_shapes(&manifest, &files)?;
     for input in &manifest.inputs {
@@ -347,11 +363,18 @@ fn verify(
     if let Some(config) = manifest.runtime.config() {
         let raw = files
             .get(&config.path)
-            .ok_or_else(|| invalid("config file missing"))?;
+            .ok_or_else(|| invalid("config file missing"))?
+            .read()?;
         if raw.len() > 256 * 1024 {
             return Err(invalid("config exceeds 256 KiB"));
         }
-        let value = parse(raw, Variant::StrictV1)?;
+        files.catalog().prepay_metadata(
+            (raw.len() as u64)
+                .checked_mul(32)
+                .and_then(|n| n.checked_add(4096))
+                .ok_or_else(|| invalid("config metadata overflow"))?,
+        )?;
+        let value = parse(&raw, Variant::StrictV1)?;
         if !matches!(value, CanonValue::Obj(_)) {
             return Err(invalid("config must be a StrictV1 object"));
         }
@@ -373,15 +396,20 @@ fn verify(
     }
     for store in &manifest.stores {
         if let Some(seed) = &store.seed {
-            parse(
-                files
-                    .get(seed)
-                    .ok_or_else(|| invalid("seed file missing"))?,
-                Variant::StrictV1,
+            let source = files
+                .get(seed)
+                .ok_or_else(|| invalid("seed file missing"))?
+                .read()?;
+            files.catalog().prepay_metadata(
+                (source.len() as u64)
+                    .checked_mul(32)
+                    .and_then(|n| n.checked_add(4096))
+                    .ok_or_else(|| invalid("seed metadata overflow"))?,
             )?;
+            parse(&source, Variant::StrictV1)?;
         }
     }
-    Ok(VerifiedPack {
+    VerifiedPack::try_new_precharged(VerifiedPackData {
         hash: digest(&value, Variant::StrictV1)?.into(),
         manifest,
         files,
@@ -394,14 +422,38 @@ pub fn verify_directory(
     root: &Path,
     publishers: &BTreeMap<String, String>,
 ) -> Result<VerifiedPack, ManifestError> {
+    let catalog = SourceCatalog::new(&tobkiri_gate::CoreControl::default())?;
+    verify_directory_in_catalog(root, publishers, &catalog)
+}
+
+/// Admit into the caller's original Core control account and source lifetime.
+pub fn verify_directory_in_catalog(
+    root: &Path,
+    publishers: &BTreeMap<String, String>,
+    catalog: &SourceCatalog,
+) -> Result<VerifiedPack, ManifestError> {
     if fs::symlink_metadata(root)?.file_type().is_symlink() || !root.is_dir() {
         return Err(invalid("Pack source root must be a real directory"));
     }
-    let read = |relative: &str, limit: u64| -> Result<Vec<u8>, ManifestError> {
+    let capture = |staging: &mut crate::source::SourceStaging, relative: &str, limit: u64| {
         portable_path(relative)?;
-        Ok(tobkiri_canon::files::read_relative(root, relative, limit)?)
+        tobkiri_canon::files::read_relative_with(root, relative, limit, |reader, _| {
+            staging
+                .append(reader, limit)
+                .map_err(|error| tobkiri_canon::CanonError::Invalid(error.to_string()))
+        })
+        .map_err(ManifestError::from)
     };
-    let raw = read("pack.json", tobkiri_canon::MAX_BYTES as u64)?;
+    let mut metadata = catalog.begin_snapshot()?;
+    let raw_range = capture(&mut metadata, "pack.json", tobkiri_canon::MAX_BYTES as u64)?;
+    let metadata = metadata.finish()?;
+    let raw = metadata.artifact(&raw_range)?.read()?;
+    catalog.prepay_metadata(
+        (raw.len() as u64)
+            .checked_mul(32)
+            .and_then(|n| n.checked_add(65536))
+            .ok_or_else(|| invalid("manifest metadata overflow"))?,
+    )?;
     let manifest = parse_manifest(&raw)?;
     let signed = match fs::symlink_metadata(root.join("signature.json")) {
         Ok(_) => true,
@@ -414,21 +466,42 @@ pub fn verify_directory(
     for entry in &manifest.files {
         budget.add(entry.size)?;
     }
-    // Every declared member is reserved before any artifact is read. The
-    // signature's actual size is checked by the pinned reader before allocation.
+    let mut staging = catalog.begin_snapshot()?;
     let signature = if signed {
-        let signature = read("signature.json", budget.remaining_member_limit()?)?;
-        budget.add(signature.len() as u64)?;
-        Some(signature)
+        Some(capture(
+            &mut staging,
+            "signature.json",
+            budget.remaining_member_limit()?,
+        )?)
     } else {
         None
     };
-    let mut files = BTreeMap::new();
+    let mut ranges = BTreeMap::new();
     for entry in &manifest.files {
-        // A false small declaration must not permit a larger read/allocation.
-        files.insert(entry.path.clone(), read(&entry.path, entry.size)?);
+        catalog.prepay_metadata(1024 + entry.path.len() as u64)?;
+        ranges.insert(
+            entry.path.clone(),
+            capture(&mut staging, &entry.path, entry.size)?,
+        );
     }
-    verify(raw, signature, files, publishers)
+    let snapshot = staging.finish()?;
+    let signature = signature
+        .map(|range| snapshot.artifact(&range)?.read())
+        .transpose()?;
+    if let Some(signature) = &signature {
+        budget.add(signature.len() as u64)?;
+    }
+    let files = ranges
+        .into_iter()
+        .map(|(path, range)| Ok((path, snapshot.artifact(&range)?)))
+        .collect::<Result<BTreeMap<_, _>, ManifestError>>()?;
+    drop(manifest);
+    verify(
+        raw,
+        signature,
+        ArtifactFiles::new(files, catalog)?,
+        publishers,
+    )
 }
 /// Sign a normalized new-format manifest; label-only publisher identities fail.
 pub fn sign_manifest(
@@ -449,31 +522,31 @@ pub fn sign_manifest(
         signature: URL_SAFE_NO_PAD.encode(sign(&value, signing)?),
     })
 }
-fn archive_into<W: Write>(
-    entries: &BTreeMap<String, Vec<u8>>,
+fn archive_into<B: AsRef<[u8]>, W: Write>(
+    entries: &BTreeMap<String, B>,
     output: W,
 ) -> Result<W, ManifestError> {
     let mut budget = PackageBudget::new();
     for content in entries.values() {
-        budget.add(content.len() as u64)?;
+        budget.add(content.as_ref().len() as u64)?;
     }
     let mut builder = tar::Builder::new(output);
     for (path, content) in entries {
         portable_path(path)?;
         let mut header = tar::Header::new_ustar();
         header.set_path(path)?;
-        header.set_size(content.len() as u64);
+        header.set_size(content.as_ref().len() as u64);
         header.set_mode(0o644);
         header.set_uid(0);
         header.set_gid(0);
         header.set_mtime(0);
         header.set_cksum();
-        builder.append(&header, content.as_slice())?;
+        builder.append(&header, content.as_ref())?;
     }
     builder.finish()?;
     Ok(builder.into_inner()?)
 }
-fn archive(entries: &BTreeMap<String, Vec<u8>>) -> Result<Vec<u8>, ManifestError> {
+fn archive<B: AsRef<[u8]>>(entries: &BTreeMap<String, B>) -> Result<Vec<u8>, ManifestError> {
     archive_into(entries, Vec::new())
 }
 /// Produce sorted, timestamp-free ustar bytes with a complete file inventory.
@@ -482,6 +555,9 @@ pub fn build_tpk(
     files: &BTreeMap<String, Vec<u8>>,
     signature: Option<&PackSignature>,
 ) -> Result<Vec<u8>, ManifestError> {
+    if files.contains_key("pack.json") || files.contains_key("signature.json") {
+        return Err(invalid("duplicate or reserved package file"));
+    }
     check_entry_count(files.len(), signature.is_some())?;
     check_entry_count(manifest.files.len(), signature.is_some())?;
     let raw = canonical_manifest(manifest)?;
@@ -504,13 +580,17 @@ pub fn build_tpk(
         .as_ref()
         .map(|key| BTreeMap::from([(manifest.id.publisher().into(), key.clone())]))
         .unwrap_or_default();
-    let verified = verify(raw.clone(), signature.clone(), files.clone(), &publishers)?;
-    let mut entries = verified.files;
-    entries.insert("pack.json".into(), raw);
-    if let Some(signature) = signature {
+    let mut entries = files
+        .iter()
+        .map(|(path, bytes)| (path.clone(), bytes.as_slice()))
+        .collect::<BTreeMap<_, _>>();
+    entries.insert("pack.json".into(), &raw);
+    if let Some(signature) = &signature {
         entries.insert("signature.json".into(), signature);
     }
-    archive(&entries)
+    let bytes = archive(&entries)?;
+    verify_tpk(&bytes, &publishers)?;
+    Ok(bytes)
 }
 /// Verify one bounded snapshot read from an opened regular package descriptor.
 /// Payloads are retained once; original framing is captured separately so the
@@ -518,6 +598,16 @@ pub fn build_tpk(
 pub fn verify_tpk_file(
     path: &Path,
     publishers: &BTreeMap<String, String>,
+) -> Result<VerifiedPack, ManifestError> {
+    let catalog = SourceCatalog::new(&tobkiri_gate::CoreControl::default())?;
+    verify_tpk_file_in_catalog(path, publishers, &catalog)
+}
+
+/// Admit a package into the original caller-owned source catalog.
+pub fn verify_tpk_file_in_catalog(
+    path: &Path,
+    publishers: &BTreeMap<String, String>,
+    catalog: &SourceCatalog,
 ) -> Result<VerifiedPack, ManifestError> {
     let mut options = OpenOptions::new();
     options.read(true);
@@ -533,24 +623,19 @@ pub fn verify_tpk_file(
     if !metadata.is_file() {
         return Err(invalid("package artifact is not a regular file"));
     }
-    verify_tpk_reader(&mut file, metadata.len(), MAX_PACKAGE_BYTES, publishers)
+    verify_tpk_reader_in_catalog(
+        &mut file,
+        metadata.len(),
+        MAX_PACKAGE_BYTES,
+        publishers,
+        catalog,
+    )
 }
-
-// At most one header and 511 padding bytes per ordinary entry, plus EOF.
-// Hidden extension records or arbitrary trailing data may exceed this small
-// snapshot bound; keep draining within the input envelope, then reject them.
-const MAX_PACKAGE_FRAMING_BYTES: usize =
-    MAX_PACKAGE_ENTRIES * TAR_BLOCK_BYTES as usize * 2 + TAR_END_BYTES as usize;
 
 #[derive(Default)]
 struct InputSnapshot {
-    capture: Cell<bool>,
-    framing: RefCell<Vec<u8>>,
     bytes: Cell<u64>,
-    framing_overflow: Cell<bool>,
-    input_failed: Cell<bool>,
 }
-
 struct SnapshotInput<'a, R> {
     input: R,
     state: &'a InputSnapshot,
@@ -563,84 +648,44 @@ impl<R: Read> Read for SnapshotInput<'_, R> {
         if limit == 0 {
             return Ok(0);
         }
-        // tar's header reader forwards Interrupted directly. The former
-        // read_to_end capture retried it, so keep that behavior at this seam.
         let count = loop {
             match self.input.read(&mut output[..limit]) {
                 Ok(count) => break count,
                 Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-                Err(error) => {
-                    self.state.input_failed.set(true);
-                    return Err(error);
-                }
+                Err(error) => return Err(error),
             }
         };
         self.state.bytes.set(self.state.bytes.get() + count as u64);
-        if self.state.capture.get() && !self.state.framing_overflow.get() {
-            let mut framing = self.state.framing.borrow_mut();
-            let length = framing.len() + count;
-            if length > MAX_PACKAGE_FRAMING_BYTES {
-                self.state.framing_overflow.set(true);
-            } else {
-                if length > framing.capacity() {
-                    let capacity = framing
-                        .capacity()
-                        .saturating_mul(2)
-                        .max(length)
-                        .min(MAX_PACKAGE_FRAMING_BYTES);
-                    let additional = capacity - framing.len();
-                    framing
-                        .try_reserve_exact(additional)
-                        .map_err(io::Error::other)?;
-                }
-                framing.extend_from_slice(&output[..count]);
-            }
-        }
         Ok(count)
     }
 }
 
-/// Borrow the exact first-pass byte snapshot: original framing interleaved
-/// with the same owned payloads that verification will return. No FD contents
-/// or metadata are trusted as immutable, and no payload is copied for replay.
-struct SnapshotReplay<'a> {
-    framing: &'a [u8],
-    frame_ends: std::slice::Iter<'a, usize>,
-    contents: std::collections::btree_map::Values<'a, String, Vec<u8>>,
-    pending: &'a [u8],
-    payload_next: bool,
-    ended: bool,
-}
-impl Read for SnapshotReplay<'_> {
-    fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
-        if output.is_empty() {
-            return Ok(0);
-        }
-        loop {
-            if !self.pending.is_empty() {
-                let count = output.len().min(self.pending.len());
-                output[..count].copy_from_slice(&self.pending[..count]);
-                self.pending = &self.pending[count..];
-                return Ok(count);
-            }
-            if self.ended {
-                return Ok(0);
-            }
-            if self.payload_next {
-                self.pending = self.contents.next().expect("one payload per framing span");
-                self.payload_next = false;
-            } else if let Some(&end) = self.frame_ends.next() {
-                let (before, after) = self.framing.split_at(end);
-                self.pending = before;
-                self.framing = after;
-                self.payload_next = true;
-            } else {
-                self.pending = self.framing;
-                self.framing = &[];
-                self.ended = true;
-            }
-        }
+fn archive_staged<W: Write>(
+    entries: &BTreeMap<String, StagedArtifact>,
+    output: W,
+) -> Result<W, ManifestError> {
+    let mut budget = PackageBudget::new();
+    for content in entries.values() {
+        budget.add(content.len())?;
     }
+    let mut builder = tar::Builder::new(output);
+    for (path, content) in entries {
+        portable_path(path)?;
+        let mut header = tar::Header::new_ustar();
+        header.set_path(path)?;
+        header.set_size(content.len());
+        header.set_mode(0o644);
+        header.set_uid(0);
+        header.set_gid(0);
+        header.set_mtime(0);
+        header.set_cksum();
+        content.inspect(|reader| {
+            builder.append(&header, reader)?;
+            Ok(())
+        })?;
+    }
+    builder.finish()?;
+    Ok(builder.into_inner()?)
 }
 
 struct ComparingWriter<R> {
@@ -676,27 +721,47 @@ fn verify_tpk_reader(
     maximum: u64,
     publishers: &BTreeMap<String, String>,
 ) -> Result<VerifiedPack, ManifestError> {
+    let catalog = SourceCatalog::new(&tobkiri_gate::CoreControl::default())?;
+    verify_tpk_reader_in_catalog(input, metadata_bytes, maximum, publishers, &catalog)
+}
+
+fn verify_tpk_reader_in_catalog(
+    input: &mut impl Read,
+    metadata_bytes: u64,
+    maximum: u64,
+    publishers: &BTreeMap<String, String>,
+    catalog: &SourceCatalog,
+) -> Result<VerifiedPack, ManifestError> {
     if metadata_bytes > maximum {
         return Err(invalid("package exceeds 512 MiB"));
     }
     let state = InputSnapshot::default();
-    state.capture.set(true);
-    let mut archive = tar::Archive::new(SnapshotInput {
+    let mut source = SnapshotInput {
         input,
         state: &state,
         maximum,
-    });
-    let mut entries = BTreeMap::new();
-    let mut frame_ends = Vec::new();
-    let mut captured_framing = 0;
-    let mut previous = String::new();
-    let mut budget = PackageBudget::new();
-    let parsed = (|| -> Result<(), ManifestError> {
-        for entry in archive.entries()? {
+    };
+    let mut staging = catalog.begin_snapshot()?;
+    let captured = staging.append(&mut source, maximum);
+    if state.bytes.get() > maximum {
+        return Err(invalid("package exceeds 512 MiB"));
+    }
+    let range = captured?;
+    let snapshot = staging.finish()?;
+    let raw_package = snapshot.artifact(&range)?;
+    let mut entries = raw_package.inspect(|reader| {
+        let mut archive = tar::Archive::new(reader);
+        let mut entries = BTreeMap::new();
+        let mut budget = PackageBudget::new();
+        let mut previous = String::new();
+        // Raw entries prevent hidden extension records from allocating their
+        // payload before the same regular-ustar admission rejects them.
+        for entry in archive.entries()?.raw(true) {
             let mut entry = entry?;
             if !entry.header().entry_type().is_file() || entry.header().as_ustar().is_none() {
                 return Err(invalid("package requires bounded regular ustar entries"));
             }
+            catalog.prepay_metadata(1024)?;
             let path = String::from_utf8(entry.path_bytes().into_owned())
                 .map_err(|_| invalid("package path is not UTF-8"))?;
             portable_path(&path)?;
@@ -705,71 +770,43 @@ fn verify_tpk_reader(
             }
             previous = path.clone();
             budget.add(entry.size())?;
-            // Store span lengths rather than offsets so replay can borrow the
-            // remaining framing slice without arithmetic over payload sizes.
-            let framing = state.framing.borrow().len();
-            frame_ends.push(framing - captured_framing);
-            captured_framing = framing;
-            // Let actual reads drive growth even for a large legal declaration.
-            let mut content = Vec::new();
-            state.capture.set(false);
-            let read = entry.read_to_end(&mut content);
-            state.capture.set(true);
-            read?;
-            entries.insert(path, content);
+            let artifact = raw_package.slice(entry.raw_file_position(), entry.size())?;
+            io::copy(&mut entry, &mut io::sink())?;
+            entries.insert(path, artifact);
+        }
+        io::copy(&mut archive.into_inner(), &mut io::sink())?;
+        Ok(entries)
+    })?;
+    let noncanonical = || invalid("package headers/padding are not deterministic ustar");
+    raw_package.inspect(|original| {
+        let mut comparison = ComparingWriter {
+            original,
+            mismatch: Cell::new(false),
+        };
+        let canonical = archive_staged(&entries, &mut comparison).map(|_| ());
+        if comparison.mismatch.get() {
+            return Err(noncanonical());
+        }
+        canonical?;
+        if comparison.original.read(&mut [0u8; 1])? != 0 {
+            return Err(noncanonical());
         }
         Ok(())
-    })();
-    if state.input_failed.get() {
-        // An underlying IO failure ends the original read. Do not retry it
-        // while draining and accidentally replace the first physical error.
-        return match parsed {
-            Err(error) => Err(error),
-            Ok(()) => Err(invalid("package input read failed")),
-        };
-    }
-    // tar stops at its first EOF block. Read every remaining input byte within
-    // the same envelope so extra zeros, late nonzero data and growth fail the
-    // exact comparison. Do this even after a parse error, preserving the old
-    // bounded capture's input-size/IO precedence without retaining raw input.
-    let trailing = io::copy(&mut archive.into_inner(), &mut io::sink());
-    if state.bytes.get() > maximum {
-        return Err(invalid("package exceeds 512 MiB"));
-    }
-    trailing?;
-    parsed?;
-    let noncanonical = || invalid("package headers/padding are not deterministic ustar");
-    if state.framing_overflow.get() {
-        return Err(noncanonical());
-    }
-    let framing = state.framing.into_inner();
-    let snapshot = SnapshotReplay {
-        framing: &framing,
-        frame_ends: frame_ends.iter(),
-        contents: entries.values(),
-        pending: &[],
-        payload_next: false,
-        ended: false,
-    };
-    // Keep the sink borrowed across a writer error so its mismatch reason is
-    // distinguishable from an actual writer/reader IO error.
-    let mut comparison = ComparingWriter {
-        original: snapshot,
-        mismatch: Cell::new(false),
-    };
-    let canonical = archive_into(&entries, &mut comparison).map(|_| ());
-    if comparison.mismatch.get() {
-        return Err(noncanonical());
-    }
-    canonical?;
-    if comparison.original.read(&mut [0u8; 1])? != 0 {
-        return Err(noncanonical());
-    }
+    })?;
     let raw = entries
         .remove("pack.json")
-        .ok_or_else(|| invalid("package has no pack.json"))?;
-    let signature = entries.remove("signature.json");
-    verify(raw, signature, entries, publishers)
+        .ok_or_else(|| invalid("package has no pack.json"))?
+        .read()?;
+    let signature = entries
+        .remove("signature.json")
+        .map(|artifact| artifact.read())
+        .transpose()?;
+    verify(
+        raw,
+        signature,
+        ArtifactFiles::new(entries, catalog)?,
+        publishers,
+    )
 }
 
 /// Verify an untrusted package in memory; extraction never runs before admission.
@@ -1048,9 +1085,9 @@ mod file_tests {
             let path = root.path().join("sample.tpk");
             fs::write(&path, &bytes).unwrap();
             let disk = verify_tpk_file(&path, &publishers).unwrap();
-            assert_eq!(memory.files, files);
-            assert_eq!(forward.files, files);
-            assert_eq!(disk.files, files);
+            assert_eq!(memory.files.materialize_for_pack_build().unwrap(), files);
+            assert_eq!(forward.files.materialize_for_pack_build().unwrap(), files);
+            assert_eq!(disk.files.materialize_for_pack_build().unwrap(), files);
             assert_eq!(memory.hash, forward.hash);
             assert_eq!(memory.hash, disk.hash);
             assert_eq!(

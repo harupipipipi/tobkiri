@@ -48,7 +48,7 @@ fn native_probe_ui_is_a_verified_pack_with_only_its_declared_port() -> Result<()
         ("float.js", "sdk/js/pack-ui/float.js"),
     ] {
         assert_eq!(
-            verified.files.get(asset).unwrap(),
+            verified.files.get(asset).unwrap().read()?,
             &std::fs::read(repo.join(source))?,
             "native fixture SDK copy drifted: {asset}"
         );
