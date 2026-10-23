@@ -736,7 +736,7 @@ def test_committed_baseline_defaultspack_requires_a_live_grant_to_invoke(
     monkeypatch.setattr(
         pack_control,
         "_active_grant_bindings",
-        lambda _state: {("conversation.turn.v1", "complete")},
+        lambda _state, *, _inspection=None: {("conversation.turn.v1", "complete")},
     )
     with_live_grant = _catalog_pack(
         _invoke(session, "catalog.read"),
@@ -1189,6 +1189,9 @@ def test_pack_approval_hardlink_fails_closed(captured_session) -> None:
 def test_pack_control_root_replacement_fails_closed(captured_session) -> None:
     session, _state_path, user_data = captured_session
     _invoke(session, "catalog.read")
+    # Catalog inspection is read-only. Create and pin the real state root
+    # through an ordinary mutation before attempting its replacement.
+    _invoke(session, "pack.install", {"pack_id": TARGET_PACK})
     root = user_data / "pack_control"
     displaced = user_data / "pack-control-displaced"
     root.rename(displaced)

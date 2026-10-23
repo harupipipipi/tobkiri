@@ -1,5 +1,7 @@
 """Cold dispatch must recompose signed external executable and inert Packs."""
 
+from tobkiri_host.credential_store import host_credential_store_factory
+
 def test_current_signed_external_cold_dispatch(tmp_path, monkeypatch):
     from core_runtime.authority.v4 import AuthorityStore
     from core_runtime.bootstrap.production_v4 import capture_production_dispatch
@@ -33,6 +35,7 @@ def test_current_signed_external_cold_dispatch(tmp_path, monkeypatch):
             bundle_root=packaged_profile_bundle_root(),
             ecosystem_root=RUNTIME_ROOT / "ecosystem",
             authority_store=authority,
+            credential_store_factory=host_credential_store_factory,
             http_contract_bindings=inputs.contract_bindings,
             activation_snapshot_loader=defaultspack_activation_snapshot_loader,
             runtime_surface_factory=create_runtime_surface_services,
@@ -104,6 +107,7 @@ def test_current_qa_inert_external_cold_dispatch(tmp_path, monkeypatch):
             bundle_root=packaged_profile_bundle_root(),
             ecosystem_root=RUNTIME_ROOT / "ecosystem",
             authority_store=authority,
+            credential_store_factory=host_credential_store_factory,
             http_contract_bindings=inputs.contract_bindings,
             activation_snapshot_loader=defaultspack_activation_snapshot_loader,
             runtime_surface_factory=create_runtime_surface_services,

@@ -2096,8 +2096,11 @@ class _ExitedChild:
         return 0
 
 
+@pytest.mark.parametrize("provided_env", [None, {"PACKAGING_TEST_FLAG": "fixture"}])
 def test_run_process_waits_and_closes_process_handles(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    provided_env: dict[str, str] | None,
 ) -> None:
     """The packaging subprocess wrapper closes handles before returning."""
 
@@ -2112,13 +2115,19 @@ def test_run_process_waits_and_closes_process_handles(
             nonlocal exited
             exited = True
 
-    monkeypatch.setattr(
-        cleanup.subprocess,
-        "Popen",
-        lambda command, cwd: _ProcessContext(),
-    )
+    def popen(command, *, cwd, env):
+        assert command == ["packager-child"]
+        assert cwd == os.fspath(tmp_path)
+        assert env == provided_env
+        if provided_env is not None:
+            assert env is not provided_env
+        return _ProcessContext()
 
-    cleanup.run_process_and_wait(["packager-child"], cwd=tmp_path)
+    monkeypatch.setattr(cleanup.subprocess, "Popen", popen)
+
+    cleanup.run_process_and_wait(
+        ["packager-child"], cwd=tmp_path, env=provided_env
+    )
 
     assert exited
     assert child.stdin.closed
