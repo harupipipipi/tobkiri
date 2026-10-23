@@ -10,6 +10,7 @@ on:
       - 'tools/python313-producer/build_wasi.py'
       - 'tools/python313-producer/fetch_sdk.py'
       - 'tools/python313-producer/fetch_registry.py'
+      - 'tools/python313-producer/fetch_toolchain.py'
       - 'tools/python313-producer/stage_sources.py'
       - 'tools/python313-producer/verify_source.py'
       - 'tools/python313-producer/source-manifest.json'
@@ -50,6 +51,10 @@ jobs:
           python3 -B tools/python313-producer/fetch_registry.py
           --source "$RUNNER_TEMP/python313-source"
           --destination "$RUNNER_TEMP/python313-registry"
+      - name: Restore verified Rust compiler and host and WASI target inputs
+        run: >-
+          python3 -B tools/python313-producer/fetch_toolchain.py
+          --destination "$RUNNER_TEMP/python313-rust"
       - name: Install the Linux build isolation tool
         run: |
           sudo apt-get update -qq
@@ -74,6 +79,7 @@ jobs:
             ${{ runner.temp }}/python313-archives/download.json
             ${{ runner.temp }}/python313-source/stage-manifest.json
             ${{ runner.temp }}/python313-registry/registry-manifest.json
+            ${{ runner.temp }}/python313-rust/rust-manifest.json
             ${{ runner.temp }}/python313-native/native-build.json
             ${{ runner.temp }}/python313-native/supervision.json
             ${{ runner.temp }}/python313-native/host-packages.txt

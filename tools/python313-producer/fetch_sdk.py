@@ -25,10 +25,10 @@ MAX_MEMBERS = 50000
 DISK_FLOOR = 8 * 1024 ** 3
 
 
-def member_name(raw: str) -> str:
+def member_name(raw: str, prefix: str = PREFIX) -> str:
     """Require a canonical archive name within the one fixed SDK prefix."""
     parts = raw.rstrip("/").split("/")
-    if ("\\" in raw or parts[0] != PREFIX
+    if ("\\" in raw or parts[0] != prefix
             or any(p in ("", ".", "..") for p in parts)):
         raise ValueError("unsafe SDK member path")
     return "/".join(parts[1:])
@@ -51,16 +51,20 @@ def link_target(name: str, raw: str) -> str:
     return "/".join(parts)
 
 
-def extract(archive: Path, root: Path) -> dict:
+def extract(archive: Path, root: Path, *, prefix: str = PREFIX,
+            max_expanded: int = MAX_EXPANDED) -> dict:
     """Extract only regular files/directories and finally checked internal links."""
+    if (not 0 <= max_expanded <= MAX_EXPANDED or not prefix or prefix in (".", "..")
+            or "/" in prefix or "\\" in prefix):
+        raise ValueError("invalid bounded archive extraction parameters")
     root.mkdir(mode=0o700)
     seen = set()
     regular_names = set()
     links = []
     expanded = 0
-    with tarfile.open(archive, "r|gz") as bundle:
+    with tarfile.open(archive, "r|*") as bundle:
         for member in bundle:
-            name = member_name(member.name)
+            name = member_name(member.name, prefix)
             if name in seen or len(seen) >= MAX_MEMBERS:
                 raise ValueError("duplicate SDK member or member bound exceeded")
             seen.add(name)
@@ -76,7 +80,7 @@ def extract(archive: Path, root: Path) -> dict:
                 target.mkdir(parents=True, exist_ok=True)
             elif member.isfile():
                 expanded += member.size
-                if expanded > MAX_EXPANDED:
+                if expanded > max_expanded:
                     raise ValueError("SDK expanded size bound exceeded")
                 target.parent.mkdir(parents=True, exist_ok=True)
                 incoming = bundle.extractfile(member)
@@ -96,7 +100,7 @@ def extract(archive: Path, root: Path) -> dict:
                 link_target(name, member.linkname)
                 links.append((name, member.linkname, False))
             elif member.islnk():
-                other = member_name(member.linkname)
+                other = member_name(member.linkname, prefix)
                 if not other:
                     raise ValueError("SDK hardlink targets root")
                 links.append((name, other, True))

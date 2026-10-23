@@ -77,9 +77,22 @@ file identities are recorded. Neither Cargo nor any dependency program runs.
 Only the registry path accepts old tar mode fields containing a redundant file
 type that agrees with the member header. Privileged bits and conflicting types
 still reject; the original four source-archive mode checks remain unchanged.
-This is only the registry portion: the sole pinned Git dependency, Rust 1.94.0
-toolchain, target, offline build configuration and runtime builds remain separate
-steps. Registry acquisition alone is not a complete offline environment.
+This is only the registry portion: the sole pinned Git dependency, Rust toolchain,
+offline build configuration and runtime builds are separate steps. Registry
+acquisition alone is not a complete offline environment.
+
+`fetch_toolchain.py` restores the historical Rust 1.94.0 version for the Linux
+host and `wasm32-wasip2` target. It checks the official March 5, 2026 release
+manifest against SHA-256
+`aaa177def36e01d539bee6bde95295230b9ce378f81057845db8d0ebe97898ee`,
+then independently checks the four selected compiler/Cargo/standard-library
+archive hashes against that manifest. Bounded private extraction checks all
+paths, file kinds, modes and internal links. Components are merged with exact
+collision checks and no symlink-parent traversal; immutable hardlinks avoid a
+second large copy. Neither upstream install scripts nor the restored compiler
+run during this stage. The assembled file inventory is retained for later
+read-only build mounts. The Git dependency, offline builds and actual tool/runtime
+execution remain later stages; input restoration alone is not execution proof.
 
 ## Pinned inputs and reproducibility
 
