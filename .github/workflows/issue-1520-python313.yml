@@ -15,6 +15,9 @@ on:
       - 'tools/python313-producer/runtime_inputs.py'
       - 'tools/python313-producer/verify_git_checkout.py'
       - 'tools/python313-producer/build_runtimes.py'
+      - 'tools/python313-producer/asset_inputs.py'
+      - 'tools/python313-producer/build_assets.py'
+      - 'tools/python313-producer/packager/**'
       - 'tools/python313-producer/stage_sources.py'
       - 'tools/python313-producer/verify_source.py'
       - 'tools/python313-producer/source-manifest.json'
@@ -87,6 +90,16 @@ jobs:
           --git "$RUNNER_TEMP/python313-git"
           --wasi "$RUNNER_TEMP/python313-wasi"
           --destination "$RUNNER_TEMP/python313-runtimes"
+      - name: Build the verified packager and package thirteen real assets
+        run: >-
+          python3 -B tools/python313-producer/build_assets.py
+          --source "$RUNNER_TEMP/python313-source"
+          --registry "$RUNNER_TEMP/python313-registry"
+          --rust "$RUNNER_TEMP/python313-rust"
+          --git "$RUNNER_TEMP/python313-git"
+          --wasi "$RUNNER_TEMP/python313-wasi"
+          --runtimes "$RUNNER_TEMP/python313-runtimes"
+          --destination "$RUNNER_TEMP/python313-assets"
       - name: Retain source and build receipts without binaries
         if: always()
         uses: actions/upload-artifact@v4
@@ -125,4 +138,15 @@ jobs:
             ${{ runner.temp }}/python313-runtimes/wasm-runtimes/command.json
             ${{ runner.temp }}/python313-runtimes/wasm-runtimes/supervision.json
             ${{ runner.temp }}/python313-runtimes/wasm-runtimes/build.log
+            ${{ runner.temp }}/python313-assets/assets-build.json
+            ${{ runner.temp }}/python313-assets/asset-inputs.json
+            ${{ runner.temp }}/python313-assets/build-worker.sh
+            ${{ runner.temp }}/python313-assets/package-assets.sh
+            ${{ runner.temp }}/python313-assets/work/assets/package-receipt.json
+            ${{ runner.temp }}/python313-assets/packager-worker/command.json
+            ${{ runner.temp }}/python313-assets/packager-worker/supervision.json
+            ${{ runner.temp }}/python313-assets/packager-worker/build.log
+            ${{ runner.temp }}/python313-assets/package-assets/command.json
+            ${{ runner.temp }}/python313-assets/package-assets/supervision.json
+            ${{ runner.temp }}/python313-assets/package-assets/build.log
           if-no-files-found: warn

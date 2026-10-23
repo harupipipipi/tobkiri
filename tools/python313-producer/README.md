@@ -126,6 +126,26 @@ again afterwards, and new artifacts keep their own hashes. Core-Wasm magic alone
 does not establish Wasmtime validation, producer CLI, componentization or guest
 acceptance; those remain subsequent stages.
 
+`build_assets.py` then verifies the successful runtime receipt and actual output
+bytes, checks the existing standalone packager's exact derivation from the
+original lock and strip function, and builds/tests that worker with frozen
+dependencies in the networkless namespace. It uses only the already verified
+registry closure and Rust toolchain. The helper has its own manifest and does
+not invoke the producer's top-level build script.
+
+`asset_inputs.py` selects the two real runtimes, built Python library, seven SDK
+libraries, original pinned reactor adapter, installed standard library and
+original bundled Python sources. Every included regular file gets a bounded
+hash record; unsafe links and incomplete selections reject. The existing tar
+inclusion rules and documented deterministic tar metadata are preserved.
+Read-only mounts expose these inputs directly, without copying the build trees.
+The original packaging invocation uses the current manifest and worker hashes,
+never substituted historical output identities. Its worker validates Wasm before
+and after stripping; all thirteen output files must match its successful receipt.
+Input identities are checked again after execution. Receipts record this as
+packaging and wasmparser validation only: Wasmtime/runtime compatibility,
+component generation, the producer CLI and guest execution remain separate.
+
 ## Pinned inputs and reproducibility
 
 - Official CPython 3.13.16 archive:
