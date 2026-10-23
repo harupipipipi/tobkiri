@@ -66,6 +66,16 @@ fn assert_host_allocations_released(account: &Meter) {
     assert_eq!(account.used.load(Ordering::Acquire), 0);
 }
 
+async fn bump(function: wasmtime::component::Func, store: &mut Store<InvocationState<()>>) -> u32 {
+    // Use the same funded dynamic-result path as PackHost. The retained
+    // result is dropped before the test observes Store/account destruction.
+    let values = function.call_async_owned(store, &[]).await.unwrap();
+    let [wasmtime::component::Val::U32(value)] = values.as_slice() else {
+        panic!("bump must return exactly one u32");
+    };
+    *value
+}
+
 fn context(control: &CoreControl) -> CallCx {
     CallCx::try_root_with_control(
         ProfileId::parse("test-profile").unwrap(),
@@ -178,29 +188,29 @@ async fn shared_module_code_keeps_memory_table_global_and_store_lifetimes_indepe
         .instantiate_async(&mut first, &wrapper)
         .await
         .unwrap()
-        .get_typed_func::<(), (u32,)>(&mut first, "bump")
+        .get_func(&mut first, "bump")
         .unwrap();
     let b = linker
         .instantiate_async(&mut second, &wrapper)
         .await
         .unwrap()
-        .get_typed_func::<(), (u32,)>(&mut second, "bump")
+        .get_func(&mut second, "bump")
         .unwrap();
-    assert_eq!(a.call_async(&mut first, ()).await.unwrap(), (1,));
-    assert_eq!(a.call_async(&mut first, ()).await.unwrap(), (4,));
-    assert_eq!(b.call_async(&mut second, ()).await.unwrap(), (1,));
+    assert_eq!(bump(a, &mut first).await, 1);
+    assert_eq!(bump(a, &mut first).await, 4);
+    assert_eq!(bump(b, &mut second).await, 1);
     first.data().cx.cancel().cancel();
     drop(first);
     assert_host_allocations_released(&first_meter);
-    assert_eq!(b.call_async(&mut second, ()).await.unwrap(), (4,));
+    assert_eq!(bump(b, &mut second).await, 4);
     let (mut replacement, replacement_meter) = funded_store(&engine, &control);
     let c = linker
         .instantiate_async(&mut replacement, &wrapper)
         .await
         .unwrap()
-        .get_typed_func::<(), (u32,)>(&mut replacement, "bump")
+        .get_func(&mut replacement, "bump")
         .unwrap();
-    assert_eq!(c.call_async(&mut replacement, ()).await.unwrap(), (1,));
+    assert_eq!(bump(c, &mut replacement).await, 1);
     drop(replacement);
     drop(second);
     assert_host_allocations_released(&replacement_meter);
