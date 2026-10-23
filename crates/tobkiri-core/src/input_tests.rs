@@ -4,10 +4,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tobkiri_canon::{
-    CanonValue,
-    ids::{PackHash, RequestId},
-};
+use tobkiri_canon::{CanonValue, ids::RequestId};
 use tobkiri_gate::{
     ApprovalStore, CallCx, CoreControl, EffectRequest, FlowEndpointRegistration, Gate, GateEngine,
     MediatorChain, Principal,
@@ -480,8 +477,16 @@ async fn source_projection_does_not_inherit_other_trigger_or_payload_authority()
 fn source_hash_pin_and_revision_cannot_be_substituted() {
     let mut fixture = fixture(None);
     let old = fixture.packs[0].hash.clone();
-    let new = PackHash::new(Digest::hash(b"new-source"));
-    fixture.packs[0].hash = new.clone();
+    let mut replacement = fixture.packs[0].manifest.clone();
+    replacement.version = "2.0.0".into();
+    let artifact = tobkiri_manifest::build_tpk(
+        &replacement,
+        &fixture.packs[0].files.materialize_for_pack_build().unwrap(),
+        None,
+    )
+    .unwrap();
+    fixture.packs[0] = tobkiri_manifest::verify_tpk(&artifact, &BTreeMap::new()).unwrap();
+    let new = fixture.packs[0].hash.clone();
     assert!(
         register_inputs(
             &fixture.gate,

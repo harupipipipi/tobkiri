@@ -189,19 +189,29 @@ fn provider(id: &str) -> VerifiedPack {
         vec![],
     )
 }
-fn with_permissions(pack: VerifiedPack, permissions: PermissionSet) -> VerifiedPack {
+fn rebuild(
+    pack: &VerifiedPack,
+    edit: impl FnOnce(&mut PackManifest, &mut BTreeMap<String, Vec<u8>>),
+) -> VerifiedPack {
     let mut manifest = pack.manifest.clone();
-    manifest.permissions = permissions;
+    let mut files = pack.files.materialize_for_pack_build().unwrap();
+    edit(&mut manifest, &mut files);
+    manifest.files = files
+        .iter()
+        .map(|(path, bytes)| FileEntry {
+            path: path.clone(),
+            sha256: Digest::hash(bytes),
+            size: bytes.len() as u64,
+        })
+        .collect();
     verify_tpk(
-        &build_tpk(
-            &manifest,
-            &pack.files.materialize_for_pack_build().unwrap(),
-            None,
-        )
-        .unwrap(),
+        &build_tpk(&manifest, &files, None).unwrap(),
         &BTreeMap::new(),
     )
     .unwrap()
+}
+fn with_permissions(pack: VerifiedPack, permissions: PermissionSet) -> VerifiedPack {
+    rebuild(&pack, |manifest, _| manifest.permissions = permissions)
 }
 fn overlay(id: &str, target: OverlayTarget, body: Vec<Step>) -> OverlayDocument {
     OverlayDocument {
@@ -257,13 +267,13 @@ fn single_provider_collision_needs_explicit_choice_and_many_is_automatic() {
         compiled.bindings[&reference("query")],
         vec![PackId::parse("local.two").unwrap()]
     );
-    packs[0]
-        .shapes
-        .iter_mut()
-        .find(|s| s.reference == reference("query"))
-        .unwrap()
-        .cardinality = Cardinality::Many;
-    p.bindings.clear();
+    packs[0] = rebuild(&packs[0], |_, files| {
+        files.insert(
+            "wit/query.shape.json".into(),
+            br#"{"cardinality":"many","streams":{},"callbacks":{}}"#.to_vec(),
+        );
+    });
+    p = profile(&packs);
     assert_eq!(
         compile(&p, &packs).unwrap().bindings[&reference("query")].len(),
         2
@@ -283,10 +293,12 @@ fn optional_and_untyped_ports_cannot_satisfy_required_typed_slots() {
     let packs = vec![contracts(), optional];
     compile(&profile(&packs), &packs).unwrap();
     let mut required = packs.clone();
-    required[1].manifest.ports.consumes[0].optional = false;
-    required[1].manifest.ports.untyped.push(UntypedPort {
-        name: "local.contracts.query".into(),
-        direction: "provides".into(),
+    required[1] = rebuild(&required[1], |manifest, _| {
+        manifest.ports.consumes[0].optional = false;
+        manifest.ports.untyped.push(UntypedPort {
+            name: "local.contracts.query".into(),
+            direction: "provides".into(),
+        });
     });
     has_error(compile(&profile(&required), &required), "required-port");
 }
@@ -969,7 +981,7 @@ fn structural_role_admission_does_not_require_a_callable_operation() {
     let contracts = pack(
         "local.contracts",
         files,
-        original.manifest.shapes,
+        original.manifest.shapes.clone(),
         vec![],
         vec![],
         vec![],
@@ -1275,7 +1287,7 @@ fn literal_stream_emit_has_its_own_exact_witness_without_consumes() {
         br#"{"cardinality":"one","streams":{},"callbacks":{}}"#.to_vec(),
     );
     let sink = reference("sink");
-    let mut definitions = original.manifest.shapes;
+    let mut definitions = original.manifest.shapes.clone();
     definitions.push(ShapeDefinition {
         name: sink.name.clone(),
         version: sink.version,

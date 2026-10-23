@@ -224,7 +224,21 @@ async fn original_empty_or_absent_policy_operands_deny_port_calls() {
     ] {
         let mut fixture = fixture();
         match absent {
-            "declaration" => fixture.pack.manifest.permissions.ports.clear(),
+            "declaration" => {
+                // This policy-only fixture deliberately retains its synthetic
+                // identity while omitting one original authority operand.
+                fixture.pack.files.catalog().prepay_metadata(65536).unwrap();
+                let mut manifest = fixture.pack.manifest.clone();
+                manifest.permissions.ports.clear();
+                fixture.pack =
+                    VerifiedPack::try_new_precharged(tobkiri_manifest::VerifiedPackData {
+                        manifest,
+                        hash: fixture.pack.hash.clone(),
+                        files: fixture.pack.files.clone(),
+                        shapes: Vec::new(),
+                    })
+                    .unwrap();
+            }
             "ceiling" => fixture.profile.ceiling.ports.clear(),
             "limit" => fixture
                 .profile

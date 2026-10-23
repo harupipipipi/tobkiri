@@ -84,6 +84,14 @@ fn package_bytes_are_deterministic_and_complete_inventory_is_enforced() {
     assert!(build_tpk(&m, &changed, None).is_err());
     changed.insert("extra".into(), vec![]);
     assert!(build_tpk(&m, &changed, None).is_err());
+    for reserved in ["pack.json", "signature.json"] {
+        let mut injected = f.clone();
+        injected.insert(reserved.into(), b"untrusted builder input".to_vec());
+        assert!(
+            build_tpk(&m, &injected, None).is_err(),
+            "reserved inputs must not be silently overwritten by generated metadata"
+        );
+    }
     let mut corrupted = bytes;
     corrupted[0] ^= 1;
     assert!(verify_tpk(&corrupted, &BTreeMap::new()).is_err());
@@ -370,13 +378,14 @@ fn actual_shape_file_is_resolved_and_type_only_dependency_is_exact() {
     assert!(pack.shapes.iter().any(|s| s.reference.name.as_str()
         == "local.harness-chat.user-input"
         && s.functions.contains_key(&OpName::parse("pull").unwrap())));
-    let mut model = pack.clone();
-    model.manifest.ports.consumes.clear();
-    model.manifest.ports.provides.push(PortDeclaration {
+    let mut model = pack.manifest.clone();
+    model.ports.consumes.clear();
+    model.ports.provides.push(PortDeclaration {
         shape: ShapeName::parse("local.harness-chat.user-input").unwrap(),
         version: ShapeVersion::new(1, 0),
         optional: false,
     });
+    let model = verify(&model, &pack.files.materialize_for_pack_build().unwrap()).unwrap();
     let allowed = allowed_imports_for_pack(&model).unwrap();
     assert!(allowed.contains("local:harness-chat/messages@1.0.0"));
     assert!(!allowed.contains("tobkiri:core/network@1.0.0"));

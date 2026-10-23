@@ -45,7 +45,7 @@ pub struct Core {
     capacity: tobkiri_gate::CapacityLedger,
     /// One bounded native-control account shared by all Profile Gates,
     /// contexts, retained catalogs and execution records owned by this Core.
-    control: CoreControl,
+    pub(crate) control: CoreControl,
     filesystem: Option<Arc<crate::filesystem_registry::CoreFilesystem>>,
     /// Per-Core trusted process descriptor catalog: one bounded owner holding
     /// the append-only entry slots, the move-only launch key and every

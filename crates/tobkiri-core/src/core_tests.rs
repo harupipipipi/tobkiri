@@ -130,7 +130,7 @@ fn fixture() -> (Core, Arc<Host>, Profile, tempfile::TempDir) {
         packs: vec![PackPin {
             id: pack_id.clone(),
             version: manifest.version,
-            sha256: verified.hash,
+            sha256: verified.hash.clone(),
             source: path.to_str().unwrap().into(),
         }],
         publishers: BTreeMap::new(),
