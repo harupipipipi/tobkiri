@@ -1,0 +1,47 @@
+name: Issue 1520 original Python producer inputs
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-python313.yml'
+      - 'tools/python313-producer/fetch_sources.py'
+      - 'tools/python313-producer/stage_sources.py'
+      - 'tools/python313-producer/verify_source.py'
+      - 'tools/python313-producer/source-manifest.json'
+      - 'tools/python313-producer/python313-source.patch'
+      - 'tools/python313-producer/tests/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-producer-sources:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Test source acquisition and staging boundaries
+        run: python3 -B -m unittest discover -s tools/python313-producer/tests
+      - name: Fetch exactly the recorded four source archives
+        run: >-
+          python3 -B tools/python313-producer/fetch_sources.py
+          --destination "$RUNNER_TEMP/python313-archives"
+      - name: Verify complete archives and stage the exact reviewed patch
+        run: >-
+          python3 -B tools/python313-producer/stage_sources.py
+          --archives "$RUNNER_TEMP/python313-archives"
+          --cpython-archive "$RUNNER_TEMP/python313-archives/Python-3.13.16.tar.xz"
+          --destination "$RUNNER_TEMP/python313-source"
+      - name: Retain source receipts without binaries or execution claims
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python313-producer-source-inputs
+          path: |
+            ${{ runner.temp }}/python313-archives/download.json
+            ${{ runner.temp }}/python313-source/stage-manifest.json
+          if-no-files-found: warn

@@ -21,6 +21,22 @@ activation, complete Host retirement, or completion of issue #1520. They do not
 turn the upstream top-level build into a safe or reproducible shortcut. The
 source-verifier and execution-boundary guidance below still applies.
 
+## Reconstructing missing trial artifacts on CI
+
+The compact handoff preserves Git history and the three committed compressed
+Wasm fixtures; it does not preserve the remaining finalization components or
+the custom producer executable. Rebuilding those components begins with the
+`Issue 1520 original Python producer inputs` workflow. It fetches only the four
+archive URLs and SHA-256 identities already recorded in `stage_sources.py`,
+streams at most 100 MiB per archive, and then runs the existing independent
+archive/selected-source/patch checks. CI retains the download and full staged
+source inventories, without downloading those source trees to the desktop.
+
+This initial workflow does not execute upstream build scripts, compile a
+producer, create a component or run a guest. Its receipts establish the actual
+inputs for the later isolated stages in `STAGED_RECIPE.md`; they do not replace
+the missing native Core replay or permit changing the historical artifact pins.
+
 ## Pinned inputs and reproducibility
 
 - Official CPython 3.13.16 archive:
