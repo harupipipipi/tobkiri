@@ -94,6 +94,19 @@ run during this stage. The assembled file inventory is retained for later
 read-only build mounts. The Git dependency, offline builds and actual tool/runtime
 execution remain later stages; input restoration alone is not execution proof.
 
+`fetch_git.py` restores the recorded `dicej/wasm-tools` commit and its sole
+`tests/testsuite` Git input. The main commit/root tree must match the historical
+receipt; its actual `.gitmodules` and gitlink must bind the one testsuite URL
+and commit. The testsuite commit/root tree are independently checked, and any
+additional nested Git input rejects. The CI image's Git client fetches only
+these two exact commits into fresh bare repositories, with an empty private
+home/template, disabled credential helpers/hooks, HTTPS-only transport and full
+Git object verification. The existing process/resource supervisor covers this
+network-enabled acquisition stage. Commit and tree object hashes are checked
+again independently before recording the resulting Git files. No upstream
+checkout, Cargo command or dependency source executes. A usable offline Cargo
+cache and the actual runtime builds remain separate work.
+
 ## Pinned inputs and reproducibility
 
 - Official CPython 3.13.16 archive:

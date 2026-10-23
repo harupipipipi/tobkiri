@@ -11,6 +11,7 @@ on:
       - 'tools/python313-producer/fetch_sdk.py'
       - 'tools/python313-producer/fetch_registry.py'
       - 'tools/python313-producer/fetch_toolchain.py'
+      - 'tools/python313-producer/fetch_git.py'
       - 'tools/python313-producer/stage_sources.py'
       - 'tools/python313-producer/verify_source.py'
       - 'tools/python313-producer/source-manifest.json'
@@ -55,6 +56,10 @@ jobs:
         run: >-
           python3 -B tools/python313-producer/fetch_toolchain.py
           --destination "$RUNNER_TEMP/python313-rust"
+      - name: Restore the pinned Git dependency and its exact testsuite gitlink
+        run: >-
+          python3 -B tools/python313-producer/fetch_git.py
+          --destination "$RUNNER_TEMP/python313-git"
       - name: Install the Linux build isolation tool
         run: |
           sudo apt-get update -qq
@@ -80,6 +85,11 @@ jobs:
             ${{ runner.temp }}/python313-source/stage-manifest.json
             ${{ runner.temp }}/python313-registry/registry-manifest.json
             ${{ runner.temp }}/python313-rust/rust-manifest.json
+            ${{ runner.temp }}/python313-git/git-manifest.json
+            ${{ runner.temp }}/python313-git/fetch.sh
+            ${{ runner.temp }}/python313-git/fetch/command.json
+            ${{ runner.temp }}/python313-git/fetch/supervision.json
+            ${{ runner.temp }}/python313-git/fetch/build.log
             ${{ runner.temp }}/python313-native/native-build.json
             ${{ runner.temp }}/python313-native/supervision.json
             ${{ runner.temp }}/python313-native/host-packages.txt
