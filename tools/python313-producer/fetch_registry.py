@@ -94,7 +94,7 @@ def unpack(archive: Path, destination: Path, package: dict, totals: dict) -> dic
     # Reuse the reviewed source extractor: canonical names, fixed prefix,
     # regular files/directories only, no links/collisions/special modes, and
     # the existing 16 MiB file / 256 MiB archive-expansion bounds.
-    entries = inspect_archive(data, prefix, budget)
+    entries = inspect_archive(data, prefix, budget, embedded_type_modes=True)
     if ".cargo-checksum.json" in entries or not any(v[0] is not None for v in entries.values()):
         raise ValueError("reserved or empty registry source")
     if (totals["members"] + budget["members"] > MAX_SOURCE_MEMBERS

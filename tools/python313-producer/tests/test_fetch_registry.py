@@ -1,4 +1,5 @@
 import hashlib
+import gzip
 import io
 import json
 from pathlib import Path
@@ -24,16 +25,28 @@ def lock_fixture(source=registry.REGISTRY, checksum="a" * 64):
 
 def archive_fixture(members):
     output = io.BytesIO()
-    with tarfile.open(fileobj=output, mode="w:gz") as archive:
-        for name, content, kind in members:
+    with tarfile.open(fileobj=output, mode="w") as archive:
+        for name, content, kind, *mode in members:
             info = tarfile.TarInfo(name)
             info.type = kind
-            info.mode = 0o644
+            info.mode = mode[0] if mode else 0o644
             info.size = len(content) if kind == tarfile.REGTYPE else 0
             if kind == tarfile.SYMTYPE:
                 info.linkname = "../../outside"
             archive.addfile(info, io.BytesIO(content) if info.size else None)
-    return output.getvalue()
+    # Python's writer strips file-type bits. Encode the legacy header field
+    # explicitly so this exercises the bytes seen in historical crates.
+    data = bytearray(output.getvalue())
+    offset = 0
+    for _, content, kind, *mode in members:
+        if mode:
+            data[offset + 100:offset + 108] = f"{mode[0]:07o}\0".encode()
+            data[offset + 148:offset + 156] = b" " * 8
+            checksum = sum(data[offset:offset + 512])
+            data[offset + 148:offset + 156] = f"{checksum:06o}\0 ".encode()
+        size = len(content) if kind == tarfile.REGTYPE else 0
+        offset += 512 + (size + 511) // 512 * 512
+    return gzip.compress(data)
 
 
 class RegistryTests(unittest.TestCase):
@@ -132,6 +145,26 @@ class RegistryTests(unittest.TestCase):
                     {"name": "demo", "version": "1.0.0", "sha256": "0" * 64},
                     {"bytes": 0, "members": 0})
             self.assertFalse((root / "source").exists())
+
+    def test_legacy_redundant_type_bits_do_not_admit_privileged_or_wrong_types(self):
+        # Real difflib 0.4.0 uses 0100664 on regular tar members. File type bits
+        # are not permission grants; privileged bits and type conflicts reject.
+        data = archive_fixture([("demo-1.0.0/file", b"original", tarfile.REGTYPE, 0o100664)])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result = self.unpack_fixture(root, data)
+            self.assertEqual(result["files"]["file"]["mode"], "0o664")
+            self.assertEqual((root / "source/file").stat().st_mode & 0o7777, 0o664)
+        # The original source-archive path remains strict by default.
+        with self.assertRaisesRegex(ValueError, "special archive mode"):
+            registry.inspect_archive(data, "demo-1.0.0", {"bytes": 0, "members": 0})
+        for mode in (0o104664, 0o102664, 0o101664, 0o040664, 0o120664, 0o200664):
+            with self.subTest(mode=oct(mode)), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                bad = archive_fixture([("demo-1.0.0/file", b"original", tarfile.REGTYPE, mode)])
+                with self.assertRaisesRegex(ValueError, "special archive mode"):
+                    self.unpack_fixture(root, bad)
+                self.assertFalse((root / "source").exists())
 
     def test_local_invocation_does_not_start_network_or_create_output(self):
         with tempfile.TemporaryDirectory() as directory, \

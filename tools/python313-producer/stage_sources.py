@@ -10,6 +10,7 @@ import io
 import json
 import os
 from pathlib import Path, PurePosixPath
+import stat
 import tarfile
 import tempfile
 
@@ -48,7 +49,7 @@ ARCHIVES = {
 
 
 def inspect_archive(
-    data: bytes, prefix: str, budget: dict[str, int]
+    data: bytes, prefix: str, budget: dict[str, int], *, embedded_type_modes: bool = False
 ) -> dict[str, tuple[bytes | None, int]]:
     """Validate every member and capture bounded data without extracting links."""
     entries: dict[str, tuple[bytes | None, int]] = {}
@@ -69,7 +70,17 @@ def inspect_archive(
             seen.add(name)
             if not (member.isfile() or member.isdir()):
                 raise ValueError(f"unsupported archive member: {name}")
-            if member.mode & ~0o777:
+            mode = member.mode
+            if embedded_type_modes:
+                # Some old crates wrote st_mode, including the file type, into
+                # tar's mode field. Accept only a matching redundant type;
+                # never mask setuid/setgid/sticky or contradictory type bits.
+                expected_type = stat.S_IFREG if member.isfile() else stat.S_IFDIR
+                if (mode & ~(0o170000 | 0o777)
+                        or stat.S_IFMT(mode) not in (0, expected_type)):
+                    raise ValueError(f"special archive mode: {name}")
+                mode &= 0o777
+            if mode & ~0o777:
                 raise ValueError(f"special archive mode: {name}")
             if not 0 <= member.size <= verifier.MAX_FILE:
                 raise ValueError(f"archive file limit exceeded: {name}")
@@ -99,7 +110,7 @@ def inspect_archive(
                 content = stream.read(member.size + 1)
                 if len(content) != member.size:
                     raise ValueError(f"archive member size mismatch: {name}")
-            entries[relative] = (content, member.mode)
+            entries[relative] = (content, mode)
     if not seen:
         raise ValueError("empty archive")
     return entries

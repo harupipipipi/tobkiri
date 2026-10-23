@@ -74,6 +74,9 @@ storage. The source extractor retains its traversal, link, collision, special
 mode and file-size checks; additional aggregate download/member/expanded-byte
 limits cover the whole closure. Cargo directory-source checksums and the actual
 file identities are recorded. Neither Cargo nor any dependency program runs.
+Only the registry path accepts old tar mode fields containing a redundant file
+type that agrees with the member header. Privileged bits and conflicting types
+still reject; the original four source-archive mode checks remain unchanged.
 This is only the registry portion: the sole pinned Git dependency, Rust 1.94.0
 toolchain, target, offline build configuration and runtime builds remain separate
 steps. Registry acquisition alone is not a complete offline environment.
