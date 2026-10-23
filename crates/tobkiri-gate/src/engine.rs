@@ -3136,6 +3136,102 @@ mod cleanup_snapshot_attempt_tests {
         }
     }
 
+    #[test]
+    fn exact_flow_reregistration_shares_a_full_catalog_but_keeps_handle_limits() {
+        let control = CoreControl::new(crate::CoreControlLimits {
+            max_catalogs: 1,
+            max_registrations: 2,
+            ..crate::CoreControlLimits::default()
+        })
+        .unwrap();
+        let gate = GateEngine::new_with_control(
+            Arc::new(TypedAdapter {
+                native: Arc::new(NativeStore {
+                    state: Mutex::new(NativeState::default()),
+                    fault: Fault::None,
+                    permissions: PermissionSet::default(),
+                }),
+            }),
+            Arc::new(NativeAudit::default()),
+            Arc::new(NoPrompt),
+            MediatorChain::default(),
+            control.clone(),
+        );
+        let target = crate::FrozenFlowTarget {
+            profile: ProfileId::parse("profile_flow_catalog").unwrap(),
+            revision: Digest::hash(b"revision"),
+            owner: PackId::parse("local.owner").unwrap(),
+            owner_hash: PackHash::new(Digest::hash(b"pack")),
+            flow_key: "local.owner/workflow".into(),
+            flow_ast: Digest::hash(b"flow"),
+            plan_digest: Digest::hash(b"plan"),
+            implements: ShapeRef::parse("local.owner.workflow@1.0").unwrap(),
+            input_view: ShapeRef::parse("local.owner.input@1.0").unwrap(),
+            entry_signature: Digest::hash(b"signature"),
+        };
+        let register_revision = |revision: &Digest| {
+            gate.register_revision(
+                &target.profile,
+                revision,
+                BTreeMap::from([(
+                    (target.owner.clone(), target.owner_hash.clone()),
+                    PermissionSet::default().wasm,
+                )]),
+            )
+            .unwrap();
+            gate.register_operation_views(
+                &target.profile,
+                revision,
+                BTreeMap::from([
+                    (target.implements.clone(), BTreeSet::new()),
+                    (target.input_view.clone(), BTreeSet::new()),
+                ]),
+            )
+            .unwrap();
+        };
+        register_revision(&target.revision);
+        let register = |target: &crate::FrozenFlowTarget| {
+            gate.register_flow_endpoints(&target.profile, &target.revision, vec![target.clone()])
+        };
+        let first = register(&target).unwrap();
+        let original_bytes = control.usage().bytes;
+        let mut changed = target.clone();
+        changed.flow_ast = Digest::hash(b"different-flow");
+        assert!(matches!(register(&changed), Err(GateError::Denied(_))));
+        assert_eq!(control.usage().bytes, original_bytes);
+
+        let second = register(&target).unwrap();
+        assert!(std::ptr::eq(first.endpoints(), second.endpoints()));
+        assert_eq!(control.usage().count(ControlKind::Catalog), 1);
+        assert_eq!(control.usage().count(ControlKind::Registration), 2);
+        assert!(matches!(register(&target), Err(GateError::Limit(_))));
+        drop(first);
+        assert!(
+            gate.frozen_flow_target_registered(&target.profile, &target.revision, &target)
+                .unwrap()
+        );
+
+        let mut other_revision = target.clone();
+        other_revision.revision = Digest::hash(b"other-revision");
+        register_revision(&other_revision.revision);
+        assert!(matches!(
+            register(&other_revision),
+            Err(GateError::Limit(_))
+        ));
+        assert_eq!(control.usage().bytes, original_bytes);
+        drop(second);
+        assert!(
+            !gate
+                .frozen_flow_target_registered(&target.profile, &target.revision, &target)
+                .unwrap()
+        );
+        assert_eq!(control.usage().bytes, 0);
+        assert_eq!(control.usage().count(ControlKind::Catalog), 0);
+        assert_eq!(control.usage().count(ControlKind::Registration), 0);
+        drop(register(&other_revision).unwrap());
+        assert_eq!(control.usage().bytes, 0);
+    }
+
     async fn consumed_permit(fault: Fault, typed: bool) -> (GateEngine, DispatchPermit) {
         let control = CoreControl::default();
         let limits = ResourceLimits {

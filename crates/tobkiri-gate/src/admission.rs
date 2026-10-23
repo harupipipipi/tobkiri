@@ -633,7 +633,6 @@ impl GateEngine {
             }
         }
         let bytes = flow_endpoints_storage_bytes(profile, &endpoints)?;
-        let reservation = self.control().reserve(ControlKind::Catalog, bytes)?;
         let registration_bytes = u64::try_from(
             std::mem::size_of::<FlowEndpointRegistration>()
                 .checked_add(profile.clone_storage_bytes())
@@ -645,13 +644,6 @@ impl GateEngine {
         let registration_reservation = self
             .control()
             .reserve(ControlKind::Registration, registration_bytes)?;
-        let candidate = Arc::new(FlowEndpointBindings {
-            profile: profile.clone(),
-            revision: revision.clone(),
-            endpoints,
-            registrations: AtomicUsize::new(1),
-            _reservation: reservation,
-        });
         let key = (profile.clone(), revision.clone());
         let mut registry = self
             .admissions
@@ -662,7 +654,7 @@ impl GateEngine {
         // before enforcing the bounded number of retained revision records.
         registry.retain(|_, catalog| catalog.strong_count() != 0);
         if let Some(current) = registry.get(&key).and_then(Weak::upgrade) {
-            if current.endpoints != candidate.endpoints {
+            if current.endpoints != endpoints {
                 return Err(GateError::Denied(
                     "frozen Flow endpoint catalog is immutable".into(),
                 ));
@@ -687,6 +679,17 @@ impl GateEngine {
                 "frozen Flow endpoint revision capacity".into(),
             ));
         }
+        // An exact re-registration above retains the original physical
+        // catalog. Charge a new catalog only when allocating a new one;
+        // every registration still owns its separate bounded handle lease.
+        let reservation = self.control().reserve(ControlKind::Catalog, bytes)?;
+        let candidate = Arc::new(FlowEndpointBindings {
+            profile: profile.clone(),
+            revision: revision.clone(),
+            endpoints,
+            registrations: AtomicUsize::new(1),
+            _reservation: reservation,
+        });
         let catalog_weak = Arc::downgrade(&candidate);
         registry.insert(key.clone(), catalog_weak.clone());
         Ok(FlowEndpointRegistration {
