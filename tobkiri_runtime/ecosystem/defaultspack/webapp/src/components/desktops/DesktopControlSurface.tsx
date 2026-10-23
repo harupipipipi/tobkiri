@@ -1,10 +1,12 @@
 import { Camera, Play, Power, RefreshCcw, Trash2, UserCheck, UserX } from "lucide-react";
 
+import { runtimeOperationAllowed, DESKTOP_UNSUPPORTED_REASON } from "../../features/sandboxes/runtimeStatus";
 import { cn } from "../../lib/cn";
-import type { DesktopInstance } from "../../features/sandboxes/types";
+import type { DesktopInstance, RuntimeOperationSupport } from "../../features/sandboxes/types";
 
 type DesktopControlSurfaceProps = {
   desktop: DesktopInstance;
+  operationSupport?: RuntimeOperationSupport;
   hasLease: boolean;
   busy?: boolean;
   onTakeOver: () => void;
@@ -27,6 +29,7 @@ function actionButtonClassName(tone: "default" | "danger" = "default") {
 
 export function DesktopControlSurface({
   desktop,
+  operationSupport,
   hasLease,
   busy = false,
   onTakeOver,
@@ -47,7 +50,8 @@ export function DesktopControlSurface({
         <button
           type="button"
           onClick={onReturnToAI}
-          disabled={busy || isDestroyed}
+          title={!runtimeOperationAllowed(operationSupport, "control") ? DESKTOP_UNSUPPORTED_REASON : undefined}
+          disabled={!runtimeOperationAllowed(operationSupport, "control") || busy || isDestroyed}
           className={actionButtonClassName()}
           aria-label={`Return ${desktop.name} to AI control`}
         >
@@ -58,7 +62,8 @@ export function DesktopControlSurface({
         <button
           type="button"
           onClick={onTakeOver}
-          disabled={busy || !isRunning}
+          title={!runtimeOperationAllowed(operationSupport, "control") ? DESKTOP_UNSUPPORTED_REASON : undefined}
+          disabled={!runtimeOperationAllowed(operationSupport, "control") || busy || !isRunning}
           className={actionButtonClassName()}
           aria-label={`Take over ${desktop.name}`}
         >
@@ -69,7 +74,8 @@ export function DesktopControlSurface({
       <button
         type="button"
         onClick={onSnapshot}
-        disabled={busy || !isRunning}
+          title={!runtimeOperationAllowed(operationSupport, "frame") ? DESKTOP_UNSUPPORTED_REASON : undefined}
+        disabled={!runtimeOperationAllowed(operationSupport, "frame") || busy || !isRunning}
         className={actionButtonClassName()}
         aria-label={`Snapshot ${desktop.name}`}
       >
@@ -80,7 +86,8 @@ export function DesktopControlSurface({
         <button
           type="button"
           onClick={onStart}
-          disabled={busy || isDestroyed}
+          title={!runtimeOperationAllowed(operationSupport, "lifecycle") ? DESKTOP_UNSUPPORTED_REASON : undefined}
+          disabled={!runtimeOperationAllowed(operationSupport, "lifecycle") || busy || isDestroyed}
           className={actionButtonClassName()}
           aria-label={`Start ${desktop.name}`}
         >
@@ -91,7 +98,8 @@ export function DesktopControlSurface({
         <button
           type="button"
           onClick={onRestart}
-          disabled={busy || isDestroyed}
+          title={!runtimeOperationAllowed(operationSupport, "lifecycle") ? DESKTOP_UNSUPPORTED_REASON : undefined}
+          disabled={!runtimeOperationAllowed(operationSupport, "lifecycle") || busy || isDestroyed}
           className={actionButtonClassName()}
           aria-label={`Restart ${desktop.name}`}
         >
@@ -102,7 +110,8 @@ export function DesktopControlSurface({
       <button
         type="button"
         onClick={onStop}
-        disabled={busy || !isRunning}
+          title={!runtimeOperationAllowed(operationSupport, "lifecycle") ? DESKTOP_UNSUPPORTED_REASON : undefined}
+        disabled={!runtimeOperationAllowed(operationSupport, "lifecycle") || busy || !isRunning}
         className={actionButtonClassName()}
         aria-label={`Stop ${desktop.name}`}
       >
@@ -112,7 +121,8 @@ export function DesktopControlSurface({
       <button
         type="button"
         onClick={onDelete}
-        disabled={busy}
+          title={!runtimeOperationAllowed(operationSupport, "delete") ? DESKTOP_UNSUPPORTED_REASON : undefined}
+        disabled={!runtimeOperationAllowed(operationSupport, "delete") || busy}
         className={actionButtonClassName("danger")}
         aria-label={`Delete ${desktop.name}`}
       >

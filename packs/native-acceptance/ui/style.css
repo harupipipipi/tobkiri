@@ -1,0 +1,10 @@
+:root { font: 16px/1.5 system-ui, sans-serif; color: #172333; background: #f4f7fb; }
+body { margin: 0; }
+main { max-width: 58rem; padding: 1.5rem; margin: auto; }
+h1, h2 { line-height: 1.2; }
+button { font: inherit; padding: .65rem 1rem; border: 1px solid #556782; border-radius: .4rem; background: white; color: #172333; cursor: pointer; }
+button:disabled { opacity: .55; cursor: default; }
+.actions { display: flex; flex-wrap: wrap; gap: .75rem; }
+section { border: 2px solid #ad5700; padding: 1rem; margin: 1.5rem 0; background: #fff8ec; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 30rem; overflow: auto; border: 1px solid #9cabc0; padding: 1rem; background: white; }
+code { overflow-wrap: anywhere; }

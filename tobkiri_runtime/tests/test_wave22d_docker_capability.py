@@ -414,17 +414,16 @@ class TestAuditLog:
 # ---------------------------------------------------------------------------
 
 class TestDIRegistration:
-    """DI コンテナ登録のテスト。"""
+    """退役済みDocker executorがDIへ再登録されないことを検証する。"""
 
     def test_di_registration(self) -> None:
-        """docker_capability_handler が DI コンテナに登録されている。"""
+        """docker_capability_handler は v4 DI コンテナに登録されない。"""
         from core_runtime.di_container import get_container, reset_container
 
         reset_container()
         try:
             c = get_container()
-            assert c.has("docker_capability_handler")
-            instance = c.get("docker_capability_handler")
-            assert isinstance(instance, DockerCapabilityHandler)
+            assert "docker_capability_handler" not in c.registered_names()
+            assert c.get_or_none("docker_capability_handler") is None
         finally:
             reset_container()

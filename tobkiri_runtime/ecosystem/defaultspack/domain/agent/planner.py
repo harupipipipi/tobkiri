@@ -1,8 +1,5 @@
 """Planner — generates execution plans for agent tasks."""
 
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from blocks._common import gen_id
 

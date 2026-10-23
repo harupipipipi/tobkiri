@@ -1,0 +1,6 @@
+package local:terminal-output@1.0.0;
+world pack {
+ include tobkiri:core/pack-minimal@1.0.0;
+ import tobkiri:core/host-io@1.0.0;
+ export local:harness-chat/assistant-output@1.0.0;
+}

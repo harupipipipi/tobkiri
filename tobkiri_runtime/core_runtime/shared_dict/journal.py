@@ -86,7 +86,7 @@ class SharedDictJournal:
     
     DEFAULT_PATH = "user_data/settings/shared_dict/journal.jsonl"
     
-    def __init__(self, journal_path: str = None, snapshot=None):
+    def __init__(self, journal_path: str | None = None, snapshot=None):
         self._path = Path(journal_path) if journal_path else Path(self.DEFAULT_PATH)
         self._lock = threading.RLock()
         self._snapshot = snapshot
@@ -163,7 +163,7 @@ class SharedDictJournal:
         namespace: str,
         token: str,
         value: str,
-        provenance: Dict[str, Any] = None
+        provenance: Dict[str, Any] | None = None
     ) -> ProposalResult:
         """
         ルールを提案
@@ -251,7 +251,7 @@ class SharedDictJournal:
         self,
         namespace: str,
         token: str,
-        provenance: Dict[str, Any] = None
+        provenance: Dict[str, Any] | None = None
     ) -> bool:
         """ルールを削除"""
         with self._lock:
@@ -281,12 +281,12 @@ class SharedDictJournal:
     
     def get_history(
         self,
-        namespace: str = None,
-        token: str = None,
+        namespace: str | None = None,
+        token: str | None = None,
         limit: int = 100
     ) -> List[JournalEntry]:
         """履歴を取得"""
-        entries = []
+        entries: List[JournalEntry] = []
         
         if not self._path.exists():
             return entries
@@ -333,7 +333,7 @@ def get_shared_dict_journal() -> SharedDictJournal:
     return _global_journal
 
 
-def reset_shared_dict_journal(journal_path: str = None, snapshot=None) -> SharedDictJournal:
+def reset_shared_dict_journal(journal_path: str | None = None, snapshot=None) -> SharedDictJournal:
     """SharedDictJournalをリセット（テスト用）"""
     global _global_journal
     with _journal_lock:

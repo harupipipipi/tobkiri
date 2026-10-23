@@ -1,0 +1,71 @@
+{
+  "allowed_imports": [
+    "tobkiri:core/types@1.0.0",
+    "tobkiri:core/flow@1.0.0",
+    "tobkiri:core/clock@1.0.0",
+    "tobkiri:core/random@1.0.0",
+    "tobkiri:core/audit@1.0.0",
+    "local:ai-tool-bridge-ordered-python/bridge@2.0.0"
+  ],
+  "entrypoint": "app",
+  "format": "tobkiri.python-build/3",
+  "outer_exports": [
+    "tobkiri:core/lifecycle@1.0.0",
+    "local:ai-gateway-tool-caller-python/caller@1.0.0"
+  ],
+  "sources": [
+    {
+      "destination": "app.py",
+      "sha256": "caf0b4be78264a60588b6f6a85e9e34554440263782e83d0be7047263aaa7081",
+      "source": "app.py"
+    },
+    {
+      "destination": "gateway_tool_caller_adapter.py",
+      "sha256": "743f3b338ecb8a66031fb5b721a4272773ae24552231e0ec8b6d70659aa412df",
+      "source": "gateway_tool_caller_adapter.py"
+    },
+    {
+      "destination": "inventory.json",
+      "sha256": "10e299bad241d7460881254d94942b2929c4fe701bbe6a7688a3b1e690f7f12c",
+      "source": "inventory.json"
+    },
+    {
+      "destination": "ordered_json.py",
+      "sha256": "7df89c2e5275fdc795c13e0d70d6ec69f7f022aa968c58a3c1b1637e0eee2158",
+      "source": "ordered_json.py"
+    },
+    {
+      "destination": "ordered_json_v2.py",
+      "sha256": "495b613a37807cf10e831a2332b7f401148d3aaec29ec84c16a22f0a2c05d3a2",
+      "source": "ordered_json_v2.py"
+    },
+    {
+      "destination": "original_gateway_tool_caller.py",
+      "sha256": "9b0d671807095cf2211b8bb51db703cea563133b2e8d935a50e9f77ea40ff1b1",
+      "source": "original_gateway_tool_caller.py"
+    },
+    {
+      "destination": "provenance.json",
+      "sha256": "b41b85456970098f6fb5bddda3d9ad97db3d23f004c0ec88dc1feeb33b95f155",
+      "source": "provenance.json"
+    },
+    {
+      "destination": "wit/deps/bridge-v2.wit",
+      "sha256": "513454d839ac468205bc5b4ed93032625ed4f5d3064aa17f643f907e80bfeb78",
+      "source": "wit/deps/bridge-v2.wit"
+    },
+    {
+      "destination": "wit/deps/core.wit",
+      "sha256": "f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "source": "wit/deps/core.wit"
+    },
+    {
+      "destination": "wit/pack.wit",
+      "sha256": "34cad3a098d41f9103386b0dab1988624c0de7f81721807b4da1e5c0f64bdd41",
+      "source": "wit/pack.wit"
+    }
+  ],
+  "stub_wasi": true,
+  "wit": "wit/pack.wit",
+  "world": "pack"
+}

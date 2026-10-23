@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/profile-artifact-lock.v1.schema.json",
+  "title": "Tobkiri immutable Profile v5 source release lock",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["lock_api_version", "profile_api_version", "resolution_scope", "activation_authority", "profile_id", "profile_revision", "profile_definition_digest", "catalog_revision", "bundle_digest", "base", "shell", "application", "effective_set", "content_projections", "content_projection_digest", "variant_pins", "requested_edges_digest", "constraints_digest", "closure_digest", "provenance_digest", "lock_digest"],
+  "properties": {
+    "lock_api_version": {"const": "io.tobkiri.profile-artifact-lock.v1"},
+    "profile_api_version": {"const": "io.tobkiri.profile.v5"},
+    "resolution_scope": {"const": "source_release"},
+    "activation_authority": {"const": "unbound"},
+    "profile_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+    "profile_revision": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "profile_definition_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "catalog_revision": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "bundle_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "base": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/profile-lock.v5.schema.json#/$defs/exactBase"},
+    "shell": {"oneOf": [{"type": "null"}, {"$ref": "https://schemas.tobkiri.local/io.tobkiri/profile-lock.v5.schema.json#/$defs/exactShell"}]},
+    "application": {"oneOf": [{"type": "null"}, {"$ref": "https://schemas.tobkiri.local/io.tobkiri/profile-lock.v5.schema.json#/$defs/exactApplication"}]},
+    "effective_set": {"type": "array", "minItems": 1, "items": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/profile-lock.v5.schema.json#/$defs/effectiveArtifact"}},
+    "content_projections": {"type": "array", "items": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/profile-content-projection.v1.schema.json#/$defs/resolvedProjection"}, "uniqueItems": true},
+    "content_projection_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "variant_pins": {"type": "array", "items": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/profile-lock.v5.schema.json#/$defs/variantPin"}, "uniqueItems": true},
+    "requested_edges_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "constraints_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "closure_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "provenance_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "lock_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"}
+  }
+}

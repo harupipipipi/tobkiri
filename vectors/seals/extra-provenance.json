@@ -1,0 +1,272 @@
+{
+  "coverage": {
+    "each_new_seal_family": 300,
+    "packvm_deadline_cases": 331,
+    "rust_source_excerpts": "tools/legacy-vectors/launcher_source.rs",
+    "still_unverified": [
+      "exhaustive isoformat/default=str digest boundary classification",
+      "Swift JSONSerialization rejection behavior",
+      "live approval/nonce/store enforcement (format vectors exercise no runtime)",
+      "C %.17g Rust implementation; deadline oracle frozen only"
+    ]
+  },
+  "generator_sha256_hex": "7ab02d25284c4fd9cca81f3ca3340fd85106b2ff56b55329ba78284670574090",
+  "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+  "legacy_weak_key_mismatch": "Original verifier accepts some weak/identity key fixtures that dalek verify_strict rejects; policy pending, expected oracle outcomes unchanged.",
+  "rust_harness_sha256_hex": "59bfbd4da9679fade2ad3bdbd3ebaf1f8117e58ad467fd648f11d4dbe982d540",
+  "shim_notes": [
+    "Only deterministic key/clock/UUID inputs and IO-free error/hex adapters are fixture shims; original byte-producing source bodies are unchanged.",
+    "Approval token MAC covers base64url ASCII, not decoded JSON. Approval JSON retains ensure_ascii=True."
+  ],
+  "source_calls": {
+    "BROWSER_UI_OPERATOR_VERSION": {
+      "first_line": 17,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/core_runtime/authority/ui_operator.py",
+      "source_sha256_hex": "806bf4ed0f52e4d2a900e09ee30ef6a93dc62dfd42982f28cce3a6a164cb319f"
+    },
+    "INTERACTIVE_UI_OPERATOR_VERSION": {
+      "first_line": 18,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/core_runtime/authority/ui_operator.py",
+      "source_sha256_hex": "449c3e561f90347c0b428a47f06187fe1fc2955655985640d5c930347fc47141"
+    },
+    "MAX_DEADLINE_TEXT_BYTES": {
+      "first_line": 116,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/ecosystem/defaultspack/backend/sandbox/isolation/resources/packvm_guest_runner.py",
+      "source_sha256_hex": "b832ab45180c02173a76ac8f1c77c872da6faa197e41795665d6fc9fa7a863cb"
+    },
+    "RELEASE_SCHEMA": {
+      "first_line": 53,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_launcher/scripts/verify_presentation_release.py",
+      "source_sha256_hex": "f25a40126d438fd5fdc8aa3c81a75083e216e29538af544d50f55aa3e80e179d"
+    },
+    "UI_OPERATOR_ORIGIN": {
+      "first_line": 14,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/core_runtime/authority/ui_operator.py",
+      "source_sha256_hex": "bc826b7ee481346eeb6ceb6a72ef67ef1a2b01b07a442cc6b317fae3ad24cd4b"
+    },
+    "UI_OPERATOR_TTL_SECONDS": {
+      "first_line": 19,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/core_runtime/authority/ui_operator.py",
+      "source_sha256_hex": "4e288d31add2cf8753e6420a56f7068e447b05a5d5aa780cd71152de8878374a"
+    },
+    "UI_OPERATOR_VERSION": {
+      "first_line": 16,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/core_runtime/authority/ui_operator.py",
+      "source_sha256_hex": "e066b90bfad6437fc176f403602f8ba055548eb01bc84860ce7f00bde89f5c8a"
+    },
+    "UI_OPERATOR_WINDOW_LABEL": {
+      "first_line": 15,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/core_runtime/authority/ui_operator.py",
+      "source_sha256_hex": "071fe47026f752b74cf1c4799be8873166ec0b1796a75dbb98dfd6c27a7a71aa"
+    },
+    "_ARG_HASH_IGNORE_KEYS": {
+      "first_line": 33,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/ecosystem/defaultspack/domain/safety/approval.py",
+      "source_sha256_hex": "03882fbdb5a01ff9981e8d4048afb0fda9bb21015ab9d7218a5d5735392f0c86"
+    },
+    "_CANONICAL_DEADLINE": {
+      "first_line": 128,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/ecosystem/defaultspack/backend/sandbox/isolation/resources/packvm_guest_runner.py",
+      "source_sha256_hex": "d71047b01ef7b3d41f9fb69556eea9d76a1a4d8b64f32c0f19ac8474793f1b56"
+    },
+    "_DEFAULT_EXPIRES_IN_SECONDS": {
+      "first_line": 26,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/ecosystem/defaultspack/domain/safety/approval.py",
+      "source_sha256_hex": "de93c3bd247ca471c0cbaa3e0485457b293ced0addd189e02c6133867ce995e9"
+    },
+    "_TOKEN_VERSION": {
+      "first_line": 25,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/ecosystem/defaultspack/domain/safety/approval.py",
+      "source_sha256_hex": "2c86d0461bf31d6d3c34c6f905c4826d209b98c527af2729ea68b4505ffd50a1"
+    },
+    "_UNTAGGED_SHA256_RE": {
+      "first_line": 20,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/core_runtime/authority/ui_operator.py",
+      "source_sha256_hex": "5e2ac6371759193031d1ac7209b10670a7bf726dbad8c1e0358d78ad752a31d2"
+    },
+    "_b64url_encode": {
+      "first_line": 123,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/ecosystem/defaultspack/domain/safety/approval.py",
+      "source_sha256_hex": "76cb81fd0ce49b6693119db83d58b608ca9636552675dc830f351144d8910cb7"
+    },
+    "_bridge_canonical_digest": {
+      "first_line": 1467,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/ecosystem/defaultspack/backend/sandbox/isolation/resources/packvm_guest_runner.py",
+      "source_sha256_hex": "1677e641c64e505377de63084ab8869da6af885246a19bc33292ea6d52926393"
+    },
+    "_bridge_canonical_json": {
+      "first_line": 1455,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/ecosystem/defaultspack/backend/sandbox/isolation/resources/packvm_guest_runner.py",
+      "source_sha256_hex": "e73f3d54ca4b58ed63087c690bac9c4db3f939ffa222dda0998b9ec378889a08"
+    },
+    "_canonicalize": {
+      "first_line": 131,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/ecosystem/defaultspack/domain/safety/approval.py",
+      "source_sha256_hex": "2271e59d8ec537c3556ed20c997ac4638976084af2f49050178c8e43e723fa76"
+    },
+    "_files_digest": {
+      "first_line": 1588,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": ".github/scripts/build_sealed_python_environment.py",
+      "source_sha256_hex": "0c22dfdfe836e441fc7e4a0f2c047eb579b86529b5c6a4c539f0907c43f338fe"
+    },
+    "_is_untagged_sha256": {
+      "first_line": 340,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/core_runtime/authority/ui_operator.py",
+      "source_sha256_hex": "e954fdee933b581d835d93afd7644483fa69cc55e582f5949e694c2fa7936e3f"
+    },
+    "_normalise_bridge_deadline": {
+      "first_line": 1413,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/ecosystem/defaultspack/backend/sandbox/isolation/resources/packvm_guest_runner.py",
+      "source_sha256_hex": "f4222e11f03b2a721b49be8b58570a6dda91dd48ee10e6023ee07e151be52474"
+    },
+    "_operator_message": {
+      "first_line": 23,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/core_runtime/authority/ui_operator.py",
+      "source_sha256_hex": "5da7477292230cf97ac30d1d558794d1ebcd59149fff2af52390dd26effa8a86"
+    },
+    "_release_signature_message": {
+      "first_line": 311,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_launcher/scripts/verify_presentation_release.py",
+      "source_sha256_hex": "3c1450e2e9eec2fd037a01a29d56d6f11fd4f2bfb49bb3f46d62903f806822c4"
+    },
+    "_sha256": {
+      "first_line": 3974,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/ecosystem/defaultspack/backend/sandbox/isolation/resources/packvm_guest_runner.py",
+      "source_sha256_hex": "383ece1c022afbc4740bbac8994666edafc8cd564b72ec3df811cbeef494b422"
+    },
+    "_sha256_bytes": {
+      "first_line": 344,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": ".github/scripts/build_sealed_python_environment.py",
+      "source_sha256_hex": "5717ee9926894c2a75ca0d38d7e51bccd05c1d1bab1047243aecc70836cc75bd"
+    },
+    "fn attest_response(": {
+      "first_line": 581,
+      "invocation": "verbatim original Rust body in IO-free oracle harness",
+      "source": "tobkiri_launcher/src-tauri/src/host_broker.rs",
+      "source_sha256_hex": "188ae918a401ac902acb5135a467bdf3b15b0b56448d8ebfa215468fcedffea0"
+    },
+    "fn canonical_operator_payload(": {
+      "first_line": 1236,
+      "invocation": "verbatim original Rust body in IO-free oracle harness",
+      "source": "tobkiri_launcher/src-tauri/src/debug_approval.rs",
+      "source_sha256_hex": "9a2b4b26bbfa447210cfa35f1cdf72c833ea9c68c94d3ddfdb41486790b66a17"
+    },
+    "fn release_signature_message(": {
+      "first_line": 1451,
+      "invocation": "verbatim original Rust body in IO-free oracle harness",
+      "source": "tobkiri_launcher/src-tauri/src/presentation.rs",
+      "source_sha256_hex": "304dcba96470ff71efe821ec91cb3e4b7a89024fb43421c0f78edc2d79f3c123"
+    },
+    "fn sign(&self, operator:": {
+      "first_line": 955,
+      "invocation": "verbatim original Rust body in IO-free oracle harness",
+      "source": "tobkiri_launcher/src-tauri/src/debug_approval.rs",
+      "source_sha256_hex": "0f58c95b4df03b1ada8a62c40acc62b44fac5bc0fb335c68dccbd71456811b2a"
+    },
+    "hash_arguments": {
+      "first_line": 145,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/ecosystem/defaultspack/domain/safety/approval.py",
+      "source_sha256_hex": "4bd634202ff6672156c49115d1246d03ea6b6213ee2e5478e3461224ce930ea5"
+    },
+    "issue_execution_token": {
+      "first_line": 696,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/ecosystem/defaultspack/domain/safety/approval.py",
+      "source_sha256_hex": "12175f4a8d568d45248b829dfbd82c297f8aeae316079c9fb423170988eca07f"
+    },
+    "pub struct DebugCliOperator": {
+      "first_line": 265,
+      "invocation": "verbatim original Rust body in IO-free oracle harness",
+      "source": "tobkiri_launcher/src-tauri/src/debug_approval.rs",
+      "source_sha256_hex": "38664423a1805a0944e1382189e0f2460998903d7570086ca5eda23a360b4fb8"
+    },
+    "pub(crate) struct BrokerAttestationIdentity": {
+      "first_line": 110,
+      "invocation": "verbatim original Rust body in IO-free oracle harness",
+      "source": "tobkiri_launcher/src-tauri/src/host_broker.rs",
+      "source_sha256_hex": "5ae2671a27137f403db8869067def7f0d3433966d89489e211d07367e34f93e7"
+    },
+    "sign_ui_operator": {
+      "first_line": 63,
+      "invocation": "original AST function/constant, no module/runtime constructor",
+      "source": "tobkiri_runtime/core_runtime/authority/ui_operator.py",
+      "source_sha256_hex": "fc347574f8757466f8af04ab45b23369b8dd932229abd2d4aae4d813d0c4d4c3"
+    },
+    "struct ParsedRequest": {
+      "first_line": 149,
+      "invocation": "verbatim original Rust body in IO-free oracle harness",
+      "source": "tobkiri_launcher/src-tauri/src/host_broker.rs",
+      "source_sha256_hex": "873ab3d0d2ea50a0abf7517f3e46cda675abe37fe07544fa9b15021b5dd1f775"
+    },
+    "struct PresentationReleaseManifest": {
+      "first_line": 333,
+      "invocation": "verbatim original Rust body in IO-free oracle harness",
+      "source": "tobkiri_launcher/src-tauri/src/presentation.rs",
+      "source_sha256_hex": "799e9f8864133d674296b0606e9afbce5d56827abd638d28fc1852b202dfcd84"
+    }
+  },
+  "sources": {
+    ".github/scripts/build_sealed_python_environment.py": {
+      "length": 185867,
+      "sha256_hex": "76e8d80de35cce8a8b1377616866107a8e0872db148343633af6b8fc6d943d62"
+    },
+    "tobkiri_launcher/scripts/verify_presentation_release.py": {
+      "length": 34295,
+      "sha256_hex": "06e6aeb1af73ec2c3b9ecfede79c91c3adf09a05327249e99e02f7278523fd38"
+    },
+    "tobkiri_launcher/src-tauri/src/debug_approval.rs": {
+      "length": 76239,
+      "sha256_hex": "308e6990db26a0cfa27dc939a3f63b05e083b0c37fb979b7fe00956282f99f5e"
+    },
+    "tobkiri_launcher/src-tauri/src/host_broker.rs": {
+      "length": 155322,
+      "sha256_hex": "8ef30f01f983b11875dfb11e15cebe199886a2d49cc9819c747347a0745c8c98"
+    },
+    "tobkiri_launcher/src-tauri/src/presentation.rs": {
+      "length": 153792,
+      "sha256_hex": "703344e658be8c51563264919ebd98370bbf8e644beab03a07433a677734788a"
+    },
+    "tobkiri_runtime/core_runtime/authority/ui_operator.py": {
+      "length": 13039,
+      "sha256_hex": "99787339204fe04c6a708a1da29846d3d9fddcc4fc3135ca9ec2820c376a0e02"
+    },
+    "tobkiri_runtime/core_runtime/pack_signature.py": {
+      "length": 19276,
+      "sha256_hex": "abe62f0226c151c849f49e27b9fbdbe6c399cccb36a5827230fa7399c01ece6d"
+    },
+    "tobkiri_runtime/ecosystem/defaultspack/backend/sandbox/isolation/resources/packvm_guest_runner.py": {
+      "length": 156489,
+      "sha256_hex": "50b494e70ce35d73876d4b58afd1c40281445d04499e1246c7c18bd931049536"
+    },
+    "tobkiri_runtime/ecosystem/defaultspack/domain/safety/approval.py": {
+      "length": 36377,
+      "sha256_hex": "53a1e69cf1291d78f5e3c09bc95daecbf5fa9776009dbb24929ced9fd6e0f6f9"
+    }
+  },
+  "test_only_keys": true
+}

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Tobkiri Harness</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header><h1>Tobkiri Harness</h1><p id="status" role="status">ホストへの接続を待っています</p></header>
+    <section id="messages" aria-label="会話" aria-live="polite"></section>
+    <form id="composer"><label for="text">メッセージ</label><textarea id="text" rows="3" required></textarea>
+      <div><button id="send" type="submit" disabled>送信</button><button id="stop" type="button" disabled>停止</button></div>
+    </form>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

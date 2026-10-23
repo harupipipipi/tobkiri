@@ -1,0 +1,5 @@
+{
+  "conversation": "e2e",
+  "flow": "local.harness-chat.turn-flow@1.0",
+  "prompt": "> "
+}

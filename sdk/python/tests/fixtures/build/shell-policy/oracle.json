@@ -1,0 +1,25 @@
+{
+  "format": "tobkiri.python-parity-oracle/1",
+  "source_file": "packs/local.shell-policy-python/tests/inspection.json",
+  "corpus_sha256": "504e542a6e4cec983e402753db7a3bf93a96f394b69400249d353d1e7442edd5",
+  "policy_source_sha256": "4474513154ced3474da4db2d6bf90ece67c0da9406ee3ac392660d7bd9ddcf51",
+  "bytes": 59881,
+  "case_identity": "inspection.json#/cases/{zero_based_array_index}",
+  "first_case_index": 0,
+  "last_case_index": 90,
+  "case_count": 91,
+  "handler": "rumi_shell_policy_pack.create_shell_policy_operation",
+  "operations": {
+    "classify": 87,
+    "tokenize": 4
+  },
+  "outcomes": {
+    "ok": 88,
+    "error_class:ValueError": 3
+  },
+  "semantics": {
+    "successful_case": "compare the returned Pack JSON value to the frozen expect.ok value using Core canonical JSON values; the fixture does not assert raw response bytes",
+    "invalid_case": "the frozen fixture records ValueError; the Rust replay currently checks that Core maps the failure to an error containing invalid",
+    "ordering": "replay cases in unchanged source array order; do not add or renumber identifiers"
+  }
+}

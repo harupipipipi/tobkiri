@@ -1,0 +1,63 @@
+{
+ "provider_id": "ai21",
+ "models": [
+  {
+   "model_id": "jamba-large",
+   "display_name": "Jamba Large",
+   "type": "chat",
+   "context_window": 256000,
+   "max_output_tokens": 4096,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 2,
+    "output": 8
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "jamba-mini",
+   "display_name": "Jamba Mini",
+   "type": "chat",
+   "context_window": 256000,
+   "max_output_tokens": 4096,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.2,
+    "output": 0.4
+   },
+   "source": "models.dev"
+  }
+ ]
+}

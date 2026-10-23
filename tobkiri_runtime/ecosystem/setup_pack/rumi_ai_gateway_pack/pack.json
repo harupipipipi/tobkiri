@@ -1,0 +1,18 @@
+{
+  "pack_id": "rumi_ai_gateway_pack",
+  "display_name": "Rumi AI Gateway Pack",
+  "description": "Provider-neutral routing, generation, stream, failover, usage, and diagnostics.",
+  "target_pack_id": "rumi_ai_gateway_pack",
+  "version": "1.0.0",
+  "recommended": true,
+  "risk_level": "high",
+  "supports_all_ok": false,
+  "depends_on": ["rumi_model_catalog_pack", "rumi_model_registry_pack", "rumi_provider_registry_pack", "rumi_provider_adapters_pack", "rumi_ai_usage_pack", "rumi_ai_routing_pack", "rumi_ai_stream_pack", "rumi_ai_modality_pack", "rumi_ai_tool_bridge_pack", "rumi_ai_pipeline_pack"],
+  "required_permissions": ["ai.gateway.generate", "ai.gateway.stream", "ai.gateway.diagnostics.read"],
+  "conflicts_with": [],
+  "compatibility": {"python": ">=3.10", "platforms": ["macos", "linux", "windows"]},
+  "marketplace": {"id": "rumi.ai_gateway", "registry": "bundled", "publisher": "rumi-ai", "status": "verified", "category": "ai-runtime", "channel": "experimental"},
+  "signing": {"mode": "repository_reviewed", "verified": true},
+  "security_notes": ["Routing uses selected global contracts only.", "Failover requires replay safety.", "Raw credential values are rejected."]
+}
+

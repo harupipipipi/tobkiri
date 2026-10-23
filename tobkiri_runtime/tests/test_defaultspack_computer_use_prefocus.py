@@ -12,6 +12,7 @@ sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
 def test_prefocus_computer_use_target_window_invokes_select_window_via_call_handler(monkeypatch):
     import blocks.chat.send as send  # noqa: E402
+    from domain.tool_policy.internal_context import mark_tool_server_approval_context  # noqa: E402
 
     monkeypatch.setattr(
         send,
@@ -35,13 +36,17 @@ def test_prefocus_computer_use_target_window_invokes_select_window_via_call_hand
         captured["payload"] = payload
         return {"status": "ok", "data": {"selected_window": {"app": "Google Chrome", "title": "LINE Chat - Google Chrome"}}}
 
-    result = send._prefocus_computer_use_target_window(
-        available_tools=[{"name": "browser_computer"}],
-        base_context={
+    base_context = mark_tool_server_approval_context(
+        {
             "user_requested_computer_use": True,
             "computer_use_target_app": "Google Chrome",
             "computer_use_target_title": "LINE",
-        },
+        }
+    )
+
+    result = send._prefocus_computer_use_target_window(
+        available_tools=[{"name": "browser_computer"}],
+        base_context=base_context,
         call_handler=fake_call_handler,
     )
 
@@ -54,6 +59,30 @@ def test_prefocus_computer_use_target_window_invokes_select_window_via_call_hand
     assert result["selected_window"]["title"] == "LINE Chat - Google Chrome"
 
 
+def test_prefocus_computer_use_target_window_skips_without_internal_approval(monkeypatch):
+    import blocks.chat.send as send  # noqa: E402
+
+    monkeypatch.setattr(
+        send,
+        "connected_tool_names",
+        lambda tools, runtime_profile=None, agent_id=None: {"browser_computer", "computer_use"},
+    )
+
+    result = send._prefocus_computer_use_target_window(
+        available_tools=[{"name": "browser_computer"}],
+        base_context={
+            "user_requested_computer_use": True,
+            "computer_use_target_app": "Google Chrome",
+            "computer_use_target_title": "LINE",
+        },
+        call_handler=lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("call_handler should not run without internal approval")
+        ),
+    )
+
+    assert result is None
+
+
 def test_prefocus_computer_use_target_window_skips_when_no_target():
     import blocks.chat.send as send  # noqa: E402
 
@@ -64,3 +93,38 @@ def test_prefocus_computer_use_target_window_skips_when_no_target():
     )
 
     assert result is None
+
+
+def test_run_request_prefocus_skips_without_internal_approval(monkeypatch):
+    from domain.chat.run_request import PreparedChatRun, prefocus_computer_use_target_window  # noqa: E402
+
+    prepared = PreparedChatRun(
+        conversation_id="conv",
+        conversation={},
+        input_data={},
+        request_id="run",
+        content=[],
+        metadata={},
+        user_message={},
+        model="stub/default",
+        params={},
+        request_context={
+            "user_requested_computer_use": True,
+            "computer_use_target_app": "ChatGPT Atlas",
+        },
+        tool_context={},
+        standard_messages=[],
+        user_text="",
+        system_prompt="",
+        enrich_info={},
+        raw_tools=[],
+        provider_tools=[],
+        tools_called=[],
+        connected_tool_names={"browser_computer"},
+        call_handler=lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("call_handler should not run without internal approval")
+        ),
+        model_routing={},
+    )
+
+    assert prefocus_computer_use_target_window(prepared) is None

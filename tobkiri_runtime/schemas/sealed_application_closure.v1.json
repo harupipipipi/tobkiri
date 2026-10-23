@@ -1,0 +1,32 @@
+{
+  "schema": "io.tobkiri.sealed-application-closure-policy.v1",
+  "role_targets": [
+    "app/app.py",
+    "app/core_runtime/host_broker/computer_host_helper.py",
+    "app/ecosystem/defaultspack/defaultspack/desktop_app.py"
+  ],
+  "closure_files": [
+    "bundled/presentation_catalog.json",
+    "bundled/presentation_release.v4.json",
+    "bundled/shell_artifact_index.v4.json",
+    "bundled/shell_profile_lock.v4.json",
+    "ecosystem/defaultspack/artifact-index.v4.json",
+    "ecosystem/defaultspack/contracts.v4.json",
+    "ecosystem/defaultspack/executables.v4.json",
+    "ecosystem/defaultspack/pack.v4.json"
+  ],
+  "closure_directories": [
+    "bundled/presentation-artifacts",
+    "ecosystem/defaultspack/platform-artifacts",
+    "ecosystem/defaultspack/v4"
+  ],
+  "bundle_lock": "ecosystem/defaultspack/v4/bundle.lock.json",
+  "bundle_lock_schema": "io.tobkiri.defaultspack-bundle-lock.v1",
+  "bundle_entry_kinds": [
+    "base",
+    "executable_catalog",
+    "pack",
+    "profile",
+    "shell"
+  ]
+}

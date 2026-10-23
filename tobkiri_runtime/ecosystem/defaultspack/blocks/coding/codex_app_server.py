@@ -37,7 +37,10 @@ def _resolved(path: str | Path) -> Path:
 
 def ensure_within_workspace(workspace_root: str | Path, target_path: str | Path | None = None) -> Path:
     root = _resolved(workspace_root)
-    target = root if target_path in (None, "") else _resolved(target_path)
+    if target_path is None or target_path == "":
+        target = root
+    else:
+        target = _resolved(target_path)
     try:
         target.relative_to(root)
     except ValueError as exc:

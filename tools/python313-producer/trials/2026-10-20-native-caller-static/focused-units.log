@@ -1,0 +1,110 @@
+warning: field `engine` is never read
+   --> vendor/wasmtime/src/runtime/fiber.rs:505:5
+    |
+487 | pub(crate) struct StoreFiber<'a> {
+    |                   ---------- field in this struct
+...
+505 |     engine: Engine,
+    |     ^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `typecheck` is never used
+   --> vendor/wasmtime/src/runtime/component/func.rs:203:8
+    |
+ 94 | impl Func {
+    | --------- method in this implementation
+...
+203 |     fn typecheck<Params, Return>(
+    |        ^^^^^^^^^
+
+warning: method `take_call_envelope` is never used
+   --> vendor/wasmtime/src/runtime/component/func/options.rs:495:19
+    |
+413 | impl<'a> LiftContext<'a> {
+    | ------------------------ method in this implementation
+...
+495 |     pub(crate) fn take_call_envelope(&mut self) -> Option<HostAllocationLease> {
+    |                   ^^^^^^^^^^^^^^^^^^
+
+warning: associated items `lower_args`, `call_impl`, `lower_stack_args`, `lower_heap_args`, `lift_stack_result`, and `lift_heap_result` are never used
+   --> vendor/wasmtime/src/runtime/component/func/typed.rs:177:19
+    |
+ 67 | / impl<Params, Return> TypedFunc<Params, Return>
+ 68 | | where
+ 69 | |     Params: ComponentNamedList + Lower,
+ 70 | |     Return: ComponentNamedList + Lift,
+    | |______________________________________- associated items in this implementation
+...
+177 |       pub(crate) fn lower_args<T>(
+    |                     ^^^^^^^^^^
+...
+197 |       fn call_impl(&self, mut store: impl AsContextMut, params: Params) -> Result<Return> {
+    |          ^^^^^^^^^
+...
+266 |       fn lower_stack_args<T>(
+    |          ^^^^^^^^^^^^^^^^
+...
+283 |       fn lower_heap_args<T>(
+    |          ^^^^^^^^^^^^^^^
+...
+318 |       pub(crate) fn lift_stack_result(
+    |                     ^^^^^^^^^^^^^^^^^
+...
+328 |       pub(crate) fn lift_heap_result(
+    |                     ^^^^^^^^^^^^^^^^
+
+warning: function `should_have_failed_validation` is never used
+  --> vendor/wasmtime/src/runtime/component/concurrent_disabled.rs:10:4
+   |
+10 | fn should_have_failed_validation<T>(what: &str) -> Result<T> {
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `lower_error_context_to_index` is never used
+  --> vendor/wasmtime/src/runtime/component/concurrent_disabled.rs:19:15
+   |
+19 | pub(crate) fn lower_error_context_to_index<U>(
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `ErrorContext` is never constructed
+  --> vendor/wasmtime/src/runtime/component/concurrent_disabled.rs:27:12
+   |
+27 | pub struct ErrorContext(Infallible);
+   |            ^^^^^^^^^^^^
+
+warning: associated items `into_val`, `linear_lift_from_flat`, and `linear_lift_from_memory` are never used
+  --> vendor/wasmtime/src/runtime/component/concurrent_disabled.rs:30:19
+   |
+29 | impl ErrorContext {
+   | ----------------- associated items in this implementation
+30 |     pub(crate) fn into_val(self) -> Val {
+   |                   ^^^^^^^^
+...
+34 |     pub(crate) fn linear_lift_from_flat(
+   |                   ^^^^^^^^^^^^^^^^^^^^^
+...
+42 |     pub(crate) fn linear_lift_from_memory(
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `wasmtime` (lib) generated 8 warnings
+   Compiling tobkiri-e2e v0.1.0 (/workspace/scratch/c5cef75e84b0/tobkiri-restored-oct20/crates/tobkiri-e2e)
+    Finished `test` profile [unoptimized] target(s) in 4.28s
+     Running tests/ordered_python.rs (/workspace/scratch/c5cef75e84b0/issue1520-cargo-target/debug/deps/ordered_python-e95a688c16e75ca3)
+
+running 13 tests
+test evidence_gateway_tool_caller::current_caller_graph_has_exact_static_abi ... ignored, requires independently pinned two-Pack input directory; static compilation/type inspection, no guest
+test evidence_gateway_tool_caller::two_actual_components_fit_unchanged_catalog_without_finalizer ... ok
+test gateway_tool_caller::original_python_tool_caller_replays_through_real_core ... ignored, two separately pinned Python Packs; arm64 macOS Darwin24.6.0/local APFS; explicit fresh evidence
+test gateway_tool_caller::nine_public_error_mapping_entries_are_mapping_only_not_import_injections ... ok
+test evidence_gateway_tool_caller::historical_split_is_byte_lossless_but_not_parser_acceptance ... ok
+test gateway_tool_caller::cleanup_retains_both_failures_without_lifecycle_or_cancellation_claim ... ok
+test evidence_gateway_tool_caller::current_caller_corpus_rejects_changed_and_historical_evidence ... ok
+test gateway_tool_caller::opaque_caller_data_keeps_bigints_float_order_and_negative_zero ... ok
+test gateway_tool_caller::synthetic_edge_checker_rejects_crossed_and_misordered_custody ... ok
+test evidence_gateway_tool_caller::current_caller_graph_source_proof_is_not_native_replay ... ok
+test gateway_tool_caller::partial_or_reordered_case_reports_do_not_establish_native_acceptance ... ok
+test gateway_tool_caller::source_terminal_prefix_is_not_original_source_call_count ... ok
+test evidence_gateway_tool_caller::bundled_original_world_passes_production_parser_without_guest_or_component ... ok
+
+test result: ok. 11 passed; 0 failed; 2 ignored; 0 measured; 25 filtered out; finished in 0.16s
+

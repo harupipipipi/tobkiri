@@ -260,6 +260,53 @@ test("returns pending runtime approval requests without browser tokens", () => {
   });
 });
 
+test("uses the matching tool log when an approval event omits its tool name", () => {
+  const approval = pendingRuntimeApproval([
+    agentMessage({
+      events: [
+        {
+          type: "tool_call_started",
+          phase: "tool_call_started",
+          run_id: "run_repo",
+          tool_name: "repository_context_prepare",
+          tool_call_id: "call_repo",
+        },
+        {
+          type: "approval_requested",
+          phase: "approval_requested",
+          run_id: "run_repo",
+          action: "tool.repository_context_prepare",
+          operation: "tool.repository_context_prepare",
+          payload: { query: "ToolExecutor._execute_global_contract" },
+          requires_approval: true,
+          approval_request_id: "apr_repo",
+        },
+      ],
+      toolLogs: [{
+        tool_name: "repository_context_prepare",
+        tool_call_id: "call_repo",
+        arguments: { query: "ToolExecutor._execute_global_contract" },
+        result: {
+          status: "ok",
+          data: {
+            widget: {
+              approval_required: true,
+              approval_request_id: "[truncated depth]",
+              operation: "tool.repository_context_prepare",
+            },
+          },
+        },
+      }],
+    }),
+  ]);
+
+  assert.equal(approval?.toolName, "repository_context_prepare");
+  assert.equal(approval?.toolCallId, "call_repo");
+  assert.deepEqual(approval?.payload, {
+    query: "ToolExecutor._execute_global_contract",
+  });
+});
+
 test("returns runtime approval requests from assistant metadata", () => {
   const approval = pendingRuntimeApproval([
     agentMessage({
@@ -289,6 +336,65 @@ test("returns runtime approval requests from assistant metadata", () => {
     toolCallId: "call_write",
     toolName: "coding_file_write",
   });
+});
+
+test("uses the matching tool event when metadata approval omits its tool name", () => {
+  const approval = pendingRuntimeApproval([
+    agentMessage({
+      metadata: {
+        pendingApproval: {
+          tool_name: "tool",
+          action: "tool.repository_context_prepare",
+          operation: "tool.repository_context_prepare",
+          payload: { query: "ToolExecutor._execute_global_contract" },
+          approval_required: true,
+          approval_request_id: "apr_repo_metadata",
+        },
+      },
+      events: [{
+        type: "tool_call_started",
+        phase: "tool_call_started",
+        tool_name: "repository_context_prepare",
+        tool_call_id: "call_repo_metadata",
+      }],
+    }),
+  ]);
+
+  assert.equal(approval?.toolName, "repository_context_prepare");
+  assert.equal(approval?.toolCallId, "call_repo_metadata");
+});
+
+test("uses the only specific tool log when approval metadata is depth-truncated", () => {
+  const approval = pendingRuntimeApproval([
+    agentMessage({
+      metadata: {
+        pendingApproval: {
+          tool_name: "tool",
+          action: "tool.repository_context_prepare",
+          operation: "tool.repository_context_prepare",
+          payload: { query: "ToolExecutor._execute_global_contract" },
+          approval_required: true,
+          approval_request_id: "apr_repo_truncated",
+        },
+      },
+      toolLogs: [{
+        tool_name: "repository_context_prepare",
+        tool_call_id: "call_repo_truncated",
+        arguments: { query: "ToolExecutor._execute_global_contract" },
+        result: {
+          data: {
+            widget: {
+              approval_required: "[truncated depth]",
+              approval_request_id: "[truncated depth]",
+            },
+          },
+        },
+      }],
+    }),
+  ]);
+
+  assert.equal(approval?.toolName, "repository_context_prepare");
+  assert.equal(approval?.toolCallId, "call_repo_truncated");
 });
 
 test("returns generic browser tool approval requests when they use approval request ids", () => {

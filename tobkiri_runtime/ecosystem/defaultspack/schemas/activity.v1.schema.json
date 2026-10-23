@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.dev/activity/v1.json",
+  "title": "Tobkiri Activity manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "id",
+    "version",
+    "display_name",
+    "description",
+    "members",
+    "selection",
+    "permissions",
+    "ui"
+  ],
+  "properties": {
+    "$schema": {"type": "string"},
+    "schema_version": {"const": "tobkiri.activity/v1"},
+    "kind": {"const": "activity"},
+    "category": {"const": "activity"},
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._/-][a-z0-9]+)*$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "enabled": {"type": "boolean"},
+    "priority": {"type": "integer"},
+    "display_name": {"$ref": "#/$defs/localizedText"},
+    "description": {"$ref": "#/$defs/localizedText"},
+    "aliases": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "members": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tool_ids": {"$ref": "#/$defs/idList"},
+        "tool_tags": {"$ref": "#/$defs/idList"},
+        "service_ids": {"$ref": "#/$defs/idList"},
+        "skills": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "required": {"$ref": "#/$defs/idList"},
+            "optional": {"$ref": "#/$defs/idList"},
+            "safety": {"$ref": "#/$defs/idList"}
+          }
+        }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_candidate_tools", "max_attached_tools"],
+      "properties": {
+        "explicit_intent_required": {"type": "boolean"},
+        "schema_policy": {"enum": ["progressive"]},
+        "max_candidate_tools": {"type": "integer", "minimum": 1, "maximum": 20},
+        "max_attached_tools": {"type": "integer", "minimum": 1, "maximum": 8}
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default_action_class": {"type": "string"},
+        "minimum": {"enum": ["inherit", "auto", "confirm", "deny"]}
+      }
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mentionable": {"type": "boolean"},
+        "pinnable": {"type": "boolean"},
+        "default_pinned": {"type": "boolean"},
+        "widget": {"type": "string"}
+      }
+    },
+    "metadata": {"type": "object", "additionalProperties": false},
+    "config": {"type": "object", "additionalProperties": false},
+    "capabilities": {"type": "object", "additionalProperties": false},
+    "marketplace": {"type": "object", "additionalProperties": false},
+    "signing": {"type": "object", "additionalProperties": false}
+  },
+  "$defs": {
+    "localizedText": {
+      "oneOf": [
+        {"type": "string"},
+        {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"type": "string", "minLength": 1}
+        }
+      ]
+    },
+    "idList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}

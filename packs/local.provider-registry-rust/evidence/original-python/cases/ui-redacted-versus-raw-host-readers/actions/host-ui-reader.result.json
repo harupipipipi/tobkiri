@@ -1,0 +1,1 @@
+{"revision":1,"providers":[{"provider_instance_id":"connection/work","display_name":"Work connection","enabled":true,"credential_status":"configured","health_status":"verified","reachability":"available","observed_at":1700000000,"adapter_id":"openai-compatible","catalog_provider_id":"vendor"}]}

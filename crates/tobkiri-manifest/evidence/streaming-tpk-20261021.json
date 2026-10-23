@@ -1,0 +1,45 @@
+{
+  "schema": "tobkiri.focused-validation/v1",
+  "date": "2026-10-21",
+  "scope": "Single-pass TPK snapshot with original payloads, bounded framing and shared canonical writer; no full input or reconstructed archive Vec. Source accounting only; this is not a measured RSS or global source-memory lease proof.",
+  "record": {
+    "check": "streaming-tpk-manifest-corrected",
+    "command": [
+      "cargo",
+      "+1.94.0",
+      "test",
+      "--offline",
+      "--locked",
+      "-j",
+      "1",
+      "-p",
+      "tobkiri-manifest"
+    ],
+    "exit": 0,
+    "seconds": 6.197,
+    "source_unchanged": true,
+    "source_head": "40b79407cd7e71d5d362aa75d05eba65e77f5f66",
+    "source_diff_sha256": "7ba3bfdbbd3bfc8cb4a9b12d42382816236ef121ccf843eefa9b4144d5f9d05b",
+    "source_files": {
+      "crates/tobkiri-core/src/lib.rs": "4c1f108dde25a6b355b314d39c8c6202fd55c6ee88f956cf0be83de064db210c",
+      "crates/tobkiri-manifest/src/package.rs": "d0418fc77eafa47c09bac88db2f405340db1d772c9892ec8279527f7f7b94b43",
+      "tobkiri_runtime/generated/architecture/architecture_inventory.json": "59729554a5d2a2ebc2cf2b06ebf164d6aaaf51f979bdb6fb3220e9748506f19c",
+      "crates/tobkiri-core/src/process_authorization.rs": "1ba20c2a9d0c909944e824a6897bc46bf5d3f0ca03a06dacd74223029db1e73e",
+      "crates/tobkiri-core/src/process_authorization_tests.rs": "7a353acf68c4cf6a9dbaaaca00517761a57f7b3a5f3b46b5abdb7c2cbf3fe703"
+    },
+    "log_sha256": "bedd2f1f9dae4e07cb8ddb4111177678ced5f14936915c6a7797d96acb3fc972",
+    "tests": {
+      "unit": 13,
+      "contracts": 17,
+      "core_error_provenance": 6,
+      "directory_bounds": 4,
+      "shape_expansion": 7,
+      "failed": 0
+    }
+  },
+  "limitations": [
+    "512MiB package envelope is unchanged.",
+    "Existing tar internal extension-record allocations remain bounded by input, not a new global byte lease.",
+    "No component-limit change or five-Pack admission claim."
+  ]
+}

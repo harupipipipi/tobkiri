@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Mapping
+
+from tobkiri_protocol.conversation_lifecycle import task_gap_prompt
 
 try:
     from zoneinfo import ZoneInfo
@@ -123,3 +125,18 @@ def _utc_offset(value: datetime) -> str:
     if len(raw) == 5:
         return raw[:3] + ":" + raw[3:]
     return raw or "+00:00"
+
+
+def add_task_gap_context_message(
+    messages: list[dict[str, Any]], task_gap: Mapping[str, Any] | None,
+) -> str:
+    """Insert runtime gap metadata as system context without editing user content."""
+    if task_gap is None:
+        return ""
+    prompt = task_gap_prompt(task_gap)
+    insert_at = next(
+        (index for index, message in enumerate(messages)
+         if message.get("role") != "system"), len(messages),
+    )
+    messages.insert(insert_at, {"role": "system", "content": prompt})
+    return prompt

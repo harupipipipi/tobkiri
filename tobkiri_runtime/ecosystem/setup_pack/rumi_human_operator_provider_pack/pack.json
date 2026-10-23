@@ -1,0 +1,18 @@
+{
+  "pack_id": "rumi_human_operator_provider_pack",
+  "display_name": "Rumi Human Operator Provider Pack",
+  "description": "Local approval-aware human handoff intent provider.",
+  "target_pack_id": "rumi_human_operator_provider_pack",
+  "version": "1.0.0",
+  "recommended": true,
+  "risk_level": "medium",
+  "supports_all_ok": false,
+  "depends_on": ["rumi_ai_gateway_pack"],
+  "required_permissions": ["ai.provider.human_handoff"],
+  "conflicts_with": [],
+  "compatibility": {"python": ">=3.10", "platforms": ["macos", "linux", "windows"]},
+  "marketplace": {"id": "rumi.human_operator_provider", "registry": "bundled", "publisher": "rumi-ai", "status": "verified", "category": "ai-runtime", "channel": "experimental"},
+  "signing": {"mode": "repository_reviewed", "verified": true},
+  "security_notes": ["Emits intents only.", "Cannot self-approve, grant authority, copy context, or write conversations."]
+}
+

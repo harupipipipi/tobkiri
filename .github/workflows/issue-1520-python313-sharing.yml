@@ -1,0 +1,90 @@
+name: Issue 1520 original five-Pack source sharing
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-python313-sharing.yml'
+      - 'tools/python313-producer/verify_original_components.py'
+      - 'tools/quality/test_python313_sharing.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  original-graph-sharing:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.original-sharing-target
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
+      # This exact producer source head is independent of this consumer change.
+      PRODUCER_RUN: '39956025119'
+      PRODUCER_HEAD: ae7f83080a36e823ac330342584210243dc38050
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - name: Check artifact provenance and source-sharing boundaries
+        run: |
+          python3 -B tools/quality/test_python313_sharing.py
+          python3 -B tools/component-unbundle/test_measure.py
+          python3 -B tools/component-unbundle/test_materialize.py
+      - name: Build the existing bounded component inspection worker
+        run: cargo build --locked --manifest-path tools/component-unbundle/Cargo.toml
+      - name: Await the exact recorded original-component producer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" --jq .head_sha)" = "$PRODUCER_HEAD"
+          timeout 35m gh run watch "$PRODUCER_RUN" --exit-status --interval 30
+      - uses: actions/download-artifact@v4
+        with:
+          name: python313-original-components
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PRODUCER_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/original-components
+      - name: Bind every restored component to its original source and producer
+        run: >-
+          python3 -B tools/python313-producer/verify_original_components.py
+          --root "$RUNNER_TEMP/original-components"
+          > "$RUNNER_TEMP/original-components-verification.json"
+      - name: Restore the two authenticated original bridge and caller artifacts
+        run: >-
+          python3 -B scripts/wasm/stage_preserved_gateway_tool_caller.py
+          --output "$RUNNER_TEMP/original-two"
+      - name: Measure all five actual components against the original catalog limit
+        run: |
+          python3 -B tools/component-unbundle/measure.py \
+            --worker "$CARGO_TARGET_DIR/debug/tobkiri-component-unbundle" \
+            "$RUNNER_TEMP/original-components/usage-cost/work/component.wasm" \
+            "$RUNNER_TEMP/original-components/stream-normalizer/work/component.wasm" \
+            "$RUNNER_TEMP/original-two/graph/bridge/component.wasm" \
+            "$RUNNER_TEMP/original-two/graph/caller/component.wasm" \
+            "$RUNNER_TEMP/original-components/finalizer/work/component.wasm" \
+            > "$RUNNER_TEMP/original-five-sharing.json"
+          python3 -B - "$RUNNER_TEMP/original-five-sharing.json" <<'PY'
+          import json, sys
+          from pathlib import Path
+          result = json.loads(Path(sys.argv[1]).read_bytes())
+          keys = ('source_bytes', 'transformed_closure_bytes',
+                  'current_catalog_input_limit', 'within_current_catalog_input_limit')
+          print(json.dumps({key: result[key] for key in keys}))
+          PY
+      - name: Retain measurement evidence without binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-five-sharing-evidence
+          path: |
+            ${{ runner.temp }}/original-components-verification.json
+            ${{ runner.temp }}/original-five-sharing.json
+          if-no-files-found: warn

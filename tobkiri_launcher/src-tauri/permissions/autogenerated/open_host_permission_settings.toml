@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-open-host-permission-settings"
+description = "Enables the open_host_permission_settings command without any pre-configured scope."
+commands.allow = ["open_host_permission_settings"]
+
+[[permission]]
+identifier = "deny-open-host-permission-settings"
+description = "Denies the open_host_permission_settings command without any pre-configured scope."
+commands.deny = ["open_host_permission_settings"]

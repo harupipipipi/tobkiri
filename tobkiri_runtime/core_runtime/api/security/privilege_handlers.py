@@ -1,11 +1,16 @@
 """Privilege ハンドラ Mixin"""
 from __future__ import annotations
 
-from .._helpers import _log_internal_error, _SAFE_ERROR_MSG
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ...host_privilege_manager import HostPrivilegeManager
 
 
 class PrivilegeHandlersMixin:
     """ホスト特権操作のハンドラ"""
+
+    host_privilege_manager: HostPrivilegeManager | None
 
     def _get_privileges(self) -> list:
         if not self.host_privilege_manager:

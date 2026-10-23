@@ -19,6 +19,7 @@ if _DEFAULTSPACK_ROOT not in sys.path:
     sys.path.insert(0, _DEFAULTSPACK_ROOT)
 
 from domain.agent.self_improvement_runtime import MIMO_ROLE_MAP, create_mimo_profile  # noqa: E402
+from domain.ai_client.api_key_store import read_provider_api_key  # noqa: E402
 from domain.ai_client.providers.xiaomi_mimo_token_plan_provider import (  # noqa: E402
     XiaomiMimoTokenPlanSgpProvider,
 )
@@ -108,6 +109,13 @@ DEFAULT_MIMO_VISION_MODEL = MIMO_ROLE_MAP["vision"]
 
 def _adapt_tools() -> list[dict[str, Any]]:
     return [adapt_tool_definition(t) for t in TOOL_DEFINITIONS]
+
+
+def _configured_mimo_provider() -> XiaomiMimoTokenPlanSgpProvider:
+    """Build the MiMo provider with a credential supplied by the caller."""
+
+    api_key = read_provider_api_key("xiaomi-token-plan-sgp", "legacy") or ""
+    return XiaomiMimoTokenPlanSgpProvider(api_key=api_key)
 
 
 def _normalize_args(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -234,7 +242,7 @@ def run_live_improvement(
     runtime = create_mimo_profile(workspace_root=workspace_root, state_path=state_path)
     runtime.bootstrap()
 
-    provider = XiaomiMimoTokenPlanSgpProvider()
+    provider = _configured_mimo_provider()
     if not provider._api_key:
         return {
             "success": False,
@@ -450,7 +458,7 @@ def run_vision_qa(
     """
     import base64
 
-    provider = XiaomiMimoTokenPlanSgpProvider()
+    provider = _configured_mimo_provider()
     if not provider._api_key:
         return {"success": False, "error": "MIMO_API_KEY not set"}
 

@@ -1,5 +1,4 @@
 import {
-  AlertTriangle,
   Bot,
   BookOpen,
   ChevronDown,
@@ -40,6 +39,7 @@ import {
   type SubagentTeamDecisionPreviewResponse,
 } from "../lib/api";
 import { cn } from "../lib/cn";
+import { ErrorNotice } from "../components/ErrorNotice";
 import {
   agentName,
   agentRoleKey,
@@ -215,9 +215,12 @@ function TreePreview({
         </button>
       </div>
       {treeError && treeState.source === "fallback" && (
-        <p className="mb-1.5 truncate rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-1 text-[10px] text-amber-100">
-          {treeError}
-        </p>
+        <ErrorNotice
+          className="mb-1.5 px-1.5 py-1 text-[10px]"
+          copyLabel="サブエージェントツリーエラーをコピー"
+          message={treeError}
+          severity="warning"
+        />
       )}
       <div className="space-y-0.5" data-testid={`subagent-${mode}-tree`}>
         {items.map((item) => (
@@ -263,9 +266,17 @@ function TreePreview({
             <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded bg-zinc-900/55 px-2 py-1.5 font-mono text-[10px] leading-relaxed text-zinc-300">
               {preview.content}
             </pre>
+          ) : preview.error ? (
+            <ErrorNotice
+              announce={false}
+              className="px-2 py-1.5 text-[10px]"
+              copyLabel="Copy channel preview error"
+              errorIcon="channel-preview"
+              message={preview.error}
+            />
           ) : (
             <p className="rounded bg-zinc-900/55 px-2 py-1.5 text-[10px] text-zinc-500">
-              {preview.error || "No preview content"}
+              No preview content
             </p>
           )}
         </div>
@@ -573,11 +584,27 @@ function CreatorSettingsCard({
           Agent lifecycle: {settings.can_manage_agents ?? settings.canManageAgents ?? true ? "enabled" : "restricted"}
         </p>
       </div>
-      {error && <p className="mt-2 line-clamp-2 text-[10px] text-zinc-600">{error}</p>}
+      {error && (
+        <ErrorNotice
+          className="mt-2 px-1.5 py-1 text-[10px]"
+          copyLabel="Creator 設定エラーをコピー"
+          message={error}
+          severity="warning"
+        />
+      )}
       {testResult && (
-        <p className="mt-2 line-clamp-3 rounded border border-zinc-800 bg-black/20 px-2 py-1.5 text-[10px] text-zinc-400">
-          {testResult.message || testResult.summary || testResult.status || (testResult.ok ? "Creator test passed." : "Creator test returned.")}
-        </p>
+        testResult.ok === false ? (
+          <ErrorNotice
+            className="mt-2 px-2 py-1.5 text-[10px]"
+            copyLabel="Creator テストエラーをコピー"
+            errorIcon="creator-test"
+            message={testResult.message || testResult.summary || testResult.status || "Creator test failed."}
+          />
+        ) : (
+          <p className="mt-2 line-clamp-3 rounded border border-zinc-800 bg-black/20 px-2 py-1.5 text-[10px] text-zinc-400">
+            {testResult.message || testResult.summary || testResult.status || "Creator test passed."}
+          </p>
+        )
       )}
       <button
         type="button"
@@ -688,7 +715,14 @@ function ApprovalCard({
       <p className="line-clamp-3 text-[11px] leading-relaxed text-zinc-300">
         {task?.description || "PM and Creator review channel context before subagents proceed with larger fanout or /goal execution."}
       </p>
-      {error && <p className="mt-2 line-clamp-2 text-[10px] text-amber-100/70">{error}</p>}
+      {error && (
+        <ErrorNotice
+          className="mt-2 px-1.5 py-1 text-[10px]"
+          copyLabel="決定プレビューエラーをコピー"
+          message={error}
+          severity="warning"
+        />
+      )}
       <div
         role="note"
         data-testid="subagent-approval-preview-readonly"
@@ -1183,10 +1217,12 @@ const decisionStatus: DecisionStatus = (() => {
       </div>
 
       {error && (
-        <div className="m-2 flex items-start gap-2 rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-100">
-          <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-          <span className="min-w-0 break-words">{error}</span>
-        </div>
+        <ErrorNotice
+          className="m-2 px-2 py-1.5 text-[11px]"
+          copyLabel="サブエージェントワークスペースエラーをコピー"
+          message={error}
+          severity="warning"
+        />
       )}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">

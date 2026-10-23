@@ -1,0 +1,10 @@
+package local:gateway-tool-caller-development-replay;
+let provider = new local:provider { ... };
+let caller = new local:caller {
+  "local:ai-tool-bridge-ordered-python/bridge@2.0.0": provider["local:ai-tool-bridge-ordered-python/bridge@2.0.0"],
+  ...
+};
+export caller["local:ai-gateway-tool-caller-python/caller@1.0.0"];
+export provider["local:ai-tool-bridge-ordered-python/bridge@2.0.0"];
+export provider["tobkiri:core/lifecycle@1.0.0"] as "provider-lifecycle";
+export caller["tobkiri:core/lifecycle@1.0.0"] as "caller-lifecycle";

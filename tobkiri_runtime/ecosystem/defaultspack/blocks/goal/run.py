@@ -18,18 +18,12 @@ runs model-only Worker/Evaluator turns; it does not execute tools directly.
 from __future__ import annotations
 
 import json
-import os
 import re
-import sys
 import time
 from typing import Any
 
-# blocks/_common is colocated with this package; the parent imports here mirror
-# the convention used by every other block module in the pack.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-
-from blocks._common import error, ok  # noqa: E402  (import after sys.path tweak)
-from domain.ai_client.model_call import call_model  # noqa: E402
+from blocks._common import error, ok
+from domain.ai_client.model_call import call_model
 
 DEFAULT_MAX_ITERATIONS = 5
 HARD_MAX_ITERATIONS = 20

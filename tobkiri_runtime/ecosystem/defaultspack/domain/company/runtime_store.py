@@ -34,6 +34,15 @@ def default_runtime_db_path() -> Path:
         path = Path(json_store)
         directory = path.parent if path.suffix == ".json" else path
         return directory / "company_runtime.db"
+    user_data = os.environ.get("RUMI_USER_DATA", "").strip()
+    if user_data:
+        return (
+            Path(user_data).expanduser()
+            / "defaultspack"
+            / "shared"
+            / "companies"
+            / "company_runtime.db"
+        )
     return Path(__file__).resolve().parents[2] / "user_data" / "shared" / "companies" / "company_runtime.db"
 
 

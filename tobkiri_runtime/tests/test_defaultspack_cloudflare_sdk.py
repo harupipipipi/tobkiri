@@ -12,7 +12,7 @@ sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
 
 def test_cloudflare_sdk_adapter_reports_missing_sdk(monkeypatch):
-    from core_runtime.cloudflare import sdk_client
+    from ecosystem.rumi_provider_registry_pack.runtime import cloudflare_sdk as sdk_client
 
     monkeypatch.setattr(sdk_client.importlib.util, "find_spec", lambda _name: None)
 
@@ -48,24 +48,33 @@ def test_cloudflare_oauth_status_includes_sdk_missing(monkeypatch):
     assert status["provisioning"]["constraints"]["wrangler_diagnostics_require_explicit_command_or_local_install"] is True
     assert (
         status["provisioning"]["environment"]["deployment"]["sandbox_bridge_scaffold"]
-        == "tobkiri_runtime/ecosystem/defaultspack/cloudflare/sandbox_bridge"
+        == "connector://cloudflare/sandbox_bridge"
     )
     assert (
         status["provisioning"]["environment"]["deployment"]["pc_tool_bridge_scaffold"]
-        == "tobkiri_runtime/ecosystem/defaultspack/cloudflare/pc_tool_bridge"
+        == "connector://cloudflare/pc_tool_bridge"
     )
 
 
 def test_cloudflare_oauth_status_can_run_active_diagnostics(monkeypatch):
-    from core_runtime.cloudflare import diagnostics, sdk_client
+    from core_runtime.cloudflare import diagnostics
+    from core_runtime.cloudflare import sdk_client
     from domain.ai_client.oauth_store import provider_oauth_status
 
     calls: list[bool] = []
 
     monkeypatch.setattr(sdk_client.importlib.util, "find_spec", lambda _name: None)
 
-    def fake_environment_status(*, active=False, command_runner=None, api_fetcher=None, api_token=None, env=None):
-        del command_runner, api_fetcher, api_token, env
+    def fake_environment_status(
+        *,
+        active=False,
+        command_runner=None,
+        api_fetcher=None,
+        api_token=None,
+        env=None,
+        connector_root=None,
+    ):
+        del command_runner, api_fetcher, api_token, env, connector_root
         calls.append(bool(active))
         return {
             "schema": "rumi.cloudflare.environment.v1",
@@ -94,7 +103,8 @@ def test_cloudflare_oauth_status_can_run_active_diagnostics(monkeypatch):
 
 
 def test_cloudflare_oauth_active_diagnostics_passes_imported_token(monkeypatch):
-    from core_runtime.cloudflare import diagnostics, sdk_client
+    from core_runtime.cloudflare import diagnostics
+    from core_runtime.cloudflare import sdk_client
     from domain.ai_client import oauth_store
 
     captured: dict[str, object] = {}
@@ -102,10 +112,19 @@ def test_cloudflare_oauth_active_diagnostics_passes_imported_token(monkeypatch):
     monkeypatch.setattr(sdk_client.importlib.util, "find_spec", lambda _name: None)
     monkeypatch.setattr(oauth_store, "get_provider_access_token", lambda provider_id, *, pack_root=None: "cloudflare-secret-token")
 
-    def fake_environment_status(*, active=False, command_runner=None, api_fetcher=None, api_token=None, env=None):
+    def fake_environment_status(
+        *,
+        active=False,
+        command_runner=None,
+        api_fetcher=None,
+        api_token=None,
+        env=None,
+        connector_root=None,
+    ):
         del command_runner, api_fetcher, env
         captured["active"] = active
         captured["api_token"] = api_token
+        captured["connector_root"] = connector_root
         return {
             "schema": "rumi.cloudflare.environment.v1",
             "active": bool(active),
@@ -125,33 +144,42 @@ def test_cloudflare_oauth_active_diagnostics_passes_imported_token(monkeypatch):
 
     status = oauth_store.provider_oauth_status("cloudflare", active_diagnostics=True)
 
-    assert captured == {"active": True, "api_token": "cloudflare-secret-token"}
+    assert captured == {
+        "active": True,
+        "api_token": "cloudflare-secret-token",
+        "connector_root": DEFAULTSPACK_ROOT,
+    }
     assert "cloudflare-secret-token" not in str(status)
 
 
-def test_cloudflare_environment_prefers_local_wrangler_over_downloadable_npx(monkeypatch):
-    from core_runtime.cloudflare import diagnostics
+def test_cloudflare_environment_uses_caller_captured_local_wrangler(tmp_path, monkeypatch):
+    from ecosystem.rumi_provider_registry_pack.runtime import (
+        cloudflare_diagnostics as diagnostics,
+    )
 
-    local_bin = "/repo/tobkiri_runtime/ecosystem/defaultspack/cloudflare/pc_tool_bridge/node_modules/.bin/wrangler"
+    local_bin = (
+        tmp_path
+        / "cloudflare"
+        / "pc_tool_bridge"
+        / "node_modules"
+        / ".bin"
+        / "wrangler"
+    )
+    local_bin.parent.mkdir(parents=True)
+    local_bin.write_text("#!/bin/sh\n")
+    local_bin.chmod(0o755)
 
     monkeypatch.setattr(diagnostics.shutil, "which", lambda name: "/usr/local/bin/npx" if name == "npx" else None)
-    monkeypatch.setattr(
-        diagnostics.os.path,
-        "abspath",
-        lambda path: "/repo/tobkiri_runtime" if str(path).endswith("../..") else str(path),
-    )
-    monkeypatch.setattr(diagnostics.os.path, "isfile", lambda path: path == local_bin)
-    monkeypatch.setattr(diagnostics.os, "access", lambda path, _mode: path == local_bin)
 
-    assert diagnostics._wrangler_command({}) == [local_bin]
+    assert diagnostics._wrangler_command({}, connector_root=tmp_path) == [str(local_bin)]
 
 
 def test_cloudflare_environment_does_not_fall_back_to_downloadable_npx_wrangler(monkeypatch):
-    from core_runtime.cloudflare import diagnostics
+    from ecosystem.rumi_provider_registry_pack.runtime import (
+        cloudflare_diagnostics as diagnostics,
+    )
 
     monkeypatch.setattr(diagnostics.shutil, "which", lambda name: "/usr/local/bin/npx" if name == "npx" else None)
-    monkeypatch.setattr(diagnostics.os.path, "isfile", lambda _path: False)
-
     assert diagnostics._wrangler_command({}) == []
 
     status = diagnostics.cloudflare_environment_status(
@@ -168,7 +196,9 @@ def test_cloudflare_environment_does_not_fall_back_to_downloadable_npx_wrangler(
 
 
 def test_cloudflare_environment_active_diagnostics_reports_paid_plan_and_tunnel_blockers(monkeypatch):
-    from core_runtime.cloudflare import diagnostics
+    from ecosystem.rumi_provider_registry_pack.runtime import (
+        cloudflare_diagnostics as diagnostics,
+    )
 
     monkeypatch.setattr(
         diagnostics.shutil,
@@ -219,8 +249,8 @@ def test_cloudflare_environment_active_diagnostics_reports_paid_plan_and_tunnel_
     assert status["checks"]["pc_tool_bridge_env"]["status"] == "not_configured"
     assert status["checks"]["docker"]["status"] == "daemon_unavailable"
     assert status["deployment"]["sandbox_bridge_url_env"] == "RUMI_CLOUDFLARE_SANDBOX_BRIDGE_URL"
-    assert status["deployment"]["pc_tunnel_scaffold"] == "tobkiri_runtime/ecosystem/defaultspack/cloudflare/pc_tunnel"
-    assert status["deployment"]["pc_tool_bridge_scaffold"] == "tobkiri_runtime/ecosystem/defaultspack/cloudflare/pc_tool_bridge"
+    assert status["deployment"]["pc_tunnel_scaffold"] == "connector://cloudflare/pc_tunnel"
+    assert status["deployment"]["pc_tool_bridge_scaffold"] == "connector://cloudflare/pc_tool_bridge"
     assert status["constraints"]["quick_tunnels_do_not_support_sse"] is True
     assert status["constraints"]["trycloudflare_urls_are_not_stable_pc_tunnel_hostnames"] is True
     assert status["constraints"]["all_tools_cloudflare_native_supported"] is False
@@ -238,7 +268,9 @@ def test_cloudflare_environment_active_diagnostics_reports_paid_plan_and_tunnel_
 
 
 def test_cloudflare_environment_reports_inactive_wrangler_managed_named_tunnel(monkeypatch):
-    from core_runtime.cloudflare import diagnostics
+    from ecosystem.rumi_provider_registry_pack.runtime import (
+        cloudflare_diagnostics as diagnostics,
+    )
 
     monkeypatch.setattr(
         diagnostics.shutil,
@@ -299,7 +331,9 @@ def test_cloudflare_environment_reports_inactive_wrangler_managed_named_tunnel(m
 
 
 def test_cloudflare_environment_reports_missing_cloudflare_zone(monkeypatch):
-    from core_runtime.cloudflare import diagnostics
+    from ecosystem.rumi_provider_registry_pack.runtime import (
+        cloudflare_diagnostics as diagnostics,
+    )
 
     monkeypatch.setattr(diagnostics.shutil, "which", lambda _name: None)
 
@@ -325,7 +359,9 @@ def test_cloudflare_environment_reports_missing_cloudflare_zone(monkeypatch):
 
 
 def test_cloudflare_environment_rejects_pages_dev_as_stable_pc_tunnel(monkeypatch):
-    from core_runtime.cloudflare import diagnostics
+    from ecosystem.rumi_provider_registry_pack.runtime import (
+        cloudflare_diagnostics as diagnostics,
+    )
 
     monkeypatch.setattr(diagnostics.shutil, "which", lambda _name: None)
 
@@ -347,7 +383,9 @@ def test_cloudflare_environment_rejects_pages_dev_as_stable_pc_tunnel(monkeypatc
 
 
 def test_cloudflare_environment_rejects_quick_tunnel_and_private_hosts(monkeypatch):
-    from core_runtime.cloudflare import diagnostics
+    from ecosystem.rumi_provider_registry_pack.runtime import (
+        cloudflare_diagnostics as diagnostics,
+    )
 
     monkeypatch.setattr(diagnostics.shutil, "which", lambda _name: None)
 
@@ -382,7 +420,9 @@ def test_cloudflare_environment_rejects_quick_tunnel_and_private_hosts(monkeypat
 
 
 def test_cloudflare_environment_accepts_configured_pc_tool_bridge_env(monkeypatch):
-    from core_runtime.cloudflare import diagnostics
+    from ecosystem.rumi_provider_registry_pack.runtime import (
+        cloudflare_diagnostics as diagnostics,
+    )
 
     monkeypatch.setattr(
         diagnostics.shutil,
@@ -450,7 +490,9 @@ def test_cloudflare_environment_accepts_configured_pc_tool_bridge_env(monkeypatc
 
 
 def test_cloudflare_environment_rejects_invalid_pc_tool_bridge_env(monkeypatch):
-    from core_runtime.cloudflare import diagnostics
+    from ecosystem.rumi_provider_registry_pack.runtime import (
+        cloudflare_diagnostics as diagnostics,
+    )
 
     monkeypatch.setattr(diagnostics.shutil, "which", lambda _name: None)
 
@@ -490,7 +532,7 @@ def test_cloudflare_environment_rejects_invalid_pc_tool_bridge_env(monkeypatch):
 
 
 def test_cloudflare_sdk_adapter_routes_pages_operations_through_sdk(monkeypatch):
-    from core_runtime.cloudflare import sdk_client
+    from ecosystem.rumi_provider_registry_pack.runtime import cloudflare_sdk as sdk_client
 
     calls: list[tuple[str, dict[str, object]]] = []
 
@@ -606,7 +648,7 @@ def test_cloudflare_sdk_adapter_routes_pages_operations_through_sdk(monkeypatch)
 
 
 def test_cloudflare_sdk_adapter_redacts_token_from_errors(monkeypatch):
-    from core_runtime.cloudflare import sdk_client
+    from ecosystem.rumi_provider_registry_pack.runtime import cloudflare_sdk as sdk_client
 
     class Projects:
         def list(self, **_kwargs: object) -> list[object]:
@@ -632,7 +674,7 @@ def test_cloudflare_sdk_adapter_redacts_token_from_errors(monkeypatch):
 
 
 def test_cloudflare_sdk_adapter_redacts_token_from_rest_error(monkeypatch):
-    from core_runtime.cloudflare import sdk_client
+    from ecosystem.rumi_provider_registry_pack.runtime import cloudflare_sdk as sdk_client
 
     monkeypatch.setattr(sdk_client.importlib.util, "find_spec", lambda _name: None)
 
@@ -662,7 +704,7 @@ def test_cloudflare_sdk_adapter_redacts_token_from_rest_error(monkeypatch):
 
 
 def test_cloudflare_sdk_adapter_uses_rest_fallback_when_sdk_missing(monkeypatch):
-    from core_runtime.cloudflare import sdk_client
+    from ecosystem.rumi_provider_registry_pack.runtime import cloudflare_sdk as sdk_client
 
     calls: list[tuple[str, str, dict[str, object] | None, dict[str, str]]] = []
     monkeypatch.setattr(sdk_client.importlib.util, "find_spec", lambda _name: None)
@@ -687,7 +729,7 @@ def test_cloudflare_sdk_adapter_uses_rest_fallback_when_sdk_missing(monkeypatch)
 
 
 def test_cloudflare_sdk_adapter_routes_runner_resources_through_sdk(monkeypatch):
-    from core_runtime.cloudflare import sdk_client
+    from ecosystem.rumi_provider_registry_pack.runtime import cloudflare_sdk as sdk_client
 
     calls: list[tuple[str, dict[str, object]]] = []
 

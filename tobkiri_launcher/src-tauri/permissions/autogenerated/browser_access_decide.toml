@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-browser-access-decide"
+description = "Enables the browser_access_decide command without any pre-configured scope."
+commands.allow = ["browser_access_decide"]
+
+[[permission]]
+identifier = "deny-browser-access-decide"
+description = "Denies the browser_access_decide command without any pre-configured scope."
+commands.deny = ["browser_access_decide"]

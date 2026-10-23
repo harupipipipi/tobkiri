@@ -14,7 +14,7 @@
     "audio_transcripts": "handoff_to_rumi_multimodal_media_pack",
     "device_actions": "handoff_to_rumi_computer_control_pack"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Voice Mobile is a declarative consent, intent, and handoff pack; defaultspack promotion is blocked until transport owners prove consent capture, notification delivery, transcript handling, and action receipts outside this pack.",
     "criteria": [

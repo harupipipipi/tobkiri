@@ -1,0 +1,235 @@
+{
+  "schema": "io.tobkiri.provider-model-access-core-wasip2-checkpoint.v1",
+  "date": "2026-10-22",
+  "scope": "Independent pure provider-model-access compiler slice: captured original Python source observations replayed through one actual Rust/Wasm pack via Core. This checkpoint does not claim full issue acceptance.",
+  "evidence_root_label": "handoff-42dfc6e0-20261021",
+  "source_oracle": {
+    "receipt": "original-python-provider-model-access-02/observations.json",
+    "receipt_sha256": "b9102e0d0bd65238e5e3ec55540abc0a1d31c3cdc454aaa99d0b818da8377e7e",
+    "receipt_bytes": 856735,
+    "schema": "tobkiri.issue1520.provider-model-access-observations.v1",
+    "producer": "direct-canonical-python-source-call",
+    "runtime": {
+      "implementation": "CPython",
+      "version": "3.13.9",
+      "unicode_version": "15.1.0",
+      "int_max_str_digits": 4300,
+      "recursion_limit": 1000,
+      "executable_sha256": "54bef9d1f928417dfb1841a6f0567ddd4212c1526ef82258a527b7e69771aa20"
+    },
+    "input_fixture": {
+      "repo_path": "tests/fixtures/issue1520/provider-model-access/provider-model-access.cases.v1.json",
+      "bytes": 38033,
+      "sha256": "ddbc327e766c8255602b3568a7886ac7dc04a2c0ccbc813896737129d4e17db9"
+    },
+    "counts": {
+      "observations": 80,
+      "finite": 79,
+      "source_only_nonfinite": 1,
+      "finite_operations": {
+        "normalize_model_access": 9,
+        "effective_model_access": 5,
+        "model_is_allowed": 3,
+        "compile_connection_parameters": 15,
+        "is_official_openrouter": 20,
+        "normalize_native_filters": 18,
+        "discovery_url": 2,
+        "apply_native_routing": 7
+      }
+    },
+    "producer_source_capture": {
+      "path": "tests/fixtures/issue1520/provider-model-access/generate_provider_model_access.py",
+      "bytes": 24091,
+      "sha256": "6d068753345800707cd2f10eb6191b7d603e1ee969185cb6ce445ce34c2e2f49",
+      "capture_matches_current_main_copy": true
+    },
+    "source_closure": {
+      "count": 7,
+      "all_recorded_bytes_and_sha256_match_current_main_copy": true,
+      "files": [
+        {"path":"tobkiri_protocol/__init__.py","bytes":3138,"sha256":"fe5cc79898dfbc1154f11f01a498e32eb7566dfe527769069acd4dc88b63b424"},
+        {"path":"tobkiri_protocol/canonical.py","bytes":5465,"sha256":"9f068ab737e2c9c152348601d604c6c81a060edf207c483849a90ca97ccd434e"},
+        {"path":"tobkiri_protocol/errors.py","bytes":1047,"sha256":"2292de2b3fd27e3fe644979d7aee20a40e4b77b2366dd4c5ac3ad3a449acbddf"},
+        {"path":"tobkiri_protocol/ids.py","bytes":2968,"sha256":"833ff21e644c69e6693244d81331e5afc8f6ed5e15f8a1cdda866274c05eb15c"},
+        {"path":"tobkiri_protocol/provider_compiler/__init__.py","bytes":295,"sha256":"642a141e6138595d80fec764c2ab4e3c7079efb5447e26f399951c04ed61eeb6"},
+        {"path":"tobkiri_protocol/provider_compiler/model_access.py","bytes":3706,"sha256":"06eae9e3eebebb328e64084688609d25d8e0f9042d4ede07918aab88d1eb5900"},
+        {"path":"tobkiri_protocol/provider_compiler/native_filters.py","bytes":7889,"sha256":"7738868e45ca6b334d3b95d541a2f4f0ddfebd98ada7eff82cc653f481446f03"}
+      ]
+    }
+  },
+  "wasip2_component": {
+    "stage_directory": "provider-model-access-wasip2-stage-01",
+    "build_receipt": "provider-model-access-wasip2-stage-01/build-receipt.json",
+    "build_receipt_sha256": "1dead806eaf13e74a8d07874c8db766309f42cc9cc59db81a2182a1adb4e7e71",
+    "build_receipt_schema": "tobkiri.component-build/2",
+    "build_command": ["cargo","+1.94.0","build","--offline","--locked","-j1","--release","--target","wasm32-wasip2","--manifest-path","packs/Cargo.toml","-p","tobkiri-pack-provider-model-access-rust"],
+    "build_exit": 0,
+    "rustc": "1.94.0",
+    "artifact": {
+      "path": "provider-model-access-wasip2-stage-01/tobkiri_pack_provider_model_access_rust.wasm",
+      "bytes": 359075,
+      "sha256": "b45271569510f42936d945d70ef30995e893e4e9568b1cd3986fee908e6b8322",
+      "same_bytes_in_core_actual_directory": true
+    },
+    "source_manifest": {
+      "file_count": 28,
+      "sha256": "0c9c109161dc1daf0f9d6425d49b1f59b52a8c27ad52e191832f489baf92b3db",
+      "all_recorded_bytes_and_sha256_match_current_main_copy": true,
+      "pack_source_identity": {
+        "head": "31fcf1af1e4ce8b1416f331d710518920f79b927",
+        "diff_sha256": "c390729762188430baca05a29db40373386f47e9b5d571d77068701591a855c7",
+        "source_unchanged": true
+      },
+      "selected_pack_pins": [
+        {"path":"packs/local.provider-model-access-rust/src/lib.rs","sha256":"65521d917a576a0fda79008b28afa53f728316ea7b5c2fa9dcf8477701b945d7"},
+        {"path":"packs/local.provider-model-access-rust/src/model_access.rs","sha256":"589b6c0bf978a8b65869b8bafe4d3d5039762271a9fa6832f44b15bf88c8a27a"},
+        {"path":"packs/local.provider-model-access-rust/src/native_filters.rs","sha256":"543f6362b816f9db68baef8d0c4358865e37f59ae5664d4acfef10b7df898b75"},
+        {"path":"packs/local.provider-model-access-rust/wit/pack.wit","sha256":"9120603744b7336734024e0877624858f670b76d48713dcd8f075f0bde0bccc9"},
+        {"path":"crates/tobkiri-wit/wit/core/core.wit","sha256":"f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb"},
+        {"path":"packs/ordered-python-compat/src/unicode15_1.json","sha256":"de90b159e3f054914ed532d02df8964988741fd2787c01959c9b1e4c2820fa55"}
+      ]
+    },
+    "activation": {"publisher_signature_verified":false,"production_activated":false}
+  },
+  "core_actual": {
+    "process_receipt": "provider-model-access-core-04.json",
+    "process_receipt_sha256": "a0d974207ed0f317fa23233401768081d7c4b6aaab1cc63a96307fde34ed11bc",
+    "process_log": "provider-model-access-core-04.log",
+    "process_log_sha256": "94b6b9c07c03896bc0f3f486d71114205d0a68df61d60d57e81327b0f7bb55fc",
+    "process_exit": 0,
+    "wall_seconds": 14.333,
+    "test_command": ["cargo","+1.94.0","test","--offline","--locked","-j1","-p","tobkiri-e2e","--test","provider_model_access","all_finite_source_observations_cross_actual_core","--","--ignored","--exact","--nocapture","--test-threads=1"],
+    "test_log_result": "1 passed; 0 failed; 0 ignored",
+    "actual_summary": "provider-model-access-core-04/summary.json",
+    "actual_summary_sha256": "6319174c953b73533f21a38ffd5c88429e793d88956e7ad16a99c7ca11c23e89",
+    "actual_summary_bytes": 1306804,
+    "actual_summary_schema": "tobkiri.provider-model-access-rust.actual-core-observations.v1",
+    "result": {
+      "all_80_source_rows_retained_in_order": true,
+      "finite_cases": 79,
+      "finite_core_calls_attempted": 79,
+      "finite_results_matched": 79,
+      "finite_unmatched": 0,
+      "all_exact_output_json_bytes_match": true,
+      "all_python_type_trees_match": true,
+      "all_mapping_key_orders_match": true,
+      "all_finite_outcomes_parse": true,
+      "source_success_outcomes": 32,
+      "source_failure_outcomes_preserved": 47,
+      "source_failure_exception_classes": {
+        "builtins.ValueError": 39,
+        "builtins.TypeError": 5,
+        "builtins.PermissionError": 1,
+        "builtins.AttributeError": 1,
+        "builtins.KeyError": 1
+      },
+      "all_finite_rows_have_one_user_dispatch_and_one_terminal": true,
+      "all_finite_user_terminals_succeeded": true,
+      "source_only_nonfinite": {
+        "count": 1,
+        "id": "normalize-native-nan-price-rejected",
+        "core_attempted": false,
+        "native_attempted": false,
+        "source_exception_class": "builtins.ValueError",
+        "classification": "source-only-nonfinite"
+      }
+    },
+    "runtime_info": {
+      "matched": true,
+      "actual_core_dispatch_observed": true,
+      "implementation": "rust",
+      "candidate": "local.provider-model-access-rust",
+      "source_owner": "tobkiri_protocol.provider_compiler",
+      "protocol": "ordered-finite-json-v2",
+      "promotion": "not-promoted"
+    },
+    "session": {
+      "close_awaited": true,
+      "close_succeeded": true,
+      "close_timed_out": false,
+      "audit_sidecar": "provider-model-access-core-04/session.audit.json",
+      "audit_bytes": 91615,
+      "audit_sha256": "feceff96afe67200ef19a73da08443c284a1c3d82842f9d0df9e3cb16501337b",
+      "all_observations_retained": true,
+      "evidence_write_failed": false
+    },
+    "runtime_profile": {
+      "id": "prof_provider_model_access_actual_core",
+      "pack_id": "local.provider-model-access-rust",
+      "shape": "local.provider-model-access-rust.compiler@1.0",
+      "interface": "local:provider-model-access-rust/compiler@1.0.0",
+      "one_pack_no_consumes": true,
+      "pack_hash": "sha256:81807c280c55eeb6b8d6aa81615ea4e8ffb1c4933b310322ad07071c847e07a2",
+      "limits": {
+        "component_input_bytes": 67108864,
+        "receipt_input_bytes": 16777216,
+        "case_sidecar_bytes": 16777216,
+        "core_outer_bytes": 4194304,
+        "guest_output_bytes": 4194304,
+        "per_call_timeout_seconds": 45,
+        "wasm_fuel_per_call": 2000000000,
+        "wasm_memory_mib": 128,
+        "network_origins": [],
+        "native": false,
+        "secrets": [],
+        "filesystem": [],
+        "host_io": [],
+        "audit_read": false,
+        "audit_append": false
+      }
+    },
+    "source_identity": {
+      "head": "31fcf1af1e4ce8b1416f331d710518920f79b927",
+      "diff_sha256": "92df47c55dba252abd693681e4a99b9006b7c2caad85780d2b1dc77acf3b9c93",
+      "test_source": {"path":"crates/tobkiri-e2e/tests/provider_model_access.rs","bytes":78874,"sha256":"dcb98c2800cb07cd0d9c2295e69c165d1668737c41a8b63ddfaa7f128641cb2b"},
+      "before_equals_after": true,
+      "source_unchanged": true
+    },
+    "core_host_sources_are_test_harness_pins_not_wasm_build_manifest": [
+      {"path":"crates/tobkiri-core/src/session.rs","bytes":76921,"sha256":"a10471c4abece03474f15cc3c678197d050bd51b4d50ea68ffb3d5c3dada6693"},
+      {"path":"crates/tobkiri-core/src/lib.rs","bytes":2459,"sha256":"daac36a035310197a9308efb90881bcfe7e6a647821e1d493af04cda842bb571"},
+      {"path":"crates/tobkiri-wasm/src/lib.rs","bytes":1299,"sha256":"3018d7079e3461f50a97393f05987e96dc1462a3b2f97b65e90835b3fd66fc06"},
+      {"path":"crates/tobkiri-e2e/tests/support/mod.rs","bytes":26685,"sha256":"2aed93ad16c2730afb9896c3468592ca2d4bd82654bf21bdcbafcfb52d027ad5"},
+      {"path":"crates/tobkiri-e2e/tests/provider_model_access.rs","bytes":78874,"sha256":"dcb98c2800cb07cd0d9c2295e69c165d1668737c41a8b63ddfaa7f128641cb2b"}
+    ],
+    "build_and_expectations": {"build_performed_inside_core_run":false,"python_reexecuted":false,"source_expectations_regenerated":false}
+  },
+  "independent_cross_checks": {
+    "native_oracle_run": {
+      "receipt": "provider-model-access-native-01.json",
+      "receipt_sha256": "87a9d02d336a6f49213415056a6f32bb4e69a2bc6ff1a0f3ce0c7adde436da26",
+      "summary": "provider-model-access-native-01/summary.json",
+      "summary_sha256": "f932e7120dd8ec773399c085d4c20e0c8671335405607ffb38227e1d49453709",
+      "exit": 0,
+      "finite_cases": 79,
+      "native_attempted_and_matched": 79,
+      "interpretation": "Separate native comparison; not added to the 79 Core result count."
+    },
+    "strict_checks": [
+      {"receipt":"provider-model-access-native-strict-02.json","sha256":"5339de7f612f5ffbc640e3ecd5820a433363bad71926ca08d8996bf257ac1755","exit":0,"command":"cargo +1.94.0 clippy --offline --locked -j1 --manifest-path packs/Cargo.toml -p tobkiri-pack-provider-model-access-rust --all-targets -- -D warnings"},
+      {"receipt":"provider-model-access-wasip2-strict-01.json","sha256":"3273f0c12db4fe5e5ff71883c1633514341860c2df2a911d4836e711fcadf57d","exit":0,"command":"cargo +1.94.0 clippy --offline --locked -j1 --manifest-path packs/Cargo.toml -p tobkiri-pack-provider-model-access-rust --target wasm32-wasip2 --lib -- -D warnings"},
+      {"receipt":"provider-model-access-wasip2-build-01.json","sha256":"314feb4a389dc67d6f4c72d382c6d426ae489baf62d4e7de5a3c9fdb660f35ab","exit":0,"command":"cargo +1.94.0 build --offline --locked -j1 --release --target wasm32-wasip2 --manifest-path packs/Cargo.toml -p tobkiri-pack-provider-model-access-rust"},
+      {"receipt":"workspace-strict-20261022-01.json","sha256":"246d1b9b9ba320e3af422e0376ee4e5c6345b3e83542c149a5aef958345cb1bf","exit":0,"command":"cargo +1.94.0 clippy --offline --locked -j1 --workspace --all-targets --no-deps -- -D warnings"}
+    ]
+  },
+  "claim_limits": {
+    "claim": "79 finite original-Python observations match exact output bytes, Python type trees, and mapping key order through one actual local Wasm pack invoked via Core; every finite call has one matched user grant dispatch and one succeeded terminal. The one NaN case remains source-only.",
+    "not_proven": {
+      "full_provider_or_gateway_application_parity": true,
+      "dependency_import_order_or_failure_timing": true,
+      "native_replay_in_core_run": true,
+      "authority_or_secret_or_network_behavior": true,
+      "production_activation_or_publisher_signature": true,
+      "Setup_GUI_Registry_acceptance": true,
+      "VM_retirement": true,
+      "full_issue_acceptance": true
+    },
+    "security_and_product_lifecycle": "Setup, GUI, Registry, secrets handling, production activation, and VM retirement remain unfinished; this candidate is unpromoted."
+  },
+  "evidence_storage": {
+    "core_actual_directory_mode": "0700",
+    "core_receipt_files_mode": "0600",
+    "source_oracle_directory_mode": "0700",
+    "source_oracle_receipt_mode": "0600"
+  }
+}

@@ -1,0 +1,212 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:d9ca61bf25520ed3d3ea735a8d2675da878bec0ca67ce295d04f8d39c08c1c9c",
+  "pack_id": "rumi_subagent_placement_pack",
+  "source_identity": "sha256:8eb11e971bb380b7a80568f9a18c1bf9258c44d54b94d65e69335f670f20e48b",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_subagent_placement_pack.subagent-placement.assignment",
+      "implementation_digest": "sha256:ff18e35ef82970ccea62c2296b8b9ffabd1a0a1819818216571d6ffb5fd70227",
+      "implementation_path": "runtime/topology.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.subagent.runtime.assignment.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_subagent_placement_pack.subagent-placement-assignment",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:3ad4f81123132b1bd31d3af7fcfc659b3f8280ac3bc98391811707a148632e3d",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_subagent_placement_pack.subagent-placement.assignment.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_subagent_placement_pack.subagent-placement.builtin-protocols",
+      "implementation_digest": "sha256:e9eb41aacc4a25834a846926bc35ac423dcb77a811a32215c3232951d0a74bc9",
+      "implementation_path": "runtime/compiler.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.subagent.protocol.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_subagent_placement_pack.subagent-placement-protocols",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:3455347724726799cb884a186d29e3435e8d67d90bf60aad263fab7ca1ce09a7",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_subagent_placement_pack.subagent-placement.builtin-protocols.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_subagent_placement_pack.subagent-placement.compiler",
+      "implementation_digest": "sha256:e9eb41aacc4a25834a846926bc35ac423dcb77a811a32215c3232951d0a74bc9",
+      "implementation_path": "runtime/compiler.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.subagent.placement.compile.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_subagent_placement_pack.subagent-placement-compiler",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:fa8e324fbf3d343bf6ba0993ae1c33c1d60c00b841a91f122631ba4802eeca8c",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_subagent_placement_pack.subagent-placement.compiler.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_subagent_placement_pack.subagent-placement.core-stage",
+      "implementation_digest": "sha256:e9eb41aacc4a25834a846926bc35ac423dcb77a811a32215c3232951d0a74bc9",
+      "implementation_path": "runtime/compiler.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.subagent.placement.stage.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_subagent_placement_pack.subagent-placement-core-stage",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:9838253ef8ea929a23fb62599989ba10f2cec5a386de92ce6ae470927ce30aab",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_subagent_placement_pack.subagent-placement.core-stage.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_subagent_placement_pack.subagent-placement.patch",
+      "implementation_digest": "sha256:ff18e35ef82970ccea62c2296b8b9ffabd1a0a1819818216571d6ffb5fd70227",
+      "implementation_path": "runtime/topology.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.subagent.placement.patch.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_subagent_placement_pack.subagent-placement-patch",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:9014240b6e54d160eb0fe65ac8011b92aeb60d250f5586b260277534b59cc664",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_subagent_placement_pack.subagent-placement.patch.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_subagent_placement_pack.subagent-placement.topology",
+      "implementation_digest": "sha256:ff18e35ef82970ccea62c2296b8b9ffabd1a0a1819818216571d6ffb5fd70227",
+      "implementation_path": "runtime/topology.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.subagent.topology.compile.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_subagent_placement_pack.subagent-placement-topology",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:8f1b901213cce8edaa9ce321aad9e16a890452a35148407f6dcf89a78230d793",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_subagent_placement_pack.subagent-placement.topology.python"
+    }
+  ]
+}

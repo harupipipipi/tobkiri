@@ -1,0 +1,456 @@
+{
+ "provider_id": "groq",
+ "models": [
+  {
+   "model_id": "allam-2-7b",
+   "display_name": "ALLaM-2-7b",
+   "type": "chat",
+   "context_window": 4096,
+   "max_output_tokens": 4096,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0,
+    "output": 0
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "canopylabs/orpheus-arabic-saudi",
+   "display_name": "Canopy Labs Orpheus Arabic Saudi",
+   "type": "audio",
+   "context_window": 4000,
+   "max_output_tokens": 50000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": false,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "audio"
+    ]
+   },
+   "pricing": {},
+   "source": "models.dev"
+  },
+  {
+   "model_id": "canopylabs/orpheus-v1-english",
+   "display_name": "Canopy Labs Orpheus V1 English",
+   "type": "audio",
+   "context_window": 4000,
+   "max_output_tokens": 50000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": false,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "audio"
+    ]
+   },
+   "pricing": {},
+   "source": "models.dev"
+  },
+  {
+   "model_id": "groq/compound",
+   "display_name": "Compound",
+   "type": "chat",
+   "context_window": 131072,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {},
+   "source": "models.dev"
+  },
+  {
+   "model_id": "groq/compound-mini",
+   "display_name": "Compound Mini",
+   "type": "chat",
+   "context_window": 131072,
+   "max_output_tokens": 8192,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {},
+   "source": "models.dev"
+  },
+  {
+   "model_id": "llama-3.1-8b-instant",
+   "display_name": "Llama 3.1 8B",
+   "type": "chat",
+   "context_window": 131072,
+   "max_output_tokens": 131072,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.05,
+    "output": 0.08
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "llama-3.3-70b-versatile",
+   "display_name": "Llama 3.3 70B",
+   "type": "chat",
+   "context_window": 131072,
+   "max_output_tokens": 32768,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.59,
+    "output": 0.79
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "meta-llama/llama-prompt-guard-2-22m",
+   "display_name": "Llama Prompt Guard 2 22M",
+   "type": "chat",
+   "context_window": 512,
+   "max_output_tokens": 512,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.03,
+    "output": 0.03
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "meta-llama/llama-prompt-guard-2-86m",
+   "display_name": "Prompt Guard 2 86M",
+   "type": "chat",
+   "context_window": 512,
+   "max_output_tokens": 512,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.04,
+    "output": 0.04
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "openai/gpt-oss-120b",
+   "display_name": "GPT OSS 120B",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.15,
+    "output": 0.6,
+    "cache_read": 0.075
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "openai/gpt-oss-20b",
+   "display_name": "GPT OSS 20B",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.075,
+    "output": 0.3,
+    "cache_read": 0.0375
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "openai/gpt-oss-safeguard-20b",
+   "display_name": "Safety GPT OSS 20B",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 65536,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.075,
+    "output": 0.3
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3.6-27b",
+   "display_name": "Qwen3.6 27B",
+   "type": "reasoning",
+   "context_window": 131072,
+   "max_output_tokens": 16384,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.6,
+    "output": 3,
+    "cache_read": 0.3
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "qwen/qwen3.8-27b",
+   "display_name": "Qwen3.8 27B",
+   "type": "reasoning",
+   "context_window": 131042,
+   "max_output_tokens": 16384,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 0.8,
+    "output": 4
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "whisper-large-v3",
+   "display_name": "Whisper",
+   "type": "unknown",
+   "context_window": 0,
+   "max_output_tokens": 0,
+   "capabilities": {
+    "text_input": false,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": true,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "audio"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {},
+   "source": "models.dev"
+  },
+  {
+   "model_id": "whisper-large-v3-turbo",
+   "display_name": "Whisper Large V3 Turbo",
+   "type": "unknown",
+   "context_window": 0,
+   "max_output_tokens": 0,
+   "capabilities": {
+    "text_input": false,
+    "text_output": true,
+    "image_input": false,
+    "audio_input": true,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "audio"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {},
+   "source": "models.dev"
+  }
+ ]
+}

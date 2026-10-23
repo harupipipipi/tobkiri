@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from domain.integrations.store import IntegrationConversationStore
 from domain.input.conversation_resolver import ExternalConversationResolver
 from domain.input.envelope import RumiInputEnvelope
 
 
-def handle(envelope: RumiInputEnvelope, context: dict[str, Any] | None = None) -> dict[str, Any]:
+def handle(envelope: RumiInputEnvelope, context: dict[str, Any] | None = None, *, settings_owner: SettingsOwnerPort | None = None) -> dict[str, Any]:
     cleaned_text = str(envelope.input or "").strip()
     if not cleaned_text and envelope.attachments:
         cleaned_text = _default_attachment_text(envelope.attachments)
@@ -36,6 +38,7 @@ def handle(envelope: RumiInputEnvelope, context: dict[str, Any] | None = None) -
             context or {},
             provider=provider,
             event_id=event_id,
+            settings_owner=settings_owner,
         )
     external_key = str(
         target.get("external_key")
@@ -106,7 +109,7 @@ def handle(envelope: RumiInputEnvelope, context: dict[str, Any] | None = None) -
         request["message"]["metadata"]["model_route_override"] = route_override
 
     try:
-        result = send_run(request, context or {})
+        result = send_run(request, context or {}, settings_owner=settings_owner)
         if not isinstance(result, dict) or result.get("status") != "ok":
             return {
                 "status": "error",
@@ -140,6 +143,7 @@ def _send_direct_message(
     *,
     provider: str,
     event_id: str,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> dict[str, Any]:
     from blocks.chat.send import run as send_run
 
@@ -170,6 +174,7 @@ def _send_direct_message(
             "tools": list(envelope.tools),
         },
         context,
+        settings_owner=settings_owner,
     )
     if not isinstance(result, dict) or result.get("status") != "ok":
         return {

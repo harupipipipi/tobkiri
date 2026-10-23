@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from blocks._common import ok, error
 from blocks.integrations.common import allow_unsigned_webhook_dev, headers_from_request, raw_body_bytes, text_limit
 from domain.external.adapters.discord import DiscordResponseAdapter
@@ -19,7 +21,12 @@ DISCORD_MESSAGE_WITH_SOURCE = 4
 DISCORD_DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE = 5
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None):
+    settings_owner = (
+        settings_owner
+        if settings_owner is not None
+        else (context or {}).get("_settings_owner_port")
+    )
     load_integration_secrets_into_env()
     headers = headers_from_request(input_data)
     raw_body = raw_body_bytes(input_data)
@@ -32,7 +39,12 @@ def run(input_data, context):
         return {"type": DISCORD_PING}
 
     if payload_type == DISCORD_APPLICATION_COMMAND:
-        result = _handle_interaction(input_data, context, verified=bool(verification["verified"]))
+        result = _handle_interaction(
+            input_data,
+            context,
+            verified=bool(verification["verified"]),
+            **({"settings_owner": settings_owner} if settings_owner is not None else {}),
+        )
         if not _interaction_external_reply_enabled(result):
             return {
                 "type": DISCORD_DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
@@ -50,13 +62,24 @@ def run(input_data, context):
         }
 
     if str(input_data.get("t") or "").upper() == "MESSAGE_CREATE" or input_data.get("content"):
-        result = _handle_message_create(input_data, context, verified=bool(verification["verified"]))
+        result = _handle_message_create(
+            input_data,
+            context,
+            verified=bool(verification["verified"]),
+            **({"settings_owner": settings_owner} if settings_owner is not None else {}),
+        )
         return ok({**result, "verified": verification["verified"]})
 
     return ok({"ignored": True, "reason": "unsupported discord payload", "verified": verification["verified"]})
 
 
-def _handle_interaction(input_data: Dict[str, Any], context, *, verified: bool = False) -> Dict[str, Any]:
+def _handle_interaction(
+    input_data: Dict[str, Any],
+    context,
+    *,
+    verified: bool = False,
+    settings_owner: SettingsOwnerPort | None = None,
+) -> Dict[str, Any]:
     external_event = normalize_discord_interaction(input_data, verified=verified)
     return dispatch_external_event(
         external_event,
@@ -64,10 +87,17 @@ def _handle_interaction(input_data: Dict[str, Any], context, *, verified: bool =
         audience_policy={"default": "allow"},
         context=context,
         send_response=True,
+        **({"settings_owner": settings_owner} if settings_owner is not None else {}),
     )
 
 
-def _handle_message_create(input_data: Dict[str, Any], context, *, verified: bool = False) -> Dict[str, Any]:
+def _handle_message_create(
+    input_data: Dict[str, Any],
+    context,
+    *,
+    verified: bool = False,
+    settings_owner: SettingsOwnerPort | None = None,
+) -> Dict[str, Any]:
     data = input_data.get("d") if isinstance(input_data.get("d"), dict) else input_data
     author = data.get("author") if isinstance(data.get("author"), dict) else {}
     if author.get("bot"):
@@ -80,6 +110,7 @@ def _handle_message_create(input_data: Dict[str, Any], context, *, verified: boo
         audience_policy={"default": "allow"},
         context=context,
         send_response=True,
+        **({"settings_owner": settings_owner} if settings_owner is not None else {}),
     )
     plan = result.get("response_plan") if isinstance(result.get("response_plan"), dict) else ResponsePlanner("discord").plan(RumiResponse.from_result(result))
     reply = _send_response_plan(plan, external_event)

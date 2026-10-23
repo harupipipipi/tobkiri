@@ -8,7 +8,10 @@
   "config": {
     "name": "file_reader",
     "summary": "ファイル読み取り",
-    "tags": ["io", "file"],
+    "tags": [
+      "io",
+      "file"
+    ],
     "ui": {
       "group_id": "coding/files/read",
       "group_label": "Read",
@@ -36,9 +39,18 @@
           "type": "select",
           "default": "utf-8",
           "options": [
-            {"value": "utf-8", "label": "UTF-8"},
-            {"value": "utf-8-sig", "label": "UTF-8 with BOM"},
-            {"value": "shift_jis", "label": "Shift JIS"}
+            {
+              "value": "utf-8",
+              "label": "UTF-8"
+            },
+            {
+              "value": "utf-8-sig",
+              "label": "UTF-8 with BOM"
+            },
+            {
+              "value": "shift_jis",
+              "label": "Shift JIS"
+            }
           ],
           "help": "Saved preference used when a file has no explicit encoding hint.",
           "advanced": true
@@ -49,19 +61,28 @@
       "parameters": {
         "type": "object",
         "properties": {
-          "path": {"type": "string"}
+          "path": {
+            "type": "string"
+          }
         },
-        "required": ["path"]
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
       }
     },
     "tool_category": "filesystem",
     "action_type": "read",
     "risk": "low",
     "approval_policy": "allow",
-    "capability_grants": ["file.read"],
+    "capability_grants": [
+      "file.read"
+    ],
     "execution": {
-      "type": "rumi_function",
-      "qualified_name": "defaultspack:tool_file_reader"
+      "type": "global_contract",
+      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "provider_instance_id": "rumi_default_tools_pack.files-read",
+      "operation": "rumi_default_tools_pack.files-read-operation"
     }
   }
 }

@@ -1,0 +1,13 @@
+{
+  "format": "tobkiri.ordered-tool-bridge-frozen-inputs/1",
+  "protocol": "ordered-finite-json-v1",
+  "original_reference_runtime": {
+    "python": "3.13.5",
+    "unicode": "15.1.0"
+  },
+  "oracle_sha256": "9aae37387a6b0758451abe3cb6070d8a3d8106b744de053a5bc16e8715f3481d",
+  "source_provenance_sha256": "4d3d828b00fa49bcba1f2b53a26b0cf98532ebcabaa572602be0738c205ee2d5",
+  "freeze_script_sha256": "83e1093f9a36468786b1f4b05661846f3f3e3b07b5eab1229a941835228faa04",
+  "case_inputs_sha256": "39bf861b89825925890e3d1bae5fa99bdd9992323a7d25b19e49f57859366796",
+  "case_count": 33
+}

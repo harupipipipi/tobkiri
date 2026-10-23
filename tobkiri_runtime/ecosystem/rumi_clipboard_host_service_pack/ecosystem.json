@@ -1,0 +1,71 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.clipboard.v1",
+      "rumi.resource.clipboard.v1"
+    ],
+    "requires": [
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Separately permissioned clipboard read and write requests.",
+  "display_name": "Rumi Clipboard Host Service",
+  "host_execution": true,
+  "metadata": {
+    "authority_split": [
+      "read",
+      "write"
+    ],
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:76377cc3a85b98f5d138681cdf00013845379a47b3c88293e280a106dfe51fd8",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:e69dd60c28d655f5467d78090107abdb7ff20986bf78d800eeefa90166c8d720"
+    },
+    "executor_owner": "rumi_viewer_host_broker",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:e69dd60c28d655f5467d78090107abdb7ff20986bf78d800eeefa90166c8d720"
+    },
+    "manifest_authority": "v4-authoritative",
+    "payload_persistence": false,
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "runner": "runtime/runner.py invoked only by Viewer helper after token validation",
+    "tool_or_ui_registry_imports": false
+  },
+  "pack_id": "rumi_clipboard_host_service_pack",
+  "pack_identity": "rumi:ecosystem/rumi_clipboard_host_service_pack",
+  "provenance": {
+    "build_identity": "rumi_clipboard_host_service_pack:1.0.0",
+    "content_hash": "sha256:010e09ffd1a31174f05dedf806c86179f229497b6e73acc33fb4b1b3ce2bc510",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "clipboard.read",
+    "clipboard.write",
+    "host.authority.consume"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "host",
+      "clipboard",
+      "service"
+    ]
+  }
+}

@@ -1,0 +1,24 @@
+[package]
+name = "tobkiri-pack-provider-model-access-rust"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "MIT"
+
+# Independent source candidate; registration/build orchestration belongs to Root.
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["component"]
+component = ["dep:wit-bindgen"]
+
+[dependencies]
+ordered-python-compat = { path = "../ordered-python-compat" }
+wit-bindgen = { version = "=0.62.0", optional = true }
+
+[dev-dependencies]
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = { version = "=1.0.154", features = ["arbitrary_precision", "raw_value"] }
+sha2 = "=0.10.9"

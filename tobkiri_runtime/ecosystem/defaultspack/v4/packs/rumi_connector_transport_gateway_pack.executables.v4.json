@@ -1,0 +1,111 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "rumi_connector_transport_gateway_pack",
+  "source_identity": "sha256:b3cd9c9a3f7a0a79151d0bfb6c7ea0c031913dd0b4ede8e44d5f7e4feec44085",
+  "variants": [
+    {
+      "variant_id": "rumi_connector_transport_gateway_pack.connector-gateway.action.python",
+      "function_id": "rumi_connector_transport_gateway_pack.connector-gateway.action",
+      "implementation_path": "runtime/gateway.py",
+      "implementation_digest": "sha256:2728dce0e3ecf3b2685926742b0c499d8b478ef71d1cfbb70b44d65e2d9fb9f4",
+      "execution_kind": "pack_vm",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-pack-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "sandbox.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.connector.gateway.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:b00cf709c53b1217dce3bd7b68d75cb77bdf6cd64ba56224040756a0ecd5bae1",
+          "operation_id": "rumi_connector_transport_gateway_pack.connector-gateway-action",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "read",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_connector_transport_gateway_pack.connector-gateway.resource.python",
+      "function_id": "rumi_connector_transport_gateway_pack.connector-gateway.resource",
+      "implementation_path": "runtime/gateway.py",
+      "implementation_digest": "sha256:2728dce0e3ecf3b2685926742b0c499d8b478ef71d1cfbb70b44d65e2d9fb9f4",
+      "execution_kind": "pack_vm",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-pack-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "sandbox.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.connector.gateway.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:8286eb043563b9b78575f3fe36ae675d5a84bb5ee3a187e9766c471b1bfc8286",
+          "operation_id": "rumi_connector_transport_gateway_pack.connector-gateway-resource",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "read",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_connector_transport_gateway_pack.connector-gateway.transport.python",
+      "function_id": "rumi_connector_transport_gateway_pack.connector-gateway.transport",
+      "implementation_path": "runtime/gateway.py",
+      "implementation_digest": "sha256:2728dce0e3ecf3b2685926742b0c499d8b478ef71d1cfbb70b44d65e2d9fb9f4",
+      "execution_kind": "pack_vm",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-pack-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "sandbox.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.transport.connector.gateway.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:0043e2661e2546f3216085f71a21944a5ae1e025d080ea87be2762097f096cbb",
+          "operation_id": "rumi_connector_transport_gateway_pack.connector-gateway-transport",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "read",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    }
+  ],
+  "materialization_catalog_digest": "sha256:eb67065265bdee63ebfef5d9075b83ac70f0c8db83df043a6e500d1c2001b0f4",
+  "catalog_digest": "sha256:27e05bf5e3b0b3b4497291a4edb22421bc7ffa1428cc6af1fa377c57ba91173e"
+}

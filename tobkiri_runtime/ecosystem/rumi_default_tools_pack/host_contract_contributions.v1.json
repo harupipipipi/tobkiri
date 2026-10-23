@@ -1,0 +1,9 @@
+{
+  "schema": "io.tobkiri.host-contract-contribution.v1",
+  "pack_id": "rumi_default_tools_pack",
+  "system_pack": {
+    "trust_class": "system",
+    "allow_in_process": true
+  },
+  "update_target": null
+}

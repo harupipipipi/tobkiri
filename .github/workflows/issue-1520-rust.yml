@@ -1,0 +1,593 @@
+name: Issue 1520 Rust migration
+
+on:
+  pull_request:
+    branches: [soon]
+  push:
+    branches: [codex/issue-1520-rust-core]
+  workflow_dispatch:
+    inputs:
+      private_sqlite_experiment:
+        description: Build the optional private SQLite producer experiment
+        type: boolean
+        default: false
+        required: false
+
+jobs:
+  foundations:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-target
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          targets: wasm32-wasip2
+          components: rustfmt, clippy
+      - name: Boundary checker regression
+        run: python3 tools/quality/test_issue_1520_gate.py
+      - name: Launcher runtime dependency lock
+        run: python3 -B tools/quality/check_launcher_runtime_lock.py
+      - name: CI execution and producer receipt regression
+        run: python3 -B tools/quality/test_issue_1520_ci.py
+      - name: Workflow platform and artifact routing regression
+        run: python3 -B tools/quality/test_issue_1520_workflow.py
+      - name: Bounded component module inventory regression
+        run: python3 -B tools/quality/test_component_module_inventory.py
+      - name: Gateway tool-caller native routing regression
+        run: python3 -B tools/quality/test_gateway_tool_caller_workflow.py
+      - name: Python 3.13 asset packager regression
+        run: |
+          python3 -B -m unittest discover -s tools/python313-producer/packager/tests
+          cargo test --locked --manifest-path tools/python313-producer/packager/Cargo.toml
+      - name: Bounded component extraction regression
+        run: |
+          python3 -B tools/component-unbundle/test_measure.py
+          python3 -B tools/component-unbundle/test_materialize.py
+          cargo fmt --manifest-path tools/component-unbundle/Cargo.toml -- --check
+          cargo test --locked --manifest-path tools/component-unbundle/Cargo.toml
+      - name: Preserved ordered Python component transport regression
+        run: python3 -B -m unittest discover -s tests -p test_stage_preserved_ordered_python.py
+      - name: Preserved Gateway tool-caller transport regression
+        run: python3 -B -m unittest discover -s tests -p test_preserved_gateway_tool_caller.py
+      - name: Core and host boundaries
+        run: python3 tools/quality/issue_1520_gate.py --stage foundation
+      - name: Verify migration inventory coverage
+        run: python3 -B migration/tests/test_inventory.py
+      - name: Rust formatting
+        run: cargo fmt --all -- --check
+      - name: Build actual typed Wasm test guests
+        run: cargo build --manifest-path crates/test-guests/Cargo.toml --workspace --locked --target wasm32-wasip2
+      - name: Build actual M2 Pack components and pin their hashes
+        run: python3 -B packs/build.py --target-dir "$CARGO_TARGET_DIR"
+      - name: Pure Flow dependency graph
+        run: |
+          cargo tree --locked -p tobkiri-flow > flow-dependencies.txt
+          python3 - <<'PYTHON'
+          import re
+          from pathlib import Path
+
+          dependencies = Path("flow-dependencies.txt").read_text(encoding="utf-8")
+          if re.search(r"\b(?:wasmtime|rusqlite|reqwest)\b", dependencies):
+              raise SystemExit("Pure Flow has a forbidden runtime dependency")
+          PYTHON
+      # These suites do not require the production APFS/Darwin owner broker.
+      # Mixed native/runtime suites run without filters in the native job below.
+      - name: Portable Rust package tests
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/portable-packages.log" -- cargo test --locked
+          -p tobkiri-canon -p tobkiri-wit -p tobkiri-manifest
+          -p tobkiri-profile -p tobkiri-flow -p tobkiri-gate -p tobkiri-cli
+      - name: Portable handle metadata owner regressions
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/portable-handle-metadata.log" --
+          cargo test -p tobkiri-wasm --lib handle_metadata_tests --locked
+      - name: Authenticated shared module source and import regressions
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/portable-core-modules.log" --
+          cargo test -p tobkiri-wasm --lib core_modules::tests --locked
+      - name: Decoded Registry original-source comparison
+        env:
+          TOBKIRI_PROVIDER_REGISTRY_ORACLE_RECEIPT: ${{ github.workspace }}/packs/local.provider-registry-rust/evidence/original-python/receipt.json
+          TOBKIRI_PROVIDER_REGISTRY_ORACLE_SHA256: 3da27b9590f4e0fdcbfe71a017fa95c8173afe5401348ff57b3b51f68f991684
+          TOBKIRI_PROVIDER_REGISTRY_EVIDENCE_DIR: ${{ runner.temp }}/provider-registry-native
+        run: |
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/provider-registry-units.log" --expected-passed 49 -- \
+            cargo test --locked --manifest-path packs/Cargo.toml \
+            -p tobkiri-pack-provider-registry-rust --lib
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/provider-registry-source.log" --expected-passed 1 -- \
+            cargo test --locked --manifest-path packs/Cargo.toml \
+            -p tobkiri-pack-provider-registry-rust --lib \
+            oracle_tests::provider_registry_decoded_source_consumer -- --ignored --exact
+          cargo clippy --locked --manifest-path packs/Cargo.toml \
+            -p tobkiri-pack-provider-registry-rust --all-targets -- -D warnings
+      - name: Retain decoded Registry comparison evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-registry-decoded-source-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/provider-registry-native/
+            ${{ runner.temp }}/provider-registry-units.log*
+            ${{ runner.temp }}/provider-registry-source.log*
+          if-no-files-found: warn
+      - name: Portable Wasm engine integration tests
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/portable-wasm.log" -- cargo test --locked
+          -p tobkiri-wasm --test component_structure
+          --test input_generated_components --test limits --test static_lifts
+          --test typed_values --test warm_fiber
+      - name: Portable Core journal tests
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/portable-journal.log" -- cargo test --locked
+          -p tobkiri-core --test journal
+      - name: Portable transformed Pack integrity regressions
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/shared-pack-integrity.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-e2e --test ordered_python shared_modules::
+      - name: Native acceptance source contracts without runtime claims
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-source-contracts.log" -- cargo test --locked
+          -p tobkiri-e2e --test native_acceptance
+      - name: Unsupported Linux owner platform fails closed
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/owner-unavailable.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-store --test owner_unavailable
+          unproven_allocation_owner_platform_is_unavailable -- --exact
+      - name: Strict Rust lint
+        run: cargo clippy --workspace --all-targets --locked --no-deps -- -D warnings
+      - name: Python guest SDK contracts
+        run: python3 -B -m unittest discover -s sdk/python/tests
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+          cache: npm
+          cache-dependency-path: sdk/js/package-lock.json
+      - name: Native Pack UI source and CSP contract regression
+        run: node --experimental-vm-modules --test packs/native-acceptance/verify-source.test.mjs
+      - name: Install locked JS guest SDK build dependencies
+        working-directory: sdk/js
+        run: npm ci --ignore-scripts
+      - name: JS guest SDK contracts
+        working-directory: sdk/js
+        run: npm test
+
+  verified-platform-runtime:
+    needs: official-python-parity
+    # A producer failure must not suppress independent native workspace evidence.
+    if: ${{ !cancelled() }}
+    # The production owner/DATA gate currently accepts only this OS family.
+    # Do not silently broaden it when GitHub updates the runner image.
+    runs-on: macos-15
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-target
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify the currently supported native proof platform
+        id: native_platform
+        shell: bash
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          device="$(df -P "$RUNNER_TEMP" | awk 'NR == 2 {print $1}')"
+          test -n "$device"
+          diskutil info "$device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@1.94.0
+        id: rust_toolchain
+        with:
+          targets: wasm32-wasip2
+          components: rustfmt, clippy
+      - name: Build typed Wasm test guests
+        run: cargo build --manifest-path crates/test-guests/Cargo.toml --workspace --locked --target wasm32-wasip2
+      - name: Build and bind real Pack fixtures
+        run: python3 -B packs/build.py --target-dir "$CARGO_TARGET_DIR"
+      - name: Execute complete Rust workspace on the supported platform
+        env:
+          TOBKIRI_TEST_AUDIT_PHASE_TIMING: "1"
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/supported-workspace.log" -- cargo test --workspace --locked --no-fail-fast
+      - name: Observe execution Profile through actual Core
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/execution-profile.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-e2e --test execution_profile
+          current_profile_uses_two_actual_sessions_and_inter_pack_destination_frames -- --exact
+      - name: Observe original Audit round trip in isolation
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        env:
+          TOBKIRI_TEST_AUDIT_PHASE_TIMING: "1"
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/audit-round-trip.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-core --lib
+          core::audit_guest_tests::verified_guest_audit_round_trip_has_original_nested_ack_and_provenance
+          -- --exact --nocapture --test-threads=1
+      - name: Observe original Core Flow bridge in isolation
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/core-flow-bridge.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-core --test provider_proxy
+          guest_run_flow_uses_actual_core_bridge_and_manifest_flow_typed_port
+          -- --exact --nocapture --test-threads=1
+      - name: Observe original Wasm Flow bridge in isolation
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/wasm-flow-bridge.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-wasm --test port_proxy
+          guest_run_flow_uses_weak_bridge_and_real_flow_engine_typed_port
+          -- --exact --nocapture --test-threads=1
+      - name: Observe original failed Flow bridge in isolation
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/failed-flow-bridge.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-wasm --test port_proxy
+          flow_step_failure_keeps_original_unavailable_port_outcome
+          -- --exact --nocapture --test-threads=1
+      - name: Observe original 64-handle UI session close in isolation
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/ui-handle-close.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-core --lib
+          session::tests::ui_handle_capacity_and_session_close_are_bounded
+          -- --exact --nocapture --test-threads=1
+      - name: Strict workspace lint
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        run: cargo clippy --workspace --all-targets --locked --no-deps -- -D warnings
+      - name: Download this run's official Linux Python component
+        id: download_python
+        if: ${{ !cancelled() && needs.official-python-parity.result == 'success' && steps.native_platform.outcome == 'success' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: official-python-component
+          path: ${{ runner.temp }}/issue-1520-python
+      - name: Revalidate and bind the transferred component to this checkout
+        id: stage_python
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.download_python.outcome == 'success' }}
+        run: |
+          python3 -B tools/quality/issue_1520_ci.py stage-python \
+            --artifact "$RUNNER_TEMP/issue-1520-python/shell-policy.wasm" \
+            --destination "$RUNNER_TEMP/issue-1520-python/pack"
+          echo "TOBKIRI_TEST_PYTHON_PACK_DIR=$RUNNER_TEMP/issue-1520-python/pack" >> "$GITHUB_ENV"
+      - name: Replay the original 91 cases through actual Rust Core
+        # Keep this proof independent of an earlier workspace/lint failure.
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' && steps.stage_python.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/python-parity.log" --expected-passed 1 --python-parity --
+          cargo test --locked -p tobkiri-e2e --test parity
+          shell_policy_frozen_inputs_replay_through_the_real_rust_host
+          -- --ignored --exact --nocapture --test-threads=1
+      - name: Authenticate the preserved custom Python 3.13 component
+        id: stage_ordered_python
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        shell: bash
+        run: |
+          python3 -B scripts/wasm/stage_preserved_ordered_python.py \
+            --output "$RUNNER_TEMP/issue-1520-ordered-python"
+          python3 - "$RUNNER_TEMP/issue-1520-ordered-python" "$GITHUB_ENV" <<'PY'
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          receipt = json.loads((root / "materialization.json").read_text())
+          values = {
+              "PACK_DIR": str(root / "pack"),
+              "EVIDENCE": str(root / "native-replay.json"),
+          }
+          for name, key in (("PACK", "pack_manifest_sha256"),
+                            ("COMPONENT", "artifact_sha256"),
+                            ("RECEIPT", "receipt_sha256")):
+              value = receipt[key]
+              if not isinstance(value, str) or not re.fullmatch("[0-9a-f]{64}", value):
+                  raise SystemExit("invalid ordered component identity")
+              values[name + "_SHA256"] = value
+          if any("\n" in value or "\r" in value for value in values.values()):
+              raise SystemExit("invalid ordered fixture path")
+          with Path(sys.argv[2]).open("a") as environment:
+              for name, value in values.items():
+                  environment.write(f"TOBKIRI_TEST_ORDERED_PYTHON_{name}={value}\n")
+          PY
+      - name: Replay the ordered Python candidate through actual Rust Core
+        # This is separate from official-wheel production and the original 91 cases.
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' && steps.stage_ordered_python.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/ordered-python-parity.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-e2e --test ordered_python
+          ordered_python_bridge_replays_through_real_core
+          -- --ignored --exact --nocapture --test-threads=1
+      - name: Authenticate the preserved Gateway tool-caller graph
+        id: stage_gateway_tool_caller
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B scripts/wasm/stage_preserved_gateway_tool_caller.py \
+            --output "$RUNNER_TEMP/issue-1520-gateway-tool-caller" \
+            2>&1 | tee "$RUNNER_TEMP/gateway-tool-caller-stage.log"
+          python3 -B - "$RUNNER_TEMP/issue-1520-gateway-tool-caller" "$GITHUB_ENV" 2>&1 <<'PY' | tee -a "$RUNNER_TEMP/gateway-tool-caller-stage.log"
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          receipt = json.loads((root / "materialization.json").read_text())
+          expected = "0441bde565b5e1765a8fdc262e61db00a5fff0c160624d99d5d841f65c737d96"
+          if (receipt.get("format") != "tobkiri.preserved-gateway-tool-caller/1"
+                  or receipt.get("graph_directory") != "graph"
+                  or receipt.get("graph_index_sha256") != expected
+                  or any(receipt.get(key) is not False for key in (
+                      "build_performed", "wasm_execution_performed",
+                      "native_core_acceptance", "production_enabled"))):
+              raise SystemExit("invalid inactive Gateway tool-caller materialization")
+          if hashlib.sha256((root / "graph/index.json").read_bytes()).hexdigest() != expected:
+              raise SystemExit("Gateway tool-caller graph identity differs")
+          evidence = root / "native-replay.json"
+          if evidence.exists() or evidence.is_symlink():
+              raise SystemExit("Gateway tool-caller evidence path must be fresh")
+          values = {
+              "GRAPH_DIR": str(root / "graph"),
+              "INDEX_SHA256": expected,
+              "EVIDENCE": str(evidence),
+          }
+          if any("\n" in value or "\r" in value for value in values.values()):
+              raise SystemExit("invalid Gateway tool-caller fixture path")
+          with Path(sys.argv[2]).open("a") as environment:
+              for name, value in values.items():
+                  environment.write(f"TOBKIRI_TEST_GATEWAY_TOOL_CALLER_{name}={value}\n")
+          PY
+      - name: Inventory exact original component module sharing
+        if: ${{ !cancelled() && steps.stage_gateway_tool_caller.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/component_module_inventory.py
+          "$TOBKIRI_TEST_GATEWAY_TOOL_CALLER_GRAPH_DIR/caller/component.wasm"
+          "$TOBKIRI_TEST_GATEWAY_TOOL_CALLER_GRAPH_DIR/bridge/component.wasm"
+          > "$RUNNER_TEMP/issue-1520-gateway-tool-caller/module-inventory.json"
+      - name: Extract exact original component modules
+        id: extract_original_modules
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' && steps.stage_gateway_tool_caller.outcome == 'success' }}
+        run: |
+          cargo build --locked --manifest-path tools/component-unbundle/Cargo.toml
+          python3 -B tools/component-unbundle/measure.py \
+            --worker "$CARGO_TARGET_DIR/debug/tobkiri-component-unbundle" \
+            "$TOBKIRI_TEST_GATEWAY_TOOL_CALLER_GRAPH_DIR/caller/component.wasm" \
+            "$TOBKIRI_TEST_GATEWAY_TOOL_CALLER_GRAPH_DIR/bridge/component.wasm" \
+            > "$RUNNER_TEMP/issue-1520-gateway-tool-caller/module-extraction.json"
+      - name: Replay the original Python tool caller through actual Rust Core
+        # Independent of the official producer, old WAT route, and earlier failures.
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' && steps.stage_gateway_tool_caller.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/gateway-tool-caller-native.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-e2e --test ordered_python
+          gateway_tool_caller::original_python_tool_caller_replays_through_real_core
+          -- --ignored --exact --nocapture --test-threads=1
+      - name: Materialize exact shared modules for the original Python Packs
+        id: stage_shared_modules
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' && steps.extract_original_modules.outcome == 'success' }}
+        run: |
+          python3 -B tools/component-unbundle/materialize.py \
+            --worker "$CARGO_TARGET_DIR/debug/tobkiri-component-unbundle" \
+            --output "$RUNNER_TEMP/issue-1520-gateway-tool-caller/shared-code" \
+            "$TOBKIRI_TEST_GATEWAY_TOOL_CALLER_GRAPH_DIR/bridge/component.wasm" \
+            "$TOBKIRI_TEST_GATEWAY_TOOL_CALLER_GRAPH_DIR/caller/component.wasm"
+          python3 -B - "$RUNNER_TEMP/issue-1520-gateway-tool-caller/shared-code" "$GITHUB_ENV" <<'PY'
+          import hashlib
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          receipt = (root / "extraction.json").read_bytes()
+          values = {
+              "TOBKIRI_TEST_SHARED_MODULES_DIR": str(root),
+              "TOBKIRI_TEST_SHARED_MODULES_SHA256": hashlib.sha256(receipt).hexdigest(),
+          }
+          if any("\n" in value or "\r" in value for value in values.values()):
+              raise SystemExit("invalid shared-module fixture path")
+          with Path(sys.argv[2]).open("a") as environment:
+              for name, value in values.items():
+                  environment.write(f"{name}={value}\n")
+          PY
+      - name: Replay original Python Packs using authenticated shared modules
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' && steps.stage_shared_modules.outcome == 'success' }}
+        env:
+          TOBKIRI_TEST_GATEWAY_TOOL_CALLER_EVIDENCE: ${{ runner.temp }}/issue-1520-gateway-tool-caller/shared-native-replay.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/shared-python-native.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-e2e --test ordered_python
+          gateway_tool_caller::original_python_shared_modules_replay_through_real_core
+          -- --ignored --exact --nocapture --test-threads=1
+      - name: Retain Gateway tool-caller native evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-tool-caller-native-replay
+          path: |
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/materialization.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/graph/index.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/graph/source-observations.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/graph/bridge/pack.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/graph/bridge/component.build.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/graph/caller/pack.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/graph/caller/component.build.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/native-replay.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/module-inventory.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/module-extraction.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/shared-code/extraction.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/shared-native-replay.json
+            ${{ runner.temp }}/shared-python-native.log
+            ${{ runner.temp }}/shared-python-native.receipt.json
+            ${{ runner.temp }}/gateway-tool-caller-stage.log
+            ${{ runner.temp }}/gateway-tool-caller-native.log
+            ${{ runner.temp }}/gateway-tool-caller-native.receipt.json
+          if-no-files-found: warn
+      - name: Retain actual ordered Python replay evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: custom-ordered-python-native-replay
+          path: |
+            ${{ runner.temp }}/issue-1520-ordered-python/component.build.json
+            ${{ runner.temp }}/issue-1520-ordered-python/materialization.json
+            ${{ runner.temp }}/issue-1520-ordered-python/pack/pack.json
+            ${{ runner.temp }}/issue-1520-ordered-python/native-replay.json
+            ${{ runner.temp }}/ordered-python-parity.log
+            ${{ runner.temp }}/ordered-python-parity.receipt.json
+          if-no-files-found: warn
+      - name: Retain actual Python replay evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-python-parity-replay
+          path: |
+            ${{ runner.temp }}/issue-1520-python/python-fixture.receipt.json
+            ${{ runner.temp }}/issue-1520-python/pack/pack.json
+            ${{ runner.temp }}/python-parity.log
+            ${{ runner.temp }}/python-parity.receipt.json
+          if-no-files-found: warn
+      - name: Retain actual runtime test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supported-platform-runtime
+          path: |
+            ${{ runner.temp }}/supported-workspace.log
+            ${{ runner.temp }}/supported-workspace.receipt.json
+            ${{ runner.temp }}/execution-profile.log
+            ${{ runner.temp }}/execution-profile.receipt.json
+            ${{ runner.temp }}/audit-round-trip.log
+            ${{ runner.temp }}/audit-round-trip.receipt.json
+            ${{ runner.temp }}/core-flow-bridge.log
+            ${{ runner.temp }}/core-flow-bridge.receipt.json
+            ${{ runner.temp }}/wasm-flow-bridge.log
+            ${{ runner.temp }}/wasm-flow-bridge.receipt.json
+            ${{ runner.temp }}/failed-flow-bridge.log
+            ${{ runner.temp }}/ui-handle-close.log
+            ${{ runner.temp }}/ui-handle-close.receipt.json
+            ${{ runner.temp }}/failed-flow-bridge.receipt.json
+          if-no-files-found: warn
+
+  official-python-parity:
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-target
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch the pinned official Linux WAC executable
+        run: >-
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 3
+          --max-filesize 22922992 --output "$RUNNER_TEMP/wac-cli"
+          https://github.com/bytecodealliance/wac/releases/download/v0.12.0/wac-cli-x86_64-unknown-linux-musl
+      - name: Produce and bind the current official Python component
+        run: |
+          chmod +x "$RUNNER_TEMP/wac-cli"
+          python3 -B tools/quality/issue_1520_ci.py prepare-python \
+            --work-dir "$RUNNER_TEMP/issue-1520-python" --composer "$RUNNER_TEMP/wac-cli"
+      - name: Transfer the authenticated component and producer receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-python-component
+          path: |
+            ${{ runner.temp }}/issue-1520-python/shell-policy.wasm
+            ${{ runner.temp }}/issue-1520-python/shell-policy.build.json
+          if-no-files-found: error
+      - name: Retain actual Python producer receipts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-python-parity-receipts
+          path: |
+            ${{ runner.temp }}/issue-1520-python/python-fixture.receipt.json
+            ${{ runner.temp }}/issue-1520-python/shell-policy.build.json
+            ${{ runner.temp }}/issue-1520-python/pack/pack.json
+          if-no-files-found: error
+
+  optional-private-sqlite-experiment:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.private_sqlite_experiment }}
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-target
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set the runner-local private SQL producer directory
+        run: echo "TOBKIRI_SQL_PRODUCER_DIR=$RUNNER_TEMP/sqlite-core" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - name: Fetch and authenticate the pinned private SQL toolchain
+        shell: bash
+        run: |
+          tobkiri_sdk_archive="$RUNNER_TEMP/sdk34.tar.gz"
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 3 \
+            --output "$tobkiri_sdk_archive" \
+            https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-34/wasi-sdk-34.0-x86_64-linux.tar.gz
+          python3 - "$tobkiri_sdk_archive" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          archive = Path(sys.argv[1])
+          pin = json.loads(Path("tools/wasm-sqlite/host-toolchain-sdk34-x86_64-linux.json").read_text())
+          if archive.stat().st_size != pin["archive_bytes"]:
+              raise SystemExit("private SQL SDK archive size mismatch")
+          digest = hashlib.sha256()
+          with archive.open("rb") as stream:
+              while block := stream.read(65536):
+                  digest.update(block)
+          if digest.hexdigest() != pin["archive_sha256"]:
+              raise SystemExit("private SQL SDK archive digest mismatch")
+          PY
+          mkdir "$RUNNER_TEMP/sdk34"
+          tar -xzf "$tobkiri_sdk_archive" -C "$RUNNER_TEMP/sdk34"
+      - name: Produce the exact private SQL module before host builds
+        run: >-
+          python3 -B tools/wasm-sqlite/build-linux.py
+          --archive "$RUNNER_TEMP/sdk34.tar.gz"
+          --sdk "$RUNNER_TEMP/sdk34/wasi-sdk-34.0-x86_64-linux"
+          --out "$TOBKIRI_SQL_PRODUCER_DIR"
+          --disk-floor-bytes 5905580032
+      - name: Compile optional private SQLite experiment with verified producer inputs
+        run: cargo check -p tobkiri-wasm --features private-sqlite-experiment --locked
+
+  migration-completion:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: All legacy units and final hosts must satisfy the Issue
+        run: python3 tools/quality/issue_1520_gate.py --stage complete

@@ -1,0 +1,65 @@
+{
+  "allowed_imports": [
+    "tobkiri:core/types@1.0.0",
+    "tobkiri:core/flow@1.0.0",
+    "tobkiri:core/clock@1.0.0",
+    "tobkiri:core/random@1.0.0",
+    "tobkiri:core/audit@1.0.0"
+  ],
+  "entrypoint": "app",
+  "format": "tobkiri.python-build/3",
+  "outer_exports": [
+    "tobkiri:core/lifecycle@1.0.0",
+    "local:ai-stream-normalizer-python/stream-normalizer@1.0.0"
+  ],
+  "sources": [
+    {
+      "destination": "app.py",
+      "sha256": "bfbfc5a8d2d6fa184f162585c370b96eb23b51f46d47a4aa1dd441906eb9e4f2",
+      "source": "python/app.py"
+    },
+    {
+      "destination": "inventory.json",
+      "sha256": "24df2873314ce68f26890fbe2bbb8745dc2de9562f18753917bcaffaf6161bb2",
+      "source": "python/inventory.json"
+    },
+    {
+      "destination": "ordered_json.py",
+      "sha256": "7df89c2e5275fdc795c13e0d70d6ec69f7f022aa968c58a3c1b1637e0eee2158",
+      "source": "python/ordered_json.py"
+    },
+    {
+      "destination": "ordered_json_v2.py",
+      "sha256": "495b613a37807cf10e831a2332b7f401148d3aaec29ec84c16a22f0a2c05d3a2",
+      "source": "python/ordered_json_v2.py"
+    },
+    {
+      "destination": "original_stream_normalizer.py",
+      "sha256": "611e174b7b101ffe67960b80501421261e6a9322977b2a3c991253a1c28fc38f",
+      "source": "python/original_stream_normalizer.py"
+    },
+    {
+      "destination": "provenance.json",
+      "sha256": "fd09dff6ce0b82489dec86b1c931dd14050ccfb4a8b2d155bce7bb212657c65f",
+      "source": "python/provenance.json"
+    },
+    {
+      "destination": "stream_normalizer_adapter.py",
+      "sha256": "c77c5c0f14c28ec60bba0586102743556e0438e7f581792c336371ebc12fed20",
+      "source": "python/stream_normalizer_adapter.py"
+    },
+    {
+      "destination": "wit/deps/tobkiri-core/core.wit",
+      "sha256": "f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "source": "wit/deps/tobkiri-core/core.wit"
+    },
+    {
+      "destination": "wit/pack.wit",
+      "sha256": "8a080544d35dfcd2a72d7195954c9a09953f7c1d9fe2619ac42bae8b1933bc07",
+      "source": "wit/pack.wit"
+    }
+  ],
+  "stub_wasi": true,
+  "wit": "wit/pack.wit",
+  "world": "pack"
+}
