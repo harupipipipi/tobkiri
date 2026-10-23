@@ -67,6 +67,7 @@ pub struct Grant {
     pub(crate) reservation: Reservation,
     pub(crate) request: EffectRequest,
     pub(crate) limits: ResourceLimits,
+    pub(crate) trusted_approval: Option<TrustedApprovalEvidence>,
     pub(crate) approvals: Arc<dyn ApprovalStore>,
     pub(crate) audit: Arc<dyn AuditSink>,
     pub(crate) consumed: std::sync::atomic::AtomicBool,
@@ -190,6 +191,7 @@ pub struct DispatchPermit {
     pub(crate) request: EffectRequest,
     pub(crate) limits: ResourceLimits,
     pub(crate) deadline: std::time::Instant,
+    pub(crate) trusted_approval: Option<TrustedApprovalEvidence>,
     // On successful handoff the bounded process slot is immediately reusable.
     // Original store/context custody moves with the existing consumed permit.
     pub(crate) _consumption_owner: crate::consumption::SuccessfulConsumption,
@@ -208,8 +210,14 @@ pub struct ExecutionEntryEvidence {
     epoch: u64,
     limits: ResourceLimits,
     deadline: std::time::Instant,
+    trusted_approval: Option<TrustedApprovalEvidence>,
 }
 impl ExecutionEntryEvidence {
+    /// Descriptive original approval; usable only through authenticated live
+    /// Core state, never as an independent permission or parent-chain proof.
+    pub fn trusted_approval(&self) -> Option<&TrustedApprovalEvidence> {
+        self.trusted_approval.as_ref()
+    }
     pub fn grant(&self) -> &GrantId {
         &self.grant
     }
@@ -311,7 +319,14 @@ impl DispatchPermit {
             epoch: self.reservation.epoch,
             limits: self.limits.clone(),
             deadline: self.deadline,
+            trusted_approval: self.trusted_approval.clone(),
         })
+    }
+    /// The actual answer retained from this permit's original authorization.
+    /// An unprompted dispatch has no evidence, even if an earlier permission
+    /// installation or a different dispatch was interactively approved.
+    pub fn trusted_approval(&self) -> Option<&TrustedApprovalEvidence> {
+        self.trusted_approval.as_ref()
     }
     pub fn id(&self) -> &GrantId {
         &self.reservation.id
@@ -1722,7 +1737,11 @@ impl GateEngine {
         }
         Ok(narrowed)
     }
-    async fn obtain_approval(&self, cx: &CallCx, prompt: ApprovalPrompt) -> Result<(), GateError> {
+    async fn obtain_approval(
+        &self,
+        cx: &CallCx,
+        prompt: ApprovalPrompt,
+    ) -> Result<TrustedApprovalEvidence, GateError> {
         if !cx.interactive_approval() {
             return Err(GateError::ApprovalRequired);
         }
@@ -1730,17 +1749,26 @@ impl GateEngine {
             .prompt
             .cancellation_waiter(cx)
             .map_err(|_| GateError::Unavailable)?;
+        let snapshot = prompt.snapshot_digest()?;
         let answer = tokio::select! {result=cancellation=>return Err(cancellation_result(cx,result)),_ = tokio::time::sleep_until(cx.deadline().into())=>return Err(GateError::Deadline),answer=self.prompt.prompt_approval(prompt.clone())=>answer};
         cx.check_active()?;
         if self.epoch(cx.profile())? != cx.security_epoch() {
             return Err(GateError::StaleEpoch);
         }
-        match answer {
-            ApprovalAnswer::Approve => Ok(()),
-            ApprovalAnswer::Deny => Err(GateError::Denied("user declined".into())),
-            ApprovalAnswer::Unavailable => Err(GateError::ApprovalRequired),
-            ApprovalAnswer::Attestation(att) => self.verify_attestation(&prompt, &att),
-        }
+        let method = match answer {
+            ApprovalAnswer::Approve => TrustedApprovalMethod::Prompt,
+            ApprovalAnswer::Deny => return Err(GateError::Denied("user declined".into())),
+            ApprovalAnswer::Unavailable => return Err(GateError::ApprovalRequired),
+            ApprovalAnswer::Attestation(att) => {
+                self.verify_attestation(&prompt, &att)?;
+                TrustedApprovalMethod::DeviceAttestation
+            }
+        };
+        Ok(TrustedApprovalEvidence::accepted(
+            snapshot,
+            method,
+            prompt.risk,
+        ))
     }
     /// Approve only additions and bind retained permissions to the new Pack hash.
     pub async fn approve_pack_permissions(
@@ -2149,9 +2177,12 @@ impl GateEngine {
                     ..
                 }
         );
-        if first_public_write || per_effect || matches!(cx.principal(), Principal::User) {
-            self.obtain_approval(cx, prompt).await?;
-        }
+        let trusted_approval =
+            if first_public_write || per_effect || matches!(cx.principal(), Principal::User) {
+                Some(self.obtain_approval(cx, prompt).await?)
+            } else {
+                None
+            };
         cx.check_active()?;
         if self.epoch(cx.profile())? != cx.security_epoch() {
             return Err(GateError::StaleEpoch);
@@ -2183,6 +2214,7 @@ impl GateEngine {
         Ok(Grant {
             reservation,
             request,
+            trusted_approval,
             // A committed launch grants exactly its committed limits, even
             // when the surrounding context and ceilings are wider.
             limits: match binding {

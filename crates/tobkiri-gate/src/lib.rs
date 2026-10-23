@@ -2,6 +2,7 @@
 //! Pack payloads never carry authority; a dispatch grant binds the core context.
 
 mod admission;
+mod approval_evidence;
 mod budget;
 mod cancellation;
 mod capacity;
@@ -16,6 +17,7 @@ mod process_binding;
 mod protocol;
 
 pub use admission::*;
+pub use approval_evidence::*;
 pub use budget::*;
 pub use cancellation::*;
 pub use capacity::*;

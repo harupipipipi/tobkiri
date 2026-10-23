@@ -68,6 +68,24 @@ explicitly does not prove compiled origin or authority. None provides the
 original persistent enrollment, independent policy witness or lifetime attempt
 ledger by itself.
 
+The original Gate now retains descriptive `TrustedApprovalEvidence` on its
+Grant, consumed permit and funded execution-entry evidence. It commits to the
+complete typed prompt and records whether Gate accepted the trusted prompt
+answer or verified a device attestation, including the original risk. An
+unprompted effect has no such evidence, even after an interactive permission
+installation. The snapshot hash is streamed without making another prompt or
+canonical-value copy; retained metadata is inline and included in the existing
+`sizeof`-based control inventories. Approval, consumption, cancellation, epoch
+and argument checks retain their original behavior.
+
+This description is not itself a live invocation or parent-chain proof, a GUI
+surface identity, a durable enrollment or a Pack policy digest. Core privately
+holds the actual leaf Grant and arguments, but its public Provider frame API
+does not yet expose an authenticated borrow of that evidence or an enumerable
+parent dispatch chain. The declared `TypedReachedInvocation` interface has no
+Core implementation. These gaps must be resolved before a Broker can rely on
+approval ancestry; copying a description or a path digest cannot resolve them.
+
 Keep these obligations open until the production create/use/revoke and
 compensation path uses the same backend and passes original GUI-to-chat,
 failure/unknown, expiry, revocation and restart cases. Do not infer completion

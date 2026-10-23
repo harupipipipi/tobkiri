@@ -218,6 +218,7 @@ struct PreparedDispatch {
     request: EffectRequest,
     limits: ResourceLimits,
     deadline: Instant,
+    trusted_approval: Option<crate::TrustedApprovalEvidence>,
 }
 /// Store-confirmed consumption, with either a complete executable preparation
 /// or a sealed cleanup-only failure. Dropping it cannot abandon the original.
@@ -281,6 +282,7 @@ impl ConsumedAttempt {
             request: prepared.request,
             limits: prepared.limits,
             deadline: prepared.deadline,
+            trusted_approval: prepared.trusted_approval,
             _consumption_owner: SuccessfulConsumption {
                 _record: custody.record.clone(),
             },
@@ -505,6 +507,7 @@ fn consume_with_clock(
                 reservation: clone_reservation(returned)?,
                 request: clone_effect(&state.original.request)?,
                 limits: state.original.limits.clone(),
+                trusted_approval: state.original.trusted_approval.clone(),
             })
         })()
     };

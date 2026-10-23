@@ -18,6 +18,7 @@ struct Prompt {
     calls: AtomicUsize,
     mode: Mutex<PromptMode>,
     risks: Mutex<Vec<Risk>>,
+    snapshots: Mutex<Vec<ApprovalPrompt>>,
 }
 #[derive(Clone)]
 enum PromptMode {
@@ -35,6 +36,7 @@ impl Prompt {
             calls: AtomicUsize::new(0),
             mode: Mutex::new(PromptMode::Approve),
             risks: Mutex::new(vec![]),
+            snapshots: Mutex::new(vec![]),
         }
     }
 }
@@ -43,6 +45,7 @@ impl TrustedPrompt for Prompt {
     async fn prompt_approval(&self, p: ApprovalPrompt) -> ApprovalAnswer {
         self.calls.fetch_add(1, Ordering::SeqCst);
         self.risks.lock().unwrap().push(p.risk);
+        self.snapshots.lock().unwrap().push(p.clone());
         match self.mode.lock().unwrap().clone() {
             PromptMode::Approve => ApprovalAnswer::Approve,
             PromptMode::Deny => ApprovalAnswer::Deny,
@@ -803,13 +806,125 @@ async fn signed_device_attestations_reject_forgery_and_nonce_replay() {
         forge: false,
     };
     let g = f.grant(&cx, req.clone(), Digest::hash(b"args")).await;
-    g.consume(&cx, &req, &Digest::hash(b"args")).unwrap();
+    let permit = g.consume(&cx, &req, &Digest::hash(b"args")).unwrap();
+    let evidence = permit.trusted_approval().unwrap();
+    assert_eq!(evidence.method(), TrustedApprovalMethod::DeviceAttestation);
+    assert_eq!(
+        evidence.snapshot_digest(),
+        &f.prompt
+            .snapshots
+            .lock()
+            .unwrap()
+            .last()
+            .unwrap()
+            .snapshot_digest()
+            .unwrap()
+    );
     assert!(
         f.gate
             .authorize(&cx, req, Digest::hash(b"args"))
             .await
             .is_err()
     );
+}
+
+#[tokio::test]
+async fn trusted_approval_follows_original_consumed_port_entry_without_leaking_to_other_grants() {
+    let f = Fixture::with_control(Some(CoreControl::default()));
+    let revision = Digest::hash(b"approval-evidence-frozen-revision");
+    let document = Digest::hash(b"approval-evidence-user-policy");
+    let shape = ShapeRef::parse("local.fixture.entry@1.0").unwrap();
+    let op = OpName::parse("run").unwrap();
+    f.gate
+        .register_operation_views(
+            &f.profile,
+            &revision,
+            [(shape.clone(), [op.clone()].into())].into(),
+        )
+        .unwrap();
+    let mut policy = permissions();
+    policy.ports.insert(shape.to_string());
+    let cx = f.cx(Principal::User).with_revision(revision.clone());
+    f.gate
+        .register_user_policy_for_revision(
+            &f.profile,
+            &document,
+            &revision,
+            cx.security_epoch(),
+            policy.clone(),
+            policy.clone(),
+        )
+        .unwrap();
+    f.approvals
+        .set_user_permissions(
+            &f.profile,
+            &document,
+            &revision,
+            cx.security_epoch(),
+            &policy,
+        )
+        .unwrap();
+    let request = EffectRequest::PortCall { shape, op };
+    let args = Digest::hash(b"approved-entry-arguments");
+    let grant = f.grant(&cx, request.clone(), args.clone()).await;
+    let permit = grant.consume(&cx, &request, &args).unwrap();
+    let prompt = f.prompt.snapshots.lock().unwrap().last().unwrap().clone();
+    assert_eq!(&prompt.reservation, permit.id());
+    assert_eq!(&prompt.args_digest, permit.args_digest());
+    let approval = permit.trusted_approval().unwrap();
+    assert_eq!(approval.method(), TrustedApprovalMethod::Prompt);
+    assert_eq!(approval.risk(), prompt.risk);
+    assert_eq!(
+        approval.snapshot_digest(),
+        &prompt.snapshot_digest().unwrap()
+    );
+    // The original funding path includes this inline evidence through sizeof;
+    // the dynamic copy inventory remains the same authenticated effect/IDs.
+    let dynamic = permit.execution_entry_evidence_storage_bytes().unwrap();
+    let _funding = f
+        .gate
+        .control()
+        .reserve(
+            ControlKind::Frame,
+            (std::mem::size_of::<ExecutionEntryEvidence>() + dynamic) as u64,
+        )
+        .unwrap();
+    let entry = permit.try_execution_entry_evidence_precharged().unwrap();
+    assert_eq!(entry.trusted_approval(), Some(approval));
+    assert_eq!(entry.grant(), permit.id());
+    assert!(entry.matches_context(&cx));
+
+    let pack = f.pack("local.unprompted", permissions()).await;
+    let calls_after_install = f.prompt.calls.load(Ordering::SeqCst);
+    let args = Digest::hash(b"unprompted-clock");
+    let grant = f.grant(&pack, EffectRequest::Clock, args.clone()).await;
+    let clock = grant.consume(&pack, &EffectRequest::Clock, &args).unwrap();
+    assert!(clock.trusted_approval().is_none());
+    assert_eq!(f.prompt.calls.load(Ordering::SeqCst), calls_after_install);
+}
+
+#[tokio::test]
+async fn trusted_approval_never_overrides_original_args_or_revoked_epoch() {
+    let f = Fixture::with_control(Some(CoreControl::default()));
+    let mut policy = permissions();
+    policy.native = true;
+    let cx = f.pack("local.prompted", policy).await;
+    let request = EffectRequest::Native {
+        pack: owner(&cx).clone(),
+    };
+    let args = Digest::hash(b"approved-original");
+    let grant = f.grant(&cx, request.clone(), args.clone()).await;
+    assert!(
+        grant
+            .consume(&cx, &request, &Digest::hash(b"changed"))
+            .is_err()
+    );
+    let grant = f.grant(&cx, request.clone(), args.clone()).await;
+    f.approvals.advance_security_epoch(&f.profile).unwrap();
+    assert!(matches!(
+        grant.consume(&cx, &request, &args),
+        Err(GateError::StaleEpoch)
+    ));
 }
 
 #[tokio::test]
