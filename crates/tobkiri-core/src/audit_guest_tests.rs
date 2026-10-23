@@ -111,10 +111,36 @@ const COMPONENT: &str = r###"(component
   (instance $port (export "round-trip" (func $round-trip-value)) (export "append-only" (func $append-only-value)) (export "late-append" (func $late-append-value)))
   (export "local:audit-import-fixture/port@1.0.0" (instance $port)))"###;
 
-fn pack(directory: &std::path::Path, permissions: PermissionSet) -> VerifiedPack {
-    let component = wat::parse_str(COMPONENT).unwrap();
+fn pack(
+    directory: &std::path::Path,
+    permissions: PermissionSet,
+    external_allocator: bool,
+) -> VerifiedPack {
+    let mut source = COMPONENT.to_owned();
+    let mut files = BTreeMap::new();
+    let mut core_modules = BTreeMap::new();
+    if external_allocator {
+        // Extract this fixture's exact allocator implementation, leaving all
+        // Audit callbacks, lifecycle, port ABI and execution wiring unchanged.
+        let start = source.find("  (core module $allocator\n").unwrap();
+        let end = source.find("  (core instance $a ").unwrap();
+        let code = source[start..end].replacen("(core module $allocator", "(module", 1);
+        files.insert(
+            "shared/allocator.wasm".into(),
+            wat::parse_str(code).unwrap(),
+        );
+        core_modules.insert("shared-allocator".into(), "shared/allocator.wasm".into());
+        source.replace_range(
+            start..end,
+            r#"  (core module $allocator (import "shared-allocator")
+          (export "memory" (memory 1 1))
+          (export "realloc" (func (param i32 i32 i32 i32) (result i32))))
+"#,
+        );
+    }
+    let component = wat::parse_str(source).unwrap();
     let shape = ShapeRef::parse(SHAPE).unwrap();
-    let files = BTreeMap::from([
+    files.extend([
         ("component.wasm".into(), component),
         ("wit/port.wit".into(), b"package local:audit-import-fixture@1.0.0; interface port { round-trip: func() -> u32; append-only: func() -> u32; late-append: func() -> u32; }".to_vec()),
         ("wit/port.shape.json".into(), br#"{"cardinality":"one","streams":{},"callbacks":{}}"#.to_vec()),
@@ -125,7 +151,7 @@ fn pack(directory: &std::path::Path, permissions: PermissionSet) -> VerifiedPack
         version: "1.0.0".into(),
         publisher_key: None,
         runtime: RuntimeSpec::Wasm {
-            core_modules: Default::default(),
+            core_modules,
             component: "component.wasm".into(),
             toolchain: "wat-audit-ABI-regression/1".into(),
             config: None,
@@ -174,6 +200,9 @@ struct Fixture {
 }
 impl Fixture {
     async fn new() -> Self {
+        Self::with_external_allocator(false).await
+    }
+    async fn with_external_allocator(external_allocator: bool) -> Self {
         let temporary = tempfile::tempdir().unwrap();
         let physical = temporary.path().canonicalize().unwrap();
         let core = Core::open(
@@ -189,7 +218,7 @@ impl Fixture {
         // work plus whole-history owned verification. No original cap changes.
         permissions.wasm.wall_ms = 5000;
         permissions.loops.max_wall_ms = 5000;
-        let verified = pack(&physical, permissions.clone());
+        let verified = pack(&physical, permissions.clone(), external_allocator);
         let mut profile = crate::test_support::runtime_profile(
             &physical,
             std::slice::from_ref(&verified),
@@ -352,6 +381,41 @@ fn append_args() -> Digest {
     let payload = tobkiri_canon::parse(PAYLOAD, tobkiri_canon::Variant::StrictV1).unwrap();
     let args = CanonValue::Arr(vec![CanonValue::Str(KIND.into()), payload]);
     Digest::hash(&tobkiri_canon::encode(&args, tobkiri_canon::Variant::StrictV1).unwrap())
+}
+
+#[tokio::test]
+async fn verified_external_core_module_keeps_original_audit_grant_and_terminal() {
+    let fixture = Fixture::with_external_allocator(true).await;
+    let RuntimeSpec::Wasm { core_modules, .. } = &fixture.verified.manifest.runtime else {
+        panic!("ordinary verified Wasm Pack required");
+    };
+    assert_eq!(core_modules["shared-allocator"], "shared/allocator.wasm");
+    assert_eq!(
+        fixture
+            .invoke("append-only")
+            .await
+            .unwrap()
+            .as_str()
+            .unwrap(),
+        "0"
+    );
+    let rows = fixture.rows().await;
+    let guest = fixture.guest_rows(&rows);
+    assert_eq!(guest.len(), 1);
+    assert_eq!(guest[0].event.profile, fixture.profile.id);
+    assert_eq!(guest[0].event.principal, fixture.principal());
+    assert_eq!(
+        guest[0].event.payload.get("payload"),
+        Some(&tobkiri_canon::parse(PAYLOAD, tobkiri_canon::Variant::StrictV1).unwrap())
+    );
+    let append = fixture.acknowledged(
+        fixture.outcome(&rows, EffectRequest::AuditAppend),
+        EffectRequest::AuditAppend,
+        &append_args(),
+    );
+    assert_eq!(append.decision.outcome, Outcome::Succeeded);
+    assert_eq!(append.decision.reservation.request, guest[0].event.request);
+    fixture.session.close().await.unwrap();
 }
 
 #[tokio::test]
