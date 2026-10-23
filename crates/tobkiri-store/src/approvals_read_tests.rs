@@ -129,24 +129,28 @@ fn prepared_reads_cannot_bypass_changed_authorizer_or_malformed_authority() {
     );
     {
         let connection = approvals.connection.lock().unwrap();
-        connection.authorizer(Some(|context: AuthContext<'_>| {
-            if matches!(
-                context.action,
-                AuthAction::Read {
-                    table_name: "permissions",
-                    ..
+        connection
+            .authorizer(Some(|context: AuthContext<'_>| {
+                if matches!(
+                    context.action,
+                    AuthAction::Read {
+                        table_name: "permissions",
+                        ..
+                    }
+                ) {
+                    Authorization::Deny
+                } else {
+                    Authorization::Allow
                 }
-            ) {
-                Authorization::Deny
-            } else {
-                Authorization::Allow
-            }
-        }));
+            }))
+            .unwrap();
     }
     assert!(approvals.permissions(&profile, &pack, &hash).is_err());
     {
         let connection = approvals.connection.lock().unwrap();
-        connection.authorizer(None::<fn(AuthContext<'_>) -> Authorization>);
+        connection
+            .authorizer(None::<fn(AuthContext<'_>) -> Authorization>)
+            .unwrap();
     }
     assert_eq!(
         approvals.permissions(&profile, &pack, &hash).unwrap(),
