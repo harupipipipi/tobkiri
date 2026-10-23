@@ -10,6 +10,9 @@ use crate::CoreError;
 mod input_forwarding;
 use crate::funded_arc::{FundedArc, FundedWeak, Funding, new_funding};
 use input_forwarding::NativeInputForwarding;
+#[path = "invocation_record.rs"]
+mod invocation_record;
+use invocation_record::{ReachedState, new_reached_state, reached_state_storage_bytes};
 use std::{
     collections::{BTreeMap, BTreeSet},
     ptr,
@@ -405,7 +408,8 @@ struct NodeLifecycle {
     /// physical admission boundary.
     args_control: Option<ControlReservation>,
 }
-struct ReachedState {
+// Stack preparation; all owned fields are copied only after bundle funding.
+struct PreparedReachedState {
     auth: ControlHandle<FactoryAuth>,
     provider: ControlHandle<CoreProviderAuthority>,
     context: CallCx,
@@ -438,9 +442,9 @@ struct ReachedState {
     // Full prepaid control inventory, not merely sizeof an erased handle.
     retained_bytes: u64,
 }
-// Actual provenance/lease carriers stay inline in the prepaid ReachedState
-// control allocation. Boxing a variant would add a separately allocated owner
-// and funding lifetime beyond the reserved complete state.
+// Actual provenance/lease carriers stay inline in the prepaid invocation
+// record. Boxing a variant would add a separately allocated owner and funding
+// lifetime beyond the reserved complete bundle.
 #[allow(clippy::large_enum_variant)]
 enum ReachedOrigin {
     Flow,
@@ -1214,13 +1218,13 @@ impl CoreProviderAuthority {
                             ))
                         })
                         .ok_or(GateError::Unavailable)?;
-                    let state_bytes =
-                        ControlHandle::<ReachedState>::storage_bytes::<ControlReservation>()
-                            .checked_add(native_bytes)
-                            .and_then(|bytes| bytes.checked_add(metadata_bytes))
-                            .and_then(|bytes| u64::try_from(bytes).ok())
-                            .ok_or(GateError::Unavailable)?;
-                    let state_reservation = control.reserve(ControlKind::Frame, state_bytes)?;
+                    let state_bytes = reached_state_storage_bytes()?
+                        .checked_add(native_bytes)
+                        .and_then(|bytes| bytes.checked_add(metadata_bytes))
+                        .and_then(|bytes| u64::try_from(bytes).ok())
+                        .ok_or(GateError::Unavailable)?;
+                    let state_reservation =
+                        new_funding(control.reserve(ControlKind::Frame, state_bytes)?)?;
                     let metadata = ActiveFrameMetadata {
                         profile: caller
                             .profile()
@@ -1257,8 +1261,8 @@ impl CoreProviderAuthority {
                         prepared.index,
                         &prepared.invocation,
                     )?;
-                    let state = ControlHandle::try_new_precharged(
-                        ReachedState {
+                    let state = new_reached_state(
+                        PreparedReachedState {
                             auth: self.auth.clone(),
                             provider: provider_handle.clone(),
                             context: caller
@@ -1479,14 +1483,13 @@ impl CoreProviderAuthority {
                             bytes.checked_add(code_owner_pack_storage_bytes(pack, hash))
                         })
                         .ok_or(GateError::Unavailable)?;
-                    let state_bytes =
-                        ControlHandle::<ReachedState>::storage_bytes::<ControlReservation>()
-                            .checked_add(ui_bytes)
-                            .and_then(|bytes| bytes.checked_add(metadata_bytes))
-                            .and_then(|bytes| u64::try_from(bytes).ok())
-                            .ok_or(GateError::Unavailable)?;
+                    let state_bytes = reached_state_storage_bytes()?
+                        .checked_add(ui_bytes)
+                        .and_then(|bytes| bytes.checked_add(metadata_bytes))
+                        .and_then(|bytes| u64::try_from(bytes).ok())
+                        .ok_or(GateError::Unavailable)?;
                     let state_reservation =
-                        caller.control().reserve(ControlKind::Frame, state_bytes)?;
+                        new_funding(caller.control().reserve(ControlKind::Frame, state_bytes)?)?;
                     let metadata = ActiveFrameMetadata {
                         profile: caller
                             .profile()
@@ -1515,8 +1518,8 @@ impl CoreProviderAuthority {
                         path: path.clone(),
                         transitive_memory_bytes: None,
                     };
-                    let state = ControlHandle::try_new_precharged(
-                        ReachedState {
+                    let state = new_reached_state(
+                        PreparedReachedState {
                             auth: self.auth.clone(),
                             provider: provider_handle.clone(),
                             context: caller
@@ -1700,13 +1703,13 @@ impl CoreProviderAuthority {
                         )
                         .and_then(|bytes| bytes.checked_add(caller.request().clone_storage_bytes()))
                         .ok_or(GateError::Unavailable)?;
-                    let state_bytes =
-                        ControlHandle::<ReachedState>::storage_bytes::<ControlReservation>()
-                            .checked_add(data_bytes)
-                            .and_then(|bytes| bytes.checked_add(metadata_bytes))
-                            .and_then(|bytes| u64::try_from(bytes).ok())
-                            .ok_or(GateError::Unavailable)?;
-                    let reservation = caller.control().reserve(ControlKind::Frame, state_bytes)?;
+                    let state_bytes = reached_state_storage_bytes()?
+                        .checked_add(data_bytes)
+                        .and_then(|bytes| bytes.checked_add(metadata_bytes))
+                        .and_then(|bytes| u64::try_from(bytes).ok())
+                        .ok_or(GateError::Unavailable)?;
+                    let reservation =
+                        new_funding(caller.control().reserve(ControlKind::Frame, state_bytes)?)?;
                     let metadata = ActiveFrameMetadata {
                         profile: caller
                             .profile()
@@ -1732,8 +1735,8 @@ impl CoreProviderAuthority {
                         path: path.clone(),
                         transitive_memory_bytes: None,
                     };
-                    let state = ControlHandle::try_new_precharged(
-                        ReachedState {
+                    let state = new_reached_state(
+                        PreparedReachedState {
                             auth: self.auth.clone(),
                             provider: provider_handle.clone(),
                             context: caller
@@ -2551,7 +2554,8 @@ impl CoreProviderAuthority {
             user_source,
         )
         .ok_or_else(|| step(GateError::Unavailable))?;
-        let state_bytes = ControlHandle::<ReachedState>::storage_bytes::<ControlReservation>()
+        let state_bytes = reached_state_storage_bytes()
+            .map_err(step)?
             .checked_add(metadata_bytes)
             .and_then(|bytes| u64::try_from(bytes).ok())
             .ok_or_else(|| step(GateError::Unavailable))?;
@@ -2559,6 +2563,7 @@ impl CoreProviderAuthority {
             .control
             .reserve(ControlKind::Frame, state_bytes)
             .map_err(|error| step(GateError::from(error)))?;
+        let state_reservation = new_funding(state_reservation).map_err(step)?;
         let metadata = ActiveFrameMetadata {
             profile: context
                 .profile()
@@ -2611,8 +2616,8 @@ impl CoreProviderAuthority {
         } else {
             None
         };
-        let state = ControlHandle::try_new_precharged(
-            ReachedState {
+        let state = new_reached_state(
+            PreparedReachedState {
                 auth: self.auth.clone(),
                 provider: provider_handle,
                 context,
@@ -2870,7 +2875,8 @@ impl CoreProviderAuthority {
                 bytes.checked_add(code_owner_pack_storage_bytes(owner_pack, owner_hash))
             })
             .ok_or_else(|| step(GateError::Unavailable))?;
-        let state_bytes = ControlHandle::<ReachedState>::storage_bytes::<ControlReservation>()
+        let state_bytes = reached_state_storage_bytes()
+            .map_err(step)?
             .checked_add(source_dynamic)
             .and_then(|bytes| bytes.checked_add(metadata_dynamic))
             .and_then(|bytes| u64::try_from(bytes).ok())
@@ -2888,6 +2894,7 @@ impl CoreProviderAuthority {
             .control
             .reserve(ControlKind::Frame, state_bytes)
             .map_err(|error| step(GateError::from(error)))?;
+        let state_reservation = new_funding(state_reservation).map_err(step)?;
         let evidence_reservation = self
             .control
             .reserve(ControlKind::Frame, evidence_bytes)
@@ -2940,8 +2947,8 @@ impl CoreProviderAuthority {
             path: path.clone(),
             transitive_memory_bytes: None,
         };
-        let state = ControlHandle::try_new_precharged(
-            ReachedState {
+        let state = new_reached_state(
+            PreparedReachedState {
                 auth: self.auth.clone(),
                 provider: provider_handle,
                 context,
@@ -4251,7 +4258,8 @@ impl ActiveCodeFrame for ActiveFlowFrame {
             .checked_add(code_location_storage_bytes(position.code))
             .and_then(|bytes| bytes.checked_add(metadata_dynamic))
             .ok_or_else(|| step(GateError::Unavailable))?;
-        let bytes = ControlHandle::<ReachedState>::storage_bytes::<ControlReservation>()
+        let bytes = reached_state_storage_bytes()
+            .map_err(step)?
             .checked_add(dynamic)
             .and_then(|bytes| u64::try_from(bytes).ok())
             .ok_or_else(|| step(GateError::Unavailable))?;
@@ -4260,6 +4268,7 @@ impl ActiveCodeFrame for ActiveFlowFrame {
             .control()
             .reserve(ControlKind::Frame, bytes)
             .map_err(|error| step(GateError::from(error)))?;
+        let reservation = new_funding(reservation).map_err(step)?;
         let metadata = ActiveFrameMetadata {
             profile: self
                 .context
@@ -4309,8 +4318,8 @@ impl ActiveCodeFrame for ActiveFlowFrame {
             })
             .transpose()?;
 
-        let node = ControlHandle::try_new_precharged(
-            ReachedState {
+        let node = new_reached_state(
+            PreparedReachedState {
                 auth: self.auth.clone(),
                 provider: self.provider.clone(),
                 context: self
@@ -8227,7 +8236,7 @@ mod control_admission_tests {
 
     use tobkiri_wasm::NativeIdAttempt;
 
-    fn new_factory(session: &crate::Session) -> Arc<ExecutionFactory> {
+    pub(super) fn new_factory(session: &crate::Session) -> Arc<ExecutionFactory> {
         Arc::new(
             ExecutionFactory::new(
                 session.compiled.clone(),
@@ -8240,7 +8249,7 @@ mod control_admission_tests {
 
     /// Admit and enter one real native provider frame through the same
     /// Gate/bridge sequence as read_native_input_owned.
-    async fn admit_native_frame(
+    pub(super) async fn admit_native_frame(
         factory: &ExecutionFactory,
         request: &str,
     ) -> (Arc<dyn ProviderFrame>, DispatchPermit, Digest) {
@@ -8307,7 +8316,7 @@ mod control_admission_tests {
         (frame, permit, args_digest)
     }
 
-    fn core_frame(frame: &Arc<dyn ProviderFrame>) -> &CoreProviderFrame {
+    pub(super) fn core_frame(frame: &Arc<dyn ProviderFrame>) -> &CoreProviderFrame {
         frame.as_any().downcast_ref::<CoreProviderFrame>().unwrap()
     }
 
@@ -8326,7 +8335,7 @@ mod control_admission_tests {
 
     /// Settle the sole consumed permit with a real failed outcome and deliver
     /// its actual Gate terminal receipt to Core.
-    async fn finish_native_frame(
+    pub(super) async fn finish_native_frame(
         factory: &ExecutionFactory,
         frame: &Arc<dyn ProviderFrame>,
         permit: &DispatchPermit,

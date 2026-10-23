@@ -78,6 +78,15 @@ canonical-value copy; retained metadata is inline and included in the existing
 `sizeof`-based control inventories. Approval, consumption, cancellation, epoch
 and argument checks retain their original behavior.
 
+Core stores the existing entry, context, frozen-code metadata and single
+lifecycle mutex in a funded invocation record. Native task, operation and
+input owners remain in the actual reached state. Retaining or upgrading a
+record reference does not own an execution guard or confer execution
+authority. The state, record and funding blocks are prepaid together, and
+the same original reservation remains charged until the last strong or weak
+record carrier releases its physical storage. This separation supplies no
+parent link or authenticated Pack-facing API by itself.
+
 This description is not itself a live invocation or parent-chain proof, a GUI
 surface identity, a durable enrollment or a Pack policy digest. Core privately
 holds the actual leaf Grant and arguments, but its public Provider frame API
