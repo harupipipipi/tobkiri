@@ -27,7 +27,7 @@ class RuntimeBuildTests(unittest.TestCase):
         self.assertEqual(recorded["runtimes"]["limits"]["address_space_per_process"], 4 * GIB)
         self.assertIn(f"--as={2 * GIB}", sandbox_command(Path('/source'), Path('/work'), recipe))
         with self.assertRaises(ValueError):
-            sandbox_command(Path('/source'), Path('/work'), recipe, address_space_bytes=8 * GIB)
+            sandbox_command(Path('/source'), Path('/work'), recipe, address_space_bytes=16 * GIB)
 
     def test_no_network_or_host_home_and_frozen_source_cache_mounts(self):
         paths = [Path('/input') / name for name in ('source', 'registry', 'rust', 'git', 'wasi')]

@@ -160,6 +160,24 @@ are retained as a separate CI artifact for subsequent remote component builds;
 no producer binary is downloaded to the desktop. Startup success does not
 establish componentization, guest behavior, Core acceptance or GUI parity.
 
+The final stages restore the existing pinned Wasmtime 48 validation wheel and
+WAC 0.12 binary as data, verifying complete hashes before bounded extraction.
+`component_inputs.py` captures the original usage-cost, stream-normalizer and
+finalizer plans and all 31 source references. The finalizer's tool-bridge WIT
+reference is explicitly the original v2 definition. Current source bytes must
+still match those historical plan pins; no historical evidence is rewritten.
+
+`build_components.py` runs the recorded bindings/componentization/composition
+steps with the rebuilt custom CLI, preserving exact inner/outer typed boundaries
+and complete captured source checks. Each Pack has its own fresh scratch and
+networkless namespace. Producer, validation tools, SDK, inputs and controls are
+read-only. This producer stage uses the historical component-trial 8 GiB process
+limit and existing supervisor; native2/Rust4 limits retain their defaults and
+Core/guest budgets are unchanged. Each produced component must fit the original
+32 MiB file bound. New hashes and custom-producer provenance are retained with
+the components only on CI. Production activation, guest runtime-info, actual
+five-Pack dispatch and native Core/Gate acceptance still require their own tests.
+
 ## Pinned inputs and reproducibility
 
 - Official CPython 3.13.16 archive:

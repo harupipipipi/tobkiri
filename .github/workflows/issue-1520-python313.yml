@@ -19,6 +19,10 @@ on:
       - 'tools/python313-producer/build_assets.py'
       - 'tools/python313-producer/cli_source.py'
       - 'tools/python313-producer/build_cli.py'
+      - 'tools/python313-producer/component_inputs.py'
+      - 'tools/python313-producer/fetch_validation_tools.py'
+      - 'tools/python313-producer/component_driver.py'
+      - 'tools/python313-producer/build_components.py'
       - 'tools/python313-producer/packager/**'
       - 'tools/python313-producer/stage_sources.py'
       - 'tools/python313-producer/verify_source.py'
@@ -122,6 +126,26 @@ jobs:
             ${{ runner.temp }}/python313-cli/cli-build.json
             ${{ runner.temp }}/python313-cli/cli-source.json
           if-no-files-found: error
+      - name: Restore the pinned Wasmtime and WAC component validation tools
+        run: >-
+          python3 -B tools/python313-producer/fetch_validation_tools.py
+          --destination "$RUNNER_TEMP/python313-validation"
+      - name: Rebuild the three missing original Python components
+        run: >-
+          python3 -B tools/python313-producer/build_components.py
+          --source "$RUNNER_TEMP/python313-source"
+          --producer "$RUNNER_TEMP/python313-cli"
+          --validation "$RUNNER_TEMP/python313-validation"
+          --destination "$RUNNER_TEMP/python313-components"
+      - name: Retain the verified original components for native acceptance
+        uses: actions/upload-artifact@v4
+        with:
+          name: python313-original-components
+          path: |
+            ${{ runner.temp }}/python313-components/components-build.json
+            ${{ runner.temp }}/python313-components/*/work/component.wasm
+            ${{ runner.temp }}/python313-components/*/work/component.build.json
+          if-no-files-found: error
       - name: Retain source and build receipts without binaries
         if: always()
         uses: actions/upload-artifact@v4
@@ -180,4 +204,12 @@ jobs:
             ${{ runner.temp }}/python313-cli/cli-startup/command.json
             ${{ runner.temp }}/python313-cli/cli-startup/supervision.json
             ${{ runner.temp }}/python313-cli/cli-startup/build.log
+            ${{ runner.temp }}/python313-validation/validation-inputs.json
+            ${{ runner.temp }}/python313-components/components-build.json
+            ${{ runner.temp }}/python313-components/componentize.sh
+            ${{ runner.temp }}/python313-components/*/control.json
+            ${{ runner.temp }}/python313-components/*/build/command.json
+            ${{ runner.temp }}/python313-components/*/build/supervision.json
+            ${{ runner.temp }}/python313-components/*/build/build.log
+            ${{ runner.temp }}/python313-components/*/work/component.build.json
           if-no-files-found: warn

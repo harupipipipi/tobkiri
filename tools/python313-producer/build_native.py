@@ -68,8 +68,8 @@ def sandbox_command(source: Path, work: Path, recipe: Path,
                     readonly: tuple[tuple[Path, str], ...] = (), *,
                     address_space_bytes: int = 2 * GIB) -> list[str]:
     """Expose only read-only tools/source and this stage's private scratch."""
-    if address_space_bytes not in (2 * GIB, 4 * GIB):
-        raise ValueError("only recorded native and Rust-stage address-space limits allowed")
+    if address_space_bytes not in (2 * GIB, 4 * GIB, 8 * GIB):
+        raise ValueError("only recorded native, Rust and component-stage address-space limits allowed")
     command = [
         "/usr/bin/bwrap", "--unshare-all", "--die-with-parent", "--new-session",
         "--cap-drop", "ALL", "--clearenv",

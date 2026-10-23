@@ -1,0 +1,115 @@
+"""Restore the three missing original Python components on the isolated CI host."""
+import argparse
+import json
+import os
+from pathlib import Path
+import sys
+
+from build_native import GIB, HERE, fingerprint, sandbox_command, verify_tree
+from build_wasi import run_stage
+import component_inputs
+from fetch_sdk import inventory
+import fetch_validation_tools
+import runtime_inputs
+
+
+def run(source: Path, producer: Path, validation: Path, destination: Path) -> None:
+    """Build each exact original Pack separately with no production activation."""
+    if sys.platform != 'linux' or os.environ.get('GITHUB_ACTIONS') != 'true':
+        raise ValueError('original component rebuilding is restricted to Linux CI')
+    if (not destination.is_absolute() or not destination.parent.is_dir()
+            or destination.parent.resolve() != destination.parent
+            or any(not p.is_absolute() or p.resolve() != p for p in (source, producer, validation))):
+        raise ValueError('physical build inputs and new output directory required')
+    destination.mkdir(mode=0o700)
+    source_identity = verify_tree(source)
+    producer_receipt_path = producer / 'cli-build.json'
+    producer_report = runtime_inputs.report(producer_receipt_path)
+    binary = producer / 'work/target/release/componentize-py'
+    if (producer_report['inputs']['source'] != source_identity
+            or not producer_report['inputs_unchanged'] or not producer_report['producer_cli']
+            or fingerprint(binary, 128 * 1024 * 1024) != producer_report['binary']):
+        raise ValueError('original producer differs from successful build receipt')
+    tool_receipt_path = validation / 'validation-inputs.json'
+    tool_report = runtime_inputs.report(tool_receipt_path)
+    if tool_report['inputs'] != list(fetch_validation_tools.INPUTS):
+        raise ValueError('validation tools differ from pinned inputs')
+    for pin in fetch_validation_tools.INPUTS:
+        if fingerprint(validation / pin['filename'], 100 * 1024 * 1024) != {
+                k: pin[k] for k in ('bytes', 'sha256')}:
+            raise ValueError('actual validation tool input changed')
+    runtime_inputs.recorded_files(validation / 'wasmtime', tool_report['files'])
+    repo = HERE.parents[1]
+    sdk = repo / 'sdk/python'
+    snapshots = {str(sdk): inventory(sdk), str(validation): inventory(validation)}
+    identities = {str(p): fingerprint(p) for p in (binary, producer_receipt_path, tool_receipt_path)}
+    driver = HERE / 'component_driver.py'
+    identities[str(driver)] = fingerprint(driver)
+    empty = destination / 'empty-venv'
+    empty.mkdir(mode=0o700)
+    recipe = destination / 'componentize.sh'
+    recipe.write_text('set -eu\n/usr/bin/python3 -I -B /driver.py\n')
+    identities[str(recipe)] = fingerprint(recipe)
+    receipt = {'format': 'tobkiri.python313-original-components/1', 'outcome': 'pending',
+               'source': source_identity, 'producer': producer_report['binary'],
+               'producer_receipt': identities[str(producer_receipt_path)],
+               'validation_receipt': identities[str(tool_receipt_path)],
+               'driver': identities[str(driver)], 'components': {},
+               'guest_runtime_identity_verified': False, 'native_core_replay': False,
+               'production_enabled': False, 'historical_binary_identity_claimed': False}
+    receipt_path = destination / 'components-build.json'
+    try:
+        for name in component_inputs.PLANS:
+            output = destination / name
+            output.mkdir(mode=0o700)
+            inputs = output / 'inputs'
+            plan_receipt = component_inputs.stage(repo, name, inputs)
+            snapshots[str(inputs)] = plan_receipt['files']
+            control = output / 'control.json'
+            control.write_text(json.dumps({
+                'producer_sha256': producer_report['binary']['sha256'],
+                'producer_receipt_sha256': identities[str(producer_receipt_path)]['sha256'],
+                'plan_sha256': plan_receipt['plan_sha256']}) + '\n')
+            identities[str(control)] = fingerprint(control)
+            work = output / 'work'
+            work.mkdir(mode=0o700)
+            mounts = ((binary, '/producer'), (validation / 'wac-cli', '/wac'),
+                      (validation / 'wasmtime', '/validation-deps'), (sdk, '/sdk-python'),
+                      (driver, '/driver.py'), (inputs, '/inputs'),
+                      (control, '/control.json'), (empty, '/empty-venv'))
+            # Historical component trials used the same 8 GiB producer process
+            # limit. This is never a change to the Core or guest memory budget.
+            command = sandbox_command(source, work, recipe, mounts, address_space_bytes=8 * GIB)
+            supervision = run_stage(name, command, work, output / 'build')
+            proof_path = work / 'component.build.json'
+            fingerprint(proof_path, 4 * 1024 * 1024)
+            proof = json.loads(proof_path.read_bytes())
+            artifact = fingerprint(work / 'component.wasm', 32 * 1024 * 1024)
+            if (proof['artifact_sha256'] != artifact['sha256']
+                    or proof['artifact_bytes'] != artifact['bytes']
+                    or proof['build_plan_sha256'] != plan_receipt['plan_sha256']
+                    or proof['compiler_executable_sha256'] != producer_report['binary']['sha256']):
+                raise ValueError('component output differs from its source and producer receipt')
+            receipt['components'][name] = {'artifact': artifact, 'supervision': supervision,
+                'source': plan_receipt, 'build_receipt': fingerprint(proof_path)}
+            receipt_path.write_text(json.dumps(receipt, indent=2) + '\n')
+        if verify_tree(source) != source_identity:
+            raise ValueError('original producer source changed')
+        for path, expected in snapshots.items():
+            runtime_inputs.recorded_files(Path(path), expected)
+        for path, expected in identities.items():
+            if fingerprint(Path(path)) != expected:
+                raise ValueError('component build input identity changed')
+        receipt.update(outcome='success', inputs_unchanged=True)
+    except BaseException:
+        receipt['outcome'] = 'failed'
+        raise
+    finally:
+        receipt_path.write_text(json.dumps(receipt, indent=2) + '\n')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    for name in ('source', 'producer', 'validation', 'destination'):
+        parser.add_argument('--' + name, type=Path, required=True)
+    run(**vars(parser.parse_args()))
