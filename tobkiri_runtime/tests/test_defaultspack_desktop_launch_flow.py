@@ -175,6 +175,29 @@ def test_defaultspack_ecosystem_registers_desktop_app_metadata():
         for path in (DEFAULTSPACK_ROOT / prefix).glob("*/manifest.json")
     }
     assert tool_paths
+    # The shipped Shell and its public resources are declared Pack artifacts.
+    ui_paths = {
+        "ui/assets/tobkiri-startup-blade-cut.svg",
+        "ui/codex.png",
+        "ui/dev_panel.js",
+        "ui/licenses/Beautiful-UI-MIT.txt",
+        "ui/mediapipe/NOTICE.md",
+        "ui/mediapipe/wasm/vision_wasm_internal.js",
+        "ui/mediapipe/wasm/vision_wasm_internal.wasm",
+        "ui/mediapipe/wasm/vision_wasm_module_internal.js",
+        "ui/mediapipe/wasm/vision_wasm_module_internal.wasm",
+        "ui/mediapipe/wasm/vision_wasm_nosimd_internal.js",
+        "ui/mediapipe/wasm/vision_wasm_nosimd_internal.wasm",
+        "ui/models/hand_landmarker.task",
+        "ui/pet/tobkiri-pet.png",
+        "ui/shell-app.css",
+        "ui/shell-app.js",
+        "ui/shell-defaultspack-app.js",
+        "ui/shell-icons.js",
+        "ui/shell-rolldown-runtime.js",
+        "ui/shell-vendor.js",
+        "ui/shell.html",
+    }
     assert {
         artifact["path"] for artifact in artifact_index["artifacts"]
     } == {
@@ -192,7 +215,7 @@ def test_defaultspack_ecosystem_registers_desktop_app_metadata():
         "defaultspack/managed_desktop_presentation.py",
         "defaultspack/provider_status_presentation.py",
         "defaultspack/turn_progress_presentation.py",
-    } | tool_paths
+    } | tool_paths | ui_paths
     assert all(
         artifact["role"] == "sidecar"
         for artifact in artifact_index["artifacts"]
@@ -221,9 +244,11 @@ def test_defaultspack_ecosystem_registers_desktop_app_metadata():
         "defaultspack/turn_progress_presentation.py",
     }
     for artifact in artifact_index["artifacts"]:
-        if artifact["path"] in presentation_paths:
+        if artifact["path"] in presentation_paths | ui_paths:
             assert artifact["role"] == (
-                "asset" if artifact["path"].endswith(".json") else "runtime"
+                "asset"
+                if artifact["path"] in ui_paths or artifact["path"].endswith(".json")
+                else "runtime"
             )
             assert artifact["digest"] == (
                 "sha256:"

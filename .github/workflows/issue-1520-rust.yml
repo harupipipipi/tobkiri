@@ -225,6 +225,14 @@ jobs:
           cargo test --locked -p tobkiri-wasm --test port_proxy
           flow_step_failure_keeps_original_unavailable_port_outcome
           -- --exact --nocapture --test-threads=1
+      - name: Observe original 64-handle UI session close in isolation
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/ui-handle-close.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-core --lib
+          session::tests::ui_handle_capacity_and_session_close_are_bounded
+          -- --exact --nocapture --test-threads=1
       - name: Strict workspace lint
         if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
         run: cargo clippy --workspace --all-targets --locked --no-deps -- -D warnings
@@ -402,6 +410,8 @@ jobs:
             ${{ runner.temp }}/wasm-flow-bridge.log
             ${{ runner.temp }}/wasm-flow-bridge.receipt.json
             ${{ runner.temp }}/failed-flow-bridge.log
+            ${{ runner.temp }}/ui-handle-close.log
+            ${{ runner.temp }}/ui-handle-close.receipt.json
             ${{ runner.temp }}/failed-flow-bridge.receipt.json
           if-no-files-found: warn
 

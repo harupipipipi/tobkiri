@@ -19,7 +19,9 @@ from core_runtime.authority.ui_operator import sign_ui_operator
 from core_runtime.authority.v4 import interactive_confirmation_digest
 from core_runtime.bootstrap.saved_bridge import READINESS
 from core_runtime.host_provider_backend_v4 import ExactHostProviderBackendV4
-from ecosystem.defaultspack.runtime.saved_conversation import TARGETS
+from ecosystem.tobkiri_conversation_orchestration_pack.runtime.saved_conversation import (
+    TARGETS,
+)
 from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
 from ecosystem.rumi_tool_broker_pack.runtime import broker
 from ecosystem.rumi_workspace_mount_pack.runtime.mounts import WorkspaceMountStore

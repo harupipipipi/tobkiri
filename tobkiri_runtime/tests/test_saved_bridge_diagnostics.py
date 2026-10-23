@@ -18,7 +18,9 @@ from ecosystem.defaultspack.defaultspack.runtime_composition import (
     defaultspack_activation_snapshot_loader,
 )
 from ecosystem.defaultspack.domain.runtime_surface_v4 import create_runtime_surface_services
-from ecosystem.defaultspack.runtime import saved_conversation as saved
+from ecosystem.tobkiri_conversation_orchestration_pack.runtime import (
+    saved_conversation as saved,
+)
 from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
 from tests.test_live_production_v4_dispatch import (
     _CapturedBackend,

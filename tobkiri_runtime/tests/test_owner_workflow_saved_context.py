@@ -25,7 +25,9 @@ from tests.test_conversation_lifecycle_saved_boundary import _exchange, BASE_MS
 from tests.test_conversation_lifecycle_pack import _confirm
 from tests.test_saved_bridge_callbacks import _frame
 from tests.test_workflow_v4 import Authority, Invoker
-from ecosystem.defaultspack.runtime import saved_conversation as saved
+from ecosystem.tobkiri_conversation_orchestration_pack.runtime import (
+    saved_conversation as saved,
+)
 from acceptance.independent_extensions.temporal_context.source.temporal import tobkiri_packvm_invoke
 from tobkiri_protocol.canonical import canonical_digest
 
