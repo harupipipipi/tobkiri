@@ -29,13 +29,15 @@ def _read(stream: BinaryIO, size: int) -> bytes:
     return raw
 
 
-def _hash(stream: BinaryIO, size: int) -> str:
+def _hash(stream: BinaryIO, size: int, sink: BinaryIO | None = None) -> str:
     if not 8 <= size <= INPUT_LIMIT:
         raise ValueError("artifact exceeds original per-input bound")
     digest = hashlib.sha256()
     while size:
         chunk = _read(stream, min(size, 65536))
         digest.update(chunk)
+        if sink is not None:
+            sink.write(chunk)
         size -= len(chunk)
     return digest.hexdigest()
 
@@ -60,21 +62,37 @@ def _worker_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
-def inspect_wire(stream: BinaryIO, expected: list[dict]) -> dict:
+def _capture(stream: BinaryIO, size: int, destination: Path | None) -> str:
+    if destination is None:
+        return _hash(stream, size)
+    # The materializer owns the private parent. Never replace an existing file.
+    with destination.open("xb") as output:
+        return _hash(stream, size, output)
+
+
+def inspect_wire(
+    stream: BinaryIO, expected: list[dict], destination: Path | None = None,
+) -> dict:
     """Bind every extracted byte stream to the original embedded module order."""
     if _read(stream, 8) != b"TBUNB001":
         raise ValueError("unknown extraction framing")
     count, size = struct.unpack("<II", _read(stream, 8))
     if count > MAX_MODULES or count != len(expected):
         raise ValueError("extracted module count differs from original")
-    result = {"bytes": size, "sha256": _hash(stream, size), "modules": []}
+    result = {
+        "bytes": size,
+        "sha256": _capture(stream, size, destination / "component.wasm"
+                           if destination else None),
+        "modules": [],
+    }
     total = 16 + size
     for index, original in enumerate(expected):
         size = struct.unpack("<I", _read(stream, 4))[0]
         total += 4 + size
         if total > OUTPUT_LIMIT:
             raise ValueError("extraction envelope exceeds output bound")
-        digest = _hash(stream, size)
+        digest = _capture(stream, size, destination / f"module-{index}.wasm"
+                          if destination else None)
         if (size, digest) != (original["bytes"], original["sha256"]):
             raise ValueError("extracted module differs from original bytes")
         result["modules"].append({
@@ -86,7 +104,7 @@ def inspect_wire(stream: BinaryIO, expected: list[dict]) -> dict:
     return result
 
 
-def extract(worker: Path, source: Path) -> dict:
+def extract(worker: Path, source: Path, destination: Path | None = None) -> dict:
     """Run one locally trusted build tool with no concurrent children."""
     original = inspect_component(source)
     before = source.lstat()
@@ -118,7 +136,7 @@ def extract(worker: Path, source: Path) -> dict:
             raise ValueError("worker output exceeds envelope bound")
         output.seek(0)
         expected = [m for m in original["modules"] if m["bytes"] > THRESHOLD]
-        transformed = inspect_wire(output, expected)
+        transformed = inspect_wire(output, expected, destination)
     return {
         "source": str(source), "source_sha256": original["sha256"],
         "source_bytes": original["bytes"],

@@ -511,6 +511,16 @@ fn complete(report: &Value, oracle: &Value) -> bool {
 #[tokio::test]
 #[ignore = "two separately pinned Python Packs; arm64 macOS Darwin24.6.0/local APFS; explicit fresh evidence"]
 async fn original_python_tool_caller_replays_through_real_core() -> Result<()> {
+    run_original_python_graph(false).await
+}
+
+#[tokio::test]
+#[ignore = "exact extracted original Python modules; same native Core and fresh evidence requirements"]
+async fn original_python_shared_modules_replay_through_real_core() -> Result<()> {
+    run_original_python_graph(true).await
+}
+
+async fn run_original_python_graph(shared_modules: bool) -> Result<()> {
     let destination = inputs::receipt_destination(&repo())?;
     let mut report = json!({"format":"tobkiri.gateway-tool-caller-native-core-replay/1","scope":"two-separate-python-packs-not-finalizer",
         "acceptance_scope":"actual separately pinned Python Wasm Packs through Core/Gate using the test Host and test data root; no Launcher GUI approval flow or production Gate wiring",
@@ -524,15 +534,21 @@ async fn original_python_tool_caller_replays_through_real_core() -> Result<()> {
         "five_pack_finalizer_acceptance":false,"all_typed_error_arms_executed":false,"in_flight_guest_cancellation_verified":false,
         "guest_lifecycle_shutdown_claimed":false,"retry_parity_claimed":false,"legacy_http_error_parity_claimed":false,
         "partial_stream_mutations_observed":false,"runtime":{},"replay":{},"denial":{},"shutdown_admission":{}});
+    report["shared_core_modules"] = json!(shared_modules);
     let result: Result<()> = async {
         ensure!(
             cfg!(all(target_os = "macos", target_arch = "aarch64")),
             "native caller acceptance requires arm64 macOS; Linux is source/static-only"
         );
         let graph = inputs::load(&repo()).await?;
+        let temp = physical_temp()?;
+        let graph = if shared_modules {
+            super::shared_modules::transform(graph, &temp.path().join("shared-packs"))?
+        } else {
+            graph
+        };
         report["original_reference_runtime"] = graph.oracle["runtime"].clone();
         report["identity"] = graph.identity.clone();
-        let temp = physical_temp()?;
         // Core retains authoritative OS/filesystem/physical-owner guards.
         runtime_probe(temp.path(), &graph, &mut report["runtime"]).await?;
         replay(temp.path(), &graph, &mut report["replay"]).await?;

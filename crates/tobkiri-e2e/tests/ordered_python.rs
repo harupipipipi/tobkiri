@@ -19,6 +19,8 @@ mod evidence_gateway_tool_caller;
 mod evidence_v2;
 #[path = "ordered_python/gateway_tool_caller.rs"]
 mod gateway_tool_caller;
+#[path = "ordered_python/shared_modules.rs"]
+mod shared_modules;
 mod support;
 #[path = "ordered_python/v2.rs"]
 mod v2;

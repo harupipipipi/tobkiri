@@ -40,12 +40,33 @@ module order, and hashes every extracted module against the original embedded
 module inventory. Its JSON reports the actual wrapper-plus-unique-module size.
 Worker and source hashes establish observed identity, not independent trust.
 
-CI uses the two authenticated original Python components and retains only the
-JSON measurement. The full original native replay remains independent and
-unchanged. The report explicitly leaves guest execution, Host admission and
-production adoption false. It cannot establish five-Pack admission, ABI/runtime
-parity, or shared-source loading. Those require authenticated frozen module
-dependencies, original Pack approval binding, source-stage bounded sharing,
-funded compilation and cache lifetimes, and independent Store/memory/table/
-global/WASI/CallCx state for every Pack. The Host's existing import rejection
-and 64 MiB catalog guard remain intact.
+`materialize.py` uses the same extractor to publish exact code under a fresh,
+absolute destination in a trusted parent directory. It verifies the original
+embedded bytes, per-Pack 32 MiB dependency closure, the 64 MiB catalog closure,
+4096 total original modules and at most 256 extracted bindings per Pack. Failed
+partials are private and removed; atomic no-replace publication preserves any
+existing destination. The receipt still records no guest execution, Host
+admission or production activation.
+
+```
+python3 -B tools/component-unbundle/materialize.py --worker /absolute/trusted/worker \
+  --output /trusted/fresh-bundle \
+  /verified/bridge/component.wasm /verified/caller/component.wasm
+```
+
+CI separately consumes this bundle for the exact original Python bridge/caller
+graph. The E2E adapter checks the pinned extraction receipt and original source
+digests, keeps every original noncomponent file and manifest field, and adds
+the extracted dependency inventory and `runtime.core_modules` mapping. These
+changes produce new Pack hashes and Profile pins; Core admits them through its
+ordinary verifier, Gate, Audit and Wasmtime type checks. The same original
+30-case comparison, denied initialization and shutdown checks run through that
+graph. The unchanged original replay runs separately, and its success cannot
+satisfy the transformed replay. CI retains compact receipts and logs, not the
+extracted binaries.
+
+The new replay is an additional two-Pack native test, not five-Pack acceptance,
+Launcher GUI approval, production activation or VM retirement. Only its actual
+runtime receipt can establish transformed execution. Explicit authenticated
+module bindings do not relax the remaining import rejection, input bounds, or
+independent Store/memory/table/global/WASI/CallCx state for every Pack.

@@ -46,6 +46,7 @@ jobs:
       - name: Bounded component extraction regression
         run: |
           python3 -B tools/component-unbundle/test_measure.py
+          python3 -B tools/component-unbundle/test_materialize.py
           cargo fmt --manifest-path tools/component-unbundle/Cargo.toml -- --check
           cargo test --locked --manifest-path tools/component-unbundle/Cargo.toml
       - name: Preserved ordered Python component transport regression
@@ -130,6 +131,11 @@ jobs:
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-journal.log" -- cargo test --locked
           -p tobkiri-core --test journal
+      - name: Portable transformed Pack integrity regressions
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/shared-pack-integrity.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-e2e --test ordered_python shared_modules::
       - name: Native acceptance source contracts without runtime claims
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
@@ -364,6 +370,7 @@ jobs:
           "$TOBKIRI_TEST_GATEWAY_TOOL_CALLER_GRAPH_DIR/bridge/component.wasm"
           > "$RUNNER_TEMP/issue-1520-gateway-tool-caller/module-inventory.json"
       - name: Extract exact original component modules
+        id: extract_original_modules
         if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' && steps.stage_gateway_tool_caller.outcome == 'success' }}
         run: |
           cargo build --locked --manifest-path tools/component-unbundle/Cargo.toml
@@ -381,6 +388,42 @@ jobs:
           cargo test --locked -p tobkiri-e2e --test ordered_python
           gateway_tool_caller::original_python_tool_caller_replays_through_real_core
           -- --ignored --exact --nocapture --test-threads=1
+      - name: Materialize exact shared modules for the original Python Packs
+        id: stage_shared_modules
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' && steps.extract_original_modules.outcome == 'success' }}
+        run: |
+          python3 -B tools/component-unbundle/materialize.py \
+            --worker "$CARGO_TARGET_DIR/debug/tobkiri-component-unbundle" \
+            --output "$RUNNER_TEMP/issue-1520-gateway-tool-caller/shared-code" \
+            "$TOBKIRI_TEST_GATEWAY_TOOL_CALLER_GRAPH_DIR/bridge/component.wasm" \
+            "$TOBKIRI_TEST_GATEWAY_TOOL_CALLER_GRAPH_DIR/caller/component.wasm"
+          python3 -B - "$RUNNER_TEMP/issue-1520-gateway-tool-caller/shared-code" "$GITHUB_ENV" <<'PY'
+          import hashlib
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          receipt = (root / "extraction.json").read_bytes()
+          values = {
+              "TOBKIRI_TEST_SHARED_MODULES_DIR": str(root),
+              "TOBKIRI_TEST_SHARED_MODULES_SHA256": hashlib.sha256(receipt).hexdigest(),
+          }
+          if any("\n" in value or "\r" in value for value in values.values()):
+              raise SystemExit("invalid shared-module fixture path")
+          with Path(sys.argv[2]).open("a") as environment:
+              for name, value in values.items():
+                  environment.write(f"{name}={value}\n")
+          PY
+      - name: Replay original Python Packs using authenticated shared modules
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' && steps.stage_shared_modules.outcome == 'success' }}
+        env:
+          TOBKIRI_TEST_GATEWAY_TOOL_CALLER_EVIDENCE: ${{ runner.temp }}/issue-1520-gateway-tool-caller/shared-native-replay.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/shared-python-native.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-e2e --test ordered_python
+          gateway_tool_caller::original_python_shared_modules_replay_through_real_core
+          -- --ignored --exact --nocapture --test-threads=1
       - name: Retain Gateway tool-caller native evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -397,6 +440,10 @@ jobs:
             ${{ runner.temp }}/issue-1520-gateway-tool-caller/native-replay.json
             ${{ runner.temp }}/issue-1520-gateway-tool-caller/module-inventory.json
             ${{ runner.temp }}/issue-1520-gateway-tool-caller/module-extraction.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/shared-code/extraction.json
+            ${{ runner.temp }}/issue-1520-gateway-tool-caller/shared-native-replay.json
+            ${{ runner.temp }}/shared-python-native.log
+            ${{ runner.temp }}/shared-python-native.receipt.json
             ${{ runner.temp }}/gateway-tool-caller-stage.log
             ${{ runner.temp }}/gateway-tool-caller-native.log
             ${{ runner.temp }}/gateway-tool-caller-native.receipt.json
