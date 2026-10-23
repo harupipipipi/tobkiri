@@ -479,9 +479,15 @@ async fn supervise(mut custody: AuditCustody) -> std::result::Result<(), NativeW
         .watch_lease(&narrowed, dispatch.permit())
         .and_then(|()| custody.gate.check_context(&narrowed))
         .and_then(|()| narrowed.check_active());
-    // This one synchronous call contains all connection/TX/statement/Rows
-    // lifetimes. The strong original frame and value owners are already held
-    // above it. No Gate, ABI, timer, terminal or user callback runs inside it.
+    // Observe completed lease/liveness checks separately from store execution.
+    // All validation guards have returned; no SQL or lifecycle guard is held.
+    #[cfg(debug_assertions)]
+    custody.timing.mark(AuditPhase::LeaseChecked);
+    // This synchronous call contains all connection/TX/statement/Rows
+    // lifetimes. Its fixed budget admissions still revalidate original frame
+    // funding, so this phase includes that cost, not just SQL. The strong
+    // original frame/value owners outlive it; ABI, timer, terminal and user
+    // callbacks remain outside it.
     let executed = match watched {
         Ok(()) => Executed::Delivery(dispatch.execute(&custody.log)),
         Err(error) => Executed::Refused(dispatch, Failure::gate(&error)),
