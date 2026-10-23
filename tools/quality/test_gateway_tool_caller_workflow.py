@@ -187,7 +187,7 @@ class GatewayToolCallerWorkflowTests(unittest.TestCase):
         name = "original_python_shared_modules_replay_through_real_core"
         self.assertIn(name, replay)
         self.assertNotIn(name, self.linux)
-        self.assertIn("/native-replay.json", step(self.native, STAGE))
+        self.assertIn('root / "native-replay.json"', step(self.native, STAGE))
 
     def test_module_inventory_uses_only_the_authenticated_original_graph(self) -> None:
         name = "Inventory exact original component module sharing"
