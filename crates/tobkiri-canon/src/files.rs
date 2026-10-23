@@ -1,15 +1,70 @@
 //! Stable reads of hash-addressed files beneath an opened source directory.
 use crate::CanonError;
-use std::path::Path;
+use std::{io::Read, path::Path};
 
 /// Read one bounded regular file without following any child symlink.
 /// Directory descriptors retain the root even if an ancestor is renamed.
-#[cfg(unix)]
 pub fn read_relative(root: &Path, relative: &str, max_bytes: u64) -> Result<Vec<u8>, CanonError> {
+    read_relative_with(root, relative, max_bytes, |reader, size| {
+        let length = usize::try_from(size).map_err(|_| CanonError::Limit("artifact size"))?;
+        let mut content = Vec::new();
+        content
+            .try_reserve_exact(length)
+            .map_err(|_| CanonError::Limit("artifact allocation"))?;
+        let mut chunk = [0u8; 8192];
+        loop {
+            let count = match reader.read(&mut chunk) {
+                Ok(count) => count,
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) => {
+                    return Err(CanonError::Invalid(format!("artifact IO: {error}")));
+                }
+            };
+            if count == 0 {
+                return Ok(content);
+            }
+            if count > length - content.len() {
+                return Err(CanonError::Invalid(
+                    "artifact changed during admission".into(),
+                ));
+            }
+            content.extend_from_slice(&chunk[..count]);
+        }
+    })
+}
+
+#[cfg(unix)]
+struct CountedReader<R> {
+    inner: R,
+    read: u64,
+}
+
+#[cfg(unix)]
+impl<R: Read> Read for CountedReader<R> {
+    fn read(&mut self, target: &mut [u8]) -> std::io::Result<usize> {
+        let count = self.inner.read(target)?;
+        self.read += count as u64;
+        Ok(count)
+    }
+}
+
+/// Inspect a bounded regular file through its pinned descriptor, before
+/// deciding whether owned bytes must be allocated. The trusted native reader
+/// cannot seek, reopen, or obtain the descriptor through this interface.
+///
+/// The result is not admitted until this function returns successfully:
+/// remaining input is drained and device/inode/mode/size/timestamps are checked.
+/// Callers must not publish or cache unverified results inside the callback.
+#[cfg(unix)]
+pub fn read_relative_with<T>(
+    root: &Path,
+    relative: &str,
+    max_bytes: u64,
+    inspect: impl FnOnce(&mut dyn Read, u64) -> Result<T, CanonError>,
+) -> Result<T, CanonError> {
     use std::{
         ffi::CString,
         fs::{File, OpenOptions},
-        io::Read,
         os::fd::{AsRawFd, FromRawFd},
         os::unix::fs::{MetadataExt, OpenOptionsExt},
     };
@@ -53,11 +108,18 @@ pub fn read_relative(root: &Path, relative: &str, max_bytes: u64) -> Result<Vec<
                 "artifact is not a bounded regular file".into(),
             ));
         }
-        let mut content = Vec::with_capacity(before.len() as usize);
-        (&mut file)
-            .take(max_bytes.saturating_add(1))
-            .read_to_end(&mut content)
-            .map_err(fail)?;
+        let (result, bytes_read) = {
+            let mut reader = CountedReader {
+                inner: (&mut file).take(before.len().saturating_add(1)),
+                read: 0,
+            };
+            let result = inspect(&mut reader, before.len())?;
+            // Even a duplicate/early-returning consumer must observe the exact
+            // physical length. This fixed-buffer drain cannot allocate a
+            // second copy of an artifact just to reach EOF.
+            std::io::copy(&mut reader, &mut std::io::sink()).map_err(fail)?;
+            (result, reader.read)
+        };
         let after = file.metadata().map_err(fail)?;
         let identity = |m: &std::fs::Metadata| {
             (
@@ -71,12 +133,12 @@ pub fn read_relative(root: &Path, relative: &str, max_bytes: u64) -> Result<Vec<
                 m.ctime_nsec(),
             )
         };
-        if content.len() as u64 != before.len() || identity(&before) != identity(&after) {
+        if bytes_read != before.len() || identity(&before) != identity(&after) {
             return Err(CanonError::Invalid(
                 "artifact changed during admission".into(),
             ));
         }
-        return Ok(content);
+        return Ok(result);
     }
     Err(CanonError::Invalid("missing artifact leaf".into()))
 }
@@ -84,11 +146,12 @@ pub fn read_relative(root: &Path, relative: &str, max_bytes: u64) -> Result<Vec<
 /// No path-based fallback is permitted where descriptor-relative no-follow
 /// reads are unavailable. In-memory .tpk verification remains portable.
 #[cfg(not(unix))]
-pub fn read_relative(
+pub fn read_relative_with<T>(
     _root: &Path,
     _relative: &str,
     _max_bytes: u64,
-) -> Result<Vec<u8>, CanonError> {
+    _inspect: impl FnOnce(&mut dyn Read, u64) -> Result<T, CanonError>,
+) -> Result<T, CanonError> {
     Err(CanonError::Invalid(
         "secure directory admission is unavailable on this platform; use a verified .tpk".into(),
     ))
