@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:208afa0a24bbdfbbc1e9bc648f3fdc91b4082d3fc8e39796bb90af6170b520ac",
+      "digest": "sha256:a7c8384bb3e4327dc11fe4675ba8dbf06ba98faf4484d2c2b87a899be337c263",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89",
+      "digest": "sha256:338495006a72fae8648303e808dc6db2de2b53ede646e7e8af787c98c802d405",
       "kind": "executable",
       "path": "runtime/publish.py"
     }
@@ -25,7 +25,7 @@
     {
       "contract_revision_digest": "sha256:b2699757006625a794cf2fc94e525b53e526471e96b544bb885c24cb06200b6c",
       "id": "rumi_git_publish_pack.git-publish.service",
-      "implementation_digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89",
+      "implementation_digest": "sha256:338495006a72fae8648303e808dc6db2de2b53ede646e7e8af787c98c802d405",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_git_publish_pack.git-push"
@@ -35,7 +35,7 @@
     {
       "contract_revision_digest": "sha256:b2699757006625a794cf2fc94e525b53e526471e96b544bb885c24cb06200b6c",
       "id": "rumi_git_publish_pack.git-push-prepare.service",
-      "implementation_digest": "sha256:9841c218ca2502ba6bdba9a691e82f557a3cfbe602f1561ddd0f0f17d4120b89",
+      "implementation_digest": "sha256:338495006a72fae8648303e808dc6db2de2b53ede646e7e8af787c98c802d405",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_git_publish_pack.git-push-prepare"
@@ -44,8 +44,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:9b84f0c689bb13cecb794c1bf9a88853a979cf6423488279c06094fedc404a8e",
-    "artifact_set_digest": "sha256:e9b2366a06ea4561313844b565219df693eeee33ca4115b56dd643b79f44adbd",
+    "source_identity": "sha256:4e2b9a283b9463e6109d029834358377a9ca09231ab5a3c0de5d1722c9acb98e",
+    "artifact_set_digest": "sha256:a01f73830fd945071c1c3766cb1845bc90f512b83c3d208c5078dbda6fc08f26",
     "contract_catalog_digest": "sha256:1e03af36c66ac1509ab78425b6b803980cb91da5dee25733cc6525ee702bc77a"
   },
   "migration": {
@@ -77,7 +77,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:e7a387d6039a68396a6480a18f677bbb0f2e9dba40ce37e2f4ecc07095136190",
+    "artifact_digest": "sha256:9a8c3b0bfcafbee9b2551eb7b7125cd1b74311b6bcd119bee7de7913b3e9195d",
     "display_name": "Rumi Git Publish",
     "id": "rumi_git_publish_pack",
     "kind": "host_extension",
@@ -88,15 +88,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_git_publish_pack/pack.v4.json",
-    "source_digest": "sha256:9b84f0c689bb13cecb794c1bf9a88853a979cf6423488279c06094fedc404a8e",
+    "source_digest": "sha256:4e2b9a283b9463e6109d029834358377a9ca09231ab5a3c0de5d1722c9acb98e",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:127a0aee1155f823791cec9138e4823b79c5509672807be16e816dab7f3228fa",
+    "content_root_digest": "sha256:3ee0076fb3e0bb7f72fe7f27f05316ec8a2f7e69c7196811e4558d15bac87f6a",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:72e5fe4e8f670a1618d79b16dfc9896b6e9f4276616d87632022b726ec01735a",
-    "input_inventory_digest": "sha256:8b26f5569cb3909166f2797520ffb4c20322bda8120032616c962e689123600c",
+    "input_inventory_digest": "sha256:54e58e2a97fa532f9033626f70551fdd2fbdc2ce685bd6927572e7367e4d7330",
     "normative": true,
     "evidence": [
       {
@@ -107,7 +107,7 @@
       {
         "path": "ecosystem/rumi_git_publish_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:9b84f0c689bb13cecb794c1bf9a88853a979cf6423488279c06094fedc404a8e"
+        "digest": "sha256:4e2b9a283b9463e6109d029834358377a9ca09231ab5a3c0de5d1722c9acb98e"
       }
     ]
   },
