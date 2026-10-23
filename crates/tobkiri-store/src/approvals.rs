@@ -20,6 +20,12 @@ const MAX_UNDELIVERED_AND_RESERVED: i64 = 4096;
 // a promise that the filesystem cannot fail after this logical reservation.
 const TERMINAL_METADATA_PAGES: i64 = 64;
 const FAULT_METADATA_PAGES: i64 = 16;
+// Four fixed read-only SQL programs, never cached rows or approval decisions.
+const AUTHORITY_STATEMENT_CACHE: usize = 4;
+
+#[cfg(test)]
+#[path = "approvals_read_tests.rs"]
+mod read_tests;
 
 /// Profile-bound approvals and transactional dispatch reservations; never exported.
 pub struct Approvals {
@@ -115,6 +121,7 @@ impl Approvals {
             return Err(StoreError::Integrity(IntegrityFaultCode::AuthorityDatabase));
         }
         initialization.commit()?;
+        connection.set_prepared_statement_cache_capacity(AUTHORITY_STATEMENT_CACHE);
         Ok(Self {
             profile: profile.clone(),
             connection: Mutex::new(connection),
@@ -685,12 +692,11 @@ fn persistence(error: impl std::fmt::Display) -> GateError {
     GateError::Persistence(error.to_string())
 }
 fn status(conn: &rusqlite::Connection) -> Result<AdmissionStatus, GateError> {
-    let code: Option<Vec<u8>> = conn
-        .query_row(
-            "SELECT code FROM authority_fault WHERE singleton=1",
-            [],
-            |r| r.get(0),
-        )
+    let mut statement = conn
+        .prepare_cached("SELECT code FROM authority_fault WHERE singleton=1")
+        .map_err(persistence)?;
+    let code: Option<Vec<u8>> = statement
+        .query_row([], |r| r.get(0))
         .optional()
         .map_err(persistence)?;
     code.map_or(Ok(AdmissionStatus::Allowed), |bytes| {
@@ -732,12 +738,12 @@ impl ApprovalStore for Approvals {
     fn security_epoch(&self, profile: &ProfileId) -> Result<u64, GateError> {
         self.local(profile)?;
         let conn = self.connection.lock().map_err(persistence)?;
-        conn.query_row(
-            "SELECT epoch FROM security_epoch WHERE singleton=1",
-            [],
-            |r| crate::sql_u64(r, 0),
-        )
-        .map_err(persistence)
+        let mut statement = conn
+            .prepare_cached("SELECT epoch FROM security_epoch WHERE singleton=1")
+            .map_err(persistence)?;
+        statement
+            .query_row([], |r| crate::sql_u64(r, 0))
+            .map_err(persistence)
     }
     fn advance_security_epoch(&self, profile: &ProfileId) -> Result<u64, GateError> {
         self.local(profile)?;
@@ -772,12 +778,11 @@ impl ApprovalStore for Approvals {
     ) -> Result<Option<PermissionSet>, GateError> {
         self.local(profile)?;
         let conn = self.connection.lock().map_err(persistence)?;
-        let body: Option<Vec<u8>> = conn
-            .query_row(
-                "SELECT body FROM permissions WHERE pack=?1 AND hash=?2",
-                params![pack.as_str(), hash.as_str()],
-                |r| r.get(0),
-            )
+        let mut statement = conn
+            .prepare_cached("SELECT body FROM permissions WHERE pack=?1 AND hash=?2")
+            .map_err(persistence)?;
+        let body: Option<Vec<u8>> = statement
+            .query_row(params![pack.as_str(), hash.as_str()], |r| r.get(0))
             .optional()
             .map_err(persistence)?;
         body.map(|b| decode(&b).map_err(persistence)).transpose()
@@ -804,7 +809,20 @@ impl ApprovalStore for Approvals {
     ) -> Result<Option<PermissionSet>, GateError> {
         self.local(profile)?;
         let conn = self.connection.lock().map_err(persistence)?;
-        let body: Option<Vec<u8>> = conn.query_row("SELECT body FROM user_approvals WHERE profile_hash=?1 AND revision=?2 AND epoch=?3", params![profile_hash.as_str(),revision.as_str(),i64::try_from(epoch).map_err(persistence)?], |r|r.get(0)).optional().map_err(persistence)?;
+        let mut statement = conn
+            .prepare_cached("SELECT body FROM user_approvals WHERE profile_hash=?1 AND revision=?2 AND epoch=?3")
+            .map_err(persistence)?;
+        let body: Option<Vec<u8>> = statement
+            .query_row(
+                params![
+                    profile_hash.as_str(),
+                    revision.as_str(),
+                    i64::try_from(epoch).map_err(persistence)?
+                ],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(persistence)?;
         body.map(|bytes| decode(&bytes).map_err(persistence))
             .transpose()
     }
