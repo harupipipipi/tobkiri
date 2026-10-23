@@ -1933,8 +1933,9 @@ impl PackHost {
                 &compiled,
                 inspection.allowed_imports(),
             )?;
-            let shapes = shared.views.values().cloned().collect::<Vec<_>>();
-            crate::abi::validate_abi(shared.engine.engine(), &compiled, pack, &shapes)?;
+            // Inspect the retained graph in place instead of copying every
+            // Pack's WIT and type metadata again for each component.
+            crate::abi::validate_abi(shared.engine.engine(), &compiled, pack, &shared.views)?;
             pack_core_errors.insert(id.clone(), inspection.into_core_errors());
             let config = pack.init_config()?;
             let mut sources = BTreeMap::new();

@@ -1,6 +1,7 @@
 //! Validate signatures before linking effectful dynamic callbacks.
 use anyhow::{Context, Result, bail};
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap};
+use tobkiri_canon::ids::ShapeRef;
 use tobkiri_manifest::{ShapeDef, VerifiedPack, WitFunction, WitType};
 use tobkiri_wit::{AbiFunction, AbiType};
 use wasmtime::{
@@ -15,7 +16,7 @@ pub(crate) fn validate_abi(
     engine: &Engine,
     component: &Component,
     pack: &VerifiedPack,
-    shapes: &[ShapeDef],
+    shapes: &BTreeMap<ShapeRef, ShapeDef>,
 ) -> Result<()> {
     let packages = BTreeMap::from([
         ("1.0.0", tobkiri_wit::core_abi_version("1.0.0")?),
@@ -87,7 +88,7 @@ pub(crate) fn validate_abi(
         let shape = declared
             .map(|port| {
                 shapes
-                    .iter()
+                    .values()
                     .find(|s| s.reference.name == port.shape && s.reference.version == port.version)
                     .context("declared ABI shape missing")
             })
@@ -96,23 +97,24 @@ pub(crate) fn validate_abi(
             match item.ty {
                 ComponentItem::ComponentFunc(actual) => {
                     let expected = if let Some((name, version)) = core_name {
-                        packages
-                            .get(version)
-                            .context("unknown exact core package")?
-                            .get(name)
-                            .context("unknown core interface")?
-                            .functions
-                            .get(member)
-                            .context("unknown core function")?
-                            .clone()
+                        Cow::Borrowed(
+                            packages
+                                .get(version)
+                                .context("unknown exact core package")?
+                                .get(name)
+                                .context("unknown core interface")?
+                                .functions
+                                .get(member)
+                                .context("unknown core function")?,
+                        )
                     } else {
-                        from_function(
+                        Cow::Owned(from_function(
                             shape
                                 .context("undeclared imported operation")?
                                 .functions
                                 .get(&tobkiri_canon::ids::OpName::parse(member)?)
                                 .context("undeclared shape operation")?,
-                        )
+                        ))
                     };
                     check_function(&actual, &expected, resource_scope)?;
                 }
@@ -152,20 +154,24 @@ fn check_function(
     expected: &AbiFunction,
     resources: &BTreeMap<usize, ResourceType>,
 ) -> Result<()> {
-    let params: Vec<_> = actual.params().collect();
-    let results: Vec<_> = actual.results().collect();
+    let params = actual.params();
+    let mut results = actual.results();
     if params.len() != expected.params.len()
         || results.len() != usize::from(expected.result.is_some())
     {
         bail!("function ABI arity mismatch")
     }
-    for ((name, ty), (expected_name, expected_ty)) in params.iter().zip(&expected.params) {
-        if name != expected_name || !matches_type(ty, expected_ty, resources) {
+    for ((name, ty), (expected_name, expected_ty)) in params.zip(&expected.params) {
+        if name != expected_name.as_str() || !matches_type(&ty, expected_ty, resources) {
             bail!("function ABI parameter mismatch")
         }
     }
     if let Some(expected) = &expected.result
-        && !matches_type(&results[0], expected, resources)
+        && !matches_type(
+            &results.next().expect("result arity checked above"),
+            expected,
+            resources,
+        )
     {
         bail!("function ABI result mismatch")
     }
