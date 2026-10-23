@@ -32,10 +32,22 @@ streams at most 100 MiB per archive, and then runs the existing independent
 archive/selected-source/patch checks. CI retains the download and full staged
 source inventories, without downloading those source trees to the desktop.
 
-This initial workflow does not execute upstream build scripts, compile a
-producer, create a component or run a guest. Its receipts establish the actual
-inputs for the later isolated stages in `STAGED_RECIPE.md`; they do not replace
-the missing native Core replay or permit changing the historical artifact pins.
+The workflow then replays the separately recorded native build-Python recipe
+with one make job. It checks every staged source byte/mode against the original
+full manifest before execution and afterwards. Bubblewrap provides private
+user/network/PID namespaces, read-only source/tools, a cleared environment and
+only a fresh writable build directory. The existing trial supervisor bounds
+time, files and sampled resources; `prlimit` additionally retains the original
+2 GiB per-process address-space limit. Unavailable isolation fails the stage.
+Only metadata and the build log are uploaded, never the source tree or binary.
+
+This stage uses the current Ubuntu CI compiler, records its actual binary
+hashes and installed package versions before execution, and records the new
+build-Python hash on success. It does not claim the historical Debian binary
+identity. The exact recipe checks CPython 3.13.16, Unicode 15.1.0 and native
+hashlib/json imports. WASI libraries, producer CLI, componentization and guest
+execution remain separate stages. These receipts neither replace native Core
+replay nor permit changing historical component pins.
 
 ## Pinned inputs and reproducibility
 

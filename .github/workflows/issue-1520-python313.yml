@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/issue-1520-python313.yml'
       - 'tools/python313-producer/fetch_sources.py'
+      - 'tools/python313-producer/build_native.py'
       - 'tools/python313-producer/stage_sources.py'
       - 'tools/python313-producer/verify_source.py'
       - 'tools/python313-producer/source-manifest.json'
@@ -17,9 +18,9 @@ permissions:
   contents: read
 
 jobs:
-  pinned-producer-sources:
+  pinned-producer-native:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,12 +37,25 @@ jobs:
           --archives "$RUNNER_TEMP/python313-archives"
           --cpython-archive "$RUNNER_TEMP/python313-archives/Python-3.13.16.tar.xz"
           --destination "$RUNNER_TEMP/python313-source"
-      - name: Retain source receipts without binaries or execution claims
+      - name: Install the Linux build isolation tool
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+      - name: Rebuild native Python from the exact recorded staged recipe
+        run: >-
+          python3 -B tools/python313-producer/build_native.py
+          --source "$RUNNER_TEMP/python313-source"
+          --destination "$RUNNER_TEMP/python313-native"
+      - name: Retain source and native-build receipts without binaries
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: python313-producer-source-inputs
+          name: python313-producer-rebuild
           path: |
             ${{ runner.temp }}/python313-archives/download.json
             ${{ runner.temp }}/python313-source/stage-manifest.json
+            ${{ runner.temp }}/python313-native/native-build.json
+            ${{ runner.temp }}/python313-native/supervision.json
+            ${{ runner.temp }}/python313-native/host-packages.txt
+            ${{ runner.temp }}/python313-native/build.log
           if-no-files-found: warn
