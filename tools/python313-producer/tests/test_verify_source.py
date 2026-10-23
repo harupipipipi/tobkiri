@@ -84,7 +84,7 @@ class FullVerificationTests(unittest.TestCase):
         self.archive = self.root / "source.tar.xz"
         member = tarfile.TarInfo("Python-3.13.16/a.txt")
         member.size = len(b"same\nold\n")
-        with tarfile.open(self.archive, "w:xz") as archive:
+        with tarfile.open(self.archive, "w:xz", preset=0) as archive:
             archive.addfile(member, io.BytesIO(b"same\nold\n"))
         archive_hash = VERIFY.digest(self.archive.read_bytes())
         self.manifest = {

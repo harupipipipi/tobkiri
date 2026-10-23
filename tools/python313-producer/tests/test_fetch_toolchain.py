@@ -99,7 +99,7 @@ class ToolchainTests(unittest.TestCase):
             root = Path(directory).resolve()
             archive = root / "input.tar.xz"
             prefix = "rustc-test"
-            with tarfile.open(archive, "w:xz") as output:
+            with tarfile.open(archive, "w:xz", preset=0) as output:
                 info = tarfile.TarInfo(prefix + "/rustc/bin/rustc")
                 info.size = 3
                 info.mode = 0o755

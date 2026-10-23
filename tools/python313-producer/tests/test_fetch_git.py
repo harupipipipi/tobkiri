@@ -39,7 +39,7 @@ class GitInputTests(unittest.TestCase):
         fetches = [line for line in lines if "fetch" in line]
         self.assertEqual(len(fetches), 2)
         for command, entry in zip(fetches, git.INPUTS):
-            self.assertIn("--depth=1", command)
+            self.assertNotIn("--depth=1", command)
             self.assertIn("--no-recurse-submodules", command)
             self.assertEqual(command[-2:], [entry["url"], "+" + entry["commit"] + ":refs/tobkiri/input"])
             self.assertIn("core.hooksPath=/dev/null", command)

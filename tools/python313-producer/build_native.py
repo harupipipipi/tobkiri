@@ -65,8 +65,11 @@ def verify_tree(root: Path) -> dict:
 
 
 def sandbox_command(source: Path, work: Path, recipe: Path,
-                    readonly: tuple[tuple[Path, str], ...] = ()) -> list[str]:
+                    readonly: tuple[tuple[Path, str], ...] = (), *,
+                    address_space_bytes: int = 2 * GIB) -> list[str]:
     """Expose only read-only tools/source and this stage's private scratch."""
+    if address_space_bytes not in (2 * GIB, 4 * GIB):
+        raise ValueError("only recorded native and Rust-stage address-space limits allowed")
     command = [
         "/usr/bin/bwrap", "--unshare-all", "--die-with-parent", "--new-session",
         "--cap-drop", "ALL", "--clearenv",
@@ -86,7 +89,7 @@ def sandbox_command(source: Path, work: Path, recipe: Path,
         "--setenv", "PATH", "/usr/bin:/bin", "--setenv", "LC_ALL", "C",
         "--setenv", "CONFIG_SITE", "/dev/null", "--setenv", "TMPDIR", "/tmp",
         "--setenv", "CC", "/usr/bin/gcc", "--setenv", "CXX", "/usr/bin/g++",
-        "--", "/usr/bin/prlimit", f"--as={2 * GIB}", f"--fsize={GIB}",
+        "--", "/usr/bin/prlimit", f"--as={address_space_bytes}", f"--fsize={GIB}",
         "--core=0", "--", "/bin/sh", "/recipe.sh",
     ]
     return command

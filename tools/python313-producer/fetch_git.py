@@ -26,6 +26,7 @@ INPUTS = (
 )
 GIT = ("/usr/bin/git", "-c", "credential.helper=", "-c", "core.hooksPath=/dev/null",
        "-c", "core.fsmonitor=false", "-c", "protocol.version=2",
+       "-c", "pack.threads=1",
        "-c", "fetch.fsckObjects=true", "-c", "transfer.fsckObjects=true")
 SUBMODULES = (b'[submodule "tests/testsuite"]\n\tpath = tests/testsuite\n'
               b'\turl = https://github.com/WebAssembly/testsuite\n')
@@ -47,7 +48,7 @@ def validate_commit(data: bytes, expected_id: str, expected_tree: str) -> None:
 
 
 def script(work: Path) -> str:
-    """Construct the two exact shallow fetches, without recursive acquisition."""
+    """Fetch the exact tips with their ancestors, without recursive acquisition."""
     lines = ["set -eu", f"export HOME={shlex.quote(str(work / 'home'))}",
              f"export XDG_CONFIG_HOME={shlex.quote(str(work / 'home'))}",
              "export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_SYSTEM=/dev/null",
@@ -59,7 +60,7 @@ def script(work: Path) -> str:
         lines += [
             shlex.join([*GIT, "init", "--bare", "--template=" + str(work / "empty-template"),
                         str(repository)]),
-            shlex.join([*GIT, "--git-dir=" + str(repository), "fetch", "--depth=1",
+            shlex.join([*GIT, "--git-dir=" + str(repository), "fetch",
                         "--no-tags", "--no-recurse-submodules", entry["url"],
                         "+" + entry["commit"] + ":refs/tobkiri/input"]),
             shlex.join([*GIT, "--git-dir=" + str(repository), "fsck", "--strict",

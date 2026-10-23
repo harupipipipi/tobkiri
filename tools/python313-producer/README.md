@@ -105,7 +105,26 @@ Git object verification. The existing process/resource supervisor covers this
 network-enabled acquisition stage. Commit and tree object hashes are checked
 again independently before recording the resulting Git files. No upstream
 checkout, Cargo command or dependency source executes. A usable offline Cargo
-cache and the actual runtime builds remain separate work.
+cache and the actual runtime builds are checked separately.
+
+`build_runtimes.py` rechecks the preceding source, registry, Rust, Git and WASI
+receipts against the actual files, then primes Cargo inside the same networkless
+namespace used for builds. Registry lookups use only verified directory sources;
+the two exact Git URLs rewrite only to read-only local bare repositories, and
+Git permits only the file protocol. These repositories retain their ancestors:
+ordinary Cargo fetch rejects refs from a shallow input even when Git exits zero.
+After local-only acquisition, `cargo fetch --frozen` must succeed. All checkout
+source files, modes and blob identities (including the one exact submodule)
+are compared with the pinned input graphs before the cache becomes read-only.
+
+The runtime stage replays the unchanged historical `wasi-runtimes.sh`, including
+both sync and async variants, frozen dependencies and one build job. It retains
+the recorded 4 GiB per-process runtime limit; native C builds still default to
+their original 2 GiB limit. Only the recorded `lib_dir=/work/wasi` line is added
+to the staged PyO3 configuration. All inputs and build configurations are checked
+again afterwards, and new artifacts keep their own hashes. Core-Wasm magic alone
+does not establish Wasmtime validation, producer CLI, componentization or guest
+acceptance; those remain subsequent stages.
 
 ## Pinned inputs and reproducibility
 
