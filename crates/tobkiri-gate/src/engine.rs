@@ -878,10 +878,36 @@ impl GateEngine {
         &self,
         delivery: &TerminalDelivery,
     ) -> Result<(), DeliveryFault> {
-        if delivery.acknowledged {
-            return Ok(());
-        }
         let decision = &delivery.decision;
+        // Another delivery path can acknowledge this row after the supervisor
+        // captured its batch. Re-read the durable decision before asking the
+        // sink to verify and append the same event again. A cached ACK alone
+        // is insufficient: both the immutable record and payload must match.
+        let current = self
+            .approvals
+            .terminal_delivery(&decision.reservation.id)
+            .map_err(DeliveryFault::Gate)?;
+        let matches = match &current {
+            Some(current) => {
+                strict_bytes(&current.decision).map_err(DeliveryFault::Gate)?
+                    == strict_bytes(decision).map_err(DeliveryFault::Gate)?
+            }
+            None => false,
+        };
+        if !matches {
+            let error = GateError::Integrity(IntegrityFaultCode::TerminalRecord);
+            self.notice_integrity(&decision.reservation.profile, &error)
+                .map_err(DeliveryFault::Gate)?;
+            return Err(DeliveryFault::Gate(error));
+        }
+        if current.is_some_and(|current| current.acknowledged) {
+            // This idempotent ACK revalidates the current durable payload too;
+            // it must neither rewrite an ACK nor mask intervening corruption.
+            return self
+                .approvals
+                .acknowledge_terminal(&decision.event_id, &decision.event)
+                .map_err(DeliveryFault::Gate);
+        }
         if let Err(error) = self
             .audit
             .append_idempotent(&decision.event_id, decision.event.clone())

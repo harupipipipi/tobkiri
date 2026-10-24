@@ -363,6 +363,131 @@ struct SinkFault {
     fail: AtomicBool,
     after_insert: bool,
 }
+
+// Complete a different batch row through the real sink and durable ACK while
+// the supervisor delivers the first row. This fixes the interleaving without
+// sleeps, a scripted ApprovalStore, or a second physical effect.
+struct ConcurrentTerminalSink {
+    inner: Arc<AuditLog>,
+    approvals: Arc<Approvals>,
+    target: TerminalDecision,
+    first: AtomicBool,
+    redundant_calls: AtomicU64,
+    corrupt_after_ack: Option<std::path::PathBuf>,
+}
+impl AuditSink for ConcurrentTerminalSink {
+    fn append(&self, event: AuditEvent) -> Result<(), GateError> {
+        self.inner.append(event)
+    }
+    fn append_idempotent(&self, id: &Digest, event: AuditEvent) -> Result<(), GateError> {
+        if id == &self.target.event_id {
+            self.redundant_calls.fetch_add(1, Ordering::SeqCst);
+        }
+        self.inner.append_idempotent(id, event)?;
+        if self.first.swap(false, Ordering::SeqCst) {
+            assert_ne!(id, &self.target.event_id);
+            self.inner
+                .append_idempotent(&self.target.event_id, self.target.event.clone())?;
+            self.approvals
+                .acknowledge_terminal(&self.target.event_id, &self.target.event)?;
+            if let Some(path) = &self.corrupt_after_ack {
+                // Deliberate corruption in this disposable test database only.
+                let raw = rusqlite::Connection::open(path).unwrap();
+                raw.execute_batch("DROP TRIGGER terminal_no_rewrite;")
+                    .unwrap();
+                raw.execute(
+                    "UPDATE terminal_outbox SET body=x'00' WHERE event_id=?1",
+                    [self.target.event_id.as_str()],
+                )
+                .unwrap();
+            }
+        }
+        Ok(())
+    }
+}
+
+async fn supervised_stale_batch(corrupt_after_ack: bool) {
+    let f = Fixture::new();
+    let (first, _, _) = f.consumed().await;
+    let (second, _, _) = f.consumed().await;
+    f.approvals
+        .finish_terminal(&first, &Outcome::Succeeded)
+        .unwrap();
+    let target = f
+        .approvals
+        .finish_terminal(&second, &Outcome::Succeeded)
+        .unwrap()
+        .decision;
+    f.raw()
+        .execute_batch(
+            "CREATE TRIGGER reject_repeated_supervisor_ack BEFORE UPDATE OF delivered \
+             ON terminal_outbox WHEN OLD.delivered=1 \
+             BEGIN SELECT RAISE(FAIL,'duplicate supervisor ACK write'); END;",
+        )
+        .unwrap();
+    let sink = Arc::new(ConcurrentTerminalSink {
+        inner: f.audit.clone(),
+        approvals: f.approvals.clone(),
+        target,
+        first: AtomicBool::new(true),
+        redundant_calls: AtomicU64::new(0),
+        corrupt_after_ack: corrupt_after_ack.then(|| {
+            f.root
+                .path()
+                .join(format!("profiles/{}/approvals.sqlite", f.profile))
+        }),
+    });
+    let gate = GateEngine::new(
+        f.approvals.clone(),
+        sink.clone(),
+        Arc::new(NoPrompt),
+        MediatorChain::default(),
+    );
+    let result = gate.supervised_metadata_delivery(&f.profile).await;
+    if corrupt_after_ack {
+        assert!(matches!(
+            result,
+            Err(DeliveryFault::Gate(GateError::Integrity(
+                IntegrityFaultCode::TerminalRecord
+            )))
+        ));
+        assert_eq!(
+            f.approvals.admission_status(&f.profile).unwrap(),
+            AdmissionStatus::IntegrityFault {
+                code: IntegrityFaultCode::TerminalRecord,
+            }
+        );
+    } else {
+        result.unwrap();
+        assert!(
+            f.approvals
+                .terminal_delivery(&second)
+                .unwrap()
+                .unwrap()
+                .acknowledged
+        );
+        assert!(
+            f.approvals
+                .pending_terminal(&f.profile, 256)
+                .unwrap()
+                .is_empty()
+        );
+    }
+    assert_eq!(sink.redundant_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(f.outcome_count(), 2);
+    f.audit.verify().unwrap();
+}
+
+#[tokio::test]
+async fn supervised_stale_batch_revalidates_a_concurrent_ack_without_resending_to_sink() {
+    supervised_stale_batch(false).await;
+}
+
+#[tokio::test]
+async fn supervised_stale_batch_rejects_corruption_after_the_concurrent_ack() {
+    supervised_stale_batch(true).await;
+}
+
 impl AuditSink for SinkFault {
     fn append(&self, e: AuditEvent) -> Result<(), GateError> {
         self.inner.append(e)

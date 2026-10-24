@@ -79,6 +79,47 @@ Gate wiring. The unchanged five-Pack size limit, in-flight cancellation,
 production activation, full original UI functionality and final retirement
 obligations above remain open. No inventory unit or checklist item is closed.
 
+## Coherent original five-Pack native checkpoint, 2026-10-25
+
+The [coherent producer job](https://github.com/harupipipipi/tobkiri/actions/runs/40131893888/job/120985161408)
+rebuilt all five original Python Packs with the same authenticated CLI from
+their unchanged source plans. This restores the same-Core Python baseline
+that was unavailable at the earlier checkpoint. Exact extraction and sharing
+produced thirteen distinct code modules; complete catalog source, including
+ordinary noncomponent files, is **62,877,304 bytes**. The 32 MiB Pack and
+64 MiB catalog limits remain unchanged. The preceding mixed old/new component
+measurement exceeded the catalog limit and is retained as a failed capacity
+gate, despite that measurement job itself completing successfully.
+
+The [actual five-Pack Core/Gate replay](https://github.com/harupipipipi/tobkiri/actions/runs/40132836084/job/120988037902)
+attempted all **215** original cases: 94 provider, 81 bridge, 30 caller and
+ten finalizer observations. All five runtime probes reported actual CPython
+3.13.16 / Unicode 15.1.0, and Session close succeeded. The replay **failed with
+six differences**:
+
+- The same three original oversized provider inputs are rejected at the outer
+  CoreStrictV1 argument boundary before guest dispatch. Their original direct
+  adapter expectations remain unchanged and are not counted as matched guest
+  outcomes. Separate reporting of these entrance rejections awaits the user's
+  acceptance decision; the strict replay remains failed.
+- Two in-budget stream inputs that expand past output byte/node limits trap
+  before returning the expected typed provider error. The runtime's cause is
+  under investigation; generic execution errors do not establish fuel or
+  deadline exhaustion.
+- A finalizer stream case returns the exact original output, but its dependency
+  audit includes an extra stream initialization after the preceding traps.
+  Its original no-extra-initialization assertion remains failed.
+
+The [following native job](https://github.com/harupipipipi/tobkiri/actions/runs/40133079330/job/120988778146)
+passed all three shared-code integrity tests and the corrected durable ACK
+regression, then reproduced the same six replay differences. The new
+[typed-diagnostic job](https://github.com/harupipipipi/tobkiri/actions/runs/40134248100/job/120992269152)
+is pending. It distinguishes borrowed typed fuel and interruption traps without
+formatting private causes or changing execution/error-code policy. These are
+fixture results, not production activation, GUI/settings/chat parity, full
+Gateway migration or VM retirement. No inventory unit or acceptance item is
+closed by this checkpoint.
+
 ## Native Rust HostIo cancellation checkpoint, 2026-10-21
 
 A separate [focused receipt](../../../crates/tobkiri-core/evidence/host-read-cancellation-20261021.json)

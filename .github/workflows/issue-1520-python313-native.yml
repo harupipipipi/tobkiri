@@ -101,6 +101,12 @@ jobs:
           cargo test --locked -p tobkiri-store --test terminal
           repeated_terminal_ack_checks_current_payload_without_rewriting_delivered_row
           -- --exact --nocapture
+      - name: Revalidate concurrently acknowledged supervisor batch rows
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/original-supervisor-batch.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-store --test terminal supervised_stale_batch_
+          -- --nocapture
       - name: Replay all 215 original cases through actual Core and Gate
         if: ${{ !cancelled() && steps.bind_original_graph.outcome == 'success' }}
         run: >-
@@ -122,6 +128,8 @@ jobs:
             ${{ runner.temp }}/original-shared-integrity.receipt.json
             ${{ runner.temp }}/original-terminal-ack.log
             ${{ runner.temp }}/original-terminal-ack.receipt.json
+            ${{ runner.temp }}/original-supervisor-batch.log
+            ${{ runner.temp }}/original-supervisor-batch.receipt.json
             ${{ runner.temp }}/original-runtime-diagnostics.log
             ${{ runner.temp }}/original-runtime-diagnostics.receipt.json
             ${{ runner.temp }}/original-five-native.log
