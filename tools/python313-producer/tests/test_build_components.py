@@ -31,6 +31,27 @@ class ComponentBuildTests(unittest.TestCase):
             'wit/deps/ai-tool-bridge-ordered-python/pack.wit'],
             'packs/local.ai-tool-bridge-ordered-python/wit/pack-v2.wit')
 
+    def test_complete_graph_reuses_exact_bridge_and_caller_source_stagers(self):
+        repo = component_inputs.HERE.parents[1]
+        original_path = sys.path[:]
+        for name, count in (('bridge-v2', 12), ('caller', 10)):
+            raw, captures, receipt = component_inputs.capture(repo, name)
+            self.assertEqual(len(captures), count)
+            self.assertEqual(hashlib.sha256(raw).hexdigest(), receipt['plan_sha256'])
+        self.assertEqual(sys.path, original_path)
+        self.assertEqual(len(component_inputs.plans(True)), 5)
+        self.assertEqual(len(component_inputs.plans()), 3)
+
+    def test_artifact_only_namespace_requires_no_cpython_source_mount(self):
+        command = sandbox_command(None, Path('/work'), Path('/recipe'),
+            ((Path('/verified/producer'), '/producer'),), address_space_bytes=8 * GIB)
+        self.assertNotIn('/source/cpython', command)
+        self.assertIn('--unshare-all', command)
+        self.assertIn('--clearenv', command)
+        self.assertEqual(command.count('--bind'), 1)
+        self.assertIn(['--ro-bind', '/verified/producer', '/producer'],
+                      [command[i:i+3] for i in range(len(command)-2)])
+
     def test_source_capture_rejects_tampering_and_staging_never_overwrites(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()

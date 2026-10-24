@@ -19,7 +19,7 @@ def write(path, value):
 
 
 class OriginalGraphArtifactTests(unittest.TestCase):
-    def fixture(self, root):
+    def fixture(self, root, all_five=False):
         # These bytes exercise transport only; the actual worker would reject
         # the synthetic body. This test never labels them as executed Wasm.
         receipt = {'format': 'tobkiri.python313-original-components/1',
@@ -28,7 +28,7 @@ class OriginalGraphArtifactTests(unittest.TestCase):
                    'producer': {'sha256': 'a' * 64},
                    'producer_receipt': {'sha256': 'b' * 64},
                    'native_core_replay': False, 'production_enabled': False, 'components': {}}
-        for name in component_inputs.PLANS:
+        for name in component_inputs.plans(all_five):
             raw, captures, source = component_inputs.capture(ROOT, name)
             plan = json.loads(raw)
             manifest = [{'source': x['source'], 'destination': x['destination'],
@@ -63,6 +63,20 @@ class OriginalGraphArtifactTests(unittest.TestCase):
             self.assertEqual(set(result['components']), set(component_inputs.PLANS))
             self.assertFalse(result['native_core_acceptance'])
             self.assertFalse(result['production_enabled'])
+
+    def test_complete_five_graph_must_be_explicit_and_cannot_use_three_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            self.fixture(root, all_five=True)
+            result = verifier.verify(root, all_five=True)
+            self.assertEqual(set(result['components']), set(component_inputs.plans(True)))
+            with self.assertRaisesRegex(ValueError, 'successful'):
+                verifier.verify(root)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            self.fixture(root)
+            with self.assertRaisesRegex(ValueError, 'successful'):
+                verifier.verify(root, all_five=True)
 
     def test_changed_bytes_and_unlisted_files_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

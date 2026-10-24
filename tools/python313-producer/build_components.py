@@ -5,7 +5,8 @@ import os
 from pathlib import Path
 import sys
 
-from build_native import GIB, HERE, fingerprint, sandbox_command, verify_tree
+from build_native import GIB, HERE, STAGED_SHA256, fingerprint, sandbox_command, verify_tree
+from build_cli import RECIPE_SHA256 as CLI_RECIPE_SHA256
 from build_wasi import run_stage
 import component_inputs
 from fetch_sdk import inventory
@@ -13,21 +14,34 @@ import fetch_validation_tools
 import runtime_inputs
 
 
-def run(source: Path, producer: Path, validation: Path, destination: Path) -> None:
+def run(source: Path | None, producer: Path, validation: Path, destination: Path,
+        *, all_five: bool = False) -> None:
     """Build each exact original Pack separately with no production activation."""
     if sys.platform != 'linux' or os.environ.get('GITHUB_ACTIONS') != 'true':
         raise ValueError('original component rebuilding is restricted to Linux CI')
     if (not destination.is_absolute() or not destination.parent.is_dir()
             or destination.parent.resolve() != destination.parent
-            or any(not p.is_absolute() or p.resolve() != p for p in (source, producer, validation))):
+            or any(not p.is_absolute() or p.resolve() != p for p in (producer, validation))
+            or (source is not None and (not source.is_absolute() or source.resolve() != source))):
         raise ValueError('physical build inputs and new output directory required')
     destination.mkdir(mode=0o700)
-    source_identity = verify_tree(source)
     producer_receipt_path = producer / 'cli-build.json'
     producer_report = runtime_inputs.report(producer_receipt_path)
+    source_identity = producer_report['inputs']['source']
+    if (producer_report['format'] != 'tobkiri.python313-cli-rebuild/1'
+            or producer_report['original_recipe_sha256'] != CLI_RECIPE_SHA256
+            or source_identity['sha256'] != STAGED_SHA256
+            or producer_report['reported_version'] != 'componentize-py 0.25.0'):
+        raise ValueError('producer provenance differs from original reviewed recipe')
+    if source is not None and verify_tree(source) != source_identity:
+        raise ValueError('original producer source differs from its build receipt')
+    source_receipt = producer / 'cli-source.json'
+    source_pin = [value for path, value in producer_report['predecessors'].items()
+                  if Path(path).name == 'cli-source.json']
+    if len(source_pin) != 1 or fingerprint(source_receipt, 4 * 1024 * 1024) != source_pin[0]:
+        raise ValueError('producer publishing-source derivation receipt changed')
     binary = producer / 'work/target/release/componentize-py'
-    if (producer_report['inputs']['source'] != source_identity
-            or not producer_report['inputs_unchanged'] or not producer_report['producer_cli']
+    if (not producer_report['inputs_unchanged'] or not producer_report['producer_cli']
             or fingerprint(binary, 128 * 1024 * 1024) != producer_report['binary']):
         raise ValueError('original producer differs from successful build receipt')
     tool_receipt_path = validation / 'validation-inputs.json'
@@ -42,7 +56,8 @@ def run(source: Path, producer: Path, validation: Path, destination: Path) -> No
     repo = HERE.parents[1]
     sdk = repo / 'sdk/python'
     snapshots = {str(sdk): inventory(sdk), str(validation): inventory(validation)}
-    identities = {str(p): fingerprint(p) for p in (binary, producer_receipt_path, tool_receipt_path)}
+    identities = {str(p): fingerprint(p) for p in (
+        binary, producer_receipt_path, source_receipt, tool_receipt_path)}
     driver = HERE / 'component_driver.py'
     identities[str(driver)] = fingerprint(driver)
     empty = destination / 'empty-venv'
@@ -52,6 +67,9 @@ def run(source: Path, producer: Path, validation: Path, destination: Path) -> No
     identities[str(recipe)] = fingerprint(recipe)
     receipt = {'format': 'tobkiri.python313-original-components/1', 'outcome': 'pending',
                'source': source_identity, 'producer': producer_report['binary'],
+               'producer_source_verification': ('actual original source tree and successful receipt'
+                   if source is not None else 'successful producer and publishing-source receipts; source tree not restored'),
+               'all_five_original_components': all_five,
                'producer_receipt': identities[str(producer_receipt_path)],
                'validation_receipt': identities[str(tool_receipt_path)],
                'driver': identities[str(driver)], 'components': {},
@@ -59,7 +77,7 @@ def run(source: Path, producer: Path, validation: Path, destination: Path) -> No
                'production_enabled': False, 'historical_binary_identity_claimed': False}
     receipt_path = destination / 'components-build.json'
     try:
-        for name in component_inputs.PLANS:
+        for name in component_inputs.plans(all_five):
             output = destination / name
             output.mkdir(mode=0o700)
             inputs = output / 'inputs'
@@ -93,7 +111,7 @@ def run(source: Path, producer: Path, validation: Path, destination: Path) -> No
             receipt['components'][name] = {'artifact': artifact, 'supervision': supervision,
                 'source': plan_receipt, 'build_receipt': fingerprint(proof_path)}
             receipt_path.write_text(json.dumps(receipt, indent=2) + '\n')
-        if verify_tree(source) != source_identity:
+        if source is not None and verify_tree(source) != source_identity:
             raise ValueError('original producer source changed')
         for path, expected in snapshots.items():
             runtime_inputs.recorded_files(Path(path), expected)
@@ -110,6 +128,8 @@ def run(source: Path, producer: Path, validation: Path, destination: Path) -> No
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    for name in ('source', 'producer', 'validation', 'destination'):
+    parser.add_argument('--source', type=Path)
+    parser.add_argument('--all-five', action='store_true')
+    for name in ('producer', 'validation', 'destination'):
         parser.add_argument('--' + name, type=Path, required=True)
     run(**vars(parser.parse_args()))

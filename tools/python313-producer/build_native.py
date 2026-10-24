@@ -64,7 +64,7 @@ def verify_tree(root: Path) -> dict:
     return {**identity, "files": len(observed)}
 
 
-def sandbox_command(source: Path, work: Path, recipe: Path,
+def sandbox_command(source: Path | None, work: Path, recipe: Path,
                     readonly: tuple[tuple[Path, str], ...] = (), *,
                     address_space_bytes: int = 2 * GIB) -> list[str]:
     """Expose only read-only tools/source and this stage's private scratch."""
@@ -78,10 +78,11 @@ def sandbox_command(source: Path, work: Path, recipe: Path,
         command += ["--ro-bind", directory, directory]
     command += [
         "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
-        "--dir", "/source", "--ro-bind", str(source / "cpython"),
-        "/source/cpython", "--ro-bind", str(recipe), "/recipe.sh",
-        "--bind", str(work), "/work",
+        "--dir", "/source",
     ]
+    if source is not None:
+        command += ["--ro-bind", str(source / "cpython"), "/source/cpython"]
+    command += ["--ro-bind", str(recipe), "/recipe.sh", "--bind", str(work), "/work"]
     for path, mount in readonly:
         command += ["--ro-bind", str(path), mount]
     command += [

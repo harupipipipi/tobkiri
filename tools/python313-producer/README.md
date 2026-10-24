@@ -191,6 +191,29 @@ A completed measurement does not imply that the size fits or that Core ran the
 graph. Only metadata is uploaded by this consumer workflow; new source changes
 require deliberate producer pin review rather than silently reusing old bytes.
 
+That mixed checkpoint measured 69,357,323 bytes after extraction against the
+67,108,864-byte catalog limit. The old two artifacts and newly rebuilt three
+use distinct runtime/library code, so that measurement is an explicit failed
+capacity gate, despite successful component production and inspection.
+
+`Issue 1520 coherent original Python components` reuses the authenticated CLI
+artifact from that same completed producer run and rebuilds all five originals
+together. The original bridge/caller source-only stagers recover the exact
+hash-bound sources and reviewed-input records; all twelve and ten plan inputs
+must match. The existing three-component checkpoint remains separately usable.
+The new consumer restores executable permissions lost by artifact transport,
+checks the actual binary and publishing-source receipt again, and requires no
+CPython source/toolchain restoration. Its namespace omits that unused source
+mount; receipts distinguish this source provenance from a fresh full-tree check.
+Current Pack sources, tools, controls and producer are still read-only during
+each isolated build. Component order is usage, stream, bridge-v2, caller,
+finalizer, matching the existing five-Pack native fixture roles.
+
+The complete graph is independently verified, measured and materialized only
+if it fits the original 64 MiB input limit. CI retains the five components and
+exact shared-code closure for subsequent native Core execution. This does not
+yet prove Core admission or runtime replay and does not alter production limits.
+
 ## Pinned inputs and reproducibility
 
 - Official CPython 3.13.16 archive:

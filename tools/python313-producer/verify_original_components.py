@@ -17,7 +17,7 @@ def document(path: Path) -> dict:
     return json.loads(path.read_bytes())
 
 
-def verify(root: Path) -> dict:
+def verify(root: Path, *, all_five: bool = False) -> dict:
     """Bind all three artifacts to original sources and their actual producer."""
     if not root.is_absolute() or root.resolve() != root:
         raise ValueError('physical artifact root required')
@@ -25,7 +25,7 @@ def verify(root: Path) -> dict:
     if (receipt.get('format') != 'tobkiri.python313-original-components/1'
             or receipt.get('outcome') != 'success' or not receipt.get('inputs_unchanged')
             or receipt.get('source', {}).get('sha256') != STAGED_SHA256
-            or set(receipt.get('components', {})) != set(component_inputs.PLANS)
+            or set(receipt.get('components', {})) != set(component_inputs.plans(all_five))
             or receipt.get('native_core_replay') is not False
             or receipt.get('production_enabled') is not False):
         raise ValueError('successful original-component build receipt required')
@@ -85,5 +85,6 @@ def verify(root: Path) -> dict:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--all-five', action='store_true')
     args = parser.parse_args()
-    print(json.dumps(verify(args.root), indent=2))
+    print(json.dumps(verify(args.root, all_five=args.all_five), indent=2))
