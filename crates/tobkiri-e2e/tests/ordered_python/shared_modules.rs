@@ -1,162 +1,16 @@
 //! Build a new pinned test graph from authenticated originals and extracted code.
 //! Receipt labels grant no runtime authority; Core re-verifies each new Pack.
+use super::support::shared_modules::{INPUT_LIMIT, artifact, transform_pack};
 use super::{evidence, evidence_gateway_tool_caller::Graph};
 use anyhow::{Context, Result, ensure};
-use serde_json::{Value, json};
+use serde_json::json;
 use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
 };
 use tobkiri_canon::Digest;
-use tobkiri_manifest::{FileEntry, RuntimeSpec, VerifiedPack};
-
-const INPUT_LIMIT: u64 = 32 * 1024 * 1024;
-
-fn artifact(
-    bundle: &Path,
-    relative: &str,
-    destination: &Path,
-    pack_path: &str,
-    record: &Value,
-    component: bool,
-) -> Result<FileEntry> {
-    let size = record["bytes"].as_u64().context("extracted size missing")?;
-    ensure!(
-        (8..=INPUT_LIMIT).contains(&size),
-        "extracted input bound exceeded"
-    );
-    let hash = Digest::parse(&format!(
-        "sha256:{}",
-        record["sha256"]
-            .as_str()
-            .context("extracted digest missing")?
-    ))?;
-    let bytes = evidence::bounded_read(bundle, relative, size as usize)?;
-    ensure!(
-        bytes.len() as u64 == size && Digest::hash(&bytes) == hash,
-        "extracted bytes differ from pinned receipt"
-    );
-    let header: &[u8] = if component {
-        b"\0asm\x0d\0\x01\0"
-    } else {
-        b"\0asm\x01\0\0\0"
-    };
-    ensure!(bytes.starts_with(header), "wrong extracted Wasm encoding");
-    let target = destination.join(pack_path);
-    fs::create_dir_all(target.parent().context("artifact parent missing")?)?;
-    use std::io::Write;
-    fs::File::create_new(target)?.write_all(&bytes)?;
-    Ok(FileEntry {
-        path: pack_path.into(),
-        sha256: hash,
-        size,
-    })
-}
-
-fn transform_pack(
-    original: &VerifiedPack,
-    bundle: &Path,
-    index: usize,
-    destination: &Path,
-    record: &Value,
-    unique: &mut BTreeMap<Digest, u64>,
-) -> Result<VerifiedPack> {
-    let mut manifest = original.manifest.clone();
-    let RuntimeSpec::Wasm {
-        component,
-        core_modules,
-        ..
-    } = &mut manifest.runtime
-    else {
-        anyhow::bail!("original must be an ordinary verified Wasm Pack")
-    };
-    ensure!(
-        core_modules.is_empty(),
-        "original already has external module bindings"
-    );
-    let source = original
-        .files
-        .get(component.as_str())
-        .context("original component missing")?;
-    ensure!(
-        record["source_sha256"] == source.digest().to_string().trim_start_matches("sha256:")
-            && record["source_bytes"] == source.len(),
-        "transformation is not bound to this original component"
-    );
-    let modules = record["component"]["modules"]
-        .as_array()
-        .context("module closure missing")?;
-    ensure!(
-        !modules.is_empty() && modules.len() <= tobkiri_manifest::MAX_CORE_MODULE_IMPORTS,
-        "bounded nonempty shared dependency closure required"
-    );
-    fs::create_dir(destination)?;
-    let root = artifact(
-        bundle,
-        &format!("{index}/component.wasm"),
-        destination,
-        component,
-        &record["component"],
-        true,
-    )?;
-    let original_root = manifest
-        .files
-        .iter_mut()
-        .find(|file| file.path == *component)
-        .context("original root inventory entry missing")?;
-    *original_root = root.clone();
-    let mut distinct = BTreeMap::new();
-    for (module_index, module) in modules.iter().enumerate() {
-        let name = format!("unbundled-module{module_index}");
-        ensure!(module["import"] == name, "extracted import order changed");
-        let path = format!("core-modules/module-{module_index}.wasm");
-        ensure!(
-            !original.files.contains_key(&path),
-            "dependency path collides with original inventory"
-        );
-        let file = artifact(
-            bundle,
-            &format!("{index}/module-{module_index}.wasm"),
-            destination,
-            &path,
-            module,
-            false,
-        )?;
-        if let Some(old) = unique.insert(file.sha256.clone(), file.size) {
-            ensure!(old == file.size, "inconsistent dependency identity");
-        }
-        distinct.insert(file.sha256.clone(), file.size);
-        core_modules.insert(name, path);
-        manifest.files.push(file);
-    }
-    ensure!(
-        root.size + distinct.values().sum::<u64>() <= INPUT_LIMIT,
-        "Pack dependency closure exceeds unchanged 32 MiB bound"
-    );
-    for (path, source) in original.files.iter() {
-        if path.as_str() == component.as_str() {
-            continue;
-        }
-        let target = destination.join(path);
-        fs::create_dir_all(target.parent().context("original asset parent missing")?)?;
-        let mut output = fs::File::create_new(target)?;
-        source.inspect(|reader| {
-            std::io::copy(reader, &mut output)?;
-            Ok(())
-        })?;
-    }
-    fs::write(
-        destination.join("pack.json"),
-        tobkiri_manifest::canonical_manifest(&manifest)?,
-    )?;
-    let transformed = tobkiri_manifest::verify_directory(destination, &BTreeMap::new())?;
-    ensure!(
-        transformed.hash != original.hash,
-        "new dependency closure must have a new Profile pin"
-    );
-    Ok(transformed)
-}
+use tobkiri_manifest::{FileEntry, RuntimeSpec};
 
 pub fn transform(mut graph: Graph, destination: &Path) -> Result<Graph> {
     let bundle = PathBuf::from(
@@ -255,6 +109,37 @@ fn extracted_artifact_requires_exact_bytes_encoding_and_fresh_output() -> Result
     );
     assert!(artifact(&root, "input.wasm", &root, "output.wasm", &record, false).is_err());
     assert_eq!(fs::read(root.join("output.wasm"))?, code);
+    Ok(())
+}
+
+#[test]
+fn shared_bundle_rechecks_its_exact_pin_scope_and_component_count() -> Result<()> {
+    use super::support::shared_modules::load;
+    let temporary = tempfile::tempdir()?;
+    let root = temporary.path().canonicalize()?;
+    let value = json!({"format":"tobkiri.shared-core-module-materialization/1",
+        "components":[{},{},{},{},{}],"guest_execution_performed":false,
+        "native_core_acceptance":false,"production_enabled":false});
+    let raw = serde_json::to_vec(&value)?;
+    fs::write(root.join("extraction.json"), &raw)?;
+    let pin = evidence::digest(&raw);
+    assert_eq!(load(&root, &pin, 5)?, value);
+    assert!(load(&root, &pin, 2).is_err());
+    assert!(load(&root, &"0".repeat(64), 5).is_err());
+    for field in [
+        "guest_execution_performed",
+        "native_core_acceptance",
+        "production_enabled",
+    ] {
+        let mut changed = value.clone();
+        changed[field] = json!(true);
+        let bytes = serde_json::to_vec(&changed)?;
+        fs::write(root.join("extraction.json"), &bytes)?;
+        assert!(load(&root, &evidence::digest(&bytes), 5).is_err());
+    }
+    let duplicate = br#"{"format":"first","format":"second"}"#;
+    fs::write(root.join("extraction.json"), duplicate)?;
+    assert!(load(&root, &evidence::digest(duplicate), 5).is_err());
     Ok(())
 }
 

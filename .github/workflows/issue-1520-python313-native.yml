@@ -1,0 +1,111 @@
+name: Issue 1520 original five-Pack native Core replay
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-python313-native.yml'
+      - 'tools/python313-producer/native_graph.py'
+      - 'tools/quality/test_python313_native.py'
+      - 'tools/quality/python_provider_compat/**'
+      - 'tools/quality/python_tool_bridge_compat/**'
+      - 'crates/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  original-five-native:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-native-five
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
+      PRODUCER_RUN: '40131893888'
+      PRODUCER_HEAD: 7131e5c56981dfe98590f5843df4228516f3f204
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify the existing native proof platform
+        shell: bash
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          proof_device="$(df -P "$RUNNER_TEMP" | awk 'NR == 2 {print $1}')"
+          test -n "$proof_device"
+          diskutil info "$proof_device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          components: rustfmt
+      - name: Verify native artifact transport regressions
+        run: python3 -B tools/quality/test_python313_native.py
+      - name: Authenticate the successful coherent producer and source head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" > "$RUNNER_TEMP/original-five-producer-run.json"
+          python3 -B - "$RUNNER_TEMP/original-five-producer-run.json" "$PRODUCER_HEAD" <<'PY'
+          import json, sys
+          from pathlib import Path
+          run = json.loads(Path(sys.argv[1]).read_bytes())
+          if run['head_sha'] != sys.argv[2] or run['status'] != 'completed' or run['conclusion'] != 'success':
+              raise SystemExit('original-five producer identity or terminal outcome differs')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: original-five-components-and-shared-code
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PRODUCER_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/original-five-inputs
+      - name: Generate the unchanged independent original provider and bridge observations
+        run: |
+          python3 -B tools/quality/python_provider_compat/generate.py \
+            --output-dir "$RUNNER_TEMP/original-provider-oracle"
+          python3 -B tools/quality/python_tool_bridge_compat/generate.py \
+            --output-dir "$RUNNER_TEMP/original-bridge-oracle"
+      - name: Bind complete original artifacts, shared code and all source oracles
+        run: >-
+          python3 -B tools/python313-producer/native_graph.py
+          --root "$RUNNER_TEMP/original-five-inputs"
+          --provider "$RUNNER_TEMP/original-provider-oracle/receipt.json"
+          --bridge "$RUNNER_TEMP/original-bridge-oracle/receipt.json"
+          --evidence "$RUNNER_TEMP/original-five-native-evidence"
+          --github-env "$GITHUB_ENV"
+      - name: Verify exact shared-code derivation and original manifest integrity
+        run: |
+          cargo fmt --all -- --check
+          python3 -B tools/quality/issue_1520_ci.py cargo-test \
+            --log "$RUNNER_TEMP/original-shared-integrity.log" --expected-passed 3 -- \
+            cargo test --locked -p tobkiri-e2e --test ordered_python shared_modules:: -- --nocapture
+      - name: Replay all 215 original cases through actual Core and Gate
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/original-five-native.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-e2e --test rust_python_providers
+          original_python_shared_finalizer_replays_all_cases_through_core
+          -- --ignored --exact --nocapture --test-threads=1
+      - name: Retain actual native evidence and diagnostics without binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-five-native-evidence
+          path: |
+            ${{ runner.temp }}/original-five-producer-run.json
+            ${{ runner.temp }}/original-provider-oracle/receipt.json
+            ${{ runner.temp }}/original-bridge-oracle/receipt.json
+            ${{ runner.temp }}/original-shared-integrity.log
+            ${{ runner.temp }}/original-shared-integrity.receipt.json
+            ${{ runner.temp }}/original-five-native.log
+            ${{ runner.temp }}/original-five-native.receipt.json
+            ${{ runner.temp }}/original-five-native-evidence
+          if-no-files-found: warn

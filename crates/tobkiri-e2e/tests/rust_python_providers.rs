@@ -850,7 +850,12 @@ async fn composition_cases(
     Ok(records)
 }
 
-async fn execute(evidence: &Evidence, report: &mut Value, composition: bool) -> Result<()> {
+async fn execute(
+    evidence: &Evidence,
+    report: &mut Value,
+    composition: bool,
+    shared: bool,
+) -> Result<()> {
     let repo = repo();
     let oracle = inputs::oracle(&repo, false)?;
     report["original_provider_oracle"] = oracle.identity.clone();
@@ -879,9 +884,17 @@ async fn execute(evidence: &Evidence, report: &mut Value, composition: bool) -> 
         report["original_caller_oracle"] = oracle.identity.clone();
     }
     let temporary = physical_temp()?;
-    let packs = (0..if composition { 5 } else { 2 })
+    let mut packs = (0..if composition { 5 } else { 2 })
         .map(|role| inputs::materialize(&repo, temporary.path(), role))
         .collect::<Result<Vec<_>>>()?;
+    if shared {
+        ensure!(
+            composition,
+            "shared original replay requires the complete graph"
+        );
+        report["shared_modules"] =
+            inputs::share_originals(&mut packs, &temporary.path().join("shared-packs"))?;
+    }
     report["artifacts"] = json!(packs.iter().map(|pack| &pack.identity).collect::<Vec<_>>());
     let profile = profile(&packs, composition)?;
     report["profile"] = evidence.json("profile.json", &serde_json::to_value(&profile)?)?;
@@ -932,7 +945,7 @@ async fn execute(evidence: &Evidence, report: &mut Value, composition: bool) -> 
     Ok(())
 }
 
-async fn replay(composition: bool) -> Result<()> {
+async fn replay(composition: bool, shared: bool) -> Result<()> {
     let evidence = Evidence::new(composition)?;
     let bridge_requested = composition
         && ["BRIDGE_ORACLE", "BRIDGE_ORACLE_SHA256"]
@@ -943,7 +956,14 @@ async fn replay(composition: bool) -> Result<()> {
             .iter()
             .any(|suffix| std::env::var_os(format!("{}_{}", inputs::PREFIX, suffix)).is_some());
     let mut report = json!({"schema":"io.tobkiri.rust-provider-core-replay.v1","host_os":std::env::consts::OS,"host_arch":std::env::consts::ARCH,"scope":"actual components through Core/Gate/Profile/Session with scripted fixture approvals; no GUI or full Gateway acceptance","composition_requested":composition,"bridge_oracle_requested":bridge_requested,"caller_oracle_requested":caller_requested,"core_64mib_catalog_limit_changed":false,"expected_values_generated_by_rust":false,"source_build_provenance_verified":false,"all_cases_attempted":false,"passed":false,"provider_cases":[],"bridge_cases":[],"caller_cases":[],"composition_cases":[],"runtimes":[]});
-    let result = execute(&evidence, &mut report, composition).await;
+    report["shared_original_python_requested"] = json!(shared);
+    if shared {
+        ensure!(
+            composition && bridge_requested && caller_requested,
+            "shared original replay requires all 94+81+30+10 source cases"
+        );
+    }
+    let result = execute(&evidence, &mut report, composition, shared).await;
     if let Err(error) = &result {
         report["fixture_failure"] = json!(format!("{error:#}"));
     }
@@ -1018,11 +1038,17 @@ async fn replay(composition: bool) -> Result<()> {
 #[tokio::test]
 #[ignore = "requires hash-pinned real provider Wasm components, original 94-case oracle and NEW external evidence"]
 async fn rust_wasm_providers_replay_all_original_cases_through_core() -> Result<()> {
-    replay(false).await
+    replay(false, false).await
 }
 
 #[tokio::test]
 #[ignore = "requires five real artifacts, explicit finalizer implementation, original 94+10 observations, optional complete bridge81/caller30 oracles and NEW composition evidence"]
 async fn rust_providers_and_gateway_roles_compose_through_core() -> Result<()> {
-    replay(true).await
+    replay(true, false).await
+}
+
+#[tokio::test]
+#[ignore = "requires five original Python components, exact shared-code closure, all 215 original cases and new native evidence"]
+async fn original_python_shared_finalizer_replays_all_cases_through_core() -> Result<()> {
+    replay(true, true).await
 }

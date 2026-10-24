@@ -214,6 +214,23 @@ if it fits the original 64 MiB input limit. CI retains the five components and
 exact shared-code closure for subsequent native Core execution. This does not
 yet prove Core admission or runtime replay and does not alter production limits.
 
+The coherent checkpoint `40131893888` passed all five builds and materialized
+62,842,959 bytes of component/code source (13 distinct modules), fitting the
+unchanged 67,108,864-byte limit. The separate native workflow authenticates this
+run and source head, rechecks all original/source/producer bindings, and verifies
+every extracted root and code module before exporting native fixture inputs.
+
+The existing native provider fixture has an explicit original-Python shared
+graph test. It retains all 94 provider, 81 bridge, 30 caller and ten finalizer
+cases, original runtime probes, nested Gate/Audit checks and Session close.
+It requires all five implementations to be Python and all four source oracles.
+The exact transformation helper is shared with the already-tested two-Pack
+graph; original manifests/assets are retained and new hashes/Profile pins are
+derived. Complete source accounting adds noncomponent files per logical Pack
+before checking the same 64 MiB bound. Core independently re-verifies and admits
+the graph. This native test is pending until its actual supported-platform job
+completes; successful artifact transport or compilation alone is insufficient.
+
 ## Pinned inputs and reproducibility
 
 - Official CPython 3.13.16 archive:

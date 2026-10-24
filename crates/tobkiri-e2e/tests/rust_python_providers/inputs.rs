@@ -697,6 +697,99 @@ pub struct Evidence {
     pub directory: PathBuf,
 }
 
+/// Derive all five original Python Packs without changing authority or limits.
+pub fn share_originals(packs: &mut [Pack], destination: &Path) -> Result<Value> {
+    use super::support::shared_modules::{load, transform_pack};
+    ensure!(
+        packs.len() == ROLES.len()
+            && packs
+                .iter()
+                .enumerate()
+                .all(|(index, pack)| pack.role == index && !pack.rust),
+        "shared original replay requires all five Python implementations in role order"
+    );
+    let bundle = environment(&format!("{PREFIX}_SHARED_MODULES_DIR"))?;
+    let raw = read_absolute(&bundle.join("extraction.json"), 4 * 1024 * 1024)?;
+    let hash = pin(&format!("{PREFIX}_SHARED_MODULES_SHA256"), &raw)?;
+    let receipt = load(&bundle, &hash, packs.len())?;
+    let records = receipt["components"]
+        .as_array()
+        .context("shared component records missing")?;
+    fs::create_dir(destination)?;
+    let mut unique = BTreeMap::new();
+    let mut roots = 0;
+    let mut other_sources = 0;
+    for (index, pack) in packs.iter_mut().enumerate() {
+        let directory = destination.join(pack.pin.id.to_string());
+        let verified = transform_pack(
+            &pack.verified,
+            &bundle,
+            index,
+            &directory,
+            &records[index],
+            &mut unique,
+        )?;
+        let RuntimeSpec::Wasm {
+            component,
+            core_modules,
+            ..
+        } = &verified.manifest.runtime
+        else {
+            anyhow::bail!("shared original must remain an ordinary Wasm Pack")
+        };
+        let root = verified
+            .files
+            .get(component.as_str())
+            .context("shared root missing")?;
+        roots += root.len();
+        let code: BTreeSet<_> = core_modules
+            .values()
+            .map(String::as_str)
+            .chain(std::iter::once(component.as_str()))
+            .collect();
+        other_sources += verified
+            .manifest
+            .files
+            .iter()
+            .filter(|file| !code.contains(file.path.as_str()))
+            .map(|file| file.size)
+            .sum::<u64>();
+        pack.identity["original_pack_hash"] = pack.identity["pack_hash"].clone();
+        pack.identity["original_component_sha256"] = pack.identity["component_sha256"].clone();
+        pack.identity["original_component_bytes"] = pack.identity["component_bytes"].clone();
+        pack.identity["component_path"] = json!(directory.join(component));
+        pack.identity["component_sha256"] =
+            json!(root.digest().to_string().trim_start_matches("sha256:"));
+        pack.identity["component_bytes"] = json!(root.len());
+        pack.identity["pack_hash"] = json!(verified.hash);
+        pack.identity["shared_core_modules"] = json!({"extraction_receipt_sha256":hash,
+            "original_source_sha256":records[index]["source_sha256"],
+            "modules":records[index]["component"]["modules"],
+            "transformed_manifest":verified.manifest,"materialization_is_not_runtime_acceptance":true});
+        pack.pin = PackPin {
+            id: verified.manifest.id.clone(),
+            version: verified.manifest.version.clone(),
+            sha256: verified.hash.clone(),
+            source: format!("file:{}", directory.canonicalize()?.display()),
+        };
+        pack.verified = verified;
+    }
+    let component_bytes = roots + unique.values().sum::<u64>();
+    let all_sources = component_bytes + other_sources;
+    ensure!(
+        receipt["catalog_source_bytes"] == component_bytes
+            && receipt["unique_modules"] == unique.len()
+            && all_sources <= 64 * 1024 * 1024,
+        "complete original source closure exceeds or differs from the unchanged budget"
+    );
+    Ok(
+        json!({"extraction_receipt_sha256":hash,"catalog_component_bytes":component_bytes,
+        "catalog_noncomponent_bytes":other_sources,"catalog_all_source_bytes":all_sources,
+        "unique_modules":unique.len(),"pack_count":packs.len(),
+        "only_original_python_implementations":true,"native_core_acceptance":false}),
+    )
+}
+
 impl Evidence {
     pub fn new(composition: bool) -> Result<Self> {
         let suffix = if composition {
