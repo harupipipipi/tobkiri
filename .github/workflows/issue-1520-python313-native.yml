@@ -88,6 +88,12 @@ jobs:
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
             --log "$RUNNER_TEMP/original-shared-integrity.log" --expected-passed 3 -- \
             cargo test --locked -p tobkiri-e2e --test ordered_python shared_modules:: -- --nocapture
+      - name: Classify typed runtime failures without private diagnostic text
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/original-runtime-diagnostics.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-wasm --lib entry_diagnostics::tests
+          -- --nocapture
       - name: Verify durable ACK replay and explicit fixture fault detection
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
@@ -116,6 +122,8 @@ jobs:
             ${{ runner.temp }}/original-shared-integrity.receipt.json
             ${{ runner.temp }}/original-terminal-ack.log
             ${{ runner.temp }}/original-terminal-ack.receipt.json
+            ${{ runner.temp }}/original-runtime-diagnostics.log
+            ${{ runner.temp }}/original-runtime-diagnostics.receipt.json
             ${{ runner.temp }}/original-five-native.log
             ${{ runner.temp }}/original-five-native.receipt.json
             ${{ runner.temp }}/original-five-native-evidence

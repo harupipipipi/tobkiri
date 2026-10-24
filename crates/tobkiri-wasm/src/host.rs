@@ -3389,19 +3389,7 @@ fn entry_phase_error(
     cx: &CallCx,
     owners: &crate::owned_values::ValueOwners,
 ) -> anyhow::Error {
-    use wasmtime::component::HostAllocationError;
-    let allocation = error
-        .chain()
-        .find_map(|cause| cause.downcast_ref::<HostAllocationError>());
-    let kind = match allocation {
-        Some(HostAllocationError::Unavailable) => "allocation-unavailable",
-        Some(HostAllocationError::Limit) => "allocation-limit",
-        Some(HostAllocationError::Overflow) => "allocation-overflow",
-        Some(HostAllocationError::Depth) => "allocation-depth",
-        Some(HostAllocationError::Allocator) => "allocator-failure",
-        Some(HostAllocationError::Invalid) => "invalid-allocation",
-        None => "execution-error",
-    };
+    let kind = crate::entry_diagnostics::failure_kind(&error);
     let now = std::time::Instant::now();
     let abi_stage = error
         .downcast_ref::<wasmtime::component::CanonicalCallStage>()

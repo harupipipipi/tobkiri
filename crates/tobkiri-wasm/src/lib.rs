@@ -10,6 +10,7 @@ mod effect_values;
 mod effects;
 mod engine;
 mod entry;
+mod entry_diagnostics;
 pub mod filesystem;
 pub use effects::filesystem_imports::FilesystemAccess;
 mod handle_metadata;
