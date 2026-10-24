@@ -174,13 +174,28 @@ funding/authority checks as the dominant measured cost, without establishing
 which admission sub-operation is responsible or a repair of earlier deadline
 failures.
 
-The next candidate compiles the unchanged Gate implementation at optimization
-level 2 for workspace CLI development and test builds, retaining debug
-assertions and overflow checks explicitly. No allocation, authority, lifetime
-or deadline validation is removed. Its effect on timings and complete native
-regressions remains pending. A bounded early CI artifact will retain only the
-closed numerical observations before long Python replays; it makes no pass
-or authority claim. Production GUI/Setup migration and all acceptance items
+The Gate compiler candidate retains every validation, debug assertion,
+overflow check and original deadline. Its bounded early observations are now
+available: the [709 native run](https://github.com/harupipipipi/tobkiri/actions/runs/40141017650/job/121012789387)
+still exceeded the five-second complete-workspace Audit deadline (5,008,166
+microseconds); the isolated invocation passed in 3,533,679 microseconds. The
+source-equivalent [96 native run](https://github.com/harupipipipi/tobkiri/actions/runs/40141506723/job/121014223086)
+passed that workspace step and observed 2,753,715 microseconds in isolation.
+Both observed the same 1,844/3,469 reservations. This variation does not
+establish a repeatable improvement or a causal repair. The complete native
+jobs are still running their later checks.
+
+The next source candidate copies unescaped UTF-8 JSON string runs in bulk
+instead of growing/re-encoding them one byte/code point at a time. Escapes,
+surrogate validation, strict duplicate detection, object order, number
+spelling, size/depth bounds and every authority lookup are unchanged. Two
+regressions cover all ASCII control escapes, mixed Unicode and escaped runs,
+invalid/truncated strings and escaped duplicate keys across all three codecs.
+The existing Python byte/digest/seal corpora remain the acceptance oracle.
+Formatting, the lightweight foundation boundary check and diff checks pass;
+the actual Rust regressions and native performance remain pending CI. No
+local Rust/guest build or model server was started. The early artifact makes
+no pass or authority claim; production GUI/Setup and all acceptance items
 remain open.
 
 ## Native Rust HostIo cancellation checkpoint, 2026-10-21

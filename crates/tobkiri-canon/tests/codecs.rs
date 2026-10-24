@@ -82,6 +82,80 @@ fn strict_input_and_output_bounds_are_inclusive() {
 }
 
 #[test]
+fn string_runs_preserve_utf8_and_every_ascii_escape_in_all_codecs() {
+    let mut strings = vec![
+        String::new(),
+        "authority_key".into(),
+        "日本語é𐀀😀".into(),
+        "prefix\"middle\\suffix/".into(),
+    ];
+    for byte in 0u8..=0x1f {
+        let control = char::from(byte);
+        for (before, after) in [("", "日本語"), ("😀", "é"), ("𐀀", "")] {
+            strings.push(format!("{before}{control}{after}"));
+        }
+    }
+    for variant in [
+        Variant::StrictV1,
+        Variant::LegacyFloat,
+        Variant::LegacyPackSig,
+    ] {
+        for text in &strings {
+            // serde_json is an independent spelling oracle for finite JSON
+            // strings; canonical object ordering and numbers remain separate.
+            let bytes = serde_json::to_vec(text).unwrap();
+            let value = CanonValue::Str(text.clone());
+            assert_eq!(parse(&bytes, variant).unwrap(), value);
+            assert_eq!(encode(&value, variant).unwrap(), bytes);
+        }
+        for (raw, expected) in [
+            (r#""日本語\/suffix""#.as_bytes(), "日本語/suffix"),
+            (r#""a\u0062\ud83d\ude00é""#.as_bytes(), "ab😀é"),
+            (br#""\u0000middle\u001f""#.as_slice(), "\0middle\u{1f}"),
+        ] {
+            assert_eq!(
+                parse(raw, variant).unwrap(),
+                CanonValue::Str(expected.into())
+            );
+        }
+    }
+}
+
+#[test]
+fn string_scan_never_hides_controls_truncation_or_escaped_duplicate_keys() {
+    for variant in [
+        Variant::StrictV1,
+        Variant::LegacyFloat,
+        Variant::LegacyPackSig,
+    ] {
+        for raw in [
+            b"\"plain prefix".as_slice(),
+            b"\"prefix\\",
+            br#""prefix\q""#,
+            br#""prefix\ud800""#,
+            br#""prefix\udc00""#,
+            b"\"prefix\xf0\x9f\"",
+        ] {
+            assert!(parse(raw, variant).is_err(), "{variant:?}: {raw:?}");
+        }
+        for byte in 0u8..=0x1f {
+            let mut raw = b"\"prefix".to_vec();
+            raw.push(byte);
+            raw.extend_from_slice(b"suffix\"");
+            assert!(parse(&raw, variant).is_err());
+        }
+    }
+    let duplicate = br#"{"authority_key":1,"authority_\u006bey":2}"#;
+    assert!(parse(duplicate, Variant::StrictV1).is_err());
+    for variant in [Variant::LegacyFloat, Variant::LegacyPackSig] {
+        assert_eq!(
+            encode(&parse(duplicate, variant).unwrap(), variant).unwrap(),
+            br#"{"authority_key":2}"#
+        );
+    }
+}
+
+#[test]
 fn typed_serde_never_rewrites_nonfinite_numbers_to_null_or_accepts_invalid_ids() {
     for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
         assert!(serde_json::to_vec(&CanonValue::Float(value)).is_err());

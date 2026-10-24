@@ -218,7 +218,23 @@ impl Parser<'_> {
     }
     fn string(&mut self) -> Result<String, Error> {
         self.byte(b'"')?;
-        let mut output = Vec::new();
+        let start = self.at;
+        // Most authority keys and identifiers contain no escapes. Copy their
+        // validated UTF-8 run once instead of growing a Vec for every byte.
+        let length = self.input[start..]
+            .iter()
+            .copied()
+            .position(|byte| matches!(byte, b'"' | b'\\' | 0..=0x1f))
+            .ok_or_else(|| invalid("unterminated JSON string"))?;
+        self.at += length;
+        if self.input[self.at] == b'"' {
+            self.at += 1;
+            return String::from_utf8(self.input[start..self.at - 1].to_vec())
+                .map_err(|_| invalid("invalid Unicode string"));
+        }
+        // An escape or control byte takes the original validating path, with
+        // the already scanned run retained exactly once.
+        let mut output = self.input[start..self.at].to_vec();
         loop {
             let byte = *self
                 .input
@@ -299,24 +315,33 @@ fn validate_integer(value: &CanonValue, strict: bool) -> Result<String, Error> {
 
 fn string_bytes(value: &str, output: &mut Vec<u8>) {
     output.push(b'"');
-    for character in value.chars() {
-        match character {
-            '"' => output.extend_from_slice(b"\\\""),
-            '\\' => output.extend_from_slice(b"\\\\"),
-            '\n' => output.extend_from_slice(b"\\n"),
-            '\r' => output.extend_from_slice(b"\\r"),
-            '\t' => output.extend_from_slice(b"\\t"),
-            '\u{8}' => output.extend_from_slice(b"\\b"),
-            '\u{c}' => output.extend_from_slice(b"\\f"),
-            '\u{0}'..='\u{1f}' => {
-                output.extend_from_slice(format!("\\u{:04x}", character as u32).as_bytes())
-            }
+    let bytes = value.as_bytes();
+    let mut start = 0;
+    for (index, byte) in bytes.iter().copied().enumerate() {
+        if !matches!(byte, b'"' | b'\\' | 0..=0x1f) {
+            continue;
+        }
+        // JSON only escapes ASCII bytes. UTF-8 runs can be copied verbatim;
+        // an ASCII delimiter cannot split a multibyte code point.
+        output.extend_from_slice(&bytes[start..index]);
+        start = index + 1;
+        match byte {
+            b'"' => output.extend_from_slice(b"\\\""),
+            b'\\' => output.extend_from_slice(b"\\\\"),
+            b'\n' => output.extend_from_slice(b"\\n"),
+            b'\r' => output.extend_from_slice(b"\\r"),
+            b'\t' => output.extend_from_slice(b"\\t"),
+            8 => output.extend_from_slice(b"\\b"),
+            12 => output.extend_from_slice(b"\\f"),
             _ => {
-                let mut buffer = [0; 4];
-                output.extend_from_slice(character.encode_utf8(&mut buffer).as_bytes());
+                const HEX: &[u8; 16] = b"0123456789abcdef";
+                output.extend_from_slice(b"\\u00");
+                output.push(HEX[usize::from(byte >> 4)]);
+                output.push(HEX[usize::from(byte & 15)]);
             }
         }
     }
+    output.extend_from_slice(&bytes[start..]);
     output.push(b'"');
 }
 
