@@ -320,6 +320,8 @@ impl DataRoot {
     /// advance the epoch before this call returns, so activation still requires
     /// an exact current snapshot. An I/O error may follow epoch advancement or
     /// head replacement and does not establish that this commit had no effect.
+    /// Such an error carries `ProfileCommitProgress`; it is never a receipt or
+    /// proof that the old head/epoch were restored.
     pub fn compare_and_swap_profile_head_at_epoch(
         &self,
         profile: &ProfileId,
@@ -363,17 +365,25 @@ impl DataRoot {
             // The revision lock orders this commit with head writers/snapshots.
             // On I/O failure an advanced epoch still fails closed for old grants.
             let approvals = crate::Approvals::open_pinned(&lock.directory, profile)?;
-            let epoch = match expected_epoch {
-                Some(expected_epoch) => {
-                    approvals.compare_and_advance_security_epoch(profile, expected_epoch)?
-                }
-                None => approvals.advance_security_epoch(profile)?,
-            };
-            lock.directory.write_atomic_with_directory_sync(
+            let epoch = approvals.advance_profile_security_epoch(profile, expected_epoch)?;
+            let mut head_replaced = false;
+            let written = lock.directory.write_atomic_with_directory_sync(
                 Path::new("head"),
                 new.as_str().as_bytes(),
-                sync_directory,
-            )?;
+                |directory| {
+                    // The writer calls this only after the actual rename.
+                    head_replaced = true;
+                    sync_directory(directory)
+                },
+            );
+            written.map_err(|source| StoreError::ProfileCommitUncertain {
+                progress: if head_replaced {
+                    crate::ProfileCommitProgress::HeadReplaced
+                } else {
+                    crate::ProfileCommitProgress::EpochAdvanced
+                },
+                source: Box::new(source),
+            })?;
             Ok((new.clone(), epoch))
         }
         #[cfg(not(unix))]
@@ -1127,7 +1137,15 @@ mod revision_lock_tests {
                 |_| Err(std::io::Error::other("injected directory fsync failure")),
             )
             .unwrap_err();
-        assert!(matches!(error, StoreError::Io(_)));
+        assert_eq!(
+            error.profile_commit_progress(),
+            Some(crate::ProfileCommitProgress::HeadReplaced)
+        );
+        assert!(matches!(
+            &error,
+            StoreError::ProfileCommitUncertain { source, .. }
+                if matches!(source.as_ref(), StoreError::Io(_))
+        ));
         // The real rename preceded the failed directory fsync. Observe state
         // instead of treating the error as evidence that nothing committed.
         let observed = root.profile_head_snapshot(&profile).unwrap();

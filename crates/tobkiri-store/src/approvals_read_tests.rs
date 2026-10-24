@@ -15,6 +15,63 @@ fn fixture() -> (tempfile::TempDir, DataRoot, ProfileId, Approvals) {
     (temp, root, profile, approvals)
 }
 
+#[cfg(unix)]
+#[test]
+fn profile_epoch_commit_failure_is_uncertain_without_claiming_an_advanced_epoch() {
+    let (_temp, root, profile, approvals) = fixture();
+    approvals
+        .connection
+        .lock()
+        .unwrap()
+        .commit_hook(Some(|| true))
+        .unwrap();
+    let error = approvals
+        .advance_profile_security_epoch(&profile, Some(0))
+        .unwrap_err();
+    approvals
+        .connection
+        .lock()
+        .unwrap()
+        .commit_hook(None::<fn() -> bool>)
+        .unwrap();
+    assert_eq!(
+        error.profile_commit_progress(),
+        Some(crate::ProfileCommitProgress::EpochCommitAttempted)
+    );
+    assert!(matches!(
+        &error,
+        StoreError::ProfileCommitUncertain { source, .. }
+            if matches!(source.as_ref(), StoreError::Sql(_))
+    ));
+    // This injected hook rejected COMMIT. The error itself must not promise
+    // either the old epoch or an advanced epoch to an ordinary caller.
+    assert_eq!(approvals.security_epoch(&profile).unwrap(), 0);
+    assert!(matches!(
+        root.read_profile_file(&profile, "head", 128),
+        Err(StoreError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn rejected_profile_epoch_update_is_not_reported_as_a_commit_attempt() {
+    let (_temp, _root, profile, approvals) = fixture();
+    approvals
+        .connection
+        .lock()
+        .unwrap()
+        .execute_batch(
+            "CREATE TEMP TRIGGER reject_epoch BEFORE UPDATE ON security_epoch
+             BEGIN SELECT RAISE(ABORT,'injected before COMMIT'); END;",
+        )
+        .unwrap();
+    let error = approvals
+        .advance_profile_security_epoch(&profile, Some(0))
+        .unwrap_err();
+    assert_eq!(error.profile_commit_progress(), None);
+    assert_eq!(approvals.security_epoch(&profile).unwrap(), 0);
+}
+
 #[test]
 fn repeated_queries_observe_other_connection_revocation_epoch_and_fault() {
     let (_temp, root, profile, first) = fixture();

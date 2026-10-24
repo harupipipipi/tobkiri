@@ -4,7 +4,24 @@ use std::{
     sync::mpsc::{Receiver, RecvTimeoutError},
     time::Duration,
 };
-use tobkiri_core::{ApprovalPrompt, EffectRequest, HostError as IoError, Risk};
+use tobkiri_core::{ApprovalPrompt, CoreError, EffectRequest, HostError as IoError, Risk};
+
+/// Map Core failures to bounded native codes without rendering source text.
+/// Profile commit uncertainty is not a rollback or readiness observation.
+pub fn core_error(error: CoreError) -> crate::HostError {
+    if error.profile_commit_progress().is_some() {
+        return crate::HostError::Rejected("profile-commit-uncertain");
+    }
+    let code = match error {
+        CoreError::Invalid(_) | CoreError::Json(_) | CoreError::Canon(_) => "invalid",
+        CoreError::Conflicts(_) => "conflict",
+        CoreError::NotFound(_) => "not-found",
+        CoreError::Gate(error) => error.code(),
+        CoreError::Step(error) => error.audit_code(),
+        _ => "unavailable",
+    };
+    crate::HostError::Rejected(code)
+}
 
 /// Guest UI is unavailable until Core supplies a real attachment lifecycle.
 /// This slot guard supplements, and does not prove, caller provenance.

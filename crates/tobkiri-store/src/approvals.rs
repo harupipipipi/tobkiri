@@ -138,10 +138,10 @@ impl Approvals {
     /// Compare and advance the epoch in one transaction while the caller holds
     /// the Profile revision lock. Revocation may still advance it afterwards.
     #[cfg(unix)]
-    pub(crate) fn compare_and_advance_security_epoch(
+    pub(crate) fn advance_profile_security_epoch(
         &self,
         profile: &ProfileId,
-        expected: u64,
+        expected: Option<u64>,
     ) -> Result<u64, StoreError> {
         self.local(profile)?;
         let mut conn = self.connection.lock().map_err(persistence)?;
@@ -155,7 +155,7 @@ impl Approvals {
                 |r| crate::sql_u64(r, 0),
             )
             .map_err(persistence)?;
-        if epoch != expected {
+        if expected.is_some_and(|expected| epoch != expected) {
             return Err(StoreError::Conflict(
                 "Profile security epoch changed".into(),
             ));
@@ -169,7 +169,11 @@ impl Approvals {
             [next as i64],
         )
         .map_err(persistence)?;
-        tx.commit().map_err(persistence)?;
+        tx.commit()
+            .map_err(|source| StoreError::ProfileCommitUncertain {
+                progress: crate::ProfileCommitProgress::EpochCommitAttempted,
+                source: Box::new(StoreError::Sql(source)),
+            })?;
         Ok(next)
     }
     /// Core user operation after explicit device pairing, never a guest import.

@@ -15,7 +15,7 @@ pub use isolation::{
     HostCaller, HostError, PACK_UI_CSP, PackAssetPath, PackAssetRequest, trusted_host_origin,
 };
 pub use native_contract::{
-    ShutdownCompletion, ShutdownObservation, TrustedReview, observe_shutdown,
+    ShutdownCompletion, ShutdownObservation, TrustedReview, core_error, observe_shutdown,
     preserve_primary_close, restore_primary, startup_ui_embedding, trusted_review,
 };
 pub use profile_inspection::{ProfileCandidateCheck, ProfileInspection};

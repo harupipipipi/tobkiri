@@ -9,6 +9,7 @@ pub use tobkiri_gate::{
     ApprovalAnswer, ApprovalPrompt, EffectRequest, HostError, HostIo, PermissionSet, Risk,
     TrustedPrompt, UiEmbed,
 };
+pub use tobkiri_store::ProfileCommitProgress;
 /// Generic Pack authoring and verification functions exposed by Core.
 pub mod pack {
     pub use tobkiri_manifest::{

@@ -206,6 +206,41 @@ local Rust/guest build or model server was started. The bounded early artifact
 makes no pass or authority claim; production GUI/Setup and all acceptance items
 remain open.
 
+At `654788a011a40cef4f1817b5a5e2bd8887f8e3f5`, the
+[complete portable foundation and strict lint](https://github.com/harupipipipi/tobkiri/actions/runs/40143004093/job/121018475162)
+passed, including both new string regressions, all three original codec corpora
+and seal/lease-token checks. Its bounded native observation recorded an
+isolated Audit round trip of 1,316,906 microseconds, with the same 1,844 append
+and 3,469 read reservations and unchanged authority checks/deadlines. Admission
+times were 420,994 and 775,433 microseconds respectively. The complete workspace
+step and all six isolated native observations passed; later native replays are
+still running. These observations do not establish permanent timing stability.
+The strict five-Pack comparison still reports Python 209/215 and Rust 212/215,
+retaining the same mismatches; nine transport admission vectors and every
+Session close passed. No expectation or source pin was rewritten.
+
+## Profile commit uncertainty and original Setup, 2026-10-25
+
+The [Setup boundary note](native-setup-boundary.md) now distinguishes the real
+Setup configuration confirmation from later individual native approvals. No
+blanket first-Launch review or privileged Pack configuration bridge is added.
+Core's existing failed-save path can retain earlier approval effects; an old
+head does not prove whole-addition rollback. R2.8 remains unfulfilled in that
+respect, without inferring an immediate execution bypass from retained rows.
+
+Profile CAS errors now preserve whether epoch COMMIT was attempted, the epoch
+advanced, or the real head rename occurred before durability confirmation
+failed. This typed observation survives the Core facade and native error
+mapping as `profile-commit-uncertain`; it does not claim a current head, a
+committed activation, rollback, or permission to retry. Its displayed error
+omits free-form source text. Update order, fresh checks and permission decisions
+are unchanged. Two real-SQLite commit-boundary regressions, the actual
+post-rename fsync regression, two Core error propagation/privacy regressions,
+and the actual Store-to-Core-to-native adapter regressions await CI. Formatting,
+foundation boundary checks and the 21 preserved Gateway
+transport/fixture tests pass locally. Full native GUI configuration integration,
+whole-addition rollback and all broader acceptance items remain open.
+
 ## Native Rust HostIo cancellation checkpoint, 2026-10-21
 
 A separate [focused receipt](../../../crates/tobkiri-core/evidence/host-read-cancellation-20261021.json)

@@ -6,6 +6,16 @@ API/key/base URL/model settings and conversation features. Display naming change
 to Harness. A CLI-created Profile or reduced replacement screen is not parity.
 The original Launcher remains the default until that complete flow is verified.
 
+The original approval sequence has now been traced in source. Setup's review
+checkbox confirms the exact Profile/catalog/plan/authority/epoch and its
+activation transaction. A `profile_grant` edge receives persistent authority;
+an `interactive_only` edge does not. `launch_selected_presentation` revalidates
+the existing active identity and performs its Shell handoff; it does not request
+a blanket first-launch permission approval. The dedicated native window reviews
+a specific subsequent interactive request. Preserve these distinct decisions,
+including the visible Setup confirmation and later interactive review, rather
+than introducing an unapproved Profile import or new blanket Launch ceremony.
+
 ## Current source facts
 
 - The original React `frontend/src/pages/Setup.tsx` uses the Setup contracts
@@ -55,6 +65,37 @@ configuration data is an inert proposal until genuinely trusted native inputs,
 frozen sources and the existing GUI approval/commit path establish authority.
 No new approval ceremony, trust root, synthetic commitment receipt or silent
 permission grant is introduced by this design note.
+
+## Failed configuration writes
+
+The current Core save path obtains Pack approvals individually, writes the
+candidate revision, obtains User approval, and then commits head/epoch. A later
+denial or conflict can leave earlier approval records. A preserved old head is
+not proof that every preceding permission effect was rolled back. These rows
+alone also do not prove that a rejected candidate can start. Whole-addition
+rollback under R2.8 remains open; deleting a snapshot of approval rows could
+erase another concurrent operation's legitimate approval and is not a repair.
+
+The existing head CAS advances SQLite's security epoch before replacing the
+head file. A later error can therefore follow real mutation. Native callers
+now receive `ProfileCommitProgress` through `CoreError` and the fixed error
+code `profile-commit-uncertain`:
+
+- `EpochCommitAttempted`: SQLite COMMIT was attempted, without asserting its
+  result or an acquired epoch.
+- `EpochAdvanced`: epoch advancement returned successfully, but head replacement
+  was not confirmed. A rename error does not prove that the old head remains.
+- `HeadReplaced`: the real rename succeeded, but directory durability was not
+  confirmed.
+
+These facts describe that attempt's observed steps. They are neither a current
+snapshot nor a successful commit/activation receipt, and do not authorize a
+retry. In particular, finding the candidate as the current head cannot prove
+which concurrent operation committed it. The source error remains inspectable
+by trusted native code; the displayed error omits its free-form text. The
+existing transaction/write order, permission decisions and ordinary atomic
+file-write API are unchanged. This does not implement a durable whole-save
+transaction or wire the original Setup UI; both remain required work.
 
 Before product activation, verify actual signed distribution bootstrap and the
 complete original Setup/recovery/handover, Launch approval, provider settings

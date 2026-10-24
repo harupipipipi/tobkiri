@@ -6,6 +6,7 @@ mod data_custody;
 mod data_moves;
 mod disk_policy;
 mod owner;
+mod profile_commit;
 #[cfg(unix)]
 mod quota_vfs;
 mod secure;
@@ -22,6 +23,7 @@ pub use audit::*;
 pub use data::*;
 pub use disk_policy::*;
 pub use owner::*;
+pub use profile_commit::ProfileCommitProgress;
 pub use secure::*;
 pub use sql::*;
 pub use tiered::*;
@@ -45,6 +47,12 @@ pub enum StoreError {
     CommitUnknown,
     #[error("storage-pending-data-move: storage move requires explicit repair; do not replay")]
     PendingDataMove,
+    #[error("profile-commit-uncertain ({progress}); reconcile durable state before retrying")]
+    ProfileCommitUncertain {
+        progress: ProfileCommitProgress,
+        #[source]
+        source: Box<StoreError>,
+    },
     #[error("authority integrity fault: {0:?}")]
     Integrity(tobkiri_gate::IntegrityFaultCode),
     #[error("storage I/O failed: {0}")]

@@ -18,7 +18,7 @@ use tobkiri_core::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    HostCaller, HostError, PackAssetRequest,
+    HostCaller, HostError, PackAssetRequest, core_error,
     transport::{TransportTickets, copy_core_buffer, escaped_envelope_bound},
 };
 
@@ -1643,18 +1643,6 @@ fn wire(buffer: &CoreBuffer, receiver: &UiSessionId) -> Result<String, HostError
     }
     escaped_envelope_bound(buffer.len())?;
     copy_core_buffer(buffer)
-}
-
-fn core_error(error: CoreError) -> HostError {
-    let code = match error {
-        CoreError::Invalid(_) | CoreError::Json(_) | CoreError::Canon(_) => "invalid",
-        CoreError::Conflicts(_) => "conflict",
-        CoreError::NotFound(_) => "not-found",
-        CoreError::Gate(error) => error.code(),
-        CoreError::Step(error) => error.audit_code(),
-        _ => "unavailable",
-    };
-    HostError::Rejected(code)
 }
 
 /// Successfully admitted Pack asset: verified bytes, their finite MIME, and
