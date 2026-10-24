@@ -130,6 +130,36 @@ These are fixture results, not production activation, GUI/settings/chat parity,
 full Gateway migration or VM retirement. No inventory unit or acceptance item
 is closed by this checkpoint.
 
+The [same-Core Python/Rust comparison](https://github.com/harupipipipi/tobkiri/actions/runs/40135550828/job/120996193030)
+then completed at `6005720ca79273c38582b642667a7b0b70b9d269`. Its actual five
+Rust components total 1,385,842 bytes. Both implementations attempted all 215
+unchanged observations with the same Core and limits. Python retained six
+differences; Rust matched **212**, retaining only the same three outer-input
+limit mismatches. Both stream output-limit cases and the finalizer dependency
+audit matched under Rust. All five Rust runtime/initialization observations
+matched and both Sessions closed. The strict replays remain **failed**: no
+expectation was changed or oversized case silently counted as guest parity.
+Separate outer transport admission passed all six synthetic boundaries and
+three pinned original oversized inputs. Shared-code integrity (three tests),
+typed diagnostics (two), durable ACK (one) and concurrent-ACK/corruption
+interleavings (two) also passed on the actual supported native platform.
+This does not establish production registration or full original GUI parity.
+
+The [current complete native workspace](https://github.com/harupipipipi/tobkiri/actions/runs/40135590037/job/120996494980)
+at `278eeb0c13efabe2f81b1caa4c58371a8da86370` failed only the Core Audit round
+trip: **238/239** Core library cases passed. That original five-second case
+passed in isolation, as did all six independent native observations, strict
+workspace lint and the original/transformed Python replays. Its failed Store
+execution segments took approximately 1.92 seconds for append and 2.86 seconds
+for read; the latter reached the original deadline before return conversion.
+Those segments include budget admission and allocation work as well as SQL,
+so they do not establish a SQL bottleneck. Debug-only, opt-in synchronous
+allocation/admission timing is being added to distinguish these costs without
+relaxing validation, funding or deadlines. Its integration and new helper
+regressions remain pending. The complete portable foundation and strict lint
+passed at that head. No stability or full-workspace acceptance is inferred
+from the successful isolated case.
+
 ## Native Rust HostIo cancellation checkpoint, 2026-10-21
 
 A separate [focused receipt](../../../crates/tobkiri-core/evidence/host-read-cancellation-20261021.json)

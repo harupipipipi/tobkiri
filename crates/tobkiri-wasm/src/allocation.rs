@@ -263,6 +263,8 @@ impl PackAllocationBudget {
     }
 
     fn reserve_checked(&self, request: AllocationRequest) -> Result<(), AllocationError> {
+        #[cfg(debug_assertions)]
+        let _timing = crate::allocation_timing::Span::reserve(request.bytes);
         if self.process != std::process::id() {
             self.failure.store(1, Ordering::Release);
             return Err(AllocationError::Unavailable);
@@ -294,34 +296,38 @@ impl PackAllocationBudget {
             .ok_or(AllocationError::Overflow)?;
         let allocated = live_bytes;
         let mut admitted = false;
-        self.funding
-            .with_admission(self.gate.as_ref(), &self.cx, &mut |limit| {
-                if admitted {
-                    return Err(tobkiri_gate::GateError::Unavailable);
-                }
-                self.capacity.resize(allocated, limit)?;
-                admitted = true;
-                Ok(())
-            })
-            .map_err(|error| {
-                use tobkiri_gate::GateError;
-                let code = match &error {
-                    GateError::Denied(_) => 4,
-                    GateError::Deadline => 5,
-                    GateError::Cancelled => 6,
-                    GateError::Persistence(_)
-                    | GateError::Integrity(_)
-                    | GateError::AuditFailure { .. } => 7,
-                    GateError::Unavailable => 8,
-                    GateError::Limit(_) => 9,
-                    _ => 10,
-                };
-                self.failure.store(code, Ordering::Release);
-                match error {
-                    GateError::Limit(_) => AllocationError::Limit,
-                    _ => AllocationError::Unavailable,
-                }
-            })?;
+        let admission = {
+            #[cfg(debug_assertions)]
+            let _timing = crate::allocation_timing::Span::admission();
+            self.funding
+                .with_admission(self.gate.as_ref(), &self.cx, &mut |limit| {
+                    if admitted {
+                        return Err(tobkiri_gate::GateError::Unavailable);
+                    }
+                    self.capacity.resize(allocated, limit)?;
+                    admitted = true;
+                    Ok(())
+                })
+        };
+        admission.map_err(|error| {
+            use tobkiri_gate::GateError;
+            let code = match &error {
+                GateError::Denied(_) => 4,
+                GateError::Deadline => 5,
+                GateError::Cancelled => 6,
+                GateError::Persistence(_)
+                | GateError::Integrity(_)
+                | GateError::AuditFailure { .. } => 7,
+                GateError::Unavailable => 8,
+                GateError::Limit(_) => 9,
+                _ => 10,
+            };
+            self.failure.store(code, Ordering::Release);
+            match error {
+                GateError::Limit(_) => AllocationError::Limit,
+                _ => AllocationError::Unavailable,
+            }
+        })?;
         if !admitted {
             self.failure.store(11, Ordering::Release);
             return Err(AllocationError::Unavailable);

@@ -488,10 +488,19 @@ async fn supervise(mut custody: AuditCustody) -> std::result::Result<(), NativeW
     // funding, so this phase includes that cost, not just SQL. The strong
     // original frame/value owners outlive it; ABI, timer, terminal and user
     // callbacks remain outside it.
-    let executed = match watched {
+    let execute = || match watched {
         Ok(()) => Executed::Delivery(dispatch.execute(&custody.log)),
         Err(error) => Executed::Refused(dispatch, Failure::gate(&error)),
     };
+    #[cfg(debug_assertions)]
+    let executed = {
+        let (executed, costs) =
+            crate::allocation_timing::measure(custody.timing.enabled(), execute);
+        custody.timing.allocations(costs);
+        executed
+    };
+    #[cfg(not(debug_assertions))]
+    let executed = execute();
     // SQL resources are ALL gone before output sharing, conversion, terminal
     // outcome allocation, Gate callbacks or destruction of retained custody.
     #[cfg(debug_assertions)]

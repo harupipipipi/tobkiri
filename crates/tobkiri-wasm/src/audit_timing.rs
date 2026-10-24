@@ -53,6 +53,26 @@ pub(super) struct AuditTiming {
     operation: &'static str,
 }
 impl AuditTiming {
+    pub(super) fn enabled(&self) -> bool {
+        self.started.is_some()
+    }
+
+    /// Print after the synchronous Store segment has released all SQL guards.
+    pub(super) fn allocations(&self, costs: crate::allocation_timing::Costs) {
+        if self.enabled() {
+            eprintln!(
+                "AUDIT_ALLOCATION_PHASE operation={} observed={} reserve_calls={} zero_byte_calls={} reserve_us={} admission_calls={} admission_us={}",
+                self.operation,
+                costs.observed,
+                costs.reserve_calls,
+                costs.zero_byte_calls,
+                costs.reserve_us,
+                costs.admission_calls,
+                costs.admission_us,
+            );
+        }
+    }
+
     pub(super) fn new(operation: &str, deadline: Instant) -> Self {
         let operation = match operation {
             "append" => "append",

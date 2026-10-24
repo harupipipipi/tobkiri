@@ -2,6 +2,8 @@
 
 mod abi;
 mod allocation;
+#[cfg(debug_assertions)]
+mod allocation_timing;
 mod child_census;
 mod core_imports;
 mod core_modules;
