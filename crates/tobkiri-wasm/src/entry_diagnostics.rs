@@ -2,9 +2,14 @@
 use wasmtime::component::HostAllocationError;
 
 pub(crate) fn failure_kind(error: &anyhow::Error) -> &'static str {
-    let allocation = error
-        .chain()
-        .find_map(|cause| cause.downcast_ref::<HostAllocationError>());
+    // anyhow's typed context is not itself a standard error-chain element.
+    // Its borrowed downcast sees both that context and the original cause;
+    // retain chain traversal for arbitrary standard Error::source wrappers too.
+    let allocation = error.downcast_ref::<HostAllocationError>().or_else(|| {
+        error
+            .chain()
+            .find_map(|cause| cause.downcast_ref::<HostAllocationError>())
+    });
     match allocation {
         Some(HostAllocationError::Unavailable) => "allocation-unavailable",
         Some(HostAllocationError::Limit) => "allocation-limit",
@@ -12,10 +17,11 @@ pub(crate) fn failure_kind(error: &anyhow::Error) -> &'static str {
         Some(HostAllocationError::Depth) => "allocation-depth",
         Some(HostAllocationError::Allocator) => "allocator-failure",
         Some(HostAllocationError::Invalid) => "invalid-allocation",
-        None => match error
-            .chain()
-            .find_map(|cause| cause.downcast_ref::<wasmtime::Trap>())
-        {
+        None => match error.downcast_ref::<wasmtime::Trap>().or_else(|| {
+            error
+                .chain()
+                .find_map(|cause| cause.downcast_ref::<wasmtime::Trap>())
+        }) {
             Some(wasmtime::Trap::OutOfFuel) => "fuel-exhausted",
             Some(wasmtime::Trap::Interrupt) => "execution-interrupted",
             _ => "execution-error",
@@ -38,6 +44,8 @@ mod tests {
             (wasmtime::Trap::Interrupt, "execution-interrupted"),
             (wasmtime::Trap::UnreachableCodeReached, "execution-error"),
         ] {
+            let context = anyhow::anyhow!("PRIVATE root").context(cause);
+            assert_eq!(failure_kind(&context), expected);
             let error = anyhow::Error::new(cause).context("PRIVATE guest context");
             assert_eq!(failure_kind(&error), expected);
         }

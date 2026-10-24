@@ -103,9 +103,11 @@ six differences**:
   outcomes. Separate reporting of these entrance rejections awaits the user's
   acceptance decision; the strict replay remains failed.
 - Two in-budget stream inputs that expand past output byte/node limits trap
-  before returning the expected typed provider error. The runtime's cause is
-  under investigation; generic execution errors do not establish fuel or
-  deadline exhaustion.
+  before returning the expected typed provider error. A subsequent typed
+  diagnostic run reports `fuel-exhausted` for both, with about 290 seconds of
+  the existing deadline remaining. The diagnostic's allocation-context
+  precedence regression failed separately and is being corrected; the next
+  run must revalidate classification with that correction in place.
 - A finalizer stream case returns the exact original output, but its dependency
   audit includes an extra stream initialization after the preceding traps.
   Its original no-extra-initialization assertion remains failed.
@@ -114,11 +116,19 @@ The [following native job](https://github.com/harupipipipi/tobkiri/actions/runs/
 passed all three shared-code integrity tests and the corrected durable ACK
 regression, then reproduced the same six replay differences. The new
 [typed-diagnostic job](https://github.com/harupipipipi/tobkiri/actions/runs/40134248100/job/120992269152)
-is pending. It distinguishes borrowed typed fuel and interruption traps without
-formatting private causes or changing execution/error-code policy. These are
-fixture results, not production activation, GUI/settings/chat parity, full
-Gateway migration or VM retirement. No inventory unit or acceptance item is
-closed by this checkpoint.
+completed with the same six replay differences. One diagnostic unit test
+exposed a real classification bug: traversing standard error sources misses
+`anyhow`'s typed context, so a contextual allocation limit lost precedence to
+its fuel-trap cause. The correction checks borrowed context-aware downcasts
+before retaining the existing standard-source fallback. No private cause is
+formatted and execution/error-code policy is unchanged. The new CI route also
+builds the five existing Rust candidates and compares them with the unchanged
+215 source observations on the same Core and resource limits, retaining its
+strict mismatch failures and separate outer-transport evidence. That corrected
+diagnostic, current supervisor regressions and Rust comparison remain pending.
+These are fixture results, not production activation, GUI/settings/chat parity,
+full Gateway migration or VM retirement. No inventory unit or acceptance item
+is closed by this checkpoint.
 
 ## Native Rust HostIo cancellation checkpoint, 2026-10-21
 
