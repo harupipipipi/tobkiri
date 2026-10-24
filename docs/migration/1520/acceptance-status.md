@@ -185,17 +185,25 @@ Both observed the same 1,844/3,469 reservations. This variation does not
 establish a repeatable improvement or a causal repair. The complete native
 jobs are still running their later checks.
 
-The next source candidate copies unescaped UTF-8 JSON string runs in bulk
-instead of growing/re-encoding them one byte/code point at a time. Escapes,
-surrogate validation, strict duplicate detection, object order, number
-spelling, size/depth bounds and every authority lookup are unchanged. Two
-regressions cover all ASCII control escapes, mixed Unicode and escaped runs,
-invalid/truncated strings and escaped duplicate keys across all three codecs.
-The existing Python byte/digest/seal corpora remain the acceptance oracle.
-Formatting, the lightweight foundation boundary check and diff checks pass;
-the actual Rust regressions and native performance remain pending CI. No
-local Rust/guest build or model server was started. The early artifact makes
-no pass or authority claim; production GUI/Setup and all acceptance items
+The [879 foundation check](https://github.com/harupipipipi/tobkiri/actions/runs/40142696143/job/121017562535)
+rejected a string-copy source optimization because the historical Gateway
+observations bind the original canonical codec source hash. That guard remains
+intact: the candidate codec changes have been reverted to the exact original
+source; no historical observation, source pin or expected value is rewritten.
+The next compiler candidate instead optimizes the unchanged canonical codec
+for workspace dev/test builds, retaining debug assertions and overflow checks.
+The Gate checks, permission reads, representation rules and deadlines remain
+unchanged. This does not establish that codec work is the dominant admission
+sub-operation or that the performance issue has been repaired.
+
+Two additional regressions cover all ASCII control escapes, mixed Unicode and
+escaped runs, invalid/truncated strings and escaped duplicate keys across all
+three codecs. The existing Python byte/digest/seal corpora remain the acceptance
+oracle. All 21 preserved Gateway transport/fixture tests pass locally after
+restoring the original codec source; the source-binding guards are unchanged.
+Actual Rust regressions and native performance remain pending CI. No
+local Rust/guest build or model server was started. The bounded early artifact
+makes no pass or authority claim; production GUI/Setup and all acceptance items
 remain open.
 
 ## Native Rust HostIo cancellation checkpoint, 2026-10-21

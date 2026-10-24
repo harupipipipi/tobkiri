@@ -83,6 +83,13 @@ opt-level = 2
 debug-assertions = true
 overflow-checks = true
 
+# Fresh authority reads also parse and encode canonical permission documents.
+# Preserve those exact source bytes, including historical fixture bindings.
+[profile.dev.package.tobkiri-canon]
+opt-level = 2
+debug-assertions = true
+overflow-checks = true
+
 [patch.crates-io]
 wasmtime = { path = "vendor/wasmtime" }
 wasmtime-internal-fiber = { path = "vendor/wasmtime-internal-fiber" }
@@ -94,6 +101,11 @@ incremental = false
 # Keep native tests on the same optimized authority implementation as dev.
 # Every validation and the original operation deadlines still execute.
 [profile.test.package.tobkiri-gate]
+opt-level = 2
+debug-assertions = true
+overflow-checks = true
+
+[profile.test.package.tobkiri-canon]
 opt-level = 2
 debug-assertions = true
 overflow-checks = true
