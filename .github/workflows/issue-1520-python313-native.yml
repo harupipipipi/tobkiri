@@ -5,6 +5,18 @@ on:
     branches: [codex/issue-1520-rust-core]
     paths:
       - '.github/workflows/issue-1520-python313-native.yml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'packs/Cargo.toml'
+      - 'packs/Cargo.lock'
+      - 'packs/guest-sdk/**'
+      - 'packs/ordered-python-compat/**'
+      - 'packs/local.ai-usage-cost-rust/**'
+      - 'packs/local.ai-stream-normalizer-rust/**'
+      - 'packs/local.ai-tool-bridge-rust/**'
+      - 'packs/local.ai-gateway-tool-caller-rust/**'
+      - 'packs/local.ai-gateway-finalizer-rust/**'
       - 'tools/python313-producer/native_graph.py'
       - 'tools/quality/test_python313_native.py'
       - 'tools/quality/python_provider_compat/**'
