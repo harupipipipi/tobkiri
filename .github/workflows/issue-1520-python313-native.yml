@@ -74,6 +74,7 @@ jobs:
           python3 -B tools/quality/python_tool_bridge_compat/generate.py \
             --output-dir "$RUNNER_TEMP/original-bridge-oracle"
       - name: Bind complete original artifacts, shared code and all source oracles
+        id: bind_original_graph
         run: >-
           python3 -B tools/python313-producer/native_graph.py
           --root "$RUNNER_TEMP/original-five-inputs"
@@ -87,7 +88,15 @@ jobs:
           python3 -B tools/quality/issue_1520_ci.py cargo-test \
             --log "$RUNNER_TEMP/original-shared-integrity.log" --expected-passed 3 -- \
             cargo test --locked -p tobkiri-e2e --test ordered_python shared_modules:: -- --nocapture
+      - name: Verify durable ACK replay and explicit fixture fault detection
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/original-terminal-ack.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-store --test terminal
+          repeated_terminal_ack_checks_current_payload_without_rewriting_delivered_row
+          -- --exact --nocapture
       - name: Replay all 215 original cases through actual Core and Gate
+        if: ${{ !cancelled() && steps.bind_original_graph.outcome == 'success' }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/original-five-native.log" --expected-passed 1 --
@@ -105,6 +114,8 @@ jobs:
             ${{ runner.temp }}/original-bridge-oracle/receipt.json
             ${{ runner.temp }}/original-shared-integrity.log
             ${{ runner.temp }}/original-shared-integrity.receipt.json
+            ${{ runner.temp }}/original-terminal-ack.log
+            ${{ runner.temp }}/original-terminal-ack.receipt.json
             ${{ runner.temp }}/original-five-native.log
             ${{ runner.temp }}/original-five-native.receipt.json
             ${{ runner.temp }}/original-five-native-evidence

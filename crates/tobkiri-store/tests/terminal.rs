@@ -618,6 +618,18 @@ async fn repeated_terminal_ack_checks_current_payload_without_rewriting_delivere
 
     // A prior ACK is no cache of authority: corrupting the current durable
     // record must still latch an integrity fault on the next matching call.
+    let protected = raw
+        .execute(
+            "UPDATE terminal_outbox SET body=x'00' WHERE grant_id=?1",
+            [id.as_str()],
+        )
+        .unwrap_err();
+    assert!(matches!(protected,
+        rusqlite::Error::SqliteFailure(_, Some(message)) if message == "immutable terminal decision"));
+    // Inject damage only into this disposable fixture, after observing the
+    // production immutability guard. Keep the duplicate-ACK trigger installed.
+    raw.execute_batch("DROP TRIGGER terminal_no_rewrite")
+        .unwrap();
     raw.execute(
         "UPDATE terminal_outbox SET body=x'00' WHERE grant_id=?1",
         [id.as_str()],
