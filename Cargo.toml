@@ -75,6 +75,14 @@ zeroize = { version = "=1.9.1" }
 debug = 0
 incremental = false
 
+# Native DATA can make thousands of actual frame/authority validations inside
+# one declared call budget. Compile that same Gate path efficiently in CLI
+# development builds while retaining its assertions and arithmetic checks.
+[profile.dev.package.tobkiri-gate]
+opt-level = 2
+debug-assertions = true
+overflow-checks = true
+
 [patch.crates-io]
 wasmtime = { path = "vendor/wasmtime" }
 wasmtime-internal-fiber = { path = "vendor/wasmtime-internal-fiber" }
@@ -82,6 +90,13 @@ wasmtime-internal-fiber = { path = "vendor/wasmtime-internal-fiber" }
 [profile.test]
 debug = 0
 incremental = false
+
+# Keep native tests on the same optimized authority implementation as dev.
+# Every validation and the original operation deadlines still execute.
+[profile.test.package.tobkiri-gate]
+opt-level = 2
+debug-assertions = true
+overflow-checks = true
 
 # Actual Core tests compile components inside their original operation budget.
 # Optimize the host compiler while keeping its debug and overflow checks.

@@ -259,6 +259,63 @@ jobs:
           cargo test --locked -p tobkiri-core --lib
           session::tests::ui_handle_capacity_and_session_close_are_bounded
           -- --exact --nocapture --test-threads=1
+      - name: Collect closed Audit latency observations before long Python replays
+        if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
+        run: |
+          python3 -B - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP'])
+          uint, boolean = r'[0-9]{1,20}', r'(?:true|false)'
+          operation = r'(?:append|read)'
+          stages = ('invoked|prepared|authorized|submitted|scheduled|consumed|'
+                    'lease-checked|executed|output-received|converted|conversion-observed|'
+                    'canonical-ready|recorded|ack-inspected|completion-sent|wait-ended')
+          patterns = [
+              re.compile(fr'AUDIT_IMPORT_PHASE operation={operation} stage=(?:{stages}) elapsed_us={uint} wall_remaining_ms={uint}'),
+              re.compile(fr'AUDIT_ALLOCATION_PHASE operation={operation} observed={boolean} reserve_calls={uint} zero_byte_calls={uint} reserve_us={uint} admission_calls={uint} admission_us={uint}'),
+              re.compile(fr'AUDIT_GUEST_INVOCATION elapsed_us={uint} succeeded={boolean}'),
+              re.compile(fr'CLEANUP_TIMING close_ok={boolean} close_us={uint} audit_calls={uint} audit_total_us={uint} audit_max_us={uint} heartbeat_ok={boolean} max_poll_gap_us={uint}'),
+          ]
+          records, inputs, truncated = [], [], False
+          for name in ('supported-workspace.log', 'audit-round-trip.log', 'ui-handle-close.log'):
+              path = root / name
+              if not path.is_file() or path.is_symlink():
+                  inputs.append({'name': name, 'available': False})
+                  continue
+              with path.open('rb') as source:
+                  data = source.read(16 * 1024 * 1024 + 1)
+              if len(data) > 16 * 1024 * 1024:
+                  inputs.append({'name': name, 'available': True, 'over_limit': True})
+                  continue
+              inputs.append({'name': name, 'available': True, 'bytes': len(data)})
+              for line in data.decode('utf-8', errors='replace').splitlines():
+                  # Cargo may prefix the first stderr record with its test label.
+                  positions = [line.find(marker) for marker in
+                               ('AUDIT_IMPORT_PHASE ', 'AUDIT_ALLOCATION_PHASE ',
+                                'AUDIT_GUEST_INVOCATION ', 'CLEANUP_TIMING ')]
+                  positions = [position for position in positions if position >= 0]
+                  if not positions:
+                      continue
+                  candidate = line[min(positions):].strip()
+                  if len(candidate) <= 512 and any(pattern.fullmatch(candidate) for pattern in patterns):
+                      if len(records) < 1024:
+                          records.append({'source': name, 'observation': candidate})
+                      else:
+                          truncated = True
+          report = {'format': 'tobkiri.closed-audit-latency-observations/1',
+                    'checkout_sha': os.environ['GITHUB_SHA'], 'diagnostic_only': True,
+                    'pass_or_authority_claimed': False, 'inputs': inputs,
+                    'records_truncated': truncated, 'records': records}
+          (root / 'audit-early-observations.json').write_text(json.dumps(report, indent=2) + '\n')
+          PY
+      - name: Retain early bounded Audit latency metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-audit-early-observations
+          path: ${{ runner.temp }}/audit-early-observations.json
+          if-no-files-found: ignore
       - name: Strict workspace lint
         if: ${{ !cancelled() && steps.native_platform.outcome == 'success' && steps.rust_toolchain.outcome == 'success' }}
         run: cargo clippy --workspace --all-targets --locked --no-deps -- -D warnings

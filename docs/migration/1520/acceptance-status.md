@@ -160,6 +160,29 @@ regressions remain pending. The complete portable foundation and strict lint
 passed at that head. No stability or full-workspace acceptance is inferred
 from the successful isolated case.
 
+At `f38fa7f445b682066ea56907d54bcaf6beef88f9`, the
+[PR-merge native job](https://github.com/harupipipipi/tobkiri/actions/runs/40138452640/job/121005060540)
+passed the complete workspace (Core 239/239), all six native observations,
+strict lint and all original/transformed Python replays. Both new synchronous
+timing-helper regressions passed. Its isolated Audit observation recorded
+1,844 append reservations (1,429 with zero bytes) and 3,469 read reservations
+(2,734 with zero bytes). Frame-admission time was 976,367 microseconds of the
+985,666-microsecond append Store segment and 1,941,632 microseconds of the
+1,955,752-microsecond read segment. Admission is included in reservation time;
+these measurements must not be added together. They identify repeated actual
+funding/authority checks as the dominant measured cost, without establishing
+which admission sub-operation is responsible or a repair of earlier deadline
+failures.
+
+The next candidate compiles the unchanged Gate implementation at optimization
+level 2 for workspace CLI development and test builds, retaining debug
+assertions and overflow checks explicitly. No allocation, authority, lifetime
+or deadline validation is removed. Its effect on timings and complete native
+regressions remains pending. A bounded early CI artifact will retain only the
+closed numerical observations before long Python replays; it makes no pass
+or authority claim. Production GUI/Setup migration and all acceptance items
+remain open.
+
 ## Native Rust HostIo cancellation checkpoint, 2026-10-21
 
 A separate [focused receipt](../../../crates/tobkiri-core/evidence/host-read-cancellation-20261021.json)
