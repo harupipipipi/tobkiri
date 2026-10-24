@@ -87,6 +87,12 @@ jobs:
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-handle-metadata.log" --
           cargo test -p tobkiri-wasm --lib handle_metadata_tests --locked
+      - name: Portable typed runtime diagnostic regressions
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/portable-runtime-diagnostics.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-wasm --lib entry_diagnostics::tests
+          -- --nocapture
       - name: Authenticated shared module source and import regressions
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
@@ -134,7 +140,7 @@ jobs:
       - name: Portable transformed Pack integrity regressions
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/shared-pack-integrity.log" --expected-passed 2 --
+          --log "$RUNNER_TEMP/shared-pack-integrity.log" --expected-passed 3 --
           cargo test --locked -p tobkiri-e2e --test ordered_python shared_modules::
       - name: Native acceptance source contracts without runtime claims
         run: >-
