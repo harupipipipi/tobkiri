@@ -153,6 +153,12 @@ class RpdsCandidateTests(unittest.TestCase):
                 write(items)
                 with self.subTest(items=items), self.assertRaises(ValueError):
                     driver.built_extension(work)
+            write([root, finished])
+            transcript.write_bytes(
+                b"[upstream-build] cargo:diagnostic\n" + transcript.read_bytes()
+            )
+            with self.assertRaises(ValueError):
+                driver.built_extension(work)
 
     def test_experiment_is_separate_from_historical_sources_and_normal_pack_builds(
         self,
@@ -160,6 +166,8 @@ class RpdsCandidateTests(unittest.TestCase):
         self.assertIn("--frozen", build_rpds.RECIPE)
         self.assertIn("CARGO_NET_OFFLINE=true", build_rpds.RECIPE)
         self.assertIn("--features pyo3/abi3-py313", build_rpds.RECIPE)
+        self.assertIn("--message-format=json-render-diagnostics", build_rpds.RECIPE)
+        self.assertNotIn("-vv", build_rpds.RECIPE)
         self.assertIn("abi3=true", build_rpds.PYO3_CONFIG)
         self.assertIn("pointer_width=32", build_rpds.PYO3_CONFIG)
         self.assertNotIn("python313-source.patch", build_rpds.RECIPE)
