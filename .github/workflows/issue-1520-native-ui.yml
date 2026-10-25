@@ -76,11 +76,17 @@ jobs:
           npm exec --prefix frontend -- tauri build --debug --features core-host
           --config src-tauri/tauri.core-host.macos.dev.conf.json --bundles app -- --locked
       - name: Native observer unit regressions
-        working-directory: tobkiri_launcher/src-tauri
-        run: cargo test --locked --features core-host --lib native_ipc_probe::tests
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-ipc-scope-tests.log" --expected-passed 1 --
+          cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml
+          --features core-host --lib native_ipc_probe::tests
       - name: Native report coverage regression
-        working-directory: tobkiri_launcher/src-tauri
-        run: cargo test --locked --features core-host --lib native_ipc_probe::enabled::tests
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-ipc-report-tests.log" --expected-passed 1 --
+          cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml
+          --features core-host --lib native_ipc_probe::enabled::tests
       - name: Execute the actual native root and opaque Pack iframe
         # Never tee, inherit or upload the app's stdout/stderr. Tauri's
         # invalid-key diagnostic includes the real key.

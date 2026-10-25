@@ -12,6 +12,27 @@ const commands = [
   'pack_ui_detach', 'pack_ui_stream_pull', 'pack_ui_stream_cancel',
   'core_terminal_reply',
 ];
+
+test('attack and root inventory match actual native command names, not just count', () => {
+  const root = path.resolve(__dirname, '../..');
+  const actualSource = fs.readFileSync(path.join(
+    root, 'tobkiri_launcher/src-tauri/src/core_host_commands.rs',
+  ), 'utf8');
+  const actual = [...actualSource.matchAll(/"((?:core_|pack_ui_)[a-z_]+)"/g)]
+    .map((match) => match[1]);
+  const rootList = script.match(/const commands = \[([\s\S]*?)\];/)[1];
+  const rootCommands = [...rootList.matchAll(/'([^']+)'/g)].map((match) => match[1]);
+  const attack = fs.readFileSync(path.join(__dirname, 'attack.js'), 'utf8');
+  const attackCommands = [...attack.matchAll(/command: '([^']+)'/g)]
+    .map((match) => match[1]);
+  assert.ok(actual.length > 0);
+  assert.equal(new Set(actual).size, actual.length);
+  assert.deepEqual(rootCommands, actual);
+  assert.deepEqual(attackCommands, actual);
+  assert.deepEqual(commands, actual);
+  const controller = fs.readFileSync(path.join(__dirname, 'run.py'), 'utf8');
+  assert.equal(Number(controller.match(/^COMMANDS = ([0-9]+)$/m)[1]), actual.length);
+});
 function child() {
   return {
     type: 'tobkiri-native-ipc-probe-child', version: 1,
