@@ -564,6 +564,44 @@ async fn prepared_permissions_are_inert_and_drop_preserves_an_independent_approv
 }
 
 #[tokio::test]
+async fn prepared_user_approval_retains_the_exact_candidate_after_temporary_bindings_drop() {
+    let (core, _host, profile, _dir) = fixture();
+    let (gate, cx, _packs) = permission_preparation_fixture(&core, &profile);
+    let candidate = Digest::hash(b"temporary-reviewed-candidate");
+    let target_epoch = cx.security_epoch() + 1;
+    let before = core.control.usage().bytes;
+    let prepared = {
+        let temporary_candidate = candidate.clone();
+        let temporary_plan = cx.revision().unwrap().clone();
+        gate.prepare_user_permissions(
+            &cx,
+            &temporary_candidate,
+            &temporary_plan,
+            target_epoch,
+            &profile.ceiling,
+        )
+        .await
+        .unwrap()
+    };
+    tobkiri_gate::PreparedPermissionApproval::commit_all(vec![prepared]).unwrap();
+    let approvals = Approvals::open(&core.profiles.root, &profile.id).unwrap();
+    assert_eq!(
+        approvals
+            .user_permissions(
+                &profile.id,
+                &candidate,
+                cx.revision().unwrap(),
+                target_epoch,
+            )
+            .unwrap(),
+        Some(profile.ceiling.clone())
+    );
+    assert_eq!(approvals.security_epoch(&profile.id).unwrap(), 0);
+    assert!(core.profiles.head(&profile.id).unwrap().is_none());
+    assert_eq!(core.control.usage().bytes, before);
+}
+
+#[tokio::test]
 async fn prepared_permissions_recheck_cancellation_and_epoch_before_effect() {
     for revoke_epoch in [false, true] {
         let (core, _host, profile, _dir) = fixture();
