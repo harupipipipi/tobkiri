@@ -160,6 +160,21 @@ class SetupSourceTests(unittest.TestCase):
         self.assertNotIn(b"register_profile_runtime", module)
         self.assertNotIn(b"activation_store", module)
 
+    def test_opaque_ordered_data_uses_string_pins_instead_of_core_json_encoding(self) -> None:
+        sys.path.insert(0, str(ROOT / 'sdk/python'))
+        try:
+            from composition import world_export_names_from_sources
+            wit = (PACK / 'wit/pack.wit').read_bytes()
+            self.assertEqual(world_export_names_from_sources([
+                ('pack.wit', wit), ('deps/core.wit',
+                    (ROOT / 'crates/tobkiri-wit/wit/core/core.wit').read_bytes())],
+                'pack', root_source='pack.wit'),
+                ['local:harness-setup-python/setup@1.0.0', 'tobkiri:core/lifecycle@1.0.0'])
+            for operation in ('decision', 'success', 'failure', 'retired'):
+                self.assertIn(f'{operation}: func(payload: string) -> result<string, error>;'.encode(), wit)
+        finally:
+            sys.path.pop(0)
+
     def test_stage_is_source_only_and_sdk_verifies_exact_plan(self) -> None:
         sys.path.insert(0, str(ROOT / "sdk/python"))
         try:

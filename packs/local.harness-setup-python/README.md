@@ -11,6 +11,9 @@ product path.
 The typed `local:harness-setup-python/setup@1.0.0` exports `decision`, `success`,
 `failure` and `retired`. Each accepts and returns an opaque finite ordered JSON
 string using the existing v2 codec, including its unchanged byte/node bounds.
+The WIT pin is explicitly `string`: Core's `json` alias applies CoreStrictV1
+encoding and would encode the opaque request string again. The outer Core
+envelope retains its existing strict encoding and bounds.
 The adapter adds only explicit DATA envelopes and an attribute view for recorded
 activation facts. A decision returns both original fields, `confirmation` and
 `response`, with exactly one non-null outcome. Original explicit-confirmation,

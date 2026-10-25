@@ -90,9 +90,9 @@
       "sha256": "495b613a37807cf10e831a2332b7f401148d3aaec29ec84c16a22f0a2c05d3a2"
     },
     {
-      "bytes": 419,
+      "bytes": 582,
       "path": "packs/local.harness-setup-python/wit/pack.wit",
-      "sha256": "c6492586db05ddfe5b0de0d899283774c5fa70c4fb59f8515c27d3e78c57100a"
+      "sha256": "6abe884b3216cbf368cf3d7052f46bf85bdcb2b4019102de212ce7d4ed840c1d"
     },
     {
       "bytes": 5732,
