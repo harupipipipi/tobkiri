@@ -49,6 +49,15 @@ explicit `--harness-setup` mode leaves the frozen original three/five plans
 unchanged and records a distinct candidate-build receipt. Successful compilation
 alone does not establish guest execution or native Core/GUI integration.
 
+The same workflow separately supervises an actual standalone Wasm comparison for
+18 complete-original-module cases. All Core imports trap, with the original
+2-billion fuel, 128 MiB memory and table bounds, per-case epoch deadlines,
+canonical post-return cleanup and shutdown. Compilation has an outer isolated
+process supervisor. Its receipt requires every case and lifecycle to pass;
+native Core, interpreter identity and full GUI parity remain unproven by this
+standalone execution. No component compilation or guest runs on the developer
+Mac.
+
 The source tests import the complete original application as an independent
 oracle and compare ordered response bytes. They cover exact `True` confirmation,
 missing/extra keys, unchanged operation IDs, stale/malformed confirmations,

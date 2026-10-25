@@ -191,6 +191,24 @@ class SetupSourceTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 prepare.verify()
 
+    def test_actual_replay_inputs_are_complete_original_oracle_cases(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            'setup_standalone_replay', ROOT / 'scripts/wasm/replay_harness_setup.py')
+        replay = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(replay)
+        self.assertIs(replay.DefaultspackProfileRuntime, DefaultspackProfileRuntime)
+        cases = replay.source_cases()
+        self.assertEqual(len(cases), 18)
+        self.assertEqual(len({item['id'] for item in cases}), 18)
+        self.assertEqual({item['operation'] for item in cases},
+                         {'decision', 'success', 'failure', 'retired'})
+        for case in cases:
+            if 'expected' in case:
+                self.assertEqual(adapter.invoke(case['operation'], case['input']), case['expected'])
+            else:
+                with self.assertRaises(adapter.SetupInputError):
+                    adapter.invoke(case['operation'], case['input'])
+
     def test_symlink_and_existing_destination_are_refused(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             parent = Path(temporary).resolve()

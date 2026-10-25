@@ -7,10 +7,12 @@ on:
       - '.github/workflows/issue-1520-setup-python.yml'
       - 'packs/local.harness-setup-python/**'
       - 'scripts/wasm/prepare_harness_setup.py'
+      - 'scripts/wasm/replay_harness_setup.py'
       - 'tests/test_harness_setup.py'
       - 'tools/python313-producer/build_components.py'
       - 'tools/python313-producer/component_inputs.py'
       - 'tools/python313-producer/component_driver.py'
+      - 'tools/python313-producer/replay_harness_setup.py'
       - 'tobkiri_runtime/core_runtime/profile_runtime_port.py'
       - 'tobkiri_runtime/ecosystem/defaultspack/defaultspack/profile_runtime_composition.py'
   workflow_dispatch:
@@ -76,6 +78,12 @@ jobs:
           --producer "$RUNNER_TEMP/setup-producer"
           --validation "$RUNNER_TEMP/setup-validation"
           --destination "$RUNNER_TEMP/setup-candidate"
+      - name: Compare actual Wasm results with the complete original Setup module
+        run: >-
+          python3 -B tools/python313-producer/replay_harness_setup.py
+          --artifact "$RUNNER_TEMP/setup-candidate/harness-setup/work/component.wasm"
+          --validation "$RUNNER_TEMP/setup-validation"
+          --destination "$RUNNER_TEMP/setup-replay"
       - name: Retain candidate bytes and bounded build evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -89,4 +97,5 @@ jobs:
             ${{ runner.temp }}/setup-candidate/harness-setup/build/
             ${{ runner.temp }}/setup-candidate/harness-setup/work/component.build.json
             ${{ runner.temp }}/setup-candidate/harness-setup/work/component.wasm
+            ${{ runner.temp }}/setup-replay/
           if-no-files-found: warn
