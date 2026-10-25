@@ -84,9 +84,26 @@ capacities use the same CoreControl account. New real-Store regressions cover
 later User refusal, inert/drop behavior and cancellation/epoch rechecks; their
 actual Rust execution is required separately from source inspection.
 
-This is not a durable staged-permission journal or a multi-effect transaction.
-After preparation, permission effects still commit individually before the
-head/epoch CAS. A later SQL, audit-delivery or CAS failure can still leave
+After preparation, Pack and User permission effects now share one short SQLite
+transaction, including their effect digests, reservation consumption and
+immutable terminal decisions. A later policy or terminal INSERT failure rolls
+back that entire batch; it does not delete or restore shared approval rows.
+Gate accepts only preparations from its exact original Gate/context, and Store
+rechecks cancellation, epoch and expiry before publication. The original
+single-effect API retains its idempotent terminal behavior; there is no
+sequential fallback for Stores without batch support. The existing retention
+array includes the User preparation and charges its actual returned capacity.
+
+Real-Store regressions inject failure at the later User policy and terminal
+write, both with and without an independent existing Pack approval. They also
+inject cancellation during mutation and rejection of the batch COMMIT. Their
+actual native execution must be verified separately from source inspection.
+An ordinary COMMIT error is not itself proof of rollback; the injected hook's
+rejected transaction and its resulting database state are test observations.
+
+This is not a durable staged-permission journal or whole-save transaction.
+The permission batch still precedes the head/epoch CAS. A later audit-delivery
+or CAS failure, including an indeterminate COMMIT result, can still leave
 effects. A preserved old head is not proof of whole-save rollback, and residual
 rows alone do not prove that a rejected candidate can start. Whole-addition
 rollback under R2.8 remains open; deleting a snapshot of approval rows could

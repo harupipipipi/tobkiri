@@ -1,6 +1,7 @@
 //! In-memory preparation retains the original native decision and reservation.
 //! No policy row or successful terminal is published until ordinary commit.
-//! This is not a multi-effect transaction or a durable Profile save journal.
+//! A batch commits permission effects together, without making a durable
+//! whole-Profile save decision or committing its head and security epoch.
 use super::*;
 
 pub(super) enum PreparedPermissionTarget<'a> {
@@ -57,6 +58,42 @@ pub struct PreparedPermissionApproval<'a> {
     _pending: PendingReservation<'a>,
     _retained: ControlReservation,
 }
+
+/// Borrowed native facts for the Store's existing permission-effect protocol.
+/// The enclosing batch, not these descriptive fields, supplies Gate custody.
+pub struct PermissionCommit<'a> {
+    pub reservation: &'a Reservation,
+    pub expires_unix_ms: u64,
+    pub effect: PermissionEffect<'a>,
+}
+
+/// Gate-only construction retains the original preparations throughout the
+/// synchronous Store transaction. No cloned policy array or serialized receipt
+/// is created. This is not authority supplied by a Pack or a UI payload.
+pub struct PermissionApprovalBatch<'a, 'source> {
+    approvals: &'a [PreparedPermissionApproval<'source>],
+    expires_unix_ms: u64,
+}
+impl PermissionApprovalBatch<'_, '_> {
+    /// Recheck the same original cancellation and monotonic deadline even if
+    /// acquiring the Store transaction waited for another writer.
+    pub fn check_active(&self) -> Result<(), GateError> {
+        self.approvals
+            .first()
+            .ok_or_else(|| GateError::Invalid("empty permission batch".into()))?
+            .cx
+            .check_active()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = PermissionCommit<'_>> {
+        self.approvals.iter().map(|approval| PermissionCommit {
+            reservation: &approval.reservation,
+            expires_unix_ms: self.expires_unix_ms,
+            effect: approval.target.effect(&approval.permissions),
+        })
+    }
+}
+
 impl<'a> PreparedPermissionApproval<'a> {
     pub(super) fn new(
         gate: &'a GateEngine,
@@ -97,6 +134,57 @@ impl<'a> PreparedPermissionApproval<'a> {
         self.gate.deliver_terminal(&terminal)?;
         if terminal.decision.outcome != Outcome::Succeeded {
             return Err(GateError::Deadline);
+        }
+        Ok(())
+    }
+
+    /// Install all approvals from this exact Gate and original context in one
+    /// Store transaction. A pre-commit failure leaves every policy mutation
+    /// uncommitted; dropping the retained originals uses ordinary abandonment.
+    /// Audit delivery follows the durable terminals and can still fail after
+    /// the batch committed. Neither result is a whole-Profile commit receipt.
+    pub fn commit_all(approvals: Vec<Self>) -> Result<(), GateError> {
+        let first = approvals
+            .first()
+            .ok_or_else(|| GateError::Invalid("empty permission batch".into()))?;
+        for approval in &approvals {
+            if !std::ptr::eq(approval.gate, first.gate) || !std::ptr::eq(approval.cx, first.cx) {
+                return Err(GateError::Denied(
+                    "permission batch has different native custody".into(),
+                ));
+            }
+        }
+        first.cx.check_active()?;
+        if first.gate.epoch(first.cx.profile())? != first.cx.security_epoch() {
+            return Err(GateError::StaleEpoch);
+        }
+        for approval in &approvals {
+            approval.cx.check_active()?;
+            approval
+                .gate
+                .event(&approval.reservation, approval.target.event_kind(), None)?;
+            approval.gate.approvals.dispatch(&approval.reservation.id)?;
+        }
+        first.cx.check_active()?;
+        first
+            .gate
+            .approvals
+            .commit_permission_batch(&PermissionApprovalBatch {
+                approvals: &approvals,
+                expires_unix_ms: deadline_unix_ms(first.cx.deadline())?,
+            })?;
+        // Do not allocate a second terminal array. Original reservations retain
+        // their already admitted terminal slots and audit custody throughout.
+        for approval in &approvals {
+            let terminal = approval
+                .gate
+                .approvals
+                .terminal_delivery(&approval.reservation.id)?
+                .ok_or(GateError::Unavailable)?;
+            approval.gate.deliver_terminal(&terminal)?;
+            if terminal.decision.outcome != Outcome::Succeeded {
+                return Err(GateError::Deadline);
+            }
         }
         Ok(())
     }

@@ -345,8 +345,11 @@ impl Core {
         // Admit the complete retention array before constructing it. Each
         // preparation separately retains its original reservation and the
         // actual owned policy capacities under this SAME CoreControl account.
-        let preparation_bytes = packs
+        let approval_count = packs
             .len()
+            .checked_add(1)
+            .ok_or(tobkiri_gate::GateError::Unavailable)?;
+        let preparation_bytes = approval_count
             .checked_mul(std::mem::size_of::<
                 tobkiri_gate::PreparedPermissionApproval<'_>,
             >())
@@ -357,14 +360,29 @@ impl Core {
             })
             .and_then(|bytes| u64::try_from(bytes).ok())
             .ok_or(tobkiri_gate::GateError::Unavailable)?;
-        let _preparation_array = self
+        let mut preparation_array = self
             .control
             .reserve(tobkiri_gate::ControlKind::Queue, preparation_bytes)
             .map_err(tobkiri_gate::GateError::from)?;
         let mut pack_approvals = Vec::new();
         pack_approvals
-            .try_reserve_exact(packs.len())
+            .try_reserve_exact(approval_count)
             .map_err(|_| tobkiri_gate::GateError::Unavailable)?;
+        let retained_array_bytes = pack_approvals
+            .capacity()
+            .checked_mul(std::mem::size_of::<
+                tobkiri_gate::PreparedPermissionApproval<'_>,
+            >())
+            .and_then(|bytes| {
+                bytes.checked_add(std::mem::size_of::<
+                    Vec<tobkiri_gate::PreparedPermissionApproval<'_>>,
+                >())
+            })
+            .and_then(|bytes| u64::try_from(bytes).ok())
+            .ok_or(tobkiri_gate::GateError::Unavailable)?;
+        preparation_array
+            .try_grow(retained_array_bytes.saturating_sub(preparation_bytes))
+            .map_err(tobkiri_gate::GateError::from)?;
         for pack in &packs {
             pack_approvals.push(
                 gate.prepare_pack_permissions(
@@ -394,13 +412,11 @@ impl Core {
                     .intersect(&profile.ceiling),
             )
             .await?;
-        // No permission row has been installed before every prompt succeeded.
-        // These existing Store transactions remain individually committed;
-        // a later persistence failure is not a whole-save rollback receipt.
-        for approval in pack_approvals {
-            approval.commit()?;
-        }
-        user_approval.commit()?;
+        pack_approvals.push(user_approval);
+        // Every prompt succeeds before policy installation. Pack and User
+        // effects now share one transaction; the later head/epoch CAS still
+        // requires a durable whole-save decision and recovery protocol.
+        tobkiri_gate::PreparedPermissionApproval::commit_all(pack_approvals)?;
         self.profiles.root.compare_and_swap_profile_head_at_epoch(
             &profile.id,
             expected.as_ref(),

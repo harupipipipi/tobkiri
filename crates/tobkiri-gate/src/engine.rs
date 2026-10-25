@@ -15,7 +15,9 @@ use tobkiri_canon::{
 
 #[path = "permission_preparation.rs"]
 mod permission_preparation;
-pub use permission_preparation::PreparedPermissionApproval;
+pub use permission_preparation::{
+    PermissionApprovalBatch, PermissionCommit, PreparedPermissionApproval,
+};
 use permission_preparation::{PreparedPermissionTarget, retained_permission_bytes};
 
 fn try_clone_string_precharged(value: &str) -> Result<String, tobkiri_canon::AllocationError> {

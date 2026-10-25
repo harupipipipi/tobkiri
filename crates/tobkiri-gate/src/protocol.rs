@@ -876,6 +876,17 @@ pub trait ApprovalStore: Send + Sync {
     ) -> Result<TerminalDelivery, GateError> {
         Err(GateError::Unavailable)
     }
+    /// Commit all freshly prepared permission effects and their immutable
+    /// terminals in one transaction, or publish none. The batch can only be
+    /// constructed by Gate from its retained native preparations. Unsupported
+    /// stores fail closed; a sequential fallback would violate this contract.
+    /// This does not commit a Profile head or advance its security epoch.
+    fn commit_permission_batch(
+        &self,
+        _batch: &crate::PermissionApprovalBatch<'_, '_>,
+    ) -> Result<(), GateError> {
+        Err(GateError::Unavailable)
+    }
     fn finish(&self, id: &GrantId, outcome: &Outcome) -> Result<Reservation, GateError>;
     fn terminal_delivery(&self, id: &GrantId) -> Result<Option<TerminalDelivery>, GateError>;
     fn finish_terminal(

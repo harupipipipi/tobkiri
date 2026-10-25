@@ -12,6 +12,9 @@ use tobkiri_gate::{
     TerminalDisposition,
 };
 
+#[path = "permission_commit.rs"]
+mod permission_commit;
+
 const MAX_TERMINAL_BYTES: i64 = 100 * 1024 * 1024;
 const MAX_TERMINAL_ENTRY_BYTES: i64 = 4096;
 const MAX_UNDELIVERED_AND_RESERVED: i64 = 4096;
@@ -23,6 +26,9 @@ const FAULT_METADATA_PAGES: i64 = 16;
 // Four fixed read-only SQL programs, never cached rows or approval decisions.
 const AUTHORITY_STATEMENT_CACHE: usize = 4;
 
+#[cfg(test)]
+#[path = "permission_batch_tests.rs"]
+mod permission_batch_tests;
 #[cfg(test)]
 #[path = "approvals_read_tests.rs"]
 mod read_tests;
@@ -1138,142 +1144,53 @@ impl ApprovalStore for Approvals {
         deadline: u64,
         effect: PermissionEffect<'_>,
     ) -> Result<TerminalDelivery, GateError> {
-        self.local(&r.profile)?;
-        if effect.request().digest()? != r.effect {
-            return Err(GateError::Denied(
-                "permission effect binding mismatch".into(),
-            ));
-        }
-        let digest = Digest::hash(&canonical(&effect).map_err(persistence)?);
         let result = (|| {
             let mut conn = self.connection.lock().map_err(persistence)?;
             let tx = conn
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(persistence)?;
-            if let Some(existing) = Self::terminal(&tx, &self.profile, &r.id)? {
-                if !same_reservation_authority(&existing.decision.reservation, r)? {
-                    return Err(GateError::Denied(
-                        "permission reservation binding mismatch".into(),
-                    ));
-                }
-                if existing.decision.outcome == Outcome::Succeeded {
-                    let retained: String = tx
-                        .query_row(
-                            "SELECT digest FROM permission_effects WHERE grant_id=?1",
-                            [r.id.as_str()],
-                            |row| row.get(0),
-                        )
-                        .map_err(persistence)?;
-                    if retained != digest.as_str() {
-                        return Err(GateError::Denied("permission effect retry differs".into()));
-                    }
-                }
-                tx.commit().map_err(persistence)?;
-                return Ok(existing); // Never replay the effect or replace an expiry winner.
-            }
-            deny_faulted(&tx)?;
-            let body: Vec<u8> = tx
-                .query_row(
-                    "SELECT body FROM reservations WHERE id=?1 AND state='dispatched'",
-                    [r.id.as_str()],
-                    |row| row.get(0),
-                )
-                .optional()
-                .map_err(persistence)?
-                .ok_or(GateError::Consumed)?;
-            let mut current = validated_reservation(&self.profile, r.id.as_str(), &body)?;
-            if canonical(&current).map_err(persistence)? != canonical(r).map_err(persistence)? {
-                return Err(GateError::Denied(
-                    "permission reservation binding mismatch".into(),
-                ));
-            }
-            let epoch: u64 = tx
-                .query_row(
-                    "SELECT epoch FROM security_epoch WHERE singleton=1",
-                    [],
-                    |row| crate::sql_u64(row, 0),
-                )
-                .map_err(persistence)?;
-            if epoch != current.epoch {
-                return Err(GateError::StaleEpoch);
-            }
-            current.original_expires_unix_ms = Some(
-                current
-                    .original_expires_unix_ms
-                    .unwrap_or(current.expires_unix_ms),
-            );
-            current.expires_unix_ms = current.expires_unix_ms.min(deadline);
-            if current.expires_unix_ms <= now_ms().map_err(persistence)? {
-                let decision = Self::terminalize(
-                    &tx,
-                    current,
-                    Outcome::Failed {
-                        code: "deadline-expired-before-use".into(),
-                    },
-                    TerminalDisposition::ExpiredBeforeUse,
-                )?;
-                tx.commit().map_err(persistence)?;
-                return Ok(TerminalDelivery {
-                    decision,
-                    acknowledged: false,
-                });
-            }
-            tx.execute("UPDATE reservations SET body=?2,expires=?3,state='consumed' WHERE id=?1 AND state='dispatched'",params![r.id.as_str(),canonical(&current).map_err(persistence)?,i64::try_from(current.expires_unix_ms).map_err(persistence)?]).map_err(persistence)?;
-            // Candidate approvals do not advance the active revision epoch; the
-            // committed Profile CAS performs that advancement under its lock.
-            tx.execute_batch("SAVEPOINT permission_mutation")
-                .map_err(persistence)?;
-            match effect {
-                PermissionEffect::Pack {
-                    pack,
-                    hash,
-                    permissions,
-                } => {
-                    tx.execute("INSERT INTO permissions(pack,hash,body) VALUES(?1,?2,?3) ON CONFLICT(pack,hash) DO UPDATE SET body=excluded.body",params![pack.as_str(),hash.as_str(),canonical(permissions).map_err(persistence)?]).map_err(persistence)?;
-                }
-                PermissionEffect::User {
-                    profile_hash,
-                    revision,
-                    epoch,
-                    permissions,
-                } => {
-                    tx.execute("INSERT INTO user_approvals(profile_hash,revision,epoch,body) VALUES(?1,?2,?3,?4) ON CONFLICT(profile_hash,revision,epoch) DO UPDATE SET body=excluded.body",params![profile_hash.as_str(),revision.as_str(),i64::try_from(epoch).map_err(persistence)?,canonical(permissions).map_err(persistence)?]).map_err(persistence)?;
-                }
-            }
-            let due = current.expires_unix_ms <= now_ms().map_err(persistence)?;
-            if due {
-                tx.execute_batch("ROLLBACK TO permission_mutation; RELEASE permission_mutation")
-                    .map_err(persistence)?;
-            } else {
-                tx.execute(
-                    "INSERT INTO permission_effects(grant_id,digest) VALUES(?1,?2)",
-                    params![r.id.as_str(), digest.as_str()],
-                )
-                .map_err(persistence)?;
-                tx.execute_batch("RELEASE permission_mutation")
-                    .map_err(persistence)?;
-            }
-            let decision = Self::terminalize(
-                &tx,
-                current,
-                if due {
-                    Outcome::Failed {
-                        code: "deadline-expired-before-use".into(),
-                    }
-                } else {
-                    Outcome::Succeeded
-                },
-                if due {
-                    TerminalDisposition::ExpiredBeforeUse
-                } else {
-                    TerminalDisposition::Completed
-                },
-            )?;
+            let terminal = self.permission_effect_in_transaction(&tx, r, deadline, effect, true)?;
             tx.commit().map_err(persistence)?;
-            Ok(TerminalDelivery {
-                decision,
-                acknowledged: false,
-            })
+            Ok(terminal)
+        })();
+        self.checked_integrity(result)
+    }
+    fn commit_permission_batch(
+        &self,
+        batch: &tobkiri_gate::PermissionApprovalBatch<'_, '_>,
+    ) -> Result<(), GateError> {
+        let result = (|| {
+            batch.check_active()?;
+            let mut conn = self.connection.lock().map_err(persistence)?;
+            let tx = conn
+                .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                .map_err(persistence)?;
+            batch.check_active()?;
+            let mut earliest_expiry = u64::MAX;
+            for item in batch.iter() {
+                batch.check_active()?;
+                earliest_expiry =
+                    earliest_expiry.min(item.expires_unix_ms.min(item.reservation.expires_unix_ms));
+                let terminal = self.permission_effect_in_transaction(
+                    &tx,
+                    item.reservation,
+                    item.expires_unix_ms,
+                    item.effect,
+                    false,
+                )?;
+                if terminal.decision.outcome != Outcome::Succeeded {
+                    return Err(GateError::Deadline);
+                }
+            }
+            // A later entry may have taken long enough to expire an earlier
+            // one. Roll back the entire transaction, including every terminal
+            // and permission-effect digest, before releasing any policy.
+            batch.check_active()?;
+            if earliest_expiry <= now_ms().map_err(persistence)? {
+                return Err(GateError::Deadline);
+            }
+            tx.commit().map_err(persistence)?;
+            Ok(())
         })();
         self.checked_integrity(result)
     }

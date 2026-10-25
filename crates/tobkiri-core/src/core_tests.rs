@@ -386,6 +386,130 @@ fn permission_preparation_fixture(
 }
 
 #[tokio::test]
+async fn later_permission_sql_failure_rolls_back_the_entire_batch_without_erasing_other_approvals()
+{
+    for independent in [false, true] {
+        for fail_at_terminal in [false, true] {
+            let (core, _host, profile, _dir) = fixture();
+            let approvals = Approvals::open(&core.profiles.root, &profile.id).unwrap();
+            if independent {
+                let (gate, cx, packs) = permission_preparation_fixture(&core, &profile);
+                gate.approve_pack_permissions(&cx, &packs[0].manifest.id, None, &packs[0].hash)
+                    .await
+                    .unwrap();
+            }
+            let before = approvals
+                .permissions(&profile.id, &profile.packs[0].id, &profile.packs[0].sha256)
+                .unwrap();
+            assert_eq!(before.is_some(), independent);
+            let raw = rusqlite::Connection::open_with_flags(
+                core.profiles
+                    .root
+                    .path()
+                    .join(DataRoot::profile_relative(&profile.id, "approvals.sqlite").unwrap()),
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE,
+            )
+            .unwrap();
+            let effects_before: i64 = raw
+                .query_row("SELECT COUNT(*) FROM permission_effects", [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            if fail_at_terminal {
+                // Both policy writes and the first successful terminal have
+                // already run inside the transaction when this fault fires.
+                raw.execute_batch(
+                    "CREATE TRIGGER reject_permission_batch BEFORE INSERT ON terminal_outbox
+                     WHEN EXISTS(SELECT 1 FROM user_approvals)
+                     BEGIN SELECT RAISE(ABORT,'injected final terminal failure'); END;",
+                )
+                .unwrap();
+            } else {
+                raw.execute_batch(
+                    "CREATE TRIGGER reject_permission_batch BEFORE INSERT ON user_approvals
+                     BEGIN SELECT RAISE(ABORT,'injected later policy failure'); END;",
+                )
+                .unwrap();
+            }
+            assert!(core.save_profile(profile.clone(), None).await.is_err());
+            assert_eq!(
+                approvals
+                    .permissions(&profile.id, &profile.packs[0].id, &profile.packs[0].sha256)
+                    .unwrap(),
+                before
+            );
+            assert_eq!(
+                raw.query_row("SELECT COUNT(*) FROM user_approvals", [], |row| row
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
+            assert_eq!(
+                raw.query_row("SELECT COUNT(*) FROM permission_effects", [], |row| row
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                effects_before
+            );
+            assert_eq!(approvals.security_epoch(&profile.id).unwrap(), 0);
+            assert!(core.profiles.head(&profile.id).unwrap().is_none());
+            // Compare actual immutable decisions, not the current head or the
+            // presence of failed/abandoned reservation rows.
+            let decisions = raw
+                .prepare("SELECT body FROM terminal_outbox")
+                .unwrap()
+                .query_map([], |row| row.get::<_, Vec<u8>>(0))
+                .unwrap()
+                .map(|body| {
+                    serde_json::from_slice::<tobkiri_gate::TerminalDecision>(&body.unwrap())
+                        .unwrap()
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                decisions
+                    .iter()
+                    .filter(|decision| decision.outcome == tobkiri_gate::Outcome::Succeeded)
+                    .count() as i64,
+                effects_before
+            );
+            raw.execute_batch("DROP TRIGGER reject_permission_batch")
+                .unwrap();
+            // This deterministic injected ABORT has been observed and removed;
+            // a fresh request can succeed. Unknown commits must not auto-replay.
+            let committed = core.save_profile(profile.clone(), None).await.unwrap();
+            assert_eq!(core.profile(&profile.id).unwrap().1, committed);
+        }
+    }
+}
+
+#[tokio::test]
+async fn prepared_permission_batch_rejects_different_original_contexts_before_policy_effects() {
+    let (core, _host, profile, _dir) = fixture();
+    let (gate, cx, packs) = permission_preparation_fixture(&core, &profile);
+    let other = core
+        .user_context(&profile, &gate)
+        .unwrap()
+        .with_revision(cx.revision().unwrap().clone());
+    let first = gate
+        .prepare_pack_permissions(&cx, &packs[0].manifest.id, None, &packs[0].hash)
+        .await
+        .unwrap();
+    let second = gate
+        .prepare_pack_permissions(&other, &packs[0].manifest.id, None, &packs[0].hash)
+        .await
+        .unwrap();
+    let error =
+        tobkiri_gate::PreparedPermissionApproval::commit_all(vec![first, second]).unwrap_err();
+    assert!(matches!(error, tobkiri_gate::GateError::Denied(_)));
+    let approvals = Approvals::open(&core.profiles.root, &profile.id).unwrap();
+    assert!(
+        approvals
+            .permissions(&profile.id, &packs[0].manifest.id, &packs[0].hash)
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
 async fn prepared_permissions_are_inert_and_drop_preserves_an_independent_approval() {
     let (core, host, profile, _dir) = fixture();
     let (gate, cx, packs) = permission_preparation_fixture(&core, &profile);
