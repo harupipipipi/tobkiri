@@ -93,6 +93,82 @@ def write_json(path: Path, value: object) -> None:
     path.write_bytes(raw)
 
 
+def report_module():
+    """Load the CI-only reporting helper without changing product import paths."""
+    spec = importlib.util.spec_from_file_location(
+        "native_observation_report",
+        Path(__file__).with_name("native_observation_report.py"),
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def diagnostic_sizes(observation: dict) -> dict:
+    """Measure diagnostics; these native calls do not cross a Wasm reply limit."""
+
+    def encoded(value):
+        return json.dumps(value, ensure_ascii=True, separators=(",", ":")).encode()
+
+    calls = []
+    for ordinal, value in enumerate(observation["negative_resolutions"]):
+        calls.append(
+            {
+                "observation_path": ["negative_resolutions", ordinal],
+                "native_function": "resolve_default_profile",
+                "case": value["name"],
+                "outcome": "exception",
+                "diagnostic_json_bytes": len(encoded(value)),
+                "product_boundary": "not-exercised",
+                "product_reply_bytes": "unknown",
+                "unchanged_product_reply_limit": LIMIT,
+            }
+        )
+    groups = [(observation["setup"], ["setup"])]
+    nonempty = observation["nonempty"]["complete_setup"]
+    if nonempty["outcome"] == "success":
+        groups.append((nonempty["value"], ["nonempty", "complete_setup", "value"]))
+    for group, prefix in groups:
+        for name, function in (
+            ("resolved", "resolve_default_profile"),
+            ("preview", "DefaultspackProfileRuntime.setup_profile_preview"),
+            ("confirmation", "DefaultspackProfileRuntime.bootstrap_confirmation"),
+        ):
+            calls.append(
+                {
+                    "observation_path": [*prefix, name],
+                    "native_function": function,
+                    "diagnostic_json_bytes": len(encoded(group[name])),
+                    "product_boundary": "not-exercised",
+                    "product_reply_bytes": "unknown",
+                    "unchanged_product_reply_limit": LIMIT,
+                }
+            )
+        for ordinal, value in enumerate(group["listings"]):
+            calls.append(
+                {
+                    "observation_path": [*prefix, "listings", ordinal],
+                    "native_function": "DefaultspackProfileRuntime.setup_listing",
+                    "diagnostic_json_bytes": len(encoded(value)),
+                    "product_boundary": "not-exercised",
+                    "product_reply_bytes": "unknown",
+                    "unchanged_product_reply_limit": LIMIT,
+                }
+            )
+    return {
+        "aggregate_diagnostic_json_bytes": len(encoded(observation)),
+        "observations": [
+            {"id": name, "diagnostic_json_bytes": len(encoded(value))}
+            for name, value in observation.items()
+        ],
+        "native_calls": calls,
+        "product_boundary": "not-exercised",
+        "product_reply_bytes": "unknown",
+        "product_4mib_boundary_verified": False,
+    }
+
+
 def clean_source(root: Path, expected: str | None = None) -> dict:
     if not root.is_absolute() or root.resolve() != root:
         raise ValueError("physical source checkout required")
@@ -417,7 +493,14 @@ def evaluate(
         damaged=damaged,
         encode=observer._json_value,
     )
-    write_json(output, observation)
+    sizes = diagnostic_sizes(observation)
+    write_json(output.with_name(output.stem + "-report-sizes.json"), sizes)
+    report_module().write_report(
+        output,
+        observation,
+        source=clean_source(root),
+        call_boundaries=sizes["native_calls"],
+    )
     if len(serialized) > LIMIT:
         raise ValueError("trusted original pickle exceeds its bound")
     output.with_suffix(".pickle").write_bytes(serialized)
@@ -543,10 +626,26 @@ def run(baseline: Path, candidate: Path, work: Path) -> None:
                 *options,
             ],
         )
-        a, b = read(old), read(new)
-        if a != b:
+        old_manifest, a = report_module().read_report(old)
+        new_manifest, b = report_module().read_report(new)
+        if (
+            list(a) != list(b)
+            or any(a[name] != b[name] for name in a)
+            or old_manifest["call_boundaries"] != new_manifest["call_boundaries"]
+        ):
+            write_json(
+                work / (label + "-mismatch.json"),
+                {
+                    "observation_membership_matches": list(a) == list(b),
+                    "mismatched_observations": [
+                        name for name in a if name not in b or a[name] != b[name]
+                    ],
+                    "native_call_diagnostics_match": old_manifest["call_boundaries"]
+                    == new_manifest["call_boundaries"],
+                },
+            )
             raise AssertionError("original/candidate observations differ: " + label)
-        compiler = json.loads(a)["nonempty"]["real_compiler"]["outcome"]
+        compiler = json.loads(a["nonempty"])["real_compiler"]["outcome"]
         if compiler != ("exception" if label == "cas-content" else "success"):
             raise AssertionError(
                 "compiler did not preserve its original successful/tampered behavior"
@@ -560,6 +659,9 @@ def run(baseline: Path, candidate: Path, work: Path) -> None:
                 "name": label,
                 "exact_observations_match": True,
                 "observation": identity(new),
+                "ordered_observation_ids": list(b),
+                "all_complete_observation_bytes_compared": True,
+                "product_4mib_boundary_verified": False,
                 "trusted_original_pickle": identity(legacy),
                 "candidate_pickle_diagnostic": identity(new.with_suffix(".pickle")),
             }

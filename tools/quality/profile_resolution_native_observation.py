@@ -446,10 +446,14 @@ def _authority_bindings(catalog: object, canonical_digest: object) -> dict[str, 
     return references
 
 
-def _invoke_expected_failure(name: str, callback: object) -> dict[str, object]:
+def _invoke_expected_failure(
+    name: str, callback: object, expected_error: type[Exception]
+) -> dict[str, object]:
     try:
         callback()
     except Exception as error:
+        if not isinstance(error, expected_error):
+            raise
         return {"name": name, "failure": _exception_data(error)}
     raise RuntimeError(f"negative Profile observation unexpectedly succeeded: {name}")
 
@@ -459,6 +463,7 @@ def _observe_negative_resolution(
     resolver: object,
     approved: set[str],
     bindings: dict[str, str],
+    expected_error: type[Exception],
 ) -> list[dict[str, object]]:
     common = {
         "approved_artifact_digests": approved,
@@ -507,7 +512,10 @@ def _observe_negative_resolution(
             ),
         ),
     )
-    return [_invoke_expected_failure(name, callback) for name, callback in cases]
+    return [
+        _invoke_expected_failure(name, callback, expected_error)
+        for name, callback in cases
+    ]
 
 
 def _observe_definition_metadata(
@@ -865,7 +873,7 @@ def observe(
         "listings": _json_value(projections["listings"]),
     }
     data["negative_resolutions"] = _observe_negative_resolution(
-        catalog, resolver, approved, bindings
+        catalog, resolver, approved, bindings, service.ProfileResolutionDenied
     )
     pickle_data, pickle_bytes = _pickle_observation(
         resolved, definitions, moved_names, legacy_pickle

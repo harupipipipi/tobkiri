@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/issue-1520-profile-resolution-oracle.yml'
       - 'tools/quality/profile_resolution_native_*.py'
+      - 'tools/quality/native_observation_report.py'
+      - 'tools/quality/test_native_observation_report.py'
       - 'tools/quality/profile_resolution_source_relocation.json'
       - 'tobkiri_runtime/ecosystem/defaultspack/domain/profile_resolution.py'
       - 'tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/**'
@@ -44,8 +46,10 @@ jobs:
         working-directory: candidate
         run: python3 -B .github/scripts/install_locked_python_test_dependencies.py
       - name: Verify exact source relocation and the generated source inventory
+        id: verify_sources
         working-directory: candidate
         run: |
+          python3 -B -m unittest tools.quality.test_native_observation_report
           python3 -B -m unittest tools.quality.test_setup_import_boundaries
           python3 -B scripts/wasm/prepare_harness_setup.py --verify
           python3 -B tobkiri_runtime/scripts/generator_source_manifest.py --check
@@ -58,10 +62,12 @@ jobs:
           --candidate "$GITHUB_WORKSPACE/candidate"
           --work "$RUNNER_TEMP/profile-resolution-oracle"
       - name: Run the unchanged native enforcement corpus on both sources
+        if: ${{ !cancelled() && steps.verify_sources.outcome == 'success' }}
         run: |
           set -eu
+          enforcement_status=0
           for source in baseline candidate; do
-            (
+            if (
               cd "$GITHUB_WORKSPACE/$source/tobkiri_runtime"
               python3 -B -m pytest -q \
                 tests/test_activation_validation_cache_freshness.py::test_warm_reload_skips_only_the_three_record_validations \
@@ -73,8 +79,21 @@ jobs:
                 tests/test_bundled_host_baseline_v4.py::test_untrusted_baseline_suppliers_cannot_change_frozen_evidence \
                 tests/test_bundled_host_baseline_v4.py::test_published_baseline_tree_is_revalidated \
                 > "$RUNNER_TEMP/profile-resolution-$source.log" 2>&1
-            )
+            ); then
+              :
+            else
+              enforcement_status=1
+            fi
           done
+          exit "$enforcement_status"
+      - name: Regenerate complete original Registry and configuration observations
+        if: ${{ !cancelled() && steps.verify_sources.outcome == 'success' }}
+        working-directory: candidate
+        run: |
+          python3 -B tools/quality/python_provider_registry_compat/generate.py \
+            --output-dir "$RUNNER_TEMP/provider-registry-current"
+          python3 -B tools/quality/python_provider_registry_compat/configuration_prepare.py \
+            --output "$RUNNER_TEMP/provider-configuration-current.json"
       - name: Retain complete native observations and bounded diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -83,8 +102,12 @@ jobs:
           path: |
             ${{ runner.temp }}/profile-resolution-oracle/*.json
             ${{ runner.temp }}/profile-resolution-oracle/*.log
+            ${{ runner.temp }}/profile-resolution-oracle/*.json.part
             ${{ runner.temp }}/profile-resolution-baseline.log
             ${{ runner.temp }}/profile-resolution-candidate.log
+            ${{ runner.temp }}/provider-registry-current/**/*.json
+            ${{ runner.temp }}/provider-registry-current/receipt.json
+            ${{ runner.temp }}/provider-configuration-current.json
           if-no-files-found: warn
           retention-days: 14
       - name: Keep trusted original pickle evidence on CI
