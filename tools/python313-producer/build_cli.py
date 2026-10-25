@@ -13,6 +13,7 @@ import cli_source
 import fetch_sdk
 import runtime_inputs
 import ui_clock_source
+import ui_monotonic_source
 from verify_git_checkout import verify_cache
 
 RECIPE_SHA256 = '330ccaa93ee1feba18b881eaeac70fc77013bddd8ef2128e9c7fb866528d1fa4'
@@ -24,10 +25,13 @@ STARTUP_RECIPE = '''set -eu
 
 def run(source: Path, registry: Path, rust: Path, git: Path, wasi: Path,
         runtimes: Path, assets: Path, destination: Path, *,
-        allow_ui_wall_clock: bool = False) -> None:
+        allow_ui_wall_clock: bool = False,
+        allow_ui_monotonic_clock: bool = False) -> None:
     """Compile only with immutable verified source/assets and offline caches."""
     if sys.platform != 'linux' or os.environ.get('GITHUB_ACTIONS') != 'true':
         raise ValueError('producer CLI rebuilding is restricted to Linux CI')
+    if allow_ui_monotonic_clock and not allow_ui_wall_clock:
+        raise ValueError('monotonic candidate requires the explicit wall-clock mode')
     if (not destination.is_absolute() or not destination.parent.is_dir()
             or destination.parent.resolve() != destination.parent
             or any(not p.is_absolute() or p.resolve() != p for p in (runtimes, assets))):
@@ -57,6 +61,8 @@ def run(source: Path, registry: Path, rust: Path, git: Path, wasi: Path,
                                      asset_report['outputs'], stage)
     if allow_ui_wall_clock:
         source_receipt = ui_clock_source.enable(stage, source_receipt)
+    if allow_ui_monotonic_clock:
+        source_receipt = ui_monotonic_source.enable(stage, source_receipt)
     snapshots[str(stage)] = source_receipt['files']
     (destination / 'cli-source.json').write_text(json.dumps(source_receipt, indent=2) + '\n')
     recipe = HERE / 'trials/2026-10-19/producer-cli.sh'
@@ -64,8 +70,12 @@ def run(source: Path, registry: Path, rust: Path, git: Path, wasi: Path,
         raise ValueError('original producer CLI recipe changed')
     candidate_recipe_identity = None
     if allow_ui_wall_clock:
-        candidate_recipe = destination / 'ui-clock-cli.sh'
-        candidate_recipe.write_bytes(ui_clock_source.build_recipe(recipe.read_bytes()))
+        candidate_recipe = destination / (
+            'ui-monotonic-cli.sh' if allow_ui_monotonic_clock else 'ui-clock-cli.sh')
+        recipe_bytes = ui_clock_source.build_recipe(recipe.read_bytes())
+        if allow_ui_monotonic_clock:
+            recipe_bytes = ui_monotonic_source.build_recipe(recipe_bytes)
+        candidate_recipe.write_bytes(recipe_bytes)
         candidate_recipe_identity = fingerprint(candidate_recipe)
         recipe = candidate_recipe
     work = destination / 'work'
@@ -85,6 +95,8 @@ def run(source: Path, registry: Path, rust: Path, git: Path, wasi: Path,
     if allow_ui_wall_clock:
         receipt['ui_wall_clock_candidate'] = source_receipt['ui_wall_clock']
         receipt['candidate_recipe'] = candidate_recipe_identity
+    if allow_ui_monotonic_clock:
+        receipt['ui_monotonic_clock_candidate'] = source_receipt['ui_monotonic_clock']
     receipt_path = destination / 'cli-build.json'
     try:
         mounts = (
@@ -133,4 +145,5 @@ if __name__ == '__main__':
     for name in ('source', 'registry', 'rust', 'git', 'wasi', 'runtimes', 'assets', 'destination'):
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--allow-ui-wall-clock', action='store_true')
+    parser.add_argument('--allow-ui-monotonic-clock', action='store_true')
     run(**vars(parser.parse_args()))

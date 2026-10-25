@@ -453,3 +453,32 @@ Separate fresh Stores trap on filesystem and random IO; both are retired with
 fuel remaining. The same guest reports genuine built-in/preloaded `_json`
 scanner and encoder bindings. Full schema comparison still fails on the next
 missing original source, `subprocess`; it is not counted as a matching result.
+
+## Separate partial monotonic-clock producer candidate
+
+The fourteen original stdlib files in `10d133b78` get past the missing-source
+failure. The real `selectors` availability check invokes `select.poll().poll(0)`
+after snapshotting and reaches `monotonic_clock_now` through `_PyDeadline_Init`.
+This proves a monotonic observation is needed; it does not yet prove that a
+subscription or polling import is needed.
+
+`build_cli.py --allow-ui-wall-clock --allow-ui-monotonic-clock` derives a second,
+separately identified candidate. It keeps the wall candidate's receipt and
+adds only the partial adapter dispatch and an explicit dependent Cargo feature.
+The existing monotonic WASI adapter remains one module. Its `now`/`resolution`
+exports forward the exact no-argument/i64 ABI to a two-function typed
+`tobkiri-ui:clock/monotonic@1.0.0` import. All other exports retain the original
+signatures and unreachable bodies; imported function indexes and defined
+function indexes are accounted for separately. The original module remapping,
+historical recipe, dependency lock, assets and `STUB_WASI` policy are unchanged.
+
+`issue-1520-ui-monotonic.yml` first builds and retains that producer in CI.
+Successful CLI compilation alone does not establish adapter construction,
+snapshot replay, real monotonic semantics or a matching schema result. The
+consumer must separately check both typed clocks, shared call/deadline bounds,
+resolution and units, post-snapshot first use, and genuine non-clock denials.
+It must also retain original schema equality and the existing size/fuel/Store
+limits. Original CPython's `select.poll` creates its deadline at each call and
+the WASI `clock_gettime` path reads the clock on each invocation; no producer
+clock timestamp is added to this probe's snapshot. This source check covers
+the observed late selector call, not every timer in the full original GUI.

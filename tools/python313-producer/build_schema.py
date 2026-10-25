@@ -25,6 +25,30 @@ COMPONENT_SHA256 = "56d765060d8f2f9078a31cf2e96bdd591d737545250464afcb9bc9cdbc91
 INPUT_LIMIT = 64 * 1024 * 1024
 
 
+def verify_clock_variant(cli: dict, source: dict, *, allow_ui_wall_clock: bool) -> None:
+    """Never accept a new producer mode through the historical consumer option."""
+    if (
+        cli.get("ui_monotonic_clock_candidate") is not None
+        or source.get("ui_monotonic_clock") is not None
+    ):
+        raise ValueError("monotonic producer requires its separate consuming controller")
+    clock_variant = cli.get("ui_wall_clock_candidate")
+    if allow_ui_wall_clock:
+        if (
+            not isinstance(clock_variant, dict)
+            or clock_variant != source.get("ui_wall_clock")
+            or clock_variant.get("feature") != "ui-wall-clock"
+            or clock_variant.get("interface_prefix") != "wasi:clocks/wall-clock@"
+            or clock_variant.get("functions") != ["now", "resolution"]
+            or clock_variant.get("stub_wasi_retained") is not True
+            or set(clock_variant.get("changed_files", {}))
+            != {"Cargo.toml", "src/stubwasi.rs"}
+        ):
+            raise ValueError("separate explicit UI clock producer derivation required")
+    elif clock_variant is not None or source.get("ui_wall_clock") is not None:
+        raise ValueError("UI clock producer requires an explicit controller option")
+
+
 def verify_inputs(
     inputs: Path,
     producer: Path,
@@ -70,23 +94,9 @@ def verify_inputs(
     ]
     if source_pins != [fingerprint(producer / "cli-source.json")]:
         raise ValueError("saved producer source receipt differs")
-    clock_variant = cli.get("ui_wall_clock_candidate")
-    if allow_ui_wall_clock:
-        fingerprint(producer / "cli-source.json", 4 * 1024 * 1024)
-        source = json.loads((producer / "cli-source.json").read_bytes())
-        if (
-            not isinstance(clock_variant, dict)
-            or clock_variant != source.get("ui_wall_clock")
-            or clock_variant.get("feature") != "ui-wall-clock"
-            or clock_variant.get("interface_prefix") != "wasi:clocks/wall-clock@"
-            or clock_variant.get("functions") != ["now", "resolution"]
-            or clock_variant.get("stub_wasi_retained") is not True
-            or set(clock_variant.get("changed_files", {}))
-            != {"Cargo.toml", "src/stubwasi.rs"}
-        ):
-            raise ValueError("separate explicit UI clock producer derivation required")
-    elif clock_variant is not None:
-        raise ValueError("UI clock producer requires an explicit controller option")
+    fingerprint(producer / "cli-source.json", 4 * 1024 * 1024)
+    source = json.loads((producer / "cli-source.json").read_bytes())
+    verify_clock_variant(cli, source, allow_ui_wall_clock=allow_ui_wall_clock)
     return {
         str(path): fingerprint(path)
         for path in (

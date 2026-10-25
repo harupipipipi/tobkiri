@@ -1,0 +1,134 @@
+name: Issue 1520 UI monotonic-clock producer candidate
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-ui-monotonic.yml'
+      - 'tools/python313-producer/ui_monotonic_source.py'
+      - 'tools/python313-producer/tests/test_ui_monotonic_source.py'
+      - 'tools/python313-producer/ui_clock_source.py'
+      - 'tools/python313-producer/build_cli.py'
+      - 'tools/python313-producer/tests/test_ui_clock_source.py'
+      - 'tools/python313-producer/tests/fixtures/stubwasi-c0949b19.rs.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: issue-1520-ui-monotonic-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ui-monotonic-producer:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Test source acquisition and staging boundaries
+        run: python3 -B -m unittest discover -s tools/python313-producer/tests
+      - name: Fetch exactly the recorded four source archives
+        run: >-
+          python3 -B tools/python313-producer/fetch_sources.py
+          --destination "$RUNNER_TEMP/python313-archives"
+      - name: Verify complete archives and stage the exact reviewed patch
+        run: >-
+          python3 -B tools/python313-producer/stage_sources.py
+          --archives "$RUNNER_TEMP/python313-archives"
+          --cpython-archive "$RUNNER_TEMP/python313-archives/Python-3.13.16.tar.xz"
+          --destination "$RUNNER_TEMP/python313-source"
+      - name: Restore and verify the original registry dependency closure
+        run: >-
+          python3 -B tools/python313-producer/fetch_registry.py
+          --source "$RUNNER_TEMP/python313-source"
+          --destination "$RUNNER_TEMP/python313-registry"
+      - name: Restore verified Rust compiler and host and WASI target inputs
+        run: >-
+          python3 -B tools/python313-producer/fetch_toolchain.py
+          --destination "$RUNNER_TEMP/python313-rust"
+      - name: Restore the pinned Git dependency and its exact testsuite gitlink
+        run: >-
+          python3 -B tools/python313-producer/fetch_git.py
+          --destination "$RUNNER_TEMP/python313-git"
+      - name: Install the Linux build isolation tool
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+      - name: Rebuild native Python from the exact recorded staged recipe
+        run: >-
+          python3 -B tools/python313-producer/build_native.py
+          --source "$RUNNER_TEMP/python313-source"
+          --destination "$RUNNER_TEMP/python313-native"
+      - name: Restore the pinned SDK and rebuild original WASI libraries
+        run: >-
+          python3 -B tools/python313-producer/build_wasi.py
+          --source "$RUNNER_TEMP/python313-source"
+          --native "$RUNNER_TEMP/python313-native"
+          --destination "$RUNNER_TEMP/python313-wasi"
+      - name: Prime Cargo without networking and rebuild original Wasm runtimes
+        run: >-
+          python3 -B tools/python313-producer/build_runtimes.py
+          --source "$RUNNER_TEMP/python313-source"
+          --registry "$RUNNER_TEMP/python313-registry"
+          --rust "$RUNNER_TEMP/python313-rust"
+          --git "$RUNNER_TEMP/python313-git"
+          --wasi "$RUNNER_TEMP/python313-wasi"
+          --destination "$RUNNER_TEMP/python313-runtimes"
+      - name: Build the verified packager and package thirteen real assets
+        run: >-
+          python3 -B tools/python313-producer/build_assets.py
+          --source "$RUNNER_TEMP/python313-source"
+          --registry "$RUNNER_TEMP/python313-registry"
+          --rust "$RUNNER_TEMP/python313-rust"
+          --git "$RUNNER_TEMP/python313-git"
+          --wasi "$RUNNER_TEMP/python313-wasi"
+          --runtimes "$RUNNER_TEMP/python313-runtimes"
+          --destination "$RUNNER_TEMP/python313-assets"
+      - name: Rebuild the original publishing CLI with the verified real assets
+        run: >-
+          python3 -B tools/python313-producer/build_cli.py
+          --source "$RUNNER_TEMP/python313-source"
+          --registry "$RUNNER_TEMP/python313-registry"
+          --rust "$RUNNER_TEMP/python313-rust"
+          --git "$RUNNER_TEMP/python313-git"
+          --wasi "$RUNNER_TEMP/python313-wasi"
+          --runtimes "$RUNNER_TEMP/python313-runtimes"
+          --assets "$RUNNER_TEMP/python313-assets"
+          --destination "$RUNNER_TEMP/python313-cli"
+          --allow-ui-wall-clock
+          --allow-ui-monotonic-clock
+      - name: Retain the separate clock producer without replacing historical artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python313-ui-monotonic-clock-producer-cli
+          path: |
+            ${{ runner.temp }}/python313-cli/work/target/release/componentize-py
+            ${{ runner.temp }}/python313-cli/cli-build.json
+            ${{ runner.temp }}/python313-cli/cli-source.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retain fresh producer source and build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-monotonic-clock-producer-evidence
+          path: |
+            ${{ runner.temp }}/python313-source/stage-manifest.json
+            ${{ runner.temp }}/python313-native/native-build.json
+            ${{ runner.temp }}/python313-wasi/wasi-build.json
+            ${{ runner.temp }}/python313-runtimes/runtimes-build.json
+            ${{ runner.temp }}/python313-assets/assets-build.json
+            ${{ runner.temp }}/python313-cli/cli-build.json
+            ${{ runner.temp }}/python313-cli/cli-source.json
+            ${{ runner.temp }}/python313-cli/ui-monotonic-cli.sh
+            ${{ runner.temp }}/python313-cli/producer-cli/
+            ${{ runner.temp }}/python313-cli/cli-startup/
+          if-no-files-found: warn
+          retention-days: 14
