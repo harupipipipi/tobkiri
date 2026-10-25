@@ -15,7 +15,7 @@ from unittest.mock import patch
 HERE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
 
-import fetch_schema_stdlib
+import fetch_schema_stdlib  # noqa: E402
 
 
 def digest(data: bytes) -> str:
@@ -40,7 +40,7 @@ def tar_archive(path: Path, members) -> bytes:
 
 
 def source_fixture(path: Path, *, data=None) -> bytes:
-    """Make a tiny CPython-shaped archive with all fourteen selected files."""
+    """Make a tiny CPython-shaped archive with all sixteen selected files."""
     prefix = fetch_schema_stdlib.LOCKED_PREFIX
     data = data or {name: name.encode() for name in fetch_schema_stdlib.SELECTED_FILES}
     members = [
@@ -114,10 +114,7 @@ class SchemaStdlibInputTests(unittest.TestCase):
                     report["files"][name]["sha256"]
                     for name in fetch_schema_stdlib.SELECTED_FILES
                 ],
-                [
-                    digest(name.encode())
-                    for name in fetch_schema_stdlib.SELECTED_FILES
-                ],
+                [digest(name.encode()) for name in fetch_schema_stdlib.SELECTED_FILES],
             )
 
     def test_archive_hash_mismatch_is_rejected_before_member_extraction(self):
@@ -176,7 +173,7 @@ class SchemaStdlibInputTests(unittest.TestCase):
             destination = Path(temp).resolve() / "stdlib-inputs"
             receipt, verified, pin = self._run_offline_stage(destination)
             self.assertEqual(receipt["source_pin"], pin)
-            self.assertEqual(verified["files"], 14)
+            self.assertEqual(verified["files"], 16)
             self.assertTrue((destination / "archives/Python-3.13.16.tar.xz").is_file())
             self.assertEqual(
                 {path.name for path in (destination / "source/logging").iterdir()},
@@ -197,6 +194,8 @@ class SchemaStdlibInputTests(unittest.TestCase):
                     "locale.py",
                     "signal.py",
                     "selectors.py",
+                    "_strptime.py",
+                    "calendar.py",
                 },
             )
             self.assertEqual(

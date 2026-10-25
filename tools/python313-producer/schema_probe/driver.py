@@ -25,6 +25,8 @@ STDLIB_FILES = {
     "logging/handlers.py",
     "locale.py",
     "selectors.py",
+    "_strptime.py",
+    "calendar.py",
     "signal.py",
     "string.py",
     "subprocess.py",
@@ -47,9 +49,7 @@ def read(
     return raw
 
 
-def load_exception_diagnostics(
-    path: Path, expected_source: bytes
-) -> ModuleType:
+def load_exception_diagnostics(path: Path, expected_source: bytes) -> ModuleType:
     """Execute only the exact captured helper source at its supplied path."""
     import importlib.util
 

@@ -45,8 +45,12 @@ class SchemaExceptionDiagnosticsTests(unittest.TestCase):
         self.assertEqual(derived, expected)
         compile(derived.decode("utf-8"), "diagnostic-app.py", "exec")
         self.assertEqual(app_path.read_bytes(), baseline)
-        self.assertEqual(provenance["baseline_app"]["sha256"], hashlib.sha256(baseline).hexdigest())
-        self.assertEqual(provenance["derived_app"]["sha256"], hashlib.sha256(derived).hexdigest())
+        self.assertEqual(
+            provenance["baseline_app"]["sha256"], hashlib.sha256(baseline).hexdigest()
+        )
+        self.assertEqual(
+            provenance["derived_app"]["sha256"], hashlib.sha256(derived).hexdigest()
+        )
         self.assertTrue(provenance["diagnostic_only"])
         self.assertIn("safe_exception_diagnostics(error)", provenance["diff"])
 
@@ -111,6 +115,59 @@ class SchemaExceptionDiagnosticsTests(unittest.TestCase):
             "integer exceeds the 64-bit diagnostic bound",
         )
         self.assertNotIn("value", huge_integer)
+        self.assertIsInstance(json.dumps(captured), str)
+        self.assertEqual(calls, [])
+
+    def test_import_error_slots_bypass_hostile_properties_and_label_catch_time(self):
+        calls = []
+
+        class HostileModuleNotFoundError(ModuleNotFoundError):
+            @property
+            def name(self):
+                calls.append("name property")
+                raise AssertionError("name property must not run")
+
+            @property
+            def path(self):
+                calls.append("path property")
+                raise AssertionError("path property must not run")
+
+            def __getattribute__(self, name):
+                if name in {"name", "path"}:
+                    calls.append(name)
+                    raise AssertionError("custom slot access must not run")
+                return super().__getattribute__(name)
+
+        inner = HostileModuleNotFoundError(
+            "missing module", name="missing_dependency", path="/captured/import.py"
+        )
+
+        def fail(error):
+            raise RuntimeError("outer failure")
+
+        try:
+            fail(inner)
+        except RuntimeError as outer:
+            captured = diagnostics.capture_exception_diagnostics(outer)
+
+        frame = next(item for item in captured["frames"] if item["function"] == "fail")
+        import_slots = frame["locals"]["error"]["import_error_slots"]
+        self.assertEqual(
+            import_slots["capture_phase"],
+            "catch-time builtin-slot re-observation",
+        )
+        self.assertEqual(
+            import_slots["name"],
+            {"available": True, "type": "builtins.str", "value": "missing_dependency"},
+        )
+        self.assertEqual(
+            import_slots["path"],
+            {
+                "available": True,
+                "type": "builtins.str",
+                "value": "/captured/import.py",
+            },
+        )
         self.assertIsInstance(json.dumps(captured), str)
         self.assertEqual(calls, [])
 

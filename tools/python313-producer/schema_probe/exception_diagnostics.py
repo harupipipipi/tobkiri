@@ -4,8 +4,7 @@ from __future__ import annotations
 
 APP_IMPORT = b"from exercise import exercise\n"
 EXCEPT_MARKER = (
-    b"            observation = exercise()\n"
-    b"        except Exception as error:\n"
+    b"            observation = exercise()\n        except Exception as error:\n"
 )
 FRAMES_MARKER = b'                        "frames": frames,\n'
 # Emitted strings are capped at 128 characters; type names split that cap
@@ -21,6 +20,10 @@ _EXCEPTION_TRACEBACK = BaseException.__dict__["__traceback__"]
 _TYPE_MODULE = type.__dict__["__module__"]
 _TYPE_QUALNAME = type.__dict__["__qualname__"]
 _GETSET_DESCRIPTOR_TYPE = type(_EXCEPTION_NAMESPACE)
+_IMPORT_ERROR_NAME_SLOT = ImportError.__dict__["name"]
+_IMPORT_ERROR_PATH_SLOT = ImportError.__dict__["path"]
+# Only these built-in ImportError member descriptors are allowed for slot reads.
+_IMPORT_ERROR_SLOT_DESCRIPTOR_TYPE = type(_IMPORT_ERROR_NAME_SLOT)
 
 
 def _type_name(value: object) -> str:
@@ -38,11 +41,7 @@ def _type_name(value: object) -> str:
         return "unknown"
     if type(module) is not str or type(qualified) is not str:
         return "unknown"
-    return (
-        module[:MAX_TYPE_MODULE_CHARS]
-        + "."
-        + qualified[-MAX_TYPE_QUALNAME_CHARS:]
-    )
+    return module[:MAX_TYPE_MODULE_CHARS] + "." + qualified[-MAX_TYPE_QUALNAME_CHARS:]
 
 
 def _raw_instance_fields(error: BaseException) -> dict[str, dict[str, object]]:
@@ -76,6 +75,44 @@ def _raw_instance_fields(error: BaseException) -> dict[str, dict[str, object]]:
     return fields
 
 
+def _import_error_slot_fact(
+    error: BaseException, descriptor: object
+) -> dict[str, object]:
+    """Read only a whitelisted built-in ImportError C slot at catch time."""
+    if not issubclass(type(error), ImportError):
+        return {"available": False}
+    if type(descriptor) is not _IMPORT_ERROR_SLOT_DESCRIPTOR_TYPE:
+        return {"available": False}
+    try:
+        value = descriptor.__get__(error, type(error))
+    except BaseException:
+        return {"available": False}
+    fact: dict[str, object] = {"available": True, "type": _type_name(value)}
+    if type(value) is str:
+        fact["value"] = value[:MAX_DIAGNOSTIC_TEXT_CHARS]
+    elif type(value) is int:
+        if value.bit_length() <= MAX_RAW_INTEGER_BITS:
+            fact["value"] = value
+        else:
+            fact["value_omitted"] = "integer exceeds the 64-bit diagnostic bound"
+    elif type(value) in (bool, type(None)):
+        fact["value"] = value
+    else:
+        fact["value_omitted"] = "non-primitive slot value"
+    return fact
+
+
+def _import_error_slots(error: BaseException) -> dict[str, object]:
+    """Re-observe only builtin ImportError slots, with their catch-time origin."""
+    if not issubclass(type(error), ImportError):
+        return {}
+    return {
+        "capture_phase": "catch-time builtin-slot re-observation",
+        "name": _import_error_slot_fact(error, _IMPORT_ERROR_NAME_SLOT),
+        "path": _import_error_slot_fact(error, _IMPORT_ERROR_PATH_SLOT),
+    }
+
+
 def _local_facts(locals_map: dict[str, object]) -> dict[str, object]:
     """Record the relevant frame-local presence and safe scalar facts."""
     facts: dict[str, object] = {}
@@ -89,6 +126,8 @@ def _local_facts(locals_map: dict[str, object]) -> dict[str, object]:
             fact["value"] = value[:MAX_DIAGNOSTIC_TEXT_CHARS]
         if name == "error" and issubclass(type(value), BaseException):
             fact["raw_instance_fields"] = _raw_instance_fields(value)
+            if issubclass(type(value), ImportError):
+                fact["import_error_slots"] = _import_error_slots(value)
         facts[name] = fact
     return facts
 
@@ -106,9 +145,7 @@ def capture_exception_diagnostics(error: BaseException) -> dict[str, object]:
         frames.append(
             {
                 "module": (
-                    module[:MAX_DIAGNOSTIC_TEXT_CHARS]
-                    if type(module) is str
-                    else None
+                    module[:MAX_DIAGNOSTIC_TEXT_CHARS] if type(module) is str else None
                 ),
                 "function": frame.f_code.co_name[:MAX_DIAGNOSTIC_TEXT_CHARS],
                 "line": current.tb_lineno,
@@ -147,11 +184,14 @@ def derive_diagnostic_app(
         or baseline.count(except_anchor) != 1
         or baseline.count(frames_anchor) != 1
     ):
-        raise ValueError("frozen baseline app no longer matches exact derivation anchors")
+        raise ValueError(
+            "frozen baseline app no longer matches exact derivation anchors"
+        )
 
     derived = baseline.replace(
         import_anchor,
-        import_anchor + b"from exception_diagnostics import safe_exception_diagnostics\n",
+        import_anchor
+        + b"from exception_diagnostics import safe_exception_diagnostics\n",
         1,
     )
     derived = derived.replace(

@@ -1,7 +1,7 @@
-"""Acquire pinned CPython logging dependency source as data on Linux CI.
+"""Acquire pinned CPython schema dependency source as data on Linux CI.
 
 The archive and extracted source are never imported or executed here. Only the
-fourteen fixed source files are published; the rest of the archive remains
+sixteen fixed source files are published; the rest of the archive remains
 compressed under the private CI destination.
 """
 
@@ -49,6 +49,10 @@ SELECTED_FILES = (
     "locale.py",
     "signal.py",
     "selectors.py",
+    # The unchanged format corpus calls datetime.strptime after restoration.
+    # Its lazy parser imports calendar; both are original CPython source DATA.
+    "_strptime.py",
+    "calendar.py",
 )
 _ARCHIVE_MEMBERS = {
     f"{LOCKED_PREFIX}/Lib/{relative}": relative for relative in SELECTED_FILES
@@ -239,9 +243,9 @@ def _read_source_tree(source_root: Path) -> dict[str, tuple[bytes, int]]:
             raise ValueError(f"CPython source is not a regular file: {relative}")
         size = file_stat.st_size
         permissions = stat.S_IMODE(file_stat.st_mode)
-        if (
-            not 0 <= size <= MAX_SELECTED_FILE_BYTES
-            or permissions not in (0o644, 0o755)
+        if not 0 <= size <= MAX_SELECTED_FILE_BYTES or permissions not in (
+            0o644,
+            0o755,
         ):
             raise ValueError(
                 f"CPython source file size or mode is unsupported: {relative}"
