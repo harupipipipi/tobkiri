@@ -130,7 +130,8 @@ def run(source: Path, tools: Path, destination: Path) -> dict:
         ui_empty_poll_source.POLL_PATH
     ]:
         raise ValueError("candidate source changed beyond the exact poll insertion")
-    sdk_version = sdk / "share/wasi-sysroot/VERSION"
+    # The actual pinned SDK33 archive records VERSION at its distribution root.
+    sdk_version = sdk / "VERSION"
     fingerprint(sdk_version, 64 * 1024)
     version_bytes = sdk_version.read_bytes()
     work = destination / "work"
