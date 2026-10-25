@@ -117,7 +117,8 @@ def evaluate(
                 or any(type(report[name]) is not int
                        or not 0 <= report[name] <= 1000 for name in integers)
                 or report["failure"] not in {
-                    "none", "root-start", "child-report", "stop", "timeout", "schema",
+                    "none", "frontend-ready", "root-start", "child-report",
+                    "stop", "timeout", "schema",
                 }):
             raise InvalidObservation("schema")
         # Reconstruct instead of republishing arbitrary native or renderer data.

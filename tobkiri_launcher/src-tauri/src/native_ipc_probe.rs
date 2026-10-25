@@ -107,6 +107,7 @@ mod enabled {
     #[serde(rename_all = "kebab-case")]
     enum Failure {
         None,
+        FrontendReady,
         RootStart,
         ChildReport,
         Stop,

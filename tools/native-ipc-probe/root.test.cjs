@@ -47,13 +47,16 @@ function child() {
   };
 }
 
-async function run(change = () => {}, eventChange = () => {}, expire = false) {
+async function run(change = () => {}, eventChange = () => {}, expire = false, notReady = false) {
   let listener, deadline, frame, resolveReport;
   const operations = [];
   const reported = new Promise((resolve) => { resolveReport = resolve; });
   class HTMLFormElement {}
   class HTMLInputElement {}
+  class HTMLButtonElement {}
   const input = new HTMLInputElement();
+  const start = new HTMLButtonElement();
+  start.disabled = notReady;
   const form = new HTMLFormElement();
   form.requestSubmit = () => {
     operations.push('form-submit');
@@ -72,7 +75,7 @@ async function run(change = () => {}, eventChange = () => {}, expire = false) {
     });
   };
   const document = {
-    getElementById: (id) => id === 'profile-form' ? form : input,
+    getElementById: (id) => id === 'profile-form' ? form : id === 'start' ? start : input,
     querySelector: () => frame,
     querySelectorAll: () => frame ? [frame] : [],
     set title(value) { resolveReport(JSON.parse(value.split('TOBKIRI_NATIVE_IPC_PROBE:')[1])); },
@@ -90,7 +93,9 @@ async function run(change = () => {}, eventChange = () => {}, expire = false) {
       },
     },
   };
-  vm.runInNewContext(script, { window, document, HTMLFormElement, HTMLInputElement });
+  vm.runInNewContext(script, {
+    window, document, HTMLFormElement, HTMLInputElement, HTMLButtonElement,
+  });
   const report = await reported;
   return { report, operations };
 }
@@ -101,6 +106,12 @@ test('ordinary start and fixed final stop with exact child coverage', async () =
   assert.equal(report.failure, 'none');
   assert.equal(report.raw_sent, 11);
   assert.equal(report.root_stop, true);
+});
+
+test('a loaded document with unready frontend never becomes a start control', async () => {
+  const { report, operations } = await run(() => {}, () => {}, false, true);
+  assert.equal(report.failure, 'frontend-ready');
+  assert.deepEqual(operations, []);
 });
 
 test('extra fields, duplicate coverage, and cyclic data cannot trigger native stop', async () => {

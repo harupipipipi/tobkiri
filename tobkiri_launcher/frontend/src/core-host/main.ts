@@ -278,3 +278,6 @@ element<HTMLFormElement>('profile-form').addEventListener('submit', (event) => {
 
 element('stop').addEventListener('click', profileStop.stop);
 window.addEventListener('pagehide', profileStop.stop, { once: true });
+// The module awaits native event registration before installing the handlers.
+// Do not accept a user submission while that initialization is still pending.
+element<HTMLButtonElement>('start').disabled = false;

@@ -72,6 +72,12 @@
     const input = document.getElementById('profile-id');
     if (!(form instanceof HTMLFormElement) || !(input instanceof HTMLInputElement)
       || document.querySelector('#pack-ui iframe')) { finish('root-start'); return; }
+    const start = document.getElementById('start');
+    if (!(start instanceof HTMLButtonElement)) { finish('frontend-ready'); return; }
+    // A document load does not settle the module's native event-listen awaits.
+    // The real frontend enables this button only after installing its handlers.
+    for (let attempt = 0; start.disabled && attempt < 100; attempt += 1) await wait(50);
+    if (start.disabled) { finish('frontend-ready'); return; }
     input.value = 'prof_native_ipc_probe';
     form.requestSubmit();
     let frame;
