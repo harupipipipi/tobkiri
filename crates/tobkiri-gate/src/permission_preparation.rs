@@ -10,8 +10,10 @@ pub(super) enum PreparedPermissionTarget<'a> {
         hash: &'a PackHash,
     },
     User {
-        profile_hash: &'a Digest,
-        revision: &'a Digest,
+        // Digest is a fixed inline value. Own these exact facts so the
+        // preparation cannot outlive a caller's temporary candidate binding.
+        profile_hash: Digest,
+        revision: Digest,
         epoch: u64,
     },
 }

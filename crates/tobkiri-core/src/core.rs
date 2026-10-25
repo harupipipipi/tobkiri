@@ -364,10 +364,6 @@ impl Core {
             .control
             .reserve(tobkiri_gate::ControlKind::Queue, preparation_bytes)
             .map_err(tobkiri_gate::GateError::from)?;
-        // Declare the borrowed revision before its token array so cancellation
-        // or any early return drops all retained approvals before the digest.
-        // Its durable write stays at the original point after Pack preparation.
-        let digest;
         let mut pack_approvals = Vec::new();
         pack_approvals
             .try_reserve_exact(approval_count)
@@ -384,9 +380,11 @@ impl Core {
             })
             .and_then(|bytes| u64::try_from(bytes).ok())
             .ok_or(tobkiri_gate::GateError::Unavailable)?;
-        preparation_array
-            .try_grow(retained_array_bytes.saturating_sub(preparation_bytes))
-            .map_err(tobkiri_gate::GateError::from)?;
+        if retained_array_bytes > preparation_bytes {
+            preparation_array
+                .try_grow(retained_array_bytes - preparation_bytes)
+                .map_err(tobkiri_gate::GateError::from)?;
+        }
         for pack in &packs {
             pack_approvals.push(
                 gate.prepare_pack_permissions(
@@ -398,7 +396,7 @@ impl Core {
                 .await?,
             );
         }
-        digest = self.profiles.write_revision(&profile)?;
+        let digest = self.profiles.write_revision(&profile)?;
         let target_epoch = cx
             .security_epoch()
             .checked_add(1)

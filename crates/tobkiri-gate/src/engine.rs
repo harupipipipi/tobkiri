@@ -1676,8 +1676,8 @@ impl GateEngine {
     pub async fn prepare_user_permissions<'a>(
         &'a self,
         cx: &'a CallCx,
-        profile_hash: &'a Digest,
-        revision: &'a Digest,
+        profile_hash: &Digest,
+        revision: &Digest,
         target_epoch: u64,
         maximum: &PermissionSet,
     ) -> Result<PreparedPermissionApproval<'a>, GateError> {
@@ -1747,8 +1747,8 @@ impl GateEngine {
             cx,
             reservation,
             PreparedPermissionTarget::User {
-                profile_hash,
-                revision,
+                profile_hash: profile_hash.clone(),
+                revision: revision.clone(),
                 epoch: target_epoch,
             },
             narrowed,
