@@ -1,7 +1,7 @@
 """Acquire pinned CPython schema dependency source as data on Linux CI.
 
 The archive and extracted source are never imported or executed here. Only the
-seventeen fixed source files are published; the rest of the archive remains
+Only the closed source selection below is published; the rest of the archive remains
 compressed under the private CI destination.
 """
 
@@ -55,6 +55,29 @@ SELECTED_FILES = (
     "calendar.py",
     # Distribution.files() lazily parses the unchanged wheel RECORD via csv.
     "csv.py",
+    # Distribution.metadata() lazily uses the original email metadata adapter.
+    "importlib/metadata/_adapters.py",
+    "importlib/metadata/_text.py",
+    "email/__init__.py",
+    "email/_encoded_words.py",
+    "email/_header_value_parser.py",
+    "email/_parseaddr.py",
+    "email/_policybase.py",
+    "email/base64mime.py",
+    "email/charset.py",
+    "email/contentmanager.py",
+    "email/encoders.py",
+    "email/errors.py",
+    "email/feedparser.py",
+    "email/generator.py",
+    "email/header.py",
+    "email/headerregistry.py",
+    "email/iterators.py",
+    "email/message.py",
+    "email/parser.py",
+    "email/policy.py",
+    "email/quoprimime.py",
+    "email/utils.py",
 )
 _ARCHIVE_MEMBERS = {
     f"{LOCKED_PREFIX}/Lib/{relative}": relative for relative in SELECTED_FILES
@@ -333,8 +356,15 @@ def run(destination: Path) -> dict:
 
     selected, derivation = _source_members(archive_path, pin)
     source_root = destination / "source"
-    logging_root = source_root / "logging"
-    logging_root.mkdir(parents=True, mode=0o700)
+    source_root.mkdir(mode=0o700)
+    directories = {
+        parent
+        for relative in SELECTED_FILES
+        for parent in PurePosixPath(relative).parents
+        if parent != PurePosixPath(".")
+    }
+    for parent in sorted(directories, key=lambda path: (len(path.parts), str(path))):
+        (source_root / parent).mkdir(mode=0o700)
     for relative, (data, mode) in selected.items():
         path = source_root / relative
         with path.open("xb") as output:
