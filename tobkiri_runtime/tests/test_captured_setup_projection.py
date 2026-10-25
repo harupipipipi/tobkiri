@@ -42,7 +42,7 @@ def _resolve(catalog: BundledCatalog):
                 "operation_id",
             )
         )
-        references[key] = "authority-ref:capture." + canonical_digest(key).removeprefix("sha256:")
+        references[key] = "authority-ref:" + canonical_digest(key).removeprefix("sha256:")
     return resolve_default_profile(
         catalog,
         "defaults",
