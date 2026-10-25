@@ -1866,6 +1866,12 @@
       "role": "runtime-import-closure"
     },
     {
+      "path": "tobkiri_runtime/tobkiri_protocol/captured_inputs.py",
+      "bytes": 11901,
+      "sha256": "9b48a2ac901ecb256583017571aa9925cfa671e76224b5733f24f143a97825c5",
+      "role": "runtime-import-closure"
+    },
+    {
       "path": "tobkiri_runtime/tobkiri_protocol/chat_message_v1.py",
       "bytes": 12083,
       "sha256": "7b55ff5d68b19778c57e15f1953bd7794ac04b6dfbe2c5ceda3f5a796a657899",
@@ -1939,8 +1945,8 @@
     },
     {
       "path": "tobkiri_runtime/tobkiri_protocol/platform_artifact.py",
-      "bytes": 9528,
-      "sha256": "c55797250942fe23a48a971860ea5b55d722abb3fad1ecc83ebdce1ffe7a80c8",
+      "bytes": 10471,
+      "sha256": "ea895f92aa659f871172165143f633316a8fc9d37e17417387c87c0d9304971b",
       "role": "runtime-import-closure"
     },
     {

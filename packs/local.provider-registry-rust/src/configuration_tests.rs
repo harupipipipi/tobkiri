@@ -703,7 +703,7 @@ fn preparation_matches_authenticated_original_python_cases() {
     use std::path::Path;
 
     const FIXTURE: &[u8] = include_bytes!("../evidence/configuration-prepare-python.json");
-    let expected_fixture = "9b56f990e468b967caf99342d72aeacb40d24e8c4d007162f1d614adf6684631";
+    let expected_fixture = "e996c10d382123160a685c3526d000f13ff5ef883b3fd9179b52580b7a25a622";
     assert_eq!(format!("{:x}", Sha256::digest(FIXTURE)), expected_fixture);
     let fixture: serde_json::Value = serde_json::from_slice(FIXTURE).unwrap();
     assert_eq!(
