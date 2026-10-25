@@ -487,3 +487,30 @@ creates its deadline at each call and
 the WASI `clock_gettime` path reads the clock on each invocation; no producer
 clock timestamp is added to this probe's snapshot. This source check covers
 the observed late selector call, not every timer in the full original GUI.
+
+## Inactive exact-source empty-poll libc build
+
+The authentic restricted schema replay subsequently reaches the libc
+subscription inside the original empty-FD `select.poll().poll(0)` check.
+`issue-1520-ui-empty-poll.yml` builds a separate inactive libc candidate from
+the SDK33-pinned wasi-libc source. The sole C insertion returns zero for
+`nfds == 0 && timeout == 0` after the original validation and FD processing.
+It does not change selectors, enable general WASI, or select product assets.
+
+The verified source, patched candidate, SDK and compiler tools remain read-only.
+Unchanged upstream CMake writes two configured WIT files into source-relative
+paths, including when bindings regeneration is disabled. Only those two WIT
+directories are copied into a private derived workspace and mounted writable
+at the paths CMake expects. Every original member, directory mode and file hash
+is recorded before and after. Only the exact `wasi-libc.wit` outputs may change;
+unexpected paths, changed dependencies, links and successful-build temporaries
+reject the build. Failure temporaries may remain only as diagnostics. The
+copies are verified build inputs, not continuously immutable source files or
+original generated outputs. Successful provenance and binary retention require
+both this validation and unchanged original source/SDK/tool inventories.
+
+The genuine independent C ABI/errno/signal/shared-provider comparison and full
+cold original schema replay remain required before adoption. The raw C oracle
+sources in `empty_poll_probe/` are not yet built or executed by this workflow.
+All binaries stay on CI; a successful compiler stage alone establishes neither
+ABI parity nor the complete existing Setup, approval or conversation flow.

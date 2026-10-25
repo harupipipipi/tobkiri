@@ -9,9 +9,11 @@ on:
       - 'tools/python313-producer/fetch_ui_poll_libc.py'
       - 'tools/python313-producer/fetch_ui_poll_tools.py'
       - 'tools/python313-producer/ui_empty_poll_source.py'
+      - 'tools/python313-producer/ui_poll_wit_workspace.py'
       - 'tools/python313-producer/empty_poll_probe/**'
       - 'tools/python313-producer/tests/test_fetch_ui_poll*.py'
       - 'tools/python313-producer/tests/test_ui_empty_poll_source.py'
+      - 'tools/python313-producer/tests/test_ui_poll_wit_workspace.py'
       - 'tools/python313-producer/tests/fixtures/wasi-libc-161b3195*'
   workflow_dispatch:
 

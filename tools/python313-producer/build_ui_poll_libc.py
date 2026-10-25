@@ -17,6 +17,7 @@ import fetch_sdk
 import fetch_ui_poll_libc
 import fetch_ui_poll_tools
 import ui_empty_poll_source
+import ui_poll_wit_workspace
 
 RECIPE = r"""set -eu
 umask 077
@@ -137,6 +138,7 @@ def run(source: Path, tools: Path, destination: Path) -> dict:
     work = destination / "work"
     work.mkdir(mode=0o700)
     (work / "home").mkdir(mode=0o700)
+    wit_workspace = ui_poll_wit_workspace.prepare(candidate_source, work)
     recipe = destination / "build-libc.sh"
     recipe.write_text(RECIPE)
     report = {
@@ -146,6 +148,8 @@ def run(source: Path, tools: Path, destination: Path) -> dict:
         "source_pin": source_report["source_pin"],
         "derivation": derivation,
         "build_recipe": fingerprint(recipe),
+        "upstream_wit_cmake": fingerprint(candidate_source / "cmake/wasi-wits.cmake"),
+        "wit_workspace_before": wit_workspace,
         "sdk_archive": {"bytes": fetch_sdk.ARCHIVE_BYTES, "sha256": fetch_sdk.SHA256},
         "sdk_manifest": fingerprint(destination / "sdk-input/sdk-manifest.json"),
         "sdk_version_file": {
@@ -158,6 +162,7 @@ def run(source: Path, tools: Path, destination: Path) -> dict:
         "c_abi_verified": False,
         "cold_schema_verified": False,
         "production_enabled": False,
+        "wit_workspace_validated": False,
     }
     receipt_path = destination / "libc-build.json"
     try:
@@ -172,7 +177,12 @@ def run(source: Path, tools: Path, destination: Path) -> dict:
             ),
         )
         marker = command.index("--")
-        command[marker:marker] = ["--setenv", "HOME", "/work/home"]
+        command[marker:marker] = [
+            "--setenv",
+            "HOME",
+            "/work/home",
+            *ui_poll_wit_workspace.mounts(work),
+        ]
         report["supervision"] = run_stage(
             "ui-empty-poll-libc", command, work, destination / "supervision"
         )
@@ -196,6 +206,14 @@ def run(source: Path, tools: Path, destination: Path) -> dict:
         report["failure_type"] = type(error).__name__
         raise
     finally:
+        try:
+            report["wit_workspace"] = ui_poll_wit_workspace.observe(
+                work, wit_workspace, successful=report["outcome"] == "success"
+            )
+            report["wit_workspace_validated"] = True
+        except (OSError, ValueError) as error:
+            report["outcome"] = "failed"
+            report["wit_workspace_failure"] = type(error).__name__
         report["inputs_unchanged"] = (
             fetch_sdk.inventory(sdk) == sdk_inventory
             and fetch_sdk.inventory(original_source) == original_inventory
@@ -209,6 +227,8 @@ def run(source: Path, tools: Path, destination: Path) -> dict:
         receipt_path.write_text(json.dumps(report, indent=2) + "\n")
     if not report["inputs_unchanged"]:
         raise ValueError("immutable libc source, SDK or build tools changed")
+    if not report["wit_workspace_validated"]:
+        raise ValueError("derived WIT workspace failed validation")
     return report
 
 
