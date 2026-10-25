@@ -1685,9 +1685,9 @@ impl GateEngine {
             ));
         }
         cx.check_active()?;
-        // Fixed reservation IDs/digests plus the token itself are bounded.
-        // The owned permission collections are charged separately below.
-        let mut retained = self.control.reserve(ControlKind::Frame, 4096)?;
+        // Pending configuration decisions are queued metadata, not execution
+        // frames. The owned policy collections are charged separately below.
+        let mut retained = self.control.reserve(ControlKind::Queue, 4096)?;
         if self.epoch(cx.profile())? != cx.security_epoch() {
             return Err(GateError::StaleEpoch);
         }
@@ -1882,7 +1882,7 @@ impl GateEngine {
             ));
         }
         cx.check_active()?;
-        let mut retained = self.control.reserve(ControlKind::Frame, 4096)?;
+        let mut retained = self.control.reserve(ControlKind::Queue, 4096)?;
         let maximum = {
             let policies = self
                 .policies

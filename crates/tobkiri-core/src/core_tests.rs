@@ -403,8 +403,8 @@ async fn prepared_permissions_are_inert_and_drop_preserves_an_independent_approv
             .is_none()
     );
     assert_eq!(
-        core.control.usage().count(tobkiri_gate::ControlKind::Frame),
-        before.count(tobkiri_gate::ControlKind::Frame) + 1
+        core.control.usage().count(tobkiri_gate::ControlKind::Queue),
+        before.count(tobkiri_gate::ControlKind::Queue) + 1
     );
     assert!(core.control.usage().bytes >= before.bytes + 4096);
     // Another ordinary native request may approve the same Pack while the
@@ -434,8 +434,8 @@ async fn prepared_permissions_are_inert_and_drop_preserves_an_independent_approv
     );
     assert_eq!(core.control.usage().bytes, before.bytes);
     assert_eq!(
-        core.control.usage().count(tobkiri_gate::ControlKind::Frame),
-        before.count(tobkiri_gate::ControlKind::Frame)
+        core.control.usage().count(tobkiri_gate::ControlKind::Queue),
+        before.count(tobkiri_gate::ControlKind::Queue)
     );
 }
 
