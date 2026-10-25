@@ -113,14 +113,44 @@ prepared effect only after that path succeeds. Existing `prepare_*` APIs retain
 their ordinary behavior by invoking these two stages. Actual prompt String
 capacity is retained under the same original control account.
 
-This is not the grouped confirmation implementation. The future native owner
-must retain the exact candidate, verified source custody, compiled plan,
-head/epoch and complete per-request targets. Only the confirmed trusted surface
-may turn the existing user gesture into decisions for those exact requests.
-No client checkbox, digest, shared "next prompt yes" state, or serialized
-review handle may supply that evidence. Full display-to-effect correspondence
-and actual input provenance must be established before connecting consumption;
-the existing durable batch commit and final CAS remain required.
+The new `Core::save_profile_with_native_review` retains the exact candidate,
+verified Pack/source custody, compiled plan, original Gate/CallCx, head/epoch
+and pending targets in a single asynchronous save operation. Its private view
+contains the full Profile definition, the existing bounded structural review,
+precondition and plan digest, built from the same verified Packs. It does not
+reload another catalog. View construction and actual wire capacity remain
+charged to the original control account. An overlarge complete view fails
+closed rather than displaying an incomplete candidate. These native-only
+bytes can include private configuration/source paths: never log, publish, or
+pass them to Pack UI.
+
+`PendingPermissionReview::request_all` retains the same Gate and original
+context for every member. Gate owns the bounded per-item response slots and
+creates non-serializable native correspondence from each original prompt
+snapshot. Missing, duplicate or foreign replies invalidate the entire review;
+a later correct answer cannot clear that failure. Each device attestation
+still passes the original per-request binding, signature, expiry and nonce
+checks. A group decision is not copied into per-item attestation evidence.
+Targets without additions produce no invented prompt or attestation. Incoming
+array capacity, reply slots, variable answer storage and the completed array
+retain original-account custody through cancellation and guard destruction.
+
+The new trusted native callback defaults to unavailable and has no automatic
+individual-prompt fallback. Its implementation must turn one actual trusted
+user interaction into decisions for precisely the displayed requests. No
+client checkbox, digest, shared "next prompt yes" state, or serialized review
+handle supplies that evidence. The existing individual save APIs retain their
+ordinary behavior. After all native decisions validate, the grouped operation
+uses the same durable batch commit and final CAS; this commit section has no
+await and retains the original typed uncertainty and recovery identity.
+
+This is a native library seam, not the real Setup surface. Tauri configuration
+IPC, actual frame/input provenance, complete display-to-effect correspondence,
+and the native operation registry's retention of post-commit outcomes remain
+unimplemented/unverified here. Closing UI after commit starts must not simply
+abort and discard its operation. Current native Hosts leave the grouped
+callback unavailable until that boundary is implemented and tested. The
+ordinary product Setup/settings/chat path remains the original Launcher.
 
 First-run domain projection remains separate: the public runtime still has no
 pre-Profile Pack execution exemption. A future isolated data evaluator would

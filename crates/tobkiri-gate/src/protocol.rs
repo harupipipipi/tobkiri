@@ -432,6 +432,17 @@ pub trait TrustedPrompt: Send + Sync {
         Ok(cx.cancel().cancelled())
     }
     async fn prompt_approval(&self, prompt: ApprovalPrompt) -> ApprovalAnswer;
+
+    /// One native review interaction, with Gate-owned exact per-item replies.
+    /// Implementations must bind real trusted input and the complete displayed
+    /// candidate to this live call. Untrusted renderer flags are not decisions.
+    /// No automatic fallback to individual prompts changes the user's workflow.
+    async fn prompt_approval_review(
+        &self,
+        _review: &mut crate::ApprovalReviewBatch<'_>,
+    ) -> Result<(), GateError> {
+        Err(GateError::Unavailable)
+    }
 }
 #[derive(Debug, thiserror::Error)]
 #[error("host I/O unavailable: {0}")]

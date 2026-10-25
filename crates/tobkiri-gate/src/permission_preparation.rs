@@ -3,6 +3,9 @@
 //! A batch commits permission effects together, without making a durable
 //! whole-Profile save decision or committing its head and security epoch.
 use super::*;
+#[path = "grouped_permission_review.rs"]
+mod grouped;
+pub use grouped::PreparedPermissionReviewBatch;
 
 /// Native pending request with the original Gate, context, reservation and
 /// mediator-narrowed maximum. It has acquired no trusted approval and exposes

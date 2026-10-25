@@ -36,6 +36,7 @@ mod funded_arc;
 mod housekeeping;
 mod inputs;
 mod journal;
+mod native_profile_review;
 mod outcomes;
 #[cfg(test)]
 mod policy_tests;

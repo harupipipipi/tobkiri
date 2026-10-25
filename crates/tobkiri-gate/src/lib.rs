@@ -3,6 +3,7 @@
 
 mod admission;
 mod approval_evidence;
+mod approval_review;
 mod budget;
 mod cancellation;
 mod capacity;
@@ -18,6 +19,7 @@ mod protocol;
 
 pub use admission::*;
 pub use approval_evidence::*;
+pub use approval_review::*;
 pub use budget::*;
 pub use cancellation::*;
 pub use capacity::*;

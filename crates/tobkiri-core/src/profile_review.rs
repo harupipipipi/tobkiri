@@ -26,7 +26,7 @@ use crate::{
 /// The maximum owned review representation, aligned with the current trusted
 /// host response body bound. This limits only this projection, not Profile
 /// validity or the existing compiler contract.
-const MAX_REVIEW_BYTES: usize = 1024 * 1024;
+pub(crate) const MAX_REVIEW_BYTES: usize = 1024 * 1024;
 const MAX_REVIEW_TEXT_BYTES: usize = MAX_REVIEW_BYTES;
 const MAX_NETWORK_ORIGIN_BYTES: usize = 2048;
 const MAX_PROCESS_ID_BYTES: usize = 128;
@@ -247,12 +247,21 @@ impl Core {
             .err()
             .unwrap_or_default();
 
-        let mut budget = ReviewBudget::default();
-        preflight_review(candidate, &packs, &conflicts, &revision, &mut budget)?;
-        let review = build_review(candidate, &packs, &conflicts, revision)?;
-        check_wire_size(&review)?;
-        Ok(review)
+        review_verified_candidate(candidate, &packs, &conflicts, revision)
     }
+}
+
+pub(crate) fn review_verified_candidate(
+    candidate: &Profile,
+    packs: &[VerifiedPack],
+    conflicts: &[tobkiri_profile::Conflict],
+    revision: Digest,
+) -> Result<ProfileReview, ProfileReviewError> {
+    let mut budget = ReviewBudget::default();
+    preflight_review(candidate, packs, conflicts, &revision, &mut budget)?;
+    let review = build_review(candidate, packs, conflicts, revision)?;
+    check_wire_size(&review)?;
+    Ok(review)
 }
 
 fn preflight_review(
@@ -599,9 +608,14 @@ impl Write for CountWriter {
 }
 
 fn check_wire_size(review: &ProfileReview) -> Result<(), ProfileReviewError> {
+    review_wire_size(review).map(|_| ())
+}
+
+pub(crate) fn review_wire_size<T: Serialize>(review: &T) -> Result<usize, ProfileReviewError> {
     let mut writer = CountWriter { bytes: 0 };
     serde_json::to_writer(&mut writer, review)
-        .map_err(|_| ProfileReviewError::Capacity(ProfileReviewCapacity::OutputBytes))
+        .map_err(|_| ProfileReviewError::Capacity(ProfileReviewCapacity::OutputBytes))?;
+    Ok(writer.bytes)
 }
 
 fn safe_bounded_identifier(value: &str, max_bytes: usize) -> bool {

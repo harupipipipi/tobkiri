@@ -83,10 +83,21 @@ fn recovery_status(error: &CoreError) -> ProfileRecoveryStatus {
 }
 
 struct Prompt(Arc<dyn HostIo>);
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SaveApprovalMode {
+    Individual,
+    NativeReview,
+}
 #[async_trait::async_trait]
 impl TrustedPrompt for Prompt {
     async fn prompt_approval(&self, prompt: ApprovalPrompt) -> ApprovalAnswer {
         self.0.prompt_approval(prompt).await
+    }
+    async fn prompt_approval_review(
+        &self,
+        review: &mut tobkiri_gate::ApprovalReviewBatch<'_>,
+    ) -> Result<(), tobkiri_gate::GateError> {
+        self.0.prompt_approval_review(review).await
     }
 }
 
@@ -343,7 +354,8 @@ impl Core {
         profile: Profile,
         expected: Option<Digest>,
     ) -> Result<Digest, CoreError> {
-        self.save_profile_bound(profile, expected, None).await
+        self.save_profile_bound(profile, expected, None, SaveApprovalMode::Individual)
+            .await
     }
 
     /// Save only against the authority epoch shown in an existing native review.
@@ -357,8 +369,36 @@ impl Core {
         expected: Option<Digest>,
         expected_epoch: u64,
     ) -> Result<Digest, CoreError> {
-        self.save_profile_bound(profile, expected, Some(expected_epoch))
-            .await
+        self.save_profile_bound(
+            profile,
+            expected,
+            Some(expected_epoch),
+            SaveApprovalMode::Individual,
+        )
+        .await
+    }
+
+    /// Retain one exact native save operation across its complete review.
+    /// The native Host must implement the separate trusted grouped surface;
+    /// unsupported surfaces fail closed, without individual-prompt fallback.
+    /// A precondition or renderer response is never consent. The Host must bind
+    /// actual trusted input and complete display to this live call before use.
+    /// After commit starts, retain its typed outcome independently of UI close.
+    pub async fn save_profile_with_native_review(
+        &self,
+        profile: Profile,
+        precondition: crate::ProfileSavePrecondition,
+    ) -> Result<Digest, CoreError> {
+        if profile.id != precondition.profile_id {
+            return Err(CoreError::Invalid("native review target differs".into()));
+        }
+        self.save_profile_bound(
+            profile,
+            precondition.head,
+            Some(precondition.security_epoch),
+            SaveApprovalMode::NativeReview,
+        )
+        .await
     }
 
     async fn save_profile_bound(
@@ -366,6 +406,7 @@ impl Core {
         profile: Profile,
         expected: Option<Digest>,
         expected_epoch: Option<u64>,
+        approval_mode: SaveApprovalMode,
     ) -> Result<Digest, CoreError> {
         self.ensure_admission(&profile.id).await?;
         let current = self.profiles.head(&profile.id)?;
@@ -400,82 +441,119 @@ impl Core {
             .len()
             .checked_add(1)
             .ok_or(tobkiri_gate::GateError::Unavailable)?;
-        let preparation_bytes = approval_count
-            .checked_mul(std::mem::size_of::<
-                tobkiri_gate::PreparedPermissionApproval<'_>,
-            >())
-            .and_then(|bytes| {
-                bytes.checked_add(std::mem::size_of::<
-                    Vec<tobkiri_gate::PreparedPermissionApproval<'_>>,
-                >())
-            })
-            .and_then(|bytes| u64::try_from(bytes).ok())
-            .ok_or(tobkiri_gate::GateError::Unavailable)?;
-        let mut preparation_array = self
-            .control
-            .reserve(tobkiri_gate::ControlKind::Queue, preparation_bytes)
-            .map_err(tobkiri_gate::GateError::from)?;
-        let mut pack_approvals = Vec::new();
-        pack_approvals
-            .try_reserve_exact(approval_count)
-            .map_err(|_| tobkiri_gate::GateError::Unavailable)?;
-        let retained_array_bytes = pack_approvals
-            .capacity()
-            .checked_mul(std::mem::size_of::<
-                tobkiri_gate::PreparedPermissionApproval<'_>,
-            >())
-            .and_then(|bytes| {
-                bytes.checked_add(std::mem::size_of::<
-                    Vec<tobkiri_gate::PreparedPermissionApproval<'_>>,
-                >())
-            })
-            .and_then(|bytes| u64::try_from(bytes).ok())
-            .ok_or(tobkiri_gate::GateError::Unavailable)?;
-        if retained_array_bytes > preparation_bytes {
-            preparation_array
-                .try_grow(retained_array_bytes - preparation_bytes)
-                .map_err(tobkiri_gate::GateError::from)?;
-        }
+        let grouped = approval_mode == SaveApprovalMode::NativeReview;
+        let mut pack_approvals = crate::native_profile_review::FundedArray::new(
+            &self.control,
+            if grouped { 0 } else { approval_count },
+        )?;
+        let mut pending = crate::native_profile_review::FundedArray::new(
+            &self.control,
+            if grouped { approval_count } else { 0 },
+        )?;
         for pack in &packs {
-            pack_approvals.push(
-                gate.prepare_pack_permissions(
-                    &cx,
-                    &pack.manifest.id,
-                    old.get(&pack.manifest.id),
-                    &pack.hash,
-                )
-                .await?,
-            );
+            if grouped {
+                pending.values.push(
+                    gate.review_pack_permissions(
+                        &cx,
+                        &pack.manifest.id,
+                        old.get(&pack.manifest.id),
+                        &pack.hash,
+                    )
+                    .await?,
+                );
+            } else {
+                pack_approvals.values.push(
+                    gate.prepare_pack_permissions(
+                        &cx,
+                        &pack.manifest.id,
+                        old.get(&pack.manifest.id),
+                        &pack.hash,
+                    )
+                    .await?,
+                );
+            }
         }
         let digest = self.profiles.write_revision(&profile)?;
         let target_epoch = cx
             .security_epoch()
             .checked_add(1)
             .ok_or_else(|| CoreError::Invalid("security epoch exhausted".into()))?;
-        let user_approval = gate
-            .prepare_user_permissions(
-                &cx,
+        let maximum = profile
+            .user_permissions
+            .clone()
+            .unwrap_or_default()
+            .intersect(&profile.ceiling);
+        if grouped {
+            pending.values.push(
+                gate.review_user_permissions(
+                    &cx,
+                    &digest,
+                    &compiled.plan_digest,
+                    target_epoch,
+                    &maximum,
+                )
+                .await?,
+            );
+        } else {
+            pack_approvals.values.push(
+                gate.prepare_user_permissions(
+                    &cx,
+                    &digest,
+                    &compiled.plan_digest,
+                    target_epoch,
+                    &maximum,
+                )
+                .await?,
+            );
+        }
+        // The pending/prepared value owns its separately charged narrowed
+        // policy. Do not retain this temporary copy across native UI await.
+        drop(maximum);
+        let native_content = if grouped {
+            Some(crate::native_profile_review::capture(
+                &profile,
+                &packs,
                 &digest,
                 &compiled.plan_digest,
-                target_epoch,
-                &profile
-                    .user_permissions
-                    .clone()
-                    .unwrap_or_default()
-                    .intersect(&profile.ceiling),
+                &crate::ProfileSavePrecondition {
+                    profile_id: profile.id.clone(),
+                    head: expected.clone(),
+                    security_epoch: cx.security_epoch(),
+                },
+                &self.control,
+            )?)
+        } else {
+            None
+        };
+        let completed_review = if let Some(content) = &native_content {
+            Some(
+                tobkiri_gate::PendingPermissionReview::request_all(
+                    pending.values,
+                    content.as_bytes(),
+                )
+                .await?,
             )
-            .await?;
-        pack_approvals.push(user_approval);
+        } else {
+            None
+        };
         let mut committed = None;
-        let result: Result<(), tobkiri_store::StoreError> =
-            tobkiri_gate::PreparedPermissionApproval::commit_all_with(pack_approvals, |batch| {
-                committed = Some(self.profiles.root.commit_prepared_profile(
-                    batch,
-                    expected.as_ref(),
-                    &digest,
-                )?);
-                Ok(())
-            });
+        let commit = |batch: &tobkiri_gate::PermissionApprovalBatch<'_, '_>| {
+            committed = Some(self.profiles.root.commit_prepared_profile(
+                batch,
+                expected.as_ref(),
+                &digest,
+            )?);
+            Ok(())
+        };
+        // This section contains no await: native close/cancellation must retain
+        // the exact durable outcome and uncertainty identity after it starts.
+        let result: Result<(), tobkiri_store::StoreError> = match completed_review {
+            Some(review) => review.commit_all_with(commit),
+            None => tobkiri_gate::PreparedPermissionApproval::commit_all_with(
+                pack_approvals.values,
+                commit,
+            ),
+        };
         if let Err(error) = result {
             if let Some(receipt) = committed {
                 // The durable decision/head succeeded before audit delivery

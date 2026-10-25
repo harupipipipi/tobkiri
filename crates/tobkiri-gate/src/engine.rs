@@ -17,6 +17,7 @@ use tobkiri_canon::{
 mod permission_preparation;
 pub use permission_preparation::{
     PendingPermissionReview, PermissionApprovalBatch, PermissionCommit, PreparedPermissionApproval,
+    PreparedPermissionReviewBatch,
 };
 use permission_preparation::{PreparedPermissionTarget, retained_permission_bytes};
 
@@ -1860,6 +1861,16 @@ impl GateEngine {
             .map_err(|_| GateError::Unavailable)?;
         let snapshot = prompt.snapshot_digest()?;
         let answer = tokio::select! {result=cancellation=>return Err(cancellation_result(cx,result)),_ = tokio::time::sleep_until(cx.deadline().into())=>return Err(GateError::Deadline),answer=self.prompt.prompt_approval(prompt.clone())=>answer};
+        self.accept_approval_answer(cx, &prompt, snapshot, answer)
+    }
+
+    fn accept_approval_answer(
+        &self,
+        cx: &CallCx,
+        prompt: &ApprovalPrompt,
+        snapshot: Digest,
+        answer: ApprovalAnswer,
+    ) -> Result<TrustedApprovalEvidence, GateError> {
         cx.check_active()?;
         if self.epoch(cx.profile())? != cx.security_epoch() {
             return Err(GateError::StaleEpoch);
@@ -1869,7 +1880,7 @@ impl GateEngine {
             ApprovalAnswer::Deny => return Err(GateError::Denied("user declined".into())),
             ApprovalAnswer::Unavailable => return Err(GateError::ApprovalRequired),
             ApprovalAnswer::Attestation(att) => {
-                self.verify_attestation(&prompt, &att)?;
+                self.verify_attestation(prompt, &att)?;
                 TrustedApprovalMethod::DeviceAttestation
             }
         };
@@ -1878,6 +1889,34 @@ impl GateEngine {
             method,
             prompt.risk,
         ))
+    }
+
+    async fn obtain_approval_review(
+        &self,
+        cx: &CallCx,
+        review: &mut ApprovalReviewBatch<'_>,
+    ) -> Result<(), GateError> {
+        cx.check_active()?;
+        if !cx.interactive_approval() {
+            return Err(GateError::ApprovalRequired);
+        }
+        if self.epoch(cx.profile())? != cx.security_epoch() {
+            return Err(GateError::StaleEpoch);
+        }
+        let cancellation = self
+            .prompt
+            .cancellation_waiter(cx)
+            .map_err(|_| GateError::Unavailable)?;
+        tokio::select! {
+            result=cancellation => return Err(cancellation_result(cx,result)),
+            _ = tokio::time::sleep_until(cx.deadline().into()) => return Err(GateError::Deadline),
+            answer=self.prompt.prompt_approval_review(review) => answer?,
+        }
+        cx.check_active()?;
+        if self.epoch(cx.profile())? != cx.security_epoch() {
+            return Err(GateError::StaleEpoch);
+        }
+        review.ensure_complete()
     }
     /// Approve only additions and bind retained permissions to the new Pack hash.
     pub async fn approve_pack_permissions(
