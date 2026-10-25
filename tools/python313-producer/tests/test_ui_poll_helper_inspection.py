@@ -6,17 +6,20 @@ from pathlib import Path
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from empty_poll_probe.inspect_helper import checks
+from empty_poll_probe.inspect_helper import checks, object_symbols
 
 
 def fixture():
     signatures = {
         "poll": [{"params": ["i32", "i32", "i32"], "results": ["i32"]}],
-        "__errno_location": [{"params": [], "results": ["i32"]}],
     }
     helper = {
-        "function_imports": ["poll", "__errno_location"],
+        "function_imports": ["poll"],
         "function_exports": ["PyInit__tobkiri_poll_oracle"],
+        "exports": [{"name": "PyInit__tobkiri_poll_oracle", "kind": "FuncType"}],
+        "errno_address_imports": [
+            {"module": "GOT.mem", "name": "errno", "content": "i32", "mutable": True}
+        ],
         "custom_sections": ["dylink.0"],
         "imported_memories": 1,
         "imported_memory_types": [{"is_shared": False, "is_64": False}],
@@ -24,7 +27,8 @@ def fixture():
         "required_function_signatures": {"imports": copy.deepcopy(signatures)},
     }
     original = {
-        "function_exports": ["poll", "__errno_location"],
+        "function_exports": ["poll"],
+        "errno_data_exports": [{"name": "errno", "content": "i32", "mutable": False}],
         "required_function_signatures": {"exports": copy.deepcopy(signatures)},
     }
     return helper, original
@@ -41,7 +45,7 @@ class SharedImportGuardTests(unittest.TestCase):
         helper, original = fixture()
         helper["function_exports"].append("poll")
         self.assertFalse(checks(helper, original)["no_embedded_poll_or_errno_exports"])
-        original["function_exports"].remove("__errno_location")
+        original["function_exports"].remove("poll")
         self.assertFalse(checks(helper, original)["sdk_libc_function_exports"])
 
     def test_changed_or_ambiguous_function_signatures_are_rejected(self):
@@ -76,6 +80,27 @@ class SharedImportGuardTests(unittest.TestCase):
                 result = checks(helper, original)
                 self.assertFalse(result["non_shared_wasm32_memory"])
                 self.assertTrue(result["imported_memory"])
+
+    def test_errno_requires_a_got_address_and_an_external_data_export(self):
+        helper, original = fixture()
+        helper["errno_address_imports"][0]["module"] = "env"
+        self.assertFalse(checks(helper, original)["errno_got_address_import"])
+        helper, original = fixture()
+        original["errno_data_exports"] = []
+        self.assertFalse(checks(helper, original)["sdk_errno_data_export"])
+        helper["exports"].append({"name": "errno", "kind": "GlobalType"})
+        self.assertFalse(checks(helper, original)["no_helper_errno_export"])
+
+    def test_object_symbol_custody_rejects_own_storage_and_ambiguous_definitions(self):
+        good = object_symbols(b"errno U 0 0\npoll U 0 0\nprivate B 0 4\n")
+        self.assertTrue(all(good["undefined"].values()))
+        for raw in (
+            b"errno B 0 4\npoll U 0 0\n",
+            b"errno U\nerrno B 0 4\npoll U\n",
+            b"poll U\n",
+        ):
+            with self.subTest(raw=raw):
+                self.assertFalse(object_symbols(raw)["undefined"]["errno"])
 
 
 if __name__ == "__main__":

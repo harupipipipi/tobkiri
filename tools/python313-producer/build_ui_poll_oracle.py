@@ -24,9 +24,16 @@ trap 'poll_helper_status=$?; if [ "$poll_helper_status" -ne 0 ]; then /usr/bin/t
 export PATH=/sdk/bin:/usr/bin:/bin HOME=/work/home
 /sdk/bin/clang --version > /work/clang-version.txt
 set -- --target=wasm32-wasip2 --sysroot=/sdk/share/wasi-sysroot \
-  -fPIC -I/target-headers -DPy_LIMITED_API=0x030D0000 \
+  -fPIC -I/target-headers -DPy_LIMITED_API=0x030D0000
+/sdk/bin/clang "$@" -c /probe-source/_tobkiri_poll_oracle.c \
+  -o /work/helper-object.o > /work/compile.log 2>&1
+/sdk/bin/llvm-nm --version > /work/llvm-nm-version.txt
+/sdk/bin/llvm-objdump --version > /work/llvm-objdump-version.txt
+/sdk/bin/llvm-nm --format=posix /work/helper-object.o > /work/object-symbols.txt
+/sdk/bin/llvm-objdump -r -t /work/helper-object.o > /work/object-relocations.txt
+set -- --target=wasm32-wasip2 --sysroot=/sdk/share/wasi-sysroot \
   -shared -Wl,--skip-wit-component -Wl,--unresolved-symbols=import-dynamic \
-  /probe-source/_tobkiri_poll_oracle.c
+  /work/helper-object.o
 # Preserve the compiler-default variant as a diagnostic comparison only.
 /sdk/bin/clang -### "$@" -o /work/compiler-default.so \
   > /work/compiler-default-stdout.txt 2> /work/compiler-default-link.txt
@@ -146,6 +153,15 @@ def run(source: Path, wasi: Path, validation: Path, destination: Path) -> dict:
         report["compiler_default_diagnostic"] = fingerprint(
             diagnostic, 32 * 1024 * 1024
         )
+        object_inputs = {
+            str(path): fingerprint(path, 4 * 1024 * 1024)
+            for path in (
+                work / "helper-object.o",
+                work / "object-symbols.txt",
+                work / "object-relocations.txt",
+            )
+        }
+        report["object_inputs"] = object_inputs
         report["compiled"] = True
         command = sandbox_command(
             None,
@@ -155,6 +171,7 @@ def run(source: Path, wasi: Path, validation: Path, destination: Path) -> dict:
                 *mounts,
                 (helper, "/work/_tobkiri_poll_oracle.abi3.so"),
                 (diagnostic, "/work/compiler-default.so"),
+                *((Path(path), "/work/" + Path(path).name) for path in object_inputs),
             ),
         )
         report["inspection_supervision"] = run_stage(
@@ -189,6 +206,10 @@ def run(source: Path, wasi: Path, validation: Path, destination: Path) -> dict:
                 fingerprint(helper, 32 * 1024 * 1024) == report["helper"]
                 and fingerprint(diagnostic, 32 * 1024 * 1024)
                 == report["compiler_default_diagnostic"]
+                and all(
+                    fingerprint(Path(path), 4 * 1024 * 1024) == value
+                    for path, value in object_inputs.items()
+                )
             )
         if not report["inputs_unchanged"]:
             report["outcome"] = "failed"

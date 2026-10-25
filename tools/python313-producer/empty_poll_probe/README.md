@@ -24,11 +24,23 @@ initializer. A separate compiler-default variant is recorded only to diagnose
 the actual default-link behavior; it is never selected as a fallback.
 Compilation and inspection have separate supervised outcomes.
 `inspect_helper.py` records actual metadata before rejecting any failed guard,
-and requires dynamic imports for
-`poll` and `__errno_location`, the Python initializer export,
+and requires the actual dynamic `poll` function import, the Python initializer export,
 `dylink.0`/non-shared wasm32 imported memory/table evidence, matching core
-function signatures and real exports in the stock SDK libc. It neither
+function signature and real exports in the stock SDK libc. It neither
 instantiates nor executes those modules.
+
+The fixed SDK's actual `__errno.h` declares `extern _Thread_local int errno`.
+The compiler therefore emits a `GOT.mem/errno` global address import, rather
+than a `__errno_location` function import. Record its value type and mutability,
+require the corresponding SDK data export, and retain the actual LLVM object
+symbol/relocation transcripts. Both `poll` and `errno` must remain undefined
+external symbols in the same object linked into the helper; the helper may not
+export its own errno storage. The earlier function-getter requirement was an
+incorrect assumption, not the target's ABI. The C source/header are unchanged.
+
+An i32 global describes an address or offset, not the errno value. Its type
+alone does not prove the GOT/TLS relocation resolves to the same storage as
+`poll`; final provider/address resolution and runtime results remain required.
 
 The later runtime builder must use exactly the same helper bytes in both
 components. Inspect every input DSO and the final link record to bind both
