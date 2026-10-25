@@ -137,20 +137,27 @@ async fn pending_decision_fences_new_authority_but_allows_cleanup_and_revocation
         .approve_pack_permissions(&f.cx, &unrelated, None, &unrelated_hash)
         .await
         .unwrap();
-    // A real consumed Store reservation predates the save. This exercises
-    // metadata cleanup, not physical backend execution or a guest permit.
-    let reservation = f
-        .approvals
-        .reserve_fresh(
-            &ReservationRequest::fresh(
-                &f.cx,
-                Digest::hash(b"cleanup-effect"),
-                Digest::hash(b"cleanup-args"),
-                now_ms().unwrap() + 30_000,
-            )
-            .unwrap(),
-        )
-        .unwrap();
+    // Use the existing trusted legacy Store fixture API. Production fresh
+    // identities stay Gate-private; this is metadata cleanup coverage, not a
+    // physical backend dispatch or a guest authorization proof.
+    let reservation = Reservation {
+        id: serde_json::from_value(serde_json::Value::String(format!(
+            "grant_{}",
+            Digest::hash(b"coordinated-cleanup-fixture").hex(),
+        )))
+        .unwrap(),
+        profile: f.profile.clone(),
+        principal: Principal::User,
+        request: f.cx.request().clone(),
+        effect: Digest::hash(b"cleanup-effect"),
+        args: Digest::hash(b"cleanup-args"),
+        epoch: f.cx.security_epoch(),
+        revision: Some(f.plan.clone()),
+        expires_unix_ms: now_ms().unwrap() + 30_000,
+        original_expires_unix_ms: None,
+        authority: None,
+    };
+    f.approvals.reserve(&reservation).unwrap();
     f.approvals.dispatch(&reservation.id).unwrap();
     let consumed = f
         .approvals
