@@ -1,6 +1,8 @@
 """Source contracts for supported runtime execution and portable CI coverage."""
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 import re
 import subprocess
@@ -95,6 +97,23 @@ class RuntimeRoutingTests(unittest.TestCase):
         self.assertIn("if: always()", retention)
         self.assertIn("uses: actions/upload-artifact@v4", retention)
         self.assertIn("/provider-registry-native/", retention)
+
+    def test_registry_consumer_pins_match_the_complete_original_receipt(self) -> None:
+        package = ROOT / "packs/local.provider-registry-rust"
+        raw = (package / "evidence/original-python/receipt.json").read_bytes()
+        receipt = json.loads(raw)
+        source = (package / "src/oracle_tests.rs").read_text()
+        for name, expected in (
+            ("PINNED_RECEIPT_SHA256", hashlib.sha256(raw).hexdigest()),
+            ("PINNED_SOURCE_MANIFEST_SHA256", receipt["source_manifest_sha256"]),
+        ):
+            declared = re.search(rf'const {name}: &str =\s*"([0-9a-f]{{64}})";', source)
+            self.assertIsNotNone(declared, name)
+            self.assertEqual(declared.group(1), expected, name)
+        count = re.search(r"const EXPECTED_SOURCE_FILES: usize = ([0-9]+);", source)
+        self.assertIsNotNone(count)
+        self.assertEqual(int(count.group(1)), len(receipt["source_manifest"]))
+        self.assertEqual(int(count.group(1)), receipt["limits"]["source_file_count"])
 
     def test_registry_only_packager_runs_python_and_actual_worker_tests(self) -> None:
         command = step(self.linux, "Python 3.13 asset packager regression")

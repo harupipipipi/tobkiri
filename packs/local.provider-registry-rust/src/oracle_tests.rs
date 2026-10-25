@@ -52,6 +52,7 @@ const CASE_SOURCE_PATH: &str = "tools/quality/python_provider_registry_compat/ca
 const MAX_RECEIPT_BYTES: usize = 8 * 1024 * 1024;
 const MAX_CASE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_SOURCE_BYTES: usize = 8 * 1024 * 1024;
+const EXPECTED_SOURCE_FILES: usize = 346;
 const EXPECTED_CASES: usize = 30;
 const EXPECTED_ACTIONS: usize = 85;
 const EXPECTED_INPUT_ACTIONS: usize = 86;
@@ -445,7 +446,10 @@ fn verify_receipt(receipt: &Value) -> Result<()> {
     let manifest = receipt["source_manifest"]
         .as_array()
         .context("source manifest missing")?;
-    ensure!(manifest.len() == 345, "source closure inventory changed");
+    ensure!(
+        manifest.len() == EXPECTED_SOURCE_FILES,
+        "source closure inventory changed"
+    );
     let canonical_manifest = serde_json::to_vec(&receipt["source_manifest"])?;
     ensure!(
         canonical_manifest.is_ascii(),
