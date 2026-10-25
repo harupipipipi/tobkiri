@@ -67,6 +67,7 @@ fn outcome_code(error: &StoreError) -> &'static str {
         | StoreError::Sql(_)
         | StoreError::CommitUnknown
         | StoreError::PendingDataMove
+        | StoreError::ProfileCommitUncertain { .. }
         | StoreError::Canon(_) => "unavailable",
         StoreError::Integrity(_) => "persistence",
         StoreError::Gate(error) => error.code(),
@@ -1359,6 +1360,21 @@ mod tests {
             "persistence"
         );
         assert_eq!(outcome_code(&StoreError::CommitUnknown), "unavailable");
+        for progress in [
+            crate::ProfileCommitProgress::EpochCommitAttempted,
+            crate::ProfileCommitProgress::EpochAdvanced,
+            crate::ProfileCommitProgress::HeadReplaced,
+        ] {
+            assert_eq!(
+                outcome_code(&StoreError::ProfileCommitUncertain {
+                    progress,
+                    source: Box::new(StoreError::Io(std::io::Error::other(
+                        "private native Profile failure",
+                    ))),
+                }),
+                "unavailable"
+            );
+        }
         assert_eq!(outcome_code(&StoreError::Quota), "limit-exceeded");
         assert_eq!(outcome_code(&StoreError::Denied("x".into())), "denied");
         assert_eq!(outcome_code(&StoreError::NotFound), "not-found");
