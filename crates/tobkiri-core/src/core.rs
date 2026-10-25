@@ -128,6 +128,9 @@ impl Core {
             // Expire only fully verified persisted deadlines before opening the
             // audit sink. A corrupt record is never guessed or repaired here.
             let recovered = (|| {
+                core.profiles
+                    .root
+                    .recover_profile_save(&profile, &core.control)?;
                 let approvals = Approvals::open(&core.profiles.root, &profile)?;
                 let now = u64::try_from(
                     SystemTime::now()
@@ -257,6 +260,7 @@ impl Core {
         if tokio::runtime::Handle::try_current().is_err() {
             return Err(CoreError::Gate(tobkiri_gate::GateError::Unavailable));
         }
+        self.profiles.root.recover_profile_save(id, &self.control)?;
         let (gate, _) = self.authority_for_id(id)?;
         self.admissions
             .install(id.clone(), gate)?
@@ -415,17 +419,55 @@ impl Core {
             )
             .await?;
         pack_approvals.push(user_approval);
-        // Every prompt succeeds before policy installation. Pack and User
-        // effects now share one transaction; the later head/epoch CAS still
-        // requires a durable whole-save decision and recovery protocol.
-        tobkiri_gate::PreparedPermissionApproval::commit_all(pack_approvals)?;
-        self.profiles.root.compare_and_swap_profile_head_at_epoch(
-            &profile.id,
-            expected.as_ref(),
-            cx.security_epoch(),
-            &digest,
-        )?;
+        let mut committed = None;
+        let result: Result<(), tobkiri_store::StoreError> =
+            tobkiri_gate::PreparedPermissionApproval::commit_all_with(pack_approvals, |batch| {
+                committed = Some(self.profiles.root.commit_prepared_profile(
+                    batch,
+                    expected.as_ref(),
+                    &digest,
+                )?);
+                Ok(())
+            });
+        if let Err(error) = result {
+            if let Some(receipt) = committed {
+                // The durable decision/head succeeded before audit delivery
+                // failed. Preserve its exact identity instead of implying a
+                // rejected/rolled-back save or authorizing another attempt.
+                return Err(receipt.delivery_uncertainty(error).into());
+            }
+            return Err(match error {
+                tobkiri_store::StoreError::Gate(error) => CoreError::Gate(error),
+                error => error.into(),
+            });
+        }
         Ok(digest)
+    }
+
+    /// Finish only an already-decided save without creating a Session or
+    /// replaying activation/approval effects. Native recovery may then inspect
+    /// the exact outcome; matching the current head alone is never a receipt.
+    pub fn recover_profile_save(
+        &self,
+        profile: &ProfileId,
+    ) -> Result<Option<tobkiri_store::ProfileSaveReceipt>, CoreError> {
+        Ok(self
+            .profiles
+            .root
+            .recover_profile_save(profile, &self.control)?)
+    }
+
+    /// Read the exact native outcome named by an uncertain save error. This
+    /// never claims that the saved revision is still current or permits replay.
+    pub fn profile_save_outcome(
+        &self,
+        profile: &ProfileId,
+        operation: &tobkiri_gate::GrantId,
+    ) -> Result<Option<tobkiri_store::ProfileSaveReceipt>, CoreError> {
+        Ok(self
+            .profiles
+            .root
+            .profile_save_outcome(profile, operation, &self.control)?)
     }
 
     /// Load a Profile and its current revision digest.

@@ -649,6 +649,152 @@ fn core_open_and_read_only_inspection_do_not_require_tokio() {
     assert!(!reopened.export_profile(&profile.id).unwrap().is_empty());
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn reopening_core_finishes_the_exact_decided_save_without_reprompting_or_replaying_permissions()
+ {
+    let (core, host, profile, dir) = fixture();
+    let _approvals = Approvals::open(&core.profiles.root, &profile.id).unwrap();
+    let raw = rusqlite::Connection::open_with_flags(
+        core.profiles
+            .root
+            .path()
+            .join(DataRoot::profile_relative(&profile.id, "approvals.sqlite").unwrap()),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE,
+    )
+    .unwrap();
+    raw.execute_batch(
+        "CREATE TRIGGER reject_save_settlement BEFORE UPDATE OF settled ON profile_save_decisions
+         BEGIN SELECT RAISE(ABORT,'injected outcome settlement failure'); END;",
+    )
+    .unwrap();
+    let error = core.save_profile(profile.clone(), None).await.unwrap_err();
+    let operation = error.profile_save_operation().unwrap().clone();
+    assert_eq!(error.profile_save_profile(), Some(&profile.id));
+    assert_eq!(
+        error.profile_commit_progress(),
+        Some(tobkiri_store::ProfileCommitProgress::HeadReplaced)
+    );
+    let committed = core.profile(&profile.id).unwrap().1;
+    assert!(
+        core.profile_save_outcome(&profile.id, &operation)
+            .unwrap()
+            .is_none()
+    );
+    assert!(core.start(&profile.id).await.is_err());
+    assert_eq!(host.prompts.lock().unwrap().len(), 2);
+    let count = |raw: &rusqlite::Connection| {
+        raw.query_row("SELECT COUNT(*) FROM permission_effects", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .unwrap()
+    };
+    assert_eq!(count(&raw), 2);
+    // An original legacy uncertainty has no coordinated identity. Do not
+    // accidentally attach a cleanup operation's unrelated identity to it.
+    let combined = CoreError::Cleanup {
+        original: Box::new(
+            tobkiri_store::StoreError::ProfileCommitUncertain {
+                progress: tobkiri_store::ProfileCommitProgress::EpochCommitAttempted,
+                operation: None,
+                source: Box::new(tobkiri_store::StoreError::Unavailable("legacy".into())),
+            }
+            .into(),
+        ),
+        cleanup: Box::new(error),
+    };
+    assert!(combined.profile_save_operation().is_none());
+    assert!(combined.profile_save_profile().is_none());
+    drop(core);
+    raw.execute_batch("DROP TRIGGER reject_save_settlement")
+        .unwrap();
+    let root = std::fs::canonicalize(dir.path()).unwrap().join("data");
+    let fresh_host = Arc::new(Host::default());
+    let reopened = Core::open(CoreConfig::for_test_data_root(root), fresh_host.clone()).unwrap();
+    let receipt = reopened
+        .profile_save_outcome(&profile.id, &operation)
+        .unwrap()
+        .unwrap();
+    assert_eq!(receipt.operation(), &operation);
+    assert_eq!(receipt.revision(), &committed);
+    assert_eq!(receipt.epoch(), 1);
+    assert_eq!(reopened.profile(&profile.id).unwrap().1, committed);
+    assert!(fresh_host.prompts.lock().unwrap().is_empty());
+    assert_eq!(count(&raw), 2);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn audit_delivery_failure_after_save_retains_the_exact_committed_outcome_for_cold_recovery() {
+    let (core, host, profile, dir) = fixture();
+    let _approvals = Approvals::open(&core.profiles.root, &profile.id).unwrap();
+    let _audit = AuditLog::open(&core.profiles.root, &profile.id, AuditQuota::default()).unwrap();
+    let raw = rusqlite::Connection::open_with_flags(
+        core.profiles
+            .root
+            .path()
+            .join(DataRoot::profile_relative(&profile.id, "audit.sqlite").unwrap()),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE,
+    )
+    .unwrap();
+    raw.execute_batch(
+        "CREATE TRIGGER reject_save_delivery BEFORE INSERT ON audit WHEN NEW.event_id IS NOT NULL
+         BEGIN SELECT RAISE(ABORT,'injected terminal delivery failure'); END;",
+    )
+    .unwrap();
+    let error = core.save_profile(profile.clone(), None).await.unwrap_err();
+    let operation = error.profile_save_operation().unwrap().clone();
+    assert_eq!(error.profile_save_profile(), Some(&profile.id));
+    assert_eq!(
+        error.profile_commit_progress(),
+        Some(tobkiri_store::ProfileCommitProgress::HeadReplaced)
+    );
+    let committed = core.profile(&profile.id).unwrap().1;
+    let receipt = core
+        .profile_save_outcome(&profile.id, &operation)
+        .unwrap()
+        .unwrap();
+    assert_eq!(receipt.revision(), &committed);
+    assert_eq!(host.prompts.lock().unwrap().len(), 2);
+    drop(receipt);
+    drop(core);
+    raw.execute_batch("DROP TRIGGER reject_save_delivery")
+        .unwrap();
+    let fresh_host = Arc::new(Host::default());
+    let reopened = Core::open(
+        CoreConfig::for_test_data_root(std::fs::canonicalize(dir.path()).unwrap().join("data")),
+        fresh_host.clone(),
+    )
+    .unwrap();
+    assert_eq!(
+        reopened
+            .profile_save_outcome(&profile.id, &operation)
+            .unwrap()
+            .unwrap()
+            .revision(),
+        &committed
+    );
+    let session = reopened.start(&profile.id).await.unwrap();
+    session.close().await.unwrap();
+    assert!(fresh_host.prompts.lock().unwrap().is_empty());
+    let raw_approvals = rusqlite::Connection::open_with_flags(
+        reopened
+            .profiles
+            .root
+            .path()
+            .join(DataRoot::profile_relative(&profile.id, "approvals.sqlite").unwrap()),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .unwrap();
+    assert_eq!(
+        raw_approvals
+            .query_row("SELECT COUNT(*) FROM permission_effects", [], |row| row
+                .get::<_, i64>(0))
+            .unwrap(),
+        2
+    );
+}
+
 #[tokio::test]
 async fn faulted_profile_remains_inspectable_without_gate_or_ready_barrier() {
     let (core, host, profile, dir) = fixture();

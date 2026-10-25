@@ -27,6 +27,24 @@ impl std::fmt::Display for ProfileCommitProgress {
 }
 
 impl StoreError {
+    pub fn profile_save_operation(&self) -> Option<&tobkiri_gate::GrantId> {
+        match self {
+            Self::ProfileCommitUncertain { operation, .. } => {
+                operation.as_ref().map(crate::ProfileSaveOperation::grant)
+            }
+            _ => None,
+        }
+    }
+
+    pub fn profile_save_profile(&self) -> Option<&tobkiri_canon::ids::ProfileId> {
+        match self {
+            Self::ProfileCommitUncertain { operation, .. } => {
+                operation.as_ref().map(crate::ProfileSaveOperation::profile)
+            }
+            _ => None,
+        }
+    }
+
     /// The last observed step for this failed Profile commit. This never means
     /// that the candidate is current, durable, approved or safe to replay.
     pub fn profile_commit_progress(&self) -> Option<ProfileCommitProgress> {

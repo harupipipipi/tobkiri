@@ -77,6 +77,20 @@ pub struct PermissionApprovalBatch<'a, 'source> {
     expires_unix_ms: u64,
 }
 impl PermissionApprovalBatch<'_, '_> {
+    /// Retain bounded synchronous commit bookkeeping under the original Core
+    /// account. This grants no permission and does not create another account.
+    pub fn reserve_metadata(&self, bytes: u64) -> Result<ControlReservation, GateError> {
+        let first = self
+            .approvals
+            .first()
+            .ok_or_else(|| GateError::Invalid("empty permission batch".into()))?;
+        first
+            .gate
+            .control
+            .reserve(ControlKind::Queue, bytes)
+            .map_err(Into::into)
+    }
+
     /// Recheck the same original cancellation and monotonic deadline even if
     /// acquiring the Store transaction waited for another writer.
     pub fn check_active(&self) -> Result<(), GateError> {
@@ -146,6 +160,24 @@ impl<'a> PreparedPermissionApproval<'a> {
     /// Audit delivery follows the durable terminals and can still fail after
     /// the batch committed. Neither result is a whole-Profile commit receipt.
     pub fn commit_all(approvals: Vec<Self>) -> Result<(), GateError> {
+        let gate = approvals
+            .first()
+            .ok_or_else(|| GateError::Invalid("empty permission batch".into()))?
+            .gate;
+        Self::commit_all_with(approvals, |batch| {
+            gate.approvals.commit_permission_batch(batch)
+        })
+    }
+
+    /// Coordinate the same exact native preparations with trusted Store's
+    /// whole-save operation. The callback receives only a borrowed sealed
+    /// batch; original reservations and custody remain retained here. Preserve
+    /// the caller's typed persistence uncertainty rather than erasing it into
+    /// a generic Gate error. No guest or UI may construct this batch.
+    pub fn commit_all_with<E: From<GateError>>(
+        approvals: Vec<Self>,
+        commit: impl FnOnce(&PermissionApprovalBatch<'_, '_>) -> Result<(), E>,
+    ) -> Result<(), E> {
         let first = approvals
             .first()
             .ok_or_else(|| GateError::Invalid("empty permission batch".into()))?;
@@ -153,12 +185,13 @@ impl<'a> PreparedPermissionApproval<'a> {
             if !std::ptr::eq(approval.gate, first.gate) || !std::ptr::eq(approval.cx, first.cx) {
                 return Err(GateError::Denied(
                     "permission batch has different native custody".into(),
-                ));
+                )
+                .into());
             }
         }
         first.cx.check_active()?;
         if first.gate.epoch(first.cx.profile())? != first.cx.security_epoch() {
-            return Err(GateError::StaleEpoch);
+            return Err(GateError::StaleEpoch.into());
         }
         for approval in &approvals {
             approval.cx.check_active()?;
@@ -168,13 +201,10 @@ impl<'a> PreparedPermissionApproval<'a> {
             approval.gate.approvals.dispatch(&approval.reservation.id)?;
         }
         first.cx.check_active()?;
-        first
-            .gate
-            .approvals
-            .commit_permission_batch(&PermissionApprovalBatch {
-                approvals: &approvals,
-                expires_unix_ms: deadline_unix_ms(first.cx.deadline())?,
-            })?;
+        commit(&PermissionApprovalBatch {
+            approvals: &approvals,
+            expires_unix_ms: deadline_unix_ms(first.cx.deadline())?,
+        })?;
         // Do not allocate a second terminal array. Original reservations retain
         // their already admitted terminal slots and audit custody throughout.
         for approval in &approvals {
@@ -185,7 +215,7 @@ impl<'a> PreparedPermissionApproval<'a> {
                 .ok_or(GateError::Unavailable)?;
             approval.gate.deliver_terminal(&terminal)?;
             if terminal.decision.outcome != Outcome::Succeeded {
-                return Err(GateError::Deadline);
+                return Err(GateError::Deadline.into());
             }
         }
         Ok(())

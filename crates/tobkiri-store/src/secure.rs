@@ -276,6 +276,41 @@ impl DataRoot {
     ) -> Result<(), StoreError> {
         self.write_atomic(Self::profile_relative(profile, file)?, bytes)
     }
+    /// Verify the already-written revision using a fixed streaming buffer and
+    /// the pinned Profile directory. The caller retains commit bookkeeping.
+    #[cfg(unix)]
+    pub(crate) fn verify_profile_revision(&self, digest: &Digest) -> Result<(), StoreError> {
+        use sha2::{Digest as _, Sha256};
+        let path = format!("revisions/{}.json", digest.hex());
+        let (parent, last) = self.parent(Path::new(&path), false)?;
+        let mut file = open_file(&parent, &last, false, false)?;
+        let metadata = file.metadata()?;
+        if !metadata.is_file() || metadata.len() > tobkiri_canon::MAX_BYTES as u64 {
+            return Err(StoreError::Quota);
+        }
+        let mut hash = Sha256::new();
+        let mut bytes = 0_usize;
+        let mut buffer = [0_u8; 64 * 1024];
+        loop {
+            let count = file.read(&mut buffer)?;
+            if count == 0 {
+                break;
+            }
+            bytes = bytes.checked_add(count).ok_or(StoreError::Quota)?;
+            if bytes > tobkiri_canon::MAX_BYTES {
+                return Err(StoreError::Quota);
+            }
+            hash.update(&buffer[..count]);
+        }
+        if format!("sha256:{}", hex::encode(hash.finalize())) != digest.as_str() {
+            return Err(StoreError::Integrity(
+                tobkiri_gate::IntegrityFaultCode::AuthorityDatabase,
+            ));
+        }
+        file.sync_all()?;
+        parent.sync_all()?;
+        Ok(())
+    }
     #[cfg(unix)]
     pub(crate) fn profile_lock(
         &self,
@@ -377,6 +412,7 @@ impl DataRoot {
                 },
             );
             written.map_err(|source| StoreError::ProfileCommitUncertain {
+                operation: None,
                 progress: if head_replaced {
                     crate::ProfileCommitProgress::HeadReplaced
                 } else {
@@ -408,8 +444,11 @@ impl DataRoot {
         )
         .map_err(|e| StoreError::Canon(e.to_string()))?;
         #[cfg(unix)]
-        let epoch =
-            crate::Approvals::open_pinned(&lock.directory, profile)?.security_epoch(profile)?;
+        let epoch = {
+            let approvals = crate::Approvals::open_pinned(&lock.directory, profile)?;
+            approvals.ensure_no_pending_profile_save()?;
+            approvals.security_epoch(profile)?
+        };
         #[cfg(not(unix))]
         let epoch = crate::Approvals::open(self, profile)?.security_epoch(profile)?;
         Ok((head, epoch))
@@ -625,7 +664,7 @@ impl DataRoot {
     pub fn write_atomic(&self, path: impl AsRef<Path>, bytes: &[u8]) -> Result<(), StoreError> {
         self.write_atomic_with_directory_sync(path.as_ref(), bytes, File::sync_all)
     }
-    fn write_atomic_with_directory_sync(
+    pub(crate) fn write_atomic_with_directory_sync(
         &self,
         path: &Path,
         bytes: &[u8],

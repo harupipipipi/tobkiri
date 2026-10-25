@@ -41,7 +41,7 @@ impl Approvals {
             }
             return Ok(existing); // Never replay the effect or replace an expiry winner.
         }
-        deny_faulted(tx)?;
+        deny_new_authority(tx)?;
         let body: Vec<u8> = tx
             .query_row(
                 "SELECT body FROM reservations WHERE id=?1 AND state='dispatched'",

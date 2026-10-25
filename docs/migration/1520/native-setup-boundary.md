@@ -74,61 +74,74 @@ permission grant is introduced by this design note.
 
 ## Failed configuration writes
 
-The Core save path now retains each original Pack/User approval in a private,
-move-only native preparation and installs policy only after all required
-approvals succeed. Refusal or cancellation during preparation abandons the
-original reservations without installing earlier policy rows. The preparation
-retains the original context, epoch, expiry and immutable terminal protocol;
-it supplies no UI configuration authority. Its array and retained policy
-capacities use the same CoreControl account. New real-Store regressions cover
-later User refusal, inert/drop behavior and cancellation/epoch rechecks; their
-actual Rust execution is required separately from source inspection.
+Core first verifies sources/compilation and obtains every Pack/User approval as
+an inert, move-only preparation through the original native approval path.
+Preparations retain their exact Gate/context, reservation, epoch and expiry;
+their array, owned policy capacities and inline candidate digests use the same
+CoreControl account. Refusal/cancellation before the decision installs no
+permissions. Neither a Pack UI attachment nor a receipt-shaped Kit response
+supplies User authority.
 
-After preparation, Pack and User permission effects now share one short SQLite
-transaction, including their effect digests, reservation consumption and
-immutable terminal decisions. A later policy or terminal INSERT failure rolls
-back that entire batch; it does not delete or restore shared approval rows.
-Gate accepts only preparations from its exact original Gate/context, and Store
-rechecks cancellation, epoch and expiry before publication. The original
-single-effect API retains its idempotent terminal behavior; there is no
-sequential fallback for Stores without batch support. The existing retention
-array includes the User preparation and charges its actual returned capacity.
+The save now holds the pinned Profile revision lock through one short SQL
+**decision**, filesystem head completion and outcome settlement. The decision
+atomically commits all policy effects, security epoch advancement, immutable
+terminal evidence and an immutable save record. It records exact ordered batch
+membership and a commitment to every original reservation/effect digest.
+Recovery validates the complete membership, not mutable policy rows or a scan
+of unrelated approvals sharing a request. Cancellation/expiry is rechecked
+after all metadata writes immediately before COMMIT.
 
-Real-Store regressions inject failure at the later User policy and terminal
-write, both with and without an independent existing Pack approval. They also
-inject cancellation during mutation and rejection of the batch COMMIT. Their
-actual native execution must be verified separately from source inspection.
-An ordinary COMMIT error is not itself proof of rollback; the injected hook's
-rejected transaction and its resulting database state are test observations.
+The filesystem head remains the selected-revision authority. A pending decision
+fences new authority admission, coherent policy/funding reads and ordinary head
+writers until that exact head is durably completed. Both policy getters select
+the pending predicate and row in one SQLite snapshot. Reservation/dispatch/
+consumption and direct policy writes check the fence inside their actual write
+transaction. Existing consumed-lease cleanup, terminal/ACK/audit delivery,
+expiry and later revocation remain available; revocation is never decreased by
+recovery. Integrity-only cleanup checks remain separate from the new-admission
+fence. Constructors, getters and cleanup callbacks never acquire a Profile
+flock or perform filesystem recovery; lock order stays Profile → pinned DB →
+SQLite.
 
-This is not a durable staged-permission journal or whole-save transaction.
-The permission batch still precedes the head/epoch CAS. A later audit-delivery
-or CAS failure, including an indeterminate COMMIT result, can still leave
-effects. A preserved old head is not proof of whole-save rollback, and residual
-rows alone do not prove that a rejected candidate can start. Whole-addition
-rollback under R2.8 remains open; deleting a snapshot of approval rows could
-erase another concurrent operation's legitimate approval and is not a repair.
+All authority database connections request and verify `synchronous=EXTRA` so
+later revocations and ACKs retain the decision's ordering. The coordinator also
+checks DELETE journal mode and explicitly synchronizes the pinned directory
+before head replacement and after outcome settlement. SQLite documents the
+[additional DELETE-journal directory synchronization](https://www.sqlite.org/pragma.html#pragma_synchronous).
+Revision verification streams a fixed 64 KiB buffer; commit/outcome custody
+retains 128 KiB from the original CoreControl, without a second account or a
+changed Pack/64 MiB catalog limit. Decision history is bounded by the existing
+authority metadata budget (100 MiB / 4 KiB = 25,600 records); each header is at
+most 2 KiB, and exact batch membership is bounded to 4,096 native terminal slots.
+These are implementation bounds, not physical power-cut or all-platform proof.
 
-The existing head CAS advances SQLite's security epoch before replacing the
-head file. A later error can therefore follow real mutation. Native callers
-now receive `ProfileCommitProgress` through `CoreError` and the fixed error
-code `profile-commit-uncertain`:
+A COMMIT error is indeterminate, never rollback success. Native
+`profile-commit-uncertain` errors retain the exact Profile **and** Store-minted
+User reservation identity, including failures from fresh Profile creation.
+Their display omits source text. `ProfileCommitProgress` still distinguishes
+an attempted epoch/decision COMMIT, observed advancement with unconfirmed head
+replacement, and observed head rename with unconfirmed later durability.
+Legacy head-only CAS errors have no coordinated operation identity.
 
-- `EpochCommitAttempted`: SQLite COMMIT was attempted, without asserting its
-  result or an acquired epoch.
-- `EpochAdvanced`: epoch advancement returned successfully, but head replacement
-  was not confirmed. A rename error does not prove that the old head remains.
-- `HeadReplaced`: the real rename succeeded, but directory durability was not
-  confirmed.
+Explicit Core recovery and Core startup/outer admission finish only an already
+decided operation: they validate the immutable record and exact candidate,
+accept only its recorded previous/new head, and complete the head/outcome.
+They do not repeat prompts, permission effects or epoch advancement. Corrupt
+batch evidence/candidates and unrelated heads remain fenced rather than being
+replaced or silently repaired. Native outcome lookup returns an opaque past
+save receipt with its own bookkeeping custody; matching the current head is
+not a receipt, and this receipt is not product activation or replay authority.
+Post-commit audit-delivery errors retain the same exact save identity.
 
-These facts describe that attempt's observed steps. They are neither a current
-snapshot nor a successful commit/activation receipt, and do not authorize a
-retry. In particular, finding the candidate as the current head cannot prove
-which concurrent operation committed it. The source error remains inspectable
-by trusted native code; the displayed error omits its free-form text. The
-existing transaction/write order, permission decisions and ordinary atomic
-file-write API are unchanged. This does not implement a durable whole-save
-transaction or wire the original Setup UI; both remain required work.
+New real-Store/Core regressions exercise late SQL failure, cancellation during
+decision insertion, rejected COMMIT, postrename directory failure, outcome
+settlement failure, restart, audit-delivery failure, concurrent revocation,
+independent same-request approval, corrupt/missing batch evidence, unrelated
+head and corrupt candidate. Source inspection and lightweight checks do not
+prove those new native executions; supported-platform CI is required. No
+whole-save/product acceptance is closed solely by this implementation. Full
+original Setup receipt/recovery/handover, source lifecycle and native GUI
+integration still require their own exact end-to-end evidence.
 
 Before product activation, verify actual signed distribution bootstrap and the
 complete original Setup/recovery/handover, Launch approval, provider settings

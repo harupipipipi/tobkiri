@@ -11,6 +11,7 @@ fn native_profile_commit_errors_retain_uncertainty_without_source_text() {
         ProfileCommitProgress::HeadReplaced,
     ] {
         let store = StoreError::ProfileCommitUncertain {
+            operation: None,
             progress,
             source: Box::new(StoreError::Io(std::io::Error::other(
                 "private-configuration-source",

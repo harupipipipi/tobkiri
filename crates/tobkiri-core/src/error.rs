@@ -42,6 +42,33 @@ impl From<tobkiri_gate::CoreControlError> for CoreError {
 }
 
 impl CoreError {
+    pub fn profile_save_profile(&self) -> Option<&tobkiri_canon::ids::ProfileId> {
+        match self {
+            Self::Store(error) => error.profile_save_profile(),
+            Self::Cleanup { original, cleanup } => {
+                if original.profile_commit_progress().is_some() {
+                    original.profile_save_profile()
+                } else {
+                    cleanup.profile_save_profile()
+                }
+            }
+            _ => None,
+        }
+    }
+    pub fn profile_save_operation(&self) -> Option<&tobkiri_gate::GrantId> {
+        match self {
+            Self::Store(error) => error.profile_save_operation(),
+            Self::Cleanup { original, cleanup } => {
+                if original.profile_commit_progress().is_some() {
+                    original.profile_save_operation()
+                } else {
+                    cleanup.profile_save_operation()
+                }
+            }
+            _ => None,
+        }
+    }
+
     /// Preserve Profile commit uncertainty at the native facade boundary.
     /// The original error has precedence if cleanup also reports uncertainty;
     /// this observation is not an aggregate commit/rollback outcome.
@@ -63,6 +90,7 @@ mod tests {
 
     fn uncertain(progress: ProfileCommitProgress) -> CoreError {
         tobkiri_store::StoreError::ProfileCommitUncertain {
+            operation: None,
             progress,
             source: Box::new(tobkiri_store::StoreError::Io(std::io::Error::other(
                 "private-source-path-must-not-be-rendered",

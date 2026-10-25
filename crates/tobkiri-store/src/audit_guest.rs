@@ -1367,6 +1367,7 @@ mod tests {
         ] {
             assert_eq!(
                 outcome_code(&StoreError::ProfileCommitUncertain {
+                    operation: None,
                     progress,
                     source: Box::new(StoreError::Io(std::io::Error::other(
                         "private native Profile failure",

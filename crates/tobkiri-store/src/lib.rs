@@ -50,6 +50,9 @@ pub enum StoreError {
     #[error("profile-commit-uncertain ({progress}); reconcile durable state before retrying")]
     ProfileCommitUncertain {
         progress: ProfileCommitProgress,
+        /// Exact native save identity, when a coordinated decision was tried.
+        /// This identifies an outcome to inspect; it grants no replay authority.
+        operation: Option<ProfileSaveOperation>,
         #[source]
         source: Box<StoreError>,
     },

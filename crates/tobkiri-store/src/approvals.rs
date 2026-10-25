@@ -14,6 +14,9 @@ use tobkiri_gate::{
 
 #[path = "permission_commit.rs"]
 mod permission_commit;
+#[path = "profile_save.rs"]
+mod profile_save;
+pub use profile_save::{ProfileSaveOperation, ProfileSaveReceipt};
 
 const MAX_TERMINAL_BYTES: i64 = 100 * 1024 * 1024;
 const MAX_TERMINAL_ENTRY_BYTES: i64 = 4096;
@@ -57,6 +60,17 @@ impl Approvals {
         path: &std::path::Path,
     ) -> Result<Self, StoreError> {
         let (mut connection, directory) = root.database(path)?;
+        // Authority decisions, later revocations and terminal ACKs must retain
+        // their ordering across restart. DELETE/FULL alone can lose the last
+        // commit after power loss; EXTRA also syncs journal unlink metadata.
+        connection.pragma_update(None, "synchronous", "EXTRA")?;
+        let synchronous: i64 =
+            connection.pragma_query_value(None, "synchronous", |row| row.get(0))?;
+        if synchronous != 3 {
+            return Err(StoreError::Unavailable(
+                "durable authority metadata unavailable".into(),
+            ));
+        }
         let initialization =
             connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         initialization.execute_batch("CREATE TABLE IF NOT EXISTS security_epoch(singleton INTEGER PRIMARY KEY CHECK(singleton=1),epoch INTEGER NOT NULL); INSERT OR IGNORE INTO security_epoch(singleton,epoch) VALUES(1,0); CREATE TABLE IF NOT EXISTS permissions(pack TEXT NOT NULL, hash TEXT NOT NULL, body BLOB NOT NULL, PRIMARY KEY(pack,hash)); CREATE TABLE IF NOT EXISTS reservations(id TEXT PRIMARY KEY, body BLOB NOT NULL, state TEXT NOT NULL CHECK(state IN ('pending','dispatched','consumed','finished')), outcome BLOB,expires INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS public_writers(writer TEXT NOT NULL, owner TEXT NOT NULL, store TEXT NOT NULL, PRIMARY KEY(writer,owner,store)); CREATE TABLE IF NOT EXISTS paired_devices(device TEXT PRIMARY KEY,key BLOB NOT NULL); CREATE TABLE IF NOT EXISTS attestation_nonces(device TEXT NOT NULL,nonce TEXT NOT NULL,expires INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(device,nonce));")?;
@@ -126,6 +140,7 @@ impl Approvals {
         if broken {
             return Err(StoreError::Integrity(IntegrityFaultCode::AuthorityDatabase));
         }
+        profile_save::initialize(&initialization)?;
         initialization.commit()?;
         connection.set_prepared_statement_cache_capacity(AUTHORITY_STATEMENT_CACHE);
         Ok(Self {
@@ -134,6 +149,11 @@ impl Approvals {
             _directory: directory,
         })
     }
+    pub(crate) fn ensure_no_pending_profile_save(&self) -> Result<(), StoreError> {
+        let conn = self.connection.lock().map_err(persistence)?;
+        Ok(profile_save::deny_pending(&conn)?)
+    }
+
     fn local(&self, profile: &ProfileId) -> Result<(), GateError> {
         if *profile == self.profile {
             Ok(())
@@ -154,6 +174,7 @@ impl Approvals {
         let tx = conn
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(persistence)?;
+        profile_save::deny_pending(&tx)?;
         let epoch: u64 = tx
             .query_row(
                 "SELECT epoch FROM security_epoch WHERE singleton=1",
@@ -177,6 +198,7 @@ impl Approvals {
         .map_err(persistence)?;
         tx.commit()
             .map_err(|source| StoreError::ProfileCommitUncertain {
+                operation: None,
                 progress: crate::ProfileCommitProgress::EpochCommitAttempted,
                 source: Box::new(StoreError::Sql(source)),
             })?;
@@ -234,7 +256,7 @@ impl Approvals {
         let tx = conn
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(persistence)?;
-        deny_faulted(&tx)?;
+        deny_new_authority(&tx)?;
         let body: Vec<u8> = tx
             .query_row(
                 "SELECT body FROM reservations WHERE id=?1 AND state='pending'",
@@ -349,7 +371,7 @@ impl Approvals {
                 "future terminal payload cannot be retained".into(),
             ));
         }
-        deny_faulted(tx)?;
+        deny_new_authority(tx)?;
         let (active, pending, retained): (i64,i64,i64) = tx.query_row("SELECT (SELECT COUNT(*) FROM reservations WHERE state!='finished'),COALESCE(SUM(CASE WHEN delivered=0 THEN 1 ELSE 0 END),0),COUNT(*) FROM terminal_outbox", [], |row|Ok((row.get(0)?,row.get(1)?,row.get(2)?))).map_err(persistence)?;
         let page_size: i64 = tx
             .query_row("PRAGMA page_size", [], |row| row.get(0))
@@ -398,17 +420,24 @@ impl Approvals {
         profile: &ProfileId,
         id: &GrantId,
     ) -> Result<Option<TerminalDelivery>, GateError> {
+        Self::terminal_by_id(tx, profile, id.as_str())
+    }
+    fn terminal_by_id(
+        tx: &rusqlite::Transaction<'_>,
+        profile: &ProfileId,
+        id: &str,
+    ) -> Result<Option<TerminalDelivery>, GateError> {
         let row: Option<(String, Vec<u8>, bool)> = tx
             .query_row(
                 "SELECT CASE WHEN length(event_id)<=128 THEN event_id ELSE '' END,CASE WHEN length(body)<=4096 THEN body ELSE x'' END,delivered FROM terminal_outbox WHERE grant_id=?1",
-                [id.as_str()],
+                [id],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .optional()
             .map_err(persistence)?;
         row.map(|(event_id, body, acknowledged)| {
             Ok(TerminalDelivery {
-                decision: validated_terminal(profile, id.as_str(), &event_id, &body)?,
+                decision: validated_terminal(profile, id, &event_id, &body)?,
                 acknowledged,
             })
         })
@@ -724,6 +753,31 @@ fn latch(conn: &rusqlite::Connection, code: IntegrityFaultCode) -> Result<(), Ga
     .map_err(persistence)?;
     Ok(())
 }
+fn admitted_status(conn: &rusqlite::Connection) -> Result<AdmissionStatus, GateError> {
+    let mut statement = conn
+        .prepare_cached(
+            "SELECT (SELECT code FROM authority_fault WHERE singleton=1),
+                EXISTS(SELECT 1 FROM profile_save_decisions WHERE settled=0)",
+        )
+        .map_err(persistence)?;
+    let (code, pending): (Option<Vec<u8>>, bool) = statement
+        .query_row([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .map_err(persistence)?;
+    if let Some(code) = code {
+        return Ok(AdmissionStatus::IntegrityFault {
+            code: decode(&code)
+                .map_err(|_| GateError::Integrity(IntegrityFaultCode::AuthorityDatabase))?,
+        });
+    }
+    profile_save::check_pending(pending)?;
+    Ok(AdmissionStatus::Allowed)
+}
+fn deny_new_authority(conn: &rusqlite::Connection) -> Result<(), GateError> {
+    match admitted_status(conn)? {
+        AdmissionStatus::Allowed => Ok(()),
+        AdmissionStatus::IntegrityFault { code } => Err(GateError::Integrity(code)),
+    }
+}
 fn deny_faulted(conn: &rusqlite::Connection) -> Result<(), GateError> {
     match status(conn)? {
         AdmissionStatus::Allowed => Ok(()),
@@ -734,7 +788,7 @@ impl ApprovalStore for Approvals {
     fn admission_status(&self, profile: &ProfileId) -> Result<AdmissionStatus, GateError> {
         self.local(profile)?;
         let conn = self.connection.lock().map_err(persistence)?;
-        status(&conn)
+        admitted_status(&conn)
     }
     fn latch_integrity(
         &self,
@@ -788,14 +842,22 @@ impl ApprovalStore for Approvals {
     ) -> Result<Option<PermissionSet>, GateError> {
         self.local(profile)?;
         let conn = self.connection.lock().map_err(persistence)?;
+        // Both subqueries share this actual SQLite read snapshot. A separate
+        // preliminary status read would race another connection's decision.
         let mut statement = conn
-            .prepare_cached("SELECT body FROM permissions WHERE pack=?1 AND hash=?2")
+            .prepare_cached(
+                "SELECT EXISTS(SELECT 1 FROM profile_save_decisions WHERE settled=0),
+                    (SELECT body FROM permissions WHERE pack=?1 AND hash=?2)",
+            )
             .map_err(persistence)?;
-        let body: Option<Vec<u8>> = statement
-            .query_row(params![pack.as_str(), hash.as_str()], |r| r.get(0))
-            .optional()
+        let (pending, body): (bool, Option<Vec<u8>>) = statement
+            .query_row(params![pack.as_str(), hash.as_str()], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
             .map_err(persistence)?;
-        body.map(|b| decode(&b).map_err(persistence)).transpose()
+        profile_save::check_pending(pending)?;
+        body.map(|bytes| decode(&bytes).map_err(persistence))
+            .transpose()
     }
     fn set_permissions(
         &self,
@@ -806,9 +868,13 @@ impl ApprovalStore for Approvals {
     ) -> Result<(), GateError> {
         self.local(profile)?;
         let body = canonical(p).map_err(persistence)?;
-        let conn = self.connection.lock().map_err(persistence)?;
-        conn.execute("INSERT INTO permissions(pack,hash,body) VALUES(?1,?2,?3) ON CONFLICT(pack,hash) DO UPDATE SET body=excluded.body",params![pack.as_str(),hash.as_str(),body]).map_err(persistence)?;
-        Ok(())
+        let mut conn = self.connection.lock().map_err(persistence)?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(persistence)?;
+        profile_save::deny_pending(&tx)?;
+        tx.execute("INSERT INTO permissions(pack,hash,body) VALUES(?1,?2,?3) ON CONFLICT(pack,hash) DO UPDATE SET body=excluded.body",params![pack.as_str(),hash.as_str(),body]).map_err(persistence)?;
+        tx.commit().map_err(persistence)
     }
     fn user_permissions(
         &self,
@@ -819,20 +885,21 @@ impl ApprovalStore for Approvals {
     ) -> Result<Option<PermissionSet>, GateError> {
         self.local(profile)?;
         let conn = self.connection.lock().map_err(persistence)?;
-        let mut statement = conn
-            .prepare_cached("SELECT body FROM user_approvals WHERE profile_hash=?1 AND revision=?2 AND epoch=?3")
-            .map_err(persistence)?;
-        let body: Option<Vec<u8>> = statement
+        let mut statement = conn.prepare_cached(
+            "SELECT EXISTS(SELECT 1 FROM profile_save_decisions WHERE settled=0),
+                    (SELECT body FROM user_approvals WHERE profile_hash=?1 AND revision=?2 AND epoch=?3)",
+        ).map_err(persistence)?;
+        let (pending, body): (bool, Option<Vec<u8>>) = statement
             .query_row(
                 params![
                     profile_hash.as_str(),
                     revision.as_str(),
                     i64::try_from(epoch).map_err(persistence)?
                 ],
-                |r| r.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
-            .optional()
             .map_err(persistence)?;
+        profile_save::check_pending(pending)?;
         body.map(|bytes| decode(&bytes).map_err(persistence))
             .transpose()
     }
@@ -845,9 +912,13 @@ impl ApprovalStore for Approvals {
         permissions: &PermissionSet,
     ) -> Result<(), GateError> {
         self.local(profile)?;
-        let conn = self.connection.lock().map_err(persistence)?;
-        conn.execute("INSERT INTO user_approvals(profile_hash,revision,epoch,body) VALUES(?1,?2,?3,?4) ON CONFLICT(profile_hash,revision,epoch) DO UPDATE SET body=excluded.body",params![profile_hash.as_str(),revision.as_str(),i64::try_from(epoch).map_err(persistence)?,canonical(permissions).map_err(persistence)?]).map_err(persistence)?;
-        Ok(())
+        let mut conn = self.connection.lock().map_err(persistence)?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(persistence)?;
+        profile_save::deny_pending(&tx)?;
+        tx.execute("INSERT INTO user_approvals(profile_hash,revision,epoch,body) VALUES(?1,?2,?3,?4) ON CONFLICT(profile_hash,revision,epoch) DO UPDATE SET body=excluded.body",params![profile_hash.as_str(),revision.as_str(),i64::try_from(epoch).map_err(persistence)?,canonical(permissions).map_err(persistence)?]).map_err(persistence)?;
+        tx.commit().map_err(persistence)
     }
     fn reserve(&self, r: &Reservation) -> Result<(), GateError> {
         self.local(&r.profile)?;
@@ -881,7 +952,7 @@ impl ApprovalStore for Approvals {
             let tx = conn
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(persistence)?;
-            deny_faulted(&tx)?;
+            deny_new_authority(&tx)?;
             let existing: Option<String> = tx
                 .query_row(
                     "SELECT grant_id FROM reservation_identities WHERE nonce=?1",
@@ -997,7 +1068,7 @@ impl ApprovalStore for Approvals {
             let tx = conn
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(persistence)?;
-            deny_faulted(&tx)?;
+            deny_new_authority(&tx)?;
             let epoch: u64 = tx
                 .query_row(
                     "SELECT epoch FROM security_epoch WHERE singleton=1",
