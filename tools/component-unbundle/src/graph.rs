@@ -486,7 +486,7 @@ pub fn observe_detailed(input: &[u8], full_modules: &[usize]) -> Result<Vec<u8>>
                     let important = [
                         "Call",
                         "ReturnCall",
-                        "GlobalSet",
+                        "Global",
                         "TableSet",
                         "TableInit",
                         "TableCopy",
