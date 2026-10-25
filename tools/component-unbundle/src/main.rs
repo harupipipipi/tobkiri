@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //! Build-time transformation only; no runtime admission or authority is granted.
+mod graph;
 mod upstream;
 
 use anyhow::{Result, bail};
@@ -31,7 +32,9 @@ fn write_bundle(mut writer: impl Write, bundle: &upstream::Bundle<'_>) -> Result
 }
 
 fn main() -> Result<()> {
-    if std::env::args_os().count() != 1 {
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    let diagnostic = args.len() == 1 && args[0] == "--diagnostic-graph";
+    if !args.is_empty() && !diagnostic {
         bail!("expected bounded component bytes on stdin; no arguments");
     }
     let mut input = Vec::new();
@@ -39,6 +42,10 @@ fn main() -> Result<()> {
         .lock()
         .take(upstream::INPUT_LIMIT as u64 + 1)
         .read_to_end(&mut input)?;
+    if diagnostic {
+        io::stdout().lock().write_all(&graph::observe(&input)?)?;
+        return Ok(());
+    }
     let bundle = upstream::unbundle(&input, THRESHOLD)?;
     write_bundle(io::stdout().lock(), &bundle)
 }
