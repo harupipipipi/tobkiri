@@ -16,6 +16,9 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'crates/**'
+      # This exact module is compiled only under cfg(test). The complete native
+      # workspace job still executes it; it changes no app or fixture program.
+      - '!crates/tobkiri-core/src/core_tests.rs'
   workflow_dispatch:
 
 permissions:

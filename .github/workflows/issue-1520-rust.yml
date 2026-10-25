@@ -164,6 +164,10 @@ jobs:
           cache-dependency-path: sdk/js/package-lock.json
       - name: Native Pack UI source and CSP contract regression
         run: node --experimental-vm-modules --test packs/native-acceptance/verify-source.test.mjs
+      - name: Native IPC controller and root-script regressions
+        run: |
+          python3 -B tools/native-ipc-probe/test_run.py
+          node --test tools/native-ipc-probe/root.test.cjs
       - name: Install locked JS guest SDK build dependencies
         working-directory: sdk/js
         run: npm ci --ignore-scripts

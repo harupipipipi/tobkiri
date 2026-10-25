@@ -386,7 +386,7 @@ fn permission_preparation_fixture(
 }
 
 #[tokio::test]
-async fn prepared_permissions_are_inert_and_drop_releases_their_control_custody() {
+async fn prepared_permissions_are_inert_and_drop_preserves_an_independent_approval() {
     let (core, host, profile, _dir) = fixture();
     let (gate, cx, packs) = permission_preparation_fixture(&core, &profile);
     let approvals = Approvals::open(&core.profiles.root, &profile.id).unwrap();
@@ -407,23 +407,35 @@ async fn prepared_permissions_are_inert_and_drop_releases_their_control_custody(
         before.count(tobkiri_gate::ControlKind::Frame) + 1
     );
     assert!(core.control.usage().bytes >= before.bytes + 4096);
-    drop(prepared);
-    assert_eq!(core.control.usage().bytes, before.bytes);
-    assert_eq!(
-        core.control.usage().count(tobkiri_gate::ControlKind::Frame),
-        before.count(tobkiri_gate::ControlKind::Frame)
-    );
-    // Standalone approval still uses the same immediate commit path and must
-    // obtain a new native decision after the abandoned preparation.
-    gate.approve_pack_permissions(&cx, &packs[0].manifest.id, None, &packs[0].hash)
+    // Another ordinary native request may approve the same Pack while the
+    // first preparation is still pending. Abandoning the first must not undo it.
+    let independent = core
+        .user_context(&profile, &gate)
+        .unwrap()
+        .with_revision(cx.revision().unwrap().clone());
+    assert_ne!(independent.request(), cx.request());
+    gate.approve_pack_permissions(&independent, &packs[0].manifest.id, None, &packs[0].hash)
         .await
         .unwrap();
+    drop(independent);
     assert_eq!(host.prompts.lock().unwrap().len(), 2);
     assert!(
         approvals
             .permissions(&profile.id, &packs[0].manifest.id, &packs[0].hash)
             .unwrap()
             .is_some()
+    );
+    drop(prepared);
+    assert!(
+        approvals
+            .permissions(&profile.id, &packs[0].manifest.id, &packs[0].hash)
+            .unwrap()
+            .is_some()
+    );
+    assert_eq!(core.control.usage().bytes, before.bytes);
+    assert_eq!(
+        core.control.usage().count(tobkiri_gate::ControlKind::Frame),
+        before.count(tobkiri_gate::ControlKind::Frame)
     );
 }
 
