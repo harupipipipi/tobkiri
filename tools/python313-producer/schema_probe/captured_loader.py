@@ -227,6 +227,7 @@ class Finder(importlib.abc.MetaPathFinder):
         self.distributions = MappingProxyType(dict(distributions))
         self.loaded = []
         self.metadata_queries = 0
+        self.sealed = False
         for name, directory in self.distributions.items():
             if name != normalized(name) or not self.tree.path(directory).is_dir():
                 raise ValueError("invalid captured distribution metadata directory")
@@ -249,7 +250,19 @@ class Finder(importlib.abc.MetaPathFinder):
                 if package:
                     spec.submodule_search_locations = [self.root + "/" + relative]
                 return spec
+        if self.sealed and (
+            importlib.machinery.BuiltinImporter.find_spec(fullname) is None
+            and importlib.machinery.FrozenImporter.find_spec(fullname) is None
+        ):
+            raise ModuleNotFoundError(
+                "lazy module is outside the captured source closure: " + fullname,
+                name=fullname,
+            )
         return None
+
+    def seal(self):
+        """Refuse unknown late source before any filesystem import fallback."""
+        self.sealed = True
 
     def find_distributions(self, context=None):
         context = context or metadata.DistributionFinder.Context()

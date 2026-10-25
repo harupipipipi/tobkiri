@@ -27,12 +27,37 @@ _BEFORE = {
     "metadata_queries": _FINDER.metadata_queries,
     "modules": len(_FINDER.loaded),
 }
+_FINDER.seal()
 
 
 class Probe(wit_world.exports.Probe):
     def run(self) -> str:
         """Use original validation and first late resource/metadata/module accesses."""
-        observation = exercise()
+        try:
+            observation = exercise()
+        except Exception as error:
+            # Keep the original failure visible as DATA; the driver must reject it.
+            frames, current = [], error.__traceback__
+            while current is not None and len(frames) < 32:
+                frames.append(
+                    {
+                        "module": current.tb_frame.f_globals.get("__name__"),
+                        "function": current.tb_frame.f_code.co_name,
+                        "line": current.tb_lineno,
+                    }
+                )
+                current = current.tb_next
+            return json.dumps(
+                {
+                    "exception": {
+                        "type": type(error).__module__ + "." + type(error).__qualname__,
+                        "message": str(error),
+                        "frames": frames,
+                    }
+                },
+                ensure_ascii=True,
+                sort_keys=True,
+            )
         return json.dumps(
             {
                 "target": _TARGET,

@@ -124,6 +124,16 @@ class CapturedLoaderTests(unittest.TestCase):
                 finder.tree.accounted_bytes, sum(map(len, finder.tree.files.values()))
             )
 
+    def test_sealed_unknown_import_refuses_before_filesystem_fallback(self):
+        with captured() as finder:
+            finder.seal()
+            with patch("os.stat", side_effect=AssertionError("filesystem fallback")):
+                with self.assertRaisesRegex(ModuleNotFoundError, "source closure"):
+                    importlib.import_module("not_a_captured_dependency_fixture")
+                self.assertEqual(
+                    importlib.import_module("schema_fixture.lazy").ANSWER, 42
+                )
+
     def test_full_prefix_bytes_are_charged_before_index_expansion(self):
         path = "/".join(["x" * 64] * 32) + "/value"
         with patch.object(loader, "MAX_TREE", 8192):

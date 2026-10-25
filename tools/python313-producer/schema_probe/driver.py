@@ -264,6 +264,11 @@ def main():
     actual = observe(stage / "outer.wasm")
     (work / "wasm-observation.json").write_text(json.dumps(actual, indent=2) + "\n")
     result = actual["result"]
+    if "exception" in result:
+        raise ValueError(
+            "original schema operation failed: "
+            + json.dumps(result["exception"])[:3000]
+        )
     target, io = result["target"], result["runtime_io"]
     if (
         target["python"] != [3, 13, 16]
