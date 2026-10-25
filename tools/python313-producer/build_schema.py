@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -596,6 +597,36 @@ def verify_inputs(
     }
 
 
+def _validate_schema_exception_diagnostics(
+    enabled: bool,
+    *,
+    allow_ui_wall_clock: bool,
+    allow_ui_monotonic_clock: bool,
+    allow_inactive_ui_libc: bool,
+    allow_ci_link_trace: bool,
+    predecessor_paths: tuple[Path | None, ...],
+) -> None:
+    """Restrict diagnostics to the complete inactive candidate input set."""
+    if type(enabled) is not bool:
+        raise ValueError("explicit boolean schema exception diagnostics mode required")
+    if enabled and not (
+        all(
+            type(value) is bool and value
+            for value in (
+                allow_ui_wall_clock,
+                allow_ui_monotonic_clock,
+                allow_inactive_ui_libc,
+                allow_ci_link_trace,
+            )
+        )
+        and len(predecessor_paths) == 4
+        and all(isinstance(path, Path) for path in predecessor_paths)
+    ):
+        raise ValueError(
+            "schema exception diagnostics require the complete inactive candidate"
+        )
+
+
 def run(
     inputs: Path,
     producer: Path,
@@ -608,6 +639,7 @@ def run(
     allow_ui_monotonic_clock: bool = False,
     allow_inactive_ui_libc: bool = False,
     allow_ci_link_trace: bool = False,
+    schema_exception_diagnostics: bool = False,
     poll_bundle: Path | None = None,
     poll_authentication: Path | None = None,
     poll_reference_report: Path | None = None,
@@ -637,6 +669,14 @@ def run(
             )
     elif any(path is not None for path in predecessor_paths):
         raise ValueError("poll predecessor inputs require their exact explicit opt-in")
+    _validate_schema_exception_diagnostics(
+        schema_exception_diagnostics,
+        allow_ui_wall_clock=allow_ui_wall_clock,
+        allow_ui_monotonic_clock=allow_ui_monotonic_clock,
+        allow_inactive_ui_libc=allow_inactive_ui_libc,
+        allow_ci_link_trace=allow_ci_link_trace,
+        predecessor_paths=predecessor_paths,
+    )
     if (
         not destination.is_absolute()
         or destination.parent.resolve() != destination.parent
@@ -700,6 +740,11 @@ def run(
     }
     if allow_ci_link_trace:
         control_data["allow_ci_link_trace"] = True
+    if schema_exception_diagnostics:
+        control_data.update(
+            allow_inactive_ui_libc=True,
+            schema_exception_diagnostics=True,
+        )
     control.write_text(json.dumps(control_data, indent=2) + "\n")
     composition = HERE.parents[1] / "sdk/python/composition.py"
     control_identity = fingerprint(control)
@@ -738,6 +783,14 @@ def run(
             final_provider_resolution_verified=False,
             cold_schema_verified=False,
         )
+    if schema_exception_diagnostics:
+        report["schema_exception_diagnostics"] = {
+            "enabled": True,
+            "diagnostic_only": True,
+            "original_failure_must_remain_failure": True,
+            "production_enabled": False,
+            "provenance_available": False,
+        }
     try:
         native_recipe = destination / "native.sh"
         native_recipe.write_text(
@@ -868,6 +921,48 @@ def run(
         report["outcome"] = "failed"
         raise
     finally:
+        if schema_exception_diagnostics:
+            diagnostic_report = report["schema_exception_diagnostics"]
+            provenance_path = work / "schema-exception-diagnostics.json"
+            try:
+                if provenance_path.is_symlink() or not provenance_path.is_file():
+                    raise ValueError("diagnostic app provenance file is unavailable")
+                provenance_identity = fingerprint(provenance_path, 512 * 1024)
+                with provenance_path.open("rb") as stream:
+                    provenance_raw = stream.read(512 * 1024 + 1)
+                if len(provenance_raw) > 512 * 1024:
+                    raise ValueError("diagnostic app provenance exceeds its bound")
+                if (
+                    len(provenance_raw) != provenance_identity["bytes"]
+                    or hashlib.sha256(provenance_raw).hexdigest()
+                    != provenance_identity["sha256"]
+                    or fingerprint(provenance_path, 512 * 1024)
+                    != provenance_identity
+                ):
+                    raise ValueError("diagnostic app provenance changed while read")
+                provenance = json.loads(provenance_raw)
+                if (
+                    not isinstance(provenance, dict)
+                    or provenance.get("format")
+                    != "tobkiri.schema-exception-diagnostic-app/1"
+                    or provenance.get("diagnostic_only") is not True
+                    or provenance.get("production_enabled") is not False
+                ):
+                    raise ValueError("diagnostic app provenance shape differs")
+                diagnostic_report.update(
+                    provenance=provenance,
+                    provenance_file=provenance_identity,
+                    provenance_available=True,
+                )
+                observation_path = work / "wasm-observation.json"
+                if observation_path.is_file() and not observation_path.is_symlink():
+                    diagnostic_report["wasm_observation"] = fingerprint(
+                        observation_path, 4 * 1024 * 1024
+                    )
+            except BaseException:
+                # Do not replace the original build or guest exception with a
+                # secondary failure while reading optional diagnostic evidence.
+                diagnostic_report["provenance_available"] = False
         (destination / "schema-build.json").write_text(
             json.dumps(report, indent=2) + "\n"
         )
@@ -881,6 +976,7 @@ if __name__ == "__main__":
     parser.add_argument("--allow-ui-monotonic-clock", action="store_true")
     parser.add_argument("--allow-inactive-ui-libc", action="store_true")
     parser.add_argument("--allow-ci-link-trace", action="store_true")
+    parser.add_argument("--schema-exception-diagnostics", action="store_true")
     for name in (
         "poll-bundle",
         "poll-authentication",

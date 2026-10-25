@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+from types import ModuleType
 
 sys.path[:0] = ["/validation-deps", "/", "/probe-source"]
 INTERFACE = "tobkiri-ui:schema-probe/probe@1.0.0"
@@ -46,11 +47,45 @@ def read(
     return raw
 
 
+def load_exception_diagnostics(
+    path: Path, expected_source: bytes
+) -> ModuleType:
+    """Execute only the exact captured helper source at its supplied path."""
+    import importlib.util
+
+    source = read(path)
+    if source != expected_source:
+        raise ValueError("captured schema diagnostic helper changed")
+    spec = importlib.util.spec_from_file_location(
+        "_tobkiri_schema_exception_diagnostics", path
+    )
+    if spec is None or spec.loader is None:
+        raise ValueError("captured schema diagnostic helper loader unavailable")
+    module = importlib.util.module_from_spec(spec)
+    # Compile these exact read-only bytes instead of allowing a cached pyc or
+    # adding the helper directory to sys.path in isolated mode.
+    exec(compile(source, str(path), "exec"), module.__dict__)
+    return module
+
+
 def stage_inputs(stage: Path, control: dict) -> dict:
     """Capture exact package/stdlib source and separate extension provenance."""
     files, distributions = {}, {}
     wrapper = None
     declared, members = 0, 0
+    diagnostic_mode = control.get("schema_exception_diagnostics", False)
+    if type(diagnostic_mode) is not bool:
+        raise ValueError("explicit boolean schema diagnostics mode required")
+    if diagnostic_mode and not all(
+        control.get(name) is True
+        for name in (
+            "allow_ui_wall_clock",
+            "allow_ui_monotonic_clock",
+            "allow_inactive_ui_libc",
+            "allow_ci_link_trace",
+        )
+    ):
+        raise ValueError("schema diagnostics require the complete inactive candidate")
     stdlib = control["stdlib"]
     if (
         stdlib["format"] != "tobkiri.python313-stdlib-inputs/1"
@@ -119,11 +154,34 @@ def stage_inputs(stage: Path, control: dict) -> dict:
     if hashlib.sha256(extension).hexdigest() != control["extension_sha256"]:
         raise ValueError("actual rpds extension changed")
     (stage / "rpds/rpds.abi3.so").write_bytes(extension)
-    for name in ("app.py", "exercise.py", "captured_loader.py", "probe.wit"):
+    probe_files = ["app.py", "exercise.py", "captured_loader.py", "probe.wit"]
+    if diagnostic_mode:
+        probe_files.append("exception_diagnostics.py")
+    baseline_app = None
+    helper_source = None
+    for name in probe_files:
         target = stage / name
         if target.exists():
             raise ValueError("package collides with probe source")
-        target.write_bytes(read(Path("/probe-source") / name))
+        raw = read(Path("/probe-source") / name)
+        target.write_bytes(raw)
+        if name == "app.py":
+            baseline_app = raw
+        elif name == "exception_diagnostics.py":
+            helper_source = raw
+    diagnostic_provenance = None
+    if diagnostic_mode:
+        if baseline_app is None or helper_source is None:
+            raise ValueError("frozen baseline app and diagnostic helper required")
+        helper = load_exception_diagnostics(
+            Path("/probe-source/exception_diagnostics.py"), helper_source
+        )
+        derived_app, diagnostic_provenance = helper.derive_diagnostic_app(
+            baseline_app, helper_source
+        )
+        if read(stage / "app.py") != baseline_app:
+            raise ValueError("baseline app changed before diagnostic derivation")
+        (stage / "app.py").write_bytes(derived_app)
     data_parts = [
         "# Authenticated original wheel and CPython source members.\nFILES = {\n"
     ]
@@ -153,7 +211,7 @@ def stage_inputs(stage: Path, control: dict) -> dict:
     total = sum(row["bytes"] for row in inventory.values())
     if total > control["input_limit"]:
         raise ValueError("complete code/resource/metadata capture exceeds 64 MiB")
-    return {
+    result = {
         "files": inventory,
         "input_bytes": total,
         "wrapper": wrapper,
@@ -165,6 +223,9 @@ def stage_inputs(stage: Path, control: dict) -> dict:
             "files": stdlib["files"],
         },
     }
+    if diagnostic_provenance is not None:
+        result["schema_exception_diagnostics"] = diagnostic_provenance
+    return result
 
 
 def observe_link_trace(root: Path, expected: bytes) -> dict:
@@ -574,19 +635,40 @@ def main():
     allow_clock = control.get("allow_ui_wall_clock", False)
     allow_monotonic = control.get("allow_ui_monotonic_clock", False)
     allow_link_trace = control.get("allow_ci_link_trace", False)
+    diagnostic_mode = control.get("schema_exception_diagnostics", False)
     if any(
         type(value) is not bool
-        for value in (allow_clock, allow_monotonic, allow_link_trace)
+        for value in (
+            allow_clock,
+            allow_monotonic,
+            allow_link_trace,
+            diagnostic_mode,
+        )
     ):
-        raise ValueError("explicit boolean UI clock mode required")
+        raise ValueError("explicit boolean schema probe mode required")
     if allow_monotonic and not allow_clock:
         raise ValueError("monotonic candidate requires explicit wall-clock mode")
     if allow_link_trace and not (allow_clock and allow_monotonic):
         raise ValueError("Linker observation requires the explicit two-clock candidate")
+    if diagnostic_mode and not all(
+        control.get(name) is True
+        for name in (
+            "allow_ui_wall_clock",
+            "allow_ui_monotonic_clock",
+            "allow_inactive_ui_libc",
+            "allow_ci_link_trace",
+        )
+    ):
+        raise ValueError("schema diagnostics require the complete inactive candidate")
     original = json.loads(read(work / "native.json"))
     stage = work / "stage"
     stage.mkdir()
     captured = stage_inputs(stage, control)
+    diagnostic_provenance = captured.get("schema_exception_diagnostics")
+    if diagnostic_provenance is not None:
+        (work / "schema-exception-diagnostics.json").write_text(
+            json.dumps(diagnostic_provenance, indent=2) + "\n"
+        )
     (work / "stage-inputs.json").write_text(json.dumps(captured, indent=2) + "\n")
     environment = {
         "PATH": "/usr/bin:/bin",
@@ -778,6 +860,10 @@ def main():
         raise ValueError(
             "original schema operation failed: "
             + json.dumps(result["exception"])[:3000]
+        )
+    if diagnostic_mode:
+        raise ValueError(
+            "diagnostic-only schema run requires the original candidate failure"
         )
     target, io = result["target"], result["runtime_io"]
     if (
