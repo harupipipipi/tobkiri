@@ -15,6 +15,11 @@ INTERFACE = "tobkiri-ui:schema-probe/probe@1.0.0"
 FUEL = 2_000_000_000
 SECONDS = 30
 OUTPUT_LIMIT = 4 * 1024 * 1024
+STDLIB_FILES = {
+    "logging/__init__.py",
+    "logging/config.py",
+    "logging/handlers.py",
+}
 
 
 def read(
@@ -30,10 +35,17 @@ def read(
 
 
 def stage_inputs(stage: Path, control: dict) -> dict:
-    """Copy exact wheel members and record separate target/wrapper provenance."""
+    """Capture exact package/stdlib source and separate extension provenance."""
     files, distributions = {}, {}
     wrapper = None
     declared, members = 0, 0
+    stdlib = control["stdlib"]
+    if (
+        stdlib["format"] != "tobkiri.python313-stdlib-inputs/1"
+        or stdlib["outcome"] != "success"
+        or set(stdlib["files"]) != STDLIB_FILES
+    ):
+        raise ValueError("fixed original CPython logging selection required")
     for pin in control["inputs"]:
         for name, entry in pin["files"].items():
             if pin["role"] == "native-oracle" and (
@@ -42,6 +54,9 @@ def stage_inputs(stage: Path, control: dict) -> dict:
                 continue
             members += 1
             declared += entry["bytes"] + len(name.encode("utf-8")) + 128
+    for name, entry in stdlib["files"].items():
+        members += 1
+        declared += entry["bytes"] + len(name.encode("utf-8")) + 128
     if members > 4096 or declared > control["input_limit"]:
         raise ValueError("complete source and resource index exceed the input bound")
     for pin in control["inputs"]:
@@ -74,6 +89,16 @@ def stage_inputs(stage: Path, control: dict) -> dict:
                 }
     if wrapper is None or len(distributions) != 5:
         raise ValueError("complete original schema packages and rpds wrapper required")
+    for name, entry in stdlib["files"].items():
+        raw = read(Path("/stdlib/source") / name, allow_empty=True)
+        if (
+            len(raw) != entry["bytes"]
+            or hashlib.sha256(raw).hexdigest() != entry["sha256"]
+        ):
+            raise ValueError("captured original CPython source changed")
+        if name in files:
+            raise ValueError("stdlib/package source namespace collision")
+        files[name] = raw
     for name, raw in files.items():
         target = stage / name
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -88,7 +113,7 @@ def stage_inputs(stage: Path, control: dict) -> dict:
             raise ValueError("package collides with probe source")
         target.write_bytes(read(Path("/probe-source") / name))
     data_parts = [
-        "# Derived only from authenticated original wheel members.\nFILES = {\n"
+        "# Authenticated original wheel and CPython source members.\nFILES = {\n"
     ]
     size = sum(len(raw) for raw in files.values()) + len(extension)
     for name, raw in files.items():
@@ -122,6 +147,11 @@ def stage_inputs(stage: Path, control: dict) -> dict:
         "wrapper": wrapper,
         "distribution_directories": distributions,
         "captured_files": len(files),
+        "stdlib_source": {
+            "source_pin": stdlib["source_pin"],
+            "archive": stdlib["archive"],
+            "files": stdlib["files"],
+        },
     }
 
 
@@ -278,14 +308,16 @@ def main():
         or not target["extension_file"].endswith("rpds/rpds.abi3.so")
     ):
         raise ValueError("actual schema target/extension identity differs")
+    # Preserve original import state: jsonschema.protocols is already eager in
+    # the real native wheel, while the other two paths are first-use imports.
     required_lazy = {
-        "referencing.retrieval",
-        "jsonschema.protocols",
-        "packaging.version",
+        name
+        for name, loaded in original["observation"]["lazy_before"].items()
+        if loaded is False
     }
     if (
         result["observation"] != original["observation"]
-        or any(result["observation"]["lazy_before"].values())
+        or not {"referencing.retrieval", "packaging.version"} <= required_lazy
         or not required_lazy <= set(io["lazy_modules"])
         or io["resource_reads"] <= 0
         or io["metadata_queries"] <= 0

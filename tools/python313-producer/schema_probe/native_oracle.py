@@ -9,8 +9,8 @@ control = json.loads(Path("/control.json").read_bytes())
 sys.path[:0] = ["/probe-source", *control["native_paths"]]
 from exercise import exercise
 
-if sys.version_info[:2] != (3, 13):
-    raise ValueError("the original locked native CPython 3.13 oracle is required")
+if sys.version_info[:3] != (3, 13, 16):
+    raise ValueError("the original locked native CPython 3.13.16 oracle is required")
 result = exercise()
 Path("/work/native.json").write_text(
     json.dumps(

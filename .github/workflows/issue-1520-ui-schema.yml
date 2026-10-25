@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/issue-1520-ui-schema.yml'
       - 'tools/python313-producer/fetch_schema.py'
+      - 'tools/python313-producer/fetch_schema_stdlib.py'
       - 'tools/python313-producer/build_schema.py'
       - 'tools/python313-producer/schema_probe/**'
       - 'tools/python313-producer/tests/test_schema_*.py'
@@ -34,7 +35,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.13.16'
       - name: Check locked inputs and closed source resource IO
         run: python3 -B -m unittest discover -s tools/python313-producer/tests -p 'test_schema_*.py'
       - name: Authenticate actual predecessor runs
@@ -71,6 +72,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends bubblewrap
           chmod 755 "$RUNNER_TEMP/schema-producer/work/target/release/componentize-py"
           python3 -B tools/python313-producer/fetch_schema.py --destination "$RUNNER_TEMP/schema-inputs"
+          python3 -B tools/python313-producer/fetch_schema_stdlib.py --destination "$RUNNER_TEMP/schema-stdlib"
           python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/schema-validation"
       - name: Compare original native packages with post-snapshot Wasm behavior
         run: >-
@@ -79,6 +81,7 @@ jobs:
           --producer "$RUNNER_TEMP/schema-producer"
           --rpds "$RUNNER_TEMP/schema-rpds"
           --validation "$RUNNER_TEMP/schema-validation"
+          --stdlib "$RUNNER_TEMP/schema-stdlib"
           --destination "$RUNNER_TEMP/schema-candidate"
       - name: Retain original observations, target observations and supervision
         if: always()
@@ -87,6 +90,7 @@ jobs:
           name: ui-schema-candidate-evidence
           path: |
             ${{ runner.temp }}/schema-inputs/schema-inputs.json
+            ${{ runner.temp }}/schema-stdlib/stdlib-inputs.json
             ${{ runner.temp }}/schema-candidate/schema-build.json
             ${{ runner.temp }}/schema-candidate/native/
             ${{ runner.temp }}/schema-candidate/wasm/

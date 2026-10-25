@@ -30,7 +30,7 @@ class SchemaCandidateTests(unittest.TestCase):
             patch.dict("os.environ", {}, clear=True),
         ):
             with self.assertRaisesRegex(ValueError, "CI"):
-                build_schema.run(missing, missing, missing, missing, missing)
+                build_schema.run(missing, missing, missing, missing, missing, missing)
 
     def test_empty_members_are_preserved_but_empty_components_refused(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -71,10 +71,26 @@ class SchemaCandidateTests(unittest.TestCase):
         captured["/rpds.abi3.so"] = extension
         for name in ("app.py", "exercise.py", "captured_loader.py", "probe.wit"):
             captured["/probe-source/" + name] = b"# probe\n"
+        stdlib_files = {}
+        for name in sorted(driver.STDLIB_FILES):
+            raw = b"# original CPython " + name.encode() + b"\n"
+            captured["/stdlib/source/" + name] = raw
+            stdlib_files[name] = {
+                "bytes": len(raw),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "mode": "0o644",
+            }
         control = {
             "inputs": pins,
             "extension_sha256": hashlib.sha256(extension).hexdigest(),
             "input_limit": 64 * 1024 * 1024,
+            "stdlib": {
+                "format": "tobkiri.python313-stdlib-inputs/1",
+                "outcome": "success",
+                "source_pin": {"sha256": "cd" * 32},
+                "archive": {"sha256": "cd" * 32, "bytes": 1},
+                "files": stdlib_files,
+            },
         }
         original_read = driver.read
 
@@ -97,11 +113,68 @@ class SchemaCandidateTests(unittest.TestCase):
             values = ast.literal_eval(source.body[0].value)
             self.assertEqual(values["rpds/__init__.py"], b"# original\n")
             self.assertEqual(values["package0/py.typed"], b"")
+            for name in driver.STDLIB_FILES:
+                self.assertEqual(values[name], captured["/stdlib/source/" + name])
+                self.assertEqual((stage / name).read_bytes(), values[name])
+            self.assertEqual(
+                receipt["stdlib_source"],
+                {
+                    key: control["stdlib"][key]
+                    for key in ("source_pin", "archive", "files")
+                },
+            )
             with patch.object(
                 driver, "read", side_effect=AssertionError("must preflight")
             ):
                 with self.assertRaisesRegex(ValueError, "bound"):
                     driver.stage_inputs(stage, {**control, "input_limit": 1})
+            package_bytes = sum(
+                row["bytes"] + len(name.encode()) + 128
+                for pin in pins
+                for name, row in pin["files"].items()
+                if pin["role"] != "native-oracle"
+                or (name.startswith("rpds/") and not name.endswith(".so"))
+            )
+            with patch.object(
+                driver, "read", side_effect=AssertionError("must preflight stdlib")
+            ):
+                with self.assertRaisesRegex(ValueError, "bound"):
+                    driver.stage_inputs(
+                        stage, {**control, "input_limit": package_bytes}
+                    )
+                for name in ("logging/config.py", "../../outside.py"):
+                    altered = {**stdlib_files}
+                    if name in altered:
+                        del altered[name]
+                    else:
+                        altered[name] = next(iter(stdlib_files.values()))
+                    with (
+                        self.subTest(name=name),
+                        self.assertRaisesRegex(ValueError, "selection"),
+                    ):
+                        driver.stage_inputs(
+                            stage,
+                            {
+                                **control,
+                                "stdlib": {**control["stdlib"], "files": altered},
+                            },
+                        )
+        with tempfile.TemporaryDirectory() as directory:
+            original = captured["/stdlib/source/logging/__init__.py"]
+            captured["/stdlib/source/logging/__init__.py"] = original + b"# changed\n"
+            with patch.object(driver, "read", side_effect=read):
+                with self.assertRaisesRegex(ValueError, "CPython source changed"):
+                    driver.stage_inputs(Path(directory), control)
+            captured["/stdlib/source/logging/__init__.py"] = original
+        with tempfile.TemporaryDirectory() as directory:
+            name = "logging/__init__.py"
+            pins[0]["files"][name] = stdlib_files[name]
+            captured["/inputs/packages/package0/" + name] = captured[
+                "/stdlib/source/" + name
+            ]
+            with patch.object(driver, "read", side_effect=read):
+                with self.assertRaisesRegex(ValueError, "namespace collision"):
+                    driver.stage_inputs(Path(directory), control)
 
 
 if __name__ == "__main__":

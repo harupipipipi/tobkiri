@@ -15,6 +15,7 @@ from build_rpds import physical, verify_validation
 from build_wasi import run_stage
 import fetch_rpds
 import fetch_schema
+import fetch_schema_stdlib
 import fetch_sdk
 import runtime_inputs
 
@@ -24,11 +25,14 @@ COMPONENT_SHA256 = "56d765060d8f2f9078a31cf2e96bdd591d737545250464afcb9bc9cdbc91
 INPUT_LIMIT = 64 * 1024 * 1024
 
 
-def verify_inputs(inputs: Path, producer: Path, rpds: Path, validation: Path) -> dict:
+def verify_inputs(
+    inputs: Path, producer: Path, rpds: Path, validation: Path, stdlib: Path
+) -> dict:
     """Bind all restored archives and actual prior artifacts before execution."""
-    for path in (inputs, producer, rpds, validation):
+    for path in (inputs, producer, rpds, validation, stdlib):
         physical(path)
     fetch_schema.verify(inputs)
+    fetch_schema_stdlib.verify(stdlib)
     verify_validation(
         validation, runtime_inputs.report(validation / "validation-inputs.json")
     )
@@ -69,25 +73,31 @@ def verify_inputs(inputs: Path, producer: Path, rpds: Path, validation: Path) ->
             rpds / "work/probe.json",
             rpds / "rpds-build.json",
             validation / "validation-inputs.json",
+            stdlib / "stdlib-inputs.json",
         )
     }
 
 
 def run(
-    inputs: Path, producer: Path, rpds: Path, validation: Path, destination: Path
+    inputs: Path,
+    producer: Path,
+    rpds: Path,
+    validation: Path,
+    stdlib: Path,
+    destination: Path,
 ) -> None:
     """Execute original wheels and the Wasm candidate only in supervised Linux CI."""
     if sys.platform != "linux" or os.environ.get("GITHUB_ACTIONS") != "true":
         raise ValueError("schema execution is restricted to Linux CI")
-    if sys.version_info[:2] != (3, 13):
-        raise ValueError("native original CPython 3.13 reference required")
+    if sys.version_info[:3] != (3, 13, 16):
+        raise ValueError("native original CPython 3.13.16 reference required")
     if (
         not destination.is_absolute()
         or destination.parent.resolve() != destination.parent
         or shutil.disk_usage(destination.parent).free < fetch_schema.DISK_FLOOR
     ):
         raise ValueError("new physical destination and existing disk floor required")
-    identities = verify_inputs(inputs, producer, rpds, validation)
+    identities = verify_inputs(inputs, producer, rpds, validation, stdlib)
     destination.mkdir(mode=0o700)
     work = destination / "work"
     work.mkdir(mode=0o700)
@@ -107,6 +117,7 @@ def run(
                 "inputs": records,
                 "extension_sha256": EXTENSION_SHA256,
                 "input_limit": INPUT_LIMIT,
+                "stdlib": runtime_inputs.report(stdlib / "stdlib-inputs.json"),
                 "native_paths": [
                     "/inputs/packages/"
                     + (
@@ -182,6 +193,7 @@ def run(
                 (inputs, "/inputs"),
                 (control, "/control.json"),
                 (rpds / "work/stage/rpds.abi3.so", "/rpds.abi3.so"),
+                (stdlib, "/stdlib"),
                 (producer / "work/target/release/componentize-py", "/producer"),
                 (validation / "wasmtime", "/validation-deps"),
                 (validation / "wac-cli", "/wac"),
@@ -201,7 +213,7 @@ def run(
             or fingerprint(work / "native.json") != native
         ):
             raise ValueError("unchanged original schema observations did not match")
-        verify_inputs(inputs, producer, rpds, validation)
+        verify_inputs(inputs, producer, rpds, validation, stdlib)
         if (
             fetch_sdk.inventory(source) != scripts
             or fingerprint(control) != control_identity
@@ -225,6 +237,6 @@ def run(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    for name in ("inputs", "producer", "rpds", "validation", "destination"):
+    for name in ("inputs", "producer", "rpds", "validation", "stdlib", "destination"):
         parser.add_argument("--" + name, type=Path, required=True)
     run(**vars(parser.parse_args()))

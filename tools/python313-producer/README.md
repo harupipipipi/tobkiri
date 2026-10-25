@@ -370,6 +370,15 @@ are bounded before expansion. The complete source, resource, metadata and
 generated literal capture must fit the unchanged 64 MiB input bound; actual
 component/Store/fuel/deadline/output limits remain independently enforced.
 
+The late `packaging.tags` import also requires the original stdlib `logging`
+package. `fetch_schema_stdlib.py` obtains its three unchanged modules from the
+existing pinned official CPython 3.13.16 archive on CI, rederives their identity
+from that archive, and includes them in the same source/copy/index limits.
+This supplies source without warming the late import or adding host operations.
+The native reference uses its own ordinary CPython 3.13.16 stdlib, independently
+of the Wasm capture loader. Further runtime requirements remain observable
+failures until their actual behavior and permitted boundary are established.
+
 The Python rpds wrapper comes verbatim from the locked native wheel, whose
 member identity is recorded separately. It is absent from the pinned Git
 archive; this experiment does not attribute it to Git or infer how the wheel
