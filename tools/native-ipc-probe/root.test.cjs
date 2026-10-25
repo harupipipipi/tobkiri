@@ -1,0 +1,113 @@
+// Script/controller tests only; actual native rejection needs the macOS job.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+const vm = require('node:vm');
+
+const script = fs.readFileSync(path.join(__dirname, 'root.js'), 'utf8');
+const commands = [
+  'core_start_profile', 'core_stop_session', 'core_host_output_ack',
+  'pack_ui_invoke', 'pack_ui_register', 'pack_ui_cancel', 'pack_ui_ack',
+  'pack_ui_detach', 'pack_ui_stream_pull', 'pack_ui_stream_cancel',
+  'core_terminal_reply',
+];
+function child() {
+  return {
+    type: 'tobkiri-native-ipc-probe-child', version: 1,
+    parent_dom_blocked: true, parent_internals_blocked: true, storage_blocked: true,
+    surfaces: { sdk: false, ipc: false, webkit: true },
+    attempts: commands.map((command) => ({ command, via: 'webkit', result: 'sent' })),
+  };
+}
+
+async function run(change = () => {}, eventChange = () => {}, expire = false) {
+  let listener, deadline, frame, resolveReport;
+  const operations = [];
+  const reported = new Promise((resolve) => { resolveReport = resolve; });
+  class HTMLFormElement {}
+  class HTMLInputElement {}
+  const input = new HTMLInputElement();
+  const form = new HTMLFormElement();
+  form.requestSubmit = () => {
+    operations.push('form-submit');
+    frame = {
+      src: 'tobkiri-pack://' + 'a'.repeat(64) + '/ui/index.html',
+      contentWindow: {},
+      getAttribute: () => 'allow-scripts',
+    };
+    queueMicrotask(() => {
+      const data = child();
+      change(data);
+      const event = { origin: 'null', source: frame.contentWindow, data };
+      eventChange(event);
+      listener(event);
+      if (expire) deadline();
+    });
+  };
+  const document = {
+    getElementById: (id) => id === 'profile-form' ? form : input,
+    querySelector: () => frame,
+    querySelectorAll: () => frame ? [frame] : [],
+    set title(value) { resolveReport(JSON.parse(value.split('TOBKIRI_NATIVE_IPC_PROBE:')[1])); },
+  };
+  const window = {
+    addEventListener: (_, fn) => { listener = fn; },
+    removeEventListener: () => {},
+    setTimeout: (fn, ms) => { if (ms === 20000) deadline = fn; else queueMicrotask(fn); },
+    clearTimeout: () => {},
+    __TAURI_INTERNALS__: {
+      invoke(command) {
+        assert.equal(this, window.__TAURI_INTERNALS__);
+        operations.push(command);
+        return Promise.resolve();
+      },
+    },
+  };
+  vm.runInNewContext(script, { window, document, HTMLFormElement, HTMLInputElement });
+  const report = await reported;
+  return { report, operations };
+}
+
+test('ordinary start and fixed final stop with exact child coverage', async () => {
+  const { report, operations } = await run();
+  assert.deepEqual(operations, ['form-submit', 'core_stop_session']);
+  assert.equal(report.failure, 'none');
+  assert.equal(report.raw_sent, 11);
+  assert.equal(report.root_stop, true);
+});
+
+test('extra fields, duplicate coverage, and cyclic data cannot trigger native stop', async () => {
+  for (const change of [
+    (value) => { value.command = 'arbitrary_native_operation'; },
+    (value) => { value.attempts[1] = value.attempts[0]; },
+    (value) => { value.attempts[0].command = 'arbitrary_native_operation'; },
+    (value) => { value.surfaces.sdk = value; },
+  ]) {
+    const { report, operations } = await run(change, () => {}, true);
+    assert.ok(['schema', 'timeout'].includes(report.failure));
+    assert.deepEqual(operations, ['form-submit']);
+  }
+});
+
+test('a different frame or origin is not a completion report', async () => {
+  for (const change of [
+    (event) => { event.origin = 'tauri://localhost'; },
+    (event) => { event.source = {}; },
+  ]) {
+    const { report, operations } = await run(() => {}, change, true);
+    assert.equal(report.failure, 'timeout');
+    assert.deepEqual(operations, ['form-submit']);
+  }
+});
+
+test('missing and unsettled SDK coverage remains visible for native rejection', async () => {
+  const { report } = await run((value) => {
+    value.surfaces.sdk = true;
+    value.attempts.push(...commands.map((command) => ({
+      command, via: 'sdk', result: 'timeout',
+    })));
+  });
+  assert.equal(report.sdk_attempts, 11);
+  assert.equal(report.sdk_rejected, 0);
+});

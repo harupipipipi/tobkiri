@@ -4,6 +4,8 @@
 
 #[cfg(feature = "core-host")]
 mod core_host;
+#[cfg(feature = "core-host")]
+mod native_ipc_probe;
 
 #[cfg(all(feature = "core-host", target_os = "macos"))]
 mod native_plan_review;

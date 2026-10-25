@@ -30,6 +30,12 @@ than introducing an unapproved Profile import or new blanket Launch ceremony.
   WebView label and trusted local origin. `src-tauri/src/core_host.rs` explicitly
   identifies this as a top-window check, not proof of the invoking iframe.
   Native iframe IPC denial remains a separate platform verification obligation.
+- The opt-in [actual native IPC observation](../../../tools/native-ipc-probe/README.md)
+  builds the real macOS debug Tauri app and exercises these existing commands
+  from its ordinary opaque iframe. Its strict controller requires positive
+  root controls and independent native rejection counts, suppressing Tauri's
+  key-bearing raw diagnostics. This is a scoped test path, not a new
+  configuration channel, native approval test or full Setup integration.
 - Core's `session/ui.rs` derives a `Principal::PackUi` from its retained
   attachment. A UI attachment proves Pack/session custody; it supplies no User
   configuration authority.

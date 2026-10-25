@@ -63,6 +63,7 @@ fn caller(window: &WebviewWindow) -> Result<(String, String), UiError> {
         url: &url,
     }
     .check()?;
+    crate::native_ipc_probe::admitted(window);
     Ok((label, url))
 }
 
@@ -793,6 +794,9 @@ pub(crate) fn run() {
         window.title = scope.window_title().to_owned();
         window.incognito = true;
     }
+    let ipc_probe_setup =
+        crate::native_ipc_probe::prepare(context.config_mut(), debug_scope.as_ref())
+            .expect("invalid native IPC probe scope");
     let builder = tauri::Builder::default();
     #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -911,6 +915,7 @@ pub(crate) fn run() {
             let core = Arc::new(LauncherCore::open_with_tickets(host.clone(), tickets)?);
             app.manage(host);
             app.manage(core);
+            crate::native_ipc_probe::install(app, ipc_probe_setup)?;
             setup_tray(app)?;
             Ok(())
         })
