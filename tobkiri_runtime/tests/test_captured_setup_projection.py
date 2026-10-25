@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.contract
+
 from ecosystem.defaultspack.defaultspack.profile_runtime_composition import (
     DefaultspackProfileRuntime,
 )

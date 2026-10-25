@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.contract
+
 from tobkiri_protocol.errors import ProtocolError
 from tobkiri_protocol.platform_artifact import artifact_digest, verify_platform_artifact
 
