@@ -170,7 +170,8 @@ class SetupSourceTests(unittest.TestCase):
                     (ROOT / 'crates/tobkiri-wit/wit/core/core.wit').read_bytes())],
                 'pack', root_source='pack.wit'),
                 ['local:harness-setup-python/setup@1.0.0', 'tobkiri:core/lifecycle@1.0.0'])
-            for operation in ('decision', 'success', 'failure', 'retired'):
+            for operation in ('decision', 'success', 'failure', 'retired',
+                              'bootstrap-confirmation', 'profile-confirmation'):
                 self.assertIn(f'{operation}: func(payload: string) -> result<string, error>;'.encode(), wit)
         finally:
             sys.path.pop(0)
@@ -184,13 +185,19 @@ class SetupSourceTests(unittest.TestCase):
                 plan = prepare.stage(output)
                 actual, _, _, captures = build_component._verify_plan(output / "plan.json")
                 self.assertEqual(actual, plan)
-                self.assertEqual(len(captures), 7)
+                self.assertEqual(len(captures), 11)
                 self.assertEqual(plan["outer_exports"],
                                  ["tobkiri:core/lifecycle@1.0.0", prepare.INTERFACE])
                 self.assertEqual({str(name) for name, _ in captures},
                                  {"app.py", "setup_adapter.py", "original_setup.py",
                                   "ordered_json.py", "ordered_json_v2.py", "wit/pack.wit",
-                                  "wit/deps/tobkiri-core/core.wit"})
+                                  "wit/deps/tobkiri-core/core.wit",
+                                  *{f"tobkiri_protocol/{name}.py" for name in
+                                    ("__init__", "canonical", "errors", "ids")}})
+                for name in ("__init__", "canonical", "errors", "ids"):
+                    self.assertEqual(
+                        (output / f"python/tobkiri_protocol/{name}.py").read_bytes(),
+                        (ROOT / f"tobkiri_runtime/tobkiri_protocol/{name}.py").read_bytes())
                 with self.assertRaises(FileExistsError):
                     prepare.stage(output)
         finally:
@@ -213,16 +220,48 @@ class SetupSourceTests(unittest.TestCase):
         spec.loader.exec_module(replay)
         self.assertIs(replay.DefaultspackProfileRuntime, DefaultspackProfileRuntime)
         cases = replay.source_cases()
-        self.assertEqual(len(cases), 18)
-        self.assertEqual(len({item['id'] for item in cases}), 18)
+        self.assertEqual(len(cases), 30)
+        self.assertEqual(len({item['id'] for item in cases}), 30)
         self.assertEqual({item['operation'] for item in cases},
-                         {'decision', 'success', 'failure', 'retired'})
+                         {'decision', 'success', 'failure', 'retired',
+                          'bootstrap-confirmation', 'profile-confirmation'})
         for case in cases:
             if 'expected' in case:
                 self.assertEqual(adapter.invoke(case['operation'], case['input']), case['expected'])
             else:
-                with self.assertRaises(adapter.SetupInputError):
+                error = (adapter.SetupInputError if case['expected_error']['code'] == 'invalid'
+                         else adapter.SetupProjectionError)
+                with self.assertRaises(error):
                     adapter.invoke(case['operation'], case['input'])
+
+    def test_confirmation_digest_binds_optional_predecessors_without_native_authority(self) -> None:
+        from tobkiri_protocol.canonical import canonical_digest
+        spec = importlib.util.spec_from_file_location(
+            'setup_confirmation_source_cases', ROOT / 'scripts/wasm/replay_harness_setup.py')
+        replay = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(replay)
+        cases = replay.confirmation_cases(self.runtime)
+        digests = []
+        for case in cases[:5]:
+            value = loads(case['input'])
+            before = dumps(value)
+            result = loads(adapter.invoke(case['operation'], before))
+            digest = result.pop('confirmation_digest')
+            self.assertEqual(digest, canonical_digest(result))
+            self.assertEqual(dumps(value), before)
+            self.assertEqual(result['operation_id'], 'defaults.activate')
+            for key in ('definition_predecessor', 'pack_pin_predecessor'):
+                self.assertEqual(key in result, value[key] is not None)
+                if value[key] is not None:
+                    self.assertEqual(result[key], value[key])
+            digests.append(digest)
+        self.assertEqual(len(set(digests)), 5)
+        # Output object order is preserved while canonical identity ignores
+        # source map order, using the original canonicalizer in both runtimes.
+        results = [loads(adapter.invoke(item['operation'], item['input']))
+                   for item in cases[5:7]]
+        self.assertEqual(results[0]['confirmation_digest'], results[1]['confirmation_digest'])
+        self.assertNotEqual(cases[5]['expected'], cases[6]['expected'])
 
     def test_native_oracle_export_keeps_source_answers_and_inactive_scope(self) -> None:
         spec = importlib.util.spec_from_file_location(
@@ -244,8 +283,8 @@ class SetupSourceTests(unittest.TestCase):
                     replay.export_native_oracle(artifact, output)
             document = json.loads(output.read_bytes())
             self.assertEqual(document['cases'], replay.source_cases())
-            self.assertEqual(len(document['source_bindings']), 12)
-            self.assertEqual(len({item['path'] for item in document['source_bindings']}), 12)
+            self.assertEqual(len(document['source_bindings']), 16)
+            self.assertEqual(len({item['path'] for item in document['source_bindings']}), 16)
             for flag in ('native_core_replay', 'full_setup_gui_tested', 'production_enabled'):
                 self.assertIs(document[flag], False)
 

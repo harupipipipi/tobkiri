@@ -33,6 +33,14 @@ class Lifecycle(wit_world.exports.Lifecycle):
 class Setup(wit_world.exports.Setup):
     """Project original application DATA; never commit a Profile or approval."""
 
+    def bootstrap_confirmation(self, payload: str) -> str:
+        """Project the original confirmation with both optional predecessors."""
+        return _project("bootstrap-confirmation", payload)
+
+    def profile_confirmation(self, payload: str) -> str:
+        """Project the original named-Profile confirmation and digest."""
+        return _project("profile-confirmation", payload)
+
     def decision(self, payload: str) -> str:
         """Return the original accept/reject DATA for an exact request."""
         return _project("decision", payload)

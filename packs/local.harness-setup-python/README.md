@@ -1,21 +1,28 @@
-# Original Harness Setup decision and response candidate
+# Original Harness Setup confirmation, decision and response candidate
 
-This inactive Python-on-Wasm candidate packages four complete, verbatim methods
-from the original `DefaultspackProfileRuntime`: `setup_activation_decision`,
+This inactive Python-on-Wasm candidate packages seven complete, verbatim methods
+from the original `DefaultspackProfileRuntime`: `_confirmation`,
+`bootstrap_confirmation`, `profile_confirmation`, `setup_activation_decision`,
 `setup_activation_success`, `setup_activation_failure`, and
 `retired_setup_response`. The original frozen `SetupActivationDecision` class is
 also retained. Internal `defaults`, `defaults.activate`, protocol versions and
 response semantics remain unchanged. The original application and GUI remain the
 product path.
 
-The typed `local:harness-setup-python/setup@1.0.0` exports `decision`, `success`,
+The typed `local:harness-setup-python/setup@1.0.0` exports
+`bootstrap-confirmation`, `profile-confirmation`, `decision`, `success`,
 `failure` and `retired`. Each accepts and returns an opaque finite ordered JSON
 string using the existing v2 codec, including its unchanged byte/node bounds.
 The WIT pin is explicitly `string`: Core's `json` alias applies CoreStrictV1
 encoding and would encode the opaque request string again. The outer Core
 envelope retains its existing strict encoding and bounds.
-The adapter adds only explicit DATA envelopes and an attribute view for recorded
-activation facts. A decision returns both original fields, `confirmation` and
+The adapter adds only explicit DATA envelopes and attribute views for recorded
+resolved Profile/plan and activation facts. The original canonical protocol
+package is staged verbatim by reference, including its initializer, errors and
+identifier dependency; no digest algorithm is rewritten. Confirmation digests
+retain exact original canonical semantics and bind both optional definition and
+Pack-pin predecessors. They certify no native consent or source custody.
+A decision returns both original fields, `confirmation` and
 `response`, with exactly one non-null outcome. Original explicit-confirmation,
 exact-key, stale-review and retired-route behavior is preserved.
 
@@ -53,7 +60,7 @@ unchanged and records a distinct candidate-build receipt. Successful compilation
 alone does not establish guest execution or native Core/GUI integration.
 
 The same workflow separately supervises an actual standalone Wasm comparison for
-18 complete-original-module cases. All Core imports trap, with the original
+30 complete-original-module cases. All Core imports trap, with the original
 2-billion fuel, 128 MiB memory and table bounds, per-case epoch deadlines,
 canonical post-return cleanup and shutdown. Compilation has an outer isolated
 process supervisor. Its receipt requires every case and lifecycle to pass;
@@ -61,7 +68,7 @@ native Core, interpreter identity and full GUI parity remain unproven by this
 standalone execution. No component compilation or guest runs on the developer
 Mac.
 
-The dependent macOS native job runs the same 18 original-source cases through
+The dependent macOS native job runs the same 30 original-source cases through
 the public Core/Gate/Profile/Session path. It verifies exact positive bytes,
 Core's public typed-error projection, one dispatch/terminal per call, unchanged
 Profile head/epoch/Pack and User policies, and same-Session cleanup. Hash-bound
@@ -75,6 +82,9 @@ oracle and compare ordered response bytes. They cover exact `True` confirmation,
 missing/extra keys, unchanged operation IDs, stale/malformed confirmations,
 `listing=None`, intermediate success, invariant/error custody, extraction drift
 and SDK source-plan validation. Generated-binding doubles test fixed typed error
-mapping only. Neither native Python tests nor source staging prove an actual Wasm
+mapping only. Confirmation cases also retain Unicode, map order, predecessor
+binding and original rejection of floats, unsafe integers and incomplete plans.
+The eleven-source build plan and sixteen-source native oracle closure bind all
+original protocol dependencies. Neither native Python tests nor source staging prove an actual Wasm
 build, Core replay, full Setup GUI parity, or production activation. Listing,
 catalog projection/validation and all Host effects remain outside this slice.

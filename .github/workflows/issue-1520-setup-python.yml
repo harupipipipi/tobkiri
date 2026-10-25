@@ -22,6 +22,10 @@ on:
       - 'packs/local.ai-tool-bridge-ordered-python/ordered_json*.py'
       - 'tobkiri_runtime/core_runtime/profile_runtime_port.py'
       - 'tobkiri_runtime/ecosystem/defaultspack/defaultspack/profile_runtime_composition.py'
+      - 'tobkiri_runtime/tobkiri_protocol/__init__.py'
+      - 'tobkiri_runtime/tobkiri_protocol/canonical.py'
+      - 'tobkiri_runtime/tobkiri_protocol/errors.py'
+      - 'tobkiri_runtime/tobkiri_protocol/ids.py'
   workflow_dispatch:
 
 permissions:

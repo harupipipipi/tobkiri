@@ -26,7 +26,7 @@ class ComponentBuildTests(unittest.TestCase):
             output = Path(directory).resolve() / 'setup'
             receipt = component_inputs.stage_harness_setup(repo, output)
             plan = json.loads((output / 'plan.json').read_bytes())
-            self.assertEqual(len(plan['sources']), 7)
+            self.assertEqual(len(plan['sources']), 11)
             self.assertEqual(receipt['files'], inventory(output))
             self.assertEqual(receipt['plan_sha256'],
                              hashlib.sha256((output / 'plan.json').read_bytes()).hexdigest())

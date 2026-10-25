@@ -16,8 +16,15 @@ use tobkiri_profile::PackPin;
 
 pub const PACK: &str = "local.harness-setup-python";
 pub const SHAPE: &str = "local.harness-setup-python.setup@1.0";
-pub const OPERATIONS: [&str; 4] = ["decision", "success", "failure", "retired"];
-pub const IDS: [&str; 18] = [
+pub const OPERATIONS: [&str; 6] = [
+    "decision",
+    "success",
+    "failure",
+    "retired",
+    "bootstrap-confirmation",
+    "profile-confirmation",
+];
+pub const IDS: [&str; 30] = [
     "exact",
     "reordered",
     "stale",
@@ -36,6 +43,18 @@ pub const IDS: [&str; 18] = [
     "retired-route",
     "invalid-shape",
     "duplicate-key",
+    "bootstrap-confirmation",
+    "bootstrap-definition-predecessor",
+    "bootstrap-pin-predecessor",
+    "bootstrap-both-predecessors",
+    "bootstrap-empty-predecessors",
+    "named-profile-confirmation",
+    "reordered-profile-confirmation",
+    "confirmation-unsafe-integer",
+    "confirmation-floating-point",
+    "confirmation-missing-plan",
+    "confirmation-extra-key",
+    "confirmation-invalid-predecessor",
 ];
 const PREFIX: &str = "TOBKIRI_TEST_SETUP";
 const SOURCE: &str =
@@ -126,7 +145,7 @@ pub fn load(repo: &Path) -> Result<Inputs> {
             "duplicate source binding"
         );
     }
-    let mappings = BTreeMap::from([
+    let mut mappings = BTreeMap::from([
         ("python/app.py", format!("{PACK_ROOT}/python/app.py")),
         (
             "python/setup_adapter.py",
@@ -146,7 +165,16 @@ pub fn load(repo: &Path) -> Result<Inputs> {
         ),
         ("wit/pack.wit", format!("{PACK_ROOT}/wit/pack.wit")),
         ("wit/deps/tobkiri-core/core.wit", CORE_WIT.to_owned()),
-    ]);
+    ])
+    .into_iter()
+    .map(|(staged, relative)| (staged.to_owned(), relative))
+    .collect::<BTreeMap<_, _>>();
+    for name in ["__init__", "canonical", "errors", "ids"] {
+        mappings.insert(
+            format!("python/tobkiri_protocol/{name}.py"),
+            format!("tobkiri_runtime/tobkiri_protocol/{name}.py"),
+        );
+    }
     let mut required = mappings.values().cloned().collect::<Vec<_>>();
     required.extend([
         SOURCE.to_owned(),

@@ -19,10 +19,13 @@ than introducing an unapproved Profile import or new blanket Launch ceremony.
 ## Current source facts
 
 - The inactive [original Setup projection candidate](../../../packs/local.harness-setup-python/README.md)
-  retains four complete decision/response methods and the frozen decision
+  retains seven complete confirmation/decision/response methods and the frozen decision
   invariant as verbatim Python-on-Wasm source. Its source tests compare the
   complete original application, and its separate CI build uses the existing
-  isolated Python 3.13 producer. This does not migrate listing/catalog checks,
+  isolated Python 3.13 producer. The original canonical digest implementation
+  and its package dependencies are staged without rewrites; optional definition
+  and Pack-pin predecessors retain their original digest binding. These are
+  recorded DATA, never a native review handle or consent. This does not migrate listing/catalog checks,
   establish bootstrap authority, connect configuration IPC or certify a final
   activation receipt. Original `listing=None` acceptance and intermediate
   `restart_required:false` remain inert DATA for trusted Host processing.

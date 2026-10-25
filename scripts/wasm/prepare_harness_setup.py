@@ -23,6 +23,7 @@ SOURCE = (
 )
 PORT = "tobkiri_runtime/core_runtime/profile_runtime_port.py"
 METHODS = (
+    "_confirmation", "bootstrap_confirmation", "profile_confirmation",
     "setup_activation_decision", "setup_activation_success",
     "setup_activation_failure", "retired_setup_response",
 )
@@ -36,6 +37,9 @@ DEPENDENCIES = {
         "packs/local.ai-tool-bridge-ordered-python/ordered_json.py",
     "python/ordered_json_v2.py":
         "packs/local.ai-tool-bridge-ordered-python/ordered_json_v2.py",
+    **{f"python/tobkiri_protocol/{name}.py":
+       f"tobkiri_runtime/tobkiri_protocol/{name}.py"
+       for name in ("__init__", "canonical", "errors", "ids")},
     "wit/pack.wit": "packs/local.harness-setup-python/wit/pack.wit",
     "wit/deps/tobkiri-core/core.wit": "crates/tobkiri-wit/wit/core/core.wit",
 }
@@ -59,6 +63,7 @@ def captured() -> dict[str, bytes]:
         b"from __future__ import annotations\n"
         b"from dataclasses import dataclass\n"
         b"from typing import Any, Mapping\n\n"
+        b"from tobkiri_protocol.canonical import canonical_digest\n\n"
     )
     module = header + decision_bytes + b"\n\n"
     # The new container is packaging, not a rewrite of an original method.
@@ -77,7 +82,7 @@ def captured() -> dict[str, bytes]:
     compile(module, "original_setup.py", "exec")  # Syntax only; never execute it.
     provenance = {
         "format": "tobkiri.harness-setup-source/1",
-        "scope": "pure decision and response projection only",
+        "scope": "pure confirmation, decision and response projection only",
         "sources": [_record(name, data) for name, data in sources.items()],
         "definitions": records,
         "generated_module": _record("original_setup.py", module),

@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from tobkiri_protocol.canonical import canonical_digest
+
 @dataclass(frozen=True)
 class SetupActivationDecision:
     """An application-owned setup request either accepts or rejects activation.
@@ -26,6 +28,88 @@ class SetupActivationDecision:
 
 
 class DefaultspackProfileRuntime:
+    def _confirmation(
+        self,
+        *,
+        resolved: Any,
+        profile_id: str,
+        authority_snapshot_digest: str,
+        security_epoch: int,
+        confirmation_api_version: str,
+        operation_id: str,
+    ) -> Mapping[str, Any]:
+        """Build one Defaultspack confirmation from Host-captured facts."""
+
+        confirmation = {
+            "confirmation_api_version": confirmation_api_version,
+            "operation_id": operation_id,
+            "profile_id": profile_id,
+            "catalog_revision": resolved.profile["catalog_revision"],
+            "profile_revision": resolved.plan["profile_revision"],
+            "plan_digest": resolved.plan["plan_digest"],
+            "authority_snapshot_digest": authority_snapshot_digest,
+            "security_epoch": security_epoch,
+            "base": dict(resolved.plan["base"]),
+            "shell": dict(resolved.plan["shell"]),
+            "bindings": [dict(binding) for binding in resolved.plan["bindings"]],
+        }
+        confirmation["confirmation_digest"] = canonical_digest(confirmation)
+        return confirmation
+
+    def bootstrap_confirmation(
+        self,
+        *,
+        resolved: Any,
+        profile_id: str,
+        authority_snapshot_digest: str,
+        security_epoch: int,
+        definition_predecessor: Mapping[str, Any] | None = None,
+        pack_pin_predecessor: Mapping[str, Any] | None = None,
+    ) -> Mapping[str, Any]:
+        """Build Defaultspack's explicit bootstrap activation confirmation."""
+
+        confirmation = dict(
+            self._confirmation(
+                resolved=resolved,
+                profile_id=profile_id,
+                authority_snapshot_digest=authority_snapshot_digest,
+                security_epoch=security_epoch,
+                confirmation_api_version="io.tobkiri.defaults-confirmation.v1",
+                operation_id="defaults.activate",
+            )
+        )
+        if definition_predecessor is not None:
+            confirmation["definition_predecessor"] = dict(definition_predecessor)
+        if pack_pin_predecessor is not None:
+            confirmation["pack_pin_predecessor"] = dict(pack_pin_predecessor)
+        if definition_predecessor is not None or pack_pin_predecessor is not None:
+            confirmation["confirmation_digest"] = canonical_digest(
+                {
+                    key: value for key, value in confirmation.items()
+                    if key != "confirmation_digest"
+                }
+            )
+        return confirmation
+
+    def profile_confirmation(
+        self,
+        *,
+        resolved: Any,
+        profile_id: str,
+        authority_snapshot_digest: str,
+        security_epoch: int,
+    ) -> Mapping[str, Any]:
+        """Build Defaultspack's named-Profile activation confirmation."""
+
+        return self._confirmation(
+            resolved=resolved,
+            profile_id=profile_id,
+            authority_snapshot_digest=authority_snapshot_digest,
+            security_epoch=security_epoch,
+            confirmation_api_version="io.tobkiri.profile-confirmation.v1",
+            operation_id="profile.activate",
+        )
+
     def setup_activation_decision(
         self,
         body: Mapping[str, Any],

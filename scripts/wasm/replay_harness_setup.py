@@ -7,6 +7,7 @@ Compilation is covered by the outer process supervisor, not guest fuel/epochs.
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 import hashlib
 from importlib.metadata import version
 import json
@@ -28,6 +29,72 @@ from ecosystem.defaultspack.defaultspack.profile_runtime_composition import (
 from ordered_json_v2 import dumps
 
 LIFECYCLE = 'tobkiri:core/lifecycle@1.0.0'
+EXPECTED_CASES = 30
+
+
+def confirmation_cases(runtime: DefaultspackProfileRuntime) -> list[dict]:
+    """Use the complete original methods and canonicalizer as the oracle."""
+    base = {'resolved': {
+        'profile': {'catalog_revision': 'catalog'},
+        'plan': {'profile_revision': 'revision', 'plan_digest': 'plan',
+                 'base': {'pack_id': 'recorded.base'},
+                 'shell': {'provider_id': 'recorded.shell', 'contract_id': 'shell.v1'},
+                 'bindings': [{'contract_id': 'conversation.turn.v1',
+                               'provider_id': 'recorded.chat', 'label': '日本語',
+                               'approved': True}]}},
+        'profile_id': 'defaults', 'authority_snapshot_digest': 'recorded-authority',
+        'security_epoch': 7}
+    cases = []
+    predecessors = (
+        ('bootstrap-confirmation', None, None),
+        ('bootstrap-definition-predecessor', {'revision': 'old-definition'}, None),
+        ('bootstrap-pin-predecessor', None, {'revision': 'old-pins'}),
+        ('bootstrap-both-predecessors', {'revision': 'old-definition'}, {'revision': 'old-pins'}),
+        ('bootstrap-empty-predecessors', {}, {}),
+    )
+    for name, definition, pins in predecessors:
+        value = {**deepcopy(base), 'definition_predecessor': definition,
+                 'pack_pin_predecessor': pins}
+        arguments = {**value, 'resolved': SimpleNamespace(**value['resolved'])}
+        cases.append({'id': name, 'operation': 'bootstrap-confirmation',
+                      'input': dumps(value),
+                      'expected': dumps(runtime.bootstrap_confirmation(**arguments))})
+    for name, reordered in (('named-profile-confirmation', False),
+                            ('reordered-profile-confirmation', True)):
+        value = deepcopy(base)
+        value['profile_id'] = 'recorded-profile'
+        if reordered:
+            value['resolved']['plan'] = dict(reversed(list(value['resolved']['plan'].items())))
+            value['resolved']['plan']['bindings'][0] = dict(reversed(list(
+                value['resolved']['plan']['bindings'][0].items())))
+        arguments = {**value, 'resolved': SimpleNamespace(**value['resolved'])}
+        cases.append({'id': name, 'operation': 'profile-confirmation',
+                      'input': dumps(value),
+                      'expected': dumps(runtime.profile_confirmation(**arguments))})
+    for name in ('confirmation-unsafe-integer', 'confirmation-floating-point',
+                 'confirmation-missing-plan'):
+        value = deepcopy(base)
+        if name == 'confirmation-missing-plan':
+            del value['resolved']['plan']['bindings']
+        else:
+            value['security_epoch'] = 2**53 if name.endswith('integer') else 0.5
+        arguments = {**value, 'resolved': SimpleNamespace(**value['resolved'])}
+        try:
+            runtime.profile_confirmation(**arguments)
+        except (ValueError, KeyError):
+            pass
+        else:
+            raise ValueError('original confirmation no longer rejects this recorded input')
+        cases.append({'id': name, 'operation': 'profile-confirmation', 'input': dumps(value),
+                      'expected_error': {'code': 'internal', 'message': 'Setup projection failed'}})
+    extra = {**deepcopy(base), 'approved': True}
+    invalid = {**deepcopy(base), 'definition_predecessor': [], 'pack_pin_predecessor': None}
+    for name, operation, value in (
+            ('confirmation-extra-key', 'profile-confirmation', extra),
+            ('confirmation-invalid-predecessor', 'bootstrap-confirmation', invalid)):
+        cases.append({'id': name, 'operation': operation, 'input': dumps(value),
+                      'expected_error': {'code': 'invalid', 'message': 'invalid Setup projection input'}})
+    return cases
 
 
 def source_cases() -> list[dict]:
@@ -84,7 +151,7 @@ def source_cases() -> list[dict]:
     for name, payload in (('invalid-shape', '[]'), ('duplicate-key', '{"body":{},"body":{}}')):
         cases.append({'id': name, 'operation': 'decision', 'input': payload,
                       'expected_error': {'code': 'invalid', 'message': 'invalid Setup projection input'}})
-    return cases
+    return cases + confirmation_cases(runtime)
 
 
 def observe(engine, component, linker, case: dict) -> dict:
@@ -191,7 +258,7 @@ def export_native_oracle(artifact: Path, output: Path) -> None:
                 for path in paths]
     sources = capture()
     cases = source_cases()
-    if capture() != sources or len(cases) != 18:
+    if capture() != sources or len(cases) != EXPECTED_CASES:
         raise ValueError('original Setup oracle source changed')
     document = {'format': 'tobkiri.harness-setup-native-inputs/1',
                 'cases': cases, 'source_bindings': sources,
@@ -226,7 +293,7 @@ def run(artifact: Path, output: Path) -> None:
     linker = Linker(engine)
     linker.define_unknown_imports_as_traps(component)
     observations = [observe(engine, component, linker, case) for case in cases]
-    passed = (len(observations) == 18 and all(item['passed'] for item in observations)
+    passed = (len(observations) == EXPECTED_CASES and all(item['passed'] for item in observations)
               and [item['id'] for item in observations] == [case['id'] for case in cases])
     report = {'format': 'tobkiri.harness-setup-standalone-replay/1',
               'outcome': 'success' if passed else 'failed',

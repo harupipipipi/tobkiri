@@ -33,7 +33,27 @@ def invoke(operation: str, payload: str) -> str:
     if type(value) is not dict:
         raise SetupInputError("Setup input must be an object")
     runtime = DefaultspackProfileRuntime()
-    if operation == "decision":
+    if operation in ("bootstrap-confirmation", "profile-confirmation"):
+        required = {"resolved", "profile_id", "authority_snapshot_digest", "security_epoch"}
+        if operation == "bootstrap-confirmation":
+            required |= {"definition_predecessor", "pack_pin_predecessor"}
+        if (set(value) != required or type(value["resolved"]) is not dict
+                or set(value["resolved"]) != {"profile", "plan"}
+                or any(type(item) is not dict for item in value["resolved"].values())
+                or any(value.get(key) is not None and type(value[key]) is not dict
+                       for key in ("definition_predecessor", "pack_pin_predecessor"))):
+            raise SetupInputError("invalid confirmation projection input")
+        # Attribute views only. Digests and recorded facts are not review
+        # handles, native consent, frozen candidates or activation authority.
+        arguments = {key: item for key, item in value.items() if key != "resolved"}
+        arguments["resolved"] = SimpleNamespace(**value["resolved"])
+        try:
+            method = (runtime.bootstrap_confirmation if operation == "bootstrap-confirmation"
+                      else runtime.profile_confirmation)
+            result = method(**arguments)
+        except (KeyError, TypeError, ValueError, AttributeError):
+            raise SetupProjectionError("incomplete recorded confirmation") from None
+    elif operation == "decision":
         if (set(value) != {"body", "listing"}
                 or type(value["body"]) is not dict
                 or (value["listing"] is not None

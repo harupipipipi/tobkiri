@@ -226,10 +226,14 @@ async fn replay(
                 record["error_code"] = json!(error.code);
                 // Core deliberately exposes its fixed public message, not the
                 // private guest message checked by standalone execution.
+                let public_message = match case["expected_error"]["code"].as_str() {
+                    Some("invalid") => Some("provider reported invalid input"),
+                    Some("internal") => Some("provider reported an internal error"),
+                    _ => None,
+                };
                 (
                     case["expected_error"]["code"] == error.code
-                        && error.code == "invalid"
-                        && error.message == "provider reported invalid input",
+                        && public_message == Some(error.message.as_str()),
                     Outcome::Failed { code: error.code },
                 )
             }

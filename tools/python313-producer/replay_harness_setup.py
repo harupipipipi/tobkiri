@@ -42,7 +42,7 @@ def run(artifact: Path, validation: Path, destination: Path) -> None:
     supervision = run_stage('harness-setup-replay', command, work, destination / 'supervision')
     report = runtime_inputs.report(work / 'replay.json')
     if (report['format'] != 'tobkiri.harness-setup-standalone-replay/1'
-            or report['passed'] is not True or report['expected_cases'] != 18
+            or report['passed'] is not True or report['expected_cases'] != 30
             or report['native_core_replay'] is not False
             or report['production_enabled'] is not False):
         raise ValueError('Setup guest replay did not complete its declared scope')
