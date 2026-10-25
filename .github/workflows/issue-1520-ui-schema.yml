@@ -1,0 +1,109 @@
+name: Issue 1520 original JSON Schema on Wasm
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-ui-schema.yml'
+      - 'tools/python313-producer/fetch_schema.py'
+      - 'tools/python313-producer/build_schema.py'
+      - 'tools/python313-producer/schema_probe/**'
+      - 'tools/python313-producer/tests/test_schema_*.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: issue-1520-ui-schema-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  actual-schema:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      PRODUCER_RUN: '39956025119'
+      PRODUCER_HEAD: ae7f83080a36e823ac330342584210243dc38050
+      RPDS_RUN: '40182231971'
+      RPDS_HEAD: 53163ed815c62c4853bbed3d8a082c0764e3084f
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Check locked inputs and closed source resource IO
+        run: python3 -B -m unittest discover -s tools/python313-producer/tests -p 'test_schema_*.py'
+      - name: Authenticate actual predecessor runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" > "$RUNNER_TEMP/schema-producer-run.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RPDS_RUN" > "$RUNNER_TEMP/schema-rpds-run.json"
+          python3 -B - "$RUNNER_TEMP" "$PRODUCER_HEAD" "$RPDS_HEAD" <<'PY'
+          import json, sys
+          from pathlib import Path
+          for filename, expected in zip(('schema-producer-run.json', 'schema-rpds-run.json'), sys.argv[2:]):
+              value = json.loads((Path(sys.argv[1]) / filename).read_bytes())
+              if value['head_sha'] != expected or value['status'] != 'completed' or value['conclusion'] != 'success':
+                  raise SystemExit('actual predecessor source/outcome differs')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: python313-producer-cli
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PRODUCER_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/schema-producer
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui-rpds-inactive-component
+          repository: ${{ github.repository }}
+          run-id: ${{ env.RPDS_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/schema-rpds
+      - name: Restore complete locked package and validation inputs
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          chmod 755 "$RUNNER_TEMP/schema-producer/work/target/release/componentize-py"
+          python3 -B tools/python313-producer/fetch_schema.py --destination "$RUNNER_TEMP/schema-inputs"
+          python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/schema-validation"
+      - name: Compare original native packages with post-snapshot Wasm behavior
+        run: >-
+          python3 -B tools/python313-producer/build_schema.py
+          --inputs "$RUNNER_TEMP/schema-inputs"
+          --producer "$RUNNER_TEMP/schema-producer"
+          --rpds "$RUNNER_TEMP/schema-rpds"
+          --validation "$RUNNER_TEMP/schema-validation"
+          --destination "$RUNNER_TEMP/schema-candidate"
+      - name: Retain original observations, target observations and supervision
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-schema-candidate-evidence
+          path: |
+            ${{ runner.temp }}/schema-inputs/schema-inputs.json
+            ${{ runner.temp }}/schema-candidate/schema-build.json
+            ${{ runner.temp }}/schema-candidate/native/
+            ${{ runner.temp }}/schema-candidate/wasm/
+            ${{ runner.temp }}/schema-candidate/work/native.json
+            ${{ runner.temp }}/schema-candidate/work/wasm-observation.json
+            ${{ runner.temp }}/schema-candidate/work/schema.json
+            ${{ runner.temp }}/schema-candidate/work/stage-inputs.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Retain inactive verified schema candidate on CI
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-schema-inactive-component
+          path: |
+            ${{ runner.temp }}/schema-candidate/work/stage/outer.wasm
+            ${{ runner.temp }}/schema-candidate/work/schema.json
+            ${{ runner.temp }}/schema-candidate/schema-build.json
+          if-no-files-found: error
+          retention-days: 14

@@ -348,3 +348,48 @@ Session, Host I/O, port or approval authority. It does not establish browser
 worker hosting, native capture custody/resource enforcement, complete jsonschema
 dependencies, full Setup/GUI parity or product activation. Those remain required
 before switching the original Launcher flow.
+
+## Complete JSON Schema dependency candidate
+
+`issue-1520-ui-schema.yml` continues from the actual rpds run `40182231971`
+on source `53163ed815c62c4853bbed3d8a082c0764e3084f`. It authenticates that
+successful run and the unchanged producer run before restoring their artifacts.
+`fetch_schema.py` selects the complete CPython 3.13 dependency closure from the
+existing runtime `uv.lock`: attrs, jsonschema, jsonschema-specifications,
+referencing and packaging, plus a separate locked native rpds wheel for the
+reference interpreter. Each complete wheel, including resource and metadata
+members, is authenticated before and after execution. No pip install, dependency
+upgrade, generated expected result or substitute validator is involved.
+
+The reference interpreter runs original wheels through ordinary imports in an
+isolated `-I -S` namespace. The Wasm candidate executes their unchanged Python
+source through a bounded closed-tree loader. Standard package resource and
+distribution APIs receive the original captured bytes; no missing path is
+resolved through the host or network. Parent-prefix indexes and joined queries
+are bounded before expansion. The complete source, resource, metadata and
+generated literal capture must fit the unchanged 64 MiB input bound; actual
+component/Store/fuel/deadline/output limits remain independently enforced.
+
+The Python rpds wrapper comes verbatim from the locked native wheel, whose
+member identity is recorded separately. It is absent from the pinned Git
+archive; this experiment does not attribute it to Git or infer how the wheel
+was built. Only the already-proved genuine Wasm extension is placed below that
+wrapper. Linux binary and distribution ABI metadata do not establish Wasm ABI.
+
+The same observable calls compare valid/invalid documents, invalid schemas,
+local/external/unresolved references, nested error context/paths/causes, each
+registered format checker, normal rpds wrapper delegation and Map/Set behavior.
+They also exercise first post-snapshot imports, original package schema-resource
+loading, and late metadata/version/RECORD/member reads. Source/oracle success is
+insufficient: the actual native and Wasm observations must match in CI.
+
+The adapter supplies virtual read-only resources, not an OS pathname or a
+general writable filesystem. APIs requiring a real path, such as `as_file`, are
+not established by this experiment. Native capture custody, browser-worker
+hosting, original resolver extraction, complete Setup/GUI parity and production
+activation remain separate obligations. Run its small offline checks with:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python -B -m unittest discover \
+  -s tools/python313-producer/tests -p 'test_schema_*.py'
+```

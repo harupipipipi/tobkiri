@@ -1,0 +1,108 @@
+"""Offline candidate envelopes; no compiler, real wheel, or guest execution."""
+
+import ast
+import hashlib
+import importlib.util
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+
+HERE = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(HERE))
+import build_schema
+
+before = sys.path[:]
+spec = importlib.util.spec_from_file_location(
+    "schema_driver", HERE / "schema_probe/driver.py"
+)
+driver = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(driver)
+sys.path[:] = before
+
+
+class SchemaCandidateTests(unittest.TestCase):
+    def test_non_ci_refusal_precedes_tools_and_destination_access(self):
+        missing = Path("/must-not-be-created")
+        with (
+            patch.object(sys, "platform", "darwin"),
+            patch.dict("os.environ", {}, clear=True),
+        ):
+            with self.assertRaisesRegex(ValueError, "CI"):
+                build_schema.run(missing, missing, missing, missing, missing)
+
+    def test_empty_members_are_preserved_but_empty_components_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "py.typed"
+            path.write_bytes(b"")
+            self.assertEqual(driver.read(path, allow_empty=True), b"")
+            with self.assertRaises(ValueError):
+                driver.read(path)
+
+    def test_stage_keeps_literal_originals_without_copying_native_binary(self):
+        captured, pins = {}, []
+        for index in range(6):
+            native = index == 5
+            distribution = "rpds-py" if native else f"package{index}"
+            prefix = "rpds" if native else distribution
+            root = "rpds-py-native" if native else distribution
+            data = {f"{prefix}/__init__.py": b"# original\n", f"{prefix}/py.typed": b""}
+            if native:
+                data["rpds/native.so"] = b"native fixture; never executed"
+            else:
+                data[f"{distribution}-1.dist-info/METADATA"] = b"Name: fixture\n"
+            files = {}
+            for name, raw in data.items():
+                captured[f"/inputs/packages/{root}/{name}"] = raw
+                files[name] = {
+                    "bytes": len(raw),
+                    "sha256": hashlib.sha256(raw).hexdigest(),
+                }
+            pins.append(
+                {
+                    "distribution": distribution,
+                    "role": "native-oracle" if native else "pure",
+                    "files": files,
+                    "sha256": "ab" * 32,
+                }
+            )
+        extension = b"Wasm fixture; never executed"
+        captured["/rpds.abi3.so"] = extension
+        for name in ("app.py", "exercise.py", "captured_loader.py", "probe.wit"):
+            captured["/probe-source/" + name] = b"# probe\n"
+        control = {
+            "inputs": pins,
+            "extension_sha256": hashlib.sha256(extension).hexdigest(),
+            "input_limit": 64 * 1024 * 1024,
+        }
+        original_read = driver.read
+
+        def read(path, *args, **kwargs):
+            return (
+                captured[str(path)]
+                if str(path) in captured
+                else original_read(path, *args, **kwargs)
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            stage = Path(directory)
+            with patch.object(driver, "read", side_effect=read):
+                receipt = driver.stage_inputs(stage, control)
+            self.assertFalse((stage / "rpds/native.so").exists())
+            self.assertEqual((stage / "rpds/rpds.abi3.so").read_bytes(), extension)
+            self.assertEqual(receipt["wrapper"]["wheel_sha256"], "ab" * 32)
+            source = ast.parse((stage / "wheel_data.py").read_bytes())
+            self.assertEqual(len(source.body), 2)
+            values = ast.literal_eval(source.body[0].value)
+            self.assertEqual(values["rpds/__init__.py"], b"# original\n")
+            self.assertEqual(values["package0/py.typed"], b"")
+            with patch.object(
+                driver, "read", side_effect=AssertionError("must preflight")
+            ):
+                with self.assertRaisesRegex(ValueError, "bound"):
+                    driver.stage_inputs(stage, {**control, "input_limit": 1})
+
+
+if __name__ == "__main__":
+    unittest.main()
