@@ -197,6 +197,37 @@ recovery/handover, approval GUI or activation. Packaging the dependency closure
 and enforcing the real worker's limits remain open. Neither the seven-method
 component nor this request-review/read seam completes that integration.
 
+The next native custody prerequisite is `DataRoot::native_setup_owner_lease`.
+It has no Profile, principal or grant and is not called by ordinary Core open.
+It shares the existing broker's descriptor-pinned, exclusive directory-inode
+lock with ordinary allocation owners; no replaceable lock file or additional
+approval is introduced. Clones and reopened/renamed roots retain the same
+physical lease and original metadata funding. The original APFS/Darwin
+platform checks and rejection of inherited process state remain in place.
+This is an OS-custody seam, not a payload account or an executing UI worker.
+
+Native broker bookkeeping is prepaid in the existing CoreControl account:
+one permanent 4096-slot, 4096-byte-per-slot reservation covers bounded registry
+nodes and Weak-held allocation slack through the process registry's lifetime.
+Each live native owner also retains its original control slot. A last strong
+lease drop does not falsely refund retained Weak/map storage. These are control
+reservations within the unchanged control cap, not guest/ABI/output funding or
+a whole-process RSS proof. The actual shared 64 MiB native Setup payload
+account, per-invocation provenance, Store/output custody and captured native
+input binding still need connection. Existing CapacityOwner and Gate-approved
+Pack reserve/frame APIs are unchanged; inventing a Profile to fund Setup is
+not an alternative.
+
+The separate diagnostic-only schema stage profile executes the same original
+workload under its existing standalone observer bounds. Actual source
+`a6df72d80` records 149 markers and 38 completed compile intervals, totaling
+1,582,004,935 fuel including marker overhead, before the unchanged 2-billion
+fuel budget traps during distribution metadata. This justifies a separate,
+default-off preinit code-cache experiment. It neither completes schema parity
+nor changes the product UI's original 64 MiB cap. Moving compile audit events
+to preinit and using runtime marshal decoding is an explicit behavioral
+difference to evaluate, not audit-equivalence evidence.
+
 The full React screens and logical contracts stay intact. Domain-specific
 Setup/readiness/presentation orchestration belongs in Kit/compatibility Pack
 code; the native Host supplies generic caller isolation and the existing Core

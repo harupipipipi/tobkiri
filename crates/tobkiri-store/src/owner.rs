@@ -8,7 +8,13 @@ use crate::{DataRoot, StoreError};
 use std::{cmp::Ordering, fmt, sync::Arc};
 use tobkiri_canon::Digest;
 use tobkiri_canon::ids::{PackId, ProfileId};
-use tobkiri_gate::{AllocationOwnerLease, CapacityOwner};
+#[cfg(unix)]
+use tobkiri_gate::ControlKind;
+use tobkiri_gate::{AllocationOwnerLease, CapacityOwner, ControlReservation, CoreControl};
+
+#[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
+#[path = "native_setup_owner_tests.rs"]
+mod native_setup_owner_tests;
 
 /// Opaque physical root identity. Its directory descriptor stays open while any
 /// registry key or owner lease retains it, including after a directory rename.
@@ -56,6 +62,47 @@ struct HeldOwner {
 /// it through allocations, outputs, asynchronous I/O and unknown cleanup.
 #[derive(Clone)]
 pub struct OwnerLease(Arc<HeldOwner>);
+
+struct HeldNativeSetupOwner {
+    identity: DataRootIdentity,
+    domain: Digest,
+    process: u32,
+    #[cfg(unix)]
+    _root_lock: Arc<unix::HeldRoot>,
+    _control: ControlReservation,
+}
+
+/// Physical root custody for native Setup DATA before a Profile exists.
+/// This carries no Profile, principal, storage permission or Gate authority.
+/// The real root lock and its original metadata funding survive all clones.
+#[derive(Clone)]
+pub struct NativeSetupOwnerLease(Arc<HeldNativeSetupOwner>);
+impl fmt::Debug for NativeSetupOwnerLease {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NativeSetupOwnerLease")
+            .field("identity", self.identity())
+            .finish()
+    }
+}
+impl NativeSetupOwnerLease {
+    /// The descriptor-pinned identity, including after a root rename.
+    pub fn identity(&self) -> &DataRootIdentity {
+        &self.0.identity
+    }
+    /// Physical domain identity only; this never grants execution permission.
+    pub fn allocation_domain(&self) -> &Digest {
+        &self.0.domain
+    }
+    /// Reject an inherited proof before touching a process-local mutex.
+    pub fn check_live(&self) -> Result<(), StoreError> {
+        if self.0.process != std::process::id() {
+            return Err(StoreError::Unavailable(
+                "inherited native Setup allocation proof".into(),
+            ));
+        }
+        Ok(())
+    }
+}
 impl fmt::Debug for OwnerLease {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("OwnerLease")
@@ -100,6 +147,26 @@ impl AllocationOwnerLease for OwnerLease {
 }
 
 impl DataRoot {
+    /// Share the existing exclusive physical root lock for native Setup DATA.
+    /// This is a custody prerequisite, not a payload account or a Pack grant.
+    /// It does not open an approval, create a Profile, or run a component.
+    pub fn native_setup_owner_lease(
+        &self,
+        control: &CoreControl,
+    ) -> Result<NativeSetupOwnerLease, StoreError> {
+        #[cfg(unix)]
+        {
+            unix::acquire_native_setup(self.identity()?, control)
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = control;
+            Err(StoreError::Unavailable(
+                "native Setup owner locks unsupported".into(),
+            ))
+        }
+    }
+
     /// Validate the actual pinned native storage root without acquiring an
     /// allocation-owner lock or granting any storage authority.
     pub(crate) fn validate_native_data_root(&self) -> Result<(), StoreError> {
@@ -209,6 +276,10 @@ mod unix {
     struct Registry {
         roots: BTreeMap<RootKey, Weak<HeldRoot>>,
         owners: BTreeMap<OwnerKey, Weak<HeldOwner>>,
+        native_setup: BTreeMap<RootKey, Weak<HeldNativeSetupOwner>>,
+        // Weak blocks and map nodes outlive a strong owner. Their bounded
+        // broker storage stays prepaid for the registry's actual lifetime.
+        _native_setup_metadata: Option<ControlReservation>,
     }
     static REGISTRY: OnceLock<Mutex<Registry>> = OnceLock::new();
     static PROCESS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
@@ -262,40 +333,11 @@ mod unix {
         private_directory(&identity.directory.metadata()?)?;
         supported_filesystem(&identity.directory)
     }
-    pub(super) fn acquire(
-        identity: DataRootIdentity,
-        owner: CapacityOwner,
-    ) -> Result<OwnerLease, StoreError> {
-        let process = std::process::id();
-        match PROCESS.compare_exchange(
-            0,
-            process,
-            std::sync::atomic::Ordering::AcqRel,
-            std::sync::atomic::Ordering::Acquire,
-        ) {
-            Ok(_) => (),
-            Err(original) if original == process => (),
-            Err(_) => {
-                return Err(StoreError::Unavailable(
-                    "inherited allocation broker requires exec".into(),
-                ));
-            }
-        }
-        validate_root(&identity)?;
-        let root_key = (std::process::id(), identity.device, identity.inode);
-        let key = (root_key, owner.clone());
-        let mut registry = REGISTRY
-            .get_or_init(Default::default)
-            .lock()
-            .map_err(|_| StoreError::Unavailable("allocation owner registry poisoned".into()))?;
-        registry.owners.retain(|_, lease| lease.strong_count() != 0);
-        registry.roots.retain(|_, lease| lease.strong_count() != 0);
-        if let Some(held) = registry.owners.get(&key).and_then(Weak::upgrade) {
-            return Ok(OwnerLease(held));
-        }
-        if registry.owners.len() >= MAX_LIVE_OWNERS || registry.roots.len() >= MAX_LIVE_OWNERS {
-            return Err(StoreError::Quota);
-        }
+    fn acquire_root(
+        identity: &DataRootIdentity,
+        registry: &mut Registry,
+        root_key: RootKey,
+    ) -> Result<Arc<HeldRoot>, StoreError> {
         let root_lock = if let Some(held) = registry.roots.get(&root_key).and_then(Weak::upgrade) {
             held
         } else {
@@ -336,6 +378,126 @@ mod unix {
             registry.roots.insert(root_key, Arc::downgrade(&held));
             held
         };
+        Ok(root_lock)
+    }
+
+    pub(super) fn acquire_native_setup(
+        identity: DataRootIdentity,
+        control: &CoreControl,
+    ) -> Result<NativeSetupOwnerLease, StoreError> {
+        let process = std::process::id();
+        match PROCESS.compare_exchange(
+            0,
+            process,
+            std::sync::atomic::Ordering::AcqRel,
+            std::sync::atomic::Ordering::Acquire,
+        ) {
+            Ok(_) => (),
+            Err(original) if original == process => (),
+            Err(_) => {
+                return Err(StoreError::Unavailable(
+                    "inherited allocation broker requires exec".into(),
+                ));
+            }
+        }
+        validate_root(&identity)?;
+        let root_key = (process, identity.device, identity.inode);
+        let mut registry = REGISTRY
+            .get_or_init(Default::default)
+            .lock()
+            .map_err(|_| StoreError::Unavailable("allocation owner registry poisoned".into()))?;
+        registry.owners.retain(|_, lease| lease.strong_count() != 0);
+        registry
+            .native_setup
+            .retain(|_, lease| lease.strong_count() != 0);
+        registry.roots.retain(|_, lease| lease.strong_count() != 0);
+        if let Some(held) = registry.native_setup.get(&root_key).and_then(Weak::upgrade) {
+            return Ok(NativeSetupOwnerLease(held));
+        }
+        if registry.owners.len() + registry.native_setup.len() >= MAX_LIVE_OWNERS
+            || registry.roots.len() >= MAX_LIVE_OWNERS
+        {
+            return Err(StoreError::Quota);
+        }
+        // Prepay every possible native slot, weak allocation and root-map slack
+        // before construction. The permanent registry owns this permit: a last
+        // strong lease drop does NOT free its retained Weak/map storage. Reuse
+        // and pruning never create another pool or refund live bookkeeping.
+        let metadata = if registry._native_setup_metadata.is_none() {
+            Some(
+                control
+                    .reserve(ControlKind::Registration, MAX_LIVE_OWNERS as u64 * 4096)
+                    .map_err(|_| StoreError::Quota)?,
+            )
+        } else {
+            None
+        };
+        // A separately funded live owner slot remains in its original account.
+        // Large guest/payload bytes are NOT paid from either control permit;
+        // their separate native account is still needed.
+        let reservation = control
+            .reserve(ControlKind::Registration, 4096)
+            .map_err(|_| StoreError::Quota)?;
+        let root_lock = acquire_root(&identity, &mut registry, root_key)?;
+        let mut domain = Vec::from(b"tobkiri.physical-root/1".as_slice());
+        domain.extend(identity.device.to_be_bytes());
+        domain.extend(identity.inode.to_be_bytes());
+        let held = Arc::new(HeldNativeSetupOwner {
+            identity,
+            domain: Digest::hash(&domain),
+            process,
+            _root_lock: root_lock,
+            _control: reservation,
+        });
+        registry
+            .native_setup
+            .insert(root_key, Arc::downgrade(&held));
+        if let Some(metadata) = metadata {
+            registry._native_setup_metadata = Some(metadata);
+        }
+        Ok(NativeSetupOwnerLease(held))
+    }
+
+    pub(super) fn acquire(
+        identity: DataRootIdentity,
+        owner: CapacityOwner,
+    ) -> Result<OwnerLease, StoreError> {
+        let process = std::process::id();
+        match PROCESS.compare_exchange(
+            0,
+            process,
+            std::sync::atomic::Ordering::AcqRel,
+            std::sync::atomic::Ordering::Acquire,
+        ) {
+            Ok(_) => (),
+            Err(original) if original == process => (),
+            Err(_) => {
+                return Err(StoreError::Unavailable(
+                    "inherited allocation broker requires exec".into(),
+                ));
+            }
+        }
+        validate_root(&identity)?;
+        let root_key = (std::process::id(), identity.device, identity.inode);
+        let key = (root_key, owner.clone());
+        let mut registry = REGISTRY
+            .get_or_init(Default::default)
+            .lock()
+            .map_err(|_| StoreError::Unavailable("allocation owner registry poisoned".into()))?;
+        registry.owners.retain(|_, lease| lease.strong_count() != 0);
+        registry
+            .native_setup
+            .retain(|_, lease| lease.strong_count() != 0);
+        registry.roots.retain(|_, lease| lease.strong_count() != 0);
+        if let Some(held) = registry.owners.get(&key).and_then(Weak::upgrade) {
+            return Ok(OwnerLease(held));
+        }
+        if registry.owners.len() + registry.native_setup.len() >= MAX_LIVE_OWNERS
+            || registry.roots.len() >= MAX_LIVE_OWNERS
+        {
+            return Err(StoreError::Quota);
+        }
+        let root_lock = acquire_root(&identity, &mut registry, root_key)?;
         let mut domain = Vec::from(b"tobkiri.physical-root/1".as_slice());
         domain.extend(identity.device.to_be_bytes());
         domain.extend(identity.inode.to_be_bytes());
