@@ -29,6 +29,7 @@ STDLIB_FILES = {
     "calendar.py",
     "csv.py",
     "quopri.py",
+    "base64.py",
     "importlib/metadata/_adapters.py",
     "importlib/metadata/_text.py",
     "email/__init__.py",
