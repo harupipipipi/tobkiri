@@ -21,6 +21,13 @@ _TARGET = {
     "pointer_bits": struct.calcsize("P") * 8,
     "soabi": sysconfig.get_config_var("SOABI"),
     "extension_file": rpds.rpds.__file__,
+    "json_accelerators": {
+        "builtin": "_json" in sys.builtin_module_names,
+        "preloaded": "_json" in sys.modules,
+        "scanner_module": getattr(json.scanner.make_scanner, "__module__", None),
+        "encoder_module": getattr(json.encoder.encode_basestring, "__module__", None),
+        "make_encoder_module": getattr(json.encoder.c_make_encoder, "__module__", None),
+    },
 }
 _BEFORE = {
     "reads": _FINDER.tree.reads,
@@ -31,6 +38,35 @@ _FINDER.seal()
 
 
 class Probe(wit_world.exports.Probe):
+    def probe_clock(self) -> str:
+        """Observe real time and precision separately from validation results."""
+        import time
+
+        return json.dumps(
+            {
+                "unix_time_ns": time.time_ns(),
+                "resolution": time.get_clock_info("time").resolution,
+                "target": _TARGET,
+            }
+        )
+
+    def probe_denied_io(self, kind: str) -> str:
+        """Prove genuine non-clock WASI calls still trap in a fresh Store."""
+        import os
+
+        try:
+            if kind == "filesystem":
+                os.stat("/forbidden-ui-clock-probe")
+            elif kind == "random":
+                os.urandom(1)
+            else:
+                raise ValueError("unknown denial probe")
+        except Exception as error:
+            # A normal Python error is not proof of a WASI trap. Return it so
+            # the controller rejects it rather than trapping while printing.
+            return json.dumps({"unexpected_python_error": type(error).__name__})
+        return json.dumps({"unexpected_host_io_success": kind})
+
     def run(self) -> str:
         """Use original validation and first late resource/metadata/module accesses."""
         try:
@@ -49,11 +85,12 @@ class Probe(wit_world.exports.Probe):
                 current = current.tb_next
             return json.dumps(
                 {
+                    "target": _TARGET,
                     "exception": {
                         "type": type(error).__module__ + "." + type(error).__qualname__,
                         "message": str(error),
                         "frames": frames,
-                    }
+                    },
                 },
                 ensure_ascii=True,
                 sort_keys=True,

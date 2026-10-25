@@ -403,3 +403,39 @@ activation remain separate obligations. Run its small offline checks with:
 PYTHONDONTWRITEBYTECODE=1 python -B -m unittest discover \
   -s tools/python313-producer/tests -p 'test_schema_*.py'
 ```
+
+## Separate UI wall-clock producer candidate
+
+The unchanged ten-file source closure reaches the original logging module's
+`time.time_ns()` after snapshotting. The actual `897486614` attempt stops in
+`wall_clock_now`, because the historical producer's `--stub-wasi` traps every
+WASI operation. That historical producer and all SDK/source-codec pins remain
+unchanged.
+
+`issue-1520-ui-clock.yml` builds a separate candidate through the same verified
+native Python, WASI library, runtime and packaged-asset stages. Its explicit
+`build_cli.py --allow-ui-wall-clock` option derives only a Cargo feature and
+the clock exception in the original stub generator. Only wall-clock `now` and
+`resolution` of the supported typed ABI remain imports; every other original
+WASI stub and the `STUB_WASI=true` runtime path remain in place. Environment and
+argument initialization are not enabled. The candidate source delta, build
+recipe, binary and artifact are recorded separately from historical outputs.
+
+The consuming job first verifies the genuine rpds predecessor and complete
+original source. Both inner and outer components must have exactly the allowed
+clock import and its datetime/function types. A separate generated composition
+WIT declares that import without rewriting the probe or original package
+sources. Generated source and WIT copies remain under the same 64 MiB bound.
+
+The CI bridge provides actual host wall time and its actual clock resolution,
+rounding precision upward to whole nanoseconds. Clock failures, call limits and
+deadlines reject the call. No general WASI linker is installed. Fresh Stores
+must observe correct epoch/units/resolution and must still trap on filesystem
+and random IO; a normal Python error is not accepted as that trap. The original
+schema comparison still runs from a fresh snapshot and requires the first
+logging import to reach the clock. Store, fuel, deadline, output, post-return
+and original-oracle checks remain enforced.
+
+These are candidate conditions, not achieved runtime claims. CI-host clock
+evidence does not establish production browser-worker/UI clock integration,
+native capture custody, Setup/approval GUI parity or activation.

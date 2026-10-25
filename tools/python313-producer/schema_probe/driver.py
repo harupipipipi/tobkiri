@@ -10,7 +10,7 @@ import sys
 import threading
 import time
 
-sys.path[:0] = ["/validation-deps", "/"]
+sys.path[:0] = ["/validation-deps", "/", "/probe-source"]
 INTERFACE = "tobkiri-ui:schema-probe/probe@1.0.0"
 FUEL = 2_000_000_000
 SECONDS = 30
@@ -162,20 +162,34 @@ def stage_inputs(stage: Path, control: dict) -> dict:
     }
 
 
-def boundary(component, engine, *, inner: bool):
-    imports, exports = (
-        list(component.type.imports(engine)),
-        list(component.type.exports(engine)),
-    )
+def boundary(component, engine, *, inner: bool, allow_clock: bool = False):
+    imports = component.type.imports(engine)
+    exports = list(component.type.exports(engine))
+    if allow_clock:
+        from ui_clock import validate_clock_import
+
+        if len(imports) != 1:
+            raise ValueError("UI candidate must import only one wall-clock interface")
+        for name, item in imports.items():
+            validate_clock_import(name, item, engine)
+    elif imports:
+        raise ValueError("schema component has unexpected authority imports")
     expected = {INTERFACE, "exports"} if inner else {INTERFACE}
-    if imports or set(exports) != expected or len(exports) != len(expected):
+    if set(exports) != expected or len(exports) != len(expected):
         raise ValueError("schema component has unexpected authority imports or exports")
-    return {"imports": imports, "exports": sorted(exports)}
+    return {"imports": sorted(imports), "exports": sorted(exports)}
 
 
-def observe(path: Path) -> dict:
+def observe(
+    path: Path,
+    *,
+    allow_clock: bool = False,
+    operation_name: str = "run",
+    arguments: tuple = (),
+    expected_denial: bool = False,
+) -> dict:
     """Invoke the real component with unchanged Store/fuel/deadline limits."""
-    from wasmtime import Config, Engine, Store
+    from wasmtime import Config, Engine, Store, WasmtimeError
     from wasmtime.component import Component, Linker
 
     config = Config()
@@ -186,7 +200,7 @@ def observe(path: Path) -> dict:
         Engine(config) as engine,
         Component(engine, read(path, 32 * 1024 * 1024)) as component,
     ):
-        typed = boundary(component, engine, inner=False)
+        typed = boundary(component, engine, inner=False, allow_clock=allow_clock)
         with Store(engine) as store, Linker(engine) as linker:
             store.set_limits(
                 memory_size=128 * 1024 * 1024,
@@ -212,32 +226,60 @@ def observe(path: Path) -> dict:
             start = time.monotonic()
             timer.start()
             post_return = False
+            bridge = None
+            denial = None
             try:
+                if allow_clock:
+                    from ui_clock import WallClockBridge
+
+                    bridge = WallClockBridge(typed["imports"][0], start + SECONDS)
+                    bridge.install(linker)
                 instance = linker.instantiate(store, component)
                 index = instance.get_export_index(store, INTERFACE)
                 if index is None:
                     raise ValueError("schema interface missing")
-                operation = instance.get_export_index(store, "run", index)
+                operation = instance.get_export_index(store, operation_name, index)
                 if operation is None:
                     raise ValueError("schema operation missing")
                 function = instance.get_func(store, operation)
                 if function is None:
                     raise ValueError("schema operation is not a function")
-                value = function(store)
                 try:
-                    if type(value) is not str or len(value.encode()) > OUTPUT_LIMIT:
-                        raise ValueError(
-                            "schema observation exceeds original JSON boundary"
-                        )
-                    result = json.loads(value)
-                finally:
-                    function.post_return(store)
-                    post_return = True
+                    value = function(store, *arguments)
+                except WasmtimeError as error:
+                    if (
+                        not expected_denial
+                        or "wasm `unreachable` instruction executed" not in str(error)
+                    ):
+                        raise
+                    denial = {
+                        "kind": arguments[0],
+                        "trap": "wasm unreachable",
+                        "store_retired": True,
+                    }
+                    result = None
+                else:
+                    try:
+                        if expected_denial:
+                            raise ValueError("non-clock host IO did not trap")
+                        if type(value) is not str or len(value.encode()) > OUTPUT_LIMIT:
+                            raise ValueError(
+                                "schema observation exceeds original JSON boundary"
+                            )
+                        result = json.loads(value)
+                    finally:
+                        function.post_return(store)
+                        post_return = True
             finally:
                 finished.set()
                 timer.cancel()
                 timer.join()
-            if clock_errors or time.monotonic() - start >= SECONDS or not post_return:
+            if (
+                clock_errors
+                or time.monotonic() - start >= SECONDS
+                or store.get_fuel() <= 0
+                or (not post_return and denial is None)
+            ):
                 raise ValueError(
                     "schema operation did not finish its original bounded lifetime"
                 )
@@ -245,8 +287,31 @@ def observe(path: Path) -> dict:
                 "result": result,
                 "fuel_consumed": FUEL - store.get_fuel(),
                 "post_return": post_return,
+                "denial": denial,
+                "clock": bridge.report() if bridge is not None else None,
                 **typed,
             }
+
+
+def clock_composition_wit(stage: Path, import_name: str) -> Path:
+    """Declare the verified clock import for WAC without changing guest sources."""
+    root = stage / "composition-wit"
+    dependency = root / "deps/wasi-clocks"
+    dependency.mkdir(parents=True)
+    original = read(stage / "probe.wit").decode()
+    anchor = "world ui-schema-probe {\n"
+    if original.count(anchor) != 1:
+        raise ValueError("original schema world changed before clock composition")
+    version = import_name.rsplit("@", 1)[1]
+    (root / "probe.wit").write_text(
+        original.replace(anchor, anchor + "  import " + import_name + ";\n", 1)
+    )
+    (dependency / "wall-clock.wit").write_text(
+        "package wasi:clocks@" + version + ";\ninterface wall-clock {\n"
+        "  record datetime { seconds: u64, nanoseconds: u32 }\n"
+        "  now: func() -> datetime;\n  resolution: func() -> datetime;\n}\n"
+    )
+    return root
 
 
 def main():
@@ -256,6 +321,9 @@ def main():
 
     work = Path("/work")
     control = json.loads(read(Path("/control.json")))
+    allow_clock = control.get("allow_ui_wall_clock", False)
+    if type(allow_clock) is not bool:
+        raise ValueError("explicit boolean UI clock mode required")
     original = json.loads(read(work / "native.json"))
     stage = work / "stage"
     stage.mkdir()
@@ -286,21 +354,90 @@ def main():
     config.parallel_compilation = False
     inner = read(stage / "component.wasm", 32 * 1024 * 1024)
     with Engine(config) as engine, Component(engine, inner) as component:
-        inner_typed = boundary(component, engine, inner=True)
+        inner_typed = boundary(component, engine, inner=True, allow_clock=allow_clock)
+    wit = (
+        clock_composition_wit(stage, inner_typed["imports"][0])
+        if allow_clock
+        else stage
+    )
+    generated_wit = (
+        {
+            path.relative_to(stage).as_posix(): hashlib.sha256(read(path)).hexdigest()
+            for path in wit.rglob("*.wit")
+        }
+        if allow_clock
+        else {}
+    )
+    if (
+        sum(
+            path.stat().st_size
+            for path in stage.rglob("*")
+            if path.is_file() and path.name != "component.wasm"
+        )
+        > control["input_limit"]
+    ):
+        raise ValueError("complete generated clock/source capture exceeds 64 MiB")
     composition = compose(
         Path("/wac"),
         stage / "component.wasm",
         stage,
-        stage,
+        wit,
         "ui-schema-probe",
         [INTERFACE],
         environment,
     )
+    final_source_bytes = sum(
+        path.stat().st_size
+        for path in stage.rglob("*")
+        if path.is_file() and path.name not in {"component.wasm", "outer.wasm"}
+    )
+    if final_source_bytes > control["input_limit"]:
+        raise ValueError("final source and composition copies exceed 64 MiB")
     if read(stage / "component.wasm", 32 * 1024 * 1024) != inner:
         raise ValueError("schema inner changed during composition")
-    actual = observe(stage / "outer.wasm")
+    clock_probes = None
+    if allow_clock:
+        start_wall = time.time_ns()
+        clock_probe = observe(
+            stage / "outer.wasm", allow_clock=True, operation_name="probe-clock"
+        )
+        end_wall = time.time_ns()
+        result = clock_probe["result"]
+        precision_ns = clock_probe["clock"]["resolution_nanoseconds_ceiling"]
+        if (
+            type(result.get("unix_time_ns")) is not int
+            or not start_wall <= result["unix_time_ns"] <= end_wall
+            or clock_probe["clock"]["calls"]["now"] <= 0
+            or clock_probe["clock"]["calls"]["resolution"] <= 0
+            or precision_ns is None
+            or result.get("resolution") != precision_ns / 1_000_000_000
+        ):
+            raise ValueError("real wall-clock epoch, units or resolution did not match")
+        clock_probes = {
+            "clock": clock_probe,
+            "host_window_ns": [start_wall, end_wall],
+            "non_clock_denials": [
+                observe(
+                    stage / "outer.wasm",
+                    allow_clock=True,
+                    operation_name="probe-denied-io",
+                    arguments=(kind,),
+                    expected_denial=True,
+                )
+                for kind in ("filesystem", "random")
+            ],
+            "production_ui_clock_connected": False,
+        }
+        (work / "ui-clock-probes.json").write_text(
+            json.dumps(clock_probes, indent=2) + "\n"
+        )
+    actual = observe(stage / "outer.wasm", allow_clock=allow_clock)
     (work / "wasm-observation.json").write_text(json.dumps(actual, indent=2) + "\n")
     result = actual["result"]
+    if allow_clock and actual["clock"]["calls"]["now"] <= 0:
+        raise ValueError(
+            "post-snapshot original logging did not reach the real wall clock"
+        )
     if "exception" in result:
         raise ValueError(
             "original schema operation failed: "
@@ -338,6 +475,11 @@ def main():
             or hashlib.sha256(raw).hexdigest() != entry["sha256"]
         ):
             raise ValueError("original package or captured resource data changed")
+    if any(
+        hashlib.sha256(read(stage / name)).hexdigest() != expected
+        for name, expected in generated_wit.items()
+    ):
+        raise ValueError("clock composition WIT changed during execution")
     report = {
         "format": "tobkiri.ui-schema-probe/1",
         "outcome": "success",
@@ -353,6 +495,9 @@ def main():
         "native_capture_binding": False,
         "full_setup_gui": False,
         "production_enabled": False,
+        "clock_probes": clock_probes,
+        "generated_clock_wit": generated_wit,
+        "final_source_bytes": final_source_bytes,
     }
     (work / "schema.json").write_text(json.dumps(report, indent=2) + "\n")
 

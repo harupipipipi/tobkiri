@@ -6,6 +6,7 @@ import importlib.util
 from pathlib import Path
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -24,6 +25,78 @@ sys.path[:] = before
 
 
 class SchemaCandidateTests(unittest.TestCase):
+    def test_clock_composition_declares_actual_interface_without_rewriting_probe(self):
+        spec = importlib.util.spec_from_file_location(
+            "schema_composition", HERE.parents[1] / "sdk/python/composition.py"
+        )
+        composition = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(composition)
+        original = (HERE / "schema_probe/probe.wit").read_bytes()
+        with tempfile.TemporaryDirectory() as directory:
+            stage = Path(directory)
+            (stage / "probe.wit").write_bytes(original)
+            wit = driver.clock_composition_wit(stage, "wasi:clocks/wall-clock@0.2.6")
+            self.assertEqual((stage / "probe.wit").read_bytes(), original)
+            self.assertIn(
+                "import wasi:clocks/wall-clock@0.2.6;", (wit / "probe.wit").read_text()
+            )
+            names, _ = composition.world_export_names_from_path(wit, "ui-schema-probe")
+            self.assertEqual(names, [driver.INTERFACE])
+
+    def test_clock_mode_never_accepts_extra_authority_or_private_exports(self):
+        def component(imports, exports):
+            return SimpleNamespace(
+                type=SimpleNamespace(
+                    imports=lambda engine: imports, exports=lambda engine: exports
+                )
+            )
+
+        self.assertEqual(
+            driver.boundary(
+                component({}, {driver.INTERFACE: object()}), None, inner=False
+            )["imports"],
+            [],
+        )
+        with self.assertRaisesRegex(ValueError, "authority"):
+            driver.boundary(
+                component(
+                    {"wasi:filesystem/types@0.2.6": object()},
+                    {driver.INTERFACE: object()},
+                ),
+                None,
+                inner=False,
+            )
+        with self.assertRaisesRegex(ValueError, "exports"):
+            driver.boundary(
+                component({}, {driver.INTERFACE: object(), "exports": object()}),
+                None,
+                inner=False,
+            )
+        with patch.dict(
+            sys.modules,
+            {
+                "ui_clock": SimpleNamespace(
+                    validate_clock_import=lambda *args: self.fail(
+                        "must reject extra imports first"
+                    )
+                )
+            },
+        ):
+            for imports in (
+                {},
+                {"wasi:clocks/wall-clock@0.2.6": object(), "extra": object()},
+            ):
+                with (
+                    self.subTest(imports=list(imports)),
+                    self.assertRaisesRegex(ValueError, "only one"),
+                ):
+                    driver.boundary(
+                        component(imports, {driver.INTERFACE: object()}),
+                        None,
+                        inner=False,
+                        allow_clock=True,
+                    )
+
     def test_controller_and_guest_source_selection_are_identical(self):
         self.assertEqual(driver.STDLIB_FILES, set(fetch_schema_stdlib.SELECTED_FILES))
 

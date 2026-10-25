@@ -12,6 +12,7 @@ from build_wasi import run_stage
 import cli_source
 import fetch_sdk
 import runtime_inputs
+import ui_clock_source
 from verify_git_checkout import verify_cache
 
 RECIPE_SHA256 = '330ccaa93ee1feba18b881eaeac70fc77013bddd8ef2128e9c7fb866528d1fa4'
@@ -22,7 +23,8 @@ STARTUP_RECIPE = '''set -eu
 
 
 def run(source: Path, registry: Path, rust: Path, git: Path, wasi: Path,
-        runtimes: Path, assets: Path, destination: Path) -> None:
+        runtimes: Path, assets: Path, destination: Path, *,
+        allow_ui_wall_clock: bool = False) -> None:
     """Compile only with immutable verified source/assets and offline caches."""
     if sys.platform != 'linux' or os.environ.get('GITHUB_ACTIONS') != 'true':
         raise ValueError('producer CLI rebuilding is restricted to Linux CI')
@@ -53,11 +55,19 @@ def run(source: Path, registry: Path, rust: Path, git: Path, wasi: Path,
     stage = destination / 'source'
     source_receipt = cli_source.stage(source / 'componentize-py', packaged,
                                      asset_report['outputs'], stage)
+    if allow_ui_wall_clock:
+        source_receipt = ui_clock_source.enable(stage, source_receipt)
     snapshots[str(stage)] = source_receipt['files']
     (destination / 'cli-source.json').write_text(json.dumps(source_receipt, indent=2) + '\n')
     recipe = HERE / 'trials/2026-10-19/producer-cli.sh'
     if fingerprint(recipe)['sha256'] != RECIPE_SHA256:
         raise ValueError('original producer CLI recipe changed')
+    candidate_recipe_identity = None
+    if allow_ui_wall_clock:
+        candidate_recipe = destination / 'ui-clock-cli.sh'
+        candidate_recipe.write_bytes(ui_clock_source.build_recipe(recipe.read_bytes()))
+        candidate_recipe_identity = fingerprint(candidate_recipe)
+        recipe = candidate_recipe
     work = destination / 'work'
     work.mkdir(mode=0o700)
     (work / 'cargo-home').mkdir(mode=0o700)
@@ -72,6 +82,9 @@ def run(source: Path, registry: Path, rust: Path, git: Path, wasi: Path,
                'source_delta': source_receipt['delta'], 'stages': [],
                'guest_execution': False, 'componentization': False,
                'production_enabled': False, 'historical_binary_identity_claimed': False}
+    if allow_ui_wall_clock:
+        receipt['ui_wall_clock_candidate'] = source_receipt['ui_wall_clock']
+        receipt['candidate_recipe'] = candidate_recipe_identity
     receipt_path = destination / 'cli-build.json'
     try:
         mounts = (
@@ -104,6 +117,8 @@ def run(source: Path, registry: Path, rust: Path, git: Path, wasi: Path,
                 raise ValueError('producer predecessor identity changed')
         if fingerprint(config) != config_identity or fingerprint(binary) != identity:
             raise ValueError('producer configuration or binary changed during startup')
+        if candidate_recipe_identity is not None and fingerprint(recipe) != candidate_recipe_identity:
+            raise ValueError('UI clock producer recipe changed')
         receipt.update(outcome='success', binary=identity, inputs_unchanged=True,
                        producer_cli=True, reported_version='componentize-py 0.25.0')
     except BaseException:
@@ -117,4 +132,5 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     for name in ('source', 'registry', 'rust', 'git', 'wasi', 'runtimes', 'assets', 'destination'):
         parser.add_argument('--' + name, type=Path, required=True)
+    parser.add_argument('--allow-ui-wall-clock', action='store_true')
     run(**vars(parser.parse_args()))

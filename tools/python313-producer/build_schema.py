@@ -26,7 +26,13 @@ INPUT_LIMIT = 64 * 1024 * 1024
 
 
 def verify_inputs(
-    inputs: Path, producer: Path, rpds: Path, validation: Path, stdlib: Path
+    inputs: Path,
+    producer: Path,
+    rpds: Path,
+    validation: Path,
+    stdlib: Path,
+    *,
+    allow_ui_wall_clock: bool = False,
 ) -> dict:
     """Bind all restored archives and actual prior artifacts before execution."""
     for path in (inputs, producer, rpds, validation, stdlib):
@@ -64,6 +70,23 @@ def verify_inputs(
     ]
     if source_pins != [fingerprint(producer / "cli-source.json")]:
         raise ValueError("saved producer source receipt differs")
+    clock_variant = cli.get("ui_wall_clock_candidate")
+    if allow_ui_wall_clock:
+        fingerprint(producer / "cli-source.json", 4 * 1024 * 1024)
+        source = json.loads((producer / "cli-source.json").read_bytes())
+        if (
+            not isinstance(clock_variant, dict)
+            or clock_variant != source.get("ui_wall_clock")
+            or clock_variant.get("feature") != "ui-wall-clock"
+            or clock_variant.get("interface_prefix") != "wasi:clocks/wall-clock@"
+            or clock_variant.get("functions") != ["now", "resolution"]
+            or clock_variant.get("stub_wasi_retained") is not True
+            or set(clock_variant.get("changed_files", {}))
+            != {"Cargo.toml", "src/stubwasi.rs"}
+        ):
+            raise ValueError("separate explicit UI clock producer derivation required")
+    elif clock_variant is not None:
+        raise ValueError("UI clock producer requires an explicit controller option")
     return {
         str(path): fingerprint(path)
         for path in (
@@ -85,6 +108,8 @@ def run(
     validation: Path,
     stdlib: Path,
     destination: Path,
+    *,
+    allow_ui_wall_clock: bool = False,
 ) -> None:
     """Execute original wheels and the Wasm candidate only in supervised Linux CI."""
     if sys.platform != "linux" or os.environ.get("GITHUB_ACTIONS") != "true":
@@ -97,7 +122,14 @@ def run(
         or shutil.disk_usage(destination.parent).free < fetch_schema.DISK_FLOOR
     ):
         raise ValueError("new physical destination and existing disk floor required")
-    identities = verify_inputs(inputs, producer, rpds, validation, stdlib)
+    identities = verify_inputs(
+        inputs,
+        producer,
+        rpds,
+        validation,
+        stdlib,
+        allow_ui_wall_clock=allow_ui_wall_clock,
+    )
     destination.mkdir(mode=0o700)
     work = destination / "work"
     work.mkdir(mode=0o700)
@@ -118,6 +150,7 @@ def run(
                 "extension_sha256": EXTENSION_SHA256,
                 "input_limit": INPUT_LIMIT,
                 "stdlib": runtime_inputs.report(stdlib / "stdlib-inputs.json"),
+                "allow_ui_wall_clock": allow_ui_wall_clock,
                 "native_paths": [
                     "/inputs/packages/"
                     + (
@@ -156,6 +189,7 @@ def run(
         "native_capture_binding": False,
         "full_setup_gui": False,
         "production_enabled": False,
+        "ui_wall_clock_candidate": allow_ui_wall_clock,
     }
     try:
         native_recipe = destination / "native.sh"
@@ -213,7 +247,14 @@ def run(
             or fingerprint(work / "native.json") != native
         ):
             raise ValueError("unchanged original schema observations did not match")
-        verify_inputs(inputs, producer, rpds, validation, stdlib)
+        verify_inputs(
+            inputs,
+            producer,
+            rpds,
+            validation,
+            stdlib,
+            allow_ui_wall_clock=allow_ui_wall_clock,
+        )
         if (
             fetch_sdk.inventory(source) != scripts
             or fingerprint(control) != control_identity
@@ -239,4 +280,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     for name in ("inputs", "producer", "rpds", "validation", "stdlib", "destination"):
         parser.add_argument("--" + name, type=Path, required=True)
+    parser.add_argument("--allow-ui-wall-clock", action="store_true")
     run(**vars(parser.parse_args()))
