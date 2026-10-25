@@ -69,9 +69,7 @@ class UiMonotonicSourceTests(unittest.TestCase):
         original = (HERE / "trials/2026-10-19/producer-cli.sh").read_bytes()
         wall = ui_clock_source.build_recipe(original)
         mono = ui_monotonic_source.build_recipe(wall)
-        self.assertEqual(
-            mono.replace(b" --features ui-monotonic-clock", b""), original
-        )
+        self.assertEqual(mono.replace(b" --features ui-monotonic-clock", b""), original)
         self.assertEqual(wall, ui_clock_source.build_recipe(original))
         for invalid in (original, wall + wall, mono):
             with self.assertRaises(ValueError):
@@ -86,17 +84,23 @@ class UiMonotonicSourceTests(unittest.TestCase):
             self.assertEqual(result["original_files"], wall["original_files"])
             self.assertEqual(result["files"], inventory(root))
             changed = {
-                name for name in wall["files"] if wall["files"][name] != result["files"][name]
+                name
+                for name in wall["files"]
+                if wall["files"][name] != result["files"][name]
             }
             self.assertEqual(changed, {"Cargo.toml", "src/stubwasi.rs"})
             candidate = result["ui_monotonic_clock"]
-            self.assertEqual(candidate["import_interface"], ui_monotonic_source.IMPORT_INTERFACE)
+            self.assertEqual(
+                candidate["import_interface"], ui_monotonic_source.IMPORT_INTERFACE
+            )
             self.assertEqual(candidate["functions"], ["now", "resolution"])
             self.assertTrue(candidate["stub_wasi_retained"])
             for name, entry in candidate["changed_files"].items():
                 self.assertEqual(entry["wall_clock_candidate"], wall["files"][name])
                 self.assertEqual(entry["candidate"], result["files"][name])
-            self.assertEqual((root / "asset.zst").read_bytes(), b"authenticated original asset")
+            self.assertEqual(
+                (root / "asset.zst").read_bytes(), b"authenticated original asset"
+            )
             with self.assertRaises(ValueError):
                 ui_monotonic_source.enable(root, result)
 
@@ -112,8 +116,9 @@ class UiMonotonicSourceTests(unittest.TestCase):
 
     def test_monotonic_option_cannot_silently_enable_wall_clock(self):
         missing = Path("/must-not-be-created")
-        with patch.object(sys, "platform", "linux"), patch.dict(
-            "os.environ", {"GITHUB_ACTIONS": "true"}
+        with (
+            patch.object(sys, "platform", "linux"),
+            patch.dict("os.environ", {"GITHUB_ACTIONS": "true"}),
         ):
             with self.assertRaisesRegex(ValueError, "explicit wall-clock"):
                 build_cli.run(*([missing] * 8), allow_ui_monotonic_clock=True)
@@ -125,7 +130,9 @@ class UiMonotonicSourceTests(unittest.TestCase):
                 ({}, {"ui_monotonic_clock": {}}),
             ):
                 with self.subTest(wall=enabled, cli=cli, source=source):
-                    with self.assertRaisesRegex(ValueError, "separate consuming controller"):
+                    with self.assertRaisesRegex(
+                        ValueError, "separate consuming controller"
+                    ):
                         build_schema.verify_clock_variant(
                             cli, source, allow_ui_wall_clock=enabled
                         )
@@ -134,6 +141,45 @@ class UiMonotonicSourceTests(unittest.TestCase):
             build_schema.verify_clock_variant(
                 {}, {"ui_wall_clock": {}}, allow_ui_wall_clock=False
             )
+
+    def test_explicit_consumer_requires_the_full_two_stage_source_ancestry(self):
+        import copy
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            wall = self.stage_wall_candidate(root)
+            source = ui_monotonic_source.enable(root, wall)
+            cli = {
+                "ui_wall_clock_candidate": source["ui_wall_clock"],
+                "ui_monotonic_clock_candidate": source["ui_monotonic_clock"],
+            }
+            build_schema.verify_clock_variant(
+                cli, source, allow_ui_wall_clock=True, allow_ui_monotonic_clock=True
+            )
+            with self.assertRaisesRegex(ValueError, "explicit wall-clock"):
+                build_schema.verify_clock_variant(
+                    cli,
+                    source,
+                    allow_ui_wall_clock=False,
+                    allow_ui_monotonic_clock=True,
+                )
+            for field in ("wall_clock_candidate", "candidate"):
+                forged = copy.deepcopy(source)
+                forged["ui_monotonic_clock"]["changed_files"]["Cargo.toml"][field] = {}
+                forged_cli = {
+                    "ui_wall_clock_candidate": forged["ui_wall_clock"],
+                    "ui_monotonic_clock_candidate": forged["ui_monotonic_clock"],
+                }
+                with (
+                    self.subTest(field=field),
+                    self.assertRaisesRegex(ValueError, "ancestry"),
+                ):
+                    build_schema.verify_clock_variant(
+                        forged_cli,
+                        forged,
+                        allow_ui_wall_clock=True,
+                        allow_ui_monotonic_clock=True,
+                    )
 
 
 if __name__ == "__main__":

@@ -166,15 +166,40 @@ def stage_inputs(stage: Path, control: dict) -> dict:
     }
 
 
-def boundary(component, engine, *, inner: bool, allow_clock: bool = False):
+def boundary(
+    component,
+    engine,
+    *,
+    inner: bool,
+    allow_clock: bool = False,
+    allow_monotonic: bool = False,
+):
     imports = component.type.imports(engine)
     exports = list(component.type.exports(engine))
+    if allow_monotonic and not allow_clock:
+        raise ValueError("monotonic candidate requires explicit wall-clock mode")
     if allow_clock:
         from ui_clock import validate_clock_import
 
-        if len(imports) != 1:
+        if allow_monotonic:
+            from ui_monotonic import (
+                IMPORT_NAME,
+                validate_clock_import as validate_monotonic,
+            )
+
+            if len(imports) != 2 or IMPORT_NAME not in imports:
+                raise ValueError(
+                    "UI candidate must import only the two explicit clock interfaces"
+                )
+            validate_monotonic(IMPORT_NAME, imports[IMPORT_NAME], engine)
+            wall_imports = {
+                name: item for name, item in imports.items() if name != IMPORT_NAME
+            }
+        else:
+            wall_imports = imports
+        if len(wall_imports) != 1:
             raise ValueError("UI candidate must import only one wall-clock interface")
-        for name, item in imports.items():
+        for name, item in wall_imports.items():
             validate_clock_import(name, item, engine)
     elif imports:
         raise ValueError("schema component has unexpected authority imports")
@@ -188,6 +213,7 @@ def observe(
     path: Path,
     *,
     allow_clock: bool = False,
+    allow_monotonic: bool = False,
     operation_name: str = "run",
     arguments: tuple = (),
     expected_denial: bool = False,
@@ -204,7 +230,13 @@ def observe(
         Engine(config) as engine,
         Component(engine, read(path, 32 * 1024 * 1024)) as component,
     ):
-        typed = boundary(component, engine, inner=False, allow_clock=allow_clock)
+        typed = boundary(
+            component,
+            engine,
+            inner=False,
+            allow_clock=allow_clock,
+            allow_monotonic=allow_monotonic,
+        )
         with Store(engine) as store, Linker(engine) as linker:
             store.set_limits(
                 memory_size=128 * 1024 * 1024,
@@ -231,13 +263,28 @@ def observe(
             timer.start()
             post_return = False
             bridge = None
+            monotonic_bridge = None
+            budget = None
             denial = None
             try:
                 if allow_clock:
-                    from ui_clock import WallClockBridge
+                    from ui_clock import ClockBudget, WallClockBridge
 
-                    bridge = WallClockBridge(typed["imports"][0], start + SECONDS)
+                    budget = ClockBudget(start + SECONDS)
+                    wall_import = next(
+                        name
+                        for name in typed["imports"]
+                        if name.startswith("wasi:clocks/wall-clock@")
+                    )
+                    bridge = WallClockBridge(
+                        wall_import, start + SECONDS, budget=budget
+                    )
                     bridge.install(linker)
+                    if allow_monotonic:
+                        from ui_monotonic import IMPORT_NAME, MonotonicClockBridge
+
+                        monotonic_bridge = MonotonicClockBridge(IMPORT_NAME, budget)
+                        monotonic_bridge.install(linker)
                 instance = linker.instantiate(store, component)
                 index = instance.get_export_index(store, INTERFACE)
                 if index is None:
@@ -260,6 +307,7 @@ def observe(
                         "kind": arguments[0],
                         "trap": "wasm unreachable",
                         "store_retired": True,
+                        "wasm_stack": str(error)[:4096],
                     }
                     result = None
                 else:
@@ -282,6 +330,7 @@ def observe(
                 clock_errors
                 or time.monotonic() - start >= SECONDS
                 or store.get_fuel() <= 0
+                or (budget is not None and not budget.healthy)
                 or (not post_return and denial is None)
             ):
                 raise ValueError(
@@ -293,11 +342,23 @@ def observe(
                 "post_return": post_return,
                 "denial": denial,
                 "clock": bridge.report() if bridge is not None else None,
+                "monotonic_clock": (
+                    monotonic_bridge.report() if monotonic_bridge is not None else None
+                ),
+                "clock_budget": budget.report() if budget is not None else None,
+                "clock_callbacks_completed": budget.healthy
+                if budget is not None
+                else True,
                 **typed,
             }
 
 
-def clock_composition_wit(stage: Path, import_name: str) -> Path:
+def clock_composition_wit(
+    stage: Path,
+    import_name: str,
+    *,
+    allow_monotonic: bool = False,
+) -> Path:
     """Declare the verified clock import for WAC without changing guest sources."""
     root = stage / "composition-wit"
     dependency = root / "deps/wasi-clocks"
@@ -307,9 +368,18 @@ def clock_composition_wit(stage: Path, import_name: str) -> Path:
     if original.count(anchor) != 1:
         raise ValueError("original schema world changed before clock composition")
     version = import_name.rsplit("@", 1)[1]
-    (root / "probe.wit").write_text(
-        original.replace(anchor, anchor + "  import " + import_name + ";\n", 1)
-    )
+    declarations = "  import " + import_name + ";\n"
+    if allow_monotonic:
+        from ui_monotonic import IMPORT_NAME
+
+        declarations += "  import " + IMPORT_NAME + ";\n"
+        monotonic = root / "deps/tobkiri-ui-clock"
+        monotonic.mkdir()
+        (monotonic / "monotonic.wit").write_text(
+            "package tobkiri-ui:clock@1.0.0;\ninterface monotonic {\n"
+            "  now: func() -> u64;\n  resolution: func() -> u64;\n}\n"
+        )
+    (root / "probe.wit").write_text(original.replace(anchor, anchor + declarations, 1))
     (dependency / "wall-clock.wit").write_text(
         "package wasi:clocks@" + version + ";\ninterface wall-clock {\n"
         "  record datetime { seconds: u64, nanoseconds: u32 }\n"
@@ -326,8 +396,11 @@ def main():
     work = Path("/work")
     control = json.loads(read(Path("/control.json")))
     allow_clock = control.get("allow_ui_wall_clock", False)
-    if type(allow_clock) is not bool:
+    allow_monotonic = control.get("allow_ui_monotonic_clock", False)
+    if type(allow_clock) is not bool or type(allow_monotonic) is not bool:
         raise ValueError("explicit boolean UI clock mode required")
+    if allow_monotonic and not allow_clock:
+        raise ValueError("monotonic candidate requires explicit wall-clock mode")
     original = json.loads(read(work / "native.json"))
     stage = work / "stage"
     stage.mkdir()
@@ -358,9 +431,23 @@ def main():
     config.parallel_compilation = False
     inner = read(stage / "component.wasm", 32 * 1024 * 1024)
     with Engine(config) as engine, Component(engine, inner) as component:
-        inner_typed = boundary(component, engine, inner=True, allow_clock=allow_clock)
+        inner_typed = boundary(
+            component,
+            engine,
+            inner=True,
+            allow_clock=allow_clock,
+            allow_monotonic=allow_monotonic,
+        )
     wit = (
-        clock_composition_wit(stage, inner_typed["imports"][0])
+        clock_composition_wit(
+            stage,
+            next(
+                name
+                for name in inner_typed["imports"]
+                if name.startswith("wasi:clocks/wall-clock@")
+            ),
+            allow_monotonic=allow_monotonic,
+        )
         if allow_clock
         else stage
     )
@@ -403,7 +490,10 @@ def main():
     if allow_clock:
         start_wall = time.time_ns()
         clock_probe = observe(
-            stage / "outer.wasm", allow_clock=True, operation_name="probe-clock"
+            stage / "outer.wasm",
+            allow_clock=True,
+            allow_monotonic=allow_monotonic,
+            operation_name="probe-clock",
         )
         end_wall = time.time_ns()
         result = clock_probe["result"]
@@ -420,27 +510,83 @@ def main():
         clock_probes = {
             "clock": clock_probe,
             "host_window_ns": [start_wall, end_wall],
-            "non_clock_denials": [
-                observe(
+            "non_clock_denials": [],
+            "production_ui_clock_connected": False,
+        }
+        try:
+            if allow_monotonic:
+                start_monotonic = time.monotonic_ns()
+                probe = observe(
                     stage / "outer.wasm",
                     allow_clock=True,
+                    allow_monotonic=True,
+                    operation_name="probe-monotonic",
+                )
+                end_monotonic = time.monotonic_ns()
+                clock_probes["monotonic"] = probe
+                clock_probes["monotonic_host_window_ns"] = [
+                    start_monotonic,
+                    end_monotonic,
+                ]
+                result = probe["result"]
+                precision = probe["monotonic_clock"]["resolution_nanoseconds_ceiling"]
+                if (
+                    type(result.get("before_ns")) is not int
+                    or type(result.get("after_ns")) is not int
+                    or not start_monotonic
+                    <= result["before_ns"]
+                    <= result["after_ns"]
+                    <= end_monotonic
+                    or precision is None
+                    or result.get("resolution") != precision / 1_000_000_000
+                    or result.get("monotonic") is not True
+                    or result.get("adjustable") is not False
+                    or probe["monotonic_clock"]["calls"]["now"] < 2
+                    or probe["monotonic_clock"]["calls"]["resolution"] <= 0
+                ):
+                    raise ValueError(
+                        "real monotonic units, ordering or resolution did not match"
+                    )
+            kinds = (
+                ("filesystem", "random", "subscribe", "poll")
+                if allow_monotonic
+                else ("filesystem", "random")
+            )
+            for kind in kinds:
+                denial = observe(
+                    stage / "outer.wasm",
+                    allow_clock=True,
+                    allow_monotonic=allow_monotonic,
                     operation_name="probe-denied-io",
                     arguments=(kind,),
                     expected_denial=True,
                 )
-                for kind in ("filesystem", "random")
-            ],
-            "production_ui_clock_connected": False,
-        }
-        (work / "ui-clock-probes.json").write_text(
-            json.dumps(clock_probes, indent=2) + "\n"
-        )
-    actual = observe(stage / "outer.wasm", allow_clock=allow_clock)
+                clock_probes["non_clock_denials"].append(denial)
+                if kind in {"subscribe", "poll"} and not any(
+                    name in denial["denial"]["wasm_stack"]
+                    for name in ("subscribe", "poll", "clock_nanosleep")
+                ):
+                    raise ValueError(
+                        "subscription/poll denial did not identify its actual WASI path"
+                    )
+        finally:
+            (work / "ui-clock-probes.json").write_text(
+                json.dumps(clock_probes, indent=2) + "\n"
+            )
+    actual = observe(
+        stage / "outer.wasm",
+        allow_clock=allow_clock,
+        allow_monotonic=allow_monotonic,
+    )
     (work / "wasm-observation.json").write_text(json.dumps(actual, indent=2) + "\n")
     result = actual["result"]
     if allow_clock and actual["clock"]["calls"]["now"] <= 0:
         raise ValueError(
             "post-snapshot original logging did not reach the real wall clock"
+        )
+    if allow_monotonic and actual["monotonic_clock"]["calls"]["now"] <= 0:
+        raise ValueError(
+            "post-snapshot original selector did not reach the real monotonic clock"
         )
     if "exception" in result:
         raise ValueError(

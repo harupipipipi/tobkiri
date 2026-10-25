@@ -25,13 +25,36 @@ COMPONENT_SHA256 = "56d765060d8f2f9078a31cf2e96bdd591d737545250464afcb9bc9cdbc91
 INPUT_LIMIT = 64 * 1024 * 1024
 
 
-def verify_clock_variant(cli: dict, source: dict, *, allow_ui_wall_clock: bool) -> None:
+def verify_clock_variant(
+    cli: dict,
+    source: dict,
+    *,
+    allow_ui_wall_clock: bool,
+    allow_ui_monotonic_clock: bool = False,
+) -> None:
     """Never accept a new producer mode through the historical consumer option."""
-    if (
-        cli.get("ui_monotonic_clock_candidate") is not None
-        or source.get("ui_monotonic_clock") is not None
-    ):
-        raise ValueError("monotonic producer requires its separate consuming controller")
+    mono = cli.get("ui_monotonic_clock_candidate")
+    if allow_ui_monotonic_clock:
+        if not allow_ui_wall_clock:
+            raise ValueError("monotonic candidate requires explicit wall-clock mode")
+        if (
+            not isinstance(mono, dict)
+            or mono != source.get("ui_monotonic_clock")
+            or mono.get("feature") != "ui-monotonic-clock"
+            or mono.get("feature_dependencies") != ["ui-wall-clock"]
+            or mono.get("interface_prefix") != "wasi:clocks/monotonic-clock@"
+            or mono.get("import_interface") != "tobkiri-ui:clock/monotonic@1.0.0"
+            or mono.get("functions") != ["now", "resolution"]
+            or mono.get("result") != "u64 nanoseconds"
+            or mono.get("other_exports") != "original signatures and unreachable bodies"
+            or mono.get("stub_wasi_retained") is not True
+            or set(mono.get("changed_files", {})) != {"Cargo.toml", "src/stubwasi.rs"}
+        ):
+            raise ValueError("separate explicit monotonic producer derivation required")
+    elif mono is not None or source.get("ui_monotonic_clock") is not None:
+        raise ValueError(
+            "monotonic producer requires its separate consuming controller"
+        )
     clock_variant = cli.get("ui_wall_clock_candidate")
     if allow_ui_wall_clock:
         if (
@@ -47,6 +70,17 @@ def verify_clock_variant(cli: dict, source: dict, *, allow_ui_wall_clock: bool) 
             raise ValueError("separate explicit UI clock producer derivation required")
     elif clock_variant is not None or source.get("ui_wall_clock") is not None:
         raise ValueError("UI clock producer requires an explicit controller option")
+    if allow_ui_monotonic_clock:
+        for name, entry in mono["changed_files"].items():
+            if (
+                entry.get("wall_clock_candidate")
+                != clock_variant["changed_files"][name].get("candidate")
+                or entry.get("candidate") != source.get("files", {}).get(name)
+                or not entry.get("candidate")
+            ):
+                raise ValueError(
+                    "monotonic producer source ancestry or final inventory differs"
+                )
 
 
 def verify_inputs(
@@ -57,6 +91,7 @@ def verify_inputs(
     stdlib: Path,
     *,
     allow_ui_wall_clock: bool = False,
+    allow_ui_monotonic_clock: bool = False,
 ) -> dict:
     """Bind all restored archives and actual prior artifacts before execution."""
     for path in (inputs, producer, rpds, validation, stdlib):
@@ -96,7 +131,12 @@ def verify_inputs(
         raise ValueError("saved producer source receipt differs")
     fingerprint(producer / "cli-source.json", 4 * 1024 * 1024)
     source = json.loads((producer / "cli-source.json").read_bytes())
-    verify_clock_variant(cli, source, allow_ui_wall_clock=allow_ui_wall_clock)
+    verify_clock_variant(
+        cli,
+        source,
+        allow_ui_wall_clock=allow_ui_wall_clock,
+        allow_ui_monotonic_clock=allow_ui_monotonic_clock,
+    )
     return {
         str(path): fingerprint(path)
         for path in (
@@ -120,6 +160,7 @@ def run(
     destination: Path,
     *,
     allow_ui_wall_clock: bool = False,
+    allow_ui_monotonic_clock: bool = False,
 ) -> None:
     """Execute original wheels and the Wasm candidate only in supervised Linux CI."""
     if sys.platform != "linux" or os.environ.get("GITHUB_ACTIONS") != "true":
@@ -139,6 +180,7 @@ def run(
         validation,
         stdlib,
         allow_ui_wall_clock=allow_ui_wall_clock,
+        allow_ui_monotonic_clock=allow_ui_monotonic_clock,
     )
     destination.mkdir(mode=0o700)
     work = destination / "work"
@@ -161,6 +203,7 @@ def run(
                 "input_limit": INPUT_LIMIT,
                 "stdlib": runtime_inputs.report(stdlib / "stdlib-inputs.json"),
                 "allow_ui_wall_clock": allow_ui_wall_clock,
+                "allow_ui_monotonic_clock": allow_ui_monotonic_clock,
                 "native_paths": [
                     "/inputs/packages/"
                     + (
@@ -200,6 +243,7 @@ def run(
         "full_setup_gui": False,
         "production_enabled": False,
         "ui_wall_clock_candidate": allow_ui_wall_clock,
+        "ui_monotonic_clock_candidate": allow_ui_monotonic_clock,
     }
     try:
         native_recipe = destination / "native.sh"
@@ -264,6 +308,7 @@ def run(
             validation,
             stdlib,
             allow_ui_wall_clock=allow_ui_wall_clock,
+            allow_ui_monotonic_clock=allow_ui_monotonic_clock,
         )
         if (
             fetch_sdk.inventory(source) != scripts
@@ -291,4 +336,5 @@ if __name__ == "__main__":
     for name in ("inputs", "producer", "rpds", "validation", "stdlib", "destination"):
         parser.add_argument("--" + name, type=Path, required=True)
     parser.add_argument("--allow-ui-wall-clock", action="store_true")
+    parser.add_argument("--allow-ui-monotonic-clock", action="store_true")
     run(**vars(parser.parse_args()))

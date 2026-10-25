@@ -472,13 +472,18 @@ signatures and unreachable bodies; imported function indexes and defined
 function indexes are accounted for separately. The original module remapping,
 historical recipe, dependency lock, assets and `STUB_WASI` policy are unchanged.
 
-`issue-1520-ui-monotonic.yml` first builds and retains that producer in CI.
+`issue-1520-ui-monotonic.yml` first builds and retains that producer in CI,
+then consumes only the same-run artifact after its producer job succeeds.
 Successful CLI compilation alone does not establish adapter construction,
 snapshot replay, real monotonic semantics or a matching schema result. The
-consumer must separately check both typed clocks, shared call/deadline bounds,
+explicit consuming controller checks both typed clocks, shared call/deadline bounds,
 resolution and units, post-snapshot first use, and genuine non-clock denials.
 It must also retain original schema equality and the existing size/fuel/Store
-limits. Original CPython's `select.poll` creates its deadline at each call and
+limits. An incomplete or failed host callback invalidates the observation,
+including a claimed non-clock denial. Real post-snapshot probes compare
+monotonic values against the consumer host's own nanosecond window and require
+the reported resolution and clock properties. Original CPython's `select.poll`
+creates its deadline at each call and
 the WASI `clock_gettime` path reads the clock on each invocation; no producer
 clock timestamp is added to this probe's snapshot. This source check covers
 the observed late selector call, not every timer in the full original GUI.

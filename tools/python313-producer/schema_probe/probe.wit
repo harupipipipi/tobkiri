@@ -3,6 +3,7 @@ package tobkiri-ui:schema-probe@1.0.0;
 interface probe {
   run: func() -> string;
   probe-clock: func() -> string;
+  probe-monotonic: func() -> string;
   probe-denied-io: func(kind: string) -> string;
 }
 

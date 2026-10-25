@@ -127,6 +127,37 @@ class _Linker:
 
 
 class WallClockBridgeTests(unittest.TestCase):
+    def test_clock_failure_cannot_be_counted_as_a_nonclock_denial(self):
+        budget = ui_clock.ClockBudget(20.0, 1)
+        bridge = ui_clock.WallClockBridge(IMPORT_NAME, 20.0, 1, budget=budget)
+        linker = _Linker()
+        with patch.dict(sys.modules, fake_wasmtime_modules()):
+            bridge.install(linker)
+        with (
+            patch.object(ui_clock.time, "monotonic", return_value=1.0),
+            patch.object(
+                ui_clock.time, "time_ns", side_effect=OSError("clock unavailable")
+            ),
+        ):
+            with self.assertRaises(RuntimeError):
+                linker.wall_clock.functions["now"]("store")
+        self.assertFalse(budget.healthy)
+
+        budget = ui_clock.ClockBudget(20.0, 1)
+        bridge = ui_clock.WallClockBridge(IMPORT_NAME, 20.0, 1, budget=budget)
+        linker = _Linker()
+        with patch.dict(sys.modules, fake_wasmtime_modules()):
+            bridge.install(linker)
+        with (
+            patch.object(ui_clock.time, "monotonic", return_value=1.0),
+            patch.object(ui_clock.time, "time_ns", return_value=1),
+        ):
+            linker.wall_clock.functions["now"]("store")
+            self.assertTrue(budget.healthy)
+            with self.assertRaisesRegex(RuntimeError, "call limit"):
+                linker.wall_clock.functions["now"]("store")
+            self.assertFalse(budget.healthy)
+
     def test_valid_import_type_is_accepted_exactly(self):
         item = ComponentInstanceType(valid_exports())
         fake_modules = fake_wasmtime_modules()

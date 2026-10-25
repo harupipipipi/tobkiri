@@ -87,6 +87,85 @@ def validate_clock_import(import_name: str, item: Any, engine: Any) -> None:
         )
 
 
+class ClockBudget:
+    """One callback cap and absolute deadline shared by every clock in a Store."""
+
+    __slots__ = ("deadline", "call_limit", "_calls", "_completed", "_faulted")
+
+    def __init__(self, deadline: float, call_limit: int = 100_000) -> None:
+        if isinstance(deadline, bool) or not isinstance(deadline, (int, float)):
+            raise ValueError("wall-clock deadline must be finite")
+        try:
+            deadline_value = float(deadline)
+        except (OverflowError, ValueError) as error:
+            raise ValueError("wall-clock deadline must be finite") from error
+        if not math.isfinite(deadline_value):
+            raise ValueError("wall-clock deadline must be finite")
+        if (
+            not isinstance(call_limit, int)
+            or isinstance(call_limit, bool)
+            or not 0 < call_limit <= _MAX_CALL_LIMIT
+        ):
+            raise ValueError("wall-clock call limit is outside its bound")
+        self.deadline = deadline_value
+        self.call_limit = call_limit
+        self._calls = 0
+        self._completed = 0
+        self._faulted = False
+
+    def check(self) -> None:
+        """Reject failed, invalid or expired real monotonic deadline readings."""
+        try:
+            self._check_clock()
+        except BaseException:
+            self._faulted = True
+            raise
+
+    def _check_clock(self) -> None:
+        try:
+            current = time.monotonic()
+        except Exception as error:
+            raise RuntimeError("monotonic deadline clock failed") from error
+        if isinstance(current, bool) or not isinstance(current, (int, float)):
+            raise RuntimeError("monotonic deadline clock returned an invalid value")
+        try:
+            current_value = float(current)
+        except (OverflowError, ValueError) as error:
+            raise RuntimeError(
+                "monotonic deadline clock returned an invalid value"
+            ) from error
+        if not math.isfinite(current_value):
+            raise RuntimeError("monotonic deadline clock returned an invalid value")
+        if current_value >= self.deadline:
+            raise TimeoutError("clock callback deadline exceeded")
+
+    def begin(self) -> None:
+        if self._faulted:
+            raise RuntimeError("clock budget has a previous callback failure")
+        if self._calls >= self.call_limit:
+            self._faulted = True
+            raise RuntimeError("clock callback call limit exceeded")
+        self.check()
+        self._calls += 1
+
+    def complete(self) -> None:
+        """Only validated callbacks can complete; a failed bridge is never denial proof."""
+        if self._faulted or self._completed >= self._calls:
+            raise RuntimeError("clock callback completion does not match its budget")
+        self._completed += 1
+
+    @property
+    def healthy(self) -> bool:
+        return not self._faulted and self._calls == self._completed
+
+    def report(self) -> dict:
+        return {
+            "total": self._calls,
+            "limit": self.call_limit,
+            "deadline_enforced": True,
+        }
+
+
 class WallClockBridge:
     """Expose only bounded, real CI-host wall-clock callbacks to a probe linker."""
 
@@ -102,6 +181,7 @@ class WallClockBridge:
         "_resolution_seconds",
         "_resolution_nanoseconds",
         "_clock_implementation",
+        "_budget",
     )
 
     def __init__(
@@ -109,26 +189,22 @@ class WallClockBridge:
         import_name: str,
         deadline: float,
         call_limit: int = 100_000,
+        *,
+        budget: ClockBudget | None = None,
     ) -> None:
         """Bind one validated import name to an absolute monotonic deadline."""
         _require_import_name(import_name)
-        if isinstance(deadline, bool) or not isinstance(deadline, (int, float)):
-            raise ValueError("wall-clock deadline must be finite")
-        try:
-            deadline_value = float(deadline)
-        except (OverflowError, ValueError) as error:
-            raise ValueError("wall-clock deadline must be finite") from error
-        if not math.isfinite(deadline_value):
-            raise ValueError("wall-clock deadline must be finite")
-        if (
-            not isinstance(call_limit, int)
-            or isinstance(call_limit, bool)
-            or not 0 < call_limit <= _MAX_CALL_LIMIT
+        validated = ClockBudget(deadline, call_limit)
+        if budget is not None and (
+            not isinstance(budget, ClockBudget)
+            or budget.deadline != validated.deadline
+            or budget.call_limit != validated.call_limit
         ):
-            raise ValueError("wall-clock call limit is outside its bound")
+            raise ValueError("shared clock budget differs from the wall-clock bounds")
+        self._budget = validated if budget is None else budget
         self.import_name = import_name
-        self.deadline = deadline_value
-        self.call_limit = call_limit
+        self.deadline = validated.deadline
+        self.call_limit = validated.call_limit
         self._calls = 0
         self._now_calls = 0
         self._resolution_calls = 0
@@ -159,28 +235,11 @@ class WallClockBridge:
 
     def _check_deadline(self) -> None:
         """Require time.monotonic to remain available and before the deadline."""
-        try:
-            current = time.monotonic()
-        except Exception as error:
-            raise RuntimeError("monotonic deadline clock failed") from error
-        if isinstance(current, bool) or not isinstance(current, (int, float)):
-            raise RuntimeError("monotonic deadline clock returned an invalid value")
-        try:
-            current_value = float(current)
-        except (OverflowError, ValueError) as error:
-            raise RuntimeError(
-                "monotonic deadline clock returned an invalid value"
-            ) from error
-        if not math.isfinite(current_value):
-            raise RuntimeError("monotonic deadline clock returned an invalid value")
-        if current_value >= self.deadline:
-            raise TimeoutError("wall-clock callback deadline exceeded")
+        self._budget.check()
 
     def _begin_call(self, name: str) -> None:
         """Enforce the shared call cap and count only admitted callback attempts."""
-        if self._calls >= self.call_limit:
-            raise RuntimeError("wall-clock callback call limit exceeded")
-        self._check_deadline()
+        self._budget.begin()
         self._calls += 1
         if name == "now":
             self._now_calls += 1
@@ -228,6 +287,7 @@ class WallClockBridge:
         seconds, nanoseconds = divmod(timestamp, _NANOSECONDS)
         result = self._make_datetime(seconds, nanoseconds)
         self._check_deadline()
+        self._budget.complete()
         return result
 
     def _resolution(self, store: Any, *args: Any) -> Any:
@@ -266,6 +326,7 @@ class WallClockBridge:
         self._resolution_seconds = resolution_value
         self._resolution_nanoseconds = nanoseconds_total
         self._clock_implementation = implementation
+        self._budget.complete()
         return result
 
     def report(self) -> dict:
@@ -286,6 +347,7 @@ class WallClockBridge:
                 "limit": self.call_limit,
             },
             "deadline_enforced": True,
+            "shared_budget": self._budget.report(),
             "linker_installed": self._installed,
             "production_ui_clock_connected": False,
             "production_enabled": False,

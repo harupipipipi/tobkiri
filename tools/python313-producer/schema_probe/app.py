@@ -50,6 +50,24 @@ class Probe(wit_world.exports.Probe):
             }
         )
 
+    def probe_monotonic(self) -> str:
+        """Sample only after snapshot restoration, without a producer timestamp."""
+        import time
+
+        before = time.monotonic_ns()
+        info = time.get_clock_info("monotonic")
+        after = time.monotonic_ns()
+        return json.dumps(
+            {
+                "before_ns": before,
+                "after_ns": after,
+                "resolution": info.resolution,
+                "monotonic": info.monotonic,
+                "adjustable": info.adjustable,
+                "target": _TARGET,
+            }
+        )
+
     def probe_denied_io(self, kind: str) -> str:
         """Prove genuine non-clock WASI calls still trap in a fresh Store."""
         import os
@@ -59,6 +77,14 @@ class Probe(wit_world.exports.Probe):
                 os.stat("/forbidden-ui-clock-probe")
             elif kind == "random":
                 os.urandom(1)
+            elif kind == "subscribe":
+                import time
+
+                time.sleep(0.001)
+            elif kind == "poll":
+                import select
+
+                select.poll().poll(1)
             else:
                 raise ValueError("unknown denial probe")
         except Exception as error:

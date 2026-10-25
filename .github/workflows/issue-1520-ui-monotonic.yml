@@ -132,3 +132,96 @@ jobs:
             ${{ runner.temp }}/python313-cli/cli-startup/
           if-no-files-found: warn
           retention-days: 14
+
+  schema-comparison:
+    needs: ui-monotonic-producer
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      RPDS_RUN: '40182231971'
+      RPDS_HEAD: 53163ed815c62c4853bbed3d8a082c0764e3084f
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Check the original source and clock translation envelopes
+        run: python3 -B -m unittest discover -s tools/python313-producer/tests -p 'test_schema_*.py'
+      - name: Install the unchanged build isolation tool
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+      - uses: actions/download-artifact@v4
+        with:
+          name: python313-ui-monotonic-clock-producer-cli
+          path: ${{ runner.temp }}/python313-cli
+      - name: Restore executable mode of the same-run verified producer
+        run: chmod 755 "$RUNNER_TEMP/python313-cli/work/target/release/componentize-py"
+      - name: Authenticate successful genuine rpds predecessor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RPDS_RUN" > "$RUNNER_TEMP/schema-rpds-run.json"
+          python3 -B - "$RUNNER_TEMP/schema-rpds-run.json" "$RPDS_HEAD" <<'PY'
+          import json, sys
+          from pathlib import Path
+          value = json.loads(Path(sys.argv[1]).read_bytes())
+          if value['head_sha'] != sys.argv[2] or value['status'] != 'completed' or value['conclusion'] != 'success':
+              raise SystemExit('genuine rpds predecessor identity/outcome differs')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui-rpds-inactive-component
+          repository: ${{ github.repository }}
+          run-id: ${{ env.RPDS_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/schema-rpds
+      - name: Restore complete original schema source and pinned validation tools
+        run: |
+          python3 -B tools/python313-producer/fetch_schema.py --destination "$RUNNER_TEMP/schema-inputs"
+          python3 -B tools/python313-producer/fetch_schema_stdlib.py --destination "$RUNNER_TEMP/schema-stdlib"
+          python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/schema-validation"
+      - name: Compare original schema behavior with both narrow real clocks
+        run: >-
+          python3 -B tools/python313-producer/build_schema.py
+          --inputs "$RUNNER_TEMP/schema-inputs"
+          --producer "$RUNNER_TEMP/python313-cli"
+          --rpds "$RUNNER_TEMP/schema-rpds"
+          --validation "$RUNNER_TEMP/schema-validation"
+          --stdlib "$RUNNER_TEMP/schema-stdlib"
+          --destination "$RUNNER_TEMP/schema-candidate"
+          --allow-ui-wall-clock
+          --allow-ui-monotonic-clock
+      - name: Retain candidate derivation, clock and denied-IO evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-monotonic-clock-candidate-evidence
+          path: |
+            ${{ runner.temp }}/python313-cli/cli-build.json
+            ${{ runner.temp }}/python313-cli/cli-source.json
+            ${{ runner.temp }}/schema-inputs/schema-inputs.json
+            ${{ runner.temp }}/schema-stdlib/stdlib-inputs.json
+            ${{ runner.temp }}/schema-candidate/schema-build.json
+            ${{ runner.temp }}/schema-candidate/native/
+            ${{ runner.temp }}/schema-candidate/wasm/
+            ${{ runner.temp }}/schema-candidate/work/native.json
+            ${{ runner.temp }}/schema-candidate/work/wasm-observation.json
+            ${{ runner.temp }}/schema-candidate/work/schema.json
+            ${{ runner.temp }}/schema-candidate/work/stage-inputs.json
+            ${{ runner.temp }}/schema-candidate/work/ui-clock-probes.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Retain inactive clock candidate only on actual comparison success
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-monotonic-clock-inactive-component
+          path: |
+            ${{ runner.temp }}/schema-candidate/work/stage/outer.wasm
+            ${{ runner.temp }}/schema-candidate/work/schema.json
+            ${{ runner.temp }}/schema-candidate/schema-build.json
+          if-no-files-found: error
+          retention-days: 14

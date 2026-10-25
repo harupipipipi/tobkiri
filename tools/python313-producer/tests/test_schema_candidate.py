@@ -25,6 +25,83 @@ sys.path[:] = before
 
 
 class SchemaCandidateTests(unittest.TestCase):
+    def test_monotonic_composition_preserves_the_probe_and_closes_both_imports(self):
+        original = (HERE / "schema_probe/probe.wit").read_bytes()
+        from schema_probe import ui_monotonic
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.dict(sys.modules, {"ui_monotonic": ui_monotonic}),
+        ):
+            stage = Path(directory)
+            (stage / "probe.wit").write_bytes(original)
+            wit = driver.clock_composition_wit(
+                stage, "wasi:clocks/wall-clock@0.2.4", allow_monotonic=True
+            )
+            self.assertEqual((stage / "probe.wit").read_bytes(), original)
+            self.assertIn(
+                "  import " + ui_monotonic.IMPORT_NAME + ";",
+                (wit / "probe.wit").read_text(),
+            )
+            dependency = (wit / "deps/tobkiri-ui-clock/monotonic.wit").read_text()
+            self.assertIn("package tobkiri-ui:clock@1.0.0;", dependency)
+            self.assertNotIn("subscribe", dependency)
+            self.assertNotIn("poll", dependency)
+
+    def test_monotonic_boundary_requires_both_explicit_modes_and_only_two_imports(self):
+        wall = "wasi:clocks/wall-clock@0.2.4"
+        mono = "tobkiri-ui:clock/monotonic@1.0.0"
+        observed = []
+
+        def component(imports):
+            return SimpleNamespace(
+                type=SimpleNamespace(
+                    imports=lambda engine: imports,
+                    exports=lambda engine: {driver.INTERFACE: object()},
+                )
+            )
+
+        with patch.dict(
+            sys.modules,
+            {
+                "ui_clock": SimpleNamespace(
+                    validate_clock_import=lambda name, *_: observed.append(name)
+                ),
+                "ui_monotonic": SimpleNamespace(
+                    IMPORT_NAME=mono,
+                    validate_clock_import=lambda name, *_: observed.append(name),
+                ),
+            },
+        ):
+            result = driver.boundary(
+                component({wall: object(), mono: object()}),
+                None,
+                inner=False,
+                allow_clock=True,
+                allow_monotonic=True,
+            )
+            self.assertEqual(result["imports"], sorted([wall, mono]))
+            self.assertEqual(set(observed), {wall, mono})
+            for imports in (
+                {wall: object()},
+                {wall: object(), mono: object(), "extra": object()},
+            ):
+                with self.assertRaisesRegex(ValueError, "two explicit"):
+                    driver.boundary(
+                        component(imports),
+                        None,
+                        inner=False,
+                        allow_clock=True,
+                        allow_monotonic=True,
+                    )
+            with self.assertRaisesRegex(ValueError, "explicit wall-clock"):
+                driver.boundary(
+                    component({mono: object()}),
+                    None,
+                    inner=False,
+                    allow_monotonic=True,
+                )
+
     def test_clock_composition_declares_actual_interface_without_rewriting_probe(self):
         spec = importlib.util.spec_from_file_location(
             "schema_composition", HERE.parents[1] / "sdk/python/composition.py"
