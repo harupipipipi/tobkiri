@@ -31,6 +31,8 @@ _CACHE = {}
 _CACHE_GRAPH_BYTES = 0
 _RECORD_BYTES = 0
 _REPORT_TEXT = None
+_FROZEN = None
+_SEAL_TOKEN = object()
 _PREINIT_COMPILE_CALLS = 0
 _PREINIT_CACHED_CALLS = 0
 _PREINIT_SEEN: set[tuple] | None = set()
@@ -167,6 +169,11 @@ def _owned_size(value: object, seen: set[int] | None = None) -> int:
 
 
 def _cache_accounted_bytes(report_text: str | None = None) -> int:
+    if _FROZEN is not None:
+        frozen = _frozen_view()
+        if report_text is not None and report_text is not frozen[1]:
+            raise ValueError("sealed accounting cannot describe another report")
+        return frozen[2]
     selected_report = _REPORT_TEXT if report_text is None else report_text
     report_bytes = 0 if selected_report is None else sys.getsizeof(selected_report)
     seen_bytes = 0 if _PREINIT_SEEN is None else _owned_size(_PREINIT_SEEN)
@@ -190,12 +197,17 @@ def _source_identity(
     ):
         raise TypeError("captured loader identity must use exact strings and bytes")
     digest = hashlib.sha256(source).hexdigest()
+    interpreter_text = (
+        _frozen_view()[3]
+        if _FROZEN is not None
+        else json.dumps(_INTERPRETER, sort_keys=True, separators=(",", ":"))
+    )
     identity = (
         fullname,
         source_name,
         filename,
         digest,
-        json.dumps(_INTERPRETER, sort_keys=True, separators=(",", ":")),
+        interpreter_text,
     )
     return identity, digest
 
@@ -327,30 +339,30 @@ def get_code(
     )
     identity, digest = _source_identity(fullname, source_name, source, filename)
     if _SEALED:
-        cached = _CACHE.get(identity)
+        cached = _frozen_lookup(identity)
         if cached is None:
             _RUNTIME_MISSES += 1
             _RUNTIME_COMPILES += 1
             return compile(source, filename, "exec", dont_inherit=True)
-        record = cached["record"]
-        payload = cached["payload"]
+        payload, record = cached[1], cached[2]
         if (
-            record["source_sha256"] != digest
-            or record["filename"] != filename
-            or record["actual_optimize"] != sys.flags.optimize
-            or record["marshal_version"] != marshal.version
+            _record_value(record, "source_sha256") != digest
+            or _record_value(record, "filename") != filename
+            or _record_value(record, "actual_optimize") != sys.flags.optimize
+            or _record_value(record, "marshal_version") != marshal.version
             or source_tree_accounted_bytes > CAPTURE_LIMIT_BYTES
-            or hashlib.sha256(payload).hexdigest() != record["cache_sha256"]
+            or hashlib.sha256(payload).hexdigest()
+            != _record_value(record, "cache_sha256")
         ):
             _RUNTIME_MISSES += 1
             _RUNTIME_COMPILES += 1
             return compile(source, filename, "exec", dont_inherit=True)
+        retained = _cache_accounted_bytes()
         runtime_temporary = (
-            _cache_accounted_bytes() + record["code_graph_bytes"] + len(payload) + 65536
+            retained + _record_value(record, "code_graph_bytes") + len(payload) + 65536
         )
         if (
-            _SOURCE_TREE_ACCOUNTED_BYTES + _cache_accounted_bytes()
-            > CAPTURE_LIMIT_BYTES
+            _SOURCE_TREE_ACCOUNTED_BYTES + retained > CAPTURE_LIMIT_BYTES
             or runtime_temporary > MAX_TEMPORARY_BYTES
             or _SOURCE_TREE_ACCOUNTED_BYTES + runtime_temporary > STORE_LIMIT_BYTES
         ):
@@ -511,10 +523,146 @@ def _report_value() -> dict:
     }
 
 
+def _frozen_view() -> tuple:
+    """Borrow the same deeply immutable cache and its admitted retained total."""
+    frozen = _FROZEN
+    if (
+        type(frozen) is not tuple
+        or len(frozen) != 5
+        or type(frozen[0]) is not tuple
+        or type(frozen[1]) is not str
+        or type(frozen[2]) is not int
+        or not 0 <= frozen[2] <= MAX_CACHE_ACCOUNTED_BYTES
+        or type(frozen[3]) is not str
+        or frozen[4] is not _SEAL_TOKEN
+        or _CACHE is not None
+        or _PREINIT_SEEN is not None
+        or _REPORT_TEXT is not frozen[1]
+    ):
+        raise ValueError("sealed code-cache structure or generation changed")
+    return frozen
+
+
+def _record_value(record: tuple, name: str) -> object:
+    for key, value in record:
+        if key == name:
+            return value
+    raise ValueError("sealed code-cache record is incomplete")
+
+
+def _frozen_lookup(identity: tuple) -> tuple | None:
+    rows = _frozen_view()[0]
+    lower, upper = 0, len(rows)
+    while lower < upper:
+        middle = (lower + upper) // 2
+        if rows[middle][0] < identity:
+            lower = middle + 1
+        else:
+            upper = middle
+    if lower < len(rows) and rows[lower][0] == identity:
+        return rows[lower]
+    return None
+
+
+def _freeze_candidate(report: dict) -> tuple | None:
+    """Prepay conversion overlap, then measure the final immutable ownership graph."""
+    global _PEAK_TEMPORARY_BYTES, _PEAK_COMBINED_STORE_BYTES
+    tuple_base, pointer = sys.getsizeof(()), struct.calcsize("P")
+    row_size = sys.getsizeof((None, None, None))
+    pair_size = sys.getsizeof((None, None))
+    extra = tuple_base + len(_CACHE) * (pointer + row_size)
+    for identity, cached in _CACHE.items():
+        if (
+            type(identity) is not tuple
+            or len(identity) != 5
+            or any(type(item) is not str for item in identity)
+            or type(cached) is not dict
+            or set(cached) != {"record", "payload"}
+            or type(cached["payload"]) is not bytes
+            or type(cached["record"]) is not dict
+            or len(cached["record"]) > 32
+        ):
+            raise ValueError("preinit cache cannot be deeply frozen")
+        record = cached["record"]
+        if any(
+            type(key) is not str or type(value) not in (str, int, bool, type(None))
+            for key, value in record.items()
+        ):
+            raise ValueError("mutable code-cache record value")
+        extra += tuple_base + len(record) * (pointer + pair_size)
+    # Sorted key/item lists, JSON text/encoding overlap and fixed frame scratch.
+    extra += sys.getsizeof([]) + len(_CACHE) * pointer + 65536
+    before = _cache_accounted_bytes()
+    prospective = before + extra + _owned_size(report) + 3 * MAX_METADATA_BYTES
+    if (
+        prospective > MAX_TEMPORARY_BYTES
+        or _SOURCE_TREE_ACCOUNTED_BYTES + prospective > STORE_LIMIT_BYTES
+    ):
+        return None
+    rows = tuple(
+        (
+            identity,
+            _CACHE[identity]["payload"],
+            tuple(sorted(_CACHE[identity]["record"].items())),
+        )
+        for identity in sorted(_CACHE)
+    )
+    interpreter_text = json.dumps(_INTERPRETER, sort_keys=True, separators=(",", ":"))
+    total = 0
+    for _ in range(12):
+        text = json.dumps(
+            report, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+        )
+        frozen = (rows, text, total, interpreter_text, _SEAL_TOKEN)
+        measured = (
+            _owned_size(frozen) + _CACHE_GRAPH_BYTES + sys.getsizeof(_RECORD_BYTES)
+        )
+        peak = (
+            _owned_size((_CACHE, report, frozen))
+            + _CACHE_GRAPH_BYTES
+            + 65536
+            + len(text)
+        )
+        if peak > prospective:
+            raise ValueError("freeze conversion exceeded its prepaid overlap")
+        _PEAK_TEMPORARY_BYTES = max(_PEAK_TEMPORARY_BYTES, peak)
+        _PEAK_COMBINED_STORE_BYTES = max(
+            _PEAK_COMBINED_STORE_BYTES, _SOURCE_TREE_ACCOUNTED_BYTES + peak
+        )
+        accounting = report["accounting"]
+        previous = (
+            accounting["report_text_bytes"],
+            accounting["retained_accounted_bytes"],
+            accounting["peak_temporary_bytes"],
+            accounting["peak_combined_store_bytes"],
+        )
+        updated = (
+            len(text),
+            measured,
+            _PEAK_TEMPORARY_BYTES,
+            _PEAK_COMBINED_STORE_BYTES,
+        )
+        (
+            accounting["report_text_bytes"],
+            accounting["retained_accounted_bytes"],
+            accounting["peak_temporary_bytes"],
+            accounting["peak_combined_store_bytes"],
+        ) = updated
+        if previous == updated and total == measured:
+            if (
+                len(text) > MAX_METADATA_BYTES
+                or measured > MAX_CACHE_ACCOUNTED_BYTES
+                or _SOURCE_TREE_ACCOUNTED_BYTES + measured > CAPTURE_LIMIT_BYTES
+            ):
+                return None
+            return frozen
+        total = measured
+    raise ValueError("sealed code-cache accounting did not converge")
+
+
 def seal() -> None:
-    """Freeze the cache immediately before the app preinit snapshot boundary."""
-    global _OPEN, _SEALED, _REPORT_TEXT, _PREINIT_SEEN, _PEAK_TEMPORARY_BYTES
-    global _PEAK_COMBINED_STORE_BYTES
+    """Discard mutable construction state and publish one admitted immutable cache."""
+    global _OPEN, _SEALED, _REPORT_TEXT, _PREINIT_SEEN, _FROZEN, _CACHE, _INTERPRETER
     if not _CONFIGURED or not _OPEN or _SEALED:
         raise RuntimeError("preinit code cache cannot be sealed in its current state")
     _OPEN = False
@@ -522,127 +670,19 @@ def seal() -> None:
     _PREINIT_SEEN.clear()
     _PREINIT_SEEN = None
     while True:
-        report = _report_value()
-        for _ in range(8):
-            text = json.dumps(
-                report, ensure_ascii=True, sort_keys=True, separators=(",", ":")
-            )
-            text_bytes = len(text.encode("ascii"))
-            retained = _cache_accounted_bytes(text)
-            previous = (
-                report["accounting"]["report_text_bytes"],
-                report["accounting"]["retained_accounted_bytes"],
-            )
-            report["accounting"]["report_text_bytes"] = text_bytes
-            report["accounting"]["retained_accounted_bytes"] = retained
-            if previous == (text_bytes, retained):
-                break
-        text = json.dumps(
-            report, ensure_ascii=True, sort_keys=True, separators=(",", ":")
-        )
-        text_bytes = len(text.encode("ascii"))
-        retained = _cache_accounted_bytes(text)
-        peak_temporary = retained + _owned_size(report) + (text_bytes * 2)
-        peak_combined = _SOURCE_TREE_ACCOUNTED_BYTES + peak_temporary
-        if peak_combined > _PEAK_COMBINED_STORE_BYTES:
-            _PEAK_COMBINED_STORE_BYTES = peak_combined
-            continue
-        if peak_temporary > _PEAK_TEMPORARY_BYTES:
-            _PEAK_TEMPORARY_BYTES = peak_temporary
-            continue
-        if (
-            text_bytes <= MAX_METADATA_BYTES
-            and retained <= MAX_CACHE_ACCOUNTED_BYTES
-            and _PEAK_TEMPORARY_BYTES <= MAX_TEMPORARY_BYTES
-            and _SOURCE_TREE_ACCOUNTED_BYTES + retained <= CAPTURE_LIMIT_BYTES
-            and _SOURCE_TREE_ACCOUNTED_BYTES + peak_temporary <= STORE_LIMIT_BYTES
-        ):
-            _REPORT_TEXT = text
+        report_value = _report_value()
+        frozen = _freeze_candidate(report_value)
+        del report_value
+        if frozen is not None:
+            # Rows/identities/records are tuples of immutable scalars or bytes.
+            # No dictionary or mutable backing alias is retained by this graph.
+            _CACHE = None
+            _INTERPRETER = None
+            _REPORT_TEXT = frozen[1]
+            _FROZEN = frozen
             return
         if not _CACHE:
-            report = {
-                "format": FORMAT,
-                "generation_phase": "componentize-py Wasm CPython preinit",
-                "generation_source": (
-                    "captured_loader.Finder.find_spec(...).loader.get_code(fullname) "
-                    "for closed .py paths; Loader.get_code compiles exact captured "
-                    "bytes with mode=exec, flags=0, dont_inherit=True, optimize=-1; "
-                    "no bodies execute"
-                ),
-                "sealed_before_snapshot": True,
-                "interpreter": _INTERPRETER,
-                "preinit_compile_calls": _PREINIT_COMPILE_CALLS,
-                "preinit_cached_calls": _PREINIT_CACHED_CALLS,
-                "preinit_prime": {
-                    "attempts": _PREINIT_PRIME_CALLS,
-                    "completed": _PREINIT_PRIME_COMPLETED,
-                    "source_bytes": _PREINIT_PRIME_SOURCE_BYTES,
-                    "max_attempts": MAX_PRIME_ATTEMPTS,
-                    "max_source_bytes": MAX_PRIME_SOURCE_BYTES,
-                    "skipped_counts": dict(_PREINIT_PRIME_SKIPPED),
-                    "module_bodies_executed": False,
-                },
-                "cache_entry_count": 0,
-                "cache_payload_sha256": hashlib.sha256(b"").hexdigest(),
-                "uncached_counts": dict(_UNCACHED),
-                "entries": [],
-                "accounting": {
-                    "source_tree_accounted_bytes": _SOURCE_TREE_ACCOUNTED_BYTES,
-                    "cache_bytes": 0,
-                    "metadata_record_bytes": 0,
-                    "retained_code_graph_estimate_bytes": 0,
-                    "retained_accounted_bytes": 0,
-                    "peak_temporary_bytes": _PEAK_TEMPORARY_BYTES,
-                    "peak_code_graph_bytes": _PEAK_CODE_GRAPH_BYTES,
-                    "peak_marshal_buffer_bytes": _PEAK_MARSHAL_BYTES,
-                    "peak_combined_store_bytes": _PEAK_COMBINED_STORE_BYTES,
-                    "max_cache_accounted_bytes": MAX_CACHE_ACCOUNTED_BYTES,
-                    "max_temporary_bytes": MAX_TEMPORARY_BYTES,
-                    "capture_limit_bytes": CAPTURE_LIMIT_BYTES,
-                    "store_limit_bytes": STORE_LIMIT_BYTES,
-                    "report_text_bytes": 0,
-                },
-                "runtime_cache_use_observed": False,
-                "audit_event_difference": {
-                    "compile": "preinit generation rather than runtime for cache entries",
-                    "marshal_loads": "runtime cache hits add marshal.loads audit events",
-                    "identical_to_original": False,
-                },
-                "diagnostic_only": True,
-                "original_acceptance_claimed": False,
-                "production_enabled": False,
-            }
-            for _ in range(8):
-                text = json.dumps(
-                    report,
-                    ensure_ascii=True,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                )
-                text_bytes = len(text.encode("ascii"))
-                retained = _cache_accounted_bytes(text)
-                previous = (
-                    report["accounting"]["report_text_bytes"],
-                    report["accounting"]["retained_accounted_bytes"],
-                )
-                report["accounting"]["report_text_bytes"] = text_bytes
-                report["accounting"]["retained_accounted_bytes"] = retained
-                peak_temporary = retained + _owned_size(report) + text_bytes * 2
-                peak_combined = _SOURCE_TREE_ACCOUNTED_BYTES + peak_temporary
-                if peak_temporary > _PEAK_TEMPORARY_BYTES:
-                    _PEAK_TEMPORARY_BYTES = peak_temporary
-                    report["accounting"]["peak_temporary_bytes"] = peak_temporary
-                    continue
-                if peak_combined > _PEAK_COMBINED_STORE_BYTES:
-                    _PEAK_COMBINED_STORE_BYTES = peak_combined
-                    report["accounting"]["peak_combined_store_bytes"] = peak_combined
-                    continue
-                if previous == (text_bytes, retained):
-                    break
-            _REPORT_TEXT = json.dumps(
-                report, ensure_ascii=True, sort_keys=True, separators=(",", ":")
-            )
-            return
+            raise ValueError("empty code-cache metadata exceeds original limits")
         _drop_last_entry()
 
 

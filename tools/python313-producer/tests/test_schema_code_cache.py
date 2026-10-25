@@ -317,17 +317,35 @@ class SchemaPreinitCodeCacheTests(unittest.TestCase):
         identity, digest = cache._source_identity("pkg", "pkg.py", source, filename)
         payload = b"guest-created marshal payload"
         record = {
+            "fullname": "pkg",
+            "source_name": "pkg.py",
+            "source_bytes": len(source),
             "source_sha256": digest,
             "filename": filename,
+            "compile_mode": "exec",
+            "compile_flags": 0,
+            "dont_inherit": True,
+            "optimize_argument": -1,
             "actual_optimize": cache.sys.flags.optimize,
             "marshal_version": cache.marshal.version,
             "cache_sha256": hashlib.sha256(payload).hexdigest(),
             "code_graph_bytes": 128,
+            "cache_bytes": len(payload),
         }
         cache._CACHE = {identity: {"record": record, "payload": payload}}
         cache._CACHE_GRAPH_BYTES = 128
         cache._RECORD_BYTES = 32
-        cache._SEALED = True
+        cache._CONFIGURED = True
+        cache._OPEN = True
+        cache.seal()
+        self.assertIsNone(cache._CACHE)
+        self.assertIsNone(cache._INTERPRETER)
+        self.assertIsNone(cache._PREINIT_SEEN)
+        frozen = cache._frozen_view()
+        with self.assertRaises(TypeError):
+            frozen[0][0][2][0] = ("changed", "value")
+        # Mutable construction aliases cannot change the sealed tuple graph.
+        record["source_sha256"] = "changed after seal"
 
         class FakeCode:
             def __init__(self, co_filename):
@@ -337,6 +355,11 @@ class SchemaPreinitCodeCacheTests(unittest.TestCase):
         with (
             patch.object(cache.types, "CodeType", FakeCode),
             patch.object(cache.marshal, "loads", side_effect=returned),
+            patch.object(
+                cache,
+                "_owned_size",
+                side_effect=AssertionError("runtime must not rescan the sealed cache"),
+            ),
             patch(
                 "builtins.compile",
                 side_effect=AssertionError("cache hit must not compile"),
@@ -348,6 +371,15 @@ class SchemaPreinitCodeCacheTests(unittest.TestCase):
         self.assertIsNot(first, second)
         self.assertEqual(cache.runtime_stats()["cache_hits"], 2)
         self.assertEqual(cache.runtime_stats()["marshal_loads"], 2)
+        cache._CACHE = {}
+        with (
+            patch(
+                "builtins.compile",
+                side_effect=AssertionError("must refuse inconsistent accounting"),
+            ),
+            self.assertRaisesRegex(ValueError, "structure or generation changed"),
+        ):
+            cache.get_code("pkg", "pkg.py", source, filename, 4096)
 
     def test_preinit_generation_rejects_host_cpython(self):
         helper_path = HERE / "schema_probe/code_cache.py"
@@ -482,7 +514,7 @@ class SchemaPreinitCodeCacheTests(unittest.TestCase):
         self.assertTrue(all(loader.name for loader in finder.loaders))
         self.assertNotIn(
             "dual.py",
-            {entry["record"]["source_name"] for entry in cache._CACHE.values()},
+            {entry["source_name"] for entry in guest_report["entries"]},
         )
 
     def test_controller_is_default_off_and_workflow_is_nonaccepting_text_only(self):
