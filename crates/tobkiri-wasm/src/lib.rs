@@ -1,6 +1,7 @@
 //! Generic component execution, authority-mediated imports and typed ports.
 
 mod abi;
+mod aggregate_limits;
 mod allocation;
 #[cfg(debug_assertions)]
 mod allocation_timing;
@@ -13,6 +14,7 @@ mod effects;
 mod engine;
 mod entry;
 mod entry_diagnostics;
+mod execution_epoch;
 pub mod filesystem;
 pub use effects::filesystem_imports::FilesystemAccess;
 mod handle_metadata;
