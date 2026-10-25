@@ -12,6 +12,7 @@ from build_wasi import run_stage
 import fetch_sdk
 from packager import package, verify_derivation
 import runtime_inputs
+import ui_empty_poll_assets
 
 WORKER_RECIPE = '''set -eu
 export PATH=/rust/bin:/usr/bin:/bin RUSTC=/rust/bin/rustc
@@ -64,7 +65,7 @@ def verify_outputs(root: Path, manifest_sha: str, worker_sha: str) -> dict:
 
 
 def run(source: Path, registry: Path, rust: Path, git: Path, wasi: Path,
-        runtimes: Path, destination: Path) -> None:
+        runtimes: Path, destination: Path, *, inactive_ui_libc_build: Path | None = None) -> None:
     """Use only successful verified predecessor outputs in Linux CI isolation."""
     if sys.platform != "linux" or os.environ.get("GITHUB_ACTIONS") != "true":
         raise ValueError("asset rebuilding is restricted to Linux CI")
@@ -86,8 +87,13 @@ def run(source: Path, registry: Path, rust: Path, git: Path, wasi: Path,
     derivation = verify_derivation.verify(source / "componentize-py/Cargo.lock",
                                           source / "componentize-py/build.rs")
     snapshots[str(helper)] = fetch_sdk.inventory(helper)
-    manifest, input_mounts, identities = asset_inputs.manifest(
-        asset_inputs.selected(source, wasi, runtimes))
+    selected = asset_inputs.selected(source, wasi, runtimes)
+    candidate_marker, candidate_controls = None, {}
+    if inactive_ui_libc_build is not None:
+        selected, candidate_marker, candidate_controls, candidate_snapshots = (
+            ui_empty_poll_assets.select(selected, inactive_ui_libc_build))
+        snapshots.update(candidate_snapshots)
+    manifest, input_mounts, identities = asset_inputs.manifest(selected)
     manifest_path = destination / "asset-inputs.json"
     manifest_path.write_bytes(manifest)
     manifest_identity = fingerprint(manifest_path, package.MAX_MANIFEST)
@@ -115,6 +121,8 @@ def run(source: Path, registry: Path, rust: Path, git: Path, wasi: Path,
                "recipe_delta": "same packaging invocation with current input and worker hashes",
                "tar_delta": "sorted regular members; normalized uid/gid/mtime and modes"}
     receipt_path = destination / "assets-build.json"
+    if candidate_marker is not None:
+        receipt["ui_empty_poll_candidate"] = candidate_marker
     try:
         worker_recipe = destination / "build-worker.sh"
         worker_recipe.write_text(WORKER_RECIPE)
@@ -146,6 +154,8 @@ def run(source: Path, registry: Path, rust: Path, git: Path, wasi: Path,
         for path, identity in identities.items():
             if fingerprint(Path(path), package.MAX_FILE) != identity:
                 raise ValueError("selected asset input changed during packaging")
+        if any(fingerprint(Path(path)) != identity for path, identity in candidate_controls.items()):
+            raise ValueError("inactive candidate source/build controls changed during packaging")
         receipt.update(outcome="success", worker=worker_identity, outputs=outputs,
                        inputs_unchanged=True, wasmparser_before_after_validation=True,
                        package_receipt=fingerprint(work / "assets/package-receipt.json"))
@@ -160,4 +170,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     for name in ("source", "registry", "rust", "git", "wasi", "runtimes", "destination"):
         parser.add_argument("--" + name, type=Path, required=True)
+    parser.add_argument("--inactive-ui-libc-build", type=Path)
     run(**vars(parser.parse_args()))

@@ -147,6 +147,7 @@ def run(source: Path, tools: Path, destination: Path) -> dict:
         "predecessors": predecessors,
         "source_pin": source_report["source_pin"],
         "derivation": derivation,
+        "candidate_source_inventory": candidate_inventory,
         "build_recipe": fingerprint(recipe),
         "upstream_wit_cmake": fingerprint(candidate_source / "cmake/wasi-wits.cmake"),
         "wit_workspace_before": wit_workspace,

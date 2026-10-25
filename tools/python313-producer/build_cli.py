@@ -10,10 +10,12 @@ from build_native import GIB, HERE, fingerprint, sandbox_command
 from build_runtimes import CARGO_CONFIG
 from build_wasi import run_stage
 import cli_source
+import ci_link_trace_source
 import fetch_sdk
 import runtime_inputs
 import ui_clock_source
 import ui_monotonic_source
+import ui_empty_poll_assets
 from verify_git_checkout import verify_cache
 
 RECIPE_SHA256 = '330ccaa93ee1feba18b881eaeac70fc77013bddd8ef2128e9c7fb866528d1fa4'
@@ -26,7 +28,9 @@ STARTUP_RECIPE = '''set -eu
 def run(source: Path, registry: Path, rust: Path, git: Path, wasi: Path,
         runtimes: Path, assets: Path, destination: Path, *,
         allow_ui_wall_clock: bool = False,
-        allow_ui_monotonic_clock: bool = False) -> None:
+        allow_ui_monotonic_clock: bool = False,
+        allow_ci_link_trace: bool = False,
+        allow_inactive_ui_libc: bool = False) -> None:
     """Compile only with immutable verified source/assets and offline caches."""
     if sys.platform != 'linux' or os.environ.get('GITHUB_ACTIONS') != 'true':
         raise ValueError('producer CLI rebuilding is restricted to Linux CI')
@@ -40,6 +44,7 @@ def run(source: Path, registry: Path, rust: Path, git: Path, wasi: Path,
     inputs, snapshots = runtime_inputs.verify(source, registry, rust, git, wasi)
     asset_receipt_path = assets / 'assets-build.json'
     asset_report = runtime_inputs.report(asset_receipt_path)
+    inactive_libc_marker = ui_empty_poll_assets.require_cli_mode(asset_report, allow_inactive_ui_libc)
     runtime_receipt_path = runtimes / 'runtimes-build.json'
     runtime_report = runtime_inputs.report(runtime_receipt_path)
     if (asset_report['inputs'] != inputs or not asset_report['inputs_unchanged']
@@ -63,12 +68,15 @@ def run(source: Path, registry: Path, rust: Path, git: Path, wasi: Path,
         source_receipt = ui_clock_source.enable(stage, source_receipt)
     if allow_ui_monotonic_clock:
         source_receipt = ui_monotonic_source.enable(stage, source_receipt)
+    if allow_ci_link_trace:
+        source_receipt = ci_link_trace_source.enable(stage, source_receipt)
     snapshots[str(stage)] = source_receipt['files']
     (destination / 'cli-source.json').write_text(json.dumps(source_receipt, indent=2) + '\n')
     recipe = HERE / 'trials/2026-10-19/producer-cli.sh'
     if fingerprint(recipe)['sha256'] != RECIPE_SHA256:
         raise ValueError('original producer CLI recipe changed')
     candidate_recipe_identity = None
+    trace_predecessor_recipe = None
     if allow_ui_wall_clock:
         candidate_recipe = destination / (
             'ui-monotonic-cli.sh' if allow_ui_monotonic_clock else 'ui-clock-cli.sh')
@@ -76,6 +84,12 @@ def run(source: Path, registry: Path, rust: Path, git: Path, wasi: Path,
         if allow_ui_monotonic_clock:
             recipe_bytes = ui_monotonic_source.build_recipe(recipe_bytes)
         candidate_recipe.write_bytes(recipe_bytes)
+        candidate_recipe_identity = fingerprint(candidate_recipe)
+        recipe = candidate_recipe
+    if allow_ci_link_trace:
+        trace_predecessor_recipe = fingerprint(recipe)
+        candidate_recipe = destination / 'ci-link-trace-cli.sh'
+        candidate_recipe.write_bytes(ci_link_trace_source.build_recipe(recipe.read_bytes()))
         candidate_recipe_identity = fingerprint(candidate_recipe)
         recipe = candidate_recipe
     work = destination / 'work'
@@ -95,8 +109,14 @@ def run(source: Path, registry: Path, rust: Path, git: Path, wasi: Path,
     if allow_ui_wall_clock:
         receipt['ui_wall_clock_candidate'] = source_receipt['ui_wall_clock']
         receipt['candidate_recipe'] = candidate_recipe_identity
+    if inactive_libc_marker is not None:
+        receipt['ui_empty_poll_libc_candidate'] = inactive_libc_marker
     if allow_ui_monotonic_clock:
         receipt['ui_monotonic_clock_candidate'] = source_receipt['ui_monotonic_clock']
+    if allow_ci_link_trace:
+        receipt['ci_link_trace_candidate'] = source_receipt['ci_link_trace']
+        receipt['ci_link_trace_predecessor_recipe'] = trace_predecessor_recipe
+        receipt['candidate_recipe'] = candidate_recipe_identity
     receipt_path = destination / 'cli-build.json'
     try:
         mounts = (
@@ -146,4 +166,6 @@ if __name__ == '__main__':
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--allow-ui-wall-clock', action='store_true')
     parser.add_argument('--allow-ui-monotonic-clock', action='store_true')
+    parser.add_argument('--allow-ci-link-trace', action='store_true')
+    parser.add_argument('--allow-inactive-ui-libc', action='store_true')
     run(**vars(parser.parse_args()))

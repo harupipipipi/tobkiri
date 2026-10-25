@@ -514,3 +514,36 @@ cold original schema replay remain required before adoption. The raw C oracle
 sources in `empty_poll_probe/` are not yet built or executed by this workflow.
 All binaries stay on CI; a successful compiler stage alone establishes neither
 ABI parity nor the complete existing Setup, approval or conversation flow.
+
+## Paired inactive comparison producers
+
+`issue-1520-ui-poll-producers.yml` builds two separate producer CLIs from the
+same verified source, lock, compiler, original runtimes and clock configuration.
+One retains the original thirteen assets. The other explicitly packages only
+the successful separate libc candidate in place of `libc.so.zst`; all remaining
+assets must match exactly. The original SDK remains read-only and unchanged.
+`poll_producer_pair.py` revalidates the outputs and requires the embedded source
+trees to differ only in that one asset. Candidate assets are rejected by the
+ordinary CLI build mode and require the explicit inactive comparison option.
+The shared C helper is compiled once and retained for the same bytes to be used
+in both later components. This build-pair receipt does not claim C execution.
+
+Both CLIs use the same explicit `ci-link-input-trace` feature. When later asked
+to componentize, it records the actual borrowed library bytes, order, names and
+`dl_openable` values before passing those same values to the unchanged Linker
+calls. Library names are encoded as manifest data, never used as paths. Only
+fresh ordinal files beneath the private `/work/link-trace` directory are written.
+The original adapter selection remains unchanged. The recorder also saves the
+encoded component before snapshotting. Trace data, metadata and that component
+together remain bounded to 64 MiB, with 32 MiB per binary and 128 libraries.
+Write, membership or bound failures propagate; a completion marker is written
+only after successful linking and recording. No dependency or lock changes are
+needed, and ordinary producer builds do not enable this feature.
+
+The input trace alone does not prove final provider resolution: built-in libdl,
+synthetic wrappers, indirect-call tables, errno GOT/TLS addresses and the final
+snapshot still require inspection and actual execution evidence. Consumers must
+bind the complete trace to the exact producer invocation and final component.
+Non-stub C reference components and the cold restricted schema component remain
+separate, with separate Stores, host contexts and receipts. No ABI, provider,
+schema, GUI or activation success is inferred from compiling these CLIs.
