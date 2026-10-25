@@ -19,9 +19,11 @@ pub struct ApprovalReviewItem<'a> {
     prompt: &'a ApprovalPrompt,
 }
 impl ApprovalReviewItem<'_> {
+    /// Borrow the native correspondence for this exact original request.
     pub fn id(&self) -> &ApprovalReviewItemId {
         self.id
     }
+    /// Borrow immutable display facts; these are never approval evidence.
     pub fn prompt(&self) -> &ApprovalPrompt {
         self.prompt
     }
@@ -109,6 +111,7 @@ impl<'a> ApprovalReviewBatch<'a> {
         self.content
     }
 
+    /// Iterate the complete original prompt set without transferring custody.
     pub fn items(&self) -> impl ExactSizeIterator<Item = ApprovalReviewItem<'_>> {
         self.slots.iter().map(|slot| ApprovalReviewItem {
             id: &slot.id,
@@ -116,6 +119,7 @@ impl<'a> ApprovalReviewBatch<'a> {
         })
     }
 
+    /// Borrow one exact item, without allowing insertion or replacement.
     pub fn item(&self, index: usize) -> Option<ApprovalReviewItem<'_>> {
         self.slots.get(index).map(|slot| ApprovalReviewItem {
             id: &slot.id,

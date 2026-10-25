@@ -9,6 +9,9 @@ on:
       - 'scripts/wasm/prepare_harness_setup.py'
       - 'scripts/wasm/replay_harness_setup.py'
       - 'tests/test_harness_setup.py'
+      - 'tests/test_captured_setup_inputs.py'
+      - 'tobkiri_runtime/tobkiri_protocol/captured_inputs.py'
+      - 'tobkiri_runtime/tobkiri_protocol/platform_artifact.py'
       - 'tools/python313-producer/build_components.py'
       - 'tools/python313-producer/component_inputs.py'
       - 'tools/python313-producer/component_driver.py'
@@ -54,6 +57,7 @@ jobs:
         run: |
           python3 -B scripts/wasm/prepare_harness_setup.py --verify
           python3 -B -m unittest discover -s tests -p test_harness_setup.py
+          python3 -B -m unittest discover -s tests -p test_captured_setup_inputs.py
           python3 -B -m unittest discover -s tools/python313-producer/tests -p test_build_components.py
       - name: Authenticate the completed producer and its recorded source
         env:

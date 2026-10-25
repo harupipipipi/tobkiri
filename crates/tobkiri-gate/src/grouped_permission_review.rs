@@ -15,9 +15,12 @@ pub struct PreparedPermissionReviewBatch<'a> {
     _array: ControlReservation,
 }
 impl PreparedPermissionReviewBatch<'_> {
+    /// Commit all completed effects through the existing atomic batch protocol.
     pub fn commit_all(self) -> Result<(), GateError> {
         PreparedPermissionApproval::commit_all(self.approvals)
     }
+    /// Hand the exact move-only batch to the existing durable coordinator.
+    /// Callback failure keeps the original commit/uncertainty semantics.
     pub fn commit_all_with<E: From<GateError>>(
         self,
         commit: impl FnOnce(&PermissionApprovalBatch<'_, '_>) -> Result<(), E>,

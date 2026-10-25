@@ -153,12 +153,39 @@ callback unavailable until that boundary is implemented and tested. The
 ordinary product Setup/settings/chat path remains the original Launcher.
 
 First-run domain projection remains separate: the public runtime still has no
-pre-Profile Pack execution exemption. A future isolated data evaluator would
-need an explicit, generic boundary with immutable verified inputs, no Session,
-Host I/O, network, arbitrary filesystem or persistent effects. Its output would
-remain untrusted candidate data for ordinary verification/compilation. Neither
-the existing seven-method candidate nor this request-review seam implements or
-proves the full resolver/listing dependency closure at that boundary.
+pre-Profile Pack execution exemption. Astra high rechecked the issue text on
+2026-10-25 and confirmed a distinction between ordinary Pack runtime operations
+and the existing untrusted Setup UI's own candidate computation. Translating
+that UI computation to Wasm does not create Pack execution authority or require
+a specification exception. It must remain UI-local, with no Profile, Session,
+HostIo, internal API or port authority. Its only source input is an immutable
+capture from native User configuration inspection, not UI-selected arbitrary
+filesystem paths or automatic source acquisition. Native code must enforce the
+original owner and unchanged byte limits, finite execution time/fuel,
+cancellation and output bounds. All outputs remain untrusted candidate DATA
+for Core verification/compilation and the actual trusted review/Gate/CAS path.
+
+`tobkiri_protocol/captured_inputs.py` now supplies the first read adapter for
+that computation. A closed file inventory maps paths to ordinals; the reader
+requests only an ordinal and bounded offset/length, never an OS path. Native
+reads are at most 64 KiB, complete returned buffers at most 4 MiB, and derived
+directory metadata is bounded before ancestor construction. Large inspected
+artifacts stream through the unchanged artifact-tree/entrypoint hash and
+header checks without copying the entire artifact into UI memory. The original
+local descriptor/no-follow/fstat checks remain in place. Captured paths cannot
+be passed to OS filesystem functions. Schema aliases and directory enumeration
+use that same captured namespace. A request for actual macOS code-signature
+verification refuses this data adapter and still requires native inspection.
+
+The Python reader is untrusted UI code, not a native capability or custody
+proof. The future native binding must independently validate capture ownership,
+ordinal membership and ranges, retain immutable sources, and fund the actual
+worker/buffers/metadata under the same original account. These objects alone
+do not establish those guarantees. The tests compare the original local and
+captured artifact algorithm, schema reads and refusal behavior; they are not a
+worker, first-Profile, complete resolver/listing, approval GUI or activation
+test. Neither the existing seven-method component nor this request-review/read
+seam completes that remaining integration.
 
 The full React screens and logical contracts stay intact. Domain-specific
 Setup/readiness/presentation orchestration belongs in Kit/compatibility Pack

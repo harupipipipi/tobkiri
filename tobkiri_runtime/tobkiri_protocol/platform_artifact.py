@@ -8,13 +8,15 @@ import plistlib
 import stat
 import subprocess
 import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, BinaryIO, Iterator, Mapping
 
+from .captured_inputs import CapturedPath, CapturedReader
 from .errors import ProtocolError
 
 
-def artifact_digest(path: Path, *, deadline_monotonic: float | None = None) -> str:
+def artifact_digest(path: Path | CapturedPath, *, deadline_monotonic: float | None = None) -> str:
     """Return the canonical v1 artifact-tree digest used by release packaging.
 
     When ``deadline_monotonic`` is provided, streaming aborts with
@@ -24,7 +26,7 @@ def artifact_digest(path: Path, *, deadline_monotonic: float | None = None) -> s
 
     digest = hashlib.sha256()
 
-    def visit(current: Path, relative: tuple[str, ...]) -> None:
+    def visit(current: Path | CapturedPath, relative: tuple[str, ...]) -> None:
         if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
             raise ProtocolError("packaged artifact verification deadline exceeded")
         if current.is_symlink():
@@ -54,79 +56,84 @@ def _identity(value: os.stat_result) -> tuple[int, int, int, int, int]:
     )
 
 
-def _stable_update_digest(
-    path: Path, digest: Any, deadline_monotonic: float | None = None
-) -> int:
-    """Stream one regular file into a digest while preserving TOCTOU checks."""
+@contextmanager
+def _regular_binary_reader(
+    path: Path | CapturedPath, *, header: bool
+) -> Iterator[tuple[BinaryIO | CapturedReader, int]]:
+    """Keep local descriptor checks; captured UI input has no OS fallback."""
+    subject = "entrypoint" if header else "member"
+    changed = (
+        "packaged artifact changed while its header was verified"
+        if header
+        else "packaged artifact changed while it was verified"
+    )
     try:
-        descriptor = os.open(
-            os.fspath(path), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-        )
+        if isinstance(path, CapturedPath):
+            with path.open_binary() as handle:
+                yield handle, handle.size
+            return
+        descriptor = os.open(os.fspath(path), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
         with os.fdopen(descriptor, "rb") as handle:
             before = os.fstat(handle.fileno())
             if not stat.S_ISREG(before.st_mode):
-                raise ProtocolError("packaged artifact member is not a regular file")
-            size = 0
-            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                if (
-                    deadline_monotonic is not None
-                    and time.monotonic() >= deadline_monotonic
-                ):
-                    raise ProtocolError(
-                        "packaged artifact verification deadline exceeded"
-                    )
-                digest.update(chunk)
-                size += len(chunk)
+                raise ProtocolError(f"packaged artifact {subject} is not a regular file")
+            yield handle, before.st_size
             after = os.fstat(handle.fileno())
     except OSError as exc:
-        raise ProtocolError("packaged artifact member could not be read") from exc
-    if _identity(before) != _identity(after) or size != after.st_size:
-        raise ProtocolError("packaged artifact changed while it was verified")
+        description = "entrypoint header" if header else "member"
+        raise ProtocolError(f"packaged artifact {description} could not be read") from exc
+    if _identity(before) != _identity(after):
+        raise ProtocolError(changed)
+
+
+def _stable_update_digest(
+    path: Path | CapturedPath,
+    digest: Any,
+    deadline_monotonic: float | None = None,
+) -> int:
+    """Stream one regular file into a digest while preserving TOCTOU checks."""
+    size = 0
+    with _regular_binary_reader(path, header=False) as (handle, expected_size):
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
+                raise ProtocolError("packaged artifact verification deadline exceeded")
+            digest.update(chunk)
+            size += len(chunk)
+        if size != expected_size:
+            raise ProtocolError("packaged artifact changed while it was verified")
     return size
 
 
-def _read_bounded_header(path: Path) -> tuple[bytes, bytes | None]:
+def _read_bounded_header(path: Path | CapturedPath) -> tuple[bytes, bytes | None]:
     """Read only the bounded header needed for architecture verification."""
-    try:
-        descriptor = os.open(
-            os.fspath(path), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-        )
-        with os.fdopen(descriptor, "rb") as handle:
-            before = os.fstat(handle.fileno())
-            if not stat.S_ISREG(before.st_mode):
-                raise ProtocolError("packaged artifact entrypoint is not a regular file")
-            prefix = handle.read(64)
-            if prefix[:2] == b"MZ":
-                if len(prefix) < 64:
-                    raise ProtocolError("PE entrypoint DOS header is truncated")
-                offset = int.from_bytes(prefix[60:64], "little")
-                header_size = 4 + 20
-                if offset < 64 or offset > before.st_size - header_size:
-                    raise ProtocolError("PE entrypoint header is out of bounds")
-                handle.seek(offset)
-                pe_header = handle.read(header_size)
-                if len(pe_header) < header_size or pe_header[:4] != b"PE\0\0":
-                    raise ProtocolError("PE entrypoint signature is invalid or truncated")
-                header = prefix
-                header_tail = pe_header
-            else:
-                header = prefix
-                header_tail = None
-            after = os.fstat(handle.fileno())
-    except OSError as exc:
-        raise ProtocolError("packaged artifact entrypoint header could not be read") from exc
-    if _identity(before) != _identity(after):
-        raise ProtocolError("packaged artifact changed while its header was verified")
+    with _regular_binary_reader(path, header=True) as (handle, size):
+        prefix = handle.read(64)
+        if prefix[:2] == b"MZ":
+            if len(prefix) < 64:
+                raise ProtocolError("PE entrypoint DOS header is truncated")
+            offset = int.from_bytes(prefix[60:64], "little")
+            header_size = 4 + 20
+            if offset < 64 or offset > size - header_size:
+                raise ProtocolError("PE entrypoint header is out of bounds")
+            handle.seek(offset)
+            pe_header = handle.read(header_size)
+            if len(pe_header) < header_size or pe_header[:4] != b"PE\0\0":
+                raise ProtocolError("PE entrypoint signature is invalid or truncated")
+            header = prefix
+            header_tail = pe_header
+        else:
+            header = prefix
+            header_tail = None
     return header, header_tail
 
 
 def verify_platform_artifact(
-    artifact_root: Path,
+    artifact_root: Path | CapturedPath,
     variant: Mapping[str, Any],
     *,
     require_macos_code_signature: bool = False,
     deadline_monotonic: float | None = None,
-) -> Path:
+) -> Path | CapturedPath:
     """Verify path, digest, entrypoint, architecture, and macOS bundle identity."""
 
     root = artifact_root.resolve(strict=True)
@@ -172,6 +179,8 @@ def verify_platform_artifact(
         if info.get("CFBundleIdentifier") != variant["bundle_identity"]:
             raise ProtocolError("macOS packaged artifact bundle identity does not match")
         if require_macos_code_signature:
+            if isinstance(artifact, CapturedPath):
+                raise ProtocolError("code signature verification needs native User inspection")
             _verify_macos_code_signature(artifact)
     _verify_binary_architecture(entrypoint, str(variant["architecture"]))
     return artifact
@@ -194,7 +203,7 @@ def _verify_macos_code_signature(artifact: Path) -> None:
         raise ProtocolError("macOS packaged artifact signature is invalid")
 
 
-def _verify_binary_architecture(path: Path, architecture: str) -> None:
+def _verify_binary_architecture(path: Path | CapturedPath, architecture: str) -> None:
     payload, pe_header = _read_bounded_header(path)
     actual: str | None = None
     if payload[:4] in {b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf"} and len(payload) >= 8:
@@ -206,9 +215,7 @@ def _verify_binary_architecture(path: Path, architecture: str) -> None:
     elif payload[:2] == b"MZ":
         if pe_header is None:
             raise ProtocolError("PE entrypoint header is truncated")
-        actual = {0x8664: "x86_64", 0xAA64: "arm64"}.get(
-            int.from_bytes(pe_header[4:6], "little")
-        )
+        actual = {0x8664: "x86_64", 0xAA64: "arm64"}.get(int.from_bytes(pe_header[4:6], "little"))
     elif payload[:4] == b"\x7fELF" and len(payload) >= 20:
         actual = {62: "x86_64", 183: "arm64"}.get(
             int.from_bytes(

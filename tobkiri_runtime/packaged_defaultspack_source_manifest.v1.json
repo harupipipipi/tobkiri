@@ -3953,6 +3953,13 @@
       "executable": false
     },
     {
+      "path": "tobkiri_protocol/captured_inputs.py",
+      "type": "regular-file",
+      "size": 11901,
+      "sha256": "9b48a2ac901ecb256583017571aa9925cfa671e76224b5733f24f143a97825c5",
+      "executable": false
+    },
+    {
       "path": "tobkiri_protocol/chat_message_v1.py",
       "type": "regular-file",
       "size": 12083,
@@ -4137,8 +4144,8 @@
     {
       "path": "tobkiri_protocol/platform_artifact.py",
       "type": "regular-file",
-      "size": 9528,
-      "sha256": "c55797250942fe23a48a971860ea5b55d722abb3fad1ecc83ebdce1ffe7a80c8",
+      "size": 9905,
+      "sha256": "b3f60b0a2cc4e2e501454b6cbef08b29b03381dd5c1a64aa5a2e5b60d522c6e8",
       "executable": false
     },
     {
