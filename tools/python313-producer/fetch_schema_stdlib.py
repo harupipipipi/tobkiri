@@ -55,6 +55,7 @@ SELECTED_FILES = (
     "calendar.py",
     # Distribution.files() lazily parses the unchanged wheel RECORD via csv.
     "csv.py",
+    "quopri.py",
     # Distribution.metadata() lazily uses the original email metadata adapter.
     "importlib/metadata/_adapters.py",
     "importlib/metadata/_text.py",

@@ -28,6 +28,7 @@ STDLIB_FILES = {
     "_strptime.py",
     "calendar.py",
     "csv.py",
+    "quopri.py",
     "importlib/metadata/_adapters.py",
     "importlib/metadata/_text.py",
     "email/__init__.py",

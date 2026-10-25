@@ -173,7 +173,7 @@ class SchemaStdlibInputTests(unittest.TestCase):
             destination = Path(temp).resolve() / "stdlib-inputs"
             receipt, verified, pin = self._run_offline_stage(destination)
             self.assertEqual(receipt["source_pin"], pin)
-            self.assertEqual(verified["files"], 39)
+            self.assertEqual(verified["files"], 40)
             self.assertTrue((destination / "archives/Python-3.13.16.tar.xz").is_file())
             self.assertEqual(
                 {path.name for path in (destination / "source/logging").iterdir()},
@@ -197,6 +197,7 @@ class SchemaStdlibInputTests(unittest.TestCase):
                     "_strptime.py",
                     "calendar.py",
                     "csv.py",
+                    "quopri.py",
                     "email",
                     "importlib",
                 },
