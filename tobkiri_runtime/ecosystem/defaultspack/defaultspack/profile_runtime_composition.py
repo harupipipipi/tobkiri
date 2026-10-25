@@ -53,7 +53,7 @@ class DefaultspackProfileRuntime:
     def setup_profile_preview(self, catalog: Any) -> Mapping[str, Any]:
         """Build Defaultspack's exact setup projection from its sealed catalog."""
 
-        from ecosystem.defaultspack.domain.runtime_v4.service import BundledCatalog
+        from ecosystem.defaultspack.domain.profile_resolution import BundledCatalog
 
         if not isinstance(catalog, BundledCatalog):
             raise self.denied("bundled setup Profile catalog is unavailable")
@@ -462,7 +462,7 @@ class DefaultspackProfileRuntime:
     def denied(self, message: str) -> Exception:
         """Return the canonical Defaultspack Profile denial."""
 
-        from ecosystem.defaultspack.domain.runtime_v4.service import (
+        from ecosystem.defaultspack.domain.profile_resolution import (
             ProfileResolutionDenied,
         )
 

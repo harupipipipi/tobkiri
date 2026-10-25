@@ -4859,7 +4859,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 1,
-      "source_tree_sha256": "29b712da99ad2d333feb79234322e5521da2e546c0490188ed990c7ff8174e35",
+      "source_tree_sha256": "12f32a1960d86f9b26e11c9dbfba5dfb988034ec4d9d51fae77b4ffdbff38940",
       "status": "todo",
       "target": "python-wasm",
       "target_provisional": true
@@ -6368,8 +6368,8 @@
       "replacement": null,
       "shapes": [],
       "source_changed": true,
-      "source_files": 3800,
-      "source_tree_sha256": "55544c30b9bb9d5b6b4fc4559356450d0357e45f7dcc4fa4b1599b08d450c6d3",
+      "source_files": 3801,
+      "source_tree_sha256": "b0868998d8de5c7519bf1eb7f63474a882bae00c58def1d5065f048ecc91ded3",
       "status": "todo",
       "target": "python-wasm"
     },
@@ -6533,7 +6533,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 36,
-      "source_tree_sha256": "1140254b3e0013393ff2711f62e947c659469f470c144e02d2b97e569bf5dd40",
+      "source_tree_sha256": "bc7174a6667f7d9423a0e76a9ead78e25abfa3745f88a72d01d447df0059c07a",
       "status": "todo",
       "target": "python-wasm"
     },
@@ -7339,6 +7339,20 @@
     },
     {
       "evidence": [],
+      "kind": "defaults-domain-module",
+      "legacy_unit": "tobkiri_runtime/ecosystem/defaultspack/domain/profile_resolution.py",
+      "native_imports": [],
+      "parity_fixture": null,
+      "replacement": null,
+      "shapes": [],
+      "source_changed": true,
+      "source_files": 1,
+      "source_tree_sha256": "048fb61765b9324c73606eae4a7ef7ed5c11d228e99a90628020aa6826b120c1",
+      "status": "todo",
+      "target": "python-wasm"
+    },
+    {
+      "evidence": [],
       "kind": "defaults-domain",
       "legacy_unit": "tobkiri_runtime/ecosystem/defaultspack/domain/prompt",
       "native_imports": [
@@ -7453,8 +7467,9 @@
       "parity_fixture": null,
       "replacement": null,
       "shapes": [],
+      "source_changed": true,
       "source_files": 3,
-      "source_tree_sha256": "7339c65da62f7b72abc4bac9a32cfa5afae4eb8726c18859dedeb1c73a7eb6ff",
+      "source_tree_sha256": "4ba03bc6f43b10f101ce6ac68e58d4e4c610d2f5127ff3c58fd757d3aa5bcc03",
       "status": "todo",
       "target": "python-wasm"
     },
@@ -10222,8 +10237,9 @@
       "parity_fixture": null,
       "replacement": null,
       "shapes": [],
+      "source_changed": true,
       "source_files": 1,
-      "source_tree_sha256": "355c09191e63642c2b1e620ecbdc7288e30c90fa3d121e26391d5be8e669500e",
+      "source_tree_sha256": "1bb4c66a1c33c40fcda65d5a808a73e016ee2f2be3d0b146779c49609c0bd339",
       "status": "todo",
       "target": "python-wasm",
       "target_provisional": true

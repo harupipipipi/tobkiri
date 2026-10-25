@@ -23,8 +23,6 @@ def admitted_projection_sources(
 ) -> dict[str, ProjectionPackSource]:
     """Resolve only projection origins present in the captured selected closure."""
 
-    from .external_pack_catalog_v4 import resolve_admitted_pack_root
-
     result = {}
     for selection in selections:
         pack_id = selection.get("source_pack_id")
@@ -32,6 +30,9 @@ def admitted_projection_sources(
             continue
         if pack_id not in artifact_pins:
             raise ValueError("projection Pack is outside the selected Profile closure")
+        # Load the enforcing native admission implementation only when used.
+        from .external_pack_catalog_v4 import resolve_admitted_pack_root
+
         result[pack_id] = ProjectionPackSource(
             artifact_pins[pack_id], resolve_admitted_pack_root(
                 pack_id, artifact_digest=artifact_pins[pack_id]

@@ -1,0 +1,97 @@
+name: Issue 1520 original Profile resolution compatibility
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-profile-resolution-oracle.yml'
+      - 'tools/quality/profile_resolution_native_*.py'
+      - 'tools/quality/profile_resolution_source_relocation.json'
+      - 'tobkiri_runtime/ecosystem/defaultspack/domain/profile_resolution.py'
+      - 'tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/**'
+      - 'tobkiri_runtime/ecosystem/defaultspack/defaultspack/profile_runtime_composition.py'
+      - 'tobkiri_runtime/core_runtime/profile_pack_projection.py'
+      - 'tobkiri_runtime/tobkiri_host/__init__.py'
+      - 'tobkiri_runtime/scripts/generator_source_manifest.py'
+      - 'tobkiri_runtime/packaged_defaultspack_source_manifest.v1.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-1520-profile-resolution-oracle-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  original-native-comparison:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: candidate
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: e15caf5c9a3255a87b4b48dcc24617d305a3681b
+          path: baseline
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Install the unchanged locked native test dependencies
+        working-directory: candidate
+        run: python3 -B .github/scripts/install_locked_python_test_dependencies.py
+      - name: Verify exact source relocation and the generated source inventory
+        working-directory: candidate
+        run: |
+          python3 -B -m unittest tools.quality.test_setup_import_boundaries
+          python3 -B scripts/wasm/prepare_harness_setup.py --verify
+          python3 -B tobkiri_runtime/scripts/generator_source_manifest.py --check
+          python3 -B migration/inventory.py
+      - name: Compare independent native namespaces over identical genuine inputs
+        run: >-
+          python3 -I -S -B
+          "$GITHUB_WORKSPACE/candidate/tools/quality/profile_resolution_native_oracle.py"
+          --baseline "$GITHUB_WORKSPACE/baseline"
+          --candidate "$GITHUB_WORKSPACE/candidate"
+          --work "$RUNNER_TEMP/profile-resolution-oracle"
+      - name: Run the unchanged native enforcement corpus on both sources
+        run: |
+          set -eu
+          for source in baseline candidate; do
+            (
+              cd "$GITHUB_WORKSPACE/$source/tobkiri_runtime"
+              python3 -B -m pytest -q \
+                tests/test_activation_validation_cache_freshness.py::test_warm_reload_skips_only_the_three_record_validations \
+                tests/test_pack_signature.py::test_wrong_publisher_revoked_key_and_manifest_tampering_fail \
+                tests/test_pack_signature.py::test_manifest_verification_preserves_strict_source_file_modes \
+                tests/test_external_pack_catalog_v4.py::test_signed_frontend_pack_projects_from_real_admitted_cas \
+                tests/test_external_pack_catalog_v4.py::test_catalog_poison_cas_tamper_and_partial_transaction_are_invisible \
+                tests/test_pack_authoring.py::test_deterministic_build_and_tampered_source_rejected \
+                tests/test_bundled_host_baseline_v4.py::test_untrusted_baseline_suppliers_cannot_change_frozen_evidence \
+                tests/test_bundled_host_baseline_v4.py::test_published_baseline_tree_is_revalidated \
+                > "$RUNNER_TEMP/profile-resolution-$source.log" 2>&1
+            )
+          done
+      - name: Retain complete native observations and bounded diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: profile-resolution-native-oracle-evidence
+          path: |
+            ${{ runner.temp }}/profile-resolution-oracle/*.json
+            ${{ runner.temp }}/profile-resolution-oracle/*.log
+            ${{ runner.temp }}/profile-resolution-baseline.log
+            ${{ runner.temp }}/profile-resolution-candidate.log
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Keep trusted original pickle evidence on CI
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: profile-resolution-original-pickles-ci-only
+          path: ${{ runner.temp }}/profile-resolution-oracle/*-original.pickle
+          if-no-files-found: error
+          retention-days: 14
