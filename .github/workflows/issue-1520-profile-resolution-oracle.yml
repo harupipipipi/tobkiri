@@ -86,10 +86,19 @@ jobs:
             fi
           done
           exit "$enforcement_status"
+      - uses: actions/setup-python@v5
+        if: ${{ !cancelled() && steps.verify_sources.outcome == 'success' }}
+        with:
+          python-version: '3.13.9'
+      - name: Install unchanged dependencies for the pinned Registry oracle interpreter
+        if: ${{ !cancelled() && steps.verify_sources.outcome == 'success' }}
+        working-directory: candidate
+        run: python3 -B .github/scripts/install_locked_python_test_dependencies.py
       - name: Regenerate complete original Registry and configuration observations
         if: ${{ !cancelled() && steps.verify_sources.outcome == 'success' }}
         working-directory: candidate
         run: |
+          python3 -B -c 'import sys; assert sys.version_info[:3] == (3, 13, 9)'
           python3 -B tools/quality/python_provider_registry_compat/generate.py \
             --output-dir "$RUNNER_TEMP/provider-registry-current"
           python3 -B tools/quality/python_provider_registry_compat/configuration_prepare.py \
