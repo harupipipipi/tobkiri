@@ -26,9 +26,19 @@ export PATH=/sdk/bin:/usr/bin:/bin HOME=/work/home
 set -- --target=wasm32-wasip2 --sysroot=/sdk/share/wasi-sysroot \
   -fPIC -I/target-headers -DPy_LIMITED_API=0x030D0000 \
   -shared -Wl,--skip-wit-component -Wl,--unresolved-symbols=import-dynamic \
-  /probe-source/_tobkiri_poll_oracle.c -o /work/_tobkiri_poll_oracle.abi3.so
+  /probe-source/_tobkiri_poll_oracle.c
+# Preserve the compiler-default variant as a diagnostic comparison only.
+/sdk/bin/clang -### "$@" -o /work/compiler-default.so \
+  > /work/compiler-default-stdout.txt 2> /work/compiler-default-link.txt
+/sdk/bin/clang "$@" -o /work/compiler-default.so > /work/compiler-default.log 2>&1
+# The selected helper always leaves libc functions external, with no CRT entry.
+# This is an explicit shared-extension recipe, never a success-based fallback.
+set -- "$@" -nostdlib -Wl,--no-entry \
+  -Wl,--export=PyInit__tobkiri_poll_oracle -o /work/_tobkiri_poll_oracle.abi3.so
 /sdk/bin/clang -### "$@" > /work/clang-link-stdout.txt 2> /work/clang-link-command.txt
 /sdk/bin/clang "$@" > /work/compile.log 2>&1
+"""
+INSPECT_RECIPE = """set -eu
 /usr/bin/python3 -I -B /probe-source/inspect_helper.py
 """
 
@@ -101,6 +111,8 @@ def run(source: Path, wasi: Path, validation: Path, destination: Path) -> dict:
     (work / "home").mkdir(mode=0o700)
     recipe = destination / "build-helper.sh"
     recipe.write_text(RECIPE)
+    inspect_recipe = destination / "inspect-helper.sh"
+    inspect_recipe.write_text(INSPECT_RECIPE)
     report = {
         "format": "tobkiri.ui-empty-poll-c-helper/1",
         "outcome": "pending",
@@ -108,6 +120,7 @@ def run(source: Path, wasi: Path, validation: Path, destination: Path) -> dict:
         "target_headers": wasi_report["target_headers"],
         "input_inventories": snapshots,
         "recipe": fingerprint(recipe),
+        "inspection_recipe": fingerprint(inspect_recipe),
         "compiled": False,
         "guest_execution": False,
         "c_abi_verified": False,
@@ -116,23 +129,37 @@ def run(source: Path, wasi: Path, validation: Path, destination: Path) -> dict:
         "production_enabled": False,
     }
     try:
-        command = sandbox_command(
-            None,
-            work,
-            recipe,
-            (
-                (sdk, "/sdk"),
-                (headers, "/target-headers"),
-                (probe, "/probe-source"),
-                (HERE / "rpds_probe", "/support/rpds_probe"),
-                (validation / "wasmtime", "/validation-deps"),
-            ),
+        mounts = (
+            (sdk, "/sdk"),
+            (headers, "/target-headers"),
+            (probe, "/probe-source"),
+            (HERE / "rpds_probe", "/support/rpds_probe"),
+            (validation / "wasmtime", "/validation-deps"),
         )
-        report["supervision"] = run_stage(
-            "ui-empty-poll-c-helper", command, work, destination / "supervision"
+        command = sandbox_command(None, work, recipe, mounts)
+        report["compile_supervision"] = run_stage(
+            "ui-empty-poll-c-helper", command, work, destination / "compile"
         )
         helper = work / "_tobkiri_poll_oracle.abi3.so"
         report["helper"] = fingerprint(helper, 32 * 1024 * 1024)
+        diagnostic = work / "compiler-default.so"
+        report["compiler_default_diagnostic"] = fingerprint(
+            diagnostic, 32 * 1024 * 1024
+        )
+        report["compiled"] = True
+        command = sandbox_command(
+            None,
+            work,
+            inspect_recipe,
+            (
+                *mounts,
+                (helper, "/work/_tobkiri_poll_oracle.abi3.so"),
+                (diagnostic, "/work/compiler-default.so"),
+            ),
+        )
+        report["inspection_supervision"] = run_stage(
+            "ui-empty-poll-c-inspection", command, work, destination / "inspect"
+        )
         inspection = work / "helper-inspection.json"
         fingerprint(inspection, 4 * 1024 * 1024)
         report["inspection"] = json.loads(inspection.read_bytes())
@@ -141,7 +168,6 @@ def run(source: Path, wasi: Path, validation: Path, destination: Path) -> dict:
             or report["inspection"]["shared_imports_verified"] is not True
         ):
             raise ValueError("helper inspection does not bind its actual output")
-        report["compiled"] = True
         report["outcome"] = "success"
     except BaseException as error:
         report["outcome"] = "failed"
@@ -158,6 +184,12 @@ def run(source: Path, wasi: Path, validation: Path, destination: Path) -> dict:
             )
             and verify_tree(source) == wasi_report["source"]
         )
+        if report["compiled"]:
+            report["inputs_unchanged"] = report["inputs_unchanged"] and (
+                fingerprint(helper, 32 * 1024 * 1024) == report["helper"]
+                and fingerprint(diagnostic, 32 * 1024 * 1024)
+                == report["compiler_default_diagnostic"]
+            )
         if not report["inputs_unchanged"]:
             report["outcome"] = "failed"
         (destination / "helper-build.json").write_text(

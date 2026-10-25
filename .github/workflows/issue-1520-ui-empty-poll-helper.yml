@@ -85,11 +85,14 @@ jobs:
             ${{ runner.temp }}/python313-validation/validation-inputs.json
             ${{ runner.temp }}/ui-poll-c-helper/helper-build.json
             ${{ runner.temp }}/ui-poll-c-helper/build-helper.sh
+            ${{ runner.temp }}/ui-poll-c-helper/inspect-helper.sh
             ${{ runner.temp }}/ui-poll-c-helper/work/*.txt
             ${{ runner.temp }}/ui-poll-c-helper/work/*.json
             ${{ runner.temp }}/ui-poll-c-helper/work/*.log
-            ${{ runner.temp }}/ui-poll-c-helper/supervision/*.json
-            ${{ runner.temp }}/ui-poll-c-helper/supervision/*.log
+            ${{ runner.temp }}/ui-poll-c-helper/compile/*.json
+            ${{ runner.temp }}/ui-poll-c-helper/compile/*.log
+            ${{ runner.temp }}/ui-poll-c-helper/inspect/*.json
+            ${{ runner.temp }}/ui-poll-c-helper/inspect/*.log
           if-no-files-found: warn
           retention-days: 14
       - name: Keep the inactive shared helper on CI for the later ABI oracle

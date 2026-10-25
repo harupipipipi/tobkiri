@@ -38,19 +38,36 @@ def module_inventory(engine: Engine, path: Path) -> dict:
             {"name": item.name, "kind": type(item.type).__name__}
             for item in module.exports
         ]
+        signatures = {
+            side: {
+                name: [
+                    {
+                        "params": [str(p) for p in item.type.params],
+                        "results": [str(r) for r in item.type.results],
+                    }
+                    for item in entries
+                    if item.name == name and isinstance(item.type, FuncType)
+                ]
+                for name in sorted(REQUIRED)
+            }
+            for side, entries in (
+                ("imports", module.imports),
+                ("exports", module.exports),
+            )
+        }
         memories = [
             item.type for item in module.imports if isinstance(item.type, MemoryType)
         ]
-        if any(
-            memory.is_shared is not False or memory.is_64 is not False
+        memory_types = [
+            {"is_shared": memory.is_shared, "is_64": memory.is_64}
             for memory in memories
-        ):
-            raise ValueError("oracle requires actual non-shared wasm32 memory")
+        ]
         return {
             "identity": {"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()},
             "custom_sections": custom_sections(raw),
             "imports": imports,
             "exports": exports,
+            "required_function_signatures": signatures,
             "function_imports": [
                 i.name for i in module.imports if isinstance(i.type, FuncType)
             ],
@@ -58,11 +75,42 @@ def module_inventory(engine: Engine, path: Path) -> dict:
                 i.name for i in module.exports if isinstance(i.type, FuncType)
             ],
             "imported_memories": len(memories),
+            "imported_memory_types": memory_types,
             "imported_tables": sum(
                 isinstance(i.type, TableType) for i in module.imports
             ),
-            "non_shared_wasm32_imported_memory": bool(memories),
+            "non_shared_wasm32_imported_memory": bool(memories)
+            and all(
+                entry["is_shared"] is False and entry["is_64"] is False
+                for entry in memory_types
+            ),
         }
+
+
+def checks(helper: dict, original: dict) -> dict[str, bool]:
+    """Name each independent guard, including actual imported/exported C signatures."""
+    return {
+        "required_function_imports": REQUIRED <= set(helper["function_imports"]),
+        "no_embedded_poll_or_errno_exports": not bool(
+            REQUIRED & set(helper["function_exports"])
+        ),
+        "python_initializer": "PyInit__tobkiri_poll_oracle"
+        in helper["function_exports"],
+        "dynamic_link_metadata": "dylink.0" in helper["custom_sections"],
+        "imported_memory": bool(helper["imported_memories"]),
+        "non_shared_wasm32_memory": all(
+            entry["is_shared"] is False and entry["is_64"] is False
+            for entry in helper["imported_memory_types"]
+        ),
+        "imported_table": bool(helper["imported_tables"]),
+        "sdk_libc_function_exports": REQUIRED <= set(original["function_exports"]),
+        "function_signatures_match": all(
+            len(helper["required_function_signatures"]["imports"][name]) == 1
+            and helper["required_function_signatures"]["imports"][name]
+            == original["required_function_signatures"]["exports"][name]
+            for name in REQUIRED
+        ),
+    }
 
 
 def main() -> None:
@@ -76,22 +124,20 @@ def main() -> None:
         original = module_inventory(
             engine, Path("/sdk/share/wasi-sysroot/lib/wasm32-wasip2/libc.so")
         )
-    if (
-        not REQUIRED <= set(helper["function_imports"])
-        or REQUIRED & set(helper["function_exports"])
-        or "PyInit__tobkiri_poll_oracle" not in helper["function_exports"]
-        or "dylink.0" not in helper["custom_sections"]
-        or not helper["imported_memories"]
-        or not helper["imported_tables"]
-        or not REQUIRED <= set(original["function_exports"])
-    ):
-        raise ValueError("actual C helper lacks the required shared-module ABI")
+        diagnostic = module_inventory(engine, Path("/work/compiler-default.so"))
+    selected_checks = checks(helper, original)
     report = {
         "format": "tobkiri.ui-empty-poll-c-helper-inspection/1",
         "helper": helper["identity"],
         "helper_module": helper,
         "sdk_libc_module": original,
-        "shared_imports_verified": True,
+        "shared_imports_verified": all(selected_checks.values()),
+        "checks": selected_checks,
+        "compiler_default_diagnostic": {
+            "module": diagnostic,
+            "checks": checks(diagnostic, original),
+            "selected_as_helper": False,
+        },
         "all_link_providers_verified": False,
         "component_link_observed": False,
         "guest_execution": False,
@@ -99,6 +145,11 @@ def main() -> None:
         "production_enabled": False,
     }
     Path("/work/helper-inspection.json").write_text(json.dumps(report, indent=2) + "\n")
+    if not all(selected_checks.values()):
+        raise ValueError(
+            "actual shared-helper guards failed: "
+            + ", ".join(name for name, passed in selected_checks.items() if not passed)
+        )
 
 
 if __name__ == "__main__":

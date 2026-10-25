@@ -18,10 +18,17 @@ remain separate from the old/candidate behavior comparison.
 `build_ui_poll_oracle.py` uses pinned SDK33 and installed target CPython headers
 whose `pyconfig.h` must match the actual successful WASI build. Its networkless
 supervised stage records the compiler's real link command and produces one
-shared core-module helper. `inspect_helper.py` requires dynamic imports for
+shared core-module helper. The selected recipe explicitly excludes default
+CRT/libc inputs with `-nostdlib`/`--no-entry` and exports the real Python
+initializer. A separate compiler-default variant is recorded only to diagnose
+the actual default-link behavior; it is never selected as a fallback.
+Compilation and inspection have separate supervised outcomes.
+`inspect_helper.py` records actual metadata before rejecting any failed guard,
+and requires dynamic imports for
 `poll` and `__errno_location`, the Python initializer export,
-`dylink.0`/non-shared wasm32 imported memory/table evidence, and real exports in
-the stock SDK libc. It neither instantiates nor executes those modules.
+`dylink.0`/non-shared wasm32 imported memory/table evidence, matching core
+function signatures and real exports in the stock SDK libc. It neither
+instantiates nor executes those modules.
 
 The later runtime builder must use exactly the same helper bytes in both
 components. Inspect every input DSO and the final link record to bind both
