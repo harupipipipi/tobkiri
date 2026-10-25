@@ -1,0 +1,102 @@
+name: Issue 1520 inactive C poll helper build
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-ui-empty-poll-helper.yml'
+      - 'tools/python313-producer/build_ui_poll_oracle.py'
+      - 'tools/python313-producer/build_wasi.py'
+      - 'tools/python313-producer/empty_poll_probe/**'
+      - 'tools/python313-producer/tests/test_build_ui_poll_oracle.py'
+      - 'tools/python313-producer/tests/test_build_wasi.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-1520-ui-empty-poll-helper-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  isolated-c-helper:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Verify source and target-header boundaries without execution
+        run: python3 -B -m unittest discover -s tools/python313-producer/tests
+      - name: Fetch exactly the recorded four original source archives
+        run: >-
+          python3 -B tools/python313-producer/fetch_sources.py
+          --destination "$RUNNER_TEMP/python313-archives"
+      - name: Verify and stage the exact original source and patch
+        run: >-
+          python3 -B tools/python313-producer/stage_sources.py
+          --archives "$RUNNER_TEMP/python313-archives"
+          --cpython-archive "$RUNNER_TEMP/python313-archives/Python-3.13.16.tar.xz"
+          --destination "$RUNNER_TEMP/python313-source"
+      - name: Install the existing build namespace dependency
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+      - name: Rebuild the original native build Python
+        run: >-
+          python3 -B tools/python313-producer/build_native.py
+          --source "$RUNNER_TEMP/python313-source"
+          --destination "$RUNNER_TEMP/python313-native"
+      - name: Rebuild original WASI libraries and bind the actual target headers
+        run: >-
+          python3 -B tools/python313-producer/build_wasi.py
+          --source "$RUNNER_TEMP/python313-source"
+          --native "$RUNNER_TEMP/python313-native"
+          --destination "$RUNNER_TEMP/python313-wasi"
+      - name: Restore pinned Wasmtime validation inputs as data
+        run: >-
+          python3 -B tools/python313-producer/fetch_validation_tools.py
+          --destination "$RUNNER_TEMP/python313-validation"
+      - name: Compile and inspect real shared C imports without running the cases
+        run: >-
+          python3 -B tools/python313-producer/build_ui_poll_oracle.py
+          --source "$RUNNER_TEMP/python313-source"
+          --wasi "$RUNNER_TEMP/python313-wasi"
+          --validation "$RUNNER_TEMP/python313-validation"
+          --destination "$RUNNER_TEMP/ui-poll-c-helper"
+      - name: Retain bounded compilation and input-custody evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-empty-poll-c-helper-build-evidence
+          path: |
+            ${{ runner.temp }}/python313-source/stage-manifest.json
+            ${{ runner.temp }}/python313-native/native-build.json
+            ${{ runner.temp }}/python313-native/*.log
+            ${{ runner.temp }}/python313-native/supervision.json
+            ${{ runner.temp }}/python313-wasi/wasi-build.json
+            ${{ runner.temp }}/python313-wasi/wasi-*/command.json
+            ${{ runner.temp }}/python313-wasi/wasi-*/supervision.json
+            ${{ runner.temp }}/python313-wasi/wasi-*/*.log
+            ${{ runner.temp }}/python313-validation/validation-inputs.json
+            ${{ runner.temp }}/ui-poll-c-helper/helper-build.json
+            ${{ runner.temp }}/ui-poll-c-helper/build-helper.sh
+            ${{ runner.temp }}/ui-poll-c-helper/work/*.txt
+            ${{ runner.temp }}/ui-poll-c-helper/work/*.json
+            ${{ runner.temp }}/ui-poll-c-helper/work/*.log
+            ${{ runner.temp }}/ui-poll-c-helper/supervision/*.json
+            ${{ runner.temp }}/ui-poll-c-helper/supervision/*.log
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Keep the inactive shared helper on CI for the later ABI oracle
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-empty-poll-c-helper-inactive-binary
+          path: ${{ runner.temp }}/ui-poll-c-helper/work/_tobkiri_poll_oracle.abi3.so
+          if-no-files-found: error
+          retention-days: 14

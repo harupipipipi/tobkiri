@@ -11,6 +11,26 @@ from build_native import HERE, fingerprint, sandbox_command
 
 
 class WasiStageTests(unittest.TestCase):
+    def test_installed_target_configuration_is_bound_to_the_generated_bytes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp).resolve()
+            headers = work / "wasi/install/include/python3.13"
+            headers.mkdir(parents=True)
+            for name in ("Python.h", "patchlevel.h"):
+                (headers / name).write_text("/* synthetic target header */\n")
+            generated = work / "wasi/pyconfig.h"
+            generated.write_text("#define SIZEOF_VOID_P 4\n")
+            (headers / "pyconfig.h").write_bytes(generated.read_bytes())
+            result = build_wasi.target_headers(work)
+            self.assertEqual(result["generated_pyconfig"], fingerprint(generated))
+            (headers / "pyconfig.h").write_text("#define SIZEOF_VOID_P 8\n")
+            with self.assertRaisesRegex(ValueError, "differs"):
+                build_wasi.target_headers(work)
+            (headers / "pyconfig.h").unlink()
+            (headers / "pyconfig.h").symlink_to(headers / "Python.h")
+            with self.assertRaisesRegex(ValueError, "regular"):
+                build_wasi.target_headers(work)
+
     def test_all_recipes_are_the_recorded_historical_bytes(self):
         for name, digest, _ in build_wasi.STAGES:
             recipe = HERE / f"trials/2026-10-19/{name}.sh"

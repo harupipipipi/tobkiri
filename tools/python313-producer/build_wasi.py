@@ -20,6 +20,23 @@ STAGES = (
 )
 
 
+def target_headers(work: Path) -> dict:
+    """Bind installed target headers to the actual WASI-generated pyconfig."""
+    relative = "wasi/install/include/python3.13"
+    root = work / relative
+    if root.resolve() != root or not root.is_dir():
+        raise ValueError("physical installed WASI headers required")
+    files = fetch_sdk.inventory(root)
+    required = {"Python.h", "pyconfig.h", "patchlevel.h"}
+    if not required <= files.keys() or any("link" in item for item in files.values()):
+        raise ValueError("complete regular target Python headers required")
+    generated = fingerprint(work / "wasi/pyconfig.h", 1024 * 1024)
+    if {k: files["pyconfig.h"][k] for k in ("bytes", "sha256")} != generated:
+        raise ValueError("installed configuration differs from the WASI build")
+    return {"root_relative": relative, "files": files,
+            "generated_pyconfig": generated}
+
+
 def run_stage(name: str, command: list[str], work: Path, evidence: Path) -> dict:
     """Keep the original supervisor and physical-cleanup requirement per stage."""
     evidence.mkdir(mode=0o700)
@@ -116,6 +133,7 @@ def run(source: Path, native: Path, destination: Path) -> None:
                 or fetch_sdk.inventory(sdk) != sdk_inputs
                 or fetch_sdk.inventory(native / "work/native2") != native_inputs):
             raise ValueError("read-only build input changed")
+        receipt["target_headers"] = target_headers(work)
         receipt["inputs_unchanged"] = True
         receipt["outcome"] = "success"
     except BaseException:
