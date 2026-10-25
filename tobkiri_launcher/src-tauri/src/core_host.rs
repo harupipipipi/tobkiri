@@ -979,11 +979,13 @@ pub(crate) fn run() {
                     // This independent thread still reaches the budget if a
                     // cleanup poll blocks a runtime worker on filesystem/SQL.
                     let result = observe_shutdown(receiver, crate::shutdown_budget::RUNTIME_WATCHDOG);
+                    let shutdown_closed = matches!(&result, ShutdownObservation::Closed);
                     match result {
                         ShutdownObservation::Closed => {},
                         ShutdownObservation::CleanupFailed => log::error!("Core shutdown failed; final cleanup/audit completion is unconfirmed"),
                         ShutdownObservation::Deadline | ShutdownObservation::WorkerLost => log::error!("Core shutdown budget reached or worker lost; forcing exit with final audit completion unconfirmed"),
                     }
+                    crate::native_ipc_probe::shutdown(&watchdog_app, shutdown_closed);
                     shutdown.store(2, Ordering::Release);
                     watchdog_app.exit(0);
                 });

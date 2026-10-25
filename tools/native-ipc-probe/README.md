@@ -29,6 +29,8 @@ and an independently observed native invalid-key rejection for every raw send.
 An absent SDK is explicitly recorded; at least one raw native surface is
 required. Missing raw coverage, timeout, process failure, cleanup failure, absent
 result or malformed result fails the observation.
+The ordinary shutdown watchdog must also emit its actual closed outcome;
+a zero process exit code or absence of error logs cannot substitute for it.
 
 Tauri's invalid-key stderr includes the expected key. The Python controller
 captures both native pipes in bounded memory, never inherits, prints, tees or

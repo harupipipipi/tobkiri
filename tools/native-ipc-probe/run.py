@@ -21,6 +21,7 @@ import time
 
 PREFIX = b"TOBKIRI_NATIVE_IPC_RESULT "
 BAD_KEY = b"__TAURI_INVOKE_KEY__ expected "
+SHUTDOWN = b"TOBKIRI_NATIVE_IPC_SHUTDOWN "
 MAX_CAPTURE = 2 * 1024 * 1024
 MAX_RECEIPT = 4096
 COMMANDS = 11
@@ -78,6 +79,11 @@ def evaluate(
     )):
         result["failure"] = "shutdown"
         return result
+    outcomes = [line[len(SHUTDOWN):] for line in stdout.splitlines()
+                if line.startswith(SHUTDOWN)]
+    if outcomes != [b"closed"]:
+        result["failure"] = "shutdown-unconfirmed"
+        return result
     candidates = [line[len(PREFIX):] for line in stdout.splitlines()
                   if line.startswith(PREFIX)]
     if not candidates:
@@ -133,7 +139,7 @@ def evaluate(
             result["failure"] = "unconfirmed-raw-rejection"
         else:
             result.update(passed=True, failure="none")
-    except (ValueError, TypeError, KeyError, InvalidObservation):
+    except (ValueError, TypeError, KeyError, RecursionError, InvalidObservation):
         result["failure"] = "schema"
     return result
 

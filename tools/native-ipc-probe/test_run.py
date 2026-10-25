@@ -34,6 +34,7 @@ class ControllerTests(unittest.TestCase):
     def evaluate(self, receipt=None, *, stderr=None, code=0, failure=None):
         value = receipt if receipt is not None else valid_receipt()
         native = probe.PREFIX + json.dumps(value).encode() + b"\n"
+        native += probe.SHUTDOWN + b"closed\n"
         if stderr is None:
             stderr = (probe.BAD_KEY + b"PRIVATE-SENTINEL but received \n") * 11
         return probe.evaluate(native, stderr, code, failure)
@@ -88,11 +89,15 @@ class ControllerTests(unittest.TestCase):
         receipt["report"]["failure"] = "PRIVATE-SENTINEL"
         self.assertNotIn("PRIVATE-SENTINEL", json.dumps(self.evaluate(receipt)))
         text = json.dumps(valid_receipt()).replace('"passed": true', '"passed": false,"passed": true')
-        result = probe.evaluate(probe.PREFIX + text.encode(), b"", 0, None)
+        result = probe.evaluate(
+            probe.PREFIX + text.encode() + b"\n" + probe.SHUTDOWN + b"closed\n",
+            b"", 0, None,
+        )
         self.assertEqual(result["failure"], "schema")
 
     def test_missing_duplicate_truncated_oversize_and_shutdown_are_failures(self):
         line = probe.PREFIX + json.dumps(valid_receipt()).encode() + b"\n"
+        line += probe.SHUTDOWN + b"closed\n"
         for output in (b"", line + line, line[:100], probe.PREFIX + b"x" * 4097):
             self.assertFalse(probe.evaluate(output, b"", 0, None)["passed"])
         for failure in ("timeout", "capture-limit", "spawn", "PRIVATE-SENTINEL"):
@@ -104,6 +109,23 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(self.evaluate(stderr=marker.encode())["failure"], "shutdown")
         self.assertEqual(probe.evaluate(
             b"x" * (probe.MAX_CAPTURE + 1), b"", 0, None)["failure"], "capture-limit")
+
+    def test_zero_exit_cannot_replace_actual_native_shutdown_confirmation(self):
+        line = probe.PREFIX + json.dumps(valid_receipt()).encode() + b"\n"
+        for trailer in (b"", probe.SHUTDOWN + b"failed\n",
+                        (probe.SHUTDOWN + b"closed\n") * 2):
+            result = probe.evaluate(line + trailer, b"", 0, None)
+            self.assertFalse(result["passed"])
+            self.assertEqual(result["failure"], "shutdown-unconfirmed")
+
+    def test_deep_or_duplicate_result_stays_a_closed_failure(self):
+        shutdown = probe.SHUTDOWN + b"closed\n"
+        nested = probe.PREFIX + b"[" * 1500 + b"0" + b"]" * 1500 + b"\n"
+        result = probe.evaluate(nested + shutdown, b"", 0, None)
+        self.assertEqual(result["failure"], "schema")
+        line = probe.PREFIX + json.dumps(valid_receipt()).encode() + b"\n"
+        result = probe.evaluate(line + line + shutdown, b"", 0, None)
+        self.assertEqual(result["failure"], "result-count-or-size")
 
     def test_capture_drains_both_pipes_and_does_not_print_either(self):
         program = "import os; os.write(1,b'out'); os.write(2,b'PRIVATE-SENTINEL')"

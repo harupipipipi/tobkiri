@@ -62,7 +62,7 @@ pub(crate) fn install(
     return enabled::install(app, setup);
     #[cfg(not(debug_assertions))]
     {
-        let _ = (app, setup);
+        let _ = (app, setup.window);
         Err("native IPC probe is unavailable in release builds".into())
     }
 }
@@ -74,6 +74,14 @@ pub(crate) fn admitted(window: &tauri::WebviewWindow) {
     enabled::admitted(window);
     #[cfg(not(debug_assertions))]
     let _ = window;
+}
+
+/// Observe the ordinary watchdog's real result without changing shutdown.
+pub(crate) fn shutdown(app: &tauri::AppHandle, closed: bool) {
+    #[cfg(debug_assertions)]
+    enabled::shutdown(app, closed);
+    #[cfg(not(debug_assertions))]
+    let _ = (app, closed);
 }
 
 #[cfg(debug_assertions)]
@@ -158,6 +166,13 @@ mod enabled {
     pub(super) fn admitted(window: &WebviewWindow) {
         if let Some(observation) = window.app_handle().try_state::<Observation>() {
             observation.admitted.fetch_add(1, Ordering::AcqRel);
+        }
+    }
+
+    pub(super) fn shutdown(app: &tauri::AppHandle, closed: bool) {
+        if app.try_state::<Observation>().is_some() {
+            let outcome = if closed { "closed" } else { "failed" };
+            println!("TOBKIRI_NATIVE_IPC_SHUTDOWN {outcome}");
         }
     }
 
