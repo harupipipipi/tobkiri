@@ -1,0 +1,225 @@
+//! Inactive native Setup Store mechanism; no Profile, Pack or host IO authority.
+use crate::WasmEngine;
+use crate::aggregate_limits::{AggregateLimits, PhysicalCapacity};
+use crate::engine::STORE_STRUCTURE_CONTROL_BYTES;
+use crate::execution_epoch::check_epoch;
+use crate::instance_capacity::WASM_STACK_BYTES;
+use anyhow::{Context, Result, bail};
+use std::{
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
+use tobkiri_gate::{
+    CapacityKind, ControlKind, ControlReservation, CoreCancellation, GateError,
+    NATIVE_SETUP_MEMORY_BYTES, NativeSetupInvocation, NativeSetupReservation,
+};
+use wasmtime::Store;
+
+const FUEL: u64 = 2_000_000_000;
+const MAX_WALL: Duration = Duration::from_secs(30);
+const TABLE_ELEMENTS: usize = 65_536;
+const PHYSICAL_METADATA_BYTES: u64 = 1024;
+
+#[cfg(test)]
+#[path = "native_setup_store_tests.rs"]
+mod tests;
+
+struct NativePhysical {
+    reservation: NativeSetupReservation,
+    charged: Mutex<u64>,
+}
+impl NativePhysical {
+    fn change(&self, bytes: u64, grow: bool) -> Result<u64, GateError> {
+        // Reject inherited native accounts BEFORE this object's mutex.
+        self.reservation.allocated_bytes()?;
+        let mut charged = self.charged.lock().map_err(|_| GateError::Unavailable)?;
+        let next = if grow {
+            charged.checked_add(bytes)
+        } else {
+            charged.checked_sub(bytes)
+        }
+        .ok_or(GateError::Unavailable)?;
+        self.reservation.resize(next)?;
+        *charged = next;
+        Ok(bytes)
+    }
+}
+impl PhysicalCapacity for NativePhysical {
+    fn memory_growth(&self, current: usize, desired: usize) -> Result<u64, GateError> {
+        let bytes = desired
+            .checked_sub(current)
+            .and_then(|v| u64::try_from(v).ok())
+            .ok_or_else(|| GateError::Limit("native Setup memory growth overflow".into()))?;
+        self.change(bytes, true)
+    }
+    fn table_growth(&self, current: usize, desired: usize) -> Result<u64, GateError> {
+        let bytes = desired
+            .checked_sub(current)
+            .and_then(|v| u64::try_from(v).ok())
+            .and_then(|v| v.checked_mul(size_of::<usize>() as u64))
+            .and_then(|v| v.checked_mul(2))
+            .ok_or_else(|| GateError::Limit("native Setup table growth overflow".into()))?;
+        self.change(bytes, true)
+    }
+    fn failed_growth(&self, bytes: u64) -> Result<(), GateError> {
+        self.change(bytes, false).map(|_| ())
+    }
+}
+
+struct PhysicalOwner {
+    physical: Option<Arc<NativePhysical>>,
+    control: Option<ControlReservation>,
+}
+impl PhysicalOwner {
+    fn new(invocation: &NativeSetupInvocation) -> Result<Self> {
+        // This also validates process/root before any local admission mutex.
+        let reservation = invocation.reserve(CapacityKind::GuestLinear, WASM_STACK_BYTES)?;
+        let control = invocation
+            .control()
+            .reserve(ControlKind::Frame, PHYSICAL_METADATA_BYTES)?;
+        let physical = Arc::new(NativePhysical {
+            reservation,
+            charged: Mutex::new(WASM_STACK_BYTES),
+        });
+        Ok(Self {
+            physical: Some(physical),
+            control: Some(control),
+        })
+    }
+    fn physical(&self) -> Arc<NativePhysical> {
+        self.physical.as_ref().expect("live physical owner").clone()
+    }
+}
+impl Drop for PhysicalOwner {
+    fn drop(&mut self) {
+        // The outer owner drops only AFTER Store/native allocation destruction.
+        // No Weak handle to this private allocation is exposed.
+        drop(self.physical.take());
+        drop(self.control.take());
+    }
+}
+
+struct NativeState<T> {
+    data: T,
+    limits: AggregateLimits,
+    deadline: Instant,
+    cancel: CoreCancellation,
+    cancel_observed: Option<Instant>,
+    retirement: tokio_util::sync::CancellationToken,
+}
+
+/// Native-only prototype Store custody. It exposes no linker/import surface or
+/// raw Store extraction. Owned input/output adapters and the actual UI runner
+/// still need connection; constructing this value does not authorize an effect.
+pub struct NativeSetupStore<T: 'static> {
+    store: Option<Store<NativeState<T>>>,
+    physical: Option<PhysicalOwner>,
+    // Keep the original bounded ticker alive until AFTER actual Store drop.
+    _engine: WasmEngine,
+}
+impl WasmEngine {
+    /// Create one bounded native UI Store without a fabricated CallCx/Profile.
+    /// Fuel and the original invocation deadline are never renewed between calls.
+    pub fn native_setup_store<T: Send + 'static>(
+        &self,
+        invocation: NativeSetupInvocation,
+        data: T,
+    ) -> Result<NativeSetupStore<T>> {
+        let deadline = invocation
+            .started_at()
+            .checked_add(MAX_WALL)
+            .context("native Setup deadline overflow")?;
+        if Instant::now() >= deadline {
+            bail!("original native Setup deadline exceeded");
+        }
+        if !self.shares_control(invocation.control()) {
+            bail!("native Setup engine uses another control account");
+        }
+        invocation.claim_store()?;
+        let physical = PhysicalOwner::new(&invocation)?;
+        let structure_control = invocation
+            .control()
+            .reserve(ControlKind::Frame, STORE_STRUCTURE_CONTROL_BYTES)?;
+        let cancel = CoreCancellation::new_with_control(invocation.control())?;
+        let state = NativeState {
+            data,
+            limits: AggregateLimits {
+                memory_cap: usize::try_from(NATIVE_SETUP_MEMORY_BYTES)?,
+                table_cap: TABLE_ELEMENTS,
+                memory_used: 0,
+                table_used: 0,
+                last_memory_growth: 0,
+                last_table_growth: 0,
+                physical: Some(physical.physical()),
+                last_physical_memory: 0,
+                last_physical_table: 0,
+            },
+            deadline,
+            cancel,
+            cancel_observed: None,
+            retirement: tokio_util::sync::CancellationToken::new(),
+        };
+        let mut store = Store::new(self.engine(), state);
+        let retained = physical.physical();
+        store.limiter(move |state| {
+            // Pinned Wasmtime drops this closure AFTER native StoreOpaque.
+            let _ = (&structure_control, &retained);
+            &mut state.limits
+        });
+        store.set_fuel(FUEL)?;
+        store.fuel_async_yield_interval(Some(10_000))?;
+        store.set_epoch_deadline(1);
+        store.epoch_deadline_callback(|mut store| {
+            let state = store.data_mut();
+            check_epoch(
+                state.deadline,
+                &state.cancel,
+                Some(&state.retirement),
+                &mut state.cancel_observed,
+            )
+        });
+        Ok(NativeSetupStore {
+            store: Some(store),
+            physical: Some(physical),
+            _engine: self.clone(),
+        })
+    }
+}
+impl<T: 'static> NativeSetupStore<T> {
+    pub fn data(&self) -> &T {
+        &self.store.as_ref().expect("live native Store").data().data
+    }
+    pub fn original_deadline(&self) -> Instant {
+        self.store
+            .as_ref()
+            .expect("live native Store")
+            .data()
+            .deadline
+    }
+    pub fn fuel_remaining(&self) -> Result<u64> {
+        Ok(self.store.as_ref().expect("live native Store").get_fuel()?)
+    }
+    pub fn cancellation(&self) -> &CoreCancellation {
+        &self
+            .store
+            .as_ref()
+            .expect("live native Store")
+            .data()
+            .cancel
+    }
+    /// Begin immediate retirement; physical capacity remains until actual drop.
+    pub fn retire(&self) {
+        self.store
+            .as_ref()
+            .expect("live native Store")
+            .data()
+            .retirement
+            .cancel();
+    }
+}
+impl<T: 'static> Drop for NativeSetupStore<T> {
+    fn drop(&mut self) {
+        drop(self.store.take());
+        drop(self.physical.take());
+    }
+}

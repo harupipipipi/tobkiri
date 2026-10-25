@@ -637,10 +637,8 @@ impl Table {
         let new_size = match old_size.checked_add(delta) {
             Some(s) => s,
             None => {
-                if let Some(limiter) = limiter {
-                    limiter
-                        .table_grow_failed(format_err!("overflow calculating new table size"))?;
-                }
+                // Only admitted growth may notify table_grow_failed. This
+                // overflow has no reservation to release.
                 return Ok(None);
             }
         };

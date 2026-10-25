@@ -266,14 +266,55 @@ difference to evaluate, not audit-equivalence evidence.
 
 The first genuine cache experiment builds successfully but still fuel-traps.
 Its runtime repeatedly walks the complete cache to recalculate retained size.
-The next inactive candidate seals records, payloads and lookup rows as tuples
+The inactive candidate seals records, payloads and lookup rows as tuples
 of immutable scalars/bytes, discards mutable construction dictionaries, and
 accounts the final graph, report/index and conversion overlap before publishing
 one generation-bound retained total. Runtime checks reuse that total while
 still checking source/payload hashes and flags and creating a fresh marshal
 code graph. A structural mismatch refuses cache execution; it does not omit
-the retained allocation and continue. Actual fuel benefit remains to be
-verified with the unchanged complete comparison and continuous budget.
+the retained allocation and continue. Actual source `1c8bb25ed11547dcc362300092de7a0955e68c0e`
+in run `40239077602`, job `121306792547`, matches the full original Schema
+observation, completes the original corpus and resource/package inventory,
+retains both clock assertions, and rejects all four non-clock probes. It uses
+676,193,417 of the original 2-billion continuous fuel budget and returns through
+post-return. Returned guest DATA reports 38 cache hits, zero runtime compiles
+and 38 fresh marshal loads. The final component is 28,191,814 bytes,
+SHA-256 `f5b728bac48e6dde21aa49971f457e95a3a974f18fbfa169f68c9b30b56473a1`.
+The workflow still deliberately fails after the comparison: this is diagnostic
+evidence under the original standalone 128 MiB observer, not product activation,
+audit equivalence, the 64 MiB product Store test or full GUI parity.
+
+## Bounded native Store prototype
+
+`WasmEngine::native_setup_store` is an inactive, separately owned native DATA
+Store. It accepts the real native invocation and its original CoreControl,
+without a fabricated Profile, principal, Gate frame or Pack initialization.
+Its fixed prototype budgets are 2-billion fuel, 30 seconds from the original
+invocation start, 65,536 aggregate table elements, 1,024 core instances,
+16 memories/tables and a 512 KiB Wasm stack. Stack, guest memory and conservative
+table bytes share the existing native 64 MiB account; metadata remains prepaid
+through the original control account. An invocation's shared one-way claim
+permits only one Store construction attempt, including across clones, failed
+admission and Store destruction. Neither fuel nor deadline is renewed.
+
+The outer owner and limiter closure retain physical/control custody through
+actual Store/native destruction. Retirement only initiates cancellation; it
+does not return still-live capacity. No raw Store extraction, linker or import
+registration is public. The owned ABI/input/output adapters, truly immutable
+capture DATA interface, exact two clocks, actual original UI runner and trusted
+GUI input/commit integration remain to be connected and verified.
+
+The pinned Wasmtime 48 limiter contract permits a growth-failure callback only
+after `memory_growing`/`table_growing` admitted that attempt. Two pre-admission
+paths violated it: memory type rejection and table size overflow. Those paths
+now return the ordinary guest growth failure without a callback; otherwise the
+shared aggregate limiter could refund a previous successful allocation. Actual
+post-admission allocation/maximum failure callbacks are unchanged. Seven
+portable CI tests cover real memory/table occupancy, shared host reservations,
+Store destruction, continuous fuel/deadline, single-use claims, both rejection
+orders and deterministic post-admission maximum failure refunds. Source tests
+and a portable injected root proof do not establish supported-platform OS proof
+or product UI parity; actual execution results must be recorded separately.
 
 The full React screens and logical contracts stay intact. Domain-specific
 Setup/readiness/presentation orchestration belongs in Kit/compatibility Pack

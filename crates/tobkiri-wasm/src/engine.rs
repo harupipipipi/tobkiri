@@ -11,7 +11,7 @@ const EPOCH_PERIOD: Duration = Duration::from_millis(10);
 // Admit the full bounded control-record envelope before creating a Store.
 // Module-sized compiled metadata is bounded by catalog/load policy separately;
 // this conservative charge is not an exact JIT allocation or RSS measurement.
-const STORE_STRUCTURE_CONTROL_BYTES: u64 =
+pub(crate) const STORE_STRUCTURE_CONTROL_BYTES: u64 =
     4096 + 1024 * (MAX_CORE_INSTANCES + MAX_MEMORIES + MAX_TABLES) as u64;
 
 struct EpochDriver {
@@ -28,6 +28,7 @@ impl Drop for EpochDriver {
 pub struct WasmEngine {
     engine: Engine,
     _epochs: Arc<EpochDriver>,
+    control: CoreControl,
 }
 
 /// Store-owned identity. A guest never supplies this call context.
@@ -105,11 +106,16 @@ impl WasmEngine {
         Ok(Self {
             engine,
             _epochs: Arc::new(EpochDriver { task }),
+            control: control.clone(),
         })
     }
 
     pub fn engine(&self) -> &Engine {
         &self.engine
+    }
+
+    pub(crate) fn shares_control(&self, control: &CoreControl) -> bool {
+        self.control.same_account(control)
     }
 
     /// Create an isolated store with effective limits and the original deadline.

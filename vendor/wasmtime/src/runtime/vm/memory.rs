@@ -639,10 +639,8 @@ impl LocalMemory {
         // cannot represent. For example 1-byte-page memories cannot be
         // 4GiB in size.
         if !self.ty().allow_growth_to(new_byte_size) {
-            if let Some(limiter) = limiter {
-                let err = crate::format_err!("memory growth exceeds memory type's limits");
-                limiter.memory_grow_failed(err)?;
-            }
+            // No memory_growing admission occurred. A failure notification
+            // here could refund a previous, successfully allocated growth.
             return Ok(None);
         }
 

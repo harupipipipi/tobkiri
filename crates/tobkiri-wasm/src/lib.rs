@@ -26,6 +26,8 @@ mod host;
 mod imports;
 mod instance_capacity;
 mod native_preparation;
+mod native_setup_store;
+pub use native_setup_store::NativeSetupStore;
 mod network;
 mod output;
 mod owned_values;

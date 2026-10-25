@@ -209,6 +209,7 @@ impl NativeSetupAccount {
 
     /// Actual native invocation identity, never an invented Gate request.
     pub fn begin(&self) -> Result<NativeSetupInvocation, GateError> {
+        let started = std::time::Instant::now();
         self.check_live()?;
         let control = self
             .state
@@ -224,6 +225,8 @@ impl NativeSetupAccount {
         let invocation = self.ledger.next_native_setup_id()?;
         let value = Invocation {
             account: self.clone(),
+            started,
+            store_claimed: std::sync::atomic::AtomicBool::new(false),
             provenance: NativeSetupProvenance {
                 account_generation: self.state.generation,
                 invocation,
@@ -255,12 +258,42 @@ impl NativeSetupAccount {
 
 struct Invocation {
     account: NativeSetupAccount,
+    started: std::time::Instant,
+    store_claimed: std::sync::atomic::AtomicBool,
     provenance: NativeSetupProvenance,
 }
 /// Shared invocation custody, with one funded record through actual destruction.
 #[derive(Clone)]
 pub struct NativeSetupInvocation(LeasedShared<Invocation, ControlReservation>);
 impl NativeSetupInvocation {
+    /// Claim the invocation's only Store construction attempt. Clones retain
+    /// custody but cannot mint fresh fuel. Failure or Store destruction never
+    /// resets this claim; a caller must report failure rather than retry it.
+    pub fn claim_store(&self) -> Result<(), GateError> {
+        let invocation = self.0.get();
+        invocation.account.check_live()?;
+        invocation
+            .store_claimed
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::AcqRel,
+                std::sync::atomic::Ordering::Acquire,
+            )
+            .map(|_| ())
+            .map_err(|_| GateError::Denied("native Setup Store already claimed".into()))
+    }
+
+    /// Original native start, captured before invocation metadata admission.
+    pub fn started_at(&self) -> std::time::Instant {
+        self.0.get().started
+    }
+
+    /// Borrow the original metadata account; this conveys no effect authority.
+    pub fn control(&self) -> &CoreControl {
+        &self.0.get().account.state.control
+    }
+
     pub fn provenance(&self) -> NativeSetupProvenance {
         self.0.get().provenance
     }

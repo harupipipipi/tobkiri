@@ -238,3 +238,38 @@ fn concurrent_invocations_cannot_each_spend_a_fresh_64_mib_pool() {
     drop(held);
     assert_eq!(native.snapshot().unwrap().charged_bytes, 0);
 }
+
+#[test]
+fn invocation_clones_share_one_irrevocable_store_claim_after_root_validation() {
+    let ledger = CapacityLedger::new();
+    let control = CoreControl::default();
+    let root = proof(b"claim-root");
+    let native = account(&ledger, &control, &root);
+    let invocation = native.begin().unwrap();
+    root.live.store(false, Ordering::Release);
+    assert!(invocation.claim_store().is_err());
+    root.live.store(true, Ordering::Release);
+    let start = Arc::new(std::sync::Barrier::new(9));
+    let mut threads = Vec::new();
+    for _ in 0..8 {
+        let invocation = invocation.clone();
+        let start = start.clone();
+        threads.push(std::thread::spawn(move || {
+            start.wait();
+            invocation.claim_store().is_ok()
+        }));
+    }
+    start.wait();
+    assert_eq!(
+        threads
+            .into_iter()
+            .map(|t| t.join().unwrap())
+            .filter(|claimed| *claimed)
+            .count(),
+        1
+    );
+    assert!(invocation.claim_store().is_err());
+    // Output custody remains valid after the only Store attempt is claimed.
+    let output = invocation.reserve(CapacityKind::AbiMarshal, 1).unwrap();
+    assert_eq!(output.allocated_bytes().unwrap(), 1);
+}

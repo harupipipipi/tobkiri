@@ -182,7 +182,8 @@ impl CoreControl {
         }
     }
 
-    pub(crate) fn same_account(&self, other: &Self) -> bool {
+    /// Compare native funding identity without creating a record or authority.
+    pub fn same_account(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.state, &other.state)
     }
 }
