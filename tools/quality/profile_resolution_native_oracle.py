@@ -400,6 +400,11 @@ def nonempty_observation(inputs: dict, *, damaged: bool, encode) -> dict:
             "the real compiler did not produce a complete valid artifact"
         )
     output["checker_calls"] = dict(calls)
+    for checker in ("resolve_admitted_pack_root", "_read_authenticated_catalog"):
+        if calls["core_runtime.external_pack_catalog_v4." + checker] < 2:
+            raise AssertionError(
+                "projection and complete Setup did not both reach native catalog checks"
+            )
     if not damaged and calls["tobkiri_host.artifact_compiler.compile_pack_root"] <= 0:
         raise AssertionError("nonempty resolver did not use the real compiler")
     if damaged:
@@ -646,10 +651,10 @@ def run(baseline: Path, candidate: Path, work: Path) -> None:
             )
             raise AssertionError("original/candidate observations differ: " + label)
         compiler = json.loads(a["nonempty"])["real_compiler"]["outcome"]
-        if compiler != ("exception" if label == "cas-content" else "success"):
-            raise AssertionError(
-                "compiler did not preserve its original successful/tampered behavior"
-            )
+        # The original direct compiler still succeeds for a frontend-only
+        # content change: authenticated catalog reads own that rejection.
+        # Compare the complete original compiler result above; never invent a
+        # different enforcing contract or count its success as admission.
         if inventory(roots) != before:
             raise AssertionError(
                 "native reads changed the common fixture bytes: " + label
@@ -662,6 +667,8 @@ def run(baseline: Path, candidate: Path, work: Path) -> None:
                 "ordered_observation_ids": list(b),
                 "all_complete_observation_bytes_compared": True,
                 "product_4mib_boundary_verified": False,
+                "original_direct_compiler_outcome": compiler,
+                "native_catalog_tamper_denials_verified": damaged,
                 "trusted_original_pickle": identity(legacy),
                 "candidate_pickle_diagnostic": identity(new.with_suffix(".pickle")),
             }
