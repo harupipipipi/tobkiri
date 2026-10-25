@@ -16,7 +16,7 @@ use tobkiri_canon::{
 #[path = "permission_preparation.rs"]
 mod permission_preparation;
 pub use permission_preparation::{
-    PermissionApprovalBatch, PermissionCommit, PreparedPermissionApproval,
+    PendingPermissionReview, PermissionApprovalBatch, PermissionCommit, PreparedPermissionApproval,
 };
 use permission_preparation::{PreparedPermissionTarget, retained_permission_bytes};
 
@@ -1681,6 +1681,23 @@ impl GateEngine {
         target_epoch: u64,
         maximum: &PermissionSet,
     ) -> Result<PreparedPermissionApproval<'a>, GateError> {
+        self.review_user_permissions(cx, profile_hash, revision, target_epoch, maximum)
+            .await?
+            .request_approval()
+            .await
+    }
+
+    /// Retain the exact User permission request without requesting consent or
+    /// installing policy. The native owner must keep this original value;
+    /// its descriptive prompt is never an approval or commit capability.
+    pub async fn review_user_permissions<'a>(
+        &'a self,
+        cx: &'a CallCx,
+        profile_hash: &Digest,
+        revision: &Digest,
+        target_epoch: u64,
+        maximum: &PermissionSet,
+    ) -> Result<PendingPermissionReview<'a>, GateError> {
         if !matches!(cx.principal(), Principal::User) {
             return Err(GateError::Denied(
                 "User approval is a trusted core operation".into(),
@@ -1735,14 +1752,20 @@ impl GateEngine {
         }
         let narrowed = self.mediate(&prompt, maximum.clone(), cx).await?;
         retained.try_grow(retained_permission_bytes(&narrowed)?)?;
-        if additions.has_additions() {
-            self.obtain_approval(cx, prompt).await?;
+        let prompt = additions.has_additions().then_some(prompt);
+        // The existing 4096-byte record covers the bounded native identity
+        // fields. Retain the actual prompt capacity under this SAME account;
+        // local drop order keeps the pending guard ahead of its charge.
+        if let Some(prompt) = &prompt {
+            retained.try_grow(
+                u64::try_from(prompt.summary.capacity()).map_err(|_| GateError::Unavailable)?,
+            )?;
         }
         cx.check_active()?;
         if self.epoch(cx.profile())? != cx.security_epoch() {
             return Err(GateError::StaleEpoch);
         }
-        Ok(PreparedPermissionApproval::new(
+        Ok(PendingPermissionReview::new(
             self,
             cx,
             reservation,
@@ -1751,7 +1774,7 @@ impl GateEngine {
                 revision: revision.clone(),
                 epoch: target_epoch,
             },
-            narrowed,
+            (prompt, narrowed),
             _pending,
             retained,
         ))
@@ -1878,6 +1901,21 @@ impl GateEngine {
         old_hash: Option<&PackHash>,
         new_hash: &'a PackHash,
     ) -> Result<PreparedPermissionApproval<'a>, GateError> {
+        self.review_pack_permissions(cx, pack, old_hash, new_hash)
+            .await?
+            .request_approval()
+            .await
+    }
+
+    /// Retain an exact Pack permission request and existing mediator result.
+    /// This does not prompt, approve, dispatch or install a permission effect.
+    pub async fn review_pack_permissions<'a>(
+        &'a self,
+        cx: &'a CallCx,
+        pack: &'a PackId,
+        old_hash: Option<&PackHash>,
+        new_hash: &'a PackHash,
+    ) -> Result<PendingPermissionReview<'a>, GateError> {
         if !matches!(cx.principal(), Principal::User) {
             return Err(GateError::Denied(
                 "permission installation is a core user operation".into(),
@@ -1927,14 +1965,17 @@ impl GateEngine {
         }
         let approved = self.mediate(&prompt, maximum, cx).await?;
         retained.try_grow(retained_permission_bytes(&approved)?)?;
-        if additions.has_additions() {
-            self.obtain_approval(cx, prompt).await?;
+        let prompt = additions.has_additions().then_some(prompt);
+        if let Some(prompt) = &prompt {
+            retained.try_grow(
+                u64::try_from(prompt.summary.capacity()).map_err(|_| GateError::Unavailable)?,
+            )?;
         }
         cx.check_active()?;
         if self.epoch(cx.profile())? != cx.security_epoch() {
             return Err(GateError::StaleEpoch);
         }
-        Ok(PreparedPermissionApproval::new(
+        Ok(PendingPermissionReview::new(
             self,
             cx,
             reservation,
@@ -1942,7 +1983,7 @@ impl GateEngine {
                 pack,
                 hash: new_hash,
             },
-            approved,
+            (prompt, approved),
             _pending,
             retained,
         ))

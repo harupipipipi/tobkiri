@@ -1,4 +1,6 @@
 use super::*;
+#[path = "permission_review_tests.rs"]
+mod permission_review;
 #[path = "profile_save_epoch_tests.rs"]
 mod profile_save_epoch;
 use async_trait::async_trait;

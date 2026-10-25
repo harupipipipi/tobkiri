@@ -4,6 +4,79 @@
 //! whole-Profile save decision or committing its head and security epoch.
 use super::*;
 
+/// Native pending request with the original Gate, context, reservation and
+/// mediator-narrowed maximum. It has acquired no trusted approval and exposes
+/// no effect-commit method. The prompt is descriptive DATA only. This value is
+/// intentionally neither serializable nor cloneable; dropping it abandons the
+/// same reservation while retaining its original accounting through cleanup.
+#[must_use = "A pending permission review must be requested or dropped"]
+pub struct PendingPermissionReview<'a> {
+    gate: &'a GateEngine,
+    cx: &'a CallCx,
+    reservation: Reservation,
+    target: PreparedPermissionTarget<'a>,
+    permissions: PermissionSet,
+    prompt: Option<ApprovalPrompt>,
+    _pending: PendingReservation<'a>,
+    _retained: ControlReservation,
+}
+
+impl<'a> PendingPermissionReview<'a> {
+    pub(super) fn new(
+        gate: &'a GateEngine,
+        cx: &'a CallCx,
+        reservation: Reservation,
+        target: PreparedPermissionTarget<'a>,
+        review: (Option<ApprovalPrompt>, PermissionSet),
+        pending: PendingReservation<'a>,
+        retained: ControlReservation,
+    ) -> Self {
+        Self {
+            gate,
+            cx,
+            reservation,
+            target,
+            permissions: review.1,
+            prompt: review.0,
+            _pending: pending,
+            _retained: retained,
+        }
+    }
+
+    /// Exact native prompt, absent when no new permission requires approval.
+    /// Returning or serializing these facts never confirms a user action.
+    pub fn prompt(&self) -> Option<&ApprovalPrompt> {
+        self.prompt.as_ref()
+    }
+
+    /// Consume this original review through the ordinary trusted prompt path.
+    /// No UI-supplied flag, digest or cached answer can finish a preparation.
+    /// A future native grouped surface must retain the same per-request
+    /// binding; this method deliberately implements no grouped-consent bypass.
+    pub async fn request_approval(mut self) -> Result<PreparedPermissionApproval<'a>, GateError> {
+        self.cx.check_active()?;
+        if self.gate.epoch(self.cx.profile())? != self.cx.security_epoch() {
+            return Err(GateError::StaleEpoch);
+        }
+        if let Some(prompt) = self.prompt.take() {
+            self.gate.obtain_approval(self.cx, prompt).await?;
+        }
+        self.cx.check_active()?;
+        if self.gate.epoch(self.cx.profile())? != self.cx.security_epoch() {
+            return Err(GateError::StaleEpoch);
+        }
+        Ok(PreparedPermissionApproval::new(
+            self.gate,
+            self.cx,
+            self.reservation,
+            self.target,
+            self.permissions,
+            self._pending,
+            self._retained,
+        ))
+    }
+}
+
 pub(super) enum PreparedPermissionTarget<'a> {
     Pack {
         pack: &'a PackId,

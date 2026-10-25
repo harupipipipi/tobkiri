@@ -81,18 +81,54 @@ than introducing an unapproved Profile import or new blanket Launch ceremony.
 ## Integration constraints
 
 Astra high answered supplied source facts only on 2026-10-25; it used no tools
-and performed no implementation. Adding trusted configuration IPC to the same
+and performed no implementation. The user directs unresolved design questions
+to this adviser, with implementation and verification retained by the root
+agent. Adding trusted configuration IPC to the same
 window that hosts untrusted Pack iframes is not established as safe by the
 current top-window guard.
 
-The existing trusted Launcher Setup can instead be retained in a native-owned
-WebView with no Pack iframes or untrusted documents, and a separate capability
-for only the required ordinary native configuration operations. Pack UI windows
-must not receive that capability. This is a possible integration boundary, not
-an implemented or platform-verified feature. A different window label alone is
+The user confirmed a narrow Core-managed confirmation surface inside the
+existing Setup, preserving its appearance, complete review and gesture count.
+The application projection remains untrusted; this does not promote the full
+React application into a privileged native UI. The trusted surface must retain
+the exact native review owner and complete per-request approval targets, with
+no Pack iframes or untrusted documents in that authority boundary. Pack UI
+windows must not receive configuration capability. This boundary is authorized
+but not implemented or platform-verified. A different window label alone is
 insufficient: actual WebView/frame identity and capability enforcement, trusted
-navigation/content, and direct-invoke rejection must be verified. Pack messages
-must never be relayed into User configuration operations.
+navigation/content, actual input provenance, and direct-invoke rejection must
+be verified. Pack messages must never be relayed into User configuration
+operations.
+
+The first Gate seam now separates request review from a trusted decision.
+`review_pack_permissions` and `review_user_permissions` retain the original
+Gate, CallCx, reservation, mediator-narrowed maximum, exact prompt and control
+charge in a move-only `PendingPermissionReview`. They do not request native
+consent, dispatch, install policy or create a successful effect. Prompt facts
+are descriptive and cannot be supplied back as approval. Dropping the pending
+review uses ordinary abandonment while its charge remains held.
+`request_approval` consumes that original value, rechecks cancellation, deadline
+and epoch before showing the ordinary native prompt, and returns the existing
+prepared effect only after that path succeeds. Existing `prepare_*` APIs retain
+their ordinary behavior by invoking these two stages. Actual prompt String
+capacity is retained under the same original control account.
+
+This is not the grouped confirmation implementation. The future native owner
+must retain the exact candidate, verified source custody, compiled plan,
+head/epoch and complete per-request targets. Only the confirmed trusted surface
+may turn the existing user gesture into decisions for those exact requests.
+No client checkbox, digest, shared "next prompt yes" state, or serialized
+review handle may supply that evidence. Full display-to-effect correspondence
+and actual input provenance must be established before connecting consumption;
+the existing durable batch commit and final CAS remain required.
+
+First-run domain projection remains separate: the public runtime still has no
+pre-Profile Pack execution exemption. A future isolated data evaluator would
+need an explicit, generic boundary with immutable verified inputs, no Session,
+Host I/O, network, arbitrary filesystem or persistent effects. Its output would
+remain untrusted candidate data for ordinary verification/compilation. Neither
+the existing seven-method candidate nor this request-review seam implements or
+proves the full resolver/listing dependency closure at that boundary.
 
 The full React screens and logical contracts stay intact. Domain-specific
 Setup/readiness/presentation orchestration belongs in Kit/compatibility Pack
