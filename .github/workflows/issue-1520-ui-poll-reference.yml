@@ -1,0 +1,137 @@
+name: Issue 1520 actual old and candidate C poll observations
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-ui-poll-reference.yml'
+      - 'tools/python313-producer/build_ui_poll_comparison.py'
+      - 'tools/python313-producer/poll_comparison_inputs.py'
+      - 'tools/python313-producer/poll_link_trace.py'
+      - 'tools/python313-producer/poll_reference_driver.py'
+      - 'tools/python313-producer/poll_reference_results.py'
+      - 'tools/python313-producer/empty-poll-comparison-inputs.json'
+      - 'tools/python313-producer/empty_poll_probe/**'
+      - 'tools/python313-producer/tests/test_poll_*.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: issue-1520-ui-poll-reference-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  actual-c-reference:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Check comparison custody and unchanged finite C inputs offline
+        run: python3 -B -m unittest discover -s tools/python313-producer/tests -p 'test_poll_*.py'
+      - name: Load the complete committed actual supplier identities
+        id: supplier
+        run: |
+          python3 -B - <<'PY'
+          import os, sys
+          from pathlib import Path
+          sys.path.insert(0, 'tools/python313-producer')
+          from poll_comparison_inputs import read_json, validate_pins
+          pins = read_json(Path('tools/python313-producer/empty-poll-comparison-inputs.json'))
+          validate_pins(pins)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              for name in ('run', 'job', 'artifact'):
+                  print(f'{name}={pins[name]}', file=out)
+          PY
+      - name: Authenticate actual supplier run and all mandatory successful stages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRODUCER_RUN: ${{ steps.supplier.outputs.run }}
+          PRODUCER_JOB: ${{ steps.supplier.outputs.job }}
+          PRODUCER_ARTIFACT: ${{ steps.supplier.outputs.artifact }}
+        run: |
+          mkdir -m 700 "$RUNNER_TEMP/poll-auth"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" > "$RUNNER_TEMP/poll-auth/run.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$PRODUCER_JOB" > "$RUNNER_TEMP/poll-auth/job.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$PRODUCER_ARTIFACT" > "$RUNNER_TEMP/poll-auth/artifact.json"
+          python3 -B - "$RUNNER_TEMP/poll-auth" <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'tools/python313-producer')
+          from poll_comparison_inputs import authenticate, read_json
+          root = Path(sys.argv[1])
+          pins = read_json(Path('tools/python313-producer/empty-poll-comparison-inputs.json'))
+          authenticate(pins, *(read_json(root / name) for name in ('run.json', 'job.json', 'artifact.json')))
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ steps.supplier.outputs.artifact }}
+          merge-multiple: true
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.supplier.outputs.run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/poll-supplier
+      - name: Rehash every decoded CLI helper receipt and pair before execution
+        run: |
+          python3 -B - "$RUNNER_TEMP/poll-supplier" <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'tools/python313-producer')
+          from poll_comparison_inputs import read_json, verify_bundle
+          pins = read_json(Path('tools/python313-producer/empty-poll-comparison-inputs.json'))
+          verify_bundle(Path(sys.argv[1]), pins)
+          PY
+      - name: Restore the unchanged pinned validation tools and private namespace
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/poll-validation"
+      - name: Call the same raw C cases with genuine WASIp2 in two private Stores
+        run: >-
+          python3 -B tools/python313-producer/build_ui_poll_comparison.py
+          --bundle "$RUNNER_TEMP/poll-supplier"
+          --authentication "$RUNNER_TEMP/poll-auth"
+          --validation "$RUNNER_TEMP/poll-validation"
+          --destination "$RUNNER_TEMP/poll-comparison"
+      - name: Retain bounded actual input and result diagnostics without binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-empty-poll-reference-evidence
+          path: |
+            ${{ runner.temp }}/poll-auth/
+            ${{ runner.temp }}/poll-validation/validation-inputs.json
+            ${{ runner.temp }}/poll-comparison/comparison.json
+            ${{ runner.temp }}/poll-comparison/reference.sh
+            ${{ runner.temp }}/poll-comparison/original/control.json
+            ${{ runner.temp }}/poll-comparison/original/execution/
+            ${{ runner.temp }}/poll-comparison/original/work/reference.json
+            ${{ runner.temp }}/poll-comparison/original/work/link-trace/libraries.tsv
+            ${{ runner.temp }}/poll-comparison/original/work/link-trace/complete.tsv
+            ${{ runner.temp }}/poll-comparison/candidate/control.json
+            ${{ runner.temp }}/poll-comparison/candidate/execution/
+            ${{ runner.temp }}/poll-comparison/candidate/work/reference.json
+            ${{ runner.temp }}/poll-comparison/candidate/work/link-trace/libraries.tsv
+            ${{ runner.temp }}/poll-comparison/candidate/work/link-trace/complete.tsv
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Keep actual components and complete module observations on CI only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-empty-poll-reference-linked-modules-inactive
+          path: |
+            ${{ runner.temp }}/poll-comparison/comparison.json
+            ${{ runner.temp }}/poll-comparison/original/work/stage/component.wasm
+            ${{ runner.temp }}/poll-comparison/original/work/link-trace/
+            ${{ runner.temp }}/poll-comparison/candidate/work/stage/component.wasm
+            ${{ runner.temp }}/poll-comparison/candidate/work/link-trace/
+          if-no-files-found: warn
+          retention-days: 14
