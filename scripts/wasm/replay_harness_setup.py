@@ -189,6 +189,7 @@ def run(artifact: Path, output: Path) -> None:
     passed = (len(observations) == 18 and all(item['passed'] for item in observations)
               and [item['id'] for item in observations] == [case['id'] for case in cases])
     report = {'format': 'tobkiri.harness-setup-standalone-replay/1',
+              'outcome': 'success' if passed else 'failed',
               'passed': passed, 'component_sha256': hashlib.sha256(binary).hexdigest(),
               'cases': observations, 'expected_cases': len(cases),
               'source_case_sha256': hashlib.sha256(dumps(cases).encode()).hexdigest(),
