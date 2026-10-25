@@ -103,6 +103,15 @@ impl NativeSetupOwnerLease {
         Ok(())
     }
 }
+impl tobkiri_gate::NativeSetupLease for NativeSetupOwnerLease {
+    fn validate(&self) -> Result<(), tobkiri_gate::GateError> {
+        self.check_live()
+            .map_err(|_| tobkiri_gate::GateError::Unavailable)
+    }
+    fn allocation_domain(&self) -> Digest {
+        NativeSetupOwnerLease::allocation_domain(self).clone()
+    }
+}
 impl fmt::Debug for OwnerLease {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("OwnerLease")

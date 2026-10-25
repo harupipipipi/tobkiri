@@ -22,6 +22,10 @@ use tobkiri_canon::{
     ids::{PackHash, PackId, ProfileId, RequestId},
 };
 
+#[path = "native_setup_capacity.rs"]
+mod native_setup;
+pub use native_setup::*;
+
 /// Stable funding identity; hashes/epochs/stores do not create separate pools.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CapacityOwner {
@@ -138,6 +142,10 @@ struct Inner {
     owners: Mutex<BTreeMap<CapacityOwner, Arc<Mutex<OwnerState>>>>,
     next: AtomicU64,
     domain: Mutex<Option<Digest>>,
+    native_setup: Mutex<Option<Arc<native_setup::State>>>,
+    // Also retained by weak ledger handles: native bookkeeping is not freed
+    // merely because a Core or the last strong ledger reference disappeared.
+    native_setup_metadata: Arc<Mutex<Option<crate::ControlReservation>>>,
 }
 
 /// Shared by concurrent and old Sessions/PackHosts for one authority domain.
@@ -150,6 +158,8 @@ impl Default for CapacityLedger {
             owners: Mutex::new(BTreeMap::new()),
             next: AtomicU64::new(1),
             domain: Mutex::new(None),
+            native_setup: Mutex::new(None),
+            native_setup_metadata: Arc::new(Mutex::new(None)),
         }))
     }
 }
@@ -160,7 +170,10 @@ impl CapacityLedger {
     /// A registry must retain a weak handle to the actual inner ledger, so
     /// outstanding physical reservations prevent reopening an unfunded pool.
     pub fn downgrade(&self) -> WeakCapacityLedger {
-        WeakCapacityLedger(Arc::downgrade(&self.0))
+        WeakCapacityLedger {
+            inner: Arc::downgrade(&self.0),
+            _native_setup_metadata: self.0.native_setup_metadata.clone(),
+        }
     }
     fn validate_process(&self) -> Result<(), GateError> {
         if self.0.process != std::process::id() {
@@ -450,10 +463,15 @@ impl Drop for CapacityBinding {
 }
 /// Opaque weak handle to the funded inner state; only zero ownership can expire it.
 #[derive(Clone)]
-pub struct WeakCapacityLedger(Weak<Inner>);
+pub struct WeakCapacityLedger {
+    // Field order matters: destroy the weak allocation BEFORE returning its
+    // separately funded native bookkeeping, including in registry pruning.
+    inner: Weak<Inner>,
+    _native_setup_metadata: Arc<Mutex<Option<crate::ControlReservation>>>,
+}
 impl WeakCapacityLedger {
     pub fn upgrade(&self) -> Option<CapacityLedger> {
-        self.0.upgrade().map(CapacityLedger)
+        self.inner.upgrade().map(CapacityLedger)
     }
 }
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

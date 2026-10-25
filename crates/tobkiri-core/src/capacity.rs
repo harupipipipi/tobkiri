@@ -15,6 +15,10 @@ type Roots = BTreeMap<(u32, DataRootIdentity), WeakCapacityLedger>;
 static ROOTS: OnceLock<Mutex<Roots>> = OnceLock::new();
 static CREATOR_PID: AtomicU32 = AtomicU32::new(0);
 
+#[cfg(test)]
+#[path = "native_setup_capacity_tests.rs"]
+mod native_setup_tests;
+
 pub(crate) fn shared(root: &DataRoot) -> Result<CapacityLedger, CoreError> {
     let pid = std::process::id();
     // A non-exec fork can inherit a mutex locked by a vanished thread. Reject

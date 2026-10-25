@@ -213,10 +213,38 @@ Each live native owner also retains its original control slot. A last strong
 lease drop does not falsely refund retained Weak/map storage. These are control
 reservations within the unchanged control cap, not guest/ABI/output funding or
 a whole-process RSS proof. The actual shared 64 MiB native Setup payload
-account, per-invocation provenance, Store/output custody and captured native
-input binding still need connection. Existing CapacityOwner and Gate-approved
+account and per-invocation provenance now have an explicit native bridge;
+Store/output allocation adapters and captured native input binding still need
+connection. Existing CapacityOwner and Gate-approved
 Pack reserve/frame APIs are unchanged; inventing a Profile to fund Setup is
 not an alternative.
+
+`CapacityLedger::native_setup_account` shares one fixed 64 MiB Setup DATA
+account in the actual root ledger. Its generation and invocation identities
+are native accounting provenance, with no synthetic Profile, Gate revision or
+request. Caller replacements do not supply another cap or reset occupancy.
+Guest/stack/ABI/buffer reservations use that same account, and their shared
+release plans refund after their own physical reservation storage is freed.
+Cloning a reservation retains one allocation; a copied output must reserve
+its own bytes. The account retains the real root proof and original control.
+
+The cross-crate `NativeSetupLease` trait is a trusted native Rust contract,
+not type-level authentication of arbitrary implementers. Store implements it
+using its opaque actual root lease. No guest, WIT or IPC accepts a proof or
+implementation choice, and no conversion to CapacityOwner or a Gate frame is
+provided. Control metadata remains separate: each account and record is
+prepaid; a bounded 4096-ledger carrier registry holds a permanent 4 MiB
+control reservation from the original account so even Weak/permit-holder
+bookkeeping remains funded through actual destruction. This consumes the
+existing control allowance and does not raise either 64 MiB cap.
+
+Six portable regressions cover shared capacity, original-control reuse,
+retained output/Weak custody, domain/proof rejection, metadata refusal and
+concurrent admission. The supported-platform integration uses the real root
+lease and rename/reopen path without any Profile. These are logical funding
+and custody tests, not evidence that a 64 MiB guest has executed or that the
+original Setup surface is connected. Actual native/portable CI remains
+required before claiming those tests pass.
 
 The separate diagnostic-only schema stage profile executes the same original
 workload under its existing standalone observer bounds. Actual source
