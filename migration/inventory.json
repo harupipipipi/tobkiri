@@ -351,7 +351,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 1,
-      "source_tree_sha256": "1d793f89ba556ff45cd2af566456cc4034e24faef06bbccc991d62a7c393a301",
+      "source_tree_sha256": "b4b617bf3943ce3720a1e8464d7bc2fc7f3894f3e9777d0a26a57f92d2909c6e",
       "status": "todo",
       "target": "python-wasm",
       "target_provisional": true
@@ -1258,7 +1258,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 1,
-      "source_tree_sha256": "821a0ccdf2dc71a7f4c5a8ff18c0e978f32f4f3006050ac89fc50d2772c374ea",
+      "source_tree_sha256": "4259dc3dc91a97d713341aad645ceab8407871068f480143725978070431574a",
       "status": "todo",
       "target": "python-wasm",
       "target_provisional": true
@@ -1288,7 +1288,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 1,
-      "source_tree_sha256": "540f60b5b5f40353abf7dfdbb7447e51b7e6b4a487068d4932e8c5c1bd200cce",
+      "source_tree_sha256": "9880c5ad49720f57701f7a7132775fb238e25da268263d7ecfd4fbbd70369348",
       "status": "todo",
       "target": "python-wasm",
       "target_provisional": true
@@ -1378,7 +1378,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 1,
-      "source_tree_sha256": "fd9723a7673a597051c263aaca83e0f6a2cc20478f88a3495f42496f5c0562f3",
+      "source_tree_sha256": "e41a7d5bd98b75ed56dc6b190a167e4de4b4bb1345435a2ab0f7f5b70a4fe33c",
       "status": "todo",
       "target": "python-wasm",
       "target_provisional": true
@@ -1477,7 +1477,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 1,
-      "source_tree_sha256": "da7652276d320431df9e0ee0709bdabc82b0bca94784ceb58dfdd53fb19e0417",
+      "source_tree_sha256": "2aadf66942cea0e97809f467e2e7cdde03129569a3bba9521bd273501fce8542",
       "status": "todo",
       "target": "python-wasm",
       "target_provisional": true
@@ -2366,7 +2366,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 1,
-      "source_tree_sha256": "2cf1d47ea4a8a4571778ca2294e9e45d8f2071cbbedf068919114a39e0a62e71",
+      "source_tree_sha256": "2786781d09777cb72a1729569a88b7b737fb2210478fdf619e1f8deeff369996",
       "status": "todo",
       "target": "python-wasm",
       "target_provisional": true
@@ -2396,7 +2396,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 1,
-      "source_tree_sha256": "5764532e8805cff8bc131f4bdf38fd5997636a4c9bd4433a7666f2225a6ff4ed",
+      "source_tree_sha256": "bc419e9a8ff87b66821f6ac7f6e57d74353437e5c70b392199e3e9773f9b25d3",
       "status": "todo",
       "target": "python-wasm",
       "target_provisional": true
@@ -2741,7 +2741,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 1,
-      "source_tree_sha256": "04e3f4e8334665c9b29da4674b0082ee84ead7204b65d954dbf8d86e1848c670",
+      "source_tree_sha256": "ee29e97dbea5cceb06661ece8d3d142e9203cf3e938d231944f44bf06fa5d0b8",
       "status": "todo",
       "target": "python-wasm",
       "target_provisional": true
@@ -2757,7 +2757,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 1,
-      "source_tree_sha256": "9b7ee0f76c0974bbb7f99acfed910f4b56a9792e4fae4c1f28409ce9b0d85d87",
+      "source_tree_sha256": "e9a85069e23e03c5738a73ce2d7a266326e73c3319a948aeebf1c180ec409ef7",
       "status": "todo",
       "target": "python-wasm",
       "target_provisional": true
@@ -3274,7 +3274,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 1,
-      "source_tree_sha256": "99f175afded5453d0c5d1585ad5c8a6becc8f8680a63aebe659a7a073203b010",
+      "source_tree_sha256": "bb2846ce444686671fc041885b9a2bddb673638fd139301f95c0ff8800f5e046",
       "status": "todo",
       "target": "python-wasm",
       "target_provisional": true
@@ -4376,7 +4376,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 1,
-      "source_tree_sha256": "3c0d8065e5fdd2046e0e872e7295ec4018cab5322f883ea97e1dd3fccf1afdf7",
+      "source_tree_sha256": "d40b9b5acdf3b1d947d270ef2bd955d174b0115462a726bceff5bf9669fad74d",
       "status": "todo",
       "target": "python-wasm",
       "target_provisional": true
@@ -4423,7 +4423,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 1,
-      "source_tree_sha256": "9f9f25f2f0240af4a2f7d0b695291d711789b3a3d2c4c476bccbff4d1d97e25b",
+      "source_tree_sha256": "e88c59ce4e121d9051e665322566135ac1794db0c83ec7d9c12ac5bea4ae38f5",
       "status": "todo",
       "target": "python-wasm",
       "target_provisional": true
@@ -5054,7 +5054,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 1,
-      "source_tree_sha256": "8cfd40f6eb9266b5ab20951115560805d22128fca414a0d3a9c32727d7c55eb8",
+      "source_tree_sha256": "c55dde3563b2a2f2e9ab4c91a0130cae468c95a50ad7c202d5f1e2e8a3ac64e0",
       "status": "todo",
       "target": "python-wasm",
       "target_provisional": true
@@ -6083,7 +6083,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 1,
-      "source_tree_sha256": "dcdcb2d076f1405a663dc9b0b89bab8ac2b69286f5ce6eb5ef727075f6dcb5ec",
+      "source_tree_sha256": "903b6862a7282664eedf2c8888ee71e6be2e9fce8b84d9f6b62632c354fad86a",
       "status": "todo",
       "target": "core",
       "target_provisional": true
@@ -6111,7 +6111,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 1,
-      "source_tree_sha256": "350f59c507b27196bf86632c1f136b6033861a3ac197d0fc8d08ecac7452290e",
+      "source_tree_sha256": "df27e051a606154a7cf6830ef77c899f93e9de56a2e323dfee4d29001f411c97",
       "status": "todo",
       "target": "core",
       "target_provisional": true
@@ -6367,8 +6367,9 @@
       "parity_fixture": null,
       "replacement": null,
       "shapes": [],
+      "source_changed": true,
       "source_files": 3800,
-      "source_tree_sha256": "fed3349bb33f1fec09b065ddf690b1dbd026ece7a48730c152ebfd5c3fe3ce55",
+      "source_tree_sha256": "55544c30b9bb9d5b6b4fc4559356450d0357e45f7dcc4fa4b1599b08d450c6d3",
       "status": "todo",
       "target": "python-wasm"
     },
@@ -6532,7 +6533,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 36,
-      "source_tree_sha256": "130dc0b3c930be46707af0474724a38ad5b7fddece07bf000dd3ae6ecc415984",
+      "source_tree_sha256": "1140254b3e0013393ff2711f62e947c659469f470c144e02d2b97e569bf5dd40",
       "status": "todo",
       "target": "python-wasm"
     },
@@ -6545,7 +6546,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 107,
-      "source_tree_sha256": "ee6fbacf8e10289c4acd6d01d6a23e24bc34711866bcdd0e5b5e77e6d1d185be",
+      "source_tree_sha256": "37baed20c582b57c657fd8b2537e2a986a18f81c7e20904614d73942e472f689",
       "status": "todo",
       "target": "python-wasm"
     },
@@ -8040,7 +8041,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 22,
-      "source_tree_sha256": "09b0b2615707e560eb76a37467c4313eefb070c9a832d85012d09f023a874f04",
+      "source_tree_sha256": "24de3ac8f698893b7087d109b9824a85558b8e59dd6f65fe3ab5cf82e17db752",
       "status": "todo",
       "target": "python-wasm"
     },
@@ -8053,7 +8054,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 309,
-      "source_tree_sha256": "e894ecfbce56d60c7accb386cdc355305fb5128cfd92e1afd9ca97a73e104714",
+      "source_tree_sha256": "e3d309fdf398028ea021cb484f050499f440c973ed74675aff8d4ad43224ff4a",
       "status": "todo",
       "target": "data-only"
     },
@@ -8066,7 +8067,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 671,
-      "source_tree_sha256": "e2ba1bc070487239954954aa6a8126bb9391b12b39191b4236e89bc39729fcd6",
+      "source_tree_sha256": "5fa4d3be2db779a2b89995f9022a509bec13310eb99ad46a249c5e6b249b927f",
       "status": "todo",
       "target": "python-wasm"
     },
@@ -8163,7 +8164,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 14,
-      "source_tree_sha256": "4b000441ca7b1c1a617d796673869ccabc197671c1a004b77563be6b46b05b8d",
+      "source_tree_sha256": "491b9746590def94784d267d35ac417402b760a8a5631790e999fad3204ad3aa",
       "status": "todo",
       "target": "python-wasm"
     },
@@ -8672,7 +8673,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 19,
-      "source_tree_sha256": "991a5484bebcafc703954174b1e83dc96d1d3c51e76bc7472ca13d8ff0d967b7",
+      "source_tree_sha256": "598defe8c96d0a167921a3c7d450a41a38ef00fef05c232b4bec414ce67debdc",
       "status": "todo",
       "target": "python-wasm"
     },
@@ -8758,7 +8759,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 153,
-      "source_tree_sha256": "4899bdc1fa40870654aca4629e8b86a914cd925a7a390f37fb614f7711fbbe85",
+      "source_tree_sha256": "e590dcf1fd10948c8999e538ab4ad54545e856dccc7672cafc883cce83194827",
       "status": "todo",
       "target": "python-wasm"
     },
@@ -8946,7 +8947,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 11,
-      "source_tree_sha256": "efc1879ddd98712e78d3956a638b148019e1ed7165af0f2159e62493fcf10f4d",
+      "source_tree_sha256": "0b2a11cc962ff854cdada5bfe88cbc61b0cc757fe6f059c3adcf892e2bb589a9",
       "status": "todo",
       "target": "python-wasm"
     },
@@ -9311,7 +9312,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 189,
-      "source_tree_sha256": "57c531fd406933a4d0e847437e183b4819bfc05f52c886112c582561cd923e87",
+      "source_tree_sha256": "67e3068a5de50bbb87399c70166ec60fe257a3880c36ff985ba6daaa062c5502",
       "status": "todo",
       "target": "python-wasm"
     },
@@ -9339,7 +9340,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 12,
-      "source_tree_sha256": "2513f55208ce3572526c13e41c9356cdef50c4a45bf7e3704798f6a4f7bfe3a9",
+      "source_tree_sha256": "5c23d32d8c14fca9a86c9b5a7b6afc63f72284c7750e3ccd1b9fa6664c23da07",
       "status": "todo",
       "target": "python-wasm"
     },
@@ -9464,7 +9465,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 13,
-      "source_tree_sha256": "548d85d94f1f79c3ffb3d7be192ec4f529f2a7b8f5d9766a1eafbdd038f3e8cc",
+      "source_tree_sha256": "2fd6b2f08cac5eea7ddb34c24d93541b87b8c1f38713e04b08229e64f1dd81ff",
       "status": "todo",
       "target": "python-wasm"
     },
@@ -9480,7 +9481,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 32,
-      "source_tree_sha256": "b78d1965a657bae3ac067ef0795f49dfb0afcbc4df5dca16e7f45e4e77e8f676",
+      "source_tree_sha256": "6b7789129773fd1989e808a757b2158ff30b44b69ebab73ea770ca190fa75fb8",
       "status": "todo",
       "target": "python-wasm"
     },
@@ -10209,7 +10210,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 16,
-      "source_tree_sha256": "79bbaf50cf905325c8ba9c8e78734ee458970d786f6edd2b3d5f5a113501d81b",
+      "source_tree_sha256": "3b26b96d30be477597df5134708f32ca6f038009fad8cabc9989f6a0ca87bea9",
       "status": "todo",
       "target": "python-wasm"
     },
@@ -11701,6 +11702,20 @@
     {
       "evidence": [],
       "kind": "runtime-module",
+      "legacy_unit": "tobkiri_runtime/tobkiri_protocol/captured_inputs.py",
+      "native_imports": [],
+      "parity_fixture": null,
+      "replacement": null,
+      "shapes": [],
+      "source_files": 1,
+      "source_tree_sha256": "761dcd15bf52ccc971bf7e8a6c2576234f61c187329cd8eeeb38050c33e48ea1",
+      "status": "todo",
+      "target": "python-wasm",
+      "target_provisional": true
+    },
+    {
+      "evidence": [],
+      "kind": "runtime-module",
       "legacy_unit": "tobkiri_runtime/tobkiri_protocol/chat_message_v1.py",
       "native_imports": [],
       "parity_fixture": null,
@@ -11967,7 +11982,7 @@
       "replacement": null,
       "shapes": [],
       "source_files": 1,
-      "source_tree_sha256": "d3eec301ea80c129afdce11fb7dc75008c74e980604fe66d13c6c2eff389a9d6",
+      "source_tree_sha256": "d587247bff33703a2fe8c392f90a7ad4ee6cda5d33e4e14b0c5de0d2ed388b39",
       "status": "todo",
       "target": "python-wasm",
       "target_provisional": true

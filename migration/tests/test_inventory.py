@@ -14,6 +14,22 @@ spec.loader.exec_module(inventory)
 
 
 class InventoryTests(unittest.TestCase):
+    def test_private_runtime_data_is_never_source_or_a_published_content_digest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            defaults = root / "tobkiri_runtime/ecosystem/defaultspack"
+            domain = defaults / "domain"
+            domain.mkdir(parents=True)
+            (domain / "user_data.py").write_text("VALUE = 1\n")
+            before = inventory.discover(root)
+            private = defaults / "user_data"
+            private.mkdir()
+            (private / "secret").write_text("private fixture value")
+            (private / "generated.py").write_text("PRIVATE = 2\n")
+            self.assertEqual(inventory.discover(root), before)
+            self.assertTrue(any(item["legacy_unit"].endswith("domain/user_data.py")
+                                for item in before))
+
     def fixture(self, root: Path) -> tuple[dict, Path]:
         """Create a small current source and an evidenced completed row."""
         source = root / "tobkiri_runtime/core_runtime/canonical.py"

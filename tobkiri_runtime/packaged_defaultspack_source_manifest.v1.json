@@ -4144,8 +4144,8 @@
     {
       "path": "tobkiri_protocol/platform_artifact.py",
       "type": "regular-file",
-      "size": 9905,
-      "sha256": "b3f60b0a2cc4e2e501454b6cbef08b29b03381dd5c1a64aa5a2e5b60d522c6e8",
+      "size": 10471,
+      "sha256": "ea895f92aa659f871172165143f633316a8fc9d37e17417387c87c0d9304971b",
       "executable": false
     },
     {

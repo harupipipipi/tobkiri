@@ -25,11 +25,13 @@ TERMINAL_STATUSES = {"ported+parity", "core+vectors", "retired+approved"}
 TARGETS = {"python-wasm", "data-only", "rust-wasm", "native", "core", "retired"}
 
 
-def source_files(path: Path) -> list[Path]:
+def source_files(path: Path, *, root: Path = ROOT) -> list[Path]:
     """List source files while excluding disposable build and cache directories."""
+    private_data = root / "tobkiri_runtime/ecosystem/defaultspack/user_data"
     return sorted(
         item for item in path.rglob("*")
-        if item.is_file() and not any(part in IGNORED for part in item.parts)
+        if item.is_file() and not item.is_relative_to(private_data)
+        and not any(part in IGNORED for part in item.parts)
     )
 
 
@@ -54,7 +56,7 @@ def native_imports(files: list[Path]) -> list[str]:
 def row(path: Path, kind: str, files: list[Path] | None = None,
         *, root: Path = ROOT) -> dict[str, Any]:
     """Create one unported row; executable legacy units default to Python wasm."""
-    files = files if files is not None else source_files(path)
+    files = files if files is not None else source_files(path, root=root)
     executable = any(item.suffix in EXECUTABLE_SUFFIXES for item in files)
     relative = path.relative_to(root).as_posix()
     digest = hashlib.sha256()
@@ -96,9 +98,9 @@ def discover(root: Path = ROOT) -> list[dict[str, Any]]:
     # units so frontend/transport/blocks never disappear from the ledger.
     rows.extend(row(path, "defaults-surface", root=root)
                 for path in sorted(defaults.iterdir() if defaults.is_dir() else ())
-                if path.is_dir() and path.name not in IGNORED | {"domain"})
+                if path.is_dir() and path.name not in IGNORED | {"domain", "user_data"})
     for package in ("core_runtime", "tobkiri_host", "tobkiri_protocol"):
-        for source in source_files(runtime / package):
+        for source in source_files(runtime / package, root=root):
             if source.suffix == ".py":
                 item = row(source, "runtime-module", [source], root=root)
                 # Names alone cannot justify moving domain behavior into core.

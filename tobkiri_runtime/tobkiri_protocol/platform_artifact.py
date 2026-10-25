@@ -38,7 +38,9 @@ def artifact_digest(path: Path | CapturedPath, *, deadline_monotonic: float | No
             return
         if not current.is_dir():
             raise ProtocolError("packaged artifact entry is unavailable")
-        for child in sorted(current.iterdir(), key=lambda item: item.name):
+        children: list[Path | CapturedPath] = list(current.iterdir())
+        children.sort(key=lambda item: item.name)
+        for child in children:
             visit(child, (*relative, child.name))
 
     visit(path, ())
@@ -158,7 +160,16 @@ def verify_platform_artifact(
         raise ProtocolError("packaged artifact digest does not match selected bytes")
     entrypoint = root / Path(str(variant["entrypoint"]))
     try:
-        entrypoint.resolve(strict=True).relative_to(artifact.resolve(strict=True))
+        resolved_entry = entrypoint.resolve(strict=True)
+        resolved_artifact = artifact.resolve(strict=True)
+        if isinstance(resolved_entry, CapturedPath):
+            if not isinstance(resolved_artifact, CapturedPath):
+                raise ValueError("artifact inputs have different namespaces")
+            resolved_entry.relative_to(resolved_artifact)
+        else:
+            if not isinstance(resolved_artifact, Path):
+                raise ValueError("artifact inputs have different namespaces")
+            resolved_entry.relative_to(resolved_artifact)
     except (OSError, ValueError) as exc:
         raise ProtocolError("packaged artifact entrypoint is missing or outside artifact") from exc
     if entrypoint.is_symlink() or not entrypoint.is_file():
