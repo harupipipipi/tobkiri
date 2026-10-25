@@ -1,4 +1,6 @@
 //! Actual supported-platform custody tests; no Profile is fabricated for Setup.
+#![cfg(all(target_os = "macos", target_arch = "aarch64"))]
+
 use super::*;
 use std::process::Command;
 use tobkiri_gate::{ControlKind, CoreControlLimits};
