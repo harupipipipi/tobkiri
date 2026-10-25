@@ -13,6 +13,13 @@ on:
       - 'tools/python313-producer/component_inputs.py'
       - 'tools/python313-producer/component_driver.py'
       - 'tools/python313-producer/replay_harness_setup.py'
+      - 'tools/python313-producer/setup_native_inputs.py'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'sdk/python/**'
+      - 'packs/local.ai-tool-bridge-ordered-python/ordered_json*.py'
       - 'tobkiri_runtime/core_runtime/profile_runtime_port.py'
       - 'tobkiri_runtime/ecosystem/defaultspack/defaultspack/profile_runtime_composition.py'
   workflow_dispatch:
@@ -84,6 +91,12 @@ jobs:
           --artifact "$RUNNER_TEMP/setup-candidate/harness-setup/work/component.wasm"
           --validation "$RUNNER_TEMP/setup-validation"
           --destination "$RUNNER_TEMP/setup-replay"
+      - name: Export original source oracle for the separate native Core job
+        run: >-
+          python3 -B scripts/wasm/replay_harness_setup.py
+          --artifact "$RUNNER_TEMP/setup-candidate/harness-setup/work/component.wasm"
+          --output "$RUNNER_TEMP/setup-native-oracle.json"
+          --export-native-oracle
       - name: Retain candidate bytes and bounded build evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -98,4 +111,60 @@ jobs:
             ${{ runner.temp }}/setup-candidate/harness-setup/work/component.build.json
             ${{ runner.temp }}/setup-candidate/harness-setup/work/component.wasm
             ${{ runner.temp }}/setup-replay/
+            ${{ runner.temp }}/setup-native-oracle.json
+          if-no-files-found: warn
+
+  native-core:
+    needs: setup-source-and-build
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-setup-core
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify the supported native owner platform
+        shell: bash
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          device="$(df -P "$GITHUB_WORKSPACE" | awk 'NR == 2 {print $1}')"
+          test -n "$device"
+          diskutil info "$device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          components: rustfmt, clippy
+      - uses: actions/download-artifact@v4
+        with:
+          name: original-harness-setup-wasm-candidate
+          path: ${{ runner.temp }}/setup-native
+      - name: Bind exact artifact and original source oracle inputs
+        run: >-
+          python3 -B tools/python313-producer/setup_native_inputs.py
+          --artifact "$RUNNER_TEMP/setup-native/setup-candidate/harness-setup/work/component.wasm"
+          --oracle "$RUNNER_TEMP/setup-native/setup-native-oracle.json"
+          --evidence "$RUNNER_TEMP/setup-core-evidence"
+          --github-env "$GITHUB_ENV"
+      - name: Compare original Setup results through actual Core and Gate
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/setup-core.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-e2e --test harness_setup
+          original_setup_runs_through_core_without_changing_profile_authority
+          -- --ignored --exact --nocapture --test-threads=1
+      - name: Strict native fixture lint
+        run: cargo clippy --locked -p tobkiri-e2e --test harness_setup --no-deps -- -D warnings
+      - name: Retain closed native Core replay evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-harness-setup-native-core-evidence
+          path: |
+            ${{ runner.temp }}/setup-core-evidence/
+            ${{ runner.temp }}/setup-core.log*
           if-no-files-found: warn

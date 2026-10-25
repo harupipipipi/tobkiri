@@ -26,6 +26,13 @@ than introducing an unapproved Profile import or new blanket Launch ceremony.
   establish bootstrap authority, connect configuration IPC or certify a final
   activation receipt. Original `listing=None` acceptance and intermediate
   `restart_required:false` remain inert DATA for trusted Host processing.
+- The candidate's separate native Core fixture uses an ordinary saved and
+  approved Profile, actual `Session::call_user_port`, immutable source/build
+  bindings and exact Gate terminals. It checks that Setup DATA cannot change
+  Profile head/epoch or Pack/User policies and retains a read-only audit
+  sidecar. This is not an execution exemption before first-run approval. The
+  public Core currently exposes no pre-Profile application Kit runner; sealed
+  presentation source alone does not create execution authority.
 - The original React `frontend/src/pages/Setup.tsx` uses the Setup contracts
   through `frontend/src/lib/hostClient.ts` and `apiTransport.ts`. Its install,
   registry, readiness and presentation semantics are not supplied by

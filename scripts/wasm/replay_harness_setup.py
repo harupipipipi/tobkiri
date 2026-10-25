@@ -153,27 +153,67 @@ def observe(engine, component, linker, case: dict) -> dict:
     return result
 
 
+def validated_artifact(artifact: Path, scratch_parent: Path) -> tuple:
+    """Bind bytes and complete current source without compiling or executing."""
+    binary = prepare.bounded_read(artifact, 32 * 1024 * 1024)
+    receipt = json.loads(prepare.bounded_read(artifact.with_suffix('.build.json'), 256 * 1024))
+    with tempfile.TemporaryDirectory(dir=scratch_parent) as temporary:
+        staged = Path(temporary) / 'source'
+        plan = prepare.stage(staged)
+        plan_bytes = (staged / 'plan.json').read_bytes()
+        manifest = [{**item, 'bytes': len(prepare.bounded_read(staged / item['source']))}
+                    for item in plan['sources']]
+        if (receipt['format'] != 'tobkiri.component-build/2'
+                or receipt['artifact_sha256'] != hashlib.sha256(binary).hexdigest()
+                or receipt['artifact_bytes'] != len(binary)
+                or receipt['build_plan_sha256'] != hashlib.sha256(plan_bytes).hexdigest()
+                or receipt['source_manifest'] != manifest
+                or receipt['imports'] != sorted(plan['allowed_imports'])
+                or receipt['exports'] != sorted(plan['outer_exports'])):
+            raise ValueError('component differs from complete current source plan')
+    return binary, receipt, plan, plan_bytes
+
+
+def export_native_oracle(artifact: Path, output: Path) -> None:
+    """Export original-module expectations and complete native input bindings.
+
+    This is source DATA preparation, not Core execution or approval evidence.
+    Expected answers are computed by source_cases(), never by the Wasm output.
+    """
+    binary, receipt, _, plan_bytes = validated_artifact(artifact, output.parent)
+    paths = (prepare.SOURCE, prepare.PORT, *prepare.DEPENDENCIES.values(),
+             'packs/local.harness-setup-python/python/original_setup.py',
+             'packs/local.harness-setup-python/python/provenance.json',
+             'scripts/wasm/prepare_harness_setup.py',
+             'scripts/wasm/replay_harness_setup.py')
+    def capture():
+        return [prepare._record(path, prepare.bounded_read(prepare.ROOT / path))
+                for path in paths]
+    sources = capture()
+    cases = source_cases()
+    if capture() != sources or len(cases) != 18:
+        raise ValueError('original Setup oracle source changed')
+    document = {'format': 'tobkiri.harness-setup-native-inputs/1',
+                'cases': cases, 'source_bindings': sources,
+                'component_sha256': hashlib.sha256(binary).hexdigest(),
+                'build_receipt_sha256': hashlib.sha256(prepare.bounded_read(
+                    artifact.with_suffix('.build.json'), 256 * 1024)).hexdigest(),
+                'plan_json': plan_bytes.decode(),
+                'build_plan_sha256': receipt['build_plan_sha256'],
+                'native_core_replay': False, 'full_setup_gui_tested': False,
+                'production_enabled': False}
+    with output.open('x') as stream:
+        json.dump(document, stream, indent=2, sort_keys=True)
+        stream.write('\n')
+
+
 def run(artifact: Path, output: Path) -> None:
     """Validate current source/receipt, then execute only the exact typed guest."""
     if sys.platform != 'linux' or version('wasmtime') != '48.0.0':
         raise ValueError('pinned Linux CI validation runtime required')
     from wasmtime import Config, Engine
     from wasmtime.component import Component, Linker
-    binary = prepare.bounded_read(artifact, 32 * 1024 * 1024)
-    receipt = json.loads(prepare.bounded_read(artifact.with_suffix('.build.json'), 256 * 1024))
-    with tempfile.TemporaryDirectory(dir=output.parent) as temporary:
-        staged = Path(temporary) / 'source'
-        plan = prepare.stage(staged)
-        manifest = [{**item, 'bytes': len(prepare.bounded_read(staged / item['source']))}
-                    for item in plan['sources']]
-        if (receipt['format'] != 'tobkiri.component-build/2'
-                or receipt['artifact_sha256'] != hashlib.sha256(binary).hexdigest()
-                or receipt['artifact_bytes'] != len(binary)
-                or receipt['build_plan_sha256'] != hashlib.sha256((staged / 'plan.json').read_bytes()).hexdigest()
-                or receipt['source_manifest'] != manifest
-                or receipt['imports'] != sorted(plan['allowed_imports'])
-                or receipt['exports'] != sorted(plan['outer_exports'])):
-            raise ValueError('component differs from complete current source plan')
+    binary, _, plan, _ = validated_artifact(artifact, output.parent)
     cases = source_cases()
     config = Config()
     config.parallel_compilation = False
@@ -207,7 +247,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--artifact', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--export-native-oracle', action='store_true')
     args = parser.parse_args()
     # The controller mounts this exact pinned wheel only inside its namespace.
     sys.path.insert(0, '/validation-deps')
-    run(args.artifact, args.output)
+    if args.export_native_oracle:
+        export_native_oracle(args.artifact, args.output)
+    else:
+        run(args.artifact, args.output)

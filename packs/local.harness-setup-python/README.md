@@ -58,6 +58,15 @@ native Core, interpreter identity and full GUI parity remain unproven by this
 standalone execution. No component compilation or guest runs on the developer
 Mac.
 
+The dependent macOS native job runs the same 18 original-source cases through
+the public Core/Gate/Profile/Session path. It verifies exact positive bytes,
+Core's public typed-error projection, one dispatch/terminal per call, unchanged
+Profile head/epoch/Pack and User policies, and same-Session cleanup. Hash-bound
+source/build inputs and a read-only audit sidecar are retained. Native fixture
+approvals use the existing exact reviewed Host test path; this is not the real
+approval GUI or an initial-bootstrap exemption. The ordinary Core still needs
+a saved, approved Profile, and this fixture does not activate the product path.
+
 The source tests import the complete original application as an independent
 oracle and compare ordered response bytes. They cover exact `True` confirmation,
 missing/extra keys, unchanged operation IDs, stale/malformed confirmations,

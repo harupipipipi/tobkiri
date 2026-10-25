@@ -209,6 +209,58 @@ class SetupSourceTests(unittest.TestCase):
                 with self.assertRaises(adapter.SetupInputError):
                     adapter.invoke(case['operation'], case['input'])
 
+    def test_native_oracle_export_keeps_source_answers_and_inactive_scope(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            'setup_native_export_test', ROOT / 'scripts/wasm/replay_harness_setup.py')
+        replay = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(replay)
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary).resolve()
+            artifact = parent / 'component.wasm'
+            artifact.write_bytes(b'serialization fixture only; not actual Wasm')
+            artifact.with_suffix('.build.json').write_bytes(b'fixture receipt')
+            output = parent / 'native.json'
+            # This unit checks export custody/serialization only. Real artifact
+            # validation and execution are separate required CI jobs.
+            with patch.object(replay, 'validated_artifact', return_value=(
+                    artifact.read_bytes(), {'build_plan_sha256': 'fixture-plan'}, {}, b'{}')):
+                replay.export_native_oracle(artifact, output)
+                with self.assertRaises(FileExistsError):
+                    replay.export_native_oracle(artifact, output)
+            document = json.loads(output.read_bytes())
+            self.assertEqual(document['cases'], replay.source_cases())
+            self.assertEqual(len(document['source_bindings']), 12)
+            self.assertEqual(len({item['path'] for item in document['source_bindings']}), 12)
+            for flag in ('native_core_replay', 'full_setup_gui_tested', 'production_enabled'):
+                self.assertIs(document[flag], False)
+
+    def test_native_input_handoff_binds_bytes_and_refuses_links_or_env_injection(self) -> None:
+        previous_path = sys.path[:]
+        sys.path.insert(0, str(ROOT / 'tools/python313-producer'))
+        try:
+            spec = importlib.util.spec_from_file_location(
+                'setup_native_input_test', ROOT / 'tools/python313-producer/setup_native_inputs.py')
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            with tempfile.TemporaryDirectory() as temporary:
+                parent = Path(temporary).resolve()
+                artifact, oracle = parent / 'component.wasm', parent / 'oracle.json'
+                artifact.write_bytes(b'not executed')
+                artifact.with_suffix('.build.json').write_bytes(b'fixture metadata')
+                oracle.write_bytes(b'fixture oracle')
+                output = module.values(artifact, oracle, parent / 'evidence')
+                self.assertEqual(len(output), 7)
+                self.assertNotEqual(output['TOBKIRI_TEST_SETUP_COMPONENT_SHA256'],
+                                    output['TOBKIRI_TEST_SETUP_RECEIPT_SHA256'])
+                with self.assertRaises(ValueError):
+                    module.values(artifact, oracle, parent / 'bad\nINJECT=true')
+                link = parent / 'link.json'
+                link.symlink_to(oracle)
+                with self.assertRaises(ValueError):
+                    module.values(artifact, link, parent / 'evidence')
+        finally:
+            sys.path[:] = previous_path
+
     def test_symlink_and_existing_destination_are_refused(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             parent = Path(temporary).resolve()
