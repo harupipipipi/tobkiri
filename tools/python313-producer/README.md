@@ -353,7 +353,12 @@ before switching the original Launcher flow.
 
 `issue-1520-ui-schema.yml` continues from the actual rpds run `40182231971`
 on source `53163ed815c62c4853bbed3d8a082c0764e3084f`. It authenticates that
-successful run and the unchanged producer run before restoring their artifacts.
+successful rpds run and the separately successful clock-producer job before
+restoring their artifacts. The lightweight consumer pins the exact artifact ID,
+archive digest, decoded executable and both derivation receipts; a failure in
+the producer workflow's later schema consumer does not invalidate its successful
+producer job. Historical producer artifacts and SDK/source-codec pins remain
+unchanged.
 `fetch_schema.py` selects the complete CPython 3.13 dependency closure from the
 existing runtime `uv.lock`: attrs, jsonschema, jsonschema-specifications,
 referencing and packaging, plus a separate locked native rpds wheel for the
@@ -372,7 +377,8 @@ component/Store/fuel/deadline/output limits remain independently enforced.
 
 The late `packaging.tags` import also requires the original stdlib `logging`
 package, including its original traceback, line-cache, text, color and token
-dependencies. `fetch_schema_stdlib.py` obtains these ten unchanged source files
+dependencies, plus the original subprocess/locale/signal/selector source imported
+by `packaging.tags`. `fetch_schema_stdlib.py` obtains these fourteen source files
 from the existing pinned official CPython 3.13.16 archive on CI, rederives their identity
 from that archive, and includes them in the same source/copy/index limits.
 This supplies source without warming the late import or adding host operations.
@@ -439,3 +445,11 @@ and original-oracle checks remain enforced.
 These are candidate conditions, not achieved runtime claims. CI-host clock
 evidence does not establish production browser-worker/UI clock integration,
 native capture custody, Setup/approval GUI parity or activation.
+
+The actual `e15caf5c9` producer job `121156114495` succeeds. Its first consuming
+job proves a typed `wasi:clocks/wall-clock@0.2.4` import, real clock epoch/units
+and 1 ns reported resolution, with two `now` calls and one `resolution` call.
+Separate fresh Stores trap on filesystem and random IO; both are retired with
+fuel remaining. The same guest reports genuine built-in/preloaded `_json`
+scanner and encoder bindings. Full schema comparison still fails on the next
+missing original source, `subprocess`; it is not counted as a matching result.

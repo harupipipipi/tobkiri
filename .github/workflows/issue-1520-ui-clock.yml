@@ -7,9 +7,7 @@ on:
       - '.github/workflows/issue-1520-ui-clock.yml'
       - 'tools/python313-producer/ui_clock_source.py'
       - 'tools/python313-producer/build_cli.py'
-      - 'tools/python313-producer/build_schema.py'
-      - 'tools/python313-producer/schema_probe/**'
-      - 'tools/python313-producer/tests/test_*clock*.py'
+      - 'tools/python313-producer/tests/test_ui_clock_source.py'
       - 'tools/python313-producer/tests/fixtures/stubwasi-c0949b19.rs.txt'
   workflow_dispatch:
 

@@ -40,7 +40,7 @@ def tar_archive(path: Path, members) -> bytes:
 
 
 def source_fixture(path: Path, *, data=None) -> bytes:
-    """Make a tiny CPython-shaped archive with all ten selected files."""
+    """Make a tiny CPython-shaped archive with all fourteen selected files."""
     prefix = fetch_schema_stdlib.LOCKED_PREFIX
     data = data or {name: name.encode() for name in fetch_schema_stdlib.SELECTED_FILES}
     members = [
@@ -171,12 +171,12 @@ class SchemaStdlibInputTests(unittest.TestCase):
             verified = fetch_schema_stdlib.verify(destination)
         return receipt, verified, pin
 
-    def test_ci_stage_retains_archive_and_publishes_only_logging_sources(self):
+    def test_ci_stage_retains_archive_and_publishes_selected_stdlib_sources(self):
         with tempfile.TemporaryDirectory() as temp:
             destination = Path(temp).resolve() / "stdlib-inputs"
             receipt, verified, pin = self._run_offline_stage(destination)
             self.assertEqual(receipt["source_pin"], pin)
-            self.assertEqual(verified["files"], 10)
+            self.assertEqual(verified["files"], 14)
             self.assertTrue((destination / "archives/Python-3.13.16.tar.xz").is_file())
             self.assertEqual(
                 {path.name for path in (destination / "source/logging").iterdir()},
@@ -193,6 +193,10 @@ class SchemaStdlibInputTests(unittest.TestCase):
                     "string.py",
                     "tokenize.py",
                     "token.py",
+                    "subprocess.py",
+                    "locale.py",
+                    "signal.py",
+                    "selectors.py",
                 },
             )
             self.assertEqual(

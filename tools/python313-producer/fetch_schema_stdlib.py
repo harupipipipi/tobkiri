@@ -1,7 +1,7 @@
-"""Acquire pinned CPython logging and traceback source as data on Linux CI.
+"""Acquire pinned CPython logging dependency source as data on Linux CI.
 
 The archive and extracted source are never imported or executed here. Only the
-ten fixed source files are published; the rest of the archive remains
+fourteen fixed source files are published; the rest of the archive remains
 compressed under the private CI destination.
 """
 
@@ -45,6 +45,10 @@ SELECTED_FILES = (
     "string.py",
     "tokenize.py",
     "token.py",
+    "subprocess.py",
+    "locale.py",
+    "signal.py",
+    "selectors.py",
 )
 _ARCHIVE_MEMBERS = {
     f"{LOCKED_PREFIX}/Lib/{relative}": relative for relative in SELECTED_FILES
