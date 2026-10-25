@@ -1,7 +1,7 @@
 """Acquire pinned CPython schema dependency source as data on Linux CI.
 
 The archive and extracted source are never imported or executed here. Only the
-sixteen fixed source files are published; the rest of the archive remains
+seventeen fixed source files are published; the rest of the archive remains
 compressed under the private CI destination.
 """
 
@@ -53,6 +53,8 @@ SELECTED_FILES = (
     # Its lazy parser imports calendar; both are original CPython source DATA.
     "_strptime.py",
     "calendar.py",
+    # Distribution.files() lazily parses the unchanged wheel RECORD via csv.
+    "csv.py",
 )
 _ARCHIVE_MEMBERS = {
     f"{LOCKED_PREFIX}/Lib/{relative}": relative for relative in SELECTED_FILES

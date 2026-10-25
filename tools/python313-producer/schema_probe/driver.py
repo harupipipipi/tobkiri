@@ -27,6 +27,7 @@ STDLIB_FILES = {
     "selectors.py",
     "_strptime.py",
     "calendar.py",
+    "csv.py",
     "signal.py",
     "string.py",
     "subprocess.py",

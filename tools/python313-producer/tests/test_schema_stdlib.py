@@ -40,7 +40,7 @@ def tar_archive(path: Path, members) -> bytes:
 
 
 def source_fixture(path: Path, *, data=None) -> bytes:
-    """Make a tiny CPython-shaped archive with all sixteen selected files."""
+    """Make a tiny CPython-shaped archive with all seventeen selected files."""
     prefix = fetch_schema_stdlib.LOCKED_PREFIX
     data = data or {name: name.encode() for name in fetch_schema_stdlib.SELECTED_FILES}
     members = [
@@ -173,7 +173,7 @@ class SchemaStdlibInputTests(unittest.TestCase):
             destination = Path(temp).resolve() / "stdlib-inputs"
             receipt, verified, pin = self._run_offline_stage(destination)
             self.assertEqual(receipt["source_pin"], pin)
-            self.assertEqual(verified["files"], 16)
+            self.assertEqual(verified["files"], 17)
             self.assertTrue((destination / "archives/Python-3.13.16.tar.xz").is_file())
             self.assertEqual(
                 {path.name for path in (destination / "source/logging").iterdir()},
@@ -196,6 +196,7 @@ class SchemaStdlibInputTests(unittest.TestCase):
                     "selectors.py",
                     "_strptime.py",
                     "calendar.py",
+                    "csv.py",
                 },
             )
             self.assertEqual(
