@@ -21,12 +21,16 @@ use tobkiri_profile::{PackPin, Startup};
 struct Host {
     prompts: Mutex<Vec<ApprovalPrompt>>,
     deny: AtomicBool,
+    deny_user: AtomicBool,
 }
 #[async_trait]
 impl TrustedPrompt for Host {
     async fn prompt_approval(&self, prompt: ApprovalPrompt) -> ApprovalAnswer {
+        let denied = self.deny.load(Ordering::SeqCst)
+            || (self.deny_user.load(Ordering::SeqCst)
+                && matches!(&prompt.effect, EffectRequest::UserPermissions { .. }));
         self.prompts.lock().unwrap().push(prompt);
-        if self.deny.load(Ordering::SeqCst) {
+        if denied {
             ApprovalAnswer::Deny
         } else {
             ApprovalAnswer::Approve
@@ -338,6 +342,123 @@ async fn declining_new_user_scope_leaves_the_profile_head_unchanged() {
     );
     session.close().await.unwrap();
 }
+
+#[tokio::test]
+async fn user_refusal_does_not_install_an_earlier_pack_approval() {
+    let (core, host, profile, _dir) = fixture();
+    host.deny_user.store(true, Ordering::SeqCst);
+    assert!(core.save_profile(profile.clone(), None).await.is_err());
+    let prompts = host.prompts.lock().unwrap();
+    assert_eq!(prompts.len(), 2);
+    assert!(matches!(
+        prompts[0].effect,
+        EffectRequest::Permissions { .. }
+    ));
+    assert!(matches!(
+        prompts[1].effect,
+        EffectRequest::UserPermissions { .. }
+    ));
+    let approvals = Approvals::open(&core.profiles.root, &profile.id).unwrap();
+    assert!(
+        approvals
+            .permissions(&profile.id, &profile.packs[0].id, &profile.packs[0].sha256)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(approvals.security_epoch(&profile.id).unwrap(), 0);
+    assert!(core.profiles.head(&profile.id).unwrap().is_none());
+}
+
+fn permission_preparation_fixture(
+    core: &Core,
+    profile: &Profile,
+) -> (Arc<GateEngine>, CallCx, Vec<VerifiedPack>) {
+    let packs = load_packs(profile, &core.control).unwrap();
+    let compiled = compile(profile, &packs).unwrap();
+    let (gate, _) = core.authority(profile).unwrap();
+    register_policies(&gate, profile, &packs).unwrap();
+    register_views(&gate, &compiled).unwrap();
+    let cx = core
+        .user_context(profile, &gate)
+        .unwrap()
+        .with_revision(compiled.plan_digest);
+    (gate, cx, packs)
+}
+
+#[tokio::test]
+async fn prepared_permissions_are_inert_and_drop_releases_their_control_custody() {
+    let (core, host, profile, _dir) = fixture();
+    let (gate, cx, packs) = permission_preparation_fixture(&core, &profile);
+    let approvals = Approvals::open(&core.profiles.root, &profile.id).unwrap();
+    let before = core.control.usage();
+    let prepared = gate
+        .prepare_pack_permissions(&cx, &packs[0].manifest.id, None, &packs[0].hash)
+        .await
+        .unwrap();
+    assert_eq!(host.prompts.lock().unwrap().len(), 1);
+    assert!(
+        approvals
+            .permissions(&profile.id, &packs[0].manifest.id, &packs[0].hash)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        core.control.usage().count(tobkiri_gate::ControlKind::Frame),
+        before.count(tobkiri_gate::ControlKind::Frame) + 1
+    );
+    assert!(core.control.usage().bytes >= before.bytes + 4096);
+    drop(prepared);
+    assert_eq!(core.control.usage().bytes, before.bytes);
+    assert_eq!(
+        core.control.usage().count(tobkiri_gate::ControlKind::Frame),
+        before.count(tobkiri_gate::ControlKind::Frame)
+    );
+    // Standalone approval still uses the same immediate commit path and must
+    // obtain a new native decision after the abandoned preparation.
+    gate.approve_pack_permissions(&cx, &packs[0].manifest.id, None, &packs[0].hash)
+        .await
+        .unwrap();
+    assert_eq!(host.prompts.lock().unwrap().len(), 2);
+    assert!(
+        approvals
+            .permissions(&profile.id, &packs[0].manifest.id, &packs[0].hash)
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn prepared_permissions_recheck_cancellation_and_epoch_before_effect() {
+    for revoke_epoch in [false, true] {
+        let (core, _host, profile, _dir) = fixture();
+        let (gate, cx, packs) = permission_preparation_fixture(&core, &profile);
+        let approvals = Approvals::open(&core.profiles.root, &profile.id).unwrap();
+        let before = core.control.usage();
+        let prepared = gate
+            .prepare_pack_permissions(&cx, &packs[0].manifest.id, None, &packs[0].hash)
+            .await
+            .unwrap();
+        if revoke_epoch {
+            ApprovalStore::advance_security_epoch(&approvals, &profile.id).unwrap();
+        } else {
+            cx.cancellation().cancel();
+        }
+        let failure = prepared.commit().unwrap_err();
+        assert!(matches!(
+            (revoke_epoch, failure),
+            (true, tobkiri_gate::GateError::StaleEpoch)
+                | (false, tobkiri_gate::GateError::Cancelled)
+        ));
+        assert!(
+            approvals
+                .permissions(&profile.id, &packs[0].manifest.id, &packs[0].hash)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(core.control.usage().bytes, before.bytes);
+    }
+}
+
 #[test]
 fn core_open_and_read_only_inspection_do_not_require_tokio() {
     let (core, _host, profile, dir) = fixture();

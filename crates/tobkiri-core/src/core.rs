@@ -311,8 +311,11 @@ impl Core {
         .with_security_epoch(gate.epoch(&profile.id)?))
     }
 
-    /// Validate conflicts and obtain only newly added permissions before changing
-    /// the immutable revision head. A failed addition leaves the head unchanged.
+    /// Validate conflicts and obtain all required native approvals before
+    /// installing any of this save's permission effects. A refusal during
+    /// preparation leaves earlier approvals unapplied. Permission-effect commit
+    /// and head/epoch commit still need a coordinated durable transaction;
+    /// an error after mutation does not establish rollback.
     pub async fn save_profile(
         &self,
         profile: Profile,
@@ -339,32 +342,65 @@ impl Core {
             .user_context(&profile, &gate)?
             .with_revision(compiled.plan_digest.clone());
         let old = old_hashes(previous.as_ref());
+        // Admit the complete retention array before constructing it. Each
+        // preparation separately retains its original reservation and the
+        // actual owned policy capacities under this SAME CoreControl account.
+        let preparation_bytes = packs
+            .len()
+            .checked_mul(std::mem::size_of::<
+                tobkiri_gate::PreparedPermissionApproval<'_>,
+            >())
+            .and_then(|bytes| {
+                bytes.checked_add(std::mem::size_of::<
+                    Vec<tobkiri_gate::PreparedPermissionApproval<'_>>,
+                >())
+            })
+            .and_then(|bytes| u64::try_from(bytes).ok())
+            .ok_or(tobkiri_gate::GateError::Unavailable)?;
+        let _preparation_array = self
+            .control
+            .reserve(tobkiri_gate::ControlKind::Queue, preparation_bytes)
+            .map_err(tobkiri_gate::GateError::from)?;
+        let mut pack_approvals = Vec::new();
+        pack_approvals
+            .try_reserve_exact(packs.len())
+            .map_err(|_| tobkiri_gate::GateError::Unavailable)?;
         for pack in &packs {
-            gate.approve_pack_permissions(
-                &cx,
-                &pack.manifest.id,
-                old.get(&pack.manifest.id),
-                &pack.hash,
-            )
-            .await?;
+            pack_approvals.push(
+                gate.prepare_pack_permissions(
+                    &cx,
+                    &pack.manifest.id,
+                    old.get(&pack.manifest.id),
+                    &pack.hash,
+                )
+                .await?,
+            );
         }
         let digest = self.profiles.write_revision(&profile)?;
         let target_epoch = cx
             .security_epoch()
             .checked_add(1)
             .ok_or_else(|| CoreError::Invalid("security epoch exhausted".into()))?;
-        gate.approve_user_permissions(
-            &cx,
-            &digest,
-            &compiled.plan_digest,
-            target_epoch,
-            &profile
-                .user_permissions
-                .clone()
-                .unwrap_or_default()
-                .intersect(&profile.ceiling),
-        )
-        .await?;
+        let user_approval = gate
+            .prepare_user_permissions(
+                &cx,
+                &digest,
+                &compiled.plan_digest,
+                target_epoch,
+                &profile
+                    .user_permissions
+                    .clone()
+                    .unwrap_or_default()
+                    .intersect(&profile.ceiling),
+            )
+            .await?;
+        // No permission row has been installed before every prompt succeeded.
+        // These existing Store transactions remain individually committed;
+        // a later persistence failure is not a whole-save rollback receipt.
+        for approval in pack_approvals {
+            approval.commit()?;
+        }
+        user_approval.commit()?;
         self.profiles.root.compare_and_swap_profile_head_at_epoch(
             &profile.id,
             expected.as_ref(),

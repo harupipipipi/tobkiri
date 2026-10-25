@@ -74,11 +74,21 @@ permission grant is introduced by this design note.
 
 ## Failed configuration writes
 
-The current Core save path obtains Pack approvals individually, writes the
-candidate revision, obtains User approval, and then commits head/epoch. A later
-denial or conflict can leave earlier approval records. A preserved old head is
-not proof that every preceding permission effect was rolled back. These rows
-alone also do not prove that a rejected candidate can start. Whole-addition
+The Core save path now retains each original Pack/User approval in a private,
+move-only native preparation and installs policy only after all required
+approvals succeed. Refusal or cancellation during preparation abandons the
+original reservations without installing earlier policy rows. The preparation
+retains the original context, epoch, expiry and immutable terminal protocol;
+it supplies no UI configuration authority. Its array and retained policy
+capacities use the same CoreControl account. New real-Store regressions cover
+later User refusal, inert/drop behavior and cancellation/epoch rechecks; their
+actual Rust execution is required separately from source inspection.
+
+This is not a durable staged-permission journal or a multi-effect transaction.
+After preparation, permission effects still commit individually before the
+head/epoch CAS. A later SQL, audit-delivery or CAS failure can still leave
+effects. A preserved old head is not proof of whole-save rollback, and residual
+rows alone do not prove that a rejected candidate can start. Whole-addition
 rollback under R2.8 remains open; deleting a snapshot of approval rows could
 erase another concurrent operation's legitimate approval and is not a repair.
 

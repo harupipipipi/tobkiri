@@ -13,6 +13,11 @@ use tobkiri_canon::{
     ids::{OpName, PackHash, PackId, ProfileId, RequestId, ShapeRef},
 };
 
+#[path = "permission_preparation.rs"]
+mod permission_preparation;
+pub use permission_preparation::PreparedPermissionApproval;
+use permission_preparation::{PreparedPermissionTarget, retained_permission_bytes};
+
 fn try_clone_string_precharged(value: &str) -> Result<String, tobkiri_canon::AllocationError> {
     let mut copy = String::new();
     copy.try_reserve_exact(value.len())
@@ -1659,12 +1664,30 @@ impl GateEngine {
         target_epoch: u64,
         maximum: &PermissionSet,
     ) -> Result<(), GateError> {
+        self.prepare_user_permissions(cx, profile_hash, revision, target_epoch, maximum)
+            .await?
+            .commit()
+    }
+
+    /// Obtain an exact native approval without installing policy or completing
+    /// its permission effect. Drop abandons that same reservation.
+    pub async fn prepare_user_permissions<'a>(
+        &'a self,
+        cx: &'a CallCx,
+        profile_hash: &'a Digest,
+        revision: &'a Digest,
+        target_epoch: u64,
+        maximum: &PermissionSet,
+    ) -> Result<PreparedPermissionApproval<'a>, GateError> {
         if !matches!(cx.principal(), Principal::User) {
             return Err(GateError::Denied(
                 "User approval is a trusted core operation".into(),
             ));
         }
         cx.check_active()?;
+        // Fixed reservation IDs/digests plus the token itself are bounded.
+        // The owned permission collections are charged separately below.
+        let mut retained = self.control.reserve(ControlKind::Frame, 4096)?;
         if self.epoch(cx.profile())? != cx.security_epoch() {
             return Err(GateError::StaleEpoch);
         }
@@ -1709,6 +1732,7 @@ impl GateEngine {
             prompt.risk = Risk::Dangerous;
         }
         let narrowed = self.mediate(&prompt, maximum.clone(), cx).await?;
+        retained.try_grow(retained_permission_bytes(&narrowed)?)?;
         if additions.has_additions() {
             self.obtain_approval(cx, prompt).await?;
         }
@@ -1716,23 +1740,19 @@ impl GateEngine {
         if self.epoch(cx.profile())? != cx.security_epoch() {
             return Err(GateError::StaleEpoch);
         }
-        self.event(&reservation, "user-permission-update", None)?;
-        self.approvals.dispatch(&reservation.id)?;
-        let terminal = self.approvals.commit_permission_effect(
-            &reservation,
-            deadline_unix_ms(cx.deadline())?,
-            PermissionEffect::User {
+        Ok(PreparedPermissionApproval::new(
+            self,
+            cx,
+            reservation,
+            PreparedPermissionTarget::User {
                 profile_hash,
                 revision,
                 epoch: target_epoch,
-                permissions: &narrowed,
             },
-        )?;
-        self.deliver_terminal(&terminal)?;
-        if terminal.decision.outcome != Outcome::Succeeded {
-            return Err(GateError::Deadline);
-        }
-        Ok(())
+            narrowed,
+            _pending,
+            retained,
+        ))
     }
 
     fn reservation(
@@ -1842,12 +1862,27 @@ impl GateEngine {
         old_hash: Option<&PackHash>,
         new_hash: &PackHash,
     ) -> Result<(), GateError> {
+        self.prepare_pack_permissions(cx, pack, old_hash, new_hash)
+            .await?
+            .commit()
+    }
+
+    /// Prepare only additions using the ordinary approval path. This value is
+    /// neither effective policy nor a successful Profile-commit receipt.
+    pub async fn prepare_pack_permissions<'a>(
+        &'a self,
+        cx: &'a CallCx,
+        pack: &'a PackId,
+        old_hash: Option<&PackHash>,
+        new_hash: &'a PackHash,
+    ) -> Result<PreparedPermissionApproval<'a>, GateError> {
         if !matches!(cx.principal(), Principal::User) {
             return Err(GateError::Denied(
                 "permission installation is a core user operation".into(),
             ));
         }
         cx.check_active()?;
+        let mut retained = self.control.reserve(ControlKind::Frame, 4096)?;
         let maximum = {
             let policies = self
                 .policies
@@ -1889,6 +1924,7 @@ impl GateEngine {
             prompt.risk = Risk::Dangerous;
         }
         let approved = self.mediate(&prompt, maximum, cx).await?;
+        retained.try_grow(retained_permission_bytes(&approved)?)?;
         if additions.has_additions() {
             self.obtain_approval(cx, prompt).await?;
         }
@@ -1896,22 +1932,18 @@ impl GateEngine {
         if self.epoch(cx.profile())? != cx.security_epoch() {
             return Err(GateError::StaleEpoch);
         }
-        self.event(&reservation, "permission-update", None)?;
-        self.approvals.dispatch(&reservation.id)?;
-        let terminal = self.approvals.commit_permission_effect(
-            &reservation,
-            deadline_unix_ms(cx.deadline())?,
-            PermissionEffect::Pack {
+        Ok(PreparedPermissionApproval::new(
+            self,
+            cx,
+            reservation,
+            PreparedPermissionTarget::Pack {
                 pack,
                 hash: new_hash,
-                permissions: &approved,
             },
-        )?;
-        self.deliver_terminal(&terminal)?;
-        if terminal.decision.outcome != Outcome::Succeeded {
-            return Err(GateError::Deadline);
-        }
-        Ok(())
+            approved,
+            _pending,
+            retained,
+        ))
     }
     fn verify_attestation(
         &self,
