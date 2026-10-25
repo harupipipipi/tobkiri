@@ -113,11 +113,13 @@ jobs:
             ${{ runner.temp }}/poll-comparison/original/control.json
             ${{ runner.temp }}/poll-comparison/original/execution/
             ${{ runner.temp }}/poll-comparison/original/work/reference.json
+            ${{ runner.temp }}/poll-comparison/original/work/stage-file-shapes.json
             ${{ runner.temp }}/poll-comparison/original/work/link-trace/libraries.tsv
             ${{ runner.temp }}/poll-comparison/original/work/link-trace/complete.tsv
             ${{ runner.temp }}/poll-comparison/candidate/control.json
             ${{ runner.temp }}/poll-comparison/candidate/execution/
             ${{ runner.temp }}/poll-comparison/candidate/work/reference.json
+            ${{ runner.temp }}/poll-comparison/candidate/work/stage-file-shapes.json
             ${{ runner.temp }}/poll-comparison/candidate/work/link-trace/libraries.tsv
             ${{ runner.temp }}/poll-comparison/candidate/work/link-trace/complete.tsv
           if-no-files-found: warn

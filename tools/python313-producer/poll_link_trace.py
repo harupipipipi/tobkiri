@@ -15,13 +15,15 @@ COMPONENT_HEADER = b"\0asm\x0d\0\x01\0"
 HELPER_NAME = "_tobkiri_poll_oracle.abi3.so"
 
 
-def fingerprint(path: Path, maximum: int, *, private: bool = True) -> dict:
+def fingerprint(
+    path: Path, maximum: int, *, private: bool = True, allow_empty: bool = False
+) -> dict:
     """Hash one bounded regular, unlinked file and reject concurrent changes."""
     before = path.lstat()
     if (
         not stat.S_ISREG(before.st_mode)
         or before.st_nlink != 1
-        or not 0 < before.st_size <= maximum
+        or not (0 if allow_empty else 1) <= before.st_size <= maximum
         or (private and stat.S_IMODE(before.st_mode) != 0o600)
     ):
         raise ValueError("bounded private regular trace file required")

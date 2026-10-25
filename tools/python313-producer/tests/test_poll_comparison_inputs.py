@@ -58,6 +58,32 @@ def fixture():
 
 
 class ComparisonInputTests(unittest.TestCase):
+    def test_empty_generated_package_markers_are_data_but_modules_are_not_empty(self):
+        import poll_link_trace as trace
+
+        with tempfile.TemporaryDirectory() as tmp:
+            stage = Path(tmp) / "stage"
+            stage.mkdir(mode=0o700)
+            marker = stage / "__init__.py"
+            marker.write_bytes(b"")
+            marker.chmod(0o600)
+            inventory = driver.stage_inventory(stage)
+            self.assertEqual(
+                inventory["__init__.py"],
+                {"bytes": 0, "sha256": hashlib.sha256(b"").hexdigest()},
+            )
+            with self.assertRaises(ValueError):
+                trace.fingerprint(marker, trace.FILE_LIMIT)
+            nested = stage / "nested"
+            nested.mkdir(mode=0o700)
+            output = nested / "component.wasm"
+            output.write_bytes(b"not the root output")
+            output.chmod(0o600)
+            self.assertIn(
+                "nested/component.wasm",
+                driver.stage_inventory(stage, exclude_component=True),
+            )
+
     def test_each_producer_command_must_preserve_captured_source_and_helper(self):
         for changed in ("app.py", "probe.wit", "_tobkiri_poll_oracle.abi3.so"):
             with self.subTest(changed=changed), tempfile.TemporaryDirectory() as tmp:

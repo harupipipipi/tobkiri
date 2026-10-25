@@ -6,6 +6,7 @@ import importlib.metadata
 import json
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
 import threading
@@ -14,6 +15,35 @@ import time
 INTERFACE = "tobkiri-ui:libc-poll-oracle/probe@1.0.0"
 FUEL = 2_000_000_000
 SECONDS = 30
+
+
+def stage_inventory(stage: Path, *, exclude_component: bool = False) -> dict:
+    """Inventory generated DATA, including empty Python package markers."""
+    from poll_link_trace import FILE_LIMIT, TOTAL_LIMIT, fingerprint
+
+    shapes = {}
+    for path in stage.rglob("*"):
+        mode = path.lstat()
+        relative = path.relative_to(stage).as_posix()
+        if stat.S_ISDIR(mode.st_mode):
+            continue
+        if exclude_component and relative == "component.wasm":
+            continue
+        shapes[relative] = {
+            "bytes": mode.st_size,
+            "mode": oct(stat.S_IMODE(mode.st_mode)),
+            "links": mode.st_nlink,
+            "regular": stat.S_ISREG(mode.st_mode),
+        }
+    # Preserve facts before rejecting a file. This is CI-only bounded metadata.
+    if len(shapes) > 4096 or sum(row["bytes"] for row in shapes.values()) > TOTAL_LIMIT:
+        raise ValueError("complete generated stage exceeds the original input bound")
+    (stage.parent / "stage-file-shapes.json").write_text(
+        json.dumps(shapes, indent=2) + "\n"
+    )
+    return {
+        name: fingerprint(stage / name, FILE_LIMIT, allow_empty=True) for name in shapes
+    }
 
 
 def require_captured_stage(stage: Path, control: dict) -> None:
@@ -201,11 +231,7 @@ def run() -> None:
             timeout=180,
         )
         require_captured_stage(stage, control)
-        before = {
-            p.relative_to(stage).as_posix(): fingerprint(p, FILE_LIMIT)
-            for p in stage.rglob("*")
-            if p.is_file()
-        }
+        before = stage_inventory(stage)
         subprocess.run(
             [*command, "componentize", "app", "-o", "component.wasm"],
             cwd=stage,
@@ -215,11 +241,7 @@ def run() -> None:
         )
         report["componentization"] = True
         require_captured_stage(stage, control)
-        if {
-            p.relative_to(stage).as_posix(): fingerprint(p, FILE_LIMIT)
-            for p in stage.rglob("*")
-            if p.is_file() and p.relative_to(stage).as_posix() != "component.wasm"
-        } != before:
+        if stage_inventory(stage, exclude_component=True) != before:
             raise ValueError("probe/helper/generated bindings changed during preinit")
         component = stage / "component.wasm"
         report["stage_inputs"] = before
