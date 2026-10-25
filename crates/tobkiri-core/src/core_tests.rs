@@ -648,6 +648,9 @@ fn core_open_and_read_only_inspection_do_not_require_tokio() {
     let host = Arc::new(Host::default());
     let reopened = Core::open(CoreConfig::for_test_data_root(root), host).unwrap();
     assert_eq!(reopened.profile(&profile.id).unwrap().0.name, profile.name);
+    let state = reopened.profile_save_precondition(&profile.id).unwrap();
+    assert!(state.head.is_some());
+    assert_eq!(state.security_epoch, 1);
     assert!(!reopened.export_profile(&profile.id).unwrap().is_empty());
 }
 

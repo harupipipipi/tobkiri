@@ -64,6 +64,13 @@ than introducing an unapproved Profile import or new blanket Launch ceremony.
   A same-head ABA cannot revive a stale review. This is only a freshness
   precondition: the caller still must bind the exact candidate/review and use
   ordinary native approvals. It does not certify the complete v4 confirmation.
+- `Core::profile_save_precondition` captures the target, optional head and epoch
+  under the pinned Profile lock. An unpublished target can already have a
+  nonzero epoch; the UI must not infer zero from a missing head. A fresh target
+  may initialize only its native directory and empty authority schema. The
+  getter does not create a Gate/Session, approve a permission, write a revision
+  or recover a pending save. These are save preconditions, not readiness or a
+  complete application confirmation. Existing head-only observation is unchanged.
 - The legacy signed Shell handoff authenticates its own frozen catalog,
   artifact, entry and execution bindings. It is not evidence that the new
   Rust Core has admitted an ordinary bootstrap Profile.

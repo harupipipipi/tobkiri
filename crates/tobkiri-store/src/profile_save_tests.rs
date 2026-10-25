@@ -230,6 +230,8 @@ async fn pending_decision_fences_new_authority_but_allows_cleanup_and_revocation
             .is_err()
     );
     assert!(f.root.profile_head_snapshot(&f.profile).is_err());
+    assert!(f.root.profile_save_snapshot(&f.profile).is_err());
+    assert_eq!(f.counts(), (2, 1));
     assert!(
         f.root
             .profile_save_outcome(&f.profile, &operation, &f.control)
@@ -262,6 +264,10 @@ async fn pending_decision_fences_new_authority_but_allows_cleanup_and_revocation
     assert_eq!(
         f.root.profile_head_snapshot(&f.profile).unwrap(),
         (f.revision.clone(), 2)
+    );
+    assert_eq!(
+        f.root.profile_save_snapshot(&f.profile).unwrap(),
+        (Some(f.revision.clone()), 2)
     );
     assert_eq!(f.counts(), (2, 1));
     assert!(

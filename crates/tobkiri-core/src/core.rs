@@ -295,6 +295,24 @@ impl Core {
             .unwrap_or(ProfileRecoveryStatus::Dormant))
     }
 
+    /// Capture save conditions for an exact target, without a Gate or Session.
+    /// A fresh target may initialize its native directory/authority schema.
+    /// This does not write a revision, grant permissions, run a Pack or recover
+    /// a pending decision. A headless target may have a nonzero epoch.
+    /// Retain the target and exact candidate with these facts, then pass the
+    /// head/epoch to save_profile_at_epoch. This is not approval or readiness.
+    pub fn profile_save_precondition(
+        &self,
+        id: &ProfileId,
+    ) -> Result<crate::ProfileSavePrecondition, CoreError> {
+        let (head, security_epoch) = self.profiles.root.profile_save_snapshot(id)?;
+        Ok(crate::ProfileSavePrecondition {
+            profile_id: id.clone(),
+            head,
+            security_epoch,
+        })
+    }
+
     fn user_context(&self, profile: &Profile, gate: &GateEngine) -> Result<CallCx, CoreError> {
         let control = gate.control().clone();
         let cancellation = tobkiri_gate::CancellationToken::new_with_control(&control)

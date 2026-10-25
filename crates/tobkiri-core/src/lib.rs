@@ -42,6 +42,7 @@ mod policy_tests;
 mod process_authorization;
 mod process_catalog;
 mod profile_review;
+mod profile_save_review;
 mod profiles;
 mod session;
 #[cfg(test)]
@@ -62,6 +63,7 @@ pub use profile_review::{
     ProfileReviewPackLimit, ReviewedTarget, SecretPermissionReview, StoragePermissionReview,
     TargetReviewStatus, UserOriginReview,
 };
+pub use profile_save_review::ProfileSavePrecondition;
 pub use session::{
     NativeInput, NativeInputCompletion, NativeInputEvent, NativeInputRouteResult,
     NativeInputRouteStatus, NativeInputRunHandle, NativeInputStatus, Session, UI_STREAM_MAX_BATCH,

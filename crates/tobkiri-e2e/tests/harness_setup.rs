@@ -282,7 +282,19 @@ async fn original_setup_runs_through_core_without_changing_profile_authority() -
     }
     host.approve_literal_user(&profile)?;
     let core = Core::open(CoreConfig::for_test_data_root(data.clone()), host.clone())?;
-    core.save_profile(profile.clone(), None).await?;
+    let precondition = core.profile_save_precondition(&profile.id)?;
+    ensure!(
+        precondition.profile_id == profile.id
+            && precondition.head.is_none()
+            && precondition.security_epoch == 0,
+        "fresh fixture precondition differs"
+    );
+    core.save_profile_at_epoch(
+        profile.clone(),
+        precondition.head.clone(),
+        precondition.security_epoch,
+    )
+    .await?;
     let root = DataRoot::open(&data)?;
     let before = authority(&root, &profile, &pack, &compiled.plan_digest)?;
     let before_reviews = host.approvals.lock().unwrap().clone();
@@ -314,7 +326,7 @@ async fn original_setup_runs_through_core_without_changing_profile_authority() -
         None
     };
     let report = json!({"format":"tobkiri.harness-setup-core-replay/1","passed":passed,
-        "source":inputs.identity,"cases":attempt.as_ref().ok(),"case_runner_failed":attempt.is_err(),
+        "source":inputs.identity,"save_precondition":precondition,"cases":attempt.as_ref().ok(),"case_runner_failed":attempt.is_err(),
         "same_session_closed":closed,"authority_unchanged":unchanged,"authority_before":before,
         "audit_sidecar_sha256":audit_hash,"audit_read_failed":final_audit.is_err(),
         "authority_after":after.as_ref().ok(),"expected_cases":inputs::IDS.len(),

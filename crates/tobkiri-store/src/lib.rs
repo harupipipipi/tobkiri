@@ -7,6 +7,7 @@ mod data_moves;
 mod disk_policy;
 mod owner;
 mod profile_commit;
+mod profile_snapshot;
 #[cfg(unix)]
 mod quota_vfs;
 mod secure;
