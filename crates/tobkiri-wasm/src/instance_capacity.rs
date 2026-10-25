@@ -1,5 +1,6 @@
 //! Stable-owner occupancy for live/warm component linear memory and tables.
 //! The outer PackInstance retains this reservation AFTER dropping its Store.
+use crate::aggregate_limits::PhysicalCapacity;
 use crate::host::Shared;
 use anyhow::{Context, Result, bail};
 use std::sync::{Arc, Mutex};
@@ -159,5 +160,17 @@ impl InstanceCapacity {
         self.reservation.resize(next, 0)?;
         state.charged = next;
         Ok(())
+    }
+}
+
+impl PhysicalCapacity for InstanceCapacity {
+    fn memory_growth(&self, current: usize, desired: usize) -> Result<u64, GateError> {
+        InstanceCapacity::memory_growth(self, current, desired)
+    }
+    fn table_growth(&self, current: usize, desired: usize) -> Result<u64, GateError> {
+        InstanceCapacity::table_growth(self, current, desired)
+    }
+    fn failed_growth(&self, bytes: u64) -> Result<(), GateError> {
+        InstanceCapacity::failed_growth(self, bytes)
     }
 }

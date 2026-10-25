@@ -1,5 +1,6 @@
 //! Shared aggregate Store limits; execution authority remains in the caller.
 use std::sync::Arc;
+use tobkiri_gate::GateError;
 use wasmtime::ResourceLimiter;
 
 // Component composition routinely creates more core instances than exported
@@ -10,6 +11,14 @@ pub(crate) const MAX_CORE_INSTANCES: usize = 1024;
 pub(crate) const MAX_MEMORIES: usize = 16;
 pub(crate) const MAX_TABLES: usize = 16;
 
+/// Physical occupancy only. Implementers retain their own real funding proof;
+/// this interface supplies no Profile, Gate, frame or execution authority.
+pub(crate) trait PhysicalCapacity: Send + Sync {
+    fn memory_growth(&self, current: usize, desired: usize) -> Result<u64, GateError>;
+    fn table_growth(&self, current: usize, desired: usize) -> Result<u64, GateError>;
+    fn failed_growth(&self, bytes: u64) -> Result<(), GateError>;
+}
+
 // Limits apply to the sum of all guest memories/tables in a store.
 pub(crate) struct AggregateLimits {
     pub(crate) memory_cap: usize,
@@ -18,7 +27,7 @@ pub(crate) struct AggregateLimits {
     pub(crate) table_used: usize,
     pub(crate) last_memory_growth: usize,
     pub(crate) last_table_growth: usize,
-    pub(crate) physical: Option<Arc<crate::instance_capacity::InstanceCapacity>>,
+    pub(crate) physical: Option<Arc<dyn PhysicalCapacity>>,
     pub(crate) last_physical_memory: u64,
     pub(crate) last_physical_table: u64,
 }

@@ -246,6 +246,14 @@ and custody tests, not evidence that a 64 MiB guest has executed or that the
 original Setup surface is connected. Actual native/portable CI remains
 required before claiming those tests pass.
 
+The aggregate Wasm limiter now delegates physical growth and failed-growth
+refunds through a private, authority-free interface. The original Pack
+implementation still performs its unchanged Gate/frame checks and requires
+its real CallCx. A native Setup implementation can use the same limiter
+without inventing that context; it must retain an external physical owner
+until after actual Store destruction. This interface alone does not create
+the separate native Store or its owned input/output adapters.
+
 The separate diagnostic-only schema stage profile executes the same original
 workload under its existing standalone observer bounds. Actual source
 `a6df72d80` records 149 markers and 38 completed compile intervals, totaling
@@ -255,6 +263,17 @@ default-off preinit code-cache experiment. It neither completes schema parity
 nor changes the product UI's original 64 MiB cap. Moving compile audit events
 to preinit and using runtime marshal decoding is an explicit behavioral
 difference to evaluate, not audit-equivalence evidence.
+
+The first genuine cache experiment builds successfully but still fuel-traps.
+Its runtime repeatedly walks the complete cache to recalculate retained size.
+The next inactive candidate seals records, payloads and lookup rows as tuples
+of immutable scalars/bytes, discards mutable construction dictionaries, and
+accounts the final graph, report/index and conversion overlap before publishing
+one generation-bound retained total. Runtime checks reuse that total while
+still checking source/payload hashes and flags and creating a fresh marshal
+code graph. A structural mismatch refuses cache execution; it does not omit
+the retained allocation and continue. Actual fuel benefit remains to be
+verified with the unchanged complete comparison and continuous budget.
 
 The full React screens and logical contracts stay intact. Domain-specific
 Setup/readiness/presentation orchestration belongs in Kit/compatibility Pack
