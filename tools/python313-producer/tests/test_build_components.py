@@ -18,6 +18,25 @@ import fetch_validation_tools as validation
 
 
 class ComponentBuildTests(unittest.TestCase):
+    def test_setup_candidate_uses_separate_source_plan_without_changing_originals(self):
+        repo = component_inputs.HERE.parents[1]
+        original_plans = component_inputs.plans(True)
+        previous_path = sys.path[:]
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory).resolve() / 'setup'
+            receipt = component_inputs.stage_harness_setup(repo, output)
+            plan = json.loads((output / 'plan.json').read_bytes())
+            self.assertEqual(len(plan['sources']), 7)
+            self.assertEqual(receipt['files'], inventory(output))
+            self.assertEqual(receipt['plan_sha256'],
+                             hashlib.sha256((output / 'plan.json').read_bytes()).hexdigest())
+            self.assertEqual(plan['outer_exports'], [
+                'tobkiri:core/lifecycle@1.0.0', 'local:harness-setup-python/setup@1.0.0'])
+            with self.assertRaises(FileExistsError):
+                component_inputs.stage_harness_setup(repo, output)
+        self.assertEqual(component_inputs.plans(True), original_plans)
+        self.assertEqual(sys.path, previous_path)
+
     def test_all_current_sources_match_the_three_original_plans(self):
         repo = component_inputs.HERE.parents[1]
         counts = {}

@@ -1,0 +1,14 @@
+package local:harness-setup-python@1.0.0;
+
+interface setup {
+    use tobkiri:core/types@1.0.0.{json, error};
+    decision: func(payload: json) -> result<json, error>;
+    success: func(payload: json) -> result<json, error>;
+    failure: func(payload: json) -> result<json, error>;
+    retired: func(payload: json) -> result<json, error>;
+}
+
+world pack {
+    include tobkiri:core/pack-minimal@1.0.0;
+    export setup;
+}

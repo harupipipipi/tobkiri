@@ -1,0 +1,92 @@
+name: Issue 1520 original Harness Setup Wasm candidate
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-setup-python.yml'
+      - 'packs/local.harness-setup-python/**'
+      - 'scripts/wasm/prepare_harness_setup.py'
+      - 'tests/test_harness_setup.py'
+      - 'tools/python313-producer/build_components.py'
+      - 'tools/python313-producer/component_inputs.py'
+      - 'tools/python313-producer/component_driver.py'
+      - 'tobkiri_runtime/core_runtime/profile_runtime_port.py'
+      - 'tobkiri_runtime/ecosystem/defaultspack/defaultspack/profile_runtime_composition.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: issue-1520-setup-python-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  setup-source-and-build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      PRODUCER_RUN: '39956025119'
+      PRODUCER_HEAD: ae7f83080a36e823ac330342584210243dc38050
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Verify original Setup semantics and isolated source plan
+        run: |
+          python3 -B scripts/wasm/prepare_harness_setup.py --verify
+          python3 -B -m unittest discover -s tests -p test_harness_setup.py
+          python3 -B -m unittest discover -s tools/python313-producer/tests -p test_build_components.py
+      - name: Authenticate the completed producer and its recorded source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" > "$RUNNER_TEMP/producer-run.json"
+          python3 -B - "$RUNNER_TEMP/producer-run.json" "$PRODUCER_HEAD" <<'PY'
+          import json, sys
+          from pathlib import Path
+          run = json.loads(Path(sys.argv[1]).read_bytes())
+          if (run['head_sha'] != sys.argv[2] or run['status'] != 'completed'
+                  or run['conclusion'] != 'success'):
+              raise SystemExit('producer source or completed outcome differs')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: python313-producer-cli
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PRODUCER_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/setup-producer
+      - name: Prepare the existing isolated producer tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          chmod 755 "$RUNNER_TEMP/setup-producer/work/target/release/componentize-py"
+          python3 -B tools/python313-producer/fetch_validation_tools.py \
+            --destination "$RUNNER_TEMP/setup-validation"
+      - name: Build the original Setup methods as an inactive Wasm candidate
+        run: >-
+          python3 -B tools/python313-producer/build_components.py
+          --harness-setup
+          --producer "$RUNNER_TEMP/setup-producer"
+          --validation "$RUNNER_TEMP/setup-validation"
+          --destination "$RUNNER_TEMP/setup-candidate"
+      - name: Retain candidate bytes and bounded build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-harness-setup-wasm-candidate
+          path: |
+            ${{ runner.temp }}/producer-run.json
+            ${{ runner.temp }}/setup-candidate/components-build.json
+            ${{ runner.temp }}/setup-candidate/harness-setup/inputs/plan.json
+            ${{ runner.temp }}/setup-candidate/harness-setup/inputs/source-stage.json
+            ${{ runner.temp }}/setup-candidate/harness-setup/build/
+            ${{ runner.temp }}/setup-candidate/harness-setup/work/component.build.json
+            ${{ runner.temp }}/setup-candidate/harness-setup/work/component.wasm
+          if-no-files-found: warn

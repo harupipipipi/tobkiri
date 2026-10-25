@@ -15,10 +15,12 @@ import runtime_inputs
 
 
 def run(source: Path | None, producer: Path, validation: Path, destination: Path,
-        *, all_five: bool = False) -> None:
+        *, all_five: bool = False, harness_setup: bool = False) -> None:
     """Build each exact original Pack separately with no production activation."""
     if sys.platform != 'linux' or os.environ.get('GITHUB_ACTIONS') != 'true':
         raise ValueError('original component rebuilding is restricted to Linux CI')
+    if all_five and harness_setup:
+        raise ValueError('original five and Setup candidate are separate build scopes')
     if (not destination.is_absolute() or not destination.parent.is_dir()
             or destination.parent.resolve() != destination.parent
             or any(not p.is_absolute() or p.resolve() != p for p in (producer, validation))
@@ -65,7 +67,8 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
     recipe = destination / 'componentize.sh'
     recipe.write_text('set -eu\n/usr/bin/python3 -I -B /driver.py\n')
     identities[str(recipe)] = fingerprint(recipe)
-    receipt = {'format': 'tobkiri.python313-original-components/1', 'outcome': 'pending',
+    receipt = {'format': ('tobkiri.python313-setup-candidate/1' if harness_setup else
+                          'tobkiri.python313-original-components/1'), 'outcome': 'pending',
                'source': source_identity, 'producer': producer_report['binary'],
                'producer_source_verification': ('actual original source tree and successful receipt'
                    if source is not None else 'successful producer and publishing-source receipts; source tree not restored'),
@@ -77,11 +80,12 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                'production_enabled': False, 'historical_binary_identity_claimed': False}
     receipt_path = destination / 'components-build.json'
     try:
-        for name in component_inputs.plans(all_five):
+        for name in (('harness-setup',) if harness_setup else component_inputs.plans(all_five)):
             output = destination / name
             output.mkdir(mode=0o700)
             inputs = output / 'inputs'
-            plan_receipt = component_inputs.stage(repo, name, inputs)
+            plan_receipt = (component_inputs.stage_harness_setup(repo, inputs)
+                            if harness_setup else component_inputs.stage(repo, name, inputs))
             snapshots[str(inputs)] = plan_receipt['files']
             control = output / 'control.json'
             control.write_text(json.dumps({
@@ -130,6 +134,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--source', type=Path)
     parser.add_argument('--all-five', action='store_true')
+    parser.add_argument('--harness-setup', action='store_true')
     for name in ('producer', 'validation', 'destination'):
         parser.add_argument('--' + name, type=Path, required=True)
     run(**vars(parser.parse_args()))

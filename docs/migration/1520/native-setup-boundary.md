@@ -18,6 +18,14 @@ than introducing an unapproved Profile import or new blanket Launch ceremony.
 
 ## Current source facts
 
+- The inactive [original Setup projection candidate](../../../packs/local.harness-setup-python/README.md)
+  retains four complete decision/response methods and the frozen decision
+  invariant as verbatim Python-on-Wasm source. Its source tests compare the
+  complete original application, and its separate CI build uses the existing
+  isolated Python 3.13 producer. This does not migrate listing/catalog checks,
+  establish bootstrap authority, connect configuration IPC or certify a final
+  activation receipt. Original `listing=None` acceptance and intermediate
+  `restart_required:false` remain inert DATA for trusted Host processing.
 - The original React `frontend/src/pages/Setup.tsx` uses the Setup contracts
   through `frontend/src/lib/hostClient.ts` and `apiTransport.ts`. Its install,
   registry, readiness and presentation semantics are not supplied by

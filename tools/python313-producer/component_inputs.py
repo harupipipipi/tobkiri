@@ -128,3 +128,32 @@ def stage(repo: Path, name: str, destination: Path) -> dict:
             for path, data in expected.items()):
         raise ValueError('staged component source changed')
     return {**receipt, 'files': files}
+
+
+def stage_harness_setup(repo: Path, destination: Path) -> dict:
+    """Stage the current inactive Setup candidate without altering frozen plans.
+
+    The original three/five component inventory remains immutable. This explicit
+    candidate uses the same SDK source-plan and isolated producer boundaries.
+    """
+    if repo != HERE.parents[1] or repo.resolve() != repo:
+        raise ValueError('physical current repository required')
+    previous_path = sys.path[:]
+    sys.path.insert(0, str(repo / 'scripts/wasm'))
+    try:
+        module = importlib.import_module('prepare_harness_setup')
+        if (Path(module.__file__).resolve() != repo / 'scripts/wasm/prepare_harness_setup.py'
+                or module.ROOT != repo):
+            raise ValueError('Setup stager belongs to another repository')
+        plan = module.stage(destination)
+    finally:
+        sys.path[:] = previous_path
+    files = inventory(destination)
+    raw = (destination / 'plan.json').read_bytes()
+    if json.loads(raw) != plan:
+        raise ValueError('Setup source plan changed after staging')
+    for item in plan['sources']:
+        if files[item['source']]['sha256'] != item['sha256']:
+            raise ValueError('Setup source changed after staging')
+    return {'plan_sha256': hashlib.sha256(raw).hexdigest(),
+            'source_files': plan['sources'], 'files': files}

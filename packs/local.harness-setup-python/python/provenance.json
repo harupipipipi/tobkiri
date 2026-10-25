@@ -1,0 +1,104 @@
+{
+  "definitions": [
+    {
+      "sha256": "76c28e4d0cd71e1cc3ef1b92b792b61f1f4f052dfbf43d2eead31c0e34da21f0",
+      "source_end_byte": 1641,
+      "source_end_line": 45,
+      "source_path": "tobkiri_runtime/core_runtime/profile_runtime_port.py",
+      "source_start_byte": 853,
+      "source_start_line": 28,
+      "symbol": "SetupActivationDecision"
+    },
+    {
+      "sha256": "088e153eabc0e2bbae60cc4650cbede178e45b846a9502194d515a71c66c3d63",
+      "source_end_byte": 11917,
+      "source_end_line": 304,
+      "source_path": "tobkiri_runtime/ecosystem/defaultspack/defaultspack/profile_runtime_composition.py",
+      "source_start_byte": 9468,
+      "source_start_line": 246,
+      "symbol": "setup_activation_decision"
+    },
+    {
+      "sha256": "d7c570f80e0d594789cd7a65f7e266d0dd409dbf3947c3f2e35bf5eea50654a5",
+      "source_end_byte": 12844,
+      "source_end_line": 325,
+      "source_path": "tobkiri_runtime/ecosystem/defaultspack/defaultspack/profile_runtime_composition.py",
+      "source_start_byte": 11918,
+      "source_start_line": 306,
+      "symbol": "setup_activation_success"
+    },
+    {
+      "sha256": "86df5b9ec2e802596bb78e65b5f3b35bb1b8293be7afb0c830cad08903681a94",
+      "source_end_byte": 13174,
+      "source_end_line": 335,
+      "source_path": "tobkiri_runtime/ecosystem/defaultspack/defaultspack/profile_runtime_composition.py",
+      "source_start_byte": 12845,
+      "source_start_line": 327,
+      "symbol": "setup_activation_failure"
+    },
+    {
+      "sha256": "e35ca4c99377d84eebc7bb6604752059960720785b0e245af1245583204a3bc7",
+      "source_end_byte": 13904,
+      "source_end_line": 358,
+      "source_path": "tobkiri_runtime/ecosystem/defaultspack/defaultspack/profile_runtime_composition.py",
+      "source_start_byte": 13175,
+      "source_start_line": 337,
+      "symbol": "retired_setup_response"
+    }
+  ],
+  "format": "tobkiri.harness-setup-source/1",
+  "generated_module": {
+    "bytes": 5480,
+    "path": "original_setup.py",
+    "sha256": "1b3ee8bbea24e7cf9b1822596eb71f1b336e4e9ead1bd3a225c5afc1c2f42bff"
+  },
+  "method_rewrites": [],
+  "native_setup_integration": false,
+  "production_enabled": false,
+  "scope": "pure decision and response projection only",
+  "sources": [
+    {
+      "bytes": 20020,
+      "path": "tobkiri_runtime/ecosystem/defaultspack/defaultspack/profile_runtime_composition.py",
+      "sha256": "5ec939afa7d655b6590457bac61075acce287ccffff877db826c50ebe92a927c"
+    },
+    {
+      "bytes": 7200,
+      "path": "tobkiri_runtime/core_runtime/profile_runtime_port.py",
+      "sha256": "4eaa3dbc7f63427667fcb284c7e78207852f304b9353cab69ea1ce0ebc423419"
+    }
+  ],
+  "transport_dependencies": [
+    {
+      "bytes": 1839,
+      "path": "packs/local.harness-setup-python/python/app.py",
+      "sha256": "29b404085ae01eefc023761b3d536a828b0f8b7287d4f83bcfdbba0980716b92"
+    },
+    {
+      "bytes": 3271,
+      "path": "packs/local.harness-setup-python/python/setup_adapter.py",
+      "sha256": "3570f708ce7b685af539b9269ab2f7369c7e3664c9ae04f21fdd75c9dcb97ead"
+    },
+    {
+      "bytes": 8961,
+      "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json.py",
+      "sha256": "7df89c2e5275fdc795c13e0d70d6ec69f7f022aa968c58a3c1b1637e0eee2158"
+    },
+    {
+      "bytes": 8184,
+      "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json_v2.py",
+      "sha256": "495b613a37807cf10e831a2332b7f401148d3aaec29ec84c16a22f0a2c05d3a2"
+    },
+    {
+      "bytes": 419,
+      "path": "packs/local.harness-setup-python/wit/pack.wit",
+      "sha256": "c6492586db05ddfe5b0de0d899283774c5fa70c4fb59f8515c27d3e78c57100a"
+    },
+    {
+      "bytes": 5732,
+      "path": "crates/tobkiri-wit/wit/core/core.wit",
+      "sha256": "f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb"
+    }
+  ],
+  "wasm_execution_performed": false
+}
