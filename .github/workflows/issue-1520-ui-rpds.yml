@@ -1,0 +1,107 @@
+name: Issue 1520 UI rpds Wasm dependency probe
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-ui-rpds.yml'
+      - 'tools/python313-producer/fetch_rpds.py'
+      - 'tools/python313-producer/build_rpds.py'
+      - 'tools/python313-producer/archive_inputs.py'
+      - 'tools/python313-producer/rpds_probe/**'
+      - 'tools/python313-producer/tests/test_rpds_*.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: issue-1520-ui-rpds-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  actual-rpds:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      PRODUCER_RUN: '39956025119'
+      PRODUCER_HEAD: ae7f83080a36e823ac330342584210243dc38050
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Check bounded input and candidate contracts
+        run: python3 -B -m unittest discover -s tools/python313-producer/tests -p 'test_rpds_*.py'
+      - name: Authenticate the unchanged saved producer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" > "$RUNNER_TEMP/rpds-producer-run.json"
+          python3 -B - "$RUNNER_TEMP/rpds-producer-run.json" "$PRODUCER_HEAD" <<'PY'
+          import json, sys
+          from pathlib import Path
+          value = json.loads(Path(sys.argv[1]).read_bytes())
+          if (value['head_sha'] != sys.argv[2] or value['status'] != 'completed'
+                  or value['conclusion'] != 'success'):
+              raise SystemExit('saved producer source/outcome differs')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: python313-producer-cli
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PRODUCER_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/rpds-producer
+      - name: Restore pinned source, Rust target, SDK and validation inputs
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          chmod 755 "$RUNNER_TEMP/rpds-producer/work/target/release/componentize-py"
+          python3 -B tools/python313-producer/fetch_rpds.py --destination "$RUNNER_TEMP/rpds-inputs"
+          python3 -B tools/python313-producer/fetch_toolchain.py --destination "$RUNNER_TEMP/rpds-rust"
+          python3 -B - "$RUNNER_TEMP/rpds-sdk" <<'PY'
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, 'tools/python313-producer')
+          from fetch_sdk import acquire
+          acquire(Path(sys.argv[1]))
+          PY
+          python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/rpds-validation"
+      - name: Compile the real limited-ABI extension and execute after preinitialization
+        run: >-
+          python3 -B tools/python313-producer/build_rpds.py
+          --source "$RUNNER_TEMP/rpds-inputs"
+          --rust "$RUNNER_TEMP/rpds-rust"
+          --sdk "$RUNNER_TEMP/rpds-sdk"
+          --producer "$RUNNER_TEMP/rpds-producer"
+          --validation "$RUNNER_TEMP/rpds-validation"
+          --destination "$RUNNER_TEMP/rpds-candidate"
+      - name: Retain closed source, ABI, execution and supervision evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-rpds-candidate-evidence
+          path: |
+            ${{ runner.temp }}/rpds-inputs/rpds-inputs.json
+            ${{ runner.temp }}/rpds-candidate/rpds-build.json
+            ${{ runner.temp }}/rpds-candidate/build/
+            ${{ runner.temp }}/rpds-candidate/probe/
+            ${{ runner.temp }}/rpds-candidate/work/probe.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Retain the inactive candidate for subsequent CI-only integration
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-rpds-inactive-component
+          path: |
+            ${{ runner.temp }}/rpds-candidate/work/stage/outer.wasm
+            ${{ runner.temp }}/rpds-candidate/work/stage/rpds.abi3.so
+            ${{ runner.temp }}/rpds-candidate/work/probe.json
+            ${{ runner.temp }}/rpds-candidate/rpds-build.json
+          if-no-files-found: error
+          retention-days: 14

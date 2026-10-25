@@ -308,3 +308,41 @@ linking, dynamic-loader compatibility, module availability, runtime authority
 enforcement, guest tests, or component output. Consult the separately bound trial
 records above for subsequent evidence rather than treating the source review as
 execution proof or general runtime acceptance.
+
+## UI-local rpds dependency candidate
+
+`issue-1520-ui-rpds.yml` builds a separate, inactive dependency experiment for
+the existing Setup UI calculation. It restores the unchanged saved producer
+from run `39956025119` / source `ae7f83080a36e823ac330342584210243dc38050`.
+`fetch_rpds.py` pins rpds-py 2026.6.3 at
+`7277eb681f6efd67eca1bbaa32f78d78bdc044a5`, its exact Cargo manifest/lock,
+and all eighteen registry dependencies. `build_rpds.py` derives expanded input
+inventories from the pinned archives and invokes the original supervised,
+network-isolated CI namespace with a read-only configuration directory.
+
+The candidate targets `wasm32-wasip2` with PyO3's `abi3-py313` feature. A build
+must provide real limited-API evidence, core-Wasm dynamic-link metadata,
+`PyInit_rpds`, and imported memory/table types before the library is staged as
+`rpds.abi3.so`. A version-specific native binary is never renamed to satisfy
+discovery. The Python probe imports the extension during preinitialization,
+then exercises immutable map/set operations through its actual exported
+operation after snapshotting. The unchanged SDK WAC helper hides the producer's
+private initializer; the executed outer component must have no imports and
+exactly the declared probe interface. Original limits and `post_return` cleanup
+remain required.
+
+Run the small offline regressions without compiling or executing any guest:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python -B -m unittest discover \
+  -s tools/python313-producer/tests -p 'test_rpds_*.py'
+```
+
+The full build/import/run is CI-only. Source tests and build flags do not prove
+extension compatibility; inspect the actual CI source, ABI, supervision and
+post-snapshot observation receipts. The saved-producer artifact retains its
+separate authenticated-run receipt contract. This component has no Profile,
+Session, Host I/O, port or approval authority. It does not establish browser
+worker hosting, native capture custody/resource enforcement, complete jsonschema
+dependencies, full Setup/GUI parity or product activation. Those remain required
+before switching the original Launcher flow.
