@@ -99,18 +99,23 @@ def test_package_shards_preserve_coverage_and_timeout_evidence() -> None:
     workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
     job = _job_blocks(workflow)["tobkiri-package-pytest"]
     assert 'python-version: ["3.10", "3.11", "3.13"]' in job
-    assert "shard: [capture-lifecycle, capture-guards, migration-providers]" in job
+    assert (
+        "shard: [capture-lifecycle, capture-guards, "
+        "capture-persistence-guards, migration-providers]"
+    ) in job
     assert "fail-fast: false" in job
     assert "timeout-minutes: 15" in job
     lifecycle = job.split("capture-lifecycle)", 1)[1].split(";;", 1)[0]
     guards = job.split("capture-guards)", 1)[1].split(";;", 1)[0]
+    persistence = job.split("capture-persistence-guards)", 1)[1].split(";;", 1)[0]
     selector_pattern = r"tests/test_pack_control_v4\.py::(test_[a-z0-9_]+)"
     lifecycle_names = re.findall(selector_pattern, lifecycle)
     guard_names = re.findall(selector_pattern, guards)
-    allocated = lifecycle_names + guard_names
+    persistence_names = re.findall(selector_pattern, persistence)
+    allocated = lifecycle_names + guard_names + persistence_names
     source = ROOT / "tobkiri_runtime/tests/test_pack_control_v4.py"
     discovered = _capture_test_functions(source.read_text(encoding="utf-8"))
-    assert lifecycle_names and guard_names
+    assert lifecycle_names and guard_names and persistence_names
     assert len(allocated) == len(set(allocated)), "Capture cases must run once per Python"
     assert set(allocated) == discovered, (
         "Allocate every capture test explicitly; missing="
@@ -118,7 +123,9 @@ def test_package_shards_preserve_coverage_and_timeout_evidence() -> None:
         f"{sorted(set(allocated) - discovered)}"
     )
     # Function selectors deliberately include every parametrized case.
-    for shard, selectors in ((lifecycle, lifecycle_names), (guards, guard_names)):
+    for shard, selectors in (
+        (lifecycle, lifecycle_names), (guards, guard_names), (persistence, persistence_names)
+    ):
         assert shard.count("tests/test_pack_control_v4.py") == len(selectors)
         assert "[" not in shard and "-k" not in shard and "-m " not in shard
     second = job.split("migration-providers)", 1)[1].split(";;", 1)[0]

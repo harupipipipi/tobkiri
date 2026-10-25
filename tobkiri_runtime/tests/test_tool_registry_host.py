@@ -293,8 +293,11 @@ def test_registry_uses_real_broker_profile_grants_and_rejects_undeclared_write(
         root = tmp_path / "user-data" / "packs" / host.PACK_ID
         listed = invoke(read_contract, read_operation, {"operation": "list"})
         assert listed["profile_id"] == "defaults"
+        original_ids = {item["tool_id"] for item in listed["definitions"]}
         assert len(listed["definitions"]) == 119 + len(DEFAULT_TOOL_IDS)
+        assert len(original_ids) == len(listed["definitions"])
         assert DEFAULT_TOOL_IDS <= {item["tool_id"] for item in listed["definitions"]}
+        assert "sample.read" not in original_ids
         assert {"chat_list_targets", "chat_resolve_target", "chat_send_message"} <= {
             item["tool_id"] for item in listed["definitions"]
         }
@@ -336,7 +339,10 @@ def test_registry_uses_real_broker_profile_grants_and_rejects_undeclared_write(
         with pytest.raises(ProviderExecutionError):
             invoke(write_contract, write_operation, request)
         listed = invoke(read_contract, read_operation, {"operation": "list"})
-        assert listed["revision"] == 1 and len(listed["definitions"]) == 153
+        saved_ids = {item["tool_id"] for item in listed["definitions"]}
+        assert listed["revision"] == 1
+        assert len(saved_ids) == len(listed["definitions"]) == len(original_ids) + 1
+        assert saved_ids == original_ids | {"sample.read"}
         stored_path = root / "profiles/defaults/tool-definitions.json"
         before = stored_path.read_bytes()
         with pytest.raises(ProviderExecutionError):

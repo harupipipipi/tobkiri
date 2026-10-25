@@ -725,7 +725,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.13"]
-        shard: [capture-lifecycle, capture-guards, migration-providers]
+        shard: [capture-lifecycle, capture-guards, capture-persistence-guards, migration-providers]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -781,6 +781,10 @@ jobs:
                 tests/test_pack_control_v4.py::test_approval_is_session_bound_one_shot_and_not_implicit
                 tests/test_pack_control_v4.py::test_never_approved_revoke_is_unapproved_not_unavailable
                 tests/test_pack_control_v4.py::test_corrupt_approval_revoke_remains_unavailable
+              )
+              ;;
+            capture-persistence-guards)
+              tests=(
                 tests/test_pack_control_v4.py::test_revoke_persists_audit_and_rejects_revision_replay_after_restart
                 tests/test_pack_control_v4.py::test_revoke_audit_failure_rolls_back_and_leaves_approval_usable
                 tests/test_pack_control_v4.py::test_unknown_and_traversal_pack_ids_fail_closed
