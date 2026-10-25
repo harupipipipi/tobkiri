@@ -22,6 +22,7 @@ from poll_comparison_inputs import (
     verify_bundle,
 )
 from poll_link_trace import compare_traces, read_trace
+from poll_bytecode_outputs import inspect_outputs
 from poll_reference_results import compare
 import runtime_inputs
 
@@ -82,6 +83,7 @@ def run(
             "poll_reference_driver.py",
             "poll_reference_results.py",
             "poll_link_trace.py",
+            "poll_bytecode_outputs.py",
         )
     }
     pin_identity = fingerprint(PIN_PATH, 4 * 1024 * 1024)
@@ -157,6 +159,7 @@ def run(
                     (HERE / "poll_reference_driver.py", "/reference-driver.py"),
                     (HERE / "poll_reference_results.py", "/poll_reference_results.py"),
                     (HERE / "poll_link_trace.py", "/poll_link_trace.py"),
+                    (HERE / "poll_bytecode_outputs.py", "/poll_bytecode_outputs.py"),
                     (work / "empty-venv", "/empty-venv"),
                 ),
                 address_space_bytes=8 * GIB,
@@ -167,6 +170,12 @@ def run(
                 "ui-poll-reference-" + variant, command, work, stage / "execution"
             )
             actual = runtime_inputs.report(work / "reference.json")
+            cache_outputs = inspect_outputs(
+                work / "stage",
+                actual["stage_inputs"],
+                actual["stage_after"],
+                require_native_hash=True,
+            )
             component = work / "stage/component.wasm"
             trace = read_trace(work / "link-trace", pins["files"][HELPER], component)
             if (
@@ -209,6 +218,7 @@ def run(
             observed.update(
                 outcome="success",
                 reference=actual,
+                verified_cache_outputs=cache_outputs,
                 reference_receipt=fingerprint(work / "reference.json"),
             )
         a, b = (report["variants"][name]["reference"] for name in PREFIXES)

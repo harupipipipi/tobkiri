@@ -181,6 +181,7 @@ def observe(component_path: Path) -> dict:
 
 def run() -> None:
     """Keep one variant's preparation, actual trace and invocation independent."""
+    from poll_bytecode_outputs import CACHES, inspect_outputs
     from poll_link_trace import FILE_LIMIT, HELPER_NAME, fingerprint, read_trace
 
     if sys.platform != "linux":
@@ -244,6 +245,8 @@ def run() -> None:
         )
         require_captured_stage(stage, control)
         before = stage_inventory(stage)
+        report["stage_inputs"] = before
+        (work / "stage-before.json").write_text(json.dumps(before, indent=2) + "\n")
         subprocess.run(
             [*command, "componentize", "app", "-o", "component.wasm"],
             cwd=stage,
@@ -253,10 +256,25 @@ def run() -> None:
         )
         report["componentization"] = True
         require_captured_stage(stage, control)
-        if stage_inventory(stage, exclude_component=True) != before:
-            raise ValueError("probe/helper/generated bindings changed during preinit")
+        after = stage_inventory(stage, exclude_component=True)
+        (work / "stage-after.json").write_text(json.dumps(after, indent=2) + "\n")
+        report["stage_after"] = after
+        headers = {}
+        for cache, source_name in CACHES.items():
+            if cache in after and source_name in before:
+                with (stage / cache).open("rb") as stream:
+                    header = stream.read(16)
+                headers[cache] = {
+                    "header_hex": header.hex(),
+                    "source": source_name,
+                    "source_mtime_seconds": int((stage / source_name).stat().st_mtime),
+                    "source_bytes": before[source_name]["bytes"],
+                }
+        (work / "bytecode-headers.json").write_text(
+            json.dumps(headers, indent=2) + "\n"
+        )
+        report["generated_cache_outputs"] = inspect_outputs(stage, before, after)
         component = stage / "component.wasm"
-        report["stage_inputs"] = before
         report["trace"] = read_trace(work / "link-trace", control["helper"], component)
         report["observation"] = observe(component)
         report["guest_execution"] = True

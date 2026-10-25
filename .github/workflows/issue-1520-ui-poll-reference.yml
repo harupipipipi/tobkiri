@@ -8,6 +8,7 @@ on:
       - 'tools/python313-producer/build_ui_poll_comparison.py'
       - 'tools/python313-producer/poll_comparison_inputs.py'
       - 'tools/python313-producer/poll_link_trace.py'
+      - 'tools/python313-producer/poll_bytecode_outputs.py'
       - 'tools/python313-producer/poll_reference_driver.py'
       - 'tools/python313-producer/poll_reference_results.py'
       - 'tools/python313-producer/empty-poll-comparison-inputs.json'
@@ -114,12 +115,18 @@ jobs:
             ${{ runner.temp }}/poll-comparison/original/execution/
             ${{ runner.temp }}/poll-comparison/original/work/reference.json
             ${{ runner.temp }}/poll-comparison/original/work/stage-file-shapes.json
+            ${{ runner.temp }}/poll-comparison/original/work/stage-before.json
+            ${{ runner.temp }}/poll-comparison/original/work/stage-after.json
+            ${{ runner.temp }}/poll-comparison/original/work/bytecode-headers.json
             ${{ runner.temp }}/poll-comparison/original/work/link-trace/libraries.tsv
             ${{ runner.temp }}/poll-comparison/original/work/link-trace/complete.tsv
             ${{ runner.temp }}/poll-comparison/candidate/control.json
             ${{ runner.temp }}/poll-comparison/candidate/execution/
             ${{ runner.temp }}/poll-comparison/candidate/work/reference.json
             ${{ runner.temp }}/poll-comparison/candidate/work/stage-file-shapes.json
+            ${{ runner.temp }}/poll-comparison/candidate/work/stage-before.json
+            ${{ runner.temp }}/poll-comparison/candidate/work/stage-after.json
+            ${{ runner.temp }}/poll-comparison/candidate/work/bytecode-headers.json
             ${{ runner.temp }}/poll-comparison/candidate/work/link-trace/libraries.tsv
             ${{ runner.temp }}/poll-comparison/candidate/work/link-trace/complete.tsv
           if-no-files-found: warn
