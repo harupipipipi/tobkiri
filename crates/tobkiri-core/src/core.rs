@@ -318,12 +318,36 @@ impl Core {
     /// Validate conflicts and obtain all required native approvals before
     /// installing any of this save's permission effects. A refusal during
     /// preparation leaves earlier approvals unapplied. Permission-effect commit
-    /// and head/epoch commit still need a coordinated durable transaction;
-    /// an error after mutation does not establish rollback.
+    /// and head/epoch commit use the coordinated durable Store decision;
+    /// an error after that decision does not establish rollback.
     pub async fn save_profile(
         &self,
         profile: Profile,
         expected: Option<Digest>,
+    ) -> Result<Digest, CoreError> {
+        self.save_profile_bound(profile, expected, None).await
+    }
+
+    /// Save only against the authority epoch shown in an existing native review.
+    /// This precondition is data, not approval or a final activation receipt.
+    /// Ordinary native permission preparation and durable commit still apply.
+    /// A caller must also bind the candidate and expected head to that review;
+    /// this method does not certify an application-specific confirmation.
+    pub async fn save_profile_at_epoch(
+        &self,
+        profile: Profile,
+        expected: Option<Digest>,
+        expected_epoch: u64,
+    ) -> Result<Digest, CoreError> {
+        self.save_profile_bound(profile, expected, Some(expected_epoch))
+            .await
+    }
+
+    async fn save_profile_bound(
+        &self,
+        profile: Profile,
+        expected: Option<Digest>,
+        expected_epoch: Option<u64>,
     ) -> Result<Digest, CoreError> {
         self.ensure_admission(&profile.id).await?;
         let current = self.profiles.head(&profile.id)?;
@@ -345,6 +369,11 @@ impl Core {
         let cx = self
             .user_context(&profile, &gate)?
             .with_revision(compiled.plan_digest.clone());
+        if expected_epoch.is_some_and(|epoch| epoch != cx.security_epoch()) {
+            return Err(CoreError::Invalid(
+                "Profile authority changed; reload before applying the edit".into(),
+            ));
+        }
         let old = old_hashes(previous.as_ref());
         // Admit the complete retention array before constructing it. Each
         // preparation separately retains its original reservation and the

@@ -58,6 +58,12 @@ than introducing an unapproved Profile import or new blanket Launch ceremony.
   add/remove Pack, permission approval and secret storage. `save_profile`
   performs source verification/compilation, actual native approvals, and
   head/security-epoch CAS. These operations must retain their existing meaning.
+- `Core::save_profile_at_epoch` additionally binds a save to the security epoch
+  shown in a prior native review. It checks the original `CallCx` before prompts;
+  existing reservation and atomic Store checks retain that epoch across awaits.
+  A same-head ABA cannot revive a stale review. This is only a freshness
+  precondition: the caller still must bind the exact candidate/review and use
+  ordinary native approvals. It does not certify the complete v4 confirmation.
 - The legacy signed Shell handoff authenticates its own frozen catalog,
   artifact, entry and execution bindings. It is not evidence that the new
   Rust Core has admitted an ordinary bootstrap Profile.
