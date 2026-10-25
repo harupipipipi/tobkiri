@@ -25,6 +25,7 @@ mod handles;
 mod host;
 mod imports;
 mod instance_capacity;
+mod native_allocation;
 mod native_preparation;
 mod native_setup_store;
 pub use native_setup_store::NativeSetupStore;

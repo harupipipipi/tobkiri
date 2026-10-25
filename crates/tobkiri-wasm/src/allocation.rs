@@ -27,17 +27,38 @@ const MAX_CUSTODY: usize = 8;
 static CUSTODY_PROCESS: AtomicU32 = AtomicU32::new(0);
 static CUSTODY: Mutex<[Option<Custody>; MAX_CUSTODY]> = Mutex::new([const { None }; MAX_CUSTODY]);
 
+// All test factories share this finite process registry. Serialize test
+// lifetimes, including async native Stores, rather than changing its bounds.
+#[cfg(test)]
+pub(crate) static TEST_CUSTODY: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+pub(crate) trait CustodyOwner: Send + Sync {}
+enum CustodyCapacity {
+    Pack(CapacityReservation),
+    Native(tobkiri_gate::NativeSetupReservation),
+}
+impl CustodyCapacity {
+    fn release(self) {
+        match self {
+            Self::Pack(value) => drop(value),
+            Self::Native(value) => drop(value),
+        }
+    }
+}
+
 struct Custody {
-    owner: Option<Arc<PackAllocationBudget>>,
+    owner: Option<Arc<dyn CustodyOwner>>,
     // External to the adapter payload: its charge survives final payload AND
     // control-block deallocation, including the inline accounting token itself.
-    capacity: Option<CapacityReservation>,
+    capacity: Option<CustodyCapacity>,
     control: Option<ControlReservation>,
 }
 impl Drop for Custody {
     fn drop(&mut self) {
         drop(self.owner.take());
-        drop(self.capacity.take());
+        if let Some(capacity) = self.capacity.take() {
+            capacity.release();
+        }
         drop(self.control.take());
     }
 }
@@ -53,9 +74,11 @@ fn reap_locked(slots: &mut [Option<Custody>; MAX_CUSTODY]) -> usize {
     let mut freed = 0;
     for slot in slots {
         let idle = slot
-            .as_ref()
-            .and_then(|custody| custody.owner.as_ref())
-            .is_some_and(|owner| Arc::strong_count(owner) == 1 && Arc::weak_count(owner) == 0);
+            .as_mut()
+            .and_then(|custody| custody.owner.as_mut())
+            // One synchronized uniqueness check: separate strong/weak loads
+            // race a Weak upgrade followed by the last Weak's destruction.
+            .is_some_and(|owner| Arc::get_mut(owner).is_some());
         if idle {
             drop(slot.take());
             freed += 1;
@@ -87,6 +110,52 @@ pub(crate) struct PackAllocationBudget {
     capacity: CapacityReservation,
     state: Mutex<AllocationState>,
     failure: Arc<AtomicU8>,
+}
+impl CustodyOwner for PackAllocationBudget {}
+
+/// Build one native codec owner only inside the single-use Store constructor.
+/// No separate registry, synthetic Gate frame or public budget factory exists.
+pub(crate) fn native_owners(
+    invocation: &tobkiri_gate::NativeSetupInvocation,
+    deadline: std::time::Instant,
+    cancel: &tobkiri_gate::CoreCancellation,
+    retirement: &tokio_util::sync::CancellationToken,
+    work: u64,
+) -> anyhow::Result<ValueOwners> {
+    check_custody_process()?;
+    let control = invocation
+        .control()
+        .reserve(ControlKind::Frame, ADAPTER_CAPACITY)?;
+    let capacity = invocation.reserve(CapacityKind::AbiMarshal, 0)?;
+    if size_of::<crate::native_allocation::NativeAllocationBudget>() + 1024
+        > ADAPTER_CAPACITY as usize
+    {
+        anyhow::bail!("native allocation adapter exceeds its prepaid storage bound");
+    }
+    let mut slots = CUSTODY
+        .lock()
+        .map_err(|_| anyhow::anyhow!("allocation custody poisoned"))?;
+    reap_locked(&mut slots);
+    let slot = slots
+        .iter_mut()
+        .find(|slot| slot.is_none())
+        .ok_or(tobkiri_gate::GateError::Unavailable)?;
+    // Reserve both metadata and a slot BEFORE allocating/publishing any Arc.
+    let owner = Arc::new(crate::native_allocation::NativeAllocationBudget::new(
+        capacity.clone(),
+        deadline,
+        cancel.clone(),
+        retirement.clone(),
+        work,
+    ));
+    let graph = owner.clone() as Arc<dyn AllocationBudget>;
+    let component = owner.clone() as Arc<dyn HostAllocationBudget>;
+    *slot = Some(Custody {
+        owner: Some(owner),
+        capacity: Some(CustodyCapacity::Native(capacity)),
+        control: Some(control),
+    });
+    Ok(ValueOwners::from_budgets(graph, component))
 }
 enum Funding {
     Frame(AllocationFrameScope),
@@ -252,7 +321,7 @@ impl PackAllocationBudget {
         let component = owner.clone() as Arc<dyn HostAllocationBudget>;
         *slot = Some(Custody {
             owner: Some(owner),
-            capacity: Some(capacity),
+            capacity: Some(CustodyCapacity::Pack(capacity)),
             control: Some(control),
         });
         Ok(ValueOwners {
@@ -396,7 +465,6 @@ mod tests {
         ids::{PackHash, PackId, ProfileId, RequestId},
     };
     use tobkiri_gate::{EffectRequest, Grant, GrantId, Outcome, Principal, ResourceLimits};
-    static TEST_CUSTODY: Mutex<()> = Mutex::new(());
     struct FundedTestGate;
     #[async_trait::async_trait]
     impl Gate for FundedTestGate {
@@ -463,9 +531,9 @@ mod tests {
         tobkiri_store::DataRoot::open(directory.path().canonicalize().unwrap().join("data"))
             .unwrap()
     }
-    #[test]
-    fn opaque_value_and_final_owner_control_block_stay_charged_until_actual_reap() {
-        let _serial = TEST_CUSTODY.lock().unwrap();
+    #[tokio::test]
+    async fn opaque_value_and_final_owner_control_block_stay_charged_until_actual_reap() {
+        let _serial = TEST_CUSTODY.lock().await;
         let directory = tempfile::tempdir().unwrap();
         let root = private_root(&directory);
         let ledger = tobkiri_gate::CapacityLedger::new();
@@ -497,9 +565,9 @@ mod tests {
         assert_eq!(ledger.snapshot(&owner).unwrap().charged_bytes, 0);
         assert_eq!(cx.control().usage().count(ControlKind::Frame), 0);
     }
-    #[test]
-    fn private_weak_reference_cannot_refund_an_undeallocated_control_block() {
-        let _serial = TEST_CUSTODY.lock().unwrap();
+    #[tokio::test]
+    async fn private_weak_reference_cannot_refund_an_undeallocated_control_block() {
+        let _serial = TEST_CUSTODY.lock().await;
         let directory = tempfile::tempdir().unwrap();
         let root = private_root(&directory);
         let ledger = tobkiri_gate::CapacityLedger::new();
@@ -521,10 +589,8 @@ mod tests {
                 .iter()
                 .flatten()
                 .find(|entry| {
-                    entry
-                        .capacity
-                        .as_ref()
-                        .is_some_and(|lease| lease.owner() == &identity)
+                    matches!(entry.capacity.as_ref(),
+                        Some(CustodyCapacity::Pack(lease)) if lease.owner() == &identity)
                 })
                 .unwrap();
             Arc::downgrade(custody.owner.as_ref().unwrap())
@@ -537,9 +603,9 @@ mod tests {
         reap_custody().unwrap();
         assert_eq!(ledger.snapshot(&identity).unwrap().charged_bytes, 0);
     }
-    #[test]
-    fn concurrent_last_reference_release_and_factory_reap_preserve_live_charge() {
-        let _serial = TEST_CUSTODY.lock().unwrap();
+    #[tokio::test]
+    async fn concurrent_last_reference_release_and_factory_reap_preserve_live_charge() {
+        let _serial = TEST_CUSTODY.lock().await;
         let directory = tempfile::tempdir().unwrap();
         let root = Arc::new(private_root(&directory));
         let ledger = tobkiri_gate::CapacityLedger::new();
@@ -585,9 +651,9 @@ mod tests {
         reap_custody().unwrap();
         assert_eq!(ledger.snapshot(&identity).unwrap().charged_bytes, 0);
     }
-    #[test]
-    fn fixed_custody_exhaustion_denies_and_only_real_last_drop_recovers() {
-        let _serial = TEST_CUSTODY.lock().unwrap();
+    #[tokio::test]
+    async fn fixed_custody_exhaustion_denies_and_only_real_last_drop_recovers() {
+        let _serial = TEST_CUSTODY.lock().await;
         let directory = tempfile::tempdir().unwrap();
         let root = private_root(&directory);
         let ledger = tobkiri_gate::CapacityLedger::new();

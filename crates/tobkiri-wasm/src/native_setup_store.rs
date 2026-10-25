@@ -101,6 +101,7 @@ impl Drop for PhysicalOwner {
 
 struct NativeState<T> {
     data: T,
+    owners: crate::AllocationOwners,
     limits: AggregateLimits,
     deadline: Instant,
     cancel: CoreCancellation,
@@ -109,8 +110,9 @@ struct NativeState<T> {
 }
 
 /// Native-only prototype Store custody. It exposes no linker/import surface or
-/// raw Store extraction. Owned input/output adapters and the actual UI runner
-/// still need connection; constructing this value does not authorize an effect.
+/// raw Store extraction. Codecs share one retained allocation owner; capture,
+/// entry IO and the actual UI runner still need connection. Construction does
+/// not authorize an effect.
 pub struct NativeSetupStore<T: 'static> {
     store: Option<Store<NativeState<T>>>,
     physical: Option<PhysicalOwner>,
@@ -141,8 +143,12 @@ impl WasmEngine {
             .control()
             .reserve(ControlKind::Frame, STORE_STRUCTURE_CONTROL_BYTES)?;
         let cancel = CoreCancellation::new_with_control(invocation.control())?;
+        let retirement = tokio_util::sync::CancellationToken::new();
+        let owners =
+            crate::allocation::native_owners(&invocation, deadline, &cancel, &retirement, FUEL)?;
         let state = NativeState {
             data,
+            owners,
             limits: AggregateLimits {
                 memory_cap: usize::try_from(NATIVE_SETUP_MEMORY_BYTES)?,
                 table_cap: TABLE_ELEMENTS,
@@ -157,7 +163,7 @@ impl WasmEngine {
             deadline,
             cancel,
             cancel_observed: None,
-            retirement: tokio_util::sync::CancellationToken::new(),
+            retirement,
         };
         let mut store = Store::new(self.engine(), state);
         let retained = physical.physical();
@@ -186,6 +192,15 @@ impl WasmEngine {
     }
 }
 impl<T: 'static> NativeSetupStore<T> {
+    /// Borrow the single original codec owner; clones share its work/capacity.
+    pub fn allocation_owners(&self) -> &crate::AllocationOwners {
+        &self
+            .store
+            .as_ref()
+            .expect("live native Store")
+            .data()
+            .owners
+    }
     pub fn data(&self) -> &T {
         &self.store.as_ref().expect("live native Store").data().data
     }
@@ -219,7 +234,9 @@ impl<T: 'static> NativeSetupStore<T> {
 }
 impl<T: 'static> Drop for NativeSetupStore<T> {
     fn drop(&mut self) {
+        self.retire();
         drop(self.store.take());
         drop(self.physical.take());
+        let _ = crate::allocation::reap_custody();
     }
 }

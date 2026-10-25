@@ -106,7 +106,7 @@ jobs:
       - name: Native Setup Store capacity and lifetime regressions
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/portable-native-setup-store.log" --expected-passed 7 --
+          --log "$RUNNER_TEMP/portable-native-setup-store.log" --expected-passed 11 --
           cargo test --locked -p tobkiri-wasm --lib native_setup_store::tests
       - name: Authenticated shared module source and import regressions
         run: >-

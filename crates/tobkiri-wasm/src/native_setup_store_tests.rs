@@ -42,6 +42,7 @@ impl Drop for ObserveDrop {
 
 #[tokio::test]
 async fn actual_guest_memory_remains_charged_through_store_data_destruction() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
     let (account, invocation) = funding();
     let engine = WasmEngine::new_with_control(invocation.control()).unwrap();
     let observed = Arc::new(AtomicU64::new(0));
@@ -74,6 +75,7 @@ async fn actual_guest_memory_remains_charged_through_store_data_destruction() {
 
 #[tokio::test]
 async fn shared_host_reservation_and_stack_deny_real_guest_growth_before_allocation() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
     let (account, invocation) = funding();
     let engine = WasmEngine::new_with_control(invocation.control()).unwrap();
     let mut owned = engine.native_setup_store(invocation.clone(), ()).unwrap();
@@ -107,6 +109,7 @@ async fn shared_host_reservation_and_stack_deny_real_guest_growth_before_allocat
 
 #[tokio::test]
 async fn calls_keep_original_deadline_and_spent_fuel_then_retire_without_refund() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
     let (account, invocation) = funding();
     let expected_deadline = invocation.started_at() + MAX_WALL;
     let engine = WasmEngine::new_with_control(invocation.control()).unwrap();
@@ -153,6 +156,7 @@ async fn calls_keep_original_deadline_and_spent_fuel_then_retire_without_refund(
 
 #[tokio::test]
 async fn another_engine_account_or_exhausted_root_cannot_construct_a_store() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
     let (account, invocation) = funding();
     let unrelated = CoreControl::default();
     let wrong_engine = WasmEngine::new_with_control(&unrelated).unwrap();
@@ -179,6 +183,7 @@ async fn another_engine_account_or_exhausted_root_cannot_construct_a_store() {
 
 #[tokio::test]
 async fn preadmission_memory_type_rejection_cannot_refund_live_memory() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
     let (account, invocation) = funding();
     let engine = WasmEngine::new_with_control(invocation.control()).unwrap();
     let mut owned = engine.native_setup_store(invocation, ()).unwrap();
@@ -208,6 +213,7 @@ async fn preadmission_memory_type_rejection_cannot_refund_live_memory() {
 
 #[tokio::test]
 async fn preadmission_table_overflow_cannot_refund_live_elements() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
     let (account, invocation) = funding();
     let engine = WasmEngine::new_with_control(invocation.control()).unwrap();
     let mut owned = engine.native_setup_store(invocation, ()).unwrap();
@@ -276,6 +282,7 @@ impl ResourceLimiter for MaximumFailureProbe {
 
 #[tokio::test]
 async fn admitted_maximum_failure_refunds_only_that_attempts_memory_or_table_delta() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
     let (account, invocation) = funding();
     let engine = WasmEngine::new_with_control(invocation.control()).unwrap();
     let physical = PhysicalOwner::new(&invocation).unwrap();
@@ -337,4 +344,177 @@ async fn admitted_maximum_failure_refunds_only_that_attempts_memory_or_table_del
     assert!(account.snapshot().unwrap().charged_bytes > 0);
     drop(physical);
     assert_eq!(account.snapshot().unwrap().charged_bytes, 0);
+}
+
+#[tokio::test]
+async fn actual_graph_and_component_copies_remain_charged_after_store_destruction() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
+    let (account, invocation) = funding();
+    let engine = WasmEngine::new_with_control(invocation.control()).unwrap();
+    let owned = engine.native_setup_store(invocation, ()).unwrap();
+    let owners = owned.allocation_owners().clone();
+    let graph = tobkiri_canon::CoreValue::string("retained graph", owners.graph()).unwrap();
+    let graph_bytes = account.snapshot().unwrap().charged_bytes - WASM_STACK_BYTES;
+    assert!(graph_bytes > 0);
+    let shared = graph.clone();
+    assert_eq!(
+        account.snapshot().unwrap().charged_bytes,
+        WASM_STACK_BYTES + graph_bytes
+    );
+    let component = wasmtime::component::BudgetedString::copy_from(
+        "retained component copy",
+        owners.component(),
+        0,
+    )
+    .unwrap();
+    let both_bytes = account.snapshot().unwrap().charged_bytes - WASM_STACK_BYTES;
+    assert!(both_bytes > graph_bytes);
+    drop(owned);
+    assert_eq!(account.snapshot().unwrap().charged_bytes, both_bytes);
+    assert!(tobkiri_canon::CoreValue::string("after retirement", owners.graph()).is_err());
+    drop(graph);
+    assert_eq!(account.snapshot().unwrap().charged_bytes, both_bytes);
+    drop(component);
+    assert_eq!(account.snapshot().unwrap().charged_bytes, graph_bytes);
+    drop(shared);
+    assert_eq!(account.snapshot().unwrap().charged_bytes, 0);
+    drop(owners);
+    crate::reap_allocation_owners().unwrap();
+}
+
+#[tokio::test]
+async fn graph_and_component_share_checked_depth_bytes_and_irrevocable_host_work() {
+    use tobkiri_canon::{AllocationError, AllocationKind, AllocationRequest, MAX_DEPTH};
+    use wasmtime::component::{HostAllocationError, HostAllocationKind, HostAllocationRequest};
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
+    let (account, invocation) = funding();
+    let engine = WasmEngine::new_with_control(invocation.control()).unwrap();
+    let owned = engine.native_setup_store(invocation, ()).unwrap();
+    let owners = owned.allocation_owners();
+    let request = AllocationRequest {
+        kind: AllocationKind::Temporary,
+        bytes: 0,
+        elements: 0,
+        depth: 0,
+        work: 0,
+    };
+    assert_eq!(
+        owners.graph().reserve(AllocationRequest {
+            depth: MAX_DEPTH as u32 + 1,
+            ..request
+        }),
+        Err(AllocationError::Depth)
+    );
+    // These are preallocation-admission checks, not actual buffer allocations.
+    owners
+        .graph()
+        .reserve(AllocationRequest {
+            bytes: 1,
+            ..request
+        })
+        .unwrap();
+    assert_eq!(
+        owners.graph().reserve(AllocationRequest {
+            bytes: u64::MAX,
+            ..request
+        }),
+        Err(AllocationError::Overflow)
+    );
+    assert_eq!(
+        account.snapshot().unwrap().charged_bytes,
+        WASM_STACK_BYTES + 1
+    );
+    owners
+        .component()
+        .reserve(HostAllocationRequest {
+            kind: HostAllocationKind::Temporary,
+            bytes: 0,
+            elements: 0,
+            depth: 0,
+            work: FUEL,
+        })
+        .unwrap();
+    owners.graph().release(1);
+    assert_eq!(account.snapshot().unwrap().charged_bytes, WASM_STACK_BYTES);
+    assert_eq!(
+        owners
+            .graph()
+            .clone()
+            .reserve(AllocationRequest { work: 1, ..request }),
+        Err(AllocationError::Limit)
+    );
+    assert_eq!(
+        owners.component().reserve(HostAllocationRequest {
+            kind: HostAllocationKind::Temporary,
+            bytes: 0,
+            elements: 1,
+            depth: 0,
+            work: 0,
+        }),
+        Err(HostAllocationError::Limit)
+    );
+    assert_eq!(owned.fuel_remaining().unwrap(), FUEL);
+    drop(owned);
+    assert_eq!(account.snapshot().unwrap().charged_bytes, 0);
+}
+
+#[tokio::test]
+async fn codec_admission_honors_expiry_and_cancellation_but_allows_real_cleanup() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
+    let (account, invocation) = funding();
+    let cancel = CoreCancellation::new_with_control(invocation.control()).unwrap();
+    let retirement = tokio_util::sync::CancellationToken::new();
+    // A test-only already-expired deadline exercises admission, without sleep
+    // or changing the production constructor's fixed original 30-second limit.
+    let expired = crate::allocation::native_owners(
+        &invocation,
+        Instant::now() - Duration::from_secs(1),
+        &cancel,
+        &retirement,
+        FUEL,
+    )
+    .unwrap();
+    assert!(tobkiri_canon::CoreValue::string("expired", expired.graph()).is_err());
+    drop(expired);
+    crate::reap_allocation_owners().unwrap();
+    let engine = WasmEngine::new_with_control(invocation.control()).unwrap();
+    let owned = engine.native_setup_store(invocation, ()).unwrap();
+    let owners = owned.allocation_owners().clone();
+    let value = tobkiri_canon::CoreValue::string("live before cancel", owners.graph()).unwrap();
+    assert!(account.snapshot().unwrap().charged_bytes > WASM_STACK_BYTES);
+    owned.cancellation().cancel();
+    assert!(tobkiri_canon::CoreValue::string("cancelled", owners.graph()).is_err());
+    drop(value);
+    assert_eq!(account.snapshot().unwrap().charged_bytes, WASM_STACK_BYTES);
+    drop(owned);
+    drop(owners);
+    crate::reap_allocation_owners().unwrap();
+    assert_eq!(account.snapshot().unwrap().charged_bytes, 0);
+}
+
+#[tokio::test]
+async fn codec_weak_handle_retains_original_metadata_until_final_block_reap() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
+    let (account, invocation) = funding();
+    let control = invocation.control().clone();
+    let engine = WasmEngine::new_with_control(invocation.control()).unwrap();
+    let owned = engine.native_setup_store(invocation, ()).unwrap();
+    let owners = owned.allocation_owners().clone();
+    let weak = Arc::downgrade(owners.graph());
+    let value = tobkiri_canon::CoreValue::string("physical value", owners.graph()).unwrap();
+    drop(owned);
+    assert!(account.snapshot().unwrap().charged_bytes > 0);
+    drop(value);
+    drop(owners);
+    assert_eq!(account.snapshot().unwrap().charged_bytes, 0);
+    assert_eq!(crate::reap_allocation_owners().unwrap(), 0);
+    assert!(weak.upgrade().is_some());
+    let held_metadata = control.usage().bytes;
+    let upgraded = weak.upgrade().unwrap();
+    drop(weak);
+    assert_eq!(crate::reap_allocation_owners().unwrap(), 0);
+    assert_eq!(control.usage().bytes, held_metadata);
+    drop(upgraded);
+    assert_eq!(crate::reap_allocation_owners().unwrap(), 1);
+    assert!(control.usage().bytes < held_metadata);
 }

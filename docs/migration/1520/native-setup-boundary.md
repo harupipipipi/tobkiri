@@ -300,7 +300,14 @@ admission and Store destruction. Neither fuel nor deadline is renewed.
 The outer owner and limiter closure retain physical/control custody through
 actual Store/native destruction. Retirement only initiates cancellation; it
 does not return still-live capacity. No raw Store extraction, linker or import
-registration is public. The owned ABI/input/output adapters, truly immutable
+registration is public. Graph and component codec budgets share the same native
+reservation and single monotonically decreasing host-work state; this work
+counter neither replaces nor replenishes Wasm fuel. The original deadline,
+cancellation and retirement apply to each admission. The existing bounded
+custody registry retains the same concrete Arc across its graph/component/marker
+trait views, including unexpected Weak handles, and releases its original
+control funding after actual owner destruction. Expiry/cancellation do not
+prevent cleanup of freed values. The 4 MiB JSON/output boundary, immutable
 capture DATA interface, exact two clocks, actual original UI runner and trusted
 GUI input/commit integration remain to be connected and verified.
 
@@ -309,10 +316,11 @@ after `memory_growing`/`table_growing` admitted that attempt. Two pre-admission
 paths violated it: memory type rejection and table size overflow. Those paths
 now return the ordinary guest growth failure without a callback; otherwise the
 shared aggregate limiter could refund a previous successful allocation. Actual
-post-admission allocation/maximum failure callbacks are unchanged. Seven
+post-admission allocation/maximum failure callbacks are unchanged. Eleven
 portable CI tests cover real memory/table occupancy, shared host reservations,
 Store destruction, continuous fuel/deadline, single-use claims, both rejection
-orders and deterministic post-admission maximum failure refunds. Source tests
+orders, deterministic post-admission maximum failure refunds, real retained
+graph/component copies, shared host work and Weak-held metadata. Source tests
 and a portable injected root proof do not establish supported-platform OS proof
 or product UI parity; actual execution results must be recorded separately.
 
