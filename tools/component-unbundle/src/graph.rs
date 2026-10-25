@@ -77,6 +77,7 @@ struct Scope {
 #[derive(Default)]
 struct Core {
     id: usize,
+    full_operators: bool,
     types: u32,
     entities: [u32; 5],
     imported_functions: u32,
@@ -124,6 +125,16 @@ fn expression(expr: wasmparser::ConstExpr<'_>) -> Result<String> {
 
 /// Fully validate the component, then emit bounded source-index metadata.
 pub fn observe(input: &[u8]) -> Result<Vec<u8>> {
+    observe_detailed(input, &[])
+}
+
+/// Record every instruction only in explicitly selected definition occurrences.
+/// Input, output, validation and execution-authority bounds remain unchanged.
+pub fn observe_detailed(input: &[u8], full_modules: &[usize]) -> Result<Vec<u8>> {
+    ensure!(
+        full_modules.len() <= 16 && full_modules.windows(2).all(|p| p[0] < p[1]),
+        "full module selectors must be unique, ascending and bounded"
+    );
     ensure!(input.len() <= INPUT_LIMIT, "component input bound exceeded");
     ensure!(Parser::is_component(input), "expected component bytes");
     // Apply framing/count/depth bounds before the full body validator.
@@ -150,6 +161,10 @@ pub fn observe(input: &[u8]) -> Result<Vec<u8>> {
         }
     }
     ensure!(depth == 0, "incomplete component");
+    ensure!(
+        full_modules.iter().all(|id| *id < modules),
+        "full module selector is absent"
+    );
     wasmparser::Validator::new_with_features(WasmFeatures::all())
         .validate_all(input)
         .context("invalid component graph input")?;
@@ -158,6 +173,7 @@ pub fn observe(input: &[u8]) -> Result<Vec<u8>> {
     emit!(out; "format", "tobkiri.core-graph-observation/1");
     emit!(out; "input", input.len());
     emit!(out; "validation", "wasmparser-0.245.1-all-function-bodies");
+    emit!(out; "full-operator-modules", full_modules.iter().map(usize::to_string).collect::<Vec<_>>().join(","));
     emit!(out; "scope", "source index graph; no runtime provider or storage proof");
     let mut stack = Vec::new();
     let mut next_scope = 1usize;
@@ -182,6 +198,7 @@ pub fn observe(input: &[u8]) -> Result<Vec<u8>> {
                     let id = pending_module.take().context("missing embedded module")?;
                     stack.push(Frame::Module(Core {
                         id,
+                        full_operators: full_modules.contains(&id),
                         ..Core::default()
                     }));
                 }
@@ -461,7 +478,7 @@ pub fn observe(input: &[u8]) -> Result<Vec<u8>> {
                     let (count, ty) = local?;
                     emit!(out; "locals", m.id, index, count, format!("{ty:?}"));
                 }
-                let full = range.len() <= 256;
+                let full = m.full_operators || range.len() <= 256;
                 let mut ops = body.get_operators_reader()?;
                 while !ops.eof() {
                     let offset = ops.original_position();
@@ -590,5 +607,34 @@ mod tests {
             String::from_utf8(out.bytes).unwrap(),
             "[\"a\\u000a\\\"\\\\é\"]\n"
         );
+    }
+
+    #[test]
+    fn selected_module_captures_large_function_instructions_without_raising_bounds() {
+        let mut module = Module::new();
+        let mut types = TypeSection::new();
+        types.ty().function([], []);
+        module.section(&types);
+        let mut functions = FunctionSection::new();
+        functions.function(0);
+        module.section(&functions);
+        let mut code = CodeSection::new();
+        let mut f = Function::new([]);
+        for _ in 0..300 {
+            f.instruction(&Instruction::Nop);
+        }
+        f.instruction(&Instruction::End);
+        code.function(&f);
+        module.section(&code);
+        let raw = module.finish();
+        let mut c = Component::new();
+        c.section(&wasm_encoder::RawSection { id: 1, data: &raw });
+        let input = c.finish();
+        let normal = String::from_utf8(observe(&input).unwrap()).unwrap();
+        let full = String::from_utf8(observe_detailed(&input, &[0]).unwrap()).unwrap();
+        assert!(!normal.contains(",\"Nop\"]"));
+        assert_eq!(full.matches(",\"Nop\"]").count(), 300);
+        assert!(observe_detailed(&input, &[1]).is_err());
+        assert!(observe_detailed(&input, &[0, 0]).is_err());
     }
 }

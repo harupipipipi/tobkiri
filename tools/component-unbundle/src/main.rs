@@ -33,7 +33,7 @@ fn write_bundle(mut writer: impl Write, bundle: &upstream::Bundle<'_>) -> Result
 
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
-    let diagnostic = args.len() == 1 && args[0] == "--diagnostic-graph";
+    let diagnostic = (1..=2).contains(&args.len()) && args[0] == "--diagnostic-graph";
     if !args.is_empty() && !diagnostic {
         bail!("expected bounded component bytes on stdin; no arguments");
     }
@@ -43,7 +43,20 @@ fn main() -> Result<()> {
         .take(upstream::INPUT_LIMIT as u64 + 1)
         .read_to_end(&mut input)?;
     if diagnostic {
-        io::stdout().lock().write_all(&graph::observe(&input)?)?;
+        let detail = if args.len() == 2 {
+            let raw = args[1]
+                .to_str()
+                .and_then(|s| s.strip_prefix("--full-modules="))
+                .ok_or_else(|| anyhow::anyhow!("expected --full-modules=ID,ID"))?;
+            let ids = raw
+                .split(',')
+                .map(str::parse::<usize>)
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            graph::observe_detailed(&input, &ids)?
+        } else {
+            graph::observe(&input)?
+        };
+        io::stdout().lock().write_all(&detail)?;
         return Ok(());
     }
     let bundle = upstream::unbundle(&input, THRESHOLD)?;

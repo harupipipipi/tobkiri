@@ -21,6 +21,7 @@ sys.path.insert(0, str(HERE.parent / "python313-producer"))
 import component_module_inventory as inventory  # noqa: E402
 import poll_graph_inputs  # noqa: E402
 from build_native import fingerprint  # noqa: E402
+from graph_bindings import SourceBindings  # noqa: E402
 
 OUTPUT_LIMIT = 64 * 1024 * 1024
 MAX_ROWS = 1_000_000
@@ -130,6 +131,7 @@ def summarize(component: Path, rows: list[list[str]], libraries: list[dict]) -> 
         "all_core_module_occurrences_observed": True,
         "modules": result,
         "row_counts": dict(Counter(row[0] for row in rows)),
+        "source_import_bindings": SourceBindings(rows, result).import_queries(),
         "component_instance_resolution_complete": False,
         "final_provider_resolution_verified": False,
         "errno_storage_identity_verified": False,
@@ -137,10 +139,26 @@ def summarize(component: Path, rows: list[list[str]], libraries: list[dict]) -> 
     }
 
 
-def run(bundle: Path, authentication: Path, worker: Path, destination: Path) -> None:
+def run(
+    bundle: Path,
+    authentication: Path,
+    worker: Path,
+    destination: Path,
+    full_modules: str = "",
+) -> None:
     """Analyze exact CI-only inputs without instantiating or invoking a guest."""
     if sys.platform != "linux" or os.environ.get("CI") != "true":
         raise ValueError("actual component analysis runs on CI only")
+    selectors = (
+        tuple(int(value) for value in full_modules.split(",")) if full_modules else ()
+    )
+    if (
+        len(selectors) > 16
+        or tuple(sorted(set(selectors))) != selectors
+        or any(not 0 <= value < 4096 for value in selectors)
+        or ",".join(map(str, selectors)) != full_modules
+    ):
+        raise ValueError("canonical bounded full-module selectors required")
     pins = poll_graph_inputs.read_json(poll_graph_inputs.PINS)
     poll_graph_inputs.authenticate(pins, authentication)
     before = poll_graph_inputs.verify_bundle(bundle, pins)
@@ -155,6 +173,7 @@ def run(bundle: Path, authentication: Path, worker: Path, destination: Path) -> 
         "supplier": pins,
         "worker": worker_identity,
         "guest_executed": False,
+        "requested_full_module_operators": list(selectors),
         "final_provider_resolution_verified": False,
         "errno_storage_identity_verified": False,
         "production_enabled": False,
@@ -167,13 +186,36 @@ def run(bundle: Path, authentication: Path, worker: Path, destination: Path) -> 
             with component.open("rb") as incoming, raw.open("xb") as outgoing:
                 os.chmod(raw, 0o600)
                 subprocess.run(
-                    [str(worker), "--diagnostic-graph"],
+                    [str(worker), "--diagnostic-graph"]
+                    + (["--full-modules=" + full_modules] if selectors else []),
                     stdin=incoming,
                     stdout=outgoing,
                     check=True,
                     timeout=120,
                 )
             rows = read_rows(raw)
+            if selectors:
+                observed = [r for r in rows if r[0] == "full-operator-modules"]
+                if observed != [["full-operator-modules", full_modules]]:
+                    raise ValueError("requested instruction detail was not observed")
+                expected = {
+                    (r[1], r[2])
+                    for r in rows
+                    if r[0] == "body" and int(r[1]) in selectors
+                }
+                covered = {
+                    (r[1], r[2])
+                    for r in rows
+                    if r[0] == "body-coverage"
+                    and int(r[1]) in selectors
+                    and r[3] == "all-operators"
+                }
+                if expected != covered or {int(m) for m, _ in expected} != set(
+                    selectors
+                ):
+                    raise ValueError(
+                        "selected core function instruction coverage differs"
+                    )
             libraries = comparison["variants"][variant]["reference"]["trace"][
                 "libraries"
             ]
@@ -195,4 +237,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("bundle", "authentication", "worker", "destination"):
         parser.add_argument("--" + name, type=Path, required=True)
+    parser.add_argument("--full-modules", default="")
     run(**vars(parser.parse_args()))
