@@ -190,6 +190,23 @@ jobs:
         working-directory: sdk/js
         run: npm test
 
+  macos-native-capture-check:
+    # Compile the macOS-only implementation/tests on a hosted SDK even while
+    # the exact supported runtime runner is queued. This is NOT OS proof.
+    if: github.event_name != 'pull_request'
+    runs-on: macos-latest
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-target
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          targets: aarch64-apple-darwin
+      - name: Typecheck native capture and supported-platform test bodies
+        run: cargo check --locked -p tobkiri-store --all-targets --target aarch64-apple-darwin
+
   verified-platform-runtime:
     needs: official-python-parity
     # A producer failure must not suppress independent native workspace evidence.
