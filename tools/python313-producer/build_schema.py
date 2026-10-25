@@ -657,6 +657,36 @@ def _validate_schema_stage_profile(
         )
 
 
+def _validate_schema_preinit_code_cache(
+    enabled: bool,
+    *,
+    allow_ui_wall_clock: bool,
+    allow_ui_monotonic_clock: bool,
+    allow_inactive_ui_libc: bool,
+    allow_ci_link_trace: bool,
+    predecessor_paths: tuple[Path | None, ...],
+) -> None:
+    """Require all authenticated inactive-candidate inputs for cache mode."""
+    if type(enabled) is not bool:
+        raise ValueError("explicit boolean schema preinit code-cache mode required")
+    if enabled and not (
+        all(
+            type(value) is bool and value
+            for value in (
+                allow_ui_wall_clock,
+                allow_ui_monotonic_clock,
+                allow_inactive_ui_libc,
+                allow_ci_link_trace,
+            )
+        )
+        and len(predecessor_paths) == 4
+        and all(isinstance(path, Path) for path in predecessor_paths)
+    ):
+        raise ValueError(
+            "schema preinit code cache requires the complete inactive candidate"
+        )
+
+
 def run(
     inputs: Path,
     producer: Path,
@@ -671,6 +701,7 @@ def run(
     allow_ci_link_trace: bool = False,
     schema_exception_diagnostics: bool = False,
     schema_stage_profile: bool = False,
+    schema_preinit_code_cache: bool = False,
     poll_bundle: Path | None = None,
     poll_authentication: Path | None = None,
     poll_reference_report: Path | None = None,
@@ -716,8 +747,25 @@ def run(
         allow_ci_link_trace=allow_ci_link_trace,
         predecessor_paths=predecessor_paths,
     )
-    if schema_exception_diagnostics and schema_stage_profile:
-        raise ValueError("schema exception and stage-profile modes are separate")
+    _validate_schema_preinit_code_cache(
+        schema_preinit_code_cache,
+        allow_ui_wall_clock=allow_ui_wall_clock,
+        allow_ui_monotonic_clock=allow_ui_monotonic_clock,
+        allow_inactive_ui_libc=allow_inactive_ui_libc,
+        allow_ci_link_trace=allow_ci_link_trace,
+        predecessor_paths=predecessor_paths,
+    )
+    if (
+        sum(
+            (
+                schema_exception_diagnostics,
+                schema_stage_profile,
+                schema_preinit_code_cache,
+            )
+        )
+        > 1
+    ):
+        raise ValueError("schema diagnostic modes are mutually exclusive")
     if (
         not destination.is_absolute()
         or destination.parent.resolve() != destination.parent
@@ -749,6 +797,49 @@ def run(
             source_receipt,
         )
         identities.update(poll_identities)
+    code_cache_toolchain = None
+    if schema_preinit_code_cache:
+        if poll_predecessor is None:
+            raise ValueError(
+                "authenticated inactive candidate CLI required for code cache"
+            )
+        componentizer_path = producer / "work/target/release/componentize-py"
+        componentizer_identity = fingerprint(componentizer_path)
+        if componentizer_identity != poll_predecessor["candidate_cli"]:
+            raise ValueError("code-cache CLI differs from the authenticated candidate")
+        code_cache_toolchain = {
+            "componentize_cli": componentizer_identity,
+            "cli_build_receipt": fingerprint(
+                producer / "cli-build.json", 4 * 1024 * 1024
+            ),
+            "cli_source_receipt": fingerprint(
+                producer / "cli-source.json", 4 * 1024 * 1024
+            ),
+            "authenticated_candidate_cli": poll_predecessor["candidate_cli"],
+            "cli_build_report": cli,
+            "componentize_bindings_command": [
+                "/producer",
+                "-d",
+                "probe.wit",
+                "-w",
+                "ui-schema-probe",
+                "bindings",
+                ".",
+            ],
+            "componentize_snapshot_command": [
+                "/producer",
+                "-d",
+                "probe.wit",
+                "-w",
+                "ui-schema-probe",
+                "componentize",
+                "--stub-wasi",
+                "app",
+                "-o",
+                "component.wasm",
+            ],
+            "source_receipt_format": source_receipt.get("format"),
+        }
     destination.mkdir(mode=0o700)
     work = destination / "work"
     work.mkdir(mode=0o700)
@@ -790,6 +881,12 @@ def run(
         control_data.update(
             allow_inactive_ui_libc=True,
             schema_stage_profile=True,
+        )
+    if schema_preinit_code_cache:
+        control_data.update(
+            allow_inactive_ui_libc=True,
+            schema_preinit_code_cache=True,
+            schema_preinit_code_cache_toolchain=code_cache_toolchain,
         )
     control.write_text(json.dumps(control_data, indent=2) + "\n")
     composition = HERE.parents[1] / "sdk/python/composition.py"
@@ -845,6 +942,18 @@ def run(
             "production_enabled": False,
             "provenance_available": False,
             "profile_available": False,
+        }
+    if schema_preinit_code_cache:
+        report["schema_preinit_code_cache"] = {
+            "enabled": True,
+            "diagnostic_only": True,
+            "original_acceptance_claimed": False,
+            "production_enabled": False,
+            "toolchain": code_cache_toolchain,
+            "provenance_available": False,
+            "preinit_cache_evidence_available": False,
+            "strict_comparison_outcome": "unavailable",
+            "runtime_cache_use_observed": False,
         }
     try:
         native_recipe = destination / "native.sh"
@@ -1106,6 +1215,138 @@ def run(
                     )
                 except BaseException:
                     pass
+        if schema_preinit_code_cache:
+            cache_report = report["schema_preinit_code_cache"]
+
+            def read_code_cache_json(path: Path, maximum: int) -> tuple[dict, dict]:
+                if path.is_symlink() or not path.is_file():
+                    raise ValueError("schema code-cache evidence file is unavailable")
+                identity = fingerprint(path, maximum)
+                with path.open("rb") as stream:
+                    raw = stream.read(maximum + 1)
+                if (
+                    len(raw) > maximum
+                    or len(raw) != identity["bytes"]
+                    or hashlib.sha256(raw).hexdigest() != identity["sha256"]
+                    or fingerprint(path, maximum) != identity
+                ):
+                    raise ValueError("schema code-cache evidence changed while read")
+                value = json.loads(raw)
+                if not isinstance(value, dict):
+                    raise ValueError("schema code-cache evidence is not an object")
+                return value, identity
+
+            try:
+                provenance, provenance_identity = read_code_cache_json(
+                    work / "schema-preinit-code-cache-provenance.json", 1024 * 1024
+                )
+                lazy_priming = provenance.get("lazy_source_priming")
+                if (
+                    provenance.get("format")
+                    != "tobkiri.schema-preinit-code-cache-derivation/1"
+                    or provenance.get("diagnostic_only") is not True
+                    or provenance.get("original_acceptance_claimed") is not False
+                    or provenance.get("production_enabled") is not False
+                    or not isinstance(lazy_priming, dict)
+                    or lazy_priming.get("module_bodies_executed") is not False
+                    or lazy_priming.get("max_attempts") != 512
+                    or lazy_priming.get("max_source_bytes") != 8 * 1024 * 1024
+                ):
+                    raise ValueError("schema code-cache derivation provenance differs")
+                cache_report.update(
+                    provenance_file=provenance_identity,
+                    derived_source_files={
+                        name: {
+                            "baseline": row["baseline"],
+                            "derived": row["derived"],
+                            "diff_sha256": row["diff_sha256"],
+                        }
+                        for name, row in provenance["files"].items()
+                    },
+                    unchanged_source_files=provenance["unchanged_files"],
+                    helper=provenance["helper"],
+                    cache_generation=provenance["cache_generation"],
+                    lazy_source_priming=lazy_priming,
+                    provenance_available=True,
+                )
+            except BaseException:
+                cache_report["provenance_available"] = False
+            try:
+                evidence, evidence_identity = read_code_cache_json(
+                    work / "schema-preinit-code-cache.json", 2 * 1024 * 1024
+                )
+                preinit_cache = evidence.get("preinit_cache")
+                accounting = (
+                    preinit_cache.get("accounting")
+                    if isinstance(preinit_cache, dict)
+                    else None
+                )
+                runtime = evidence.get("runtime_cache_use")
+                if (
+                    evidence.get("format")
+                    != "tobkiri.schema-preinit-code-cache-evidence/1"
+                    or evidence.get("preinit_cache_evidence_available") is not True
+                    or evidence.get("diagnostic_only") is not True
+                    or evidence.get("original_acceptance_claimed") is not False
+                    or evidence.get("production_enabled") is not False
+                    or not isinstance(preinit_cache, dict)
+                    or preinit_cache.get("format")
+                    != "tobkiri.schema-preinit-code-cache/1"
+                    or preinit_cache.get("sealed_before_snapshot") is not True
+                    or not isinstance(accounting, dict)
+                    or not isinstance(runtime, dict)
+                    or (
+                        runtime.get("observed") is not False
+                        and runtime.get("observed") is not True
+                    )
+                    or evidence.get("strict_comparison_outcome")
+                    not in {
+                        "not_started",
+                        "not_completed",
+                        "pending_original_checks",
+                        "failed_original_guest_exception",
+                        "failed_original_checks",
+                        "matched",
+                    }
+                ):
+                    raise ValueError("schema code-cache runtime evidence differs")
+                cache_report.update(
+                    cache_evidence_file=evidence_identity,
+                    preinit_cache_evidence_available=True,
+                    preinit_cache_summary={
+                        "cache_entry_count": preinit_cache.get("cache_entry_count"),
+                        "preinit_compile_calls": preinit_cache.get(
+                            "preinit_compile_calls"
+                        ),
+                        "preinit_cached_calls": preinit_cache.get(
+                            "preinit_cached_calls"
+                        ),
+                        "preinit_prime": preinit_cache.get("preinit_prime"),
+                        "uncached_counts": preinit_cache.get("uncached_counts"),
+                        "accounting": accounting,
+                    },
+                    pre_snapshot_component=evidence.get("pre_snapshot_component"),
+                    final_component=evidence.get("final_component"),
+                    execution_outcome=evidence.get("execution_outcome"),
+                    strict_comparison_outcome=evidence.get("strict_comparison_outcome"),
+                    strict_comparison=evidence.get("strict_comparison"),
+                    runtime_cache_use_observed=runtime["observed"],
+                    runtime_cache_use_status=runtime.get("status"),
+                    runtime_cache_use_statistics=runtime.get("statistics"),
+                )
+                observation_path = work / "wasm-observation.json"
+                if observation_path.is_file() and not observation_path.is_symlink():
+                    cache_report["wasm_observation"] = fingerprint(
+                        observation_path, 4 * 1024 * 1024
+                    )
+                schema_path = work / "schema.json"
+                if schema_path.is_file() and not schema_path.is_symlink():
+                    cache_report["schema_observation"] = fingerprint(
+                        schema_path, 4 * 1024 * 1024
+                    )
+            except BaseException:
+                # Optional diagnostic evidence must not replace the original run error.
+                cache_report["preinit_cache_evidence_available"] = False
         (destination / "schema-build.json").write_text(
             json.dumps(report, indent=2) + "\n"
         )
@@ -1121,6 +1362,7 @@ if __name__ == "__main__":
     parser.add_argument("--allow-ci-link-trace", action="store_true")
     parser.add_argument("--schema-exception-diagnostics", action="store_true")
     parser.add_argument("--schema-stage-profile", action="store_true")
+    parser.add_argument("--schema-preinit-code-cache", action="store_true")
     for name in (
         "poll-bundle",
         "poll-authentication",
