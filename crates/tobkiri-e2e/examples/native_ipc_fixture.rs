@@ -214,8 +214,26 @@ fn profile(
     })
 }
 
+fn private_config(root: PathBuf) -> Result<CoreConfig> {
+    #[cfg(debug_assertions)]
+    {
+        Ok(CoreConfig::for_test_data_root(root))
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = root;
+        bail!("native IPC fixture requires a debug build")
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Release workspace builds must compile this example, but it may never
+    // fall back to a normal user's data root when test overrides are absent.
+    ensure!(
+        cfg!(debug_assertions),
+        "native IPC fixture requires a debug build"
+    );
     let requested = output_path()?;
     let root = create_fixture_root(&requested)?;
     let pack_dir = root.join("pack");
@@ -227,10 +245,7 @@ async fn main() -> Result<()> {
     let (artifact_path, verified) = build_pack(&pack_dir, &permissions)?;
     let profile = profile(&artifact_path, &verified, permissions)?;
     let data_root = data_dir.canonicalize()?;
-    let core = Core::open(
-        CoreConfig::for_test_data_root(data_root),
-        Arc::new(FixtureHost),
-    )?;
+    let core = Core::open(private_config(data_root)?, Arc::new(FixtureHost))?;
     tokio::time::timeout(
         Duration::from_secs(30),
         core.save_profile(profile.clone(), None),

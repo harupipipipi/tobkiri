@@ -30,6 +30,11 @@ test('attack and root inventory match actual native command names, not just coun
   assert.deepEqual(rootCommands, actual);
   assert.deepEqual(attackCommands, actual);
   assert.deepEqual(commands, actual);
+  const nativeHost = fs.readFileSync(path.join(
+    root, 'tobkiri_launcher/src-tauri/src/core_host.rs',
+  ), 'utf8');
+  const handler = nativeHost.match(/tauri::generate_handler!\[([\s\S]*?)\]/)[1];
+  assert.deepEqual(handler.split(',').map((name) => name.trim()).filter(Boolean), actual);
   const controller = fs.readFileSync(path.join(__dirname, 'run.py'), 'utf8');
   assert.equal(Number(controller.match(/^COMMANDS = ([0-9]+)$/m)[1]), actual.length);
 });

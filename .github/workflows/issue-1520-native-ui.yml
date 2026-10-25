@@ -62,6 +62,8 @@ jobs:
         run: |
           cargo run --locked -p tobkiri-e2e --example native_ipc_fixture -- \
             --output "$RUNNER_TEMP/native-ipc-fixture"
+      - name: Release fixture compiles without debug data-root APIs
+        run: cargo check --locked -p tobkiri-e2e --example native_ipc_fixture --release
       - name: Install locked frontend build inputs
         working-directory: tobkiri_launcher/frontend
         run: npm ci --ignore-scripts
