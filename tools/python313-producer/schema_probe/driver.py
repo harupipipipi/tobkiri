@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import stat
 import subprocess
 import sys
 import threading
@@ -163,6 +164,181 @@ def stage_inputs(stage: Path, control: dict) -> dict:
             "archive": stdlib["archive"],
             "files": stdlib["files"],
         },
+    }
+
+
+def observe_link_trace(root: Path, expected: bytes) -> dict:
+    """Capture bounded Linker inputs and final component as separate stages."""
+    root_info = root.lstat()
+    if (
+        not root.is_absolute()
+        or root.resolve() != root
+        or not stat.S_ISDIR(root_info.st_mode)
+        or stat.S_IMODE(root_info.st_mode) != 0o700
+    ):
+        raise ValueError("fresh physical schema Linker trace directory required")
+    core_header = b"\0asm\x01\0\0\0"
+    component_header = b"\0asm\x0d\0\x01\0"
+
+    def identity(path: Path, maximum: int) -> dict:
+        before = path.lstat()
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or not 0 < before.st_size <= maximum
+            or stat.S_IMODE(before.st_mode) != 0o600
+        ):
+            raise ValueError("regular private Linker trace member required")
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            total = 0
+            while block := stream.read(65536):
+                total += len(block)
+                if total > maximum:
+                    raise ValueError("schema Linker trace member exceeds its bound")
+                digest.update(block)
+        after = path.lstat()
+        fields = ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns")
+        if total != before.st_size or any(
+            getattr(before, field) != getattr(after, field) for field in fields
+        ):
+            raise ValueError("schema Linker trace member changed while read")
+        return {"bytes": total, "sha256": digest.hexdigest()}
+
+    def capture(path: Path, maximum: int) -> tuple[bytes, dict]:
+        observed = identity(path, maximum)
+        raw = read(path, maximum)
+        if (
+            len(raw) != observed["bytes"]
+            or hashlib.sha256(raw).hexdigest() != observed["sha256"]
+        ):
+            raise ValueError("schema Linker trace control changed while decoded")
+        return raw, observed
+
+    manifest_path = root / "libraries.tsv"
+    manifest_raw, manifest_identity = capture(manifest_path, 2 * 1024 * 1024)
+    rows = manifest_raw.split(b"\n")[:-1]
+    if (
+        not rows
+        or not manifest_raw.endswith(b"\n")
+        or rows[0] != b"tobkiri-ci-link-inputs/1"
+        or not 1 <= len(rows) - 1 <= 128
+    ):
+        raise ValueError("actual schema Linker manifest format or count differs")
+    libraries = []
+    module_names = set()
+    module_bytes = 0
+    files = {"libraries.tsv": manifest_identity}
+    canonical_manifest = [b"tobkiri-ci-link-inputs/1\n"]
+    for ordinal, row in enumerate(rows[1:]):
+        fields = row.split(b"\t")
+        if len(fields) != 4:
+            raise ValueError("actual schema Linker manifest row is malformed")
+        ordinal_text, name_hex, dl_openable, size_text = fields
+        if (
+            ordinal_text != str(ordinal).encode("ascii")
+            or not 2 <= len(name_hex) <= 8192
+            or len(name_hex) % 2
+            or any(char not in b"0123456789abcdef" for char in name_hex)
+            or dl_openable not in {b"true", b"false"}
+            or not size_text.isdigit()
+            or size_text.startswith(b"0")
+            or len(size_text) > 8
+        ):
+            raise ValueError("actual schema Linker manifest identity differs")
+        try:
+            name = bytes.fromhex(name_hex.decode("ascii")).decode("utf-8")
+        except (ValueError, UnicodeDecodeError) as error:
+            raise ValueError("actual schema Linker name encoding differs") from error
+        if not name or len(name.encode("utf-8")) > 4096:
+            raise ValueError("actual schema Linker name exceeds its bound")
+        if name.encode("utf-8").hex().encode("ascii") != name_hex:
+            raise ValueError("actual schema Linker name encoding is not canonical")
+        declared_bytes = int(size_text)
+        if declared_bytes > 32 * 1024 * 1024:
+            raise ValueError("actual schema Linker module exceeds its bound")
+        canonical_manifest.append(
+            b"\t".join(
+                (
+                    str(ordinal).encode("ascii"),
+                    name_hex,
+                    dl_openable,
+                    str(declared_bytes).encode("ascii"),
+                )
+            )
+            + b"\n"
+        )
+        module_name = f"{ordinal:04}.wasm"
+        module_names.add(module_name)
+        module_path = root / module_name
+        module = identity(module_path, 32 * 1024 * 1024)
+        if declared_bytes != module["bytes"]:
+            raise ValueError("actual schema Linker module size differs")
+        with module_path.open("rb") as stream:
+            if stream.read(8) != core_header:
+                raise ValueError("schema Linker input is not a core Wasm module")
+        module_bytes += declared_bytes
+        files[module_name] = module
+        libraries.append(
+            {
+                "ordinal": ordinal,
+                "name": name,
+                "dl_openable": dl_openable == b"true",
+                **module,
+            }
+        )
+    if b"".join(canonical_manifest) != manifest_raw:
+        raise ValueError("actual schema Linker manifest is not canonical")
+    preinit_path = root / "preinit-linked-component.wasm"
+    preinit = identity(preinit_path, 32 * 1024 * 1024)
+    with preinit_path.open("rb") as stream:
+        if stream.read(8) != component_header:
+            raise ValueError("pre-snapshot Linker output is not a Wasm component")
+    final_component = {
+        "bytes": len(expected),
+        "sha256": hashlib.sha256(expected).hexdigest(),
+    }
+    if expected[:8] != component_header:
+        raise ValueError("final schema CLI output is not a Wasm component")
+    complete_path = root / "complete.tsv"
+    complete_raw, complete_identity = capture(complete_path, 4096)
+    expected_complete = (
+        f"linked-before-snapshot\t{len(libraries)}\t{preinit['bytes']}\n".encode(
+            "ascii"
+        )
+    )
+    if complete_raw != expected_complete:
+        raise ValueError("Linker trace completion record differs")
+    files["preinit-linked-component.wasm"] = preinit
+    files["complete.tsv"] = complete_identity
+    actual_files = set()
+    for path in root.iterdir():
+        if not stat.S_ISREG(path.lstat().st_mode) or path.resolve() != path:
+            raise ValueError("schema Linker trace contains a nonregular member")
+        actual_files.add(path.name)
+    expected_files = {
+        "libraries.tsv",
+        "preinit-linked-component.wasm",
+        "complete.tsv",
+        *module_names,
+    }
+    if actual_files != expected_files:
+        raise ValueError("schema Linker trace contains missing or extra members")
+    total_bytes = manifest_identity["bytes"] + module_bytes
+    total_bytes += preinit["bytes"] + complete_identity["bytes"]
+    if total_bytes > 64 * 1024 * 1024:
+        raise ValueError("complete schema Linker trace exceeds its existing bound")
+    return {
+        "format": "tobkiri.ci-link-input-observation/1",
+        "files": files,
+        "libraries": libraries,
+        "preinit_component": preinit,
+        "final_component": final_component,
+        "stage": "pre-snapshot Linker output and final CLI component recorded separately",
+        "total_bytes": total_bytes,
+        "actual_input_observation": True,
+        "final_provider_resolution_verified": False,
+        "production_enabled": False,
     }
 
 
@@ -397,10 +573,16 @@ def main():
     control = json.loads(read(Path("/control.json")))
     allow_clock = control.get("allow_ui_wall_clock", False)
     allow_monotonic = control.get("allow_ui_monotonic_clock", False)
-    if type(allow_clock) is not bool or type(allow_monotonic) is not bool:
+    allow_link_trace = control.get("allow_ci_link_trace", False)
+    if any(
+        type(value) is not bool
+        for value in (allow_clock, allow_monotonic, allow_link_trace)
+    ):
         raise ValueError("explicit boolean UI clock mode required")
     if allow_monotonic and not allow_clock:
         raise ValueError("monotonic candidate requires explicit wall-clock mode")
+    if allow_link_trace and not (allow_clock and allow_monotonic):
+        raise ValueError("Linker observation requires the explicit two-clock candidate")
     original = json.loads(read(work / "native.json"))
     stage = work / "stage"
     stage.mkdir()
@@ -417,6 +599,9 @@ def main():
         "TOKIO_WORKER_THREADS": "1",
     }
     command = ["/producer", "-d", "probe.wit", "-w", "ui-schema-probe"]
+    trace_root = work / "link-trace"
+    if allow_link_trace and (trace_root.exists() or trace_root.is_symlink()):
+        raise ValueError("each schema componentization requires a fresh private trace")
     subprocess.run(
         [*command, "bindings", "."], cwd=stage, env=environment, check=True, timeout=180
     )
@@ -430,6 +615,7 @@ def main():
     config = Config()
     config.parallel_compilation = False
     inner = read(stage / "component.wasm", 32 * 1024 * 1024)
+    link_trace = observe_link_trace(trace_root, inner) if allow_link_trace else None
     with Engine(config) as engine, Component(engine, inner) as component:
         inner_typed = boundary(
             component,
@@ -649,6 +835,12 @@ def main():
         "generated_clock_wit": generated_wit,
         "final_source_bytes": final_source_bytes,
     }
+    if link_trace is not None:
+        report.update(
+            link_input_trace=link_trace,
+            trace_observed=True,
+            final_provider_resolution_verified=False,
+        )
     (work / "schema.json").write_text(json.dumps(report, indent=2) + "\n")
 
 
