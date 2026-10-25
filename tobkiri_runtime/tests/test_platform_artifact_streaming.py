@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.contract
-
 from tobkiri_protocol.errors import ProtocolError
 from tobkiri_protocol.platform_artifact import artifact_digest, verify_platform_artifact
+
+pytestmark = pytest.mark.contract
 
 
 def _pe_fixture(path: Path, *, machine: int, pe_offset: int = 0x80) -> Path:
@@ -75,7 +75,8 @@ def test_pe_parser_accepts_dos_e_lfanew_at_normal_offset(tmp_path: Path) -> None
     ],
 )
 def test_pe_parser_rejects_truncated_overlap_out_of_range_and_wrong_machine(
-    tmp_path: Path, fixture,
+    tmp_path: Path,
+    fixture,
 ) -> None:
     executable = tmp_path / "shell.exe"
     result = fixture(executable)
@@ -134,7 +135,5 @@ def test_verify_platform_artifact_fails_closed_after_deadline(
     executable = _pe_fixture(tmp_path / "shell.exe", machine=0x8664)
     variant = _variant(tmp_path, executable, "x86_64")
     with pytest.raises(ProtocolError, match="deadline exceeded"):
-        verify_platform_artifact(
-            tmp_path, variant, deadline_monotonic=time.monotonic() - 1
-        )
+        verify_platform_artifact(tmp_path, variant, deadline_monotonic=time.monotonic() - 1)
     verify_platform_artifact(tmp_path, variant)

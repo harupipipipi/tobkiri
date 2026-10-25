@@ -181,11 +181,21 @@ The Python reader is untrusted UI code, not a native capability or custody
 proof. The future native binding must independently validate capture ownership,
 ordinal membership and ranges, retain immutable sources, and fund the actual
 worker/buffers/metadata under the same original account. These objects alone
-do not establish those guarantees. The tests compare the original local and
-captured artifact algorithm, schema reads and refusal behavior; they are not a
-worker, first-Profile, complete resolver/listing, approval GUI or activation
-test. Neither the existing seven-method component nor this request-review/read
-seam completes that remaining integration.
+do not establish those guarantees. Seven small adapter tests compare the
+original local/captured artifact algorithm, schema reads and refusal behavior.
+The separate clean packaged-source regression executes the complete original
+resolver, preview, bootstrap confirmation and validated listing for review,
+active and denied states. All results match with ordinary filesystem reads,
+network, database connections and subprocess execution blocked during the
+captured computation. Together with the eight original streaming/TOCTOU
+regressions, this comparison passes nine tests on the native Python host. Both
+files are required by the existing CI contract cluster.
+
+This establishes the original initial DATA computation's read closure, not an
+actual Wasm worker, native capture custody, first-Profile approval, complete
+recovery/handover, approval GUI or activation. Packaging the dependency closure
+and enforcing the real worker's limits remain open. Neither the seven-method
+component nor this request-review/read seam completes that integration.
 
 The full React screens and logical contracts stay intact. Domain-specific
 Setup/readiness/presentation orchestration belongs in Kit/compatibility Pack

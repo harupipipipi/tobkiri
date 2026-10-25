@@ -12,8 +12,6 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.contract
-
 from ecosystem.defaultspack.defaultspack.profile_runtime_composition import (
     DefaultspackProfileRuntime,
 )
@@ -29,6 +27,8 @@ from tobkiri_protocol.captured_inputs import (
     CapturedFile,
     CapturedInputs,
 )
+
+pytestmark = pytest.mark.contract
 
 
 def _resolve(catalog: BundledCatalog):
