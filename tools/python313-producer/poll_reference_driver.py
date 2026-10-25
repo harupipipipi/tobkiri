@@ -21,6 +21,8 @@ def stage_inventory(stage: Path, *, exclude_component: bool = False) -> dict:
     """Inventory generated DATA, including empty Python package markers."""
     from poll_link_trace import FILE_LIMIT, TOTAL_LIMIT, fingerprint
 
+    if not stage.is_dir() or stat.S_IMODE(stage.lstat().st_mode) != 0o700:
+        raise ValueError("generated DATA requires its private stage directory")
     shapes = {}
     for path in stage.rglob("*"):
         mode = path.lstat()
@@ -41,9 +43,19 @@ def stage_inventory(stage: Path, *, exclude_component: bool = False) -> dict:
     (stage.parent / "stage-file-shapes.json").write_text(
         json.dumps(shapes, indent=2) + "\n"
     )
-    return {
-        name: fingerprint(stage / name, FILE_LIMIT, allow_empty=True) for name in shapes
-    }
+    files = {}
+    for name, shape in shapes.items():
+        # Embedded support sources retain 0644 inside the private directory.
+        # Recorder files remain subject to their independent exact 0600 rule.
+        if shape["mode"] not in ("0o600", "0o644"):
+            raise ValueError("generated DATA mode differs from producer source modes")
+        identity = fingerprint(
+            stage / name, FILE_LIMIT, private=False, allow_empty=True
+        )
+        if oct(stat.S_IMODE((stage / name).lstat().st_mode)) != shape["mode"]:
+            raise ValueError("generated DATA mode changed during observation")
+        files[name] = {**identity, "mode": shape["mode"]}
+    return files
 
 
 def require_captured_stage(stage: Path, control: dict) -> None:

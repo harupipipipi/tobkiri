@@ -70,7 +70,11 @@ class ComparisonInputTests(unittest.TestCase):
             inventory = driver.stage_inventory(stage)
             self.assertEqual(
                 inventory["__init__.py"],
-                {"bytes": 0, "sha256": hashlib.sha256(b"").hexdigest()},
+                {
+                    "bytes": 0,
+                    "sha256": hashlib.sha256(b"").hexdigest(),
+                    "mode": "0o600",
+                },
             )
             with self.assertRaises(ValueError):
                 trace.fingerprint(marker, trace.FILE_LIMIT)
@@ -83,6 +87,17 @@ class ComparisonInputTests(unittest.TestCase):
                 "nested/component.wasm",
                 driver.stage_inventory(stage, exclude_component=True),
             )
+            support = stage / "poll_loop.py"
+            support.write_bytes(b"synthetic embedded support source")
+            support.chmod(0o644)
+            self.assertEqual(
+                driver.stage_inventory(stage)["poll_loop.py"]["mode"], "0o644"
+            )
+            with self.assertRaises(ValueError):
+                trace.fingerprint(support, trace.FILE_LIMIT)
+            support.chmod(0o666)
+            with self.assertRaises(ValueError):
+                driver.stage_inventory(stage)
 
     def test_each_producer_command_must_preserve_captured_source_and_helper(self):
         for changed in ("app.py", "probe.wit", "_tobkiri_poll_oracle.abi3.so"):
