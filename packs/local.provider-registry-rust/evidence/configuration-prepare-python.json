@@ -2,9 +2,9 @@
   "schema": "io.tobkiri.original-provider-configuration-prepare.v1",
   "scope": "finite prepare only; no execute, credential, persistent or GUI parity",
   "interpreter": {
-    "version": "3.13.9 | packaged by Anaconda, Inc. | (main, Oct 21 2025, 19:11:29) [Clang 20.1.8 ]",
+    "version": "3.13.9 (main, Oct 15 2025, 02:43:58) [GCC 11.4.0]",
     "implementation": "cpython",
-    "executable_sha256": "54bef9d1f928417dfb1841a6f0567ddd4212c1526ef82258a527b7e69771aa20"
+    "executable_sha256": "3a980a1123ca55f81addb02551e0bdf3c6fba8382e3d0b5aac6d7f73ded0063d"
   },
   "producer": {
     "path": "tools/quality/python_provider_registry_compat/configuration_prepare.py",
@@ -931,8 +931,8 @@
     },
     {
       "path": "tobkiri_runtime/core_runtime/profile_pack_projection.py",
-      "bytes": 4105,
-      "sha256": "9495cea4be873131eb881e42286c1a5353f3bb4f52901baaf56843e751cd82f1",
+      "bytes": 4186,
+      "sha256": "3eb708f0248f5c5dd802471827e112d7465b5ec10cc378b6334a8eb1bf7734c4",
       "role": "runtime-import-closure"
     },
     {
@@ -1447,8 +1447,8 @@
     },
     {
       "path": "tobkiri_runtime/tobkiri_host/__init__.py",
-      "bytes": 1812,
-      "sha256": "1f1f46446a896e613443f361d9cdb411f2d09a76c33f00e3fe7a61cdaaf1e672",
+      "bytes": 4504,
+      "sha256": "219b7cd97b035967c31e5d31f9dcac8be3ab7838cd7b03fdfbbf147dfc4bb76b",
       "role": "runtime-import-closure"
     },
     {

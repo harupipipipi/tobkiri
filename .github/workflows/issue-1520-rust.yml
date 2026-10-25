@@ -106,7 +106,7 @@ jobs:
       - name: Decoded Registry original-source comparison
         env:
           TOBKIRI_PROVIDER_REGISTRY_ORACLE_RECEIPT: ${{ github.workspace }}/packs/local.provider-registry-rust/evidence/original-python/receipt.json
-          TOBKIRI_PROVIDER_REGISTRY_ORACLE_SHA256: e87762d4647d05ad8800c337c2352a272c767d252cb7ad4c4906760fc5590b37
+          TOBKIRI_PROVIDER_REGISTRY_ORACLE_SHA256: 4be9b93b9f041b5e57d91b18fa982e88fdd1b997f72f810353be814bfae82bed
           TOBKIRI_PROVIDER_REGISTRY_EVIDENCE_DIR: ${{ runner.temp }}/provider-registry-native
         run: |
           python3 -B tools/quality/issue_1520_ci.py cargo-test \

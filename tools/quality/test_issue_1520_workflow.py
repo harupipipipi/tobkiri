@@ -84,7 +84,7 @@ class RuntimeRoutingTests(unittest.TestCase):
             "TOBKIRI_PROVIDER_REGISTRY_ORACLE_RECEIPT:",
             "/evidence/original-python/receipt.json",
             "TOBKIRI_PROVIDER_REGISTRY_ORACLE_SHA256: "
-            "e87762d4647d05ad8800c337c2352a272c767d252cb7ad4c4906760fc5590b37",
+            "4be9b93b9f041b5e57d91b18fa982e88fdd1b997f72f810353be814bfae82bed",
             "TOBKIRI_PROVIDER_REGISTRY_EVIDENCE_DIR:",
             "--expected-passed 49", "--expected-passed 1",
             "cargo test --locked --manifest-path packs/Cargo.toml",
