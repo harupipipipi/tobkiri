@@ -53,15 +53,60 @@ def compose_candidate(inner: Path, stage: Path, environment: dict[str, str]) -> 
     }
 
 
-def read(path: Path) -> bytes:
+def read(path: Path, *, maximum: int = LIMIT) -> bytes:
     """Bound generated artifacts before passing them to the actual validator."""
     if path.is_symlink() or not path.is_file():
         raise ValueError("regular probe artifact required")
     with path.open("rb") as stream:
-        data = stream.read(LIMIT + 1)
-    if not data or len(data) > LIMIT:
+        data = stream.read(maximum + 1)
+    if not data or len(data) > maximum:
         raise ValueError("probe artifact exceeds existing Pack bound")
     return data
+
+
+def built_extension(work: Path) -> tuple[Path, dict]:
+    """Select Cargo's root cdylib output without guessing the target's suffix."""
+    transcript = read(work / "cargo-artifacts.jsonl", maximum=4 * 1024 * 1024)
+    lines = transcript.splitlines()
+    if len(lines) > 512 or any(len(line) > 256 * 1024 for line in lines):
+        raise ValueError("Cargo artifact metadata exceeds its bound")
+    candidates, finished = [], []
+    for line in lines:
+        item = json.loads(line)
+        if type(item) is not dict:
+            raise ValueError("Cargo artifact metadata must contain objects")
+        if item.get("reason") == "build-finished":
+            finished.append(item.get("success"))
+        if item.get("reason") != "compiler-artifact":
+            continue
+        target = item.get("target", {})
+        if item.get("manifest_path") != "/rpds/Cargo.toml":
+            continue
+        if (
+            target.get("name") != "rpds"
+            or target.get("kind") != ["cdylib"]
+            or target.get("crate_types") != ["cdylib"]
+            or target.get("src_path") != "/rpds/src/lib.rs"
+            or item.get("profile", {}).get("test") is not False
+        ):
+            continue
+        filenames = item.get("filenames")
+        if type(filenames) is not list or len(filenames) != 1:
+            raise ValueError("root extension must have exactly one Cargo output")
+        path = Path(filenames[0])
+        if (
+            not path.is_absolute()
+            or path.parent != work / "target/wasm32-wasip2/release"
+        ):
+            raise ValueError("root extension is outside the selected target directory")
+        candidates.append((path, item))
+    if finished != [True] or len(candidates) != 1:
+        raise ValueError("Cargo did not report one successful root extension build")
+    path, artifact = candidates[0]
+    return path, {
+        "transcript_sha256": hashlib.sha256(transcript).hexdigest(),
+        "artifact": artifact,
+    }
 
 
 def custom_sections(data: bytes) -> list[str]:
@@ -201,7 +246,8 @@ def main() -> None:
     from wasmtime import Config, Engine, MemoryType, Module, TableType
 
     work = Path("/work")
-    extension = read(work / "target/wasm32-wasip2/release/librpds.wasm")
+    extension_path, build_artifact = built_extension(work)
+    extension = read(extension_path)
     sections = custom_sections(extension)
     if "dylink.0" not in sections:
         raise ValueError("extension has no dynamic-link metadata")
@@ -263,6 +309,7 @@ def main() -> None:
         "format": "tobkiri.ui-rpds-probe/1",
         "passed": True,
         "extension_sha256": hashlib.sha256(extension).hexdigest(),
+        "cargo_build": build_artifact,
         "component_sha256": hashlib.sha256(read(component)).hexdigest(),
         **composition,
         "custom_sections": sections,

@@ -319,6 +319,8 @@ from run `39956025119` / source `ae7f83080a36e823ac330342584210243dc38050`.
 and all eighteen registry dependencies. `build_rpds.py` derives expanded input
 inventories from the pinned archives and invokes the original supervised,
 network-isolated CI namespace with a read-only configuration directory.
+Cargo's bounded machine-readable root-cdylib record selects the generated
+artifact path; the probe does not infer a filename from the target triple.
 
 The candidate targets `wasm32-wasip2` with PyO3's `abi3-py313` feature. A build
 must provide real limited-API evidence, core-Wasm dynamic-link metadata,

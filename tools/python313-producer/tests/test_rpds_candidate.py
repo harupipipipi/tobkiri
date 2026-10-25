@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import io
+import json
 from pathlib import Path
 import sys
 import tarfile
@@ -112,6 +113,46 @@ class RpdsCandidateTests(unittest.TestCase):
             with self.subTest(imports=imports, exports=exports, inner=inner):
                 with self.assertRaisesRegex(ValueError, "authority"):
                     driver.require_boundary(imports, exports, inner=inner)
+
+    def test_cargo_artifact_selection_uses_the_root_cdylib_not_a_filename_guess(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            target = work / "target/wasm32-wasip2/release/rpds.wasm"
+            root = {
+                "reason": "compiler-artifact",
+                "manifest_path": "/rpds/Cargo.toml",
+                "target": {
+                    "name": "rpds",
+                    "kind": ["cdylib"],
+                    "crate_types": ["cdylib"],
+                    "src_path": "/rpds/src/lib.rs",
+                },
+                "profile": {"test": False},
+                "filenames": [str(target)],
+            }
+            dependency = {**root, "manifest_path": "/vendor/rpds-1.2.1/Cargo.toml"}
+            transcript = work / "cargo-artifacts.jsonl"
+
+            def write(items):
+                transcript.write_text("".join(json.dumps(x) + "\n" for x in items))
+
+            finished = {"reason": "build-finished", "success": True}
+            write([dependency, root, finished])
+            selected, receipt = driver.built_extension(work)
+            self.assertEqual(selected, target)
+            self.assertEqual(receipt["artifact"], root)
+            self.assertEqual(len(receipt["transcript_sha256"]), 64)
+            for items in (
+                [dependency, finished],
+                [root, root, finished],
+                [root],
+                [root, {**finished, "success": False}],
+                [{**root, "filenames": ["/work/unselected.wasm"]}, finished],
+                [{**root, "filenames": [str(target), str(target)]}, finished],
+            ):
+                write(items)
+                with self.subTest(items=items), self.assertRaises(ValueError):
+                    driver.built_extension(work)
 
     def test_experiment_is_separate_from_historical_sources_and_normal_pack_builds(
         self,

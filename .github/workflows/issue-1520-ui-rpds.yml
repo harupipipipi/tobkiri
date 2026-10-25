@@ -91,6 +91,7 @@ jobs:
             ${{ runner.temp }}/rpds-candidate/build/
             ${{ runner.temp }}/rpds-candidate/probe/
             ${{ runner.temp }}/rpds-candidate/work/probe.json
+            ${{ runner.temp }}/rpds-candidate/work/cargo-artifacts.jsonl
           if-no-files-found: warn
           retention-days: 14
       - name: Retain the inactive candidate for subsequent CI-only integration

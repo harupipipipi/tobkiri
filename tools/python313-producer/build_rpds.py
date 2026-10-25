@@ -46,7 +46,7 @@ export RUSTFLAGS='--cfg pyo3_disable_reference_pool -Clink-args=-Wl,--skip-wit-c
 cd /rpds
 /rust/bin/rustc --version --verbose
 /rust/bin/cargo --version
-/rust/bin/cargo --config /build-config/cargo.toml build --frozen -j1 --release --target wasm32-wasip2 --features pyo3/abi3-py313 -vv
+/rust/bin/cargo --config /build-config/cargo.toml build --frozen -j1 --release --target wasm32-wasip2 --features pyo3/abi3-py313 --message-format=json-render-diagnostics -vv > /work/cargo-artifacts.jsonl
 """
 
 
