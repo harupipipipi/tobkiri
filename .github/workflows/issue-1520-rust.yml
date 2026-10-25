@@ -98,6 +98,11 @@ jobs:
           --log "$RUNNER_TEMP/portable-runtime-diagnostics.log" --expected-passed 2 --
           cargo test --locked -p tobkiri-wasm --lib entry_diagnostics::tests
           -- --nocapture
+      - name: Current-entry deadline and funded cancellation regression
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/portable-execution-epoch.log" --expected-passed 3 --
+          cargo test --locked -p tobkiri-wasm --lib execution_epoch::tests
       - name: Authenticated shared module source and import regressions
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test

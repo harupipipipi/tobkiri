@@ -93,14 +93,34 @@ def load_exception_diagnostics(path: Path, expected_source: bytes) -> ModuleType
     return module
 
 
+def load_stage_profile(path: Path, expected_source: bytes) -> ModuleType:
+    """Execute the exact captured stage-profile source without sys.path edits."""
+    import importlib.util
+
+    source = read(path)
+    if source != expected_source:
+        raise ValueError("captured schema stage-profile helper changed")
+    spec = importlib.util.spec_from_file_location("_tobkiri_schema_stage_profile", path)
+    if spec is None or spec.loader is None:
+        raise ValueError("captured schema stage-profile loader unavailable")
+    module = importlib.util.module_from_spec(spec)
+    exec(compile(source, str(path), "exec"), module.__dict__)
+    return module
+
+
 def stage_inputs(stage: Path, control: dict) -> dict:
     """Capture exact package/stdlib source and separate extension provenance."""
     files, distributions = {}, {}
     wrapper = None
     declared, members = 0, 0
     diagnostic_mode = control.get("schema_exception_diagnostics", False)
+    profile_mode = control.get("schema_stage_profile", False)
     if type(diagnostic_mode) is not bool:
         raise ValueError("explicit boolean schema diagnostics mode required")
+    if type(profile_mode) is not bool:
+        raise ValueError("explicit boolean schema stage-profile mode required")
+    if diagnostic_mode and profile_mode:
+        raise ValueError("schema exception and stage-profile modes are separate")
     if diagnostic_mode and not all(
         control.get(name) is True
         for name in (
@@ -111,6 +131,16 @@ def stage_inputs(stage: Path, control: dict) -> dict:
         )
     ):
         raise ValueError("schema diagnostics require the complete inactive candidate")
+    if profile_mode and not all(
+        control.get(name) is True
+        for name in (
+            "allow_ui_wall_clock",
+            "allow_ui_monotonic_clock",
+            "allow_inactive_ui_libc",
+            "allow_ci_link_trace",
+        )
+    ):
+        raise ValueError("schema profile requires the complete inactive candidate")
     stdlib = control["stdlib"]
     if (
         stdlib["format"] != "tobkiri.python313-stdlib-inputs/1"
@@ -182,8 +212,12 @@ def stage_inputs(stage: Path, control: dict) -> dict:
     probe_files = ["app.py", "exercise.py", "captured_loader.py", "probe.wit"]
     if diagnostic_mode:
         probe_files.append("exception_diagnostics.py")
+    if profile_mode:
+        probe_files.append("stage_profile.py")
+    baseline_sources = {}
     baseline_app = None
     helper_source = None
+    profile_source = None
     for name in probe_files:
         target = stage / name
         if target.exists():
@@ -192,9 +226,15 @@ def stage_inputs(stage: Path, control: dict) -> dict:
         target.write_bytes(raw)
         if name == "app.py":
             baseline_app = raw
+            baseline_sources[name] = raw
+        elif name in {"exercise.py", "captured_loader.py", "probe.wit"}:
+            baseline_sources[name] = raw
         elif name == "exception_diagnostics.py":
             helper_source = raw
+        elif name == "stage_profile.py":
+            profile_source = raw
     diagnostic_provenance = None
+    profile_provenance = None
     if diagnostic_mode:
         if baseline_app is None or helper_source is None:
             raise ValueError("frozen baseline app and diagnostic helper required")
@@ -207,6 +247,27 @@ def stage_inputs(stage: Path, control: dict) -> dict:
         if read(stage / "app.py") != baseline_app:
             raise ValueError("baseline app changed before diagnostic derivation")
         (stage / "app.py").write_bytes(derived_app)
+    if profile_mode:
+        if profile_source is None or set(baseline_sources) != {
+            "app.py",
+            "exercise.py",
+            "captured_loader.py",
+            "probe.wit",
+        }:
+            raise ValueError("frozen baseline probe and stage-profile helper required")
+        helper = load_stage_profile(
+            Path("/probe-source/stage_profile.py"), profile_source
+        )
+        derived_sources, profile_provenance = helper.derive_stage_profile_sources(
+            baseline_sources, profile_source
+        )
+        for name, baseline in baseline_sources.items():
+            if read(stage / name) != baseline:
+                raise ValueError(
+                    "baseline probe source changed before profiling derivation"
+                )
+        for name, derived in derived_sources.items():
+            (stage / name).write_bytes(derived)
     data_parts = [
         "# Authenticated original wheel and CPython source members.\nFILES = {\n"
     ]
@@ -250,6 +311,8 @@ def stage_inputs(stage: Path, control: dict) -> dict:
     }
     if diagnostic_provenance is not None:
         result["schema_exception_diagnostics"] = diagnostic_provenance
+    if profile_provenance is not None:
+        result["schema_stage_profile"] = profile_provenance
     return result
 
 
@@ -435,11 +498,18 @@ def boundary(
     inner: bool,
     allow_clock: bool = False,
     allow_monotonic: bool = False,
+    allow_stage_profile: bool = False,
+    stage_profile_api: ModuleType | None = None,
 ):
     imports = component.type.imports(engine)
     exports = list(component.type.exports(engine))
     if allow_monotonic and not allow_clock:
         raise ValueError("monotonic candidate requires explicit wall-clock mode")
+    profile_imports = set()
+    if allow_stage_profile:
+        if stage_profile_api is None:
+            raise ValueError("exact schema stage-profile import validator required")
+        profile_imports = {stage_profile_api.PROFILE_IMPORT_NAME}
     if allow_clock:
         from ui_clock import validate_clock_import
 
@@ -449,21 +519,42 @@ def boundary(
                 validate_clock_import as validate_monotonic,
             )
 
-            if len(imports) != 2 or IMPORT_NAME not in imports:
-                raise ValueError(
-                    "UI candidate must import only the two explicit clock interfaces"
+            if (
+                len(imports) != 2 + len(profile_imports)
+                or IMPORT_NAME not in imports
+                or not profile_imports <= set(imports)
+            ):
+                message = (
+                    "UI candidate must import only two clocks and the exact profile interface"
+                    if allow_stage_profile
+                    else "UI candidate must import only the two explicit clock interfaces"
                 )
+                raise ValueError(message)
             validate_monotonic(IMPORT_NAME, imports[IMPORT_NAME], engine)
-            wall_imports = {
-                name: item for name, item in imports.items() if name != IMPORT_NAME
+            remaining = {
+                name: item
+                for name, item in imports.items()
+                if name != IMPORT_NAME and name not in profile_imports
             }
         else:
-            wall_imports = imports
-        if len(wall_imports) != 1:
+            if not profile_imports <= set(imports):
+                raise ValueError("schema candidate lacks its exact profile interface")
+            remaining = {
+                name: item
+                for name, item in imports.items()
+                if name not in profile_imports
+            }
+        if len(remaining) != 1:
             raise ValueError("UI candidate must import only one wall-clock interface")
-        for name, item in wall_imports.items():
+        for name, item in remaining.items():
             validate_clock_import(name, item, engine)
-    elif imports:
+    elif set(imports) != profile_imports:
+        if imports:
+            raise ValueError("schema component has unexpected authority imports")
+    if allow_stage_profile:
+        for name in profile_imports:
+            stage_profile_api.validate_import(name, imports[name], engine)
+    if not allow_clock and not allow_stage_profile and imports:
         raise ValueError("schema component has unexpected authority imports")
     expected = {INTERFACE, "exports"} if inner else {INTERFACE}
     if set(exports) != expected or len(exports) != len(expected):
@@ -476,6 +567,9 @@ def observe(
     *,
     allow_clock: bool = False,
     allow_monotonic: bool = False,
+    allow_stage_profile: bool = False,
+    stage_profile_api: ModuleType | None = None,
+    profile_output_path: Path | None = None,
     operation_name: str = "run",
     arguments: tuple = (),
     expected_denial: bool = False,
@@ -498,6 +592,8 @@ def observe(
             inner=False,
             allow_clock=allow_clock,
             allow_monotonic=allow_monotonic,
+            allow_stage_profile=allow_stage_profile,
+            stage_profile_api=stage_profile_api,
         )
         with Store(engine) as store, Linker(engine) as linker:
             store.set_limits(
@@ -526,8 +622,10 @@ def observe(
             post_return = False
             bridge = None
             monotonic_bridge = None
+            profile_bridge = None
             budget = None
             denial = None
+            execution_status = "not_started"
             try:
                 if allow_clock:
                     from ui_clock import ClockBudget, WallClockBridge
@@ -547,6 +645,14 @@ def observe(
 
                         monotonic_bridge = MonotonicClockBridge(IMPORT_NAME, budget)
                         monotonic_bridge.install(linker)
+                if allow_stage_profile:
+                    if stage_profile_api is None or budget is None:
+                        raise ValueError(
+                            "schema profile requires its exact API and shared clock budget"
+                        )
+                    profile_bridge = stage_profile_api.StageProfileBridge(budget)
+                    profile_bridge.install(linker)
+                execution_status = "running"
                 instance = linker.instantiate(store, component)
                 index = instance.get_export_index(store, INTERFACE)
                 if index is None:
@@ -564,6 +670,7 @@ def observe(
                         not expected_denial
                         or "wasm `unreachable` instruction executed" not in str(error)
                     ):
+                        execution_status = "failed"
                         raise
                     denial = {
                         "kind": arguments[0],
@@ -584,10 +691,23 @@ def observe(
                     finally:
                         function.post_return(store)
                         post_return = True
+                execution_status = "completed"
+            except BaseException:
+                execution_status = "failed"
+                raise
             finally:
                 finished.set()
                 timer.cancel()
                 timer.join()
+                if profile_bridge is not None and profile_output_path is not None:
+                    active_exception = sys.exc_info()[0] is not None
+                    try:
+                        profile_bridge.write_report(
+                            profile_output_path, execution_status
+                        )
+                    except BaseException:
+                        if not active_exception:
+                            raise
             if (
                 clock_errors
                 or time.monotonic() - start >= SECONDS
@@ -598,7 +718,7 @@ def observe(
                 raise ValueError(
                     "schema operation did not finish its original bounded lifetime"
                 )
-            return {
+            observation = {
                 "result": result,
                 "fuel_consumed": FUEL - store.get_fuel(),
                 "post_return": post_return,
@@ -613,6 +733,9 @@ def observe(
                 else True,
                 **typed,
             }
+            if profile_bridge is not None:
+                observation["stage_profile"] = profile_bridge.report(execution_status)
+            return observation
 
 
 def clock_composition_wit(
@@ -661,6 +784,7 @@ def main():
     allow_monotonic = control.get("allow_ui_monotonic_clock", False)
     allow_link_trace = control.get("allow_ci_link_trace", False)
     diagnostic_mode = control.get("schema_exception_diagnostics", False)
+    profile_mode = control.get("schema_stage_profile", False)
     if any(
         type(value) is not bool
         for value in (
@@ -668,6 +792,7 @@ def main():
             allow_monotonic,
             allow_link_trace,
             diagnostic_mode,
+            profile_mode,
         )
     ):
         raise ValueError("explicit boolean schema probe mode required")
@@ -685,6 +810,20 @@ def main():
         )
     ):
         raise ValueError("schema diagnostics require the complete inactive candidate")
+    if diagnostic_mode and profile_mode:
+        raise ValueError("schema exception and stage-profile modes are separate")
+    if profile_mode and not all(
+        control.get(name) is True
+        for name in (
+            "allow_ui_wall_clock",
+            "allow_ui_monotonic_clock",
+            "allow_inactive_ui_libc",
+            "allow_ci_link_trace",
+        )
+    ):
+        raise ValueError(
+            "schema stage profile requires the complete inactive candidate"
+        )
     original = json.loads(read(work / "native.json"))
     stage = work / "stage"
     stage.mkdir()
@@ -693,6 +832,18 @@ def main():
     if diagnostic_provenance is not None:
         (work / "schema-exception-diagnostics.json").write_text(
             json.dumps(diagnostic_provenance, indent=2) + "\n"
+        )
+    stage_profile_api = None
+    profile_provenance = captured.get("schema_stage_profile")
+    if profile_mode:
+        if not isinstance(profile_provenance, dict):
+            raise ValueError("schema stage-profile provenance is missing")
+        helper_source = read(stage / "stage_profile.py")
+        stage_profile_api = load_stage_profile(
+            Path("/probe-source/stage_profile.py"), helper_source
+        )
+        (work / "schema-stage-profile-provenance.json").write_text(
+            json.dumps(profile_provenance, indent=2) + "\n"
         )
     (work / "stage-inputs.json").write_text(json.dumps(captured, indent=2) + "\n")
     environment = {
@@ -730,6 +881,8 @@ def main():
             inner=True,
             allow_clock=allow_clock,
             allow_monotonic=allow_monotonic,
+            allow_stage_profile=profile_mode,
+            stage_profile_api=stage_profile_api,
         )
     wit = (
         clock_composition_wit(
@@ -786,6 +939,8 @@ def main():
             stage / "outer.wasm",
             allow_clock=True,
             allow_monotonic=allow_monotonic,
+            allow_stage_profile=profile_mode,
+            stage_profile_api=stage_profile_api,
             operation_name="probe-clock",
         )
         end_wall = time.time_ns()
@@ -813,6 +968,8 @@ def main():
                     stage / "outer.wasm",
                     allow_clock=True,
                     allow_monotonic=True,
+                    allow_stage_profile=profile_mode,
+                    stage_profile_api=stage_profile_api,
                     operation_name="probe-monotonic",
                 )
                 end_monotonic = time.monotonic_ns()
@@ -850,6 +1007,8 @@ def main():
                     stage / "outer.wasm",
                     allow_clock=True,
                     allow_monotonic=allow_monotonic,
+                    allow_stage_profile=profile_mode,
+                    stage_profile_api=stage_profile_api,
                     operation_name="probe-denied-io",
                     arguments=(kind,),
                     expected_denial=True,
@@ -866,12 +1025,40 @@ def main():
             (work / "ui-clock-probes.json").write_text(
                 json.dumps(clock_probes, indent=2) + "\n"
             )
-    actual = observe(
-        stage / "outer.wasm",
-        allow_clock=allow_clock,
-        allow_monotonic=allow_monotonic,
-    )
+    try:
+        actual = observe(
+            stage / "outer.wasm",
+            allow_clock=allow_clock,
+            allow_monotonic=allow_monotonic,
+            allow_stage_profile=profile_mode,
+            stage_profile_api=stage_profile_api,
+            profile_output_path=(work / "schema-stage-profile.json")
+            if profile_mode
+            else None,
+        )
+    except BaseException as error:
+        if profile_mode:
+            error_type = type(error)
+            failure = {
+                "format": "tobkiri.schema-stage-profile-observation/1",
+                "outcome": "failed",
+                "diagnostic_only": True,
+                "original_acceptance_claimed": False,
+                "production_enabled": False,
+                "exception": {
+                    "type": error_type.__module__ + "." + error_type.__qualname__,
+                    "message": str(error)[:4096],
+                },
+            }
+            (work / "wasm-observation.json").write_text(
+                json.dumps(failure, indent=2) + "\n"
+            )
+        raise
     (work / "wasm-observation.json").write_text(json.dumps(actual, indent=2) + "\n")
+    if profile_mode:
+        raise ValueError(
+            "diagnostic-only schema stage profile never accepts a candidate"
+        )
     result = actual["result"]
     if allow_clock and actual["clock"]["calls"]["now"] <= 0:
         raise ValueError(

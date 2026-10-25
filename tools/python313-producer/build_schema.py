@@ -627,6 +627,36 @@ def _validate_schema_exception_diagnostics(
         )
 
 
+def _validate_schema_stage_profile(
+    enabled: bool,
+    *,
+    allow_ui_wall_clock: bool,
+    allow_ui_monotonic_clock: bool,
+    allow_inactive_ui_libc: bool,
+    allow_ci_link_trace: bool,
+    predecessor_paths: tuple[Path | None, ...],
+) -> None:
+    """Restrict profiling to the same complete, inactive candidate inputs."""
+    if type(enabled) is not bool:
+        raise ValueError("explicit boolean schema stage-profile mode required")
+    if enabled and not (
+        all(
+            type(value) is bool and value
+            for value in (
+                allow_ui_wall_clock,
+                allow_ui_monotonic_clock,
+                allow_inactive_ui_libc,
+                allow_ci_link_trace,
+            )
+        )
+        and len(predecessor_paths) == 4
+        and all(isinstance(path, Path) for path in predecessor_paths)
+    ):
+        raise ValueError(
+            "schema stage profile requires the complete inactive candidate"
+        )
+
+
 def run(
     inputs: Path,
     producer: Path,
@@ -640,6 +670,7 @@ def run(
     allow_inactive_ui_libc: bool = False,
     allow_ci_link_trace: bool = False,
     schema_exception_diagnostics: bool = False,
+    schema_stage_profile: bool = False,
     poll_bundle: Path | None = None,
     poll_authentication: Path | None = None,
     poll_reference_report: Path | None = None,
@@ -677,6 +708,16 @@ def run(
         allow_ci_link_trace=allow_ci_link_trace,
         predecessor_paths=predecessor_paths,
     )
+    _validate_schema_stage_profile(
+        schema_stage_profile,
+        allow_ui_wall_clock=allow_ui_wall_clock,
+        allow_ui_monotonic_clock=allow_ui_monotonic_clock,
+        allow_inactive_ui_libc=allow_inactive_ui_libc,
+        allow_ci_link_trace=allow_ci_link_trace,
+        predecessor_paths=predecessor_paths,
+    )
+    if schema_exception_diagnostics and schema_stage_profile:
+        raise ValueError("schema exception and stage-profile modes are separate")
     if (
         not destination.is_absolute()
         or destination.parent.resolve() != destination.parent
@@ -745,6 +786,11 @@ def run(
             allow_inactive_ui_libc=True,
             schema_exception_diagnostics=True,
         )
+    if schema_stage_profile:
+        control_data.update(
+            allow_inactive_ui_libc=True,
+            schema_stage_profile=True,
+        )
     control.write_text(json.dumps(control_data, indent=2) + "\n")
     composition = HERE.parents[1] / "sdk/python/composition.py"
     control_identity = fingerprint(control)
@@ -790,6 +836,15 @@ def run(
             "original_failure_must_remain_failure": True,
             "production_enabled": False,
             "provenance_available": False,
+        }
+    if schema_stage_profile:
+        report["schema_stage_profile"] = {
+            "enabled": True,
+            "diagnostic_only": True,
+            "original_acceptance_claimed": False,
+            "production_enabled": False,
+            "provenance_available": False,
+            "profile_available": False,
         }
     try:
         native_recipe = destination / "native.sh"
@@ -936,8 +991,7 @@ def run(
                     len(provenance_raw) != provenance_identity["bytes"]
                     or hashlib.sha256(provenance_raw).hexdigest()
                     != provenance_identity["sha256"]
-                    or fingerprint(provenance_path, 512 * 1024)
-                    != provenance_identity
+                    or fingerprint(provenance_path, 512 * 1024) != provenance_identity
                 ):
                     raise ValueError("diagnostic app provenance changed while read")
                 provenance = json.loads(provenance_raw)
@@ -963,6 +1017,95 @@ def run(
                 # Do not replace the original build or guest exception with a
                 # secondary failure while reading optional diagnostic evidence.
                 diagnostic_report["provenance_available"] = False
+        if schema_stage_profile:
+            profile_report = report["schema_stage_profile"]
+
+            def read_profile_json(path: Path, maximum: int) -> tuple[dict, dict]:
+                if path.is_symlink() or not path.is_file():
+                    raise ValueError(
+                        "schema stage-profile evidence file is unavailable"
+                    )
+                identity = fingerprint(path, maximum)
+                with path.open("rb") as stream:
+                    raw = stream.read(maximum + 1)
+                if (
+                    len(raw) > maximum
+                    or len(raw) != identity["bytes"]
+                    or hashlib.sha256(raw).hexdigest() != identity["sha256"]
+                    or fingerprint(path, maximum) != identity
+                ):
+                    raise ValueError("schema stage-profile evidence changed while read")
+                value = json.loads(raw)
+                if not isinstance(value, dict):
+                    raise ValueError("schema stage-profile evidence is not an object")
+                return value, identity
+
+            try:
+                provenance, provenance_identity = read_profile_json(
+                    work / "schema-stage-profile-provenance.json", 1024 * 1024
+                )
+                if (
+                    provenance.get("format")
+                    != "tobkiri.schema-stage-profile-derivation/1"
+                    or provenance.get("diagnostic_only") is not True
+                    or provenance.get("original_acceptance_claimed") is not False
+                    or provenance.get("production_enabled") is not False
+                ):
+                    raise ValueError("schema profile derivation provenance differs")
+                profile_report.update(
+                    provenance_file=provenance_identity,
+                    provenance_format=provenance["format"],
+                    derived_source_files={
+                        name: {
+                            "baseline": row["baseline"],
+                            "derived": row["derived"],
+                            "diff_sha256": row["diff_sha256"],
+                        }
+                        for name, row in provenance["files"].items()
+                    },
+                    provenance_available=True,
+                )
+            except BaseException:
+                profile_report["provenance_available"] = False
+            try:
+                profile, profile_identity = read_profile_json(
+                    work / "schema-stage-profile.json", 1024 * 1024
+                )
+                if (
+                    profile.get("format") != "tobkiri.schema-stage-profile/1"
+                    or profile.get("diagnostic_only") is not True
+                    or profile.get("production_enabled") is not False
+                    or profile.get("outcome") != "diagnostic_only"
+                ):
+                    raise ValueError("schema runtime profile report differs")
+                profile_report.update(
+                    profile_file=profile_identity,
+                    profile_summary={
+                        name: profile[name]
+                        for name in (
+                            "execution_status",
+                            "event_count",
+                            "metadata_bytes",
+                            "get_code_call_count",
+                            "get_code_completed_count",
+                            "shared_callback_budget",
+                            "shared_callback_budget_healthy",
+                            "fuel_observations_monotonic",
+                            "callback_failed",
+                        )
+                    },
+                    profile_available=True,
+                )
+            except BaseException:
+                profile_report["profile_available"] = False
+            observation_path = work / "wasm-observation.json"
+            if observation_path.is_file() and not observation_path.is_symlink():
+                try:
+                    profile_report["wasm_observation"] = fingerprint(
+                        observation_path, 4 * 1024 * 1024
+                    )
+                except BaseException:
+                    pass
         (destination / "schema-build.json").write_text(
             json.dumps(report, indent=2) + "\n"
         )
@@ -977,6 +1120,7 @@ if __name__ == "__main__":
     parser.add_argument("--allow-inactive-ui-libc", action="store_true")
     parser.add_argument("--allow-ci-link-trace", action="store_true")
     parser.add_argument("--schema-exception-diagnostics", action="store_true")
+    parser.add_argument("--schema-stage-profile", action="store_true")
     for name in (
         "poll-bundle",
         "poll-authentication",

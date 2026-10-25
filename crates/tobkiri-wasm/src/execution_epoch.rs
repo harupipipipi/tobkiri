@@ -1,5 +1,6 @@
 //! Execution lifetime checks without a Profile, principal or authority API.
 use std::time::{Duration, Instant};
+use tobkiri_gate::CoreCancellation;
 use tokio_util::sync::CancellationToken;
 use wasmtime::UpdateDeadline;
 
@@ -8,7 +9,7 @@ const CANCEL_GRACE: Duration = Duration::from_secs(2);
 /// Read the CURRENT entry lifetime; never cache a reused Pack Store's CallCx.
 pub(crate) fn check_epoch(
     deadline: Instant,
-    cancel: &CancellationToken,
+    cancel: &CoreCancellation,
     retirement: Option<&CancellationToken>,
     cancel_observed: &mut Option<Instant>,
 ) -> wasmtime::Result<UpdateDeadline> {
@@ -32,23 +33,27 @@ pub(crate) fn check_epoch(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tobkiri_gate::CoreControl;
 
     #[test]
     fn actual_retirement_takes_precedence_over_an_expired_deadline() {
-        let cancel = CancellationToken::new();
+        let control = CoreControl::default();
+        let cancel = CoreCancellation::new_with_control(&control).unwrap();
         let retirement = CancellationToken::new();
         retirement.cancel();
         let mut observed = None;
-        let error = check_epoch(Instant::now(), &cancel, Some(&retirement), &mut observed)
-            .err()
-            .expect("epoch check must reject this lifetime");
+        let Err(error) = check_epoch(Instant::now(), &cancel, Some(&retirement), &mut observed)
+        else {
+            panic!("epoch check must reject this lifetime");
+        };
         assert_eq!(error.to_string(), "component instance retired");
         assert!(observed.is_none());
     }
 
     #[test]
     fn cancellation_uses_the_first_observation_without_renewing_the_grace() {
-        let cancel = CancellationToken::new();
+        let control = CoreControl::default();
+        let cancel = CoreCancellation::new_with_control(&control).unwrap();
         cancel.cancel();
         let deadline = Instant::now() + Duration::from_secs(30);
         let mut observed = None;
@@ -59,24 +64,22 @@ mod tests {
         assert!(observed.is_some());
         let original = Instant::now() - CANCEL_GRACE - Duration::from_millis(1);
         observed = Some(original);
-        let error = check_epoch(deadline, &cancel, None, &mut observed)
-            .err()
-            .expect("epoch check must reject this lifetime");
+        let Err(error) = check_epoch(deadline, &cancel, None, &mut observed) else {
+            panic!("epoch check must reject this lifetime");
+        };
         assert_eq!(error.to_string(), "component cancelled after grace period");
         assert_eq!(observed, Some(original));
     }
 
     #[test]
     fn current_entry_deadline_is_rechecked_instead_of_cached_by_the_store() {
-        let cancel = CancellationToken::new();
+        let control = CoreControl::default();
+        let cancel = CoreCancellation::new_with_control(&control).unwrap();
         let mut observed = None;
-        assert_eq!(
-            check_epoch(Instant::now(), &cancel, None, &mut observed)
-                .err()
-                .expect("epoch check must reject this lifetime")
-                .to_string(),
-            "original component deadline exceeded"
-        );
+        let Err(error) = check_epoch(Instant::now(), &cancel, None, &mut observed) else {
+            panic!("epoch check must reject this lifetime");
+        };
+        assert_eq!(error.to_string(), "original component deadline exceeded");
         let next_deadline = Instant::now() + Duration::from_secs(30);
         assert!(matches!(
             check_epoch(next_deadline, &cancel, None, &mut observed).unwrap(),
