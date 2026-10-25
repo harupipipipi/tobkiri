@@ -2,6 +2,7 @@
 //! Actual native root proof is covered by the supported Core/Store suites.
 use super::*;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 use tobkiri_canon::Digest;
 use tobkiri_gate::{CapacityLedger, CoreControl, NativeSetupAccount, NativeSetupLease};
 use wasmtime::{
@@ -111,7 +112,7 @@ async fn shared_host_reservation_and_stack_deny_real_guest_growth_before_allocat
 async fn calls_keep_original_deadline_and_spent_fuel_then_retire_without_refund() {
     let _serial = crate::allocation::TEST_CUSTODY.lock().await;
     let (account, invocation) = funding();
-    let expected_deadline = invocation.started_at() + MAX_WALL;
+    let expected_deadline = invocation.deadline().unwrap();
     let engine = WasmEngine::new_with_control(invocation.control()).unwrap();
     let module = Module::new(engine.engine(), wat::parse_str(
         "(module (func (export \"work\") (local i32) i32.const 1000 local.set 0 (loop $again local.get 0 i32.const 1 i32.sub local.tee 0 br_if $again)))"

@@ -273,3 +273,26 @@ fn invocation_clones_share_one_irrevocable_store_claim_after_root_validation() {
     let output = invocation.reserve(CapacityKind::AbiMarshal, 1).unwrap();
     assert_eq!(output.allocated_bytes().unwrap(), 1);
 }
+
+#[test]
+fn exact_invocation_identity_does_not_alias_equal_counters_from_another_ledger() {
+    let control = CoreControl::default();
+    let root = proof(b"same-physical-domain");
+    let first = account(&CapacityLedger::new(), &control, &root)
+        .begin()
+        .unwrap();
+    let other = account(&CapacityLedger::new(), &control, &root)
+        .begin()
+        .unwrap();
+    assert_eq!(first.provenance(), other.provenance());
+    assert_eq!(
+        first.allocation_domain().unwrap(),
+        other.allocation_domain().unwrap()
+    );
+    assert!(first.same_invocation(&first.clone()));
+    assert!(!first.same_invocation(&other));
+    assert_eq!(
+        first.deadline().unwrap(),
+        first.started_at() + NATIVE_SETUP_WALL
+    );
+}

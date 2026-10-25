@@ -85,6 +85,11 @@ impl fmt::Debug for NativeSetupOwnerLease {
     }
 }
 impl NativeSetupOwnerLease {
+    #[cfg(target_os = "macos")]
+    pub(crate) fn directory(&self) -> &std::fs::File {
+        &self.0.identity.directory
+    }
+
     /// The descriptor-pinned identity, including after a root rename.
     pub fn identity(&self) -> &DataRootIdentity {
         &self.0.identity

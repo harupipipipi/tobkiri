@@ -214,7 +214,8 @@ lease drop does not falsely refund retained Weak/map storage. These are control
 reservations within the unchanged control cap, not guest/ABI/output funding or
 a whole-process RSS proof. The actual shared 64 MiB native Setup payload
 account and per-invocation provenance now have an explicit native bridge;
-Store/output allocation adapters and captured native input binding still need
+The bounded native Store and owned codec adapters now use that account;
+the captured-input callback and actual original UI runner still need
 connection. Existing CapacityOwner and Gate-approved
 Pack reserve/frame APIs are unchanged; inventing a Profile to fund Setup is
 not an alternative.
@@ -332,6 +333,54 @@ configuration data is an inert proposal until genuinely trusted native inputs,
 frozen sources and the existing GUI approval/commit path establish authority.
 No new approval ceremony, trust root, synthetic commitment receipt or silent
 permission grant is introduced by this design note.
+
+## Frozen disk input prerequisite
+
+The original captured-input adapter streams large application artifacts. Its
+4 MiB `read_bytes` bound and 64 KiB callback chunk do not impose a 64 MiB file
+or total-artifact limit. Its 4,096-file/1 MiB namespace-metadata limits and
+`size < 2**63` remain unchanged. Copying the entire capture into the shared
+64 MiB heap would change those semantics. Astra high revised the earlier
+heap-backing interpretation after these original source facts were supplied:
+memory and disk resources must be accounted separately, without a new arbitrary
+artifact-size quota.
+
+The inactive `NativeSetupOwnerLease::capture_file_snapshot` prerequisite uses a
+new, exclusive inode inside the descriptor-pinned native root. It opens the
+readonly FD and unlinks the private name before reserving/copying disk content;
+no published pathname or writable mapping is retained. On supported macOS it
+uses [the documented `F_PREALLOCATE`/`F_ALLOCATEALL` operation](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/fcntl.2.html)
+and checks that the returned real allocation covers the complete request.
+Logical truncation, sparse allocation and guessed COW extent costs are not
+fallbacks. This is OS-space admission, separate from the SQLite-only disk quota.
+It is not proof of an exact increase in free filesystem blocks after close.
+
+The original pinned source reader still performs no-follow traversal, exact
+length/EOF and dev/inode/mode/size/mtime/ctime checks. The copy's SHA-256 must
+match the declared source; after the writer closes, the completed readonly
+backing is hashed again. Only then can the opaque file snapshot be returned.
+Its actual final FD is closed before root/invocation custody and the original
+metadata permit are released. Clones share that FD/guard; no descriptor or
+writer extraction is exposed. Original deadline/cancellation apply throughout,
+and exact invocation custody prevents equal ledger-local counters from aliasing.
+
+The streaming scratch/hash allowance is 80 KiB in the original native 64 MiB
+account. Path-component growth, FD/guard/control-block metadata are prepaid in
+the original CoreControl account. A fixed-range read consumes only the completed
+backing, at most 64 KiB, with checked range arithmetic; it performs no source
+rediscovery or re-verification. Its caller must prepay the output in the same
+native account. These synchronous primitives require a funded managed IO worker;
+timeout/cancellation is not evidence that an in-flight OS call finished or that
+its capacity can be returned.
+
+Four supported-platform tests are explicitly required by CI, including a real
+artifact larger than 64 MiB, readonly/unlinked backing after source mutation,
+failure cleanup and exact invocation identity. This code has not established
+their execution success yet. The closed full-capture inventory, original
+whole-source/native code-signature checks and auxiliary observations, managed
+callback lifetime, WIT binding and original GUI integration remain required.
+A per-file frozen hash is DATA, not source-approval or commit authority; this
+prerequisite does not activate the new Launcher or remove the legacy runtime.
 
 ## Failed configuration writes
 

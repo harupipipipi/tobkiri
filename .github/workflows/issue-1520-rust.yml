@@ -223,6 +223,11 @@ jobs:
         run: cargo build --manifest-path crates/test-guests/Cargo.toml --workspace --locked --target wasm32-wasip2
       - name: Build and bind real Pack fixtures
         run: python3 -B packs/build.py --target-dir "$CARGO_TARGET_DIR"
+      - name: Native immutable disk snapshot regressions
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-snapshot.log" --expected-passed 4 --
+          cargo test --locked -p tobkiri-store --lib native_snapshot::tests
       - name: Execute complete Rust workspace on the supported platform
         env:
           TOBKIRI_TEST_AUDIT_PHASE_TIMING: "1"
@@ -561,6 +566,7 @@ jobs:
           name: supported-platform-runtime
           path: |
             ${{ runner.temp }}/supported-workspace.log
+            ${{ runner.temp }}/native-snapshot.log*
             ${{ runner.temp }}/supported-workspace.receipt.json
             ${{ runner.temp }}/execution-profile.log
             ${{ runner.temp }}/execution-profile.receipt.json

@@ -4,10 +4,10 @@ use crate::aggregate_limits::{AggregateLimits, PhysicalCapacity};
 use crate::engine::STORE_STRUCTURE_CONTROL_BYTES;
 use crate::execution_epoch::check_epoch;
 use crate::instance_capacity::WASM_STACK_BYTES;
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use std::{
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::Instant,
 };
 use tobkiri_gate::{
     CapacityKind, ControlKind, ControlReservation, CoreCancellation, GateError,
@@ -16,7 +16,6 @@ use tobkiri_gate::{
 use wasmtime::Store;
 
 const FUEL: u64 = 2_000_000_000;
-const MAX_WALL: Duration = Duration::from_secs(30);
 const TABLE_ELEMENTS: usize = 65_536;
 const PHYSICAL_METADATA_BYTES: u64 = 1024;
 
@@ -101,6 +100,7 @@ impl Drop for PhysicalOwner {
 
 struct NativeState<T> {
     data: T,
+    invocation: NativeSetupInvocation,
     owners: crate::AllocationOwners,
     limits: AggregateLimits,
     deadline: Instant,
@@ -127,10 +127,7 @@ impl WasmEngine {
         invocation: NativeSetupInvocation,
         data: T,
     ) -> Result<NativeSetupStore<T>> {
-        let deadline = invocation
-            .started_at()
-            .checked_add(MAX_WALL)
-            .context("native Setup deadline overflow")?;
+        let deadline = invocation.deadline()?;
         if Instant::now() >= deadline {
             bail!("original native Setup deadline exceeded");
         }
@@ -148,6 +145,7 @@ impl WasmEngine {
             crate::allocation::native_owners(&invocation, deadline, &cancel, &retirement, FUEL)?;
         let state = NativeState {
             data,
+            invocation,
             owners,
             limits: AggregateLimits {
                 memory_cap: usize::try_from(NATIVE_SETUP_MEMORY_BYTES)?,
@@ -192,6 +190,36 @@ impl WasmEngine {
     }
 }
 impl<T: 'static> NativeSetupStore<T> {
+    /// Freeze native-selected source DATA using the original account, deadline
+    /// and host-work budget. Call this synchronous IO primitive on a funded
+    /// managed worker; cancellation does not complete an in-flight OS operation.
+    pub fn capture_file_snapshot(
+        &self,
+        root: &tobkiri_store::NativeSetupOwnerLease,
+        source: tobkiri_store::NativeSnapshotSource<'_>,
+    ) -> Result<tobkiri_store::NativeFileSnapshot> {
+        let state = self.store.as_ref().expect("live native Store").data();
+        let mut check_work = |work| {
+            state
+                .owners
+                .graph()
+                .reserve(tobkiri_canon::AllocationRequest {
+                    kind: tobkiri_canon::AllocationKind::Temporary,
+                    bytes: 0,
+                    elements: 0,
+                    depth: 0,
+                    work,
+                })
+                .map_err(|error| match error {
+                    tobkiri_canon::AllocationError::Limit => {
+                        GateError::Limit("native capture host work exceeded".into())
+                    }
+                    _ => GateError::Unavailable,
+                })
+        };
+        Ok(root.capture_file_snapshot(&state.invocation, source, &state.cancel, &mut check_work)?)
+    }
+
     /// Borrow the single original codec owner; clones share its work/capacity.
     pub fn allocation_owners(&self) -> &crate::AllocationOwners {
         &self

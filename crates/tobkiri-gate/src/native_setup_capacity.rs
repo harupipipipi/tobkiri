@@ -10,6 +10,8 @@ mod tests;
 
 /// Original native UI payload cap, shared by workers and retained outputs.
 pub const NATIVE_SETUP_MEMORY_BYTES: u64 = 64 * 1024 * 1024;
+/// One original wall budget, shared by capture, callbacks and guest execution.
+pub const NATIVE_SETUP_WALL: std::time::Duration = std::time::Duration::from_secs(30);
 const MAX_RECORDS: usize = 4096;
 const ACCOUNT_METADATA_BYTES: u64 = 4096;
 const RECORD_METADATA_BYTES: u64 = 4096;
@@ -266,6 +268,26 @@ struct Invocation {
 #[derive(Clone)]
 pub struct NativeSetupInvocation(LeasedShared<Invocation, ControlReservation>);
 impl NativeSetupInvocation {
+    /// Exact shared native invocation custody, not a comparison of serialized
+    /// counters that can coincide in independently created ledgers.
+    pub fn same_invocation(&self, other: &Self) -> bool {
+        std::ptr::eq(self.0.get(), other.0.get())
+    }
+
+    /// Borrow the validated physical domain; this conveys no effect authority.
+    pub fn allocation_domain(&self) -> Result<Digest, GateError> {
+        self.0.get().account.check_live()?;
+        Ok(self.0.get().account.state.domain.clone())
+    }
+
+    /// The original deadline, never a newly issued budget on a later call.
+    pub fn deadline(&self) -> Result<std::time::Instant, GateError> {
+        self.0.get().account.check_live()?;
+        self.started_at()
+            .checked_add(NATIVE_SETUP_WALL)
+            .ok_or(GateError::Deadline)
+    }
+
     /// Claim the invocation's only Store construction attempt. Clones retain
     /// custody but cannot mint fresh fuel. Failure or Store destruction never
     /// resets this claim; a caller must report failure rather than retry it.
