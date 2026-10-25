@@ -12,6 +12,7 @@ from unittest.mock import patch
 HERE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
 import build_schema
+import fetch_schema_stdlib
 
 before = sys.path[:]
 spec = importlib.util.spec_from_file_location(
@@ -23,6 +24,9 @@ sys.path[:] = before
 
 
 class SchemaCandidateTests(unittest.TestCase):
+    def test_controller_and_guest_source_selection_are_identical(self):
+        self.assertEqual(driver.STDLIB_FILES, set(fetch_schema_stdlib.SELECTED_FILES))
+
     def test_non_ci_refusal_precedes_tools_and_destination_access(self):
         missing = Path("/must-not-be-created")
         with (

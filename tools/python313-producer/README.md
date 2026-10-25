@@ -371,8 +371,9 @@ generated literal capture must fit the unchanged 64 MiB input bound; actual
 component/Store/fuel/deadline/output limits remain independently enforced.
 
 The late `packaging.tags` import also requires the original stdlib `logging`
-package. `fetch_schema_stdlib.py` obtains its three unchanged modules from the
-existing pinned official CPython 3.13.16 archive on CI, rederives their identity
+package, including its original traceback, line-cache, text, color and token
+dependencies. `fetch_schema_stdlib.py` obtains these ten unchanged source files
+from the existing pinned official CPython 3.13.16 archive on CI, rederives their identity
 from that archive, and includes them in the same source/copy/index limits.
 This supplies source without warming the late import or adding host operations.
 The native reference uses its own ordinary CPython 3.13.16 stdlib, independently

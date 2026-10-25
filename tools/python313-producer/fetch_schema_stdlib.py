@@ -1,7 +1,7 @@
-"""Acquire three pinned CPython logging sources as data on Linux CI.
+"""Acquire pinned CPython logging and traceback source as data on Linux CI.
 
 The archive and extracted source are never imported or executed here. Only the
-three fixed logging modules are published; the rest of the archive remains
+ten fixed source files are published; the rest of the archive remains
 compressed under the private CI destination.
 """
 
@@ -38,6 +38,13 @@ SELECTED_FILES = (
     "logging/__init__.py",
     "logging/config.py",
     "logging/handlers.py",
+    "traceback.py",
+    "linecache.py",
+    "textwrap.py",
+    "_colorize.py",
+    "string.py",
+    "tokenize.py",
+    "token.py",
 )
 _ARCHIVE_MEMBERS = {
     f"{LOCKED_PREFIX}/Lib/{relative}": relative for relative in SELECTED_FILES
@@ -59,7 +66,7 @@ def _source_pin() -> dict:
 
 
 def _source_members(archive_path: Path, pin: dict) -> tuple[dict, dict]:
-    """Stream the pinned tar.xz and capture only the three selected regular files."""
+    """Stream the pinned tar.xz and capture only the selected regular files."""
     archive_identity = fingerprint(archive_path, MAX_ARCHIVE_BYTES)
     if archive_identity["sha256"] != pin["sha256"]:
         raise ValueError("CPython stdlib archive differs from its source pin")
@@ -106,6 +113,8 @@ def _source_members(archive_path: Path, pin: dict) -> tuple[dict, dict]:
                     raise ValueError(
                         f"unsupported CPython stdlib archive member: {name}"
                     )
+                if not relative and kind != "directory":
+                    raise ValueError("CPython stdlib archive root is not a directory")
                 parents = PurePosixPath(relative).parents
                 if any(
                     kinds.get(str(parent)) in ("file", "link", "special")
@@ -180,35 +189,96 @@ def _source_members(archive_path: Path, pin: dict) -> tuple[dict, dict]:
 
 
 def _read_source_tree(source_root: Path) -> dict[str, tuple[bytes, int]]:
-    """Read exactly the three expected regular files, rejecting aliases and extras."""
-    if not stat.S_ISDIR(source_root.lstat().st_mode):
-        raise ValueError("CPython logging source root is not a physical directory")
-    if {item.name for item in source_root.iterdir()} != {"logging"}:
-        raise ValueError("CPython source tree has unsupported top-level entries")
-    logging_root = source_root / "logging"
-    if not stat.S_ISDIR(logging_root.lstat().st_mode):
-        raise ValueError("CPython logging source directory is not physical")
-    expected_names = {PurePosixPath(name).name for name in SELECTED_FILES}
-    if {item.name for item in logging_root.iterdir()} != expected_names:
-        raise ValueError("CPython logging source set differs from the pinned selection")
+    """Read only the fixed file tree, checking all size bounds before reading."""
+    expected_children: dict[str, set[str]] = {"": set()}
+    for relative in SELECTED_FILES:
+        parts = PurePosixPath(relative).parts
+        parent_parts: list[str] = []
+        for part in parts[:-1]:
+            parent = "/".join(parent_parts)
+            child = "/".join((*parent_parts, part))
+            expected_children.setdefault(parent, set()).add(part)
+            expected_children.setdefault(child, set())
+            parent_parts.append(part)
+        expected_children["/".join(parent_parts)].add(parts[-1])
 
-    observed = {}
+    for relative, children in expected_children.items():
+        directory = source_root / relative if relative else source_root
+        try:
+            if not stat.S_ISDIR(directory.lstat().st_mode):
+                raise ValueError(
+                    f"CPython source directory is not physical: {relative}"
+                )
+            actual_children = set()
+            for child in directory.iterdir():
+                actual_children.add(child.name)
+                if len(actual_children) > len(children):
+                    raise ValueError("CPython source tree has unsupported entries")
+        except OSError as error:
+            raise ValueError(
+                f"CPython source directory is unavailable: {relative}"
+            ) from error
+        if actual_children != children:
+            raise ValueError("CPython source tree differs from the fixed selection")
+
+    metadata = {}
+    total_bytes = 0
     for relative in SELECTED_FILES:
         path = source_root / relative
-        mode = path.lstat().st_mode
-        if not stat.S_ISREG(mode):
+        try:
+            file_stat = path.lstat()
+        except OSError as error:
             raise ValueError(
-                f"CPython logging source is not a regular file: {relative}"
+                f"CPython source file is unavailable: {relative}"
+            ) from error
+        if not stat.S_ISREG(file_stat.st_mode):
+            raise ValueError(f"CPython source is not a regular file: {relative}")
+        size = file_stat.st_size
+        permissions = stat.S_IMODE(file_stat.st_mode)
+        if (
+            not 0 <= size <= MAX_SELECTED_FILE_BYTES
+            or permissions not in (0o644, 0o755)
+        ):
+            raise ValueError(
+                f"CPython source file size or mode is unsupported: {relative}"
             )
-        size = path.stat().st_size
-        if not 0 <= size <= MAX_SELECTED_FILE_BYTES:
-            raise ValueError(f"CPython logging source exceeds its bound: {relative}")
-        data = path.read_bytes()
+        total_bytes += size
+        if total_bytes > MAX_SELECTED_TOTAL_BYTES:
+            raise ValueError("CPython source files exceed their total bound")
+        metadata[relative] = (
+            path,
+            size,
+            permissions,
+            file_stat.st_dev,
+            file_stat.st_ino,
+        )
+
+    observed = {}
+    for relative, (path, size, permissions, device, inode) in metadata.items():
+        try:
+            descriptor = os.open(
+                path,
+                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+            )
+            with os.fdopen(descriptor, "rb") as stream:
+                opened = os.fstat(stream.fileno())
+                if (
+                    not stat.S_ISREG(opened.st_mode)
+                    or opened.st_size != size
+                    or opened.st_dev != device
+                    or opened.st_ino != inode
+                ):
+                    raise ValueError(
+                        f"CPython source changed while being read: {relative}"
+                    )
+                data = stream.read(size + 1)
+        except OSError as error:
+            raise ValueError(
+                f"CPython source file is unavailable: {relative}"
+            ) from error
         if len(data) != size:
-            raise ValueError(
-                f"CPython logging source changed while being read: {relative}"
-            )
-        observed[relative] = (data, stat.S_IMODE(mode))
+            raise ValueError(f"CPython source changed while being read: {relative}")
+        observed[relative] = (data, permissions)
     return observed
 
 
@@ -225,7 +295,7 @@ def _inventory(selected: dict[str, tuple[bytes, int]]) -> dict:
 
 
 def run(destination: Path) -> dict:
-    """Fetch the pinned CPython source and stage only three logging modules."""
+    """Fetch the pinned CPython source and stage only the selected stdlib files."""
     if sys.platform != "linux" or os.environ.get("GITHUB_ACTIONS") != "true":
         raise ValueError("CPython stdlib acquisition is restricted to Linux CI")
     destination = Path(destination)

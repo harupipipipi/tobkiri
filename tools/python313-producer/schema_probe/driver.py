@@ -16,9 +16,16 @@ FUEL = 2_000_000_000
 SECONDS = 30
 OUTPUT_LIMIT = 4 * 1024 * 1024
 STDLIB_FILES = {
+    "_colorize.py",
+    "linecache.py",
     "logging/__init__.py",
     "logging/config.py",
     "logging/handlers.py",
+    "string.py",
+    "textwrap.py",
+    "token.py",
+    "tokenize.py",
+    "traceback.py",
 }
 
 
@@ -45,7 +52,7 @@ def stage_inputs(stage: Path, control: dict) -> dict:
         or stdlib["outcome"] != "success"
         or set(stdlib["files"]) != STDLIB_FILES
     ):
-        raise ValueError("fixed original CPython logging selection required")
+        raise ValueError("fixed original CPython source selection required")
     for pin in control["inputs"]:
         for name, entry in pin["files"].items():
             if pin["role"] == "native-oracle" and (

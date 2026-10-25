@@ -39,40 +39,35 @@ def tar_archive(path: Path, members) -> bytes:
     return path.read_bytes()
 
 
-def source_fixture(path: Path, *, data=(b"init", b"config", b"handlers")) -> bytes:
-    """Make a tiny CPython-shaped archive with exactly three selected files."""
+def source_fixture(path: Path, *, data=None) -> bytes:
+    """Make a tiny CPython-shaped archive with all ten selected files."""
     prefix = fetch_schema_stdlib.LOCKED_PREFIX
+    data = data or {name: name.encode() for name in fetch_schema_stdlib.SELECTED_FILES}
     members = [
         (f"{prefix}/", b"", 0o755, tarfile.DIRTYPE, ""),
-        (
-            f"{prefix}/Lib/logging/__init__.py",
-            data[0],
-            0o644,
-            tarfile.REGTYPE,
-            "",
-        ),
-        (
-            f"{prefix}/Lib/logging/config.py",
-            data[1],
-            0o755,
-            tarfile.REGTYPE,
-            "",
-        ),
-        (
-            f"{prefix}/Lib/logging/handlers.py",
-            data[2],
-            0o644,
-            tarfile.REGTYPE,
-            "",
-        ),
+        (f"{prefix}/Lib/", b"", 0o755, tarfile.DIRTYPE, ""),
+        (f"{prefix}/Lib/logging/", b"", 0o755, tarfile.DIRTYPE, ""),
+    ]
+    for name in fetch_schema_stdlib.SELECTED_FILES:
+        mode = 0o755 if name == "logging/config.py" else 0o644
+        members.append(
+            (
+                f"{prefix}/Lib/{name}",
+                data[name],
+                mode,
+                tarfile.REGTYPE,
+                "",
+            )
+        )
+    members.append(
         (
             f"{prefix}/Lib/other.py",
             b"not selected",
             0o644,
             tarfile.REGTYPE,
             "",
-        ),
-    ]
+        )
+    )
     return tar_archive(path, members)
 
 
@@ -109,14 +104,20 @@ class SchemaStdlibInputTests(unittest.TestCase):
                     report["files"][name]["mode"]
                     for name in fetch_schema_stdlib.SELECTED_FILES
                 ],
-                ["0o644", "0o755", "0o644"],
+                [
+                    "0o755" if name == "logging/config.py" else "0o644"
+                    for name in fetch_schema_stdlib.SELECTED_FILES
+                ],
             )
             self.assertEqual(
                 [
                     report["files"][name]["sha256"]
                     for name in fetch_schema_stdlib.SELECTED_FILES
                 ],
-                [digest(b"init"), digest(b"config"), digest(b"handlers")],
+                [
+                    digest(name.encode())
+                    for name in fetch_schema_stdlib.SELECTED_FILES
+                ],
             )
 
     def test_archive_hash_mismatch_is_rejected_before_member_extraction(self):
@@ -175,11 +176,24 @@ class SchemaStdlibInputTests(unittest.TestCase):
             destination = Path(temp).resolve() / "stdlib-inputs"
             receipt, verified, pin = self._run_offline_stage(destination)
             self.assertEqual(receipt["source_pin"], pin)
-            self.assertEqual(verified["files"], 3)
+            self.assertEqual(verified["files"], 10)
             self.assertTrue((destination / "archives/Python-3.13.16.tar.xz").is_file())
             self.assertEqual(
                 {path.name for path in (destination / "source/logging").iterdir()},
                 {"__init__.py", "config.py", "handlers.py"},
+            )
+            self.assertEqual(
+                {path.name for path in (destination / "source").iterdir()},
+                {
+                    "logging",
+                    "traceback.py",
+                    "linecache.py",
+                    "textwrap.py",
+                    "_colorize.py",
+                    "string.py",
+                    "tokenize.py",
+                    "token.py",
+                },
             )
             self.assertEqual(
                 set(receipt["files"]),
@@ -204,6 +218,53 @@ class SchemaStdlibInputTests(unittest.TestCase):
                     "differs from its pinned archive",
                 ):
                     fetch_schema_stdlib.verify(destination)
+
+    def test_source_tree_rejects_unexpected_missing_and_symlink_entries(self):
+        scenarios = ("unexpected", "nested", "missing", "symlink")
+        for scenario in scenarios:
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as temp:
+                destination = Path(temp).resolve() / "stdlib-inputs"
+                _, _, pin = self._run_offline_stage(destination)
+                if scenario == "unexpected":
+                    (destination / "source/unused.py").write_bytes(b"extra")
+                elif scenario == "nested":
+                    (destination / "source/logging/unused.py").write_bytes(b"extra")
+                elif scenario == "missing":
+                    (destination / "source/textwrap.py").unlink()
+                else:
+                    target = destination / "source/token.py"
+                    target.unlink()
+                    target.symlink_to(destination / "source/logging/__init__.py")
+                with patch.object(fetch_schema_stdlib, "_source_pin", return_value=pin):
+                    with self.assertRaises(ValueError):
+                        fetch_schema_stdlib.verify(destination)
+
+    def test_source_tree_size_bounds_are_checked_before_reading_files(self):
+        with tempfile.TemporaryDirectory() as temp:
+            destination = Path(temp).resolve() / "stdlib-inputs"
+            self._run_offline_stage(destination)
+            source_root = destination / "source"
+            with (
+                patch.object(fetch_schema_stdlib, "MAX_SELECTED_FILE_BYTES", 1),
+                patch.object(
+                    fetch_schema_stdlib.os,
+                    "open",
+                    side_effect=AssertionError("source read began before size checks"),
+                ),
+            ):
+                with self.assertRaisesRegex(ValueError, "size or mode"):
+                    fetch_schema_stdlib._read_source_tree(source_root)
+            with (
+                patch.object(fetch_schema_stdlib, "MAX_SELECTED_FILE_BYTES", 4096),
+                patch.object(fetch_schema_stdlib, "MAX_SELECTED_TOTAL_BYTES", 1),
+                patch.object(
+                    fetch_schema_stdlib.os,
+                    "open",
+                    side_effect=AssertionError("source read began before total check"),
+                ),
+            ):
+                with self.assertRaisesRegex(ValueError, "total bound"):
+                    fetch_schema_stdlib._read_source_tree(source_root)
 
     def _inspect_fixture(self, members, *, patches=None):
         """Stream and inspect a tiny tar fixture with a test-only source pin."""
@@ -262,20 +323,20 @@ class SchemaStdlibInputTests(unittest.TestCase):
         prefix = fetch_schema_stdlib.LOCKED_PREFIX
         members = [
             (
-                f"{prefix}/Lib/logging/{name}",
+                f"{prefix}/Lib/{name}",
                 b"xx",
                 0o644,
                 tarfile.REGTYPE,
                 "",
             )
-            for name in ("__init__.py", "config.py", "handlers.py")
+            for name in fetch_schema_stdlib.SELECTED_FILES
         ]
         with patch.object(fetch_schema_stdlib, "MAX_SELECTED_FILE_BYTES", 1):
             with self.assertRaisesRegex(ValueError, "file exceeds its bound"):
                 self._inspect_fixture(members)
         with (
             patch.object(fetch_schema_stdlib, "MAX_SELECTED_FILE_BYTES", 2),
-            patch.object(fetch_schema_stdlib, "MAX_SELECTED_TOTAL_BYTES", 5),
+            patch.object(fetch_schema_stdlib, "MAX_SELECTED_TOTAL_BYTES", 15),
         ):
             with self.assertRaisesRegex(ValueError, "total bound"):
                 self._inspect_fixture(members)
@@ -284,28 +345,17 @@ class SchemaStdlibInputTests(unittest.TestCase):
         prefix = fetch_schema_stdlib.LOCKED_PREFIX
         members = [
             (f"{prefix}/", b"", 0o755, tarfile.DIRTYPE, ""),
-            (
-                f"{prefix}/Lib/logging/__init__.py",
-                b"init",
-                0o644,
-                tarfile.REGTYPE,
-                "",
-            ),
-            (
-                f"{prefix}/Lib/logging/config.py",
-                b"config",
-                0o644,
-                tarfile.REGTYPE,
-                "",
-            ),
-            (
-                f"{prefix}/Lib/logging/handlers.py",
-                b"handlers",
-                0o644,
-                tarfile.REGTYPE,
-                "",
-            ),
         ]
+        members.extend(
+            (
+                f"{prefix}/Lib/{name}",
+                name.encode(),
+                0o644,
+                tarfile.REGTYPE,
+                "",
+            )
+            for name in fetch_schema_stdlib.SELECTED_FILES
+        )
         with patch.object(fetch_schema_stdlib, "MAX_MEMBERS", 3):
             with self.assertRaisesRegex(ValueError, "member bound"):
                 self._inspect_fixture(members)
