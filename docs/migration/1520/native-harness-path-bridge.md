@@ -52,6 +52,36 @@ resource-limit increase is introduced. The producer's outer `PyErr.print`
 boundary currently has no proven low-dependency native observation hook; this
 change does not claim to have instrumented that boundary.
 
+The af0b checkpoint baseline subsequently failed with **zero inventory imports,
+zero inspect imports and zero checkpoints**. The native record kept the actual
+outer trap and 1,980,212,518 fuel remaining, with no recorded deadline overflow.
+Preparation used 29,533,618 microseconds; neither this timing nor the absent
+checkpoints identifies the original Python exception. Its metadata5/policy6/
+owner2 cases all passed, separately from the actual init failure.
+
+The dependency entry wrapper sealed its captured Finder before
+`wit_world.imports.bindings` had been imported. Checkpoints, failure reporting
+and bootstrap all import that same fixed module later, while the sealed Finder
+refuses any uncaptured nonbuiltin/nonfrozen module. The wrapper now preloads
+only that interface before the existing original-module guard and seal. It
+checks the actual `/world` module and Python function layout against the
+pinned producer's runtime shims, including the `componentize_py_runtime`
+module identity and `call_import` bodies. This performs no host operation.
+The later imports retrieve those same objects; unknown modules remain denied.
+Path/layout checks establish build provenance only and grant no operation.
+
+The retained `generated-bindings` artifact is the **IDE stub output** of the
+separate `bindings` command. The actual componentize pass generates its runtime
+bindings separately with `generate_code(false)`, mounts them at `/world` and
+preinitializes the exported Runtime/Transport objects from the wrapper. A
+retained IDE source hash does not prove the actual runtime callable. The new
+preload checks run during that actual producer pre-init, so a stub or foreign
+binding fails the component build. Source fixtures cover no native calls during
+preload, stable module/callable identity after seal, unknown-module refusal and
+stub rejection at the same path. Only actual CI progress into init/checkpoints
+can confirm whether this repaired the observed failure; no outer hook or
+pre-init operation probe is added.
+
 Production singleton ownership also remains unresolved. The original callees
 retain issued-origin/class/exception identity, thread/ContextVar custody,
 ActivationStore retry state and shared flight/waiter synchronization. Fresh
