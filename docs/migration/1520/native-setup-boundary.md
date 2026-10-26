@@ -478,7 +478,8 @@ snapshots from the exact same invocation. This catalog opens no host path and
 is not yet a guest capture import or managed IO integration. The new portable
 12 Store, 3 namespace and 11 actual-component entry regressions are explicitly
 counted in CI; their source does not prove supported-OS capture or whole GUI
-parity. The real Native Store 64MiB fullSchema comparison still needs execution.
+parity. The real Native Store 64MiB fullSchema comparison now matches in CI,
+with the portable-owner scope described below; product GUI parity is incomplete.
 
 The diagnostic code-cache workflow now builds its native observer from the same
 checkout and pins the executable hash in the read-only sandbox control. An
@@ -491,3 +492,31 @@ failure is never accepted as a denial. Each call uses the production native
 entry and original 64MiB/2b/30s/4MiB bounds, then destroys the actual Store and
 streams the still-funded output to its CI report. The injected owner is a
 portable fixture: it provides no actual OS-root, GUI or product acceptance.
+
+On source `4c942cf46ede321aef92738a3045dae34b9f0e7a`, run `40251486931`,
+job `121344168991`, the full original observation and corpus match: 13 validation
+cases, 8 formats, 20 resource entries and 5 distributions, both real clock
+assertions and all four typed-unreachable denials. All seven actual native
+invocation receipts preserve the same final component hash and original bounds,
+post-return for successful calls and actual Store destruction. The full run
+consumes 696,631,412 of 2,000,000,000 fuel, with 38 sealed-cache hits, no misses or
+runtime compiles and 38 fresh marshal loads. The diagnostic controller writes
+`strict_comparison_outcome=matched` and then deliberately fails without accepting
+a production candidate. This is separate from the earlier standalone128MiB
+comparison and still provides no actual OS-root or complete Setup GUI proof.
+Source `37d723b64` passes all 12 Store, 3 namespace and 11 real-component entry
+regressions; one needless borrow remains for strict lint and is fixed separately.
+
+The nativeKit migration must include catalog/source inspection, Profile
+resolution and complete Setup listing, beyond the existing six pure projection
+exports. Preserve source additions, initialization, activation, recovery and
+handover. Keep the existing GUI GET `/api/setup/packs` and POST
+`/api/setup/packs/install` behavior and native approval/Core paths; a projected
+success response cannot replace real registration/recovery/activation custody.
+An independent nativeKit world/artifact loader is not implemented by the DATA
+runner alone. Its typed errors must preserve the original values and GUI
+semantics without importing ordinary Pack authority or disguising traps as
+domain errors. Capture IO still requires bounded, prepaid native-only managed
+custody through actual OS completion, even after timeout or Store destruction.
+The original 4MiB captured-reader bound is per returned buffer, not cumulative;
+large-artifact streaming and seek must remain available within original budgets.

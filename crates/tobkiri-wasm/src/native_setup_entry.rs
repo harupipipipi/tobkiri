@@ -376,7 +376,7 @@ fn locate_function<T: Send + 'static>(
             .context("native DATA function export missing")?,
     };
     instance
-        .get_func(&mut *store, &index)
+        .get_func(&mut *store, index)
         .context("selected native DATA export is not a function")
 }
 
