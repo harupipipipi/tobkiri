@@ -18,6 +18,27 @@ import fetch_validation_tools as validation
 
 
 class ComponentBuildTests(unittest.TestCase):
+    def test_native_stack_world_is_independent_and_original_plans_remain_unchanged(self):
+        repo = component_inputs.HERE.parents[1]
+        original = component_inputs.plans(True)
+        previous_path = sys.path[:]
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory).resolve() / 'stack'
+            receipt = component_inputs.stage_native_input_stack(repo, output)
+            plan = json.loads((output / 'plan.json').read_bytes())
+            self.assertEqual(receipt['files'], inventory(output))
+            self.assertEqual(plan['world'], 'native-input-stack')
+            self.assertEqual(plan['outer_exports'], ['tobkiri-ui:native-input-stack/probe@1.0.0'])
+            self.assertEqual(plan['allowed_imports'], ['tobkiri-ui:inputs/captured@1.0.0'])
+            self.assertFalse(any('tobkiri:core' in value for value in
+                                 plan['outer_exports'] + plan['allowed_imports']))
+            self.assertEqual(receipt['plan_sha256'], hashlib.sha256(
+                (output / 'plan.json').read_bytes()).hexdigest())
+            with self.assertRaises(FileExistsError):
+                component_inputs.stage_native_input_stack(repo, output)
+        self.assertEqual(component_inputs.plans(True), original)
+        self.assertEqual(sys.path, previous_path)
+
     def test_setup_candidate_uses_separate_source_plan_without_changing_originals(self):
         repo = component_inputs.HERE.parents[1]
         original_plans = component_inputs.plans(True)

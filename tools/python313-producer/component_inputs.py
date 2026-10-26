@@ -157,3 +157,30 @@ def stage_harness_setup(repo: Path, destination: Path) -> dict:
             raise ValueError('Setup source changed after staging')
     return {'plan_sha256': hashlib.sha256(raw).hexdigest(),
             'source_files': plan['sources'], 'files': files}
+
+
+def stage_native_input_stack(repo: Path, destination: Path) -> dict:
+    """Stage the separate synchronous-stack prerequisite, never an ordinary Pack."""
+    if repo != HERE.parents[1] or repo.resolve() != repo:
+        raise ValueError('physical current repository required')
+    previous_path = sys.path[:]
+    sys.path.insert(0, str(repo / 'scripts/wasm'))
+    try:
+        module = importlib.import_module('prepare_harness_input_stack')
+        if (Path(module.__file__).resolve() != repo / 'scripts/wasm/prepare_harness_input_stack.py'
+                or module.ROOT != repo):
+            raise ValueError('input stack stager belongs to another repository')
+        plan = module.stage(destination)
+    finally:
+        sys.path[:] = previous_path
+    files = inventory(destination)
+    raw = (destination / 'plan.json').read_bytes()
+    if (json.loads(raw) != plan or plan['outer_exports'] != [
+            'tobkiri-ui:native-input-stack/probe@1.0.0'] or plan['allowed_imports'] != [
+                'tobkiri-ui:inputs/captured@1.0.0']):
+        raise ValueError('input stack boundary differs from its independent world')
+    for item in plan['sources']:
+        if files[item['source']]['sha256'] != item['sha256']:
+            raise ValueError('input stack source changed after staging')
+    return {'plan_sha256': hashlib.sha256(raw).hexdigest(),
+            'source_files': plan['sources'], 'files': files}

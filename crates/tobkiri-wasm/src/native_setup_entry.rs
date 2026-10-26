@@ -20,6 +20,9 @@ const MONOTONIC_CLOCK_IMPORT: &str = "tobkiri-ui:clock/monotonic@1.0.0";
 const CLOCK_CALL_LIMIT: u64 = 100_000;
 #[path = "native_capture_import.rs"]
 mod capture_import;
+#[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
+#[path = "native_input_stack_probe.rs"]
+mod input_stack_probe;
 #[path = "native_data_program.rs"]
 mod program;
 pub use program::{NativeDataBinding, NativeDataProgram};

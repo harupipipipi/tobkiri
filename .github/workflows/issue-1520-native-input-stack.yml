@@ -1,0 +1,154 @@
+name: Issue 1520 synchronous Python stack over native captured inputs
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-native-input-stack.yml'
+      - 'tools/python313-producer/harness_input_stack/**'
+      - 'scripts/wasm/prepare_harness_input_stack.py'
+      - 'tests/test_harness_input_stack_source.py'
+      - 'tools/python313-producer/build_components.py'
+      - 'tools/python313-producer/component_inputs.py'
+      - 'tools/python313-producer/component_driver.py'
+      - 'tools/python313-producer/input_stack_native_inputs.py'
+      - 'crates/tobkiri-wasm/src/native_input_stack_probe.rs'
+      - 'crates/tobkiri-wasm/src/native_capture_import.rs'
+      - 'crates/tobkiri-wasm/src/native_data_io.rs'
+      - 'crates/tobkiri-wasm/src/native_setup_entry.rs'
+      - 'crates/tobkiri-wasm/wit/native-inputs.wit'
+      - 'tobkiri_runtime/tobkiri_protocol/captured_inputs.py'
+      - 'tobkiri_runtime/tobkiri_protocol/platform_artifact.py'
+      - 'sdk/python/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: issue-1520-native-input-stack-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-original-stack:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      PRODUCER_RUN: '39956025119'
+      PRODUCER_HEAD: ae7f83080a36e823ac330342584210243dc38050
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Verify source and isolated producer scope
+        run: |
+          python3 -B -m unittest discover -s tests -p test_harness_input_stack_source.py
+          python3 -B -m unittest discover -s tools/python313-producer/tests -p test_build_components.py
+      - name: Authenticate the exact existing successful producer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" > "$RUNNER_TEMP/producer-run.json"
+          python3 -B - "$RUNNER_TEMP/producer-run.json" "$PRODUCER_HEAD" <<'PY'
+          import json, sys
+          from pathlib import Path
+          run = json.loads(Path(sys.argv[1]).read_bytes())
+          if (run['head_sha'] != sys.argv[2] or run['status'] != 'completed'
+                  or run['conclusion'] != 'success'):
+              raise ValueError('producer source or successful completion differs')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: python313-producer-cli
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PRODUCER_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/stack-producer
+      - name: Prepare pinned producer validation tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          chmod 755 "$RUNNER_TEMP/stack-producer/work/target/release/componentize-py"
+          python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/stack-validation"
+      - name: Build the independent original synchronous-stack component
+        run: >-
+          python3 -B tools/python313-producer/build_components.py --native-input-stack
+          --producer "$RUNNER_TEMP/stack-producer" --validation "$RUNNER_TEMP/stack-validation"
+          --destination "$RUNNER_TEMP/stack-candidate"
+      - name: Derive independent original filesystem and captured-data results
+        run: >-
+          python3 -B tools/python313-producer/harness_input_stack/oracle.py
+          --output "$RUNNER_TEMP/stack-original.json"
+      - name: Retain exact component, original reference and bounded receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-native-input-stack-candidate
+          path: |
+            ${{ runner.temp }}/producer-run.json
+            ${{ runner.temp }}/stack-candidate/components-build.json
+            ${{ runner.temp }}/stack-candidate/harness-input-stack/inputs/plan.json
+            ${{ runner.temp }}/stack-candidate/harness-input-stack/inputs/provenance.json
+            ${{ runner.temp }}/stack-candidate/harness-input-stack/build/
+            ${{ runner.temp }}/stack-candidate/harness-input-stack/work/component.build.json
+            ${{ runner.temp }}/stack-candidate/harness-input-stack/work/component.wasm
+            ${{ runner.temp }}/stack-original.json
+          if-no-files-found: warn
+
+  actual-native-stack:
+    needs: build-original-stack
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-target
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require the existing supported native ownership platform
+        run: |
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          device="$(df -P "$GITHUB_WORKSPACE" | awk 'NR == 2 {print $1}')"
+          test -n "$device"
+          diskutil info "$device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          components: clippy
+      - uses: actions/download-artifact@v4
+        with:
+          name: original-native-input-stack-candidate
+          path: ${{ runner.temp }}/stack-native
+      - name: Bind exact component, build receipt, original reference and output
+        run: >-
+          python3 -B tools/python313-producer/input_stack_native_inputs.py
+          --artifact "$RUNNER_TEMP/stack-native/stack-candidate/harness-input-stack/work/component.wasm"
+          --oracle "$RUNNER_TEMP/stack-native/stack-original.json"
+          --evidence "$RUNNER_TEMP/stack-native-evidence" --github-env "$GITHUB_ENV"
+      - name: Execute original Python stack through actual APFS input and funded IO
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/stack-native.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-wasm --lib
+          native_setup_store::entry::input_stack_probe::synchronous_python_stack_uses_actual_native_input_and_original_artifact_checks
+          -- --ignored --exact --nocapture --test-threads=1
+      - name: Strict native probe lint
+        run: cargo clippy --locked -p tobkiri-wasm --all-targets --no-deps -- -D warnings
+      - name: Retain actual native stack evidence without local binary downloads
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: actual-native-input-stack-evidence
+          path: |
+            ${{ runner.temp }}/stack-native-evidence/
+            ${{ runner.temp }}/stack-native.log*
+          if-no-files-found: warn

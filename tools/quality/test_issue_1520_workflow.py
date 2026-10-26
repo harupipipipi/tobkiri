@@ -39,6 +39,29 @@ def step(source: str, name: str) -> str:
 
 
 class RuntimeRoutingTests(unittest.TestCase):
+    def test_synchronous_stack_probe_requires_actual_supported_execution_and_exact_inputs(self) -> None:
+        source = (ROOT / '.github/workflows/issue-1520-native-input-stack.yml').read_text()
+        producer = job(source, 'build-original-stack')
+        native = job(source, 'actual-native-stack')
+        self.assertIn('PRODUCER_RUN:', producer)
+        self.assertIn("python-version: '3.13.16'", producer)
+        self.assertIn('--native-input-stack', producer)
+        self.assertIn('harness_input_stack/oracle.py', producer)
+        self.assertIn('needs: build-original-stack', native)
+        self.assertIn('runs-on: macos-15', native)
+        guard = step(native, 'Require the existing supported native ownership platform')
+        for constraint in ('= Darwin', '= arm64', '= 24.6.0', 'diskutil info', 'apfs'):
+            self.assertIn(constraint, guard)
+        execute = step(native, 'Execute original Python stack through actual APFS input and funded IO')
+        for required in ('--expected-passed 1 --', 'cargo test --locked -p tobkiri-wasm --lib',
+                         'input_stack_probe::synchronous_python_stack_', '--ignored --exact'):
+            self.assertIn(required, execute)
+        for bypass in ('--skip', '--exclude', '--no-run', '--list', 'continue-on-error'):
+            self.assertNotIn(bypass, execute)
+        self.assertLess(native.index(guard), native.index(execute))
+        self.assertIn('input_stack_native_inputs.py', native)
+        self.assertIn('--all-targets --no-deps -- -D warnings', native)
+
     """A portable build or skipped test must not stand in for native evidence."""
 
     def setUp(self) -> None:

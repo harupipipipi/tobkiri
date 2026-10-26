@@ -634,3 +634,15 @@ native imports fail staging. Native effects remain outside the capsule; their
 sources are hash-pinned and their required behavior is recorded for explicit
 integration. This is a source input to the whole nativeKit artifact, not an
 executable dependency closure, a Wasm build or whole-path compatibility proof.
+
+The separate native-input-stack prerequisite builds the original synchronous
+Python artifact verifier and captured reader with only the sealed range-read
+import. An independent original-filesystem reference also checks the original
+captured adapter and records all repeated read ranges. The supported macOS
+consumer freezes actual APFS bytes, changes the source, explicitly initializes
+the component, and checks success, the original digest-denial DATA and dropping
+a call while its native kernel work is admitted. It distinguishes actual IO
+admission from ordinary fuel/epoch yielding before asserting stack suspension.
+Decoded guest observations use the same original funded graph, not an unowned
+host JSON copy. This probe still needs actual CI results; it is not the whole
+Setup artifact or the future ordered native admission/inspection interface.
