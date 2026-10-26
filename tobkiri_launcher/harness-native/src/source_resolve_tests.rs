@@ -2,7 +2,7 @@
 //! prove the original Tauri reachpoint, opaque parents evaluation or file reads.
 use super::*;
 use crate::{BootstrapModule, BootstrapModuleIndex, ORIGINAL_PROFILE_SOURCE_METADATA};
-use anyhow::{Result as AnyResult, ensure};
+use anyhow::{Context, Result as AnyResult, ensure};
 use std::{fs, os::unix::fs::symlink, path::PathBuf};
 use tobkiri_canon::CoreValue;
 use tobkiri_core::RuntimeOwner;
@@ -36,9 +36,14 @@ async fn original_normal_missing_unicode_and_non_directory_suffixes() -> AnyResu
     let root = sdk.path().canonicalize()?;
     fs::create_dir(root.join("既存"))?;
     fs::write(root.join("file"), b"fixture")?;
-    for relative in ["既存", "missing/child", "file/child", "missing/../既存"] {
-        let resolved = actual(root.clone(), relative).await??;
-        let expected = if relative == "missing/../既存" {
+    // The selected module's relative source path is canonical. A lexical '..'
+    // can instead arise from the actual symlink inspected at that source.
+    symlink("missing/../既存", root.join("missing-parent"))?;
+    for relative in ["既存", "missing/child", "file/child", "missing-parent"] {
+        let resolved = actual(root.clone(), relative)
+            .await?
+            .with_context(|| format!("actual original metadata fixture: {relative}"))?;
+        let expected = if relative == "missing-parent" {
             root.join("既存")
         } else {
             root.join(relative)
@@ -46,6 +51,15 @@ async fn original_normal_missing_unicode_and_non_directory_suffixes() -> AnyResu
         ensure!(
             resolved.as_str()? == expected.to_str().unwrap(),
             "original lexical suffix changed"
+        );
+    }
+    for relative in ["../escape", "/absolute"] {
+        ensure!(
+            matches!(
+                actual(root.clone(), relative).await?,
+                Err(NativeDataIoError::Unavailable)
+            ),
+            "noncanonical selected source path became metadata authority"
         );
     }
     Ok(())

@@ -26,7 +26,7 @@ def _load_bound_runtime(inputs) -> OriginalRuntime:
     """Original code executes only after its actual inputs were installed."""
     from core_runtime.profile_runtime_port import SetupActivationDecision
     from ecosystem.defaultspack.defaultspack.profile_runtime_composition import (
-        DefaultspackProfileRuntime,
+        _DEFAULTSPACK_PROFILE_RUNTIME,
     )
     from ecosystem.defaultspack.domain.profile_resolution import (
         ProfileResolutionDenied,
@@ -86,6 +86,6 @@ def _load_bound_runtime(inputs) -> OriginalRuntime:
         *(RecordType(kind, cls) for kind, cls in errors),
     )
     return OriginalRuntime(
-        DefaultspackProfileRuntime(), records, tuple(cls for _, cls in errors),
+        _DEFAULTSPACK_PROFILE_RUNTIME, records, tuple(cls for _, cls in errors),
         inputs.inputs,
     )

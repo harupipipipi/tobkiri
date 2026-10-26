@@ -22,6 +22,7 @@ on:
       - 'tools/python313-producer/tests/test_build_components.py'
       - 'tools/python313-producer/tests/test_harness_native_dependencies.py'
       - 'tools/python313-producer/tests/test_schema_compressed_loader.py'
+      - 'tools/quality/test_harness_native_workflow.py'
       - 'tobkiri_runtime/core_runtime/**'
       - 'tobkiri_runtime/tobkiri_protocol/**'
       - 'tobkiri_runtime/ecosystem/defaultspack/defaultspack/profile_runtime_composition.py'
@@ -57,6 +58,7 @@ jobs:
           python-version: '3.13.16'
       - name: Verify actual whole-component sources and native-only boundary
         run: |
+          python3 -B tools/quality/test_harness_native_workflow.py
           python3 -B -m unittest discover -s tests -p 'test_harness_native_*.py'
           python3 -B -m unittest discover -s tools/python313-producer/tests -p test_build_components.py
           python3 -B -m unittest discover -s tools/python313-producer/tests -p test_harness_native_dependencies.py
@@ -146,6 +148,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Require original supported physical ownership platform
+        id: native_platform
         run: |
           test "$(uname -m)" = arm64
           test "$(uname -r)" = 24.6.0
@@ -161,6 +164,7 @@ jobs:
           name: whole-native-harness-component
           path: ${{ runner.temp }}/harness-built
       - name: Bind the actual component, original modules and native index
+        id: native_inputs
         run: >-
           python3 -B tools/python313-producer/harness_native_ci_inputs.py
           --artifact "$RUNNER_TEMP/harness-built/harness-native/harness-native/work/component.wasm"
@@ -172,12 +176,14 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
           source_resolve::tests:: -- --nocapture
       - name: Preserve init failures and reject unauthorized inspection and cancelled getters
+        if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/harness-native-inspection-policy.log" --expected-passed 5 --
           cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
           bootstrap_runtime::policy_tests:: -- --nocapture
       - name: Run actual original Runtime.init Profile identity and opaque root getters
+        if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/harness-native-runtime.log" --expected-passed 1 --
@@ -185,6 +191,7 @@ jobs:
           bootstrap_runtime::actual_ci::actual_original_component_initializes_and_returns_original_profile_id
           -- --nocapture
       - name: Preserve the actual native owner when Core adopts it
+        if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/harness-native-owner-transfer.log" --expected-passed 2 --

@@ -81,8 +81,39 @@ consumer executes both original root getters as component-level unit operations
 and checks opaque proxy descriptions and actual module resolution observations.
 This is not the production development/packaged branch or final binding check.
 Five real native metadata fixture tests and five hostile/cancellation tests run
-before that consumer. The same shared 64 MiB/2 billion fuel/absolute 30 seconds/
+before that consumer. Independent execution/owner evidence is collected even
+when another test fails, only after the real platform and artifact-input steps
+succeed; every failed required test still fails the job. The same shared
+64 MiB/2 billion fuel/absolute 30 seconds/
 4 MiB envelope applies to all of these operations within an invocation.
+
+The actual consumer now starts its original invocation before engine creation,
+artifact reading and component compilation, matching the product preparation's
+ordering. It retains the original deadline through initialization/methods and
+charges the actual source Vec to that same payload account until deallocation,
+alongside its existing code-admission control reservation. It records actual
+preparation time/peak and rejects an already expired deadline before init. Older
+consumer measurements that compiled first do not prove this full time boundary.
+This does not claim the compiler's entire heap/RSS is covered by the source
+buffer reservation; complete compiler resource accounting and shared actual
+product preparation remain separate integration requirements.
+
+The original runtime registration is process-singleton by object identity.
+The candidate factory now borrows that module-owned singleton instead of
+constructing a second object. It does not call the public installer early;
+registration must be connected at the original production-composition point,
+before any original require-based request entrypoint. Candidate class-method
+unit execution is not proof of that registered production Port. Isolated tests
+use the unchanged declaration/registration bodies to check unavailable-before-
+install, identity, repeated installation and refusal to replace another object;
+they do not import the SDK preambles or prove Wasm/whole-application lifetimes.
+Catalogs are rebuilt for the separate GET review and POST activation; GUI wait
+holds presentation/confirmation DATA outside those HTTP operations. A stable
+native facade alone does not prove that recreating the original singleton in a
+fresh Store preserves its instance/module/class state, aliases, callbacks or
+initialization effects. That full state/lifetime/concurrency audit is required
+before choosing production Store lifetimes. A single HTTP operation cannot
+reset its deadline by retrying, recreating its Store or nesting another call.
 
 Root getters admit only the explicit native composition policy for the exact
 original module name and relative source file, `resolve(false)`, unchanged

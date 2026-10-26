@@ -71,6 +71,10 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
     };
     let scratch = tempfile::tempdir()?;
     let owner = RuntimeOwner::open(scratch.path().canonicalize()?.join("native-data"))?;
+    // Match the product preparation's order. Required admission/compilation
+    // must not receive an unmeasured interval before a fresh 30-second clock.
+    let invocation = owner.begin_native_setup()?;
+    let deadline = invocation.deadline()?;
     let engine = WasmEngine::new_with_control(owner.control())?;
     let path = PathBuf::from(
         std::env::var_os("TOBKIRI_TEST_NATIVE_HARNESS_COMPONENT")
@@ -86,8 +90,10 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
         size > 0 && size <= 32 * 1024 * 1024,
         "component exceeds source bound"
     );
-    // Code admission precedes the native DATA invocation. Its bounded source
-    // buffer still retains the actual runtime's metadata funding until freed.
+    // This real source buffer shares the original payload account, in addition
+    // to its existing code-admission control funding. Compilation's entire host
+    // heap/RSS is not claimed by this buffer reservation.
+    let payload = invocation.reserve(CapacityKind::VfsBuffer, u64::try_from(size)?)?;
     let permit = owner
         .control()
         .reserve(ControlKind::Frame, u64::try_from(size)?)?;
@@ -106,10 +112,20 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
     );
     let component = Component::new(engine.engine(), &bytes)?;
     drop(bytes);
+    drop(payload);
     drop(permit);
     drop(input);
-    let invocation = owner.begin_native_setup()?;
-    let deadline = invocation.deadline()?;
+    let preparation_elapsed = invocation.started_at().elapsed();
+    println!(
+        "NATIVE_HARNESS_PREPARATION elapsed_us={} peak_charged_bytes={} deadline_unchanged={}",
+        preparation_elapsed.as_micros(),
+        invocation.capacity_snapshot()?.peak_charged_bytes,
+        invocation.deadline()? == deadline
+    );
+    ensure!(
+        invocation.deadline()? == deadline && std::time::Instant::now() < deadline,
+        "original native deadline exhausted during component preparation"
+    );
     let mut runtime = match NativeBootstrap::prepare(
         &engine,
         &component,

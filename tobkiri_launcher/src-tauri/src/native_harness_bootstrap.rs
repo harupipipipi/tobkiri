@@ -105,8 +105,9 @@ impl BootstrapInputOwner for OriginalBootstrapInputs {
 }
 
 /// The native-only constructor for an already admitted component/index. The
-/// selected roots remain metadata: its phase rejects EVERY inspect request.
-/// No caller can enable FS/approval/effects with a frame or these path values.
+/// selected roots remain metadata. Init permits only bounded observations;
+/// later original getters require the exact explicit module metadata policy.
+/// No frame or path value can enable general FS, approval or effect authority.
 pub(crate) struct OriginalComponentPreparation {
     source: OriginalBootstrapInputs,
     invocation: NativeSetupInvocation,
