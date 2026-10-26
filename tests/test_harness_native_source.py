@@ -150,7 +150,8 @@ class HarnessNativeSourceTests(unittest.TestCase):
             methods = item.get("methods", [item.get("method")])
             for method in methods:
                 adapters[method] = item["required_behavior"]
-        self.assertIn("ordinal DATA reader adapter", adapters["load_catalog"])
+        self.assertIn("original reachpoints", adapters["load_catalog"])
+        self.assertIn("without prefetching", adapters["load_catalog"])
         self.assertIn("native-established finite DATA facade",
                       adapters["catalog_with_packs"])
         self.assertIn("do not stub or no-op",
@@ -161,9 +162,9 @@ class HarnessNativeSourceTests(unittest.TestCase):
             item["module"]: item["required_behavior"]
             for item in provenance["captured_input_data_requirements"]
         }
-        self.assertIn("never convert them to OS paths",
+        self.assertIn("no guest-selected ambient OS path",
                       captured_requirements[prepare.PROFILE_RESOLUTION])
-        self.assertIn("explicit ordinal DATA reader",
+        self.assertIn("reread and occurrence order",
                       captured_requirements[
                           f"{prepare.PROTOCOL_ROOT}/bundle_catalog.py"
                       ])

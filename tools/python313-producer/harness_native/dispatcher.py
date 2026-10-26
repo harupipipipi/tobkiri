@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any, Callable
 
 import ordered_json_v2 as wire
@@ -63,6 +64,9 @@ class OriginalRuntime:
     runtime: Any
     records: tuple[RecordType, ...]
     method_errors: tuple[type[Exception], ...]
+    # None means actual native input admission is not connected. An explicit
+    # tuple contains only preexisting opaque proxies supplied by bootstrap.
+    native_inputs: tuple[tuple[str, Any], ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -70,6 +74,7 @@ class _State:
     runtime: Any
     registry: Registry
     method_errors: tuple[type[Exception], ...]
+    native_inputs: tuple[tuple[str, Any], ...] | None
 
 
 class Dispatcher:
@@ -132,7 +137,26 @@ class Dispatcher:
         for record in original.records:
             if issubclass(record.cls, BaseException) and record.fields:
                 raise UnsupportedValue("exception field disclosure is not connected")
-        self._state = _State(original.runtime, registry, original.method_errors)
+        if original.native_inputs is not None:
+            if type(original.native_inputs) is not tuple:
+                raise UnsupportedValue("invalid trusted native input inventory")
+            names = set()
+            for item in original.native_inputs:
+                if (
+                    type(item) is not tuple
+                    or len(item) != 2
+                    or type(item[0]) is not str
+                    or not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", item[0])
+                    or item[0] in names
+                ):
+                    raise UnsupportedValue("invalid trusted native input binding")
+                record = records.get(type(item[1]))
+                if record is None or not record.native_binding:
+                    raise UnsupportedValue("native input must be an opaque proxy")
+                names.add(item[0])
+        self._state = _State(
+            original.runtime, registry, original.method_errors, original.native_inputs
+        )
 
     def _frame(self, payload: str, kind: str, fields: set[str]) -> dict[str, Any]:
         state = self._current()
@@ -214,6 +238,37 @@ class Dispatcher:
             )
 
         return registry.import_values(payload, _publish=publish)
+
+    def native_inputs(self, payload: str) -> str:
+        """Publish existing native proxies without IO or target selection.
+
+        Repeated publication reuses each live issued reference and reports only
+        newly owned holds. Releasing a reference drops that transport hold, not
+        bootstrap's original proxy. A later publication can issue a new ID for
+        that same object; a released ID never becomes valid again. These IDs do
+        not authorize effects or create native ownership.
+        """
+        self._frame(payload, "native-inputs", set())
+        state = self._current()
+        if state.native_inputs is None:
+            raise UnsupportedValue("native input admission is not connected")
+        created: list[tuple[Reference, int]] = []
+        try:
+            inputs = []
+            for name, value in state.native_inputs:
+                ref, _ = state.registry._retain(value, created=created)
+                inputs.append([name, ref.wire()])
+            return wire.dumps(
+                {
+                    "format": PREFIX + "native-inputs-published.v1",
+                    "scope": state.registry.scope.wire(),
+                    "inputs": inputs,
+                    "owned": [format(ref.object_id, "x") for ref, _ in created],
+                }
+            )
+        except BaseException:
+            state.registry._rollback(created)
+            raise
 
     def describe_value(self, payload: str) -> str:
         """Describe reviewed DATA fields, never arbitrary reflection."""

@@ -126,3 +126,6 @@ class Transport(wit_world.exports.Transport):
 
     def set_data_item(self, payload: str) -> None:
         _invoke(_dispatcher.set_data_item, payload)
+
+    def native_inputs(self, payload: str) -> str:
+        return _invoke(_dispatcher.native_inputs, payload)

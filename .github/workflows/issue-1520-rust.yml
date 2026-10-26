@@ -62,6 +62,8 @@ jobs:
           python3 -B -m unittest discover -s tests -p test_harness_native_package.py
           python3 -B -m unittest discover -s tests -p test_harness_native_value_graph.py
           python3 -B -m unittest discover -s tests -p test_harness_native_dispatcher.py
+          python3 -B -m unittest discover -s tests -p test_harness_native_inputs.py
+          python3 -B -m unittest discover -s tests -p test_harness_native_path.py
           python3 -B -m unittest discover -s tests -p test_harness_native_wit.py
           python3 -B -m unittest discover -s tests -p test_harness_native_exception_graph.py
           python3 -B -m unittest discover -s tests -p test_harness_input_stack_import_diagnostics.py

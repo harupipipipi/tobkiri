@@ -54,10 +54,12 @@ NATIVE_WIT = "tools/python313-producer/harness_native/native.wit"
 NATIVE_BINDINGS_WIT = (
     "tools/python313-producer/harness_native/deps/native-bindings/bindings.wit"
 )
+NATIVE_PATH_ADAPTER = "tools/python313-producer/harness_native/native_path.py"
 DISPATCHER_SOURCES = (
     "tools/python313-producer/harness_native/dispatcher.py",
     "tools/python313-producer/harness_native/bootstrap.py",
     "tools/python313-producer/harness_native/app.py",
+    NATIVE_PATH_ADAPTER,
 )
 DATA_FACADE_SOURCE = "tools/python313-producer/harness_native/data_facade.py"
 _NATIVE_KIT_SOURCES = (
@@ -683,8 +685,9 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
                 "method": "load_catalog",
                 "import": "ecosystem.defaultspack.domain.runtime_v4.service.BundledCatalog.load",
                 "required_behavior": (
-                    "use the explicit ordinal DATA reader adapter; "
-                    "preserve native validation"
+                    "use actual invocation-bound native Path inspection at "
+                    "original reachpoints; retain ordinal and occurrence order "
+                    "without prefetching results or weakening native validation"
                 ),
             },
             {
@@ -741,15 +744,16 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
             {
                 "module": PROFILE_RESOLUTION,
                 "required_behavior": (
-                    "supply immutable CapturedPath inputs for bundle lock "
-                    "and platform artifacts; never convert them to OS paths"
+                    "retain actual native-owned bundle lock and artifact inputs; "
+                    "inspect them at original reachpoints with no guest-selected "
+                    "ambient OS path or new authority"
                 ),
             },
             {
                 "module": f"{PROTOCOL_ROOT}/bundle_catalog.py",
                 "required_behavior": (
-                    "route catalog entries through the explicit ordinal DATA "
-                    "reader while retaining the original catalog checks"
+                    "preserve native inspection ordinal, reread and occurrence "
+                    "order while retaining the original catalog checks"
                 ),
             },
         ],
@@ -762,6 +766,10 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
             "preserve_rereads_duplicate_occurrences_and_failure_order": True,
             "inspection_bindings_connected": False,
             "authority_granted_by_source_capture": False,
+            "guest_path_os_adapter_source": NATIVE_PATH_ADAPTER,
+            "module_preamble_injection_connected": False,
+            "actual_native_target_admission_connected": False,
+            "path_fd_iterator_native_parity_verified": False,
         },
         "original_value_transport": {
             "guest_registry": VALUE_GRAPH_TRANSPORT,

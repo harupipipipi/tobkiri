@@ -97,6 +97,7 @@ fn whole_native_contract_keeps_original_methods_and_only_fixed_native_inspection
         "release-values",
         "append-data-item",
         "set-data-item",
+        "native-inputs",
     ];
     assert_eq!(
         transport

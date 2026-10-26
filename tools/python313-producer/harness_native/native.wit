@@ -72,6 +72,13 @@ interface transport {
   append-data-item: func(payload: string) -> result<_, error>;
   /// Set only a referenced permitted DATA item; no authority is created.
   set-data-item: func(payload: string) -> result<_, error>;
+  /// Expose the actual native input proxy already retained by trusted
+  /// bootstrap after init. The payload contains only its format and scope;
+  /// this does not select paths, rediscover the proxy, perform I/O, or grant
+  /// permissions. Repeated calls refer to the same proxy. `owned` contains
+  /// only transport holds newly issued by this call; after release, the same
+  /// proxy may receive a new ID. IDs are transport references, not authority.
+  native-inputs: func(payload: string) -> result<string, error>;
 }
 
 world harness-native {

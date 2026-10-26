@@ -138,11 +138,19 @@ class HarnessNativeWitTests(unittest.TestCase):
         unit_helpers = (
             "release-values", "append-data-item", "set-data-item",
         )
-        self.assertEqual(tuple(functions), string_helpers + unit_helpers)
-        for name in string_helpers:
+        self.assertEqual(
+            tuple(functions), string_helpers + unit_helpers + ("native-inputs",),
+        )
+        for name in string_helpers + ("native-inputs",):
             self.assertEqual(functions[name], "func(payload: string) -> result<string, error>")
         for name in unit_helpers:
             self.assertEqual(functions[name], "func(payload: string) -> result<_, error>")
+
+        self.assertIn("payload contains only its format and scope", WIT)
+        self.assertIn("already retained by trusted", WIT)
+        self.assertIn("proxy may receive a new ID", WIT)
+        self.assertIn("IDs are transport references, not authority", WIT)
+        self.assertIn("does not select paths, rediscover the proxy, perform I/O", WIT)
 
     def test_world_has_the_exact_native_import_and_two_exports(self) -> None:
         self.assertIn("package tobkiri-ui:harness-native@1.0.0;", WIT)
