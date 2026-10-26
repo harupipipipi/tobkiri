@@ -23,6 +23,10 @@ pub struct NativeDataErrorContract<'a> {
     pub code_field: &'a str,
     /// Second record field: the UTF-8 error message.
     pub message_field: &'a str,
+    /// Optional third UTF-8 field, selected before binding. The nativeKit owns
+    /// its closed DATA decoder; the runtime never interprets or grants it.
+    /// Some requires exactly this field, without falling back to the old ABI.
+    pub details_field: Option<&'a str>,
     /// Exact enum cases, including their original order.
     pub cases: &'a [&'a str],
 }
@@ -54,6 +58,9 @@ impl NativeDataResultContract<'_> {
         };
         charge(self.error.code_field.len())?;
         charge(self.error.message_field.len())?;
+        if let Some(name) = self.error.details_field {
+            charge(name.len())?;
+        }
         for name in self.error.cases {
             charge(name.len())?;
         }
@@ -75,6 +82,7 @@ pub enum NativeDataValue {
 pub struct NativeDataError {
     code: CoreBuffer,
     message: CoreBuffer,
+    details: Option<CoreBuffer>,
 }
 impl NativeDataError {
     /// Borrow the still-funded UTF-8 enum spelling.
@@ -85,9 +93,14 @@ impl NativeDataError {
     pub fn message(&self) -> &CoreBuffer {
         &self.message
     }
+    /// Borrow the still-funded opaque details, if the selected ABI requires
+    /// them. Their original nativeKit schema must be validated before use.
+    pub fn details(&self) -> Option<&CoreBuffer> {
+        self.details.as_ref()
+    }
     /// Transfer the original immutable buffers, retaining their original owner.
-    pub fn into_parts(self) -> (CoreBuffer, CoreBuffer) {
-        (self.code, self.message)
+    pub fn into_parts(self) -> (CoreBuffer, CoreBuffer, Option<CoreBuffer>) {
+        (self.code, self.message, self.details)
     }
 }
 impl std::fmt::Debug for NativeDataError {
@@ -95,6 +108,7 @@ impl std::fmt::Debug for NativeDataError {
         f.debug_struct("NativeDataError")
             .field("code_bytes", &self.code.len())
             .field("message_bytes", &self.message.len())
+            .field("details_bytes", &self.details.as_ref().map(CoreBuffer::len))
             .finish()
     }
 }
@@ -160,10 +174,17 @@ pub(super) fn validate(ty: &Type, contract: NativeDataResultContract<'_>) -> Res
     if code.name != contract.error.code_field
         || message.name != contract.error.message_field
         || message.ty != Type::String
-        || fields.next().is_some()
         || contract.error.cases.is_empty()
     {
         bail!("native DATA error fields differ");
+    }
+    match (contract.error.details_field, fields.next()) {
+        (None, None) => {}
+        (Some(name), Some(field)) if field.name == name && field.ty == Type::String => {}
+        _ => bail!("native DATA error details field differs"),
+    }
+    if fields.next().is_some() {
+        bail!("native DATA error has extra fields");
     }
     let Type::Enum(cases) = code.ty else {
         bail!("native DATA error code must be an enum");
@@ -184,6 +205,7 @@ pub(super) fn string(text: &str, owners: &crate::AllocationOwners) -> Result<Cor
 pub(super) fn decode(
     values: &[Val],
     success: NativeDataSuccessType,
+    details: bool,
     owners: &crate::AllocationOwners,
 ) -> Result<NativeDataReply> {
     let [Val::Result(result)] = values else {
@@ -209,12 +231,33 @@ pub(super) fn decode(
             // Field identities/types/cases were verified against the immutable
             // component signature. Owned canonical lifting preserves that order
             // and rejects unknown discriminants before reaching this decoder.
-            let [(_, Val::Enum(code)), (_, Val::String(message))] = fields.as_slice() else {
-                bail!("native DATA result error value differs");
+            let (code, message, details) = match (details, fields.as_slice()) {
+                (false, [(_, Val::Enum(code)), (_, Val::String(message))]) => (code, message, None),
+                (
+                    true,
+                    [
+                        (_, Val::Enum(code)),
+                        (_, Val::String(message)),
+                        (_, Val::String(details)),
+                    ],
+                ) => (code, message, Some(details)),
+                _ => bail!("native DATA result error value differs"),
             };
+            let bytes = code
+                .as_str()
+                .len()
+                .checked_add(message.as_str().len())
+                .and_then(|n| n.checked_add(details.map_or(0, |value| value.as_str().len())))
+                .context("native DATA error size overflow")?;
+            if bytes > MAX_BYTES {
+                bail!("native DATA error exceeds the original 4 MiB envelope");
+            }
             Ok(NativeDataReply::DomainError(NativeDataError {
                 code: string(code.as_str(), owners)?,
                 message: string(message.as_str(), owners)?,
+                details: details
+                    .map(|value| string(value.as_str(), owners))
+                    .transpose()?,
             }))
         }
         _ => bail!("native DATA result payload differs"),

@@ -32,6 +32,7 @@ fn result(success: NativeDataSuccessType) -> NativeDataResultContract<'static> {
         error: NativeDataErrorContract {
             code_field: "code",
             message_field: "message",
+            details_field: None,
             cases: &["invalid", "internal"],
         },
     }

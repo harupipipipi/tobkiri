@@ -41,7 +41,10 @@ enum InputShape {
 #[derive(Clone, Copy)]
 enum OutputShape {
     String,
-    Result(NativeDataSuccessType),
+    Result {
+        success: NativeDataSuccessType,
+        details: bool,
+    },
 }
 
 enum NativeDataReply {
@@ -386,7 +389,9 @@ impl<T: Send + 'static> NativeDataEntry<T> {
                     result::string(text.as_str(), &owners)?,
                 )))
             }
-            OutputShape::Result(success) => result::decode(result.as_slice(), success, &owners),
+            OutputShape::Result { success, details } => {
+                result::decode(result.as_slice(), success, details, &owners)
+            }
         }?;
         ensure_active(
             store
@@ -560,7 +565,10 @@ fn validate_entry_function(
         None => bail!("native DATA function must return exactly one string"),
         Some(contract) => {
             result::validate(&ty, contract)?;
-            OutputShape::Result(contract.success)
+            OutputShape::Result {
+                success: contract.success,
+                details: contract.error.details_field.is_some(),
+            }
         }
     };
     let mut params = function.params();

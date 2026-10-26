@@ -601,3 +601,24 @@ real Wasm import and verifies owned post-return. The portable probes establish
 task/control and source-FD custody only. Actual CI results, the supported OS test,
 and whole nativeKit/GUI integration remain separate requirements; source tests
 and this inactive mechanism do not complete the product migration.
+
+NativeKit error binding can explicitly select an additional third string field
+for structured exception details. The two-field and three-field records are
+separate exact contracts fixed before instantiation; a missing or differently
+typed details field never falls back to the older contract. Code, message and
+details remain opaque funded DATA, with their combined UTF-8 length inside the
+original 4MiB error envelope. The owned details survive actual canonical
+post-return and Store destruction; ownership transfer includes every buffer.
+
+The nativeKit must separately validate its versioned closed details schema,
+finite exception kinds, original args and safe fields, required cause/context,
+and the code/details combination before using them. It must preserve ordered
+finite DATA distinctions and the original adapter's semantic error conversion.
+Unknown or unrepresentable errors are ABI failures, not silently generic domain
+errors. No arbitrary Python class import, pickle, object reconstruction, field
+truncation or new host-path/traceback disclosure is permitted. Details decoding
+and all simultaneous copies still require the original work, deadline,
+cancellation and payload accounting; this opaque runner does not perform that
+application-specific decoding or grant any authority. Four additional actual
+component regressions cover the new ABI, but their current CI result must be
+read before treating them as execution evidence.
