@@ -1,4 +1,4 @@
-name: Issue 1520 diagnostic-only preinit code-cache comparison
+name: Issue 1520 native64 diagnostic-only fullSchema comparison
 
 on:
   push:
@@ -24,6 +24,11 @@ on:
       - 'tools/python313-producer/fetch_schema.py'
       - 'tools/python313-producer/fetch_schema_stdlib.py'
       - 'tools/python313-producer/tests/test_schema_*.py'
+      - 'crates/tobkiri-wasm/**'
+      - 'crates/tobkiri-gate/**'
+      - 'crates/tobkiri-canon/**'
+      - 'vendor/wasmtime/**'
+      - 'Cargo.lock'
   workflow_dispatch:
 
 permissions:
@@ -37,11 +42,14 @@ concurrency:
 jobs:
   diagnostic-only-schema-preinit-code-cache:
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       RPDS_RUN: '40182231971'
       RPDS_HEAD: 53163ed815c62c4853bbed3d8a082c0764e3084f
       RPDS_ARTIFACT: 'ui-rpds-inactive-component'
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,6 +57,36 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13.16'
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - name: Build the actual native64 DATA consumer from this source
+        run: |
+          cargo test --locked -p tobkiri-wasm --lib --no-run --message-format=json > "$RUNNER_TEMP/native-data-build.jsonl"
+          python3 -B - <<'PY'
+          import hashlib, json, os, shutil
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP'])
+          rows = [json.loads(line) for line in (root / 'native-data-build.jsonl').read_text().splitlines()]
+          artifacts = [row['executable'] for row in rows
+                       if row.get('reason') == 'compiler-artifact'
+                       and row.get('target', {}).get('name') == 'tobkiri_wasm'
+                       and row.get('profile', {}).get('test') is True and row.get('executable')]
+          if len(artifacts) != 1:
+              raise ValueError('exactly one actual library test consumer required')
+          destination = root / 'native-data-consumer'
+          shutil.copyfile(artifacts[0], destination)
+          destination.chmod(0o500)
+          digest = hashlib.sha256()
+          with destination.open('rb') as source:
+              for block in iter(lambda: source.read(262144), b''):
+                  digest.update(block)
+          (root / 'native-data-consumer-build.json').write_text(json.dumps({
+              'format': 'tobkiri.native-data-consumer-build/1',
+              'source_head': os.environ['GITHUB_SHA'], 'sha256': digest.hexdigest(),
+              'memory_bytes': 64 * 1024 * 1024,
+              'test': 'native_setup_store::entry::schema_probe::native_schema_component',
+              'portable_owner_fixture': True, 'actual_os_owner_proof': False,
+              'production_enabled': False}, indent=2) + '\n')
+          PY
       - name: Check offline schema and inactive-consumer invariants
         run: python3 -B -m unittest discover -s tools/python313-producer/tests -p 'test_schema_*.py'
       - name: Load pinned actual supplier and raw-C predecessor identities
@@ -186,7 +224,7 @@ jobs:
           python3 -B tools/python313-producer/fetch_schema.py --destination "$RUNNER_TEMP/schema-inputs"
           python3 -B tools/python313-producer/fetch_schema_stdlib.py --destination "$RUNNER_TEMP/schema-stdlib"
           python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/schema-validation"
-      - name: Compare the original schema corpus with a diagnostic-only Wasm preinit code cache
+      - name: Compare the complete original schema corpus through the actual native64 DATA Store
         env:
           POLL_REFERENCE_REPORT: ${{ steps.reference-report.outputs.report }}
         run: >-
@@ -202,6 +240,7 @@ jobs:
           --allow-inactive-ui-libc
           --allow-ci-link-trace
           --schema-preinit-code-cache
+          --native-data-consumer "$RUNNER_TEMP/native-data-consumer"
           --poll-bundle "$RUNNER_TEMP/schema-poll-supplier"
           --poll-authentication "$RUNNER_TEMP/schema-poll-auth"
           --poll-reference-report "$POLL_REFERENCE_REPORT"
@@ -212,6 +251,8 @@ jobs:
         with:
           name: ui-schema-preinit-code-cache-diagnostic-evidence
           path: |
+            ${{ runner.temp }}/native-data-consumer-build.json
+            ${{ runner.temp }}/native-data-build.jsonl
             ${{ runner.temp }}/schema-inputs/schema-inputs.json
             ${{ runner.temp }}/schema-stdlib/stdlib-inputs.json
             ${{ runner.temp }}/schema-preinit-code-cache/schema-build.json
@@ -224,6 +265,7 @@ jobs:
             ${{ runner.temp }}/schema-preinit-code-cache/work/schema-preinit-code-cache-provenance.json
             ${{ runner.temp }}/schema-preinit-code-cache/work/stage-inputs.json
             ${{ runner.temp }}/schema-preinit-code-cache/work/ui-clock-probes.json
+            ${{ runner.temp }}/schema-preinit-code-cache/work/native-data-observations/
             ${{ runner.temp }}/schema-preinit-code-cache/work/link-trace/libraries.tsv
             ${{ runner.temp }}/schema-preinit-code-cache/work/link-trace/complete.tsv
           if-no-files-found: warn

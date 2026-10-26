@@ -476,6 +476,18 @@ namespace metadata and 64KiB range-read bounds, including UTF-8 accounting and
 file/directory collision rejection. Entries bind only to already sealed file
 snapshots from the exact same invocation. This catalog opens no host path and
 is not yet a guest capture import or managed IO integration. The new portable
-12 Store, 3 namespace and 9 actual-component entry regressions are explicitly
+12 Store, 3 namespace and 11 actual-component entry regressions are explicitly
 counted in CI; their source does not prove supported-OS capture or whole GUI
 parity. The real Native Store 64MiB fullSchema comparison still needs execution.
+
+The diagnostic code-cache workflow now builds its native observer from the same
+checkout and pins the executable hash in the read-only sandbox control. An
+explicit `--native-data-consumer` selects a controller adapter; the default
+standalone observer and original `driver.py` remain unchanged. The adapter
+retains the exact final component hash, original native oracle and full corpus,
+clock windows/resolutions, inventories and four genuine unreachable denials.
+Wasmtime's typed trap is sampled before its error conversion; a clock host
+failure is never accepted as a denial. Each call uses the production native
+entry and original 64MiB/2b/30s/4MiB bounds, then destroys the actual Store and
+streams the still-funded output to its CI report. The injected owner is a
+portable fixture: it provides no actual OS-root, GUI or product acceptance.

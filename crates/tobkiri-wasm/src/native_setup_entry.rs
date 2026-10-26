@@ -58,6 +58,8 @@ pub struct NativeDataObservation {
     pub fuel_remaining: Option<u64>,
     /// The most recent owned call completed canonical post-return.
     pub post_return: bool,
+    /// The actual Wasmtime call returned its typed unreachable-code trap.
+    pub unreachable_trap: bool,
     /// Actual Store destruction has completed.
     pub store_retired: bool,
     /// The original absolute deadline was already reached when sampled.
@@ -159,6 +161,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             let instance = linker
                 .instantiate_async(wasmtime_store, component)
                 .await
+                .map_err(anyhow::Error::from)
                 .context("instantiate native DATA component")?;
             let function = locate_function(
                 &instance,
@@ -292,8 +295,13 @@ impl<T: Send + 'static> NativeDataEntry<T> {
                     .call_async_owned(wasmtime_store, std::slice::from_ref(param))
                     .await
             }
-        }
-        .context("invoke native DATA function")?;
+        };
+        self.observation.unreachable_trap = result.as_ref().err().is_some_and(|error| {
+            error.downcast_ref::<wasmtime::Trap>() == Some(&wasmtime::Trap::UnreachableCodeReached)
+        });
+        let result = result
+            .map_err(anyhow::Error::from)
+            .context("invoke native DATA function")?;
         self.observation.post_return = true;
         let [Val::String(text)] = result.as_slice() else {
             bail!("native DATA function returned an unexpected value")
@@ -325,6 +333,7 @@ impl<T: 'static> NativeDataEntry<T> {
         let mut observation = state.clock_observation;
         observation.fuel_remaining = store.get_fuel().ok();
         observation.post_return = self.observation.post_return;
+        observation.unreachable_trap = self.observation.unreachable_trap;
         observation.deadline_exceeded = Instant::now() >= self.deadline;
         self.observation = observation;
     }
@@ -531,36 +540,12 @@ fn validate_datetime_type(item: &ComponentItem) -> Result<()> {
 fn define_wall_clock<T: Send + 'static>(linker: &mut Linker<NativeState<T>>) -> Result<()> {
     let mut wall = linker.root().instance(WALL_CLOCK_IMPORT)?;
     wall.func_new("now", |mut store, _ty, params, results| {
-        if !params.is_empty() || results.len() != 1 {
-            bail!("native DATA wall-clock callback signature mismatch")
-        }
-        begin_clock_call(&mut store, ClockOperation::WallNow, 1)?;
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .context("native DATA host wall clock failed")?;
-        results[0] = datetime_value(
-            store.data().owners.component(),
-            timestamp.as_secs(),
-            timestamp.subsec_nanos(),
-        )?;
-        end_clock_call(&mut store, ClockOperation::WallNow, None)
+        clock_callback(&mut store, params, results, ClockOperation::WallNow)
+            .map_err(wasmtime::Error::from_anyhow)
     })?;
     wall.func_new("resolution", |mut store, _ty, params, results| {
-        if !params.is_empty() || results.len() != 1 {
-            bail!("native DATA wall-clock callback signature mismatch")
-        }
-        begin_clock_call(
-            &mut store,
-            ClockOperation::WallResolution,
-            RESOLUTION_HOST_WORK,
-        )?;
-        let resolution = wall_resolution()?;
-        results[0] = datetime_value(
-            store.data().owners.component(),
-            resolution / 1_000_000_000,
-            u32::try_from(resolution % 1_000_000_000)?,
-        )?;
-        end_clock_call(&mut store, ClockOperation::WallResolution, Some(resolution))
+        clock_callback(&mut store, params, results, ClockOperation::WallResolution)
+            .map_err(wasmtime::Error::from_anyhow)
     })?;
     Ok(())
 }
@@ -568,32 +553,69 @@ fn define_wall_clock<T: Send + 'static>(linker: &mut Linker<NativeState<T>>) -> 
 fn define_monotonic_clock<T: Send + 'static>(linker: &mut Linker<NativeState<T>>) -> Result<()> {
     let mut monotonic = linker.root().instance(MONOTONIC_CLOCK_IMPORT)?;
     monotonic.func_new("now", |mut store, _ty, params, results| {
-        if !params.is_empty() || results.len() != 1 {
-            bail!("native DATA monotonic callback signature mismatch")
-        }
-        begin_clock_call(&mut store, ClockOperation::MonotonicNow, 1)?;
-        let now = monotonic_now()?;
-        results[0] = Val::U64(now);
-        end_clock_call(&mut store, ClockOperation::MonotonicNow, None)
+        clock_callback(&mut store, params, results, ClockOperation::MonotonicNow)
+            .map_err(wasmtime::Error::from_anyhow)
     })?;
     monotonic.func_new("resolution", |mut store, _ty, params, results| {
-        if !params.is_empty() || results.len() != 1 {
-            bail!("native DATA monotonic callback signature mismatch")
-        }
-        begin_clock_call(
+        clock_callback(
             &mut store,
+            params,
+            results,
             ClockOperation::MonotonicResolution,
-            RESOLUTION_HOST_WORK,
-        )?;
-        let resolution = monotonic_resolution()?;
-        results[0] = Val::U64(resolution);
-        end_clock_call(
-            &mut store,
-            ClockOperation::MonotonicResolution,
-            Some(resolution),
         )
+        .map_err(wasmtime::Error::from_anyhow)
     })?;
     Ok(())
+}
+
+fn clock_callback<T>(
+    store: &mut StoreContextMut<'_, NativeState<T>>,
+    params: &[Val],
+    results: &mut [Val],
+    operation: ClockOperation,
+) -> Result<()> {
+    if !params.is_empty() || results.len() != 1 {
+        bail!("native DATA clock callback signature mismatch");
+    }
+    let work = match operation {
+        ClockOperation::WallResolution | ClockOperation::MonotonicResolution => {
+            RESOLUTION_HOST_WORK
+        }
+        _ => 1,
+    };
+    begin_clock_call(store, operation, work)?;
+    let resolution = match operation {
+        ClockOperation::WallNow => {
+            let timestamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .context("native DATA host wall clock failed")?;
+            results[0] = datetime_value(
+                store.data().owners.component(),
+                timestamp.as_secs(),
+                timestamp.subsec_nanos(),
+            )?;
+            None
+        }
+        ClockOperation::WallResolution => {
+            let value = wall_resolution()?;
+            results[0] = datetime_value(
+                store.data().owners.component(),
+                value / 1_000_000_000,
+                u32::try_from(value % 1_000_000_000)?,
+            )?;
+            Some(value)
+        }
+        ClockOperation::MonotonicNow => {
+            results[0] = Val::U64(monotonic_now()?);
+            None
+        }
+        ClockOperation::MonotonicResolution => {
+            let value = monotonic_resolution()?;
+            results[0] = Val::U64(value);
+            Some(value)
+        }
+    };
+    end_clock_call(store, operation, resolution)
 }
 
 fn datetime_value(
@@ -613,6 +635,7 @@ fn datetime_value(
     Ok(Val::Record(fields.finish()?))
 }
 
+#[derive(Clone, Copy)]
 enum ClockOperation {
     WallNow,
     WallResolution,
@@ -780,3 +803,7 @@ fn measured_resolution(mut sample: impl FnMut() -> Result<u64>) -> Result<u64> {
 #[cfg(test)]
 #[path = "native_setup_entry_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "native_data_schema_probe.rs"]
+mod schema_probe;

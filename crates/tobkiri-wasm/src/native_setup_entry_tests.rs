@@ -481,6 +481,75 @@ async fn output_envelope_failure_occurs_after_post_return_and_drops_store() {
 }
 
 #[tokio::test]
+async fn genuine_unreachable_is_observed_before_actual_store_retirement() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
+    let (account, invocation) = funding();
+    let engine = crate::WasmEngine::new_with_control(invocation.control()).unwrap();
+    let component = Component::new(
+        engine.engine(),
+        wat::parse_str(
+            r#"(component
+        (core module $m
+            (memory (export "memory") 1)
+            (func (export "run") (result i32) unreachable))
+        (core instance $i (instantiate $m))
+        (alias core export $i "memory" (core memory $memory))
+        (alias core export $i "run" (core func $run))
+        (func $run-value (result string)
+            (canon lift (core func $run) (memory $memory)))
+        (export "run" (func $run-value)))"#,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let mut entry = engine
+        .native_setup_store(invocation, ())
+        .unwrap()
+        .prepare_data_entry(&component, NativeDataExport::new(None, "run"))
+        .await
+        .unwrap();
+    assert!(entry.invoke(None).await.is_err());
+    let observed = entry.observation();
+    assert!(observed.unreachable_trap && observed.store_retired);
+    assert!(!observed.post_return);
+    assert!(
+        observed
+            .fuel_remaining
+            .is_some_and(|fuel| fuel > 0 && fuel < super::super::FUEL)
+    );
+    crate::reap_allocation_owners().unwrap();
+    assert_eq!(account.snapshot().unwrap().charged_bytes, 0);
+}
+
+#[tokio::test]
+async fn host_clock_failure_is_not_a_wasm_unreachable_denial() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
+    let (account, invocation) = funding();
+    let engine = crate::WasmEngine::new_with_control(invocation.control()).unwrap();
+    let component = clock_component(&engine).unwrap();
+    let mut store = engine.native_setup_store(invocation, ()).unwrap();
+    // Force the real shared clock-admission error without changing its limit.
+    store
+        .store
+        .as_mut()
+        .unwrap()
+        .data_mut()
+        .clock_observation
+        .clock_calls = CLOCK_CALL_LIMIT;
+    let mut entry = store
+        .prepare_data_entry(&component, NativeDataExport::new(None, "run"))
+        .await
+        .unwrap();
+    assert!(entry.invoke(None).await.is_err());
+    let observed = entry.observation();
+    assert!(observed.store_retired);
+    assert!(!observed.unreachable_trap && !observed.post_return);
+    assert_eq!(observed.clock_completed, 0);
+    crate::reap_allocation_owners().unwrap();
+    assert_eq!(account.snapshot().unwrap().charged_bytes, 0);
+}
+
+#[tokio::test]
 async fn dropping_a_suspended_call_destroys_store_and_prevents_reuse() {
     use std::future::Future;
     use std::task::{Context, Poll, Waker};

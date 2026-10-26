@@ -702,6 +702,7 @@ def run(
     schema_exception_diagnostics: bool = False,
     schema_stage_profile: bool = False,
     schema_preinit_code_cache: bool = False,
+    native_data_consumer: Path | None = None,
     poll_bundle: Path | None = None,
     poll_authentication: Path | None = None,
     poll_reference_report: Path | None = None,
@@ -712,6 +713,12 @@ def run(
         raise ValueError("schema execution is restricted to Linux CI")
     if sys.version_info[:3] != (3, 13, 16):
         raise ValueError("native original CPython 3.13.16 reference required")
+    native_identity = None
+    if native_data_consumer is not None:
+        if (not schema_preinit_code_cache or not native_data_consumer.is_absolute()
+                or native_data_consumer.resolve(strict=True) != native_data_consumer):
+            raise ValueError("native64 requires an explicit physical CI consumer and full code-cache corpus")
+        native_identity = fingerprint(native_data_consumer)
     predecessor_paths = (
         poll_bundle,
         poll_authentication,
@@ -888,6 +895,8 @@ def run(
             schema_preinit_code_cache=True,
             schema_preinit_code_cache_toolchain=code_cache_toolchain,
         )
+    if native_identity is not None:
+        control_data["native_data_consumer"] = native_identity
     control.write_text(json.dumps(control_data, indent=2) + "\n")
     composition = HERE.parents[1] / "sdk/python/composition.py"
     control_identity = fingerprint(control)
@@ -926,6 +935,15 @@ def run(
             final_provider_resolution_verified=False,
             cold_schema_verified=False,
         )
+    if native_identity is not None:
+        report["native_data_store"] = {
+            "enabled": True,
+            "consumer": native_identity,
+            "memory_bytes": 64 * 1024 * 1024,
+            "diagnostic_only": True,
+            "actual_os_owner_proof": False,
+            "production_enabled": False,
+        }
     if schema_exception_diagnostics:
         report["schema_exception_diagnostics"] = {
             "enabled": True,
@@ -979,9 +997,11 @@ def run(
         )
         native = fingerprint(work / "native.json", 4 * 1024 * 1024)
         wasm_recipe = destination / "wasm.sh"
+        driver_name = "native_driver.py" if native_identity is not None else "driver.py"
         wasm_recipe.write_text(
-            "set -eu\numask 077\n/usr/bin/python3 -I -S -B /probe-source/driver.py\n"
+            "set -eu\numask 077\n/usr/bin/python3 -I -S -B /probe-source/" + driver_name + "\n"
         )
+        native_mounts = ((native_data_consumer, "/native-data-consumer"),) if native_identity is not None else ()
         command = sandbox_command(
             None,
             work,
@@ -997,6 +1017,7 @@ def run(
                 (validation / "wac-cli", "/wac"),
                 (composition, "/composition.py"),
                 (work / "empty-venv", "/empty-venv"),
+                *native_mounts,
             ),
             address_space_bytes=8 * GIB,
         )
@@ -1073,6 +1094,7 @@ def run(
             or fetch_sdk.inventory(source) != scripts
             or fingerprint(control) != control_identity
             or fingerprint(composition) != composition_identity
+            or (native_data_consumer is not None and fingerprint(native_data_consumer) != native_identity)
         ):
             raise ValueError("captured schema input, source, or control changed")
         report.update(
@@ -1363,6 +1385,7 @@ if __name__ == "__main__":
     parser.add_argument("--schema-exception-diagnostics", action="store_true")
     parser.add_argument("--schema-stage-profile", action="store_true")
     parser.add_argument("--schema-preinit-code-cache", action="store_true")
+    parser.add_argument("--native-data-consumer", type=Path)
     for name in (
         "poll-bundle",
         "poll-authentication",
