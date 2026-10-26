@@ -311,9 +311,9 @@ fn exhausted_factory(
             .inspect(|output| output.append(b"must not publish"))
             .is_err()
     );
-    assert_eq!(proof.get().load(Ordering::Acquire), FAILED);
+    assert_eq!(proof.get().load(Ordering::Acquire), super::FAILED);
     drop(held);
-    assert_eq!(proof.get().load(Ordering::Acquire), FAILED);
+    assert_eq!(proof.get().load(Ordering::Acquire), super::FAILED);
     bail!("caught factory allocation failure stays terminal")
 }
 static EXHAUST: [NativeImportBinding<ExhaustingState>; 1] = [NativeImportBinding {
