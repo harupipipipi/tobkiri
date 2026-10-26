@@ -1,6 +1,42 @@
 //! Borrowed inspection output on the real kernel; injected portable root proof.
 use super::*;
 
+#[tokio::test]
+async fn native_reported_execution_failure_is_sticky_and_preserves_first_failure() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
+    let _census = super::super::super::lock_census_fixture().await;
+    for prior_capacity in [false, true] {
+        let (account, invocation, engine, store, io) = setup();
+        let expected = if prior_capacity {
+            NativeDataIoError::Capacity
+        } else {
+            NativeDataIoError::Unavailable
+        };
+        let result = io
+            .inspect(move |output| {
+                output.append(b"private prefix")?;
+                if prior_capacity {
+                    assert!(output.write_chunk(usize::MAX, |_| Ok::<_, ()>(0)).is_err());
+                }
+                assert_eq!(
+                    output.reject_execution(NativeDataIoError::Unavailable),
+                    expected
+                );
+                assert_eq!(output.reject_execution(NativeDataIoError::Io), expected);
+                assert_eq!(output.append(b"replacement success").unwrap_err(), expected);
+                // Ignored failure/nominal callback success cannot publish the prefix.
+                Ok(())
+            })
+            .await;
+        assert_eq!(result.unwrap_err(), expected);
+        drop(store);
+        io.retire_and_wait().await.unwrap();
+        drop((io, invocation, engine));
+        crate::reap_allocation_owners().unwrap();
+        assert_eq!(account.snapshot().unwrap().charged_bytes, 0);
+    }
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn inspections_reread_live_fd_and_owned_outputs_survive_store_retirement() {

@@ -68,6 +68,10 @@ class HarnessNativeSourceTests(unittest.TestCase):
             self.assertNotIn(f"source/{path}", files)
         self.assertEqual(provenance["native_inspection_boundary"]["rust_adapter_sources"],
                          list(prepare._NATIVE_IO_SOURCES))
+        self.assertIs(provenance["native_inspection_boundary"][
+            "existing_fd_protocol_adapter_captured"], True)
+        for key in ("actual_core_source_controller_connected", "fd_close_lifecycle_connected"):
+            self.assertIs(provenance["native_inspection_boundary"][key], False)
         for path in prepare._NATIVE_IO_TEST_SOURCES:
             self.assertEqual(records[path]["role"], "native_inspection_adapter_test_source")
             self.assertEqual(records[path]["sha256"], hashlib.sha256(

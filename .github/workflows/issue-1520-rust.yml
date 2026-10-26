@@ -141,7 +141,7 @@ jobs:
       - name: Native DATA blocking IO custody regressions
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/portable-native-data-io.log" --expected-passed 15 --
+          --log "$RUNNER_TEMP/portable-native-data-io.log" --expected-passed 16 --
           cargo test --locked -p tobkiri-wasm --lib child_census::native_data_io::tests
       - name: Fixed native imports and original invocation custody regressions
         run: >-

@@ -62,6 +62,28 @@ Python signal-exception compatibility remain separate requirements. Portable
 tests exercise real files plus the real kernel writer with an explicitly
 injected root lease; they are not native root/admission or whole GUI proof.
 
+The native `write_fd_stat` producer prepays its complete framed maximum before
+the original `File::metadata` call. It writes the five observed integer fields
+directly into that tail, including signed nanoseconds computed without a float.
+Original syscall errors remain typed and undisclosed; execution failure wins
+over a domain result and cannot publish a partial frame.
+
+`NativeFdProtocol` validates the existing guest FD request format and dispatches
+read/fstat to the caller's actual File. Its four hex Scope values are only DATA
+correlation: it additionally matches genuine invocation custody before parsing
+with the original allocation owner. The native-issued FD binding must match,
+derivation steps must be empty, and extra fields, foreign scopes, negative read
+sizes and unsupported operations fail before file access. Rejections are sticky
+kernel execution failures even if a callback ignores the returned error. Read
+bytes retain their original short-read/EOF behavior and original envelope.
+
+This adapter supplies no source admission, registry, open or close operation.
+The actual source controller must retain and validate source, target, phase and
+occurrence before dispatch. Syscall errors still require the controller's proven
+exception-disclosure policy; rejecting an unsupported negative request is not
+proof of Python ValueError restoration. The adapter is not wired into production
+bootstrap, and no source permission follows from its constructor or Scope.
+
 Only explicit returned domain-error DATA may use the dedicated original
 exception decoder. Resource, cancellation and panic failures are not converted
 to domain success/errors. Unconnected error disclosure, unbound IO paths,

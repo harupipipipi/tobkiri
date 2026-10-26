@@ -54,6 +54,17 @@ impl NativeInspectionOutput<'_> {
         self.scope.work(work).map_err(|error| self.fail(error))
     }
 
+    /// Latch a native-selected execution/protocol failure. Ignoring its returned
+    /// error cannot publish staged DATA or replace it with a domain result.
+    /// This grants no effects and must not normalize an original syscall/domain
+    /// error that belongs in the separate typed producer channel.
+    pub fn reject_execution(&mut self, error: NativeDataIoError) -> NativeDataIoError {
+        if let Err(original) = self.charge_work(0) {
+            return original;
+        }
+        self.fail(error)
+    }
+
     /// Borrow the actual original invocation; no substitute identity is made.
     pub fn invocation(&self) -> &NativeSetupInvocation {
         &self.scope.invocation

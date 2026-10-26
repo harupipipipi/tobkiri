@@ -6,9 +6,17 @@
 
 mod exception_graph;
 #[cfg(unix)]
+mod fd_protocol;
+#[cfg(unix)]
 mod fd_read;
+#[cfg(unix)]
+mod fd_stat;
 pub use exception_graph::{
     NativeErrorGraph, NativeErrorGraphError, NativeErrorKind, NativeErrorNode,
 };
 #[cfg(unix)]
+pub use fd_protocol::{NativeFdOutcome, NativeFdProtocol};
+#[cfg(unix)]
 pub use fd_read::write_fd_read;
+#[cfg(unix)]
+pub use fd_stat::write_fd_stat;

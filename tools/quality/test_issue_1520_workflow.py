@@ -118,7 +118,7 @@ class RuntimeRoutingTests(unittest.TestCase):
         self.assertIn("test_harness_native_dispatcher.py", source)
         self.assertIn("test_harness_native_wit.py", source)
         io = step(self.linux, "Native DATA blocking IO custody regressions")
-        self.assertIn("--expected-passed 15 --", io)
+        self.assertIn("--expected-passed 16 --", io)
         self.assertIn("cargo test --locked -p tobkiri-wasm --lib", io)
         self.assertIn("child_census::native_data_io::tests", io)
         for bypass in ("continue-on-error", "--skip", "--list", "--no-run"):

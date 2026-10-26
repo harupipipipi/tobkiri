@@ -69,9 +69,13 @@ _NATIVE_KIT_SOURCES = (
 )
 _NATIVE_IO_SOURCES = (
     "tobkiri_launcher/harness-native/src/fd_read.rs",
+    "tobkiri_launcher/harness-native/src/fd_stat.rs",
+    "tobkiri_launcher/harness-native/src/fd_protocol.rs",
 )
 _NATIVE_IO_TEST_SOURCES = (
     "tobkiri_launcher/harness-native/src/fd_read_tests.rs",
+    "tobkiri_launcher/harness-native/src/fd_stat_tests.rs",
+    "tobkiri_launcher/harness-native/src/fd_protocol_tests.rs",
 )
 
 PROTOCOL_MODULES = (
@@ -781,6 +785,9 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
             "guest_path_os_adapter_source": NATIVE_PATH_ADAPTER,
             "module_preamble_injection_connected": False,
             "actual_native_target_admission_connected": False,
+            "existing_fd_protocol_adapter_captured": True,
+            "actual_core_source_controller_connected": False,
+            "fd_close_lifecycle_connected": False,
             "path_fd_iterator_native_parity_verified": False,
         },
         "original_value_transport": {
