@@ -6,23 +6,23 @@ use std::{
     collections::BTreeMap,
     path::PathBuf,
     sync::{
-        Arc, Mutex,
         atomic::{AtomicBool, AtomicU8, Ordering},
+        Arc, Mutex,
     },
     time::Duration,
 };
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 use tobkiri_launcher_core_host::{
-    DebugScope, HostCaller, HostError, LauncherCore, PACK_UI_CSP, ShutdownCompletion,
-    ShutdownObservation, TRUSTED_HOST_RECEIVER, TransportTickets, UiFrame, UiOperationRegistration,
-    UiRoute, UiTransportResponse, UiTransportTicket, copy_final_host_payload,
+    copy_final_host_payload,
     core::{
+        ids::{ProfileId, UiSessionId},
         AllocationBudget, ApprovalAnswer, ApprovalPrompt, CanonValue, CoreBuffer, HostIo,
         TrustedPrompt, UiEmbed,
-        ids::{ProfileId, UiSessionId},
     },
     observe_shutdown, preserve_primary_close, restore_primary, startup_ui_embedding,
-    trusted_host_origin, trusted_review,
+    trusted_host_origin, trusted_review, DebugScope, HostCaller, HostError, LauncherCore,
+    ShutdownCompletion, ShutdownObservation, TransportTickets, UiFrame, UiOperationRegistration,
+    UiRoute, UiTransportResponse, UiTransportTicket, PACK_UI_CSP, TRUSTED_HOST_RECEIVER,
 };
 
 #[derive(Clone, Serialize)]
@@ -900,19 +900,27 @@ pub(crate) fn run() {
                 debug_scope: debug_scope.clone(),
             });
             #[cfg(debug_assertions)]
-            let core = {
+            let core_config = {
                 use tobkiri_launcher_core_host::core::CoreConfig;
-                Arc::new(match &debug_scope {
-                    Some(scope) => LauncherCore::open_with_config_and_tickets(
-                        host.clone(),
-                        CoreConfig::for_test_data_root(scope.data_root().to_owned()),
-                        tickets,
-                    )?,
-                    None => LauncherCore::open_with_tickets(host.clone(), tickets)?,
-                })
+                match &debug_scope {
+                    Some(scope) => CoreConfig::for_test_data_root(scope.data_root().to_owned()),
+                    None => CoreConfig::default(),
+                }
             };
             #[cfg(not(debug_assertions))]
-            let core = Arc::new(LauncherCore::open_with_tickets(host.clone(), tickets)?);
+            let core_config = tobkiri_launcher_core_host::core::CoreConfig::default();
+            // The real native composition opens ONE Core with its actual Host.
+            // Native Kit and the frontend wrapper can retain this exact owner;
+            // neither needs another Core/root/control account to obtain it.
+            let shared_core = Arc::new(
+                tobkiri_launcher_core_host::core::Core::open(core_config, host.clone())
+                    .map_err(|_| HostError::Core)?,
+            );
+            let core = Arc::new(LauncherCore::from_shared_core_with_tickets(
+                shared_core.clone(),
+                tickets,
+            ));
+            app.manage(shared_core);
             app.manage(host);
             app.manage(core);
             crate::native_ipc_probe::install(app, ipc_probe_setup)?;

@@ -1659,7 +1659,7 @@ pub struct PackAsset {
 /// The desktop process embeds one Core. The adapter owns no Pack registry,
 /// permissions, provider resolution, original CallCx, or stream handles.
 pub struct LauncherCore {
-    core: Core,
+    core: Arc<Core>,
     startup: tokio::sync::Mutex<()>,
     lifecycle: Arc<Lifecycle>,
     // This mutex owns the only active/retiring Session state as well as the
@@ -1707,18 +1707,22 @@ impl LauncherCore {
         config: CoreConfig,
         tickets: TransportTickets,
     ) -> Result<Self, HostError> {
-        Ok(Self::from_core_with_tickets(
-            Core::open(config, host).map_err(|_| HostError::Core)?,
+        Ok(Self::from_shared_core_with_tickets(
+            Arc::new(Core::open(config, host).map_err(|_| HostError::Core)?),
             tickets,
         ))
     }
 
     #[cfg(test)]
     fn from_core(core: Core) -> Self {
-        Self::from_core_with_tickets(core, TransportTickets::default())
+        Self::from_shared_core_with_tickets(Arc::new(core), TransportTickets::default())
     }
 
-    fn from_core_with_tickets(core: Core, tickets: TransportTickets) -> Self {
+    /// Wrap the actual Core already opened by the native application owner.
+    /// No root/configuration detection, Profile recovery or replacement Host
+    /// runs here. Transport/session state belongs to this frontend wrapper;
+    /// all runtime decisions keep the same underlying Core and its accounts.
+    pub fn from_shared_core_with_tickets(core: Arc<Core>, tickets: TransportTickets) -> Self {
         Self {
             core,
             startup: tokio::sync::Mutex::new(()),
@@ -3052,6 +3056,33 @@ mod tests {
 
     async fn launcher_fixture() -> (LauncherCore, ProfileId, tempfile::TempDir) {
         launcher_fixture_with_host(Arc::new(ClosedHost)).await
+    }
+
+    #[tokio::test]
+    async fn frontend_wrapper_retains_the_actual_shared_core_without_reopening_it() {
+        let (original, id, _directory) = launcher_fixture().await;
+        let shared = original.core.clone();
+        let weak = Arc::downgrade(&shared);
+        let expected_head = shared.profile(&id).unwrap().1;
+        drop(original);
+
+        let wrapper = LauncherCore::from_shared_core_with_tickets(
+            shared.clone(),
+            TransportTickets::default(),
+        );
+        assert!(Arc::ptr_eq(&wrapper.core, &shared));
+        drop(shared);
+        assert!(
+            weak.upgrade().is_some(),
+            "the wrapper retains the actual runtime owner"
+        );
+        assert_eq!(wrapper.core.profile(&id).unwrap().1, expected_head);
+        assert_eq!(wrapper.profile_ids(caller()).unwrap(), vec![id]);
+        drop(wrapper);
+        assert!(
+            weak.upgrade().is_none(),
+            "wrapper drop releases its original ownership"
+        );
     }
 
     async fn launcher_fixture_with_host(
