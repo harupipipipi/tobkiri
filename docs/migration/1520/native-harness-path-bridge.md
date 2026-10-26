@@ -43,6 +43,25 @@ their actual resources through all worker Joins, close completion and teardown,
 including cancellation when guest finally blocks cannot run. Encoded bytes,
 decoding and ABI copies remain inside the original DATA/output budgets.
 
+The Unix native `write_fd_read` primitive now reads directly into the end of one
+prepaid inspection tail and encodes forward in place, including exact Base64
+padding and the caller's frame prefix/suffix. It performs one successful raw
+read, preserving short reads and each EOF, and retries only EINTR after checking
+the original activity/work scope. The maximum frame is charged before IO; no
+second raw/encoded Vec is allocated. New checkpoints borrow only the existing
+scope, cannot escape the callback or create owners, and latch the first failure.
+Kernel checks also precede execution and successful private tail commit even
+when a producer ignores its checkpoint. A failure cannot publish partial raw
+data or turn into a successful/domain result. Output rollback never rewinds or
+replays the FD read. Blocking IO still retains its actual FD through the real
+worker Join; checkpoints do not promise to interrupt a blocked syscall.
+
+This primitive takes the native caller's actual File, not a guest descriptor or
+path. Actual source/FD/phase admission, the complete descriptor registry and
+Python signal-exception compatibility remain separate requirements. Portable
+tests exercise real files plus the real kernel writer with an explicitly
+injected root lease; they are not native root/admission or whole GUI proof.
+
 Only explicit returned domain-error DATA may use the dedicated original
 exception decoder. Resource, cancellation and panic failures are not converted
 to domain success/errors. Unconnected error disclosure, unbound IO paths,

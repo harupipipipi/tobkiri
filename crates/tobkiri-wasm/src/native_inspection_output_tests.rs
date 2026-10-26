@@ -76,6 +76,69 @@ async fn typed_producer_error_is_preserved_without_publishing_its_partial_tail()
 }
 
 #[tokio::test]
+async fn ignored_checkpoint_failure_is_sticky_over_success_and_domain_error() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
+    let _census = super::super::super::lock_census_fixture().await;
+    for replace_domain in [false, true] {
+        let (account, invocation, engine, store, io) = setup();
+        let result = io
+            .inspect(move |output| {
+                let failed = output.write_chunk_checked(8, |tail, checkpoint| {
+                    tail.copy_from_slice(b"private!");
+                    assert_eq!(
+                        checkpoint.charge_work(u64::MAX),
+                        Err(NativeDataIoError::Capacity)
+                    );
+                    assert_eq!(checkpoint.charge_work(0), Err(NativeDataIoError::Capacity));
+                    if replace_domain { Err(41_u32) } else { Ok(8) }
+                });
+                assert_eq!(failed, Err(NativeDataIoError::Capacity));
+                assert!(output.is_empty());
+                assert_eq!(output.append(b"ignored"), Err(NativeDataIoError::Capacity));
+                Ok(())
+            })
+            .await;
+        assert_eq!(result.unwrap_err(), NativeDataIoError::Capacity);
+        drop(store);
+        io.retire_and_wait().await.unwrap();
+        drop((io, invocation, engine));
+        crate::reap_allocation_owners().unwrap();
+        assert_eq!(account.snapshot().unwrap().charged_bytes, 0);
+    }
+}
+
+#[tokio::test]
+async fn producer_without_checkpoint_cannot_commit_tail_after_retirement() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
+    let _census = super::super::super::lock_census_fixture().await;
+    let (account, invocation, engine, store, io) = setup();
+    let retirement = io.0.get().scope.retirement.clone();
+    let (observed_tx, observed_rx) = tokio::sync::oneshot::channel();
+    let result = io
+        .inspect(move |output| {
+            let result = output.write_chunk_checked(8, |tail, _unused_checkpoint| {
+                tail.copy_from_slice(b"private!");
+                retirement.cancel();
+                Ok::<_, ()>(8)
+            });
+            let _ = observed_tx.send((result, output.is_empty()));
+            Ok(())
+        })
+        .await;
+    assert!(matches!(result, Err(NativeDataIoError::Retired)));
+    // The kernel rolled the tail back before private commit even though this
+    // producer never used its checkpoint. The real worker still must finish.
+    let (observed, empty) = observed_rx.await.unwrap();
+    assert_eq!(observed, Err(NativeDataIoError::Retired));
+    assert!(empty);
+    drop(store);
+    io.retire_and_wait().await.unwrap();
+    drop((io, invocation, engine));
+    crate::reap_allocation_owners().unwrap();
+    assert_eq!(account.snapshot().unwrap().charged_bytes, 0);
+}
+
+#[tokio::test]
 async fn ignored_capacity_or_invalid_length_failure_cannot_publish_success() {
     let _serial = crate::allocation::TEST_CUSTODY.lock().await;
     let _census = super::super::super::lock_census_fixture().await;

@@ -31,7 +31,7 @@ use tokio_util::sync::CancellationToken;
 
 #[path = "native_inspection_output.rs"]
 mod inspection;
-pub use inspection::NativeInspectionOutput;
+pub use inspection::{NativeInspectionCheckpoint, NativeInspectionOutput};
 
 /// Closed execution failures, never an approval, native verification or grant.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

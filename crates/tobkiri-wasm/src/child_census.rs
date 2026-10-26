@@ -49,7 +49,9 @@ const WAITER_CONTROL: u64 = 512;
 
 #[path = "native_data_io.rs"]
 mod native_data_io;
-pub use native_data_io::{NativeDataIo, NativeDataIoError, NativeInspectionOutput};
+pub use native_data_io::{
+    NativeDataIo, NativeDataIoError, NativeInspectionCheckpoint, NativeInspectionOutput,
+};
 
 // Independent fixtures share the process-wide execution owner. Keep their
 // maintenance scans from consuming another fixture's original Joins or waking

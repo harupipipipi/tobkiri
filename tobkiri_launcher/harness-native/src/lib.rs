@@ -5,6 +5,10 @@
 //! must pass parity before the product default changes.
 
 mod exception_graph;
+#[cfg(unix)]
+mod fd_read;
 pub use exception_graph::{
     NativeErrorGraph, NativeErrorGraphError, NativeErrorKind, NativeErrorNode,
 };
+#[cfg(unix)]
+pub use fd_read::write_fd_read;

@@ -7,6 +7,14 @@ license.workspace = true
 
 [dependencies]
 tobkiri-canon.workspace = true
+tobkiri-wasm.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
 
 [dev-dependencies]
+base64.workspace = true
 serde_json.workspace = true
+tempfile.workspace = true
+tobkiri-gate.workspace = true
+tokio.workspace = true

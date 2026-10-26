@@ -1,6 +1,7 @@
 //! Native-selected work over the original IO slot and borrowed DATA writer.
 use super::{NativeDataIo, NativeDataIoError, Result, Scope, Value};
 use crate::AllocationOwners;
+use std::cell::Cell;
 use tobkiri_canon::{AllocationError, CoreBuffer, CoreBufferBuilder, MAX_BYTES};
 use tobkiri_gate::NativeSetupInvocation;
 
@@ -14,6 +15,29 @@ pub struct NativeInspectionOutput<'scope> {
     scope: &'scope Scope,
     bytes: CoreBufferBuilder,
     failed: Option<NativeDataIoError>,
+}
+
+/// A producer-local activity/work check on the original IO scope.
+///
+/// It cannot escape its borrowed callback, clone custody, issue an owner or
+/// expose a Store/Gate/IO API. Failures are latched privately: ignoring one or
+/// returning a replacement domain error cannot authorize publication.
+pub struct NativeInspectionCheckpoint<'scope> {
+    scope: &'scope Scope,
+    failed: &'scope Cell<Option<NativeDataIoError>>,
+}
+
+impl NativeInspectionCheckpoint<'_> {
+    /// Check original retirement/cancellation/deadline and charge original work.
+    /// This does not interrupt an already blocking OS syscall or reset budgets.
+    pub fn charge_work(&self, work: u64) -> Result<()> {
+        if let Some(error) = self.failed.get() {
+            return Err(error);
+        }
+        self.scope.work(work).inspect_err(|&error| {
+            self.failed.set(Some(error));
+        })
+    }
 }
 
 impl NativeInspectionOutput<'_> {
@@ -75,13 +99,45 @@ impl NativeInspectionOutput<'_> {
     where
         F: FnOnce(&mut [u8]) -> std::result::Result<usize, E>,
     {
+        self.write_chunk_checked(maximum, |tail, _checkpoint| producer(tail))
+    }
+
+    /// Prepay one producer tail with a nonescaping original activity checkpoint.
+    ///
+    /// The kernel checks activity before execution and successful tail commit
+    /// even if the producer never uses the checkpoint. Its first failure is
+    /// sticky and takes priority over producer success/domain errors. Physical
+    /// work/FD custody still remains held by the original worker and Join.
+    pub fn write_chunk_checked<E, F>(
+        &mut self,
+        maximum: usize,
+        producer: F,
+    ) -> Result<std::result::Result<usize, E>>
+    where
+        F: FnOnce(&mut [u8], NativeInspectionCheckpoint<'_>) -> std::result::Result<usize, E>,
+    {
         self.charge_work(1)?;
+        let scope = self.scope;
+        let failed = Cell::new(None);
+        let checkpoint = NativeInspectionCheckpoint {
+            scope,
+            failed: &failed,
+        };
         let mut producer_error = None;
         let mut invalid_length = false;
         let result = self
             .bytes
-            .write_chunk(maximum, |tail| match producer(tail) {
-                Ok(count) if count <= tail.len() => Ok(count),
+            .write_chunk(maximum, |tail| match producer(tail, checkpoint) {
+                Ok(count) if count <= tail.len() => {
+                    if failed.get().is_some() {
+                        return Err(AllocationError::Invalid);
+                    }
+                    if let Err(error) = scope.work(0) {
+                        failed.set(Some(error));
+                        return Err(AllocationError::Invalid);
+                    }
+                    Ok(count)
+                }
                 Ok(_) => {
                     invalid_length = true;
                     Err(AllocationError::Invalid)
@@ -91,6 +147,9 @@ impl NativeInspectionOutput<'_> {
                     Err(AllocationError::Invalid)
                 }
             });
+        if let Some(error) = failed.get() {
+            return Err(self.fail(error));
+        }
         self.charge_work(0)?;
         match (result, producer_error) {
             (Ok(count), None) => Ok(Ok(count)),

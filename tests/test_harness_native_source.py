@@ -61,6 +61,18 @@ class HarnessNativeSourceTests(unittest.TestCase):
             self.assertEqual(records[path]["sha256"], hashlib.sha256(
                 prepare.bounded_read(ROOT / path)).hexdigest())
             self.assertNotIn(f"source/{path}", files)
+        for path in prepare._NATIVE_IO_SOURCES:
+            self.assertEqual(records[path]["role"], "native_inspection_adapter_source")
+            self.assertEqual(records[path]["sha256"], hashlib.sha256(
+                prepare.bounded_read(ROOT / path)).hexdigest())
+            self.assertNotIn(f"source/{path}", files)
+        self.assertEqual(provenance["native_inspection_boundary"]["rust_adapter_sources"],
+                         list(prepare._NATIVE_IO_SOURCES))
+        for path in prepare._NATIVE_IO_TEST_SOURCES:
+            self.assertEqual(records[path]["role"], "native_inspection_adapter_test_source")
+            self.assertEqual(records[path]["sha256"], hashlib.sha256(
+                prepare.bounded_read(ROOT / path)).hexdigest())
+            self.assertNotIn(f"source/{path}", files)
         for key in ("native_python_runtime_required", "arbitrary_native_classes_supported",
                     "host_path_fields_supported", "native_inspection_ports_connected",
                     "guest_materializer_executed_in_wasm"):

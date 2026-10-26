@@ -67,6 +67,12 @@ _NATIVE_KIT_SOURCES = (
     "tobkiri_launcher/harness-native/src/lib.rs",
     "tobkiri_launcher/harness-native/src/exception_graph.rs",
 )
+_NATIVE_IO_SOURCES = (
+    "tobkiri_launcher/harness-native/src/fd_read.rs",
+)
+_NATIVE_IO_TEST_SOURCES = (
+    "tobkiri_launcher/harness-native/src/fd_read_tests.rs",
+)
 
 PROTOCOL_MODULES = (
     "__init__.py",
@@ -447,6 +453,8 @@ def _read_sources() -> dict[str, bytes]:
         *(path for path in _DEFERRED_NATIVE_MODULES
           if path not in PROJECTION_BOUNDARY_MODULES),
         *_NATIVE_KIT_SOURCES,
+        *_NATIVE_IO_SOURCES,
+        *_NATIVE_IO_TEST_SOURCES,
         SERVICE_INITIALIZER,
         *_schema_paths(),
     )
@@ -622,6 +630,8 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
             "protocol_schema_metadata" if path == SCHEMA_HASHES else
             "project_metadata" if path == PROJECT_METADATA else
             "native_exception_codec_source" if path in _NATIVE_KIT_SOURCES else
+            "native_inspection_adapter_source" if path in _NATIVE_IO_SOURCES else
+            "native_inspection_adapter_test_source" if path in _NATIVE_IO_TEST_SOURCES else
             "mixed_source_with_captured_data_facade"
             if path in (SERVICE_SOURCE, SERVICE_INITIALIZER) else
             "verbatim_data_with_native_io_boundary"
@@ -759,6 +769,8 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
         ],
         "external_runtime_dependencies": ["jsonschema", "packaging"],
         "native_inspection_boundary": {
+            "rust_adapter_sources": list(_NATIVE_IO_SOURCES),
+            "rust_adapter_test_sources": list(_NATIVE_IO_TEST_SOURCES),
             "projection_sources": list(PROJECTION_BOUNDARY_MODULES),
             "guest_data_calculations_preserved": True,
             "native_precomputed_projection_results_allowed": False,
