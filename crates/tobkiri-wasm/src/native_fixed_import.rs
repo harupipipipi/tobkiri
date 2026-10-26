@@ -72,6 +72,12 @@ impl<T> NativeImportContext<'_, T> {
         self.input.as_ref()
     }
 
+    /// Borrow the same original DATA accounts for closed nativeKit decoding.
+    /// This neither exposes the Store nor grants any source/effect operation.
+    pub fn allocation_owners(&self) -> &crate::AllocationOwners {
+        self.owners
+    }
+
     /// Compare genuine custody without exposing account/budget constructors.
     pub fn same_invocation(&self, other: &NativeSetupInvocation) -> bool {
         self.invocation.same_invocation(other)

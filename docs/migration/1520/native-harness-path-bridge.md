@@ -19,8 +19,9 @@ late binding to previously imported original modules is rejected. True native
 aliases share one proxy; equal lexical paths with different roles do not.
 
 `NativeBootstrap` now supplies the fixed metadata inventory from an actual
-original input owner before `Runtime.init`. Its initial phase rejects every
-inspection request; admitting metadata does not implement native filesystem IO.
+original input owner before `Runtime.init`. Its initial phase rejects filesystem
+inspection; only a closed, bounded failed-init observation may use the existing
+fixed import. Admitting inventory does not implement native filesystem IO.
 The opt-in original Launcher adapter retains the actual AppHandle and borrows
 the original AppConfig/shutdown state. Its lazy `RuntimeOwner` owns the real
 pinned DataRoot, ledger and control, which Core consumes without reopening or
@@ -52,20 +53,49 @@ complete original DATA bodies while connecting reached crypto/authority work to
 real Rust/Wasm implementations; neither empty classes nor fixed-success adapters
 may replace that work. Source transformation evidence and actual runtime/ABI
 evidence must remain separate. Initialize and execute the same actual component
-through all seventeen original methods before connecting the original product
-reachpoint and retiring its Python/VM implementation.
+through all nineteen currently selected original operations (the original
+seventeen plus both preexisting HostPort root getters). Remaining original
+methods and the complete product flow must also pass before retiring Python/VM.
 
-The CI consumer exercises original initialization, the first original method
-and actual DATA description under the same physical account. It records peak
-charged capacity, remaining fuel and elapsed time. Its separate hostile-component
-case rejects inspection during metadata bootstrap, and owner-transfer cases keep
-the real root/control/ledger and outstanding reservations. These execution proofs
-remain pending: the first dependency-inclusive inner artifact exceeded the
-unchanged 32 MiB artifact cap. Lossless immutable source/resource compression
-must fit that cap and the same shared 64 MiB/2 billion fuel/30-second/4 MiB
-execution limits without dropping code, caching expanded sources or introducing
-host filesystem/network fallbacks. A successful artifact build alone remains
-insufficient evidence for Runtime.init, all seventeen methods or the product GUI.
+The compression predecessor `84abc32b` actually built the complete component:
+24,828,709 bytes, SHA256
+`b8aff392402f011fef7d76eae3228076f3d6a26c31ef51c21cac8d9c724922b7`,
+run `40382460471`, build job `121782008368`. It fits the unchanged 32 MiB
+artifact cap. The same run's actual native consumer `121782981068` failed
+`Runtime.init`: a secondary `isatty` trap during Python exception printing hid
+the original exception. Initialization, methods and the product flow are not
+proved by that build.
+
+The native-only dispatcher now retains the same actual factory/registry
+exception, records up to 4096 UTF-8 bytes through the existing fixed inspection
+owner, then bare re-raises it. Exact builtin descriptors, scalar arguments and
+bounded traceback positions may be recorded; display hooks, unknown-class
+attributes and frame locals are never inspected. Recording failure cannot
+replace the original failure. Native execution keeps the original outer error,
+the separate observation and actual Store/resource counters. No new stdio/WASI,
+domain-error conversion, guest replay or execution allowance is introduced.
+The new diagnostic still needs the same actual component/consumer CI proof.
+
+After successful initialization and the original pure Profile-id method, the
+consumer executes both original root getters as component-level unit operations
+and checks opaque proxy descriptions and actual module resolution observations.
+This is not the production development/packaged branch or final binding check.
+Five real native metadata fixture tests and five hostile/cancellation tests run
+before that consumer. The same shared 64 MiB/2 billion fuel/absolute 30 seconds/
+4 MiB envelope applies to all of these operations within an invocation.
+
+Root getters admit only the explicit native composition policy for the exact
+original module name and relative source file, `resolve(false)`, unchanged
+Scope and an empty derivation. Inventory/path/hash/FD existence alone supplies
+no authority. The actual reached operation uses retained descriptor-relative
+metadata and validates parent/name identities. Internal links and non-strict
+missing suffixes have native fixtures; an external SDK relation, non-UTF-8 link
+or full-path syscall boundary remains unsupported outer execution failure.
+Those refusals are not claimed as complete original Path compatibility.
+Vector replacement prepays both simultaneous allocations. Dropping a suspended
+getter closes its admission and retires the same IO owner through physical Join.
+Module resolution and opaque getter success do not yet prove the final parents
+target or subsequent resource access; no path-disclosure API supplies that proof.
 
 `harness_native/native_path.py` implements the guest side of the proposed native
 inspection protocol. NativeKit must supply the actual fixed import, native host

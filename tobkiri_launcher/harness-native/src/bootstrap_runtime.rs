@@ -1,15 +1,16 @@
-//! The actual native-only component runner for the first metadata-only phase.
+//! The actual native-only component runner and original source metadata seam.
 //!
 //! Only initialization, the original first Profile-id method and reviewed DATA
-//! description are exposed. Every native inspection is unavailable in this
-//! phase: no source/root selection here grants read, resolve or effect authority.
+//! description are exposed, followed by the two original opaque root getters
+//! only when composition explicitly admits their fixed module operation.
+//! Initialization permits bounded failure observations, never filesystem IO.
 use crate::bootstrap_metadata::{self, BootstrapInputOwner, BootstrapModuleIndex, Scope};
 use anyhow::{Context, Result, bail};
 use std::sync::{
     Arc, OnceLock,
     atomic::{AtomicU8, AtomicU64, Ordering},
 };
-use tobkiri_canon::{AllocationBudget, ControlHandle, CoreBuffer, MAX_BYTES};
+use tobkiri_canon::{AllocationBudget, ControlHandle, CoreBuffer, CoreValue, MAX_BYTES};
 use tobkiri_gate::{
     CapacityKind, ControlKind, ControlReservation, NativeSetupInvocation, NativeSetupReservation,
 };
@@ -24,7 +25,9 @@ use wasmtime::component::Component;
 const CONSTRUCTING: u8 = 0;
 const INITIALIZING: u8 = 1;
 const READY: u8 = 2;
-const CLOSED: u8 = 3;
+const HOST_ROOT: u8 = 3;
+const BUNDLE_ROOT: u8 = 4;
+const CLOSED: u8 = 5;
 const INTERFACE: &str = "tobkiri-native:harness/bindings@1.0.0";
 const RUNTIME: &str = "tobkiri-ui:harness-native/runtime@1.0.0";
 const TRANSPORT: &str = "tobkiri-ui:harness-native/transport@1.0.0";
@@ -53,6 +56,13 @@ struct Work<S> {
     inventory: OnceLock<CoreBuffer>,
     phase: AtomicU8,
     inspections: AtomicU64,
+    index: &'static BootstrapModuleIndex,
+    metadata_policy: Option<&'static crate::ModuleMetadataPolicy>,
+    source_occurrence: AtomicU8,
+    result_identity: AtomicU64,
+    first_host_resolution: OnceLock<CoreBuffer>,
+    first_bundle_resolution: OnceLock<CoreBuffer>,
+    init_diagnostic: OnceLock<CoreBuffer>,
 }
 struct Funding {
     _native: NativeSetupReservation,
@@ -60,6 +70,23 @@ struct Funding {
 }
 struct State<S> {
     work: ControlHandle<Work<S>>,
+}
+
+// Dropping a suspended invocation already destroys NativeDataProgram's active
+// Store. Also close this adapter's admission and the SAME physical IO owner;
+// restoring READY could re-authorize an old, still-joining worker.
+struct RootCallGuard<S> {
+    work: ControlHandle<Work<S>>,
+    io: NativeDataIo,
+    completed: bool,
+}
+impl<S> Drop for RootCallGuard<S> {
+    fn drop(&mut self) {
+        if !self.completed {
+            self.work.get().phase.store(CLOSED, Ordering::Release);
+            self.io.retire();
+        }
+    }
 }
 impl<S: BootstrapInputOwner> NativeImportState for State<S> {
     fn native_import_invocation(&self) -> &NativeSetupInvocation {
@@ -78,7 +105,7 @@ impl<S: BootstrapInputOwner> State<S> {
             interface: INTERFACE,
             function: "inspect",
             input: NativeImportInput::String,
-            prepare: denied_inspection::<S>,
+            prepare: inspect::<S>,
         },
     ];
 }
@@ -116,18 +143,128 @@ fn inventory<S: BootstrapInputOwner>(
     })
 }
 
-fn denied_inspection<S: BootstrapInputOwner>(
+fn inspect<S: BootstrapInputOwner>(
     context: NativeImportContext<'_, State<S>>,
 ) -> Result<NativeImportOperation> {
-    context
-        .state()
-        .work
-        .get()
-        .inspections
-        .fetch_add(1, Ordering::Relaxed);
-    // No frame, path, binding, source checksum or opcode can enable an operation
-    // in this phase. Kernel sees an outer execution rejection, not domain DATA.
-    bail!("native inspection is unavailable in the metadata-only bootstrap phase")
+    let work = context.state().work.clone();
+    let state = work.get();
+    state.inspections.fetch_add(1, Ordering::Relaxed);
+    let phase = state.phase.load(Ordering::Acquire);
+    if context.same_invocation(&state.invocation) && phase == INITIALIZING {
+        let request = context
+            .input()
+            .context("native init observation is missing")?;
+        if request.len() <= 4096 {
+            let frame =
+                CoreValue::parse_guest(request.as_bytes(), context.allocation_owners().graph())?;
+            if crate::init_diagnostic::valid(&frame, &state.invocation) {
+                let request = request.clone();
+                let custody = work.project(|value| value as &(dyn std::any::Any + Send + Sync));
+                return context.inspect_retaining(custody, move |output| {
+                    let state = work.get();
+                    if !state.invocation.same_invocation(output.invocation())
+                        || state.phase.load(Ordering::Acquire) != INITIALIZING
+                    {
+                        return Err(NativeDataIoError::Retired);
+                    }
+                    state.source.check_live()?;
+                    state
+                        .init_diagnostic
+                        .set(request)
+                        .map_err(|_| NativeDataIoError::Unavailable)?;
+                    // This acknowledgement carries no success or permission.
+                    output.append(b"{}")
+                });
+            }
+        }
+    }
+    if !context.same_invocation(&state.invocation) || !matches!(phase, HOST_ROOT | BUNDLE_ROOT) {
+        bail!("native inspection is unavailable in the metadata-only bootstrap phase");
+    }
+    let policy = state
+        .metadata_policy
+        .context("original module metadata policy is unavailable")?;
+    if state
+        .source_occurrence
+        .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        bail!("original getter metadata occurrence was already consumed");
+    }
+    let request = context
+        .input()
+        .context("original metadata request is missing")?;
+    let frame = CoreValue::parse_guest(request.as_bytes(), context.allocation_owners().graph())?;
+    let module = crate::source_metadata::selected(&frame, &state.invocation, state.index, policy)
+        .context("metadata request is outside the original source operation")?;
+    let custody = work.project(|value| value as &(dyn std::any::Any + Send + Sync));
+    context.inspect_retaining(custody, move |output| {
+        let state = work.get();
+        if !state.invocation.same_invocation(output.invocation())
+            || state.phase.load(Ordering::Acquire) != phase
+        {
+            return Err(NativeDataIoError::Retired);
+        }
+        state.source.check_live()?;
+        let resolved = state
+            .source
+            .with_roots(|roots| crate::source_metadata::resolve(output, roots.runtime, module))??;
+        state.source.check_live()?;
+        let identity = state
+            .result_identity
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| n.checked_add(1))
+            .map_err(|_| NativeDataIoError::Capacity)?;
+        let mut identifier = [0_u8; 48];
+        let mut cursor = std::io::Cursor::new(identifier.as_mut_slice());
+        use std::io::Write;
+        write!(cursor, "resolved_module_{identity:x}").map_err(|_| NativeDataIoError::Capacity)?;
+        let length = cursor.position() as usize;
+        let binding = std::str::from_utf8(&identifier[..length])
+            .map_err(|_| NativeDataIoError::Unavailable)?;
+        let mut response = CoreBuffer::builder(output.allocation_owners().graph(), MAX_BYTES);
+        response
+            .append(b"{\"format\":\"io.tobkiri.native-inspection-response.v1\",\"scope\":")
+            .map_err(|_| NativeDataIoError::Capacity)?;
+        Scope::original(&state.invocation)
+            .write(&mut response)
+            .map_err(|_| NativeDataIoError::Capacity)?;
+        response
+            .append(b",\"result\":{\"kind\":\"path\",\"binding\":")
+            .map_err(|_| NativeDataIoError::Capacity)?;
+        bootstrap_metadata::string_parts(&mut response, [binding])
+            .map_err(|_| NativeDataIoError::Capacity)?;
+        response
+            .append(b",\"value\":")
+            .map_err(|_| NativeDataIoError::Capacity)?;
+        bootstrap_metadata::string_parts(
+            &mut response,
+            [resolved
+                .as_str()
+                .map_err(|_| NativeDataIoError::Unavailable)?],
+        )
+        .map_err(|_| NativeDataIoError::Capacity)?;
+        response
+            .append(b"}}")
+            .map_err(|_| NativeDataIoError::Capacity)?;
+        output.append(
+            response
+                .finish()
+                .map_err(|_| NativeDataIoError::Capacity)?
+                .as_bytes(),
+        )?;
+        // Native-only observation of the real module resolution, not a guest
+        // path disclosure or a capability for subsequent resource operations.
+        let first = if phase == HOST_ROOT {
+            &state.first_host_resolution
+        } else {
+            &state.first_bundle_resolution
+        };
+        let _ = first.set(resolved);
+        if state.phase.load(Ordering::Acquire) != phase {
+            return Err(NativeDataIoError::Retired);
+        }
+        Ok(())
+    })
 }
 
 fn contract(success: NativeDataSuccessType) -> NativeDataResultContract<'static> {
@@ -176,6 +313,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         let bytes = u64::try_from(ControlHandle::<Work<S>>::storage_bytes::<Funding>())?;
         let native = invocation.reserve(CapacityKind::VfsBuffer, bytes)?;
         let control = invocation.control().reserve(ControlKind::Frame, bytes)?;
+        let metadata_policy = source.original_module_metadata_policy();
         let work = ControlHandle::try_new_precharged(
             Work {
                 source,
@@ -183,6 +321,13 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 inventory: OnceLock::new(),
                 phase: AtomicU8::new(CONSTRUCTING),
                 inspections: AtomicU64::new(0),
+                index,
+                metadata_policy,
+                source_occurrence: AtomicU8::new(0),
+                result_identity: AtomicU64::new(1),
+                first_host_resolution: OnceLock::new(),
+                first_bundle_resolution: OnceLock::new(),
+                init_diagnostic: OnceLock::new(),
             },
             Funding {
                 _native: native,
@@ -222,6 +367,14 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 export: NativeDataExport::new(Some(TRANSPORT), "describe-value"),
                 result: Some(contract(NativeDataSuccessType::String)),
             },
+            NativeDataBinding {
+                export: NativeDataExport::new(Some(RUNTIME), "host-resource-root"),
+                result: Some(contract(NativeDataSuccessType::String)),
+            },
+            NativeDataBinding {
+                export: NativeDataExport::new(Some(RUNTIME), "bundled-profile-root"),
+                result: Some(contract(NativeDataSuccessType::String)),
+            },
         ];
         let program = match store.prepare_data_program(component, &bindings).await {
             Ok(program) => program,
@@ -258,6 +411,12 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         drop(init);
         match result {
             Ok(Ok(NativeDataValue::Unit)) => {
+                if runner.work.get().init_diagnostic.get().is_some() {
+                    let error = runner.initialization_failure(anyhow::anyhow!(
+                        "init returned success after reporting an original failure"
+                    ));
+                    return Err(runner.retire_failure(error).await);
+                }
                 if let Err(original) = runner.work.get().source.check_live() {
                     return Err(runner.retire_failure(original.into()).await);
                 }
@@ -273,6 +432,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 bail!("native bootstrap initialization returned a non-unit value")
             }
             Err(original) => {
+                let original = runner.initialization_failure(original);
                 if let Err(cleanup) = runner.finish().await {
                     return Err(BootstrapCleanupFailure { original, cleanup }.into());
                 }
@@ -298,6 +458,51 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         self.string_call(2, request).await
     }
 
+    /// Call the original HostPort getter, retaining its actual opaque Path.
+    pub async fn host_resource_root(
+        &mut self,
+    ) -> Result<std::result::Result<CoreBuffer, NativeDataError>> {
+        self.root_call(3, HOST_ROOT).await
+    }
+
+    /// Call the original packaged-root getter. Production must still preserve
+    /// its development branch and binding validation before consuming this ref.
+    pub async fn bundled_profile_root(
+        &mut self,
+    ) -> Result<std::result::Result<CoreBuffer, NativeDataError>> {
+        self.root_call(4, BUNDLE_ROOT).await
+    }
+
+    async fn root_call(
+        &mut self,
+        slot: usize,
+        phase: u8,
+    ) -> Result<std::result::Result<CoreBuffer, NativeDataError>> {
+        if self.work.get().phase.load(Ordering::Acquire) != READY
+            || self.work.get().metadata_policy.is_none()
+        {
+            bail!("original source metadata is not admitted");
+        }
+        self.work.get().source.check_live()?;
+        let mut guard = RootCallGuard {
+            work: self.work.clone(),
+            io: self.io.clone(),
+            completed: false,
+        };
+        self.work
+            .get()
+            .source_occurrence
+            .store(0, Ordering::Release);
+        self.work.get().phase.store(phase, Ordering::Release);
+        let input = self.call.clone();
+        let result = self.string_call_in_phase(slot, &input, phase).await;
+        if self.work.get().phase.load(Ordering::Acquire) == phase {
+            self.work.get().phase.store(READY, Ordering::Release);
+        }
+        guard.completed = true;
+        result
+    }
+
     /// Copy DATA into this original codec account without issuing a reference,
     /// source capability, permission or renewed budget.
     pub fn copy_input(&self, bytes: &[u8]) -> Result<CoreBuffer> {
@@ -313,7 +518,16 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         slot: usize,
         input: &CoreBuffer,
     ) -> Result<std::result::Result<CoreBuffer, NativeDataError>> {
-        if self.work.get().phase.load(Ordering::Acquire) != READY {
+        self.string_call_in_phase(slot, input, READY).await
+    }
+
+    async fn string_call_in_phase(
+        &mut self,
+        slot: usize,
+        input: &CoreBuffer,
+        phase: u8,
+    ) -> Result<std::result::Result<CoreBuffer, NativeDataError>> {
+        if self.work.get().phase.load(Ordering::Acquire) != phase {
             bail!("native bootstrap is not initialized");
         }
         if let Err(original) = self.work.get().source.check_live() {
@@ -358,9 +572,39 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         }
     }
 
-    /// Evidence only; zero is required for this phase's actual successful path.
+    fn initialization_failure(&self, original: anyhow::Error) -> anyhow::Error {
+        match self.work.get().init_diagnostic.get() {
+            Some(diagnostic) => crate::OriginalInitializationFailure {
+                original,
+                diagnostic: diagnostic.clone(),
+                observation: self.program.as_ref().map(|p| p.observation()),
+                capacity: self.work.get().invocation.capacity_snapshot().ok(),
+                elapsed_micros: self
+                    .work
+                    .get()
+                    .invocation
+                    .started_at()
+                    .elapsed()
+                    .as_micros(),
+            }
+            .into(),
+            None => original,
+        }
+    }
+
+    /// Native import observations, including failed-init diagnostics. Pure
+    /// successful initialization and Profile-id execution must not inspect.
     pub fn inspection_attempts(&self) -> u64 {
         self.work.get().inspections.load(Ordering::Acquire)
+    }
+
+    /// Actual module metadata observations for trusted native diagnostics. These
+    /// do not prove the opaque getter's parents calculation or resource reads.
+    pub fn first_source_resolutions(&self) -> (Option<&CoreBuffer>, Option<&CoreBuffer>) {
+        (
+            self.work.get().first_host_resolution.get(),
+            self.work.get().first_bundle_resolution.get(),
+        )
     }
 
     /// Sample fuel from this same Store; no execution allowance is replaced.

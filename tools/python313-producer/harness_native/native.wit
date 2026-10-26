@@ -27,6 +27,11 @@ interface runtime {
   /// Initialize the invocation-local typed graph transport.
   init: func(payload: string) -> result<_, error>;
 
+  /// Call the existing Profile port getters. Results retain the original opaque
+  /// native-path reference; getter success proves no final parent or resource IO.
+  bundled-profile-root: func(payload: string) -> result<string, error>;
+  host-resource-root: func(payload: string) -> result<string, error>;
+
   /// Payload is a closed frame containing scope, version, and typed graph refs.
   /// It is not a flat JSON namespace: omitted arguments and explicit nulls stay
   /// distinct, and string results preserve graph refs and aliases.

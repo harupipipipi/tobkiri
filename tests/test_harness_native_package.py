@@ -16,6 +16,7 @@ sys.path[:0] = [
 ]
 
 import prepare_harness_native as prepare  # noqa: E402 - source-tool path.
+import stage_harness_native as stage_native  # noqa: E402
 from harness_native.source_package import assemble  # noqa: E402
 from harness_native import data_facade  # noqa: E402
 
@@ -63,7 +64,7 @@ class HarnessNativeSourcePackageTests(unittest.TestCase):
         self.package = assemble(self.capsule)
         self.metadata = json.loads(self.capsule["provenance.json"])
 
-    def test_all_seventeen_methods_keep_source_bytes_signature_and_body(self) -> None:
+    def test_all_nineteen_methods_keep_source_bytes_signature_and_body(self) -> None:
         generated = self.package[COMPOSITION_PATH]
         source_record, = [item for item in self.metadata["sources"]
                           if item["path"] == prepare.COMPOSITION]
@@ -80,7 +81,8 @@ class HarnessNativeSourcePackageTests(unittest.TestCase):
         self.assertGreater(len(all_methods), len(prepare.METHODS))
 
         records = [item for item in self.metadata["definitions"]
-                   if item["source_path"] == prepare.COMPOSITION]
+                   if item["source_path"] == prepare.COMPOSITION
+                   and item["symbol"] in prepare.METHODS]
         self.assertEqual([item["symbol"] for item in records], list(prepare.METHODS))
         for record, generated_method in zip(records, methods, strict=True):
             original_bytes = self.capsule[record["stored_as"]]
@@ -99,6 +101,35 @@ class HarnessNativeSourcePackageTests(unittest.TestCase):
             self.assertEqual(
                 hashlib.sha256(original_bytes).hexdigest(), record["sha256"],
             )
+
+    def test_root_getter_global_helpers_are_complete_original_definitions(self) -> None:
+        generated = self.package[COMPOSITION_PATH]
+        tree = ast.parse(generated)
+        manifest = json.loads(self.package["source-package/provenance.json"])
+        self.assertEqual(manifest["selected_methods"], list(prepare.METHODS))
+        self.assertEqual(manifest["selected_runtime_module_definitions"],
+                         list(prepare._SELECTED_RUNTIME_MODULE_DEFINITIONS))
+        self.assertEqual(manifest["excluded_runtime_methods"],
+                         list(prepare._EXCLUDED_RUNTIME_METHODS))
+        self.assertEqual(manifest["excluded_runtime_module_definitions"],
+                         ["install_defaultspack_profile_runtime"])
+        self.assertTrue(set(manifest["selected_methods"]).isdisjoint(
+            manifest["excluded_runtime_methods"],
+        ))
+        for name in prepare._SELECTED_RUNTIME_MODULE_DEFINITIONS:
+            record, = [item for item in manifest["definitions"]
+                       if item["source_path"] == prepare.COMPOSITION
+                       and item["symbol"] == name]
+            node, = [item for item in tree.body
+                     if isinstance(item, ast.FunctionDef) and item.name == name]
+            exact = _source_extent(generated, node)
+            self.assertEqual(exact, self.capsule[record["stored_as"]])
+            extent = record["generated_extent"]
+            self.assertEqual(exact, generated[extent["start_byte"]:extent["end_byte"]])
+            self.assertEqual(hashlib.sha256(exact).hexdigest(), record["sha256"])
+        for key in ("getter_execution_proven", "final_parent_path_proven",
+                    "subsequent_resource_access_proven"):
+            self.assertFalse(manifest["native_root_getters"][key])
 
     def test_decision_class_is_verbatim_shared_and_keeps_its_invariant(self) -> None:
         record, = [item for item in self.metadata["definitions"]
@@ -140,6 +171,64 @@ class HarnessNativeSourcePackageTests(unittest.TestCase):
                    and item.module == "core_runtime.profile_runtime_port"]
         self.assertEqual(len(imports), 1)
         self.assertIn("SetupActivationDecision", [alias.name for alias in imports[0].names])
+
+    def test_root_helper_and_getter_evidence_drift_fail_after_checksum_rewrite(self) -> None:
+        helper = prepare._SELECTED_RUNTIME_MODULE_DEFINITIONS[0]
+        for change in ("missing_definition", "selected_inventory", "changed_body",
+                       "claimed_execution", "claimed_parent", "claimed_resource"):
+            with self.subTest(change=change):
+                capsule = dict(self.capsule)
+                metadata = json.loads(capsule["provenance.json"])
+                record, = [item for item in metadata["definitions"]
+                           if item["source_path"] == prepare.COMPOSITION
+                           and item["symbol"] == helper]
+                if change == "missing_definition":
+                    metadata["definitions"].remove(record)
+                    capsule.pop(record["stored_as"])
+                elif change == "selected_inventory":
+                    metadata["selected_runtime_module_definitions"].reverse()
+                elif change == "changed_body":
+                    raw = capsule[record["stored_as"]]
+                    changed = raw.replace(b"parents[1]", b"parents[0]", 1)
+                    self.assertNotEqual(changed, raw)
+                    capsule[record["stored_as"]] = changed
+                    record["sha256"] = hashlib.sha256(changed).hexdigest()
+                else:
+                    key = {
+                        "claimed_execution": "getter_execution_proven",
+                        "claimed_parent": "final_parent_path_proven",
+                        "claimed_resource": "subsequent_resource_access_proven",
+                    }[change]
+                    metadata["native_root_getters"][key] = True
+                _rehashed_metadata(capsule, metadata)
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "(definition records are missing|selected global helper inventory differs|"
+                    "definition bytes differ from source extent|native root getter source evidence differs)",
+                ):
+                    assemble(capsule)
+
+    def test_init_diagnostic_adapter_is_staged_verbatim_and_tamper_is_rejected(self) -> None:
+        relative = "tools/python313-producer/harness_native/init_diagnostic.py"
+        record, = [row for row in self.metadata["sources"] if row["path"] == relative]
+        raw = prepare.bounded_read(ROOT / relative)
+        self.assertEqual(self.package[f"source-package/{relative}"], raw)
+        staged = stage_native.captured()
+        target = "python/harness_native/init_diagnostic.py"
+        self.assertEqual(staged[target], raw)
+        plan_record, = [row for row in stage_native.plan_for(staged)["sources"]
+                        if row["source"] == target]
+        self.assertEqual(plan_record["destination"], "harness_native/init_diagnostic.py")
+        self.assertEqual(plan_record["sha256"], hashlib.sha256(raw).hexdigest())
+        for change in ("changed", "missing"):
+            with self.subTest(change=change):
+                capsule = dict(self.capsule)
+                if change == "changed":
+                    capsule[record["stored_as"]] += b"\n"
+                else:
+                    capsule.pop(record["stored_as"])
+                with self.assertRaisesRegex(ValueError, "stored source (does not match|is missing)"):
+                    assemble(capsule)
 
     def test_full_captured_dependencies_are_copied_verbatim_and_native_boundary_stays_open(self) -> None:
         for source in self.metadata["sources"]:

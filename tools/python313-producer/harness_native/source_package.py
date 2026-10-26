@@ -41,6 +41,8 @@ _PROFILE_PORT_PATH = "source-package/tobkiri_runtime/core_runtime/profile_runtim
 _DECISION_SYMBOL = "SetupActivationDecision"
 _RUNTIME_SYMBOL = "DefaultspackProfileRuntime"
 _METHODS = (
+    "bundled_profile_root",
+    "host_resource_root",
     "bootstrap_profile_id",
     "setup_profile_preview",
     "_confirmation",
@@ -58,6 +60,10 @@ _METHODS = (
     "resolve_profile",
     "dynamic_profile_edges",
     "denied",
+)
+_MODULE_HELPERS = (
+    "defaultspack_profile_bundle_root",
+    "defaultspack_host_resource_root",
 )
 _REQUIRED_STORED_SOURCES = (
     _RESOLUTION_SOURCE,
@@ -316,8 +322,19 @@ def _validate_methods_and_decision(
         raise ValueError("selected method order differs from the original inventory")
     methods_in_metadata = [item.get("symbol") for item in metadata["definitions"]
                            if item.get("source_path") == _COMPOSITION_SOURCE]
-    if methods_in_metadata != list(_METHODS):
+    if methods_in_metadata != [*_METHODS, *_MODULE_HELPERS]:
         raise ValueError("method definition records are missing, extra, or reordered")
+    if metadata.get("selected_runtime_module_definitions") != list(_MODULE_HELPERS):
+        raise ValueError("selected global helper inventory differs")
+    if metadata.get("native_root_getters") != {
+        "methods": list(_METHODS[:2]),
+        "global_helpers": list(_MODULE_HELPERS),
+        "result": "opaque original NativePath reference",
+        "getter_execution_proven": False,
+        "final_parent_path_proven": False,
+        "subsequent_resource_access_proven": False,
+    }:
+        raise ValueError("native root getter source evidence differs")
     for path in (_COMPOSITION_SOURCE, _PROFILE_PORT_SOURCE, *_REQUIRED_STORED_SOURCES):
         if path not in sources:
             raise ValueError(f"required source record is missing: {path}")
@@ -342,6 +359,13 @@ def _validate_methods_and_decision(
         raw = _definition_bytes(capsule, sources, record)
         _method_node(raw, name)
         selected.append((name, raw, record))
+    for name in _MODULE_HELPERS:
+        record = _record(metadata, _COMPOSITION_SOURCE, name)
+        raw = _definition_bytes(capsule, sources, record)
+        tree = ast.parse(raw, filename=name)
+        if (len(tree.body) != 1 or not isinstance(tree.body[0], ast.FunctionDef)
+                or tree.body[0].name != name):
+            raise ValueError(f"expected one original global helper: {name}")
     self_refs = {
         node.attr for _name, raw, _record_item in selected
         for node in ast.walk(_method_node(raw, _name))
@@ -772,6 +796,15 @@ def _manifest(
         "generated_modules": packaged_modules,
         "sources": source_inventory,
         "definitions": definitions,
+        "selected_methods": capsule_metadata.get("selected_methods", []),
+        "selected_runtime_module_definitions": capsule_metadata.get(
+            "selected_runtime_module_definitions", [],
+        ),
+        "excluded_runtime_methods": capsule_metadata.get("excluded_runtime_methods", []),
+        "excluded_runtime_module_definitions": capsule_metadata.get(
+            "excluded_runtime_module_definitions", [],
+        ),
+        "native_root_getters": capsule_metadata.get("native_root_getters", {}),
         "native_imports": capsule_metadata.get("native_imports", []),
         "original_service_package": service_custody,
         "unconnected_native_dependencies": native_dependencies,

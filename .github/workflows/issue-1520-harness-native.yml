@@ -165,19 +165,25 @@ jobs:
           python3 -B tools/python313-producer/harness_native_ci_inputs.py
           --artifact "$RUNNER_TEMP/harness-built/harness-native/harness-native/work/component.wasm"
           --output "$RUNNER_TEMP/harness-native-inputs" --github-env "$GITHUB_ENV"
-      - name: Run actual original Runtime.init and first original method with real funding
+      - name: Verify actual source metadata operations without general source rights
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-source-metadata.log" --expected-passed 5 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          source_resolve::tests:: -- --nocapture
+      - name: Preserve init failures and reject unauthorized inspection and cancelled getters
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-inspection-policy.log" --expected-passed 5 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          bootstrap_runtime::policy_tests:: -- --nocapture
+      - name: Run actual original Runtime.init Profile identity and opaque root getters
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/harness-native-runtime.log" --expected-passed 1 --
           cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
           bootstrap_runtime::actual_ci::actual_original_component_initializes_and_returns_original_profile_id
           -- --nocapture
-      - name: Reject inspection outside the metadata-only bootstrap phase
-        run: >-
-          python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/harness-native-inspection-policy.log" --expected-passed 1 --
-          cargo test --locked -p tobkiri-harness-native --lib
-          bootstrap_runtime::policy_tests:: -- --nocapture
       - name: Preserve the actual native owner when Core adopts it
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
@@ -192,6 +198,7 @@ jobs:
           path: |
             ${{ runner.temp }}/harness-native-inputs/
             ${{ runner.temp }}/harness-native-runtime.log*
+            ${{ runner.temp }}/harness-native-source-metadata.log*
             ${{ runner.temp }}/harness-native-inspection-policy.log*
             ${{ runner.temp }}/harness-native-owner-transfer.log*
           if-no-files-found: warn

@@ -153,7 +153,9 @@ class HarnessNativeSourceTests(unittest.TestCase):
         definitions = provenance["definitions"]
 
         self.assertEqual(provenance["selected_methods"], list(prepare.METHODS))
-        self.assertEqual(len(prepare.METHODS), 17)
+        self.assertEqual(len(prepare.METHODS), 19)
+        self.assertEqual(len(prepare._EXPECTED_RUNTIME_CLASS_METHODS),
+                         len(set(prepare._EXPECTED_RUNTIME_CLASS_METHODS)))
         self.assertEqual(provenance["method_rewrites"], [])
         self.assertEqual(provenance["format"],
                          "io.tobkiri.harness-native-source-capsule.v1")
@@ -170,6 +172,24 @@ class HarnessNativeSourceTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(exact).hexdigest(), record["sha256"])
             self.assertEqual(record["source_module_sha256"],
                              source_records[prepare.COMPOSITION]["sha256"])
+
+        self.assertEqual(provenance["selected_runtime_module_definitions"], [
+            "defaultspack_profile_bundle_root", "defaultspack_host_resource_root",
+        ])
+        original = prepare.bounded_read(ROOT / prepare.COMPOSITION)
+        for helper in prepare._SELECTED_RUNTIME_MODULE_DEFINITIONS:
+            record, = [item for item in definitions
+                       if item["source_path"] == prepare.COMPOSITION
+                       and item["symbol"] == helper]
+            exact = original[record["source_start_byte"]:record["source_end_byte"]]
+            self.assertEqual(files[record["stored_as"]], exact)
+            self.assertEqual(hashlib.sha256(exact).hexdigest(), record["sha256"])
+            self.assertEqual(ast.parse(exact).body[0].name, helper)
+        getters = provenance["native_root_getters"]
+        self.assertEqual(getters["result"], "opaque original NativePath reference")
+        for key in ("getter_execution_proven", "final_parent_path_proven",
+                    "subsequent_resource_access_proven"):
+            self.assertIs(getters[key], False)
 
         decision, = [item for item in definitions
                      if item["symbol"] == "SetupActivationDecision"]
@@ -254,12 +274,11 @@ class HarnessNativeSourceTests(unittest.TestCase):
         provenance = json.loads(files["provenance.json"])
         names = set(files)
         self.assertEqual(provenance["excluded_runtime_methods"], [
-            "bundled_profile_root", "host_resource_root", "activation_store",
+            "activation_store",
             "is_reconfirmation_required", "is_resolution_denied",
             "is_activation_lock_timeout", "active_profile",
         ])
         self.assertEqual(provenance["excluded_runtime_module_definitions"], [
-            "defaultspack_profile_bundle_root", "defaultspack_host_resource_root",
             "install_defaultspack_profile_runtime",
         ])
         for path in (prepare.COMPOSITION, prepare.PROFILE_PORT,

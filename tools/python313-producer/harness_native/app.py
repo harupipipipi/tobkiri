@@ -12,10 +12,13 @@ from harness_native.dispatcher import (
     NotInitialized,
 )
 from harness_native.value_graph import InvalidFrame, InvalidReference, UnsupportedValue
+from harness_native.init_diagnostic import report_init_failure
 
 # The componentizer creates a separate adapter instance for each exported
 # function. All of them must use this one interpreter-local dispatcher.
-_dispatcher = Dispatcher(load_original_runtime)
+_dispatcher = Dispatcher(
+    load_original_runtime, init_failure_observer=report_init_failure,
+)
 
 
 def _invoke(action, *args):
@@ -49,10 +52,16 @@ def _invoke(action, *args):
 
 
 class Runtime(wit_world.exports.Runtime):
-    """Fixed calls to the seventeen original method names, with no frame selector."""
+    """Fixed calls to nineteen original method names, with no frame selector."""
 
     def init(self, payload: str) -> None:
         _invoke(_dispatcher.init, payload)
+
+    def bundled_profile_root(self, payload: str) -> str:
+        return _invoke(_dispatcher.call, "bundled_profile_root", payload)
+
+    def host_resource_root(self, payload: str) -> str:
+        return _invoke(_dispatcher.call, "host_resource_root", payload)
 
     def bootstrap_profile_id(self, payload: str) -> str:
         return _invoke(_dispatcher.call, "bootstrap_profile_id", payload)

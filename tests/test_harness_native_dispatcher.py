@@ -32,6 +32,7 @@ from harness_native.value_graph import (  # noqa: E402
     Scope,
     UnsupportedValue,
 )
+from harness_native.native_path import NativePath, PathBridge  # noqa: E402
 import ordered_json_v2 as wire  # noqa: E402
 import prepare_harness_native as prepare  # noqa: E402
 
@@ -57,6 +58,14 @@ class PortableRuntime:
 
     def bootstrap_profile_id(self):
         return "fixture-id"
+
+    def bundled_profile_root(self):
+        self.calls.append("bundled_profile_root")
+        return self.root_reference
+
+    def host_resource_root(self):
+        self.calls.append("host_resource_root")
+        return self.root_reference
 
     def setup_preview(self, listing=MISSING, **kwargs):
         self.calls.append((listing, kwargs))
@@ -85,6 +94,7 @@ def original(runtime=None):
         (
             RecordType("type-error", TypeError),
             RecordType("private-error", PrivateError),
+            RecordType("native-path", NativePath, native_binding=True),
         ),
         (TypeError, PrivateError),
     )
@@ -157,6 +167,33 @@ class DispatcherTests(unittest.TestCase):
         self.assertIs(self.runtime.calls[-1][0], self.runtime.calls[-1][1])
         self.assertEqual(METHODS, prepare.METHODS)
 
+    def test_fixed_getters_return_the_same_opaque_native_reference(self):
+        def unavailable(_payload):
+            raise AssertionError("portable transport test must not inspect a target")
+
+        bridge = PathBridge(self.scope, "posix", unavailable, os_flags={"O_RDONLY": 0})
+        native = bridge.bind("fixture-root", "/not-disclosed-by-getter")
+        self.runtime.root_reference = native
+        refs = []
+        for method in ("bundled_profile_root", "host_resource_root"):
+            packet = json.loads(self.dispatcher.call(
+                method, self.frame("call", args=[], kwargs=[]),
+            ))
+            reference = self.registry.reference(packet["root"])
+            self.assertIs(self.registry.borrow(reference), native)
+            refs.append(reference)
+            view = json.loads(self.registry.describe(reference))
+            self.assertEqual(view["nodes"][0]["fields"], [])
+            self.assertTrue(view["nodes"][0]["opaque_native_binding"])
+            self.assertNotIn("not-disclosed", json.dumps(view))
+        self.assertEqual(refs[0], refs[1])
+        self.assertEqual(self.runtime.calls,
+                         ["bundled_profile_root", "host_resource_root"])
+        for method in ("activation_store", "active_profile", "is_resolution_denied",
+                       "defaultspack_host_resource_root", "__getattribute__"):
+            with self.assertRaises(InvalidFrame):
+                self.dispatcher.call(method, self.frame("call", args=[], kwargs=[]))
+
     def test_failed_bootstrap_does_not_commit_or_replace_initialization(self):
         attempts = []
 
@@ -174,6 +211,81 @@ class DispatcherTests(unittest.TestCase):
         dispatcher.init(self.frame("init"))
         self.assertEqual(len(attempts), 2)
         self.assertIsNotNone(dispatcher._current())
+
+    def test_init_observer_keeps_actual_factory_exception_and_bare_reraise(self):
+        for cls in (ValueError, MemoryError, RecursionError, PrivateError):
+            with self.subTest(kind=cls):
+                failure = cls("original failure")
+                seen = []
+
+                def factory(_scope):
+                    raise failure
+
+                def observer(scope, phase, error):
+                    seen.append((scope, phase, error))
+                    raise RuntimeError("observer failure must not escape")
+
+                dispatcher = Dispatcher(factory, init_failure_observer=observer)
+                try:
+                    dispatcher.init(self.frame("init"))
+                except BaseException as error:
+                    self.assertIs(error, failure)
+                    names = []
+                    trace = error.__traceback__
+                    while trace is not None:
+                        names.append(trace.tb_frame.f_code.co_name)
+                        trace = trace.tb_next
+                    self.assertEqual(names[-2:], ["init", "factory"])
+                else:
+                    self.fail("the original factory failure must be reraised")
+                self.assertEqual(seen, [(self.scope, "original-factory", failure)])
+                self.assertIs(dispatcher._init_failure, failure)
+                self.assertIsNone(dispatcher._state)
+
+    def test_registry_failure_is_observed_before_state_commit(self):
+        seen = []
+        failure = MemoryError("registry allocation failure")
+        dispatcher = Dispatcher(
+            lambda _scope: original(),
+            init_failure_observer=lambda *values: seen.append(values),
+        )
+        with patch("harness_native.dispatcher.Registry", side_effect=failure):
+            try:
+                dispatcher.init(self.frame("init"))
+            except BaseException as error:
+                self.assertIs(error, failure)
+            else:
+                self.fail("registry allocation failure must escape unchanged")
+        self.assertEqual(seen, [(self.scope, "transport-registry", failure)])
+        self.assertIs(dispatcher._init_failure, failure)
+        self.assertEqual(dispatcher._init_failure_phase, "transport-registry")
+        with self.assertRaises(NotInitialized):
+            dispatcher._current()
+
+    def test_next_init_clears_old_failure_even_before_scope_validation(self):
+        failure = ValueError("old generation")
+        attempts = []
+
+        def factory(scope):
+            attempts.append(scope)
+            if len(attempts) == 1:
+                raise failure
+            self.assertIsNone(dispatcher._init_failure)
+            return original()
+
+        dispatcher = Dispatcher(factory, init_failure_observer=lambda *_args: None)
+        with self.assertRaises(ValueError):
+            dispatcher.init(self.frame("init"))
+        with self.assertRaises(InvalidFrame):
+            dispatcher.init("invalid")
+        self.assertIsNone(dispatcher._init_failure)
+        self.assertIsNone(dispatcher._init_failure_scope)
+        self.assertIsNone(dispatcher._init_failure_phase)
+        next_scope = Scope(1, 2, 3, self.scope.generation + 1)
+        dispatcher.init(wire.dumps({"format": PREFIX + "init.v1",
+                                    "scope": next_scope.wire()}))
+        self.assertEqual(dispatcher._current().registry.scope, next_scope)
+        self.assertEqual(attempts, [self.scope, next_scope])
 
     def test_original_binder_type_errors_are_not_transport_errors(self):
         ref = self.registry.retain([])
@@ -351,6 +463,20 @@ class DispatcherTests(unittest.TestCase):
             call = node.body[0].value
             self.assertEqual(call.args[1].value, name)
         assignments = [n for n in tree.body if isinstance(n, ast.Assign)]
+        dispatcher_assignment, = [
+            n for n in assignments
+            if any(isinstance(t, ast.Name) and t.id == "_dispatcher" for t in n.targets)
+        ]
+        self.assertEqual(
+            [(kw.arg, kw.value.id) for kw in dispatcher_assignment.value.keywords],
+            [("init_failure_observer", "report_init_failure")],
+        )
+        invoke, = [n for n in tree.body if isinstance(n, ast.FunctionDef)
+                   and n.name == "_invoke"]
+        self.assertEqual([ast.unparse(h.type) for h in invoke.body[0].handlers], [
+            "NotInitialized", "AlreadyInitialized", "InvalidFrame",
+            "InvalidReference", "UnsupportedValue", "MethodRaised",
+        ])
         self.assertEqual(
             sum(
                 any(

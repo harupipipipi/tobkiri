@@ -8,8 +8,8 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
 use tobkiri_core::{Core, HostIo, NativeSetupInvocation, RuntimeOwner};
 use tobkiri_harness_native::{
-    BootstrapInputOwner, BootstrapModuleIndex, BootstrapRoots, NativeBootstrap,
-    NativeHarnessComponent,
+    BootstrapInputOwner, BootstrapModuleIndex, BootstrapRoots, ModuleMetadataPolicy,
+    NativeBootstrap, NativeHarnessComponent, ORIGINAL_PROFILE_SOURCE_METADATA,
 };
 use tobkiri_wasm::{NativeDataError, NativeDataIoError, WasmEngine};
 
@@ -76,6 +76,11 @@ pub(crate) struct OriginalBootstrapInputs {
     app: AppHandle,
 }
 impl BootstrapInputOwner for OriginalBootstrapInputs {
+    fn original_module_metadata_policy(&self) -> Option<&'static ModuleMetadataPolicy> {
+        // Explicit original-operation policy from the domain nativeKit. The
+        // borrowed config roots alone do not grant any filesystem operation.
+        Some(&ORIGINAL_PROFILE_SOURCE_METADATA)
+    }
     fn with_roots<R>(
         &self,
         use_roots: impl for<'a> FnOnce(BootstrapRoots<'a>) -> R,

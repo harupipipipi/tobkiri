@@ -59,6 +59,8 @@ class HarnessNativeWitTests(unittest.TestCase):
 
     def test_wit_methods_cover_all_original_source_methods_without_scope_loss(self) -> None:
         expected_methods = (
+            "bundled-profile-root",
+            "host-resource-root",
             "bootstrap-profile-id",
             "setup-profile-preview",
             "confirmation",
@@ -81,7 +83,7 @@ class HarnessNativeWitTests(unittest.TestCase):
             "confirmation" if name == "_confirmation" else name.replace("_", "-")
             for name in prepare.METHODS
         )
-        self.assertEqual(len(prepare.METHODS), 17)
+        self.assertEqual(len(prepare.METHODS), 19)
         self.assertEqual(source_package._METHODS, prepare.METHODS)
         self.assertEqual(source_methods, expected_methods)
 
@@ -90,7 +92,7 @@ class HarnessNativeWitTests(unittest.TestCase):
         self.assertEqual(
             tuple(name for name in functions if name != "init"), expected_methods,
         )
-        self.assertEqual(len(functions), 18)
+        self.assertEqual(len(functions), 20)
         for name in expected_methods:
             self.assertEqual(
                 functions[name], "func(payload: string) -> result<string, error>",
@@ -98,6 +100,8 @@ class HarnessNativeWitTests(unittest.TestCase):
 
         self.assertIn("closed frame containing scope, version, and typed graph refs", WIT)
         self.assertIn("Original Python signatures and bodies are assembled verbatim", WIT)
+        self.assertIn("original opaque", WIT)
+        self.assertIn("getter success proves no final parent or resource IO", WIT)
 
     def test_error_record_and_error_codes_have_fixed_shape_and_order(self) -> None:
         runtime = _block(WIT, "interface runtime")

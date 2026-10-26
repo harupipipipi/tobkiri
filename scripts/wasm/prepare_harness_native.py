@@ -95,6 +95,7 @@ DISPATCHER_SOURCES = (
     "tools/python313-producer/harness_native/bootstrap.py",
     "tools/python313-producer/harness_native/native_bootstrap.py",
     "tools/python313-producer/harness_native/native_module_loader.py",
+    "tools/python313-producer/harness_native/init_diagnostic.py",
     "tools/python313-producer/harness_native/app.py",
     NATIVE_PATH_ADAPTER,
 )
@@ -129,6 +130,8 @@ PROTOCOL_MODULES = (
 )
 
 METHODS = (
+    "bundled_profile_root",
+    "host_resource_root",
     "bootstrap_profile_id",
     "setup_profile_preview",
     "_confirmation",
@@ -149,8 +152,6 @@ METHODS = (
 )
 
 _EXPECTED_RUNTIME_CLASS_METHODS = (
-    "bundled_profile_root",
-    "host_resource_root",
     *METHODS[:-1],
     "activation_store",
     METHODS[-1],
@@ -161,8 +162,6 @@ _EXPECTED_RUNTIME_CLASS_METHODS = (
 )
 
 _EXCLUDED_RUNTIME_METHODS = (
-    "bundled_profile_root",
-    "host_resource_root",
     "activation_store",
     "is_reconfirmation_required",
     "is_resolution_denied",
@@ -170,9 +169,12 @@ _EXCLUDED_RUNTIME_METHODS = (
     "active_profile",
 )
 
-_EXCLUDED_RUNTIME_MODULE_DEFINITIONS = (
+_SELECTED_RUNTIME_MODULE_DEFINITIONS = (
     "defaultspack_profile_bundle_root",
     "defaultspack_host_resource_root",
+)
+
+_EXCLUDED_RUNTIME_MODULE_DEFINITIONS = (
     "install_defaultspack_profile_runtime",
 )
 
@@ -674,6 +676,18 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
         output[stored_as] = content
         definitions.append(record)
 
+    for name in _SELECTED_RUNTIME_MODULE_DEFINITIONS:
+        node, = [item for item in composition_tree.body
+                 if isinstance(item, ast.FunctionDef) and item.name == name]
+        stored_as = f"definitions/profile_runtime_global/{name}.py"
+        content, record = _definition_slice(
+            COMPOSITION, sources[COMPOSITION], node, name,
+            source_module_sha256=_sha256(sources[COMPOSITION]), stored_as=stored_as,
+        )
+        ast.parse(content, filename=stored_as)
+        output[stored_as] = content
+        definitions.append(record)
+
     for name in _EXCLUDED_RUNTIME_METHODS:
         matches = [node for node in runtime.body
                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -699,7 +713,7 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
             source_module_sha256=_sha256(sources[COMPOSITION]),
             stored_as=None,
         )
-        record["disposition"] = "excluded_native_root_or_registration"
+        record["disposition"] = "excluded_native_registration"
         excluded_definitions.append(record)
 
     decision_bytes, record = _definition_slice(
@@ -849,6 +863,17 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
             "guest_materializer_executed_in_wasm": False,
         },
         "selected_methods": list(METHODS),
+        "selected_runtime_module_definitions": list(
+            _SELECTED_RUNTIME_MODULE_DEFINITIONS
+        ),
+        "native_root_getters": {
+            "methods": ["bundled_profile_root", "host_resource_root"],
+            "global_helpers": list(_SELECTED_RUNTIME_MODULE_DEFINITIONS),
+            "result": "opaque original NativePath reference",
+            "getter_execution_proven": False,
+            "final_parent_path_proven": False,
+            "subsequent_resource_access_proven": False,
+        },
         "excluded_runtime_methods": list(_EXCLUDED_RUNTIME_METHODS),
         "excluded_runtime_module_definitions": list(
             _EXCLUDED_RUNTIME_MODULE_DEFINITIONS

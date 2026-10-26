@@ -18,8 +18,15 @@ pub struct BootstrapRoots<'a> {
 ///
 /// Implementations borrow the already selected config and validate its actual
 /// shutdown owner before/after the callback. They must not rediscover roots.
-/// This interface projects metadata only: it can never authorize inspection.
+/// Root projection alone never authorizes inspection. A separate, explicitly
+/// selected original-operation policy and real reached descriptors are needed.
 pub trait BootstrapInputOwner: Send + Sync + 'static {
+    /// Deliberately select a narrowly defined original-operation policy. The
+    /// default inventory-only owner grants no inspection. Paths/index rows do
+    /// not issue this policy; actual source/FD custody is still checked at use.
+    fn original_module_metadata_policy(&self) -> Option<&'static crate::ModuleMetadataPolicy> {
+        None
+    }
     fn with_roots<R>(
         &self,
         use_roots: impl for<'a> FnOnce(BootstrapRoots<'a>) -> R,
@@ -52,7 +59,7 @@ impl Scope {
         Self([original.account_generation, original.invocation, 1, 1])
     }
 
-    fn write(self, out: &mut CoreBufferBuilder) -> Result<(), AllocationError> {
+    pub(super) fn write(self, out: &mut CoreBufferBuilder) -> Result<(), AllocationError> {
         out.append(b"[")?;
         for (index, value) in self.0.into_iter().enumerate() {
             if index != 0 {
@@ -97,7 +104,7 @@ impl Scope {
     }
 }
 
-fn string_parts<'a>(
+pub(super) fn string_parts<'a>(
     out: &mut CoreBufferBuilder,
     parts: impl IntoIterator<Item = &'a str>,
 ) -> Result<(), AllocationError> {

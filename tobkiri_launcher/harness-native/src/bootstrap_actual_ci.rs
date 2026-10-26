@@ -19,6 +19,10 @@ struct SelectedRuntime {
     process: u32,
 }
 impl BootstrapInputOwner for SelectedRuntime {
+    fn original_module_metadata_policy(&self) -> Option<&'static crate::ModuleMetadataPolicy> {
+        // Explicit fixture policy, not authority inferred from its path/index.
+        Some(&crate::ORIGINAL_PROFILE_SOURCE_METADATA)
+    }
     fn with_roots<R>(
         &self,
         use_roots: impl for<'a> FnOnce(BootstrapRoots<'a>) -> R,
@@ -56,6 +60,9 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
         root.is_absolute() && root.canonicalize()? == root,
         "physical SDK required"
     );
+    let expected_module = root
+        .join("ecosystem/defaultspack/defaultspack/profile_runtime_composition.py")
+        .canonicalize()?;
     let source = SelectedRuntime {
         _directory: File::open(&root)?,
         root,
@@ -183,6 +190,57 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
         runtime.inspection_attempts() == 0,
         "pure original method attempted native IO"
     );
+    // Execute each original getter as a component-level unit operation. This
+    // is not the production _bundle_root branch/binding-validation flow.
+    for host in [true, false] {
+        let result = match if host {
+            runtime.host_resource_root().await?
+        } else {
+            runtime.bundled_profile_root().await?
+        } {
+            Ok(value) => value,
+            Err(error) => bail!(
+                "original opaque root getter refused: {}",
+                error.code().as_str()?
+            ),
+        };
+        let description = describe_result(&mut runtime, &result).await?;
+        let nodes = description.get_key("nodes").context("root nodes missing")?;
+        let nodes = nodes.array().context("root nodes are not an array")?;
+        ensure!(nodes.len() == 1, "root getter returned another graph");
+        let path = nodes.get(0).context("root node missing")?;
+        ensure!(
+            path.get_key("kind")
+                .is_some_and(|v| v.as_str() == Some("native-path"))
+                && path
+                    .get_key("opaque_native_binding")
+                    .and_then(|v| v.as_bool())
+                    == Some(true)
+                && path
+                    .get_key("fields")
+                    .is_some_and(|v| v.array().is_some_and(|a| a.is_empty()))
+                && path.get_key("value").is_none(),
+            "original root reference disclosed native fields or lost its actual proxy type"
+        );
+    }
+    ensure!(
+        runtime.inspection_attempts() == 2,
+        "original getters did not each resolve their source module exactly once"
+    );
+    let (host, bundle) = runtime.first_source_resolutions();
+    for observation in [host, bundle] {
+        ensure!(
+            observation
+                .context("actual module resolution missing")?
+                .as_str()?
+                == expected_module
+                    .to_str()
+                    .context("module path is not UTF-8")?,
+            "actual original module resolution changed"
+        );
+    }
+    // The observations prove module resolution, not the opaque parents result
+    // or resource IO. Those require the original subsequent production call.
     ensure!(
         invocation.deadline()? == deadline,
         "original deadline was replaced"
@@ -198,9 +256,51 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
     );
     runtime.finish().await?;
     println!(
-        "NATIVE_HARNESS_ORIGINAL_INIT init=true profile_id=true inspections=0 physical_cleanup=true \
+        "NATIVE_HARNESS_ORIGINAL_INIT init=true profile_id=true pure_inspections=0 \
+         opaque_root_getters=2 module_resolutions=2 parents_target_proven=false physical_cleanup=true \
          peak_charged_bytes={peak} fuel_remaining={fuel_remaining} elapsed_us={}",
         elapsed.as_micros()
     );
     Ok(())
+}
+
+async fn describe_result(
+    runtime: &mut NativeBootstrap<SelectedRuntime>,
+    result: &CoreBuffer,
+) -> Result<CoreValue> {
+    let budget = runtime.data_budget().clone();
+    let result = CoreValue::parse_guest(result.as_bytes(), &budget)?;
+    ensure!(
+        result
+            .get_key("format")
+            .is_some_and(|v| v.as_str() == Some("io.tobkiri.native-value-result.v1")),
+        "wrong root result frame"
+    );
+    let request = CoreValue::object_from(
+        [
+            Ok((
+                "format",
+                CoreValue::string("io.tobkiri.native-value-describe.v1", &budget)?,
+            )),
+            Ok((
+                "scope",
+                result.get_key("scope").context("root scope missing")?,
+            )),
+            Ok((
+                "root",
+                result.get_key("root").context("root reference missing")?,
+            )),
+        ]
+        .into_iter(),
+        &budget,
+    )?
+    .encode_guest(&budget)?;
+    let value = match runtime.describe_value(&request).await? {
+        Ok(value) => value,
+        Err(error) => bail!(
+            "original path description refused: {}",
+            error.code().as_str()?
+        ),
+    };
+    Ok(CoreValue::parse_guest(value.as_bytes(), &budget)?)
 }

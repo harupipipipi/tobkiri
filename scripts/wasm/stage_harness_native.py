@@ -23,7 +23,7 @@ TRANSPORT_INTERFACE = "tobkiri-ui:harness-native/transport@1.0.0"
 BINDINGS_INTERFACE = "tobkiri-native:harness/bindings@1.0.0"
 ADAPTERS = (
     "bootstrap.py", "dispatcher.py", "exception_graph.py", "native_bootstrap.py",
-    "native_module_loader.py", "native_path.py", "value_graph.py",
+    "native_module_loader.py", "native_path.py", "value_graph.py", "init_diagnostic.py",
 )
 
 

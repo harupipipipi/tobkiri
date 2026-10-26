@@ -20,6 +20,8 @@ from .value_graph import (
 )
 
 METHODS = (
+    "bundled_profile_root",
+    "host_resource_root",
     "bootstrap_profile_id",
     "setup_profile_preview",
     "_confirmation",
@@ -85,9 +87,18 @@ class Dispatcher:
     constructs a class, chooses a module, runs code or replenishes a budget.
     """
 
-    def __init__(self, bootstrap: Callable[[Scope], OriginalRuntime]) -> None:
+    def __init__(
+        self,
+        bootstrap: Callable[[Scope], OriginalRuntime],
+        *,
+        init_failure_observer: Callable[[Scope, str, BaseException], None] | None = None,
+    ) -> None:
         self._bootstrap = bootstrap
+        self._init_failure_observer = init_failure_observer
         self._state: _State | None = None
+        self._init_failure: BaseException | None = None
+        self._init_failure_scope: Scope | None = None
+        self._init_failure_phase: str | None = None
 
     def _current(self) -> _State:
         if self._state is None:
@@ -108,11 +119,44 @@ class Dispatcher:
         """Validate the complete scope before loading and committing any state."""
         if self._state is not None:
             raise AlreadyInitialized()
+        # A failed attempt is retained only until the next init starts. Scope
+        # validation failures cannot accidentally report an older generation.
+        self._init_failure = None
+        self._init_failure_scope = None
+        self._init_failure_phase = None
         frame = self._load(payload)
         if set(frame) != {"format", "scope"} or frame["format"] != PREFIX + "init.v1":
             raise InvalidFrame("invalid original initialization frame")
         scope = Scope.from_wire(frame["scope"])
-        original = self._bootstrap(scope)
+        try:
+            original = self._bootstrap(scope)
+        except BaseException as error:
+            self._observe_init_failure(scope, "original-factory", error)
+            raise
+        try:
+            state = self._registry_state(scope, original)
+        except BaseException as error:
+            self._observe_init_failure(scope, "transport-registry", error)
+            raise
+        self._state = state
+
+    def _observe_init_failure(
+        self, scope: Scope, phase: str, error: BaseException,
+    ) -> None:
+        """Retain the actual failure without making reporting a new failure."""
+        self._init_failure = error
+        self._init_failure_scope = scope
+        self._init_failure_phase = phase
+        try:
+            if self._init_failure_observer is not None:
+                self._init_failure_observer(scope, phase, error)
+        except BaseException:
+            # Reporting is best effort. This does not make native traps
+            # catchable, and no reporting failure may replace the original.
+            pass
+
+    @staticmethod
+    def _registry_state(scope: Scope, original: OriginalRuntime) -> _State:
         if (
             type(original) is not OriginalRuntime
             or type(original.method_errors) is not tuple
@@ -154,7 +198,7 @@ class Dispatcher:
                 if record is None or not record.native_binding:
                     raise UnsupportedValue("native input must be an opaque proxy")
                 names.add(item[0])
-        self._state = _State(
+        return _State(
             original.runtime, registry, original.method_errors, original.native_inputs
         )
 

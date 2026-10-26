@@ -15,6 +15,8 @@ use tobkiri_gate::{
 };
 use tobkiri_manifest::VerifiedPack;
 use tobkiri_profile::{CompiledProfile, Profile, compile};
+#[cfg(test)]
+use tobkiri_store::DataRoot;
 use tobkiri_store::{Approvals, AuditLog, AuditQuota};
 
 use crate::{
