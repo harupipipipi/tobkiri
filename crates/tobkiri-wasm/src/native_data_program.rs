@@ -101,7 +101,8 @@ pub struct NativeDataProgram<T: 'static> {
 
 impl<T: Send + 'static> NativeSetupStore<T> {
     /// Validate all fixed signatures before instantiating this exact component.
-    /// Only the existing explicit DATA imports are available. The borrowed
+    /// Only explicit DATA imports and the native-selected fixed table installed
+    /// before Store construction are available. The borrowed
     /// selectors/contracts are neither copied nor retained after binding.
     pub async fn prepare_data_program(
         self,

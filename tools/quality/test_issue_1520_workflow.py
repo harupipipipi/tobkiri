@@ -124,7 +124,7 @@ class RuntimeRoutingTests(unittest.TestCase):
         for bypass in ("continue-on-error", "--skip", "--list", "--no-run"):
             self.assertNotIn(bypass, io)
         fixed = step(self.linux, "Fixed native imports and original invocation custody regressions")
-        self.assertIn("--expected-passed 5 --", fixed)
+        self.assertIn("--expected-passed 6 --", fixed)
         self.assertIn("native_setup_store::imports::tests", fixed)
         self.assertIn("cargo test --locked -p tobkiri-wasm --lib", fixed)
         for bypass in ("continue-on-error", "--skip", "--list", "--no-run"):

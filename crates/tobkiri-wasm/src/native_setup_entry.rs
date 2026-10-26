@@ -562,13 +562,9 @@ fn validate_component(
             capture_import::validate(engine, &item.ty)?;
         } else if !matches!(name, WALL_CLOCK_IMPORT | MONOTONIC_CLOCK_IMPORT)
             && !ensure_diagnostic_import(engine, name, &item.ty, diagnostic_bound)?
+            && !fixed_imports.map_or(Ok(false), |table| table.validate(engine, name, &item.ty))?
         {
-            if !match fixed_imports {
-                Some(table) => table.validate(engine, name, &item.ty)?,
-                None => false,
-            } {
-                bail!("unsupported native DATA component import");
-            }
+            bail!("unsupported native DATA component import");
         }
     }
     for (name, item) in component_type.exports(engine) {

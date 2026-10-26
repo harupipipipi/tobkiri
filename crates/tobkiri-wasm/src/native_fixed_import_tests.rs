@@ -3,7 +3,10 @@ use super::*;
 use crate::{NativeDataBinding, NativeDataExport, NativeDataValue, WasmEngine};
 use std::sync::{Arc, Mutex};
 use tobkiri_canon::Digest;
-use tobkiri_gate::{CapacityLedger, CoreControl, GateError, NativeSetupAccount, NativeSetupLease};
+use tobkiri_gate::{
+    CapacityKind, CapacityLedger, CoreControl, GateError, NATIVE_SETUP_MEMORY_BYTES,
+    NativeSetupAccount, NativeSetupLease,
+};
 use wasmtime::component::Component;
 
 const INTERFACE: &str = "tobkiri-native:test/inventory@1.0.0";
@@ -282,6 +285,71 @@ static FOREIGN: [NativeImportBinding<State>; 1] = [NativeImportBinding {
     input: NativeImportInput::None,
     prepare: foreign,
 }];
+
+struct ExhaustingState {
+    invocation: NativeSetupInvocation,
+    account: NativeSetupAccount,
+}
+impl NativeImportState for ExhaustingState {
+    fn native_import_invocation(&self) -> &NativeSetupInvocation {
+        &self.invocation
+    }
+}
+fn exhausted_factory(
+    context: NativeImportContext<'_, ExhaustingState>,
+) -> Result<NativeImportOperation> {
+    let proof = context.proof.clone();
+    let remaining = NATIVE_SETUP_MEMORY_BYTES - context.state().account.snapshot()?.charged_bytes;
+    // Exhaust the real account by reservation, without a large physical test
+    // allocation. FutureBlock admission itself must then take its real Err path.
+    let held = context
+        .state()
+        .invocation
+        .reserve(CapacityKind::VfsBuffer, remaining)?;
+    assert!(
+        context
+            .inspect(|output| output.append(b"must not publish"))
+            .is_err()
+    );
+    assert_eq!(proof.get().load(Ordering::Acquire), FAILED);
+    drop(held);
+    assert_eq!(proof.get().load(Ordering::Acquire), FAILED);
+    bail!("caught factory allocation failure stays terminal")
+}
+static EXHAUST: [NativeImportBinding<ExhaustingState>; 1] = [NativeImportBinding {
+    interface: INTERFACE,
+    function: "inventory",
+    input: NativeImportInput::None,
+    prepare: exhausted_factory,
+}];
+
+#[tokio::test]
+async fn native_fixed_import_real_future_allocation_failure_is_sticky_after_capacity_returns() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
+    let _census = crate::child_census::lock_census_fixture().await;
+    let (account, invocation) = funding();
+    let engine = WasmEngine::new_with_control(invocation.control()).unwrap();
+    let component = component(&engine, false, false, false);
+    let state = ExhaustingState {
+        invocation: invocation.clone(),
+        account: account.clone(),
+    };
+    let store = engine
+        .native_setup_store_with_imports(invocation, state, &EXHAUST)
+        .unwrap();
+    let io = store.native_data_io().unwrap().clone();
+    let mut entry = store
+        .prepare_data_entry(&component, NativeDataExport::new(None, "run"))
+        .await
+        .unwrap();
+    assert!(entry.invoke(None).await.is_err());
+    assert!(entry.observation().store_retired);
+    drop(entry);
+    io.retire_and_wait().await.unwrap();
+    drop(io);
+    crate::reap_allocation_owners().unwrap();
+    assert_eq!(account.snapshot().unwrap().charged_bytes, 0);
+}
 
 #[tokio::test]
 async fn native_fixed_import_foreign_operation_is_rejected_and_retains_original_funding() {

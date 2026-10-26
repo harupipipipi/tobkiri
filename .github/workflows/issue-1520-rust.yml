@@ -144,7 +144,7 @@ jobs:
       - name: Fixed native imports and original invocation custody regressions
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/portable-native-fixed-import.log" --expected-passed 5 --
+          --log "$RUNNER_TEMP/portable-native-fixed-import.log" --expected-passed 6 --
           cargo test --locked -p tobkiri-wasm --lib native_setup_store::imports::tests
       - name: Closed native capture import and scope regressions
         run: >-
