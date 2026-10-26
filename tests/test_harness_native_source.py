@@ -211,6 +211,9 @@ class HarnessNativeSourceTests(unittest.TestCase):
             if path in prepare.PROJECTION_BOUNDARY_MODULES:
                 self.assertEqual(record["role"], "verbatim_data_with_native_io_boundary")
                 self.assertEqual(files[record["stored_as"]], prepare.bounded_read(ROOT / path))
+            elif path == prepare.SERVICE_SOURCE:
+                self.assertEqual(record["role"], "mixed_source_with_captured_data_facade")
+                self.assertNotIn("stored_as", record)
             else:
                 self.assertEqual(record["role"], "deferred_native_adapter_source")
                 self.assertNotIn("stored_as", record)
@@ -255,6 +258,9 @@ class HarnessNativeSourceTests(unittest.TestCase):
                 self.assertEqual(record["role"], "verbatim_data_with_native_io_boundary")
                 self.assertEqual(files[record["stored_as"]], prepare.bounded_read(
                     ROOT / item["source_module_path"]))
+            elif item["source_module_path"] == prepare.SERVICE_SOURCE:
+                self.assertEqual(record["role"], "mixed_source_with_captured_data_facade")
+                self.assertNotIn("stored_as", record)
             else:
                 self.assertEqual(record["role"], "deferred_native_adapter_source")
                 self.assertNotIn("stored_as", record)

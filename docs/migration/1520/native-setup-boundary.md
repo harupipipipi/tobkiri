@@ -839,10 +839,41 @@ retain no hidden `None` result, and preserve the difference between an invalid
 transport reference and an original dictionary `TypeError`.
 
 The bootstrap names the original catalog, resolved Profile, decision, active
-view and exception classes. It does not supply the currently missing service
-DATA facade, native binding creation, ordered IO/admission ports or dependency
-closure. In particular, native retained origins must remain opaque capabilities,
-not reconstructed dataclasses. These source adapters have not yet executed as
-a whole component; an import/closure failure remains a failure. The next
-integration must supply the original service DATA aliases/active class, the
-native bound-path/retained-origin seam and the actual producer/native oracle.
+view and exception classes. The source assembler supplies their service DATA
+facade below; native binding creation, ordered IO/admission ports and the complete
+dependency closure remain unconnected. Native retained origins must remain
+opaque capabilities, not reconstructed dataclasses. These source adapters have
+not yet executed as a whole component; an import/closure failure remains a
+failure. The next integration must supply the native bound-path/retained-origin
+seam and the actual producer/native oracle.
+
+### Explicit original service DATA facade
+
+The source assembler now supplies the original qualified service module and a
+nonempty package initializer for its DATA exports. It copies the original
+`ActiveDefaultProfile` frozen dataclass, the three original reconfirmation/timeout
+exception classes and `project_runtime_launch_selector` verbatim, with complete
+decorators, bases, annotations and class defaults. The launch selector is DATA:
+it checks existing plan/lock/activation records and canonical digests and returns
+the existing contribution with its activation identity. It performs no IO,
+authority publication or input mutation. It remains unconnected to a dedicated
+whole-component invocation until that path is implemented and executed.
+
+Original imports retain the same catalog, resolver, denial and canonical objects.
+The source definition of `ResolvedDefaultProfile` and `ProfileResolutionDenied`
+remains in `profile_resolution`, including its original compatibility `__module__`
+assignments. Service and package modules reexport those objects rather than
+defining substitutes. Generated files, original definition ranges/hashes, class
+generation dependencies and static alias routes are recorded separately. Static
+source checks do not prove those aliases in the pinned Wasm interpreter.
+
+The original complete package initializer is preserved as inert custody input;
+the generated initializer explicitly exports its original DATA names. Only the
+native `ActivationStore` package export is omitted, without a replacement,
+fallback or fake success. Its persistence, approval, recovery and registration
+behavior remains required on the real Rust owner. Other excluded service
+imports, caches and helpers still need a placement audit: their proximity to
+native state does not establish that all are native. The package manifest keeps
+native integration and complete service/Setup compatibility false. Bound-path
+and retained-origin creation, ordered inspection/admission imports, dependency
+closure, actual whole-component execution and original GUI adoption remain open.

@@ -25,6 +25,16 @@ PROFILE_PORT = "tobkiri_runtime/core_runtime/profile_runtime_port.py"
 PROFILE_RESOLUTION = (
     "tobkiri_runtime/ecosystem/defaultspack/domain/profile_resolution.py"
 )
+SERVICE_SOURCE = (
+    "tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/service.py"
+)
+SERVICE_INITIALIZER = (
+    "tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/__init__.py"
+)
+SERVICE_DATA_CLASSES = (
+    "ProfileReconfirmationRequired", "ActivationLockTimeout",
+    "ArtifactVerificationTimeout", "ActiveDefaultProfile",
+)
 SETUP_CONTRACT = (
     "tobkiri_runtime/ecosystem/defaultspack/defaultspack/setup_contract.py"
 )
@@ -46,6 +56,7 @@ DISPATCHER_SOURCES = (
     "tools/python313-producer/harness_native/bootstrap.py",
     "tools/python313-producer/harness_native/app.py",
 )
+DATA_FACADE_SOURCE = "tools/python313-producer/harness_native/data_facade.py"
 _NATIVE_KIT_SOURCES = (
     "tobkiri_launcher/harness-native/Cargo.toml",
     "tobkiri_launcher/harness-native/src/lib.rs",
@@ -188,6 +199,7 @@ _CAPSULE_SOURCE_FILES = (
     VALUE_GRAPH_TRANSPORT,
     NATIVE_WIT,
     *DISPATCHER_SOURCES,
+    DATA_FACADE_SOURCE,
     PROFILE_RESOLUTION,
     SETUP_CONTRACT,
     DOMAIN_PACKAGE_INIT,
@@ -237,8 +249,8 @@ def _definition_slice(
     source_module_sha256: str,
     stored_as: str | None,
 ) -> tuple[bytes, dict[str, Any]]:
-    start = getattr(node, "lineno", None)
-    end = getattr(node, "end_lineno", None)
+    start = 1 if isinstance(node, ast.Module) else getattr(node, "lineno", None)
+    end = len(content.splitlines()) if isinstance(node, ast.Module) else getattr(node, "end_lineno", None)
     if start is None or end is None:
         raise ValueError(f"original source extent is missing for {name}")
     decorators = getattr(node, "decorator_list", ())
@@ -429,6 +441,7 @@ def _read_sources() -> dict[str, bytes]:
         *(path for path in _DEFERRED_NATIVE_MODULES
           if path not in PROJECTION_BOUNDARY_MODULES),
         *_NATIVE_KIT_SOURCES,
+        SERVICE_INITIALIZER,
         *_schema_paths(),
     )
     if len(paths) != len(set(paths)):
@@ -538,6 +551,43 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
     output[record["stored_as"]] = decision_bytes
     definitions.append(record)
 
+    service_tree = ast.parse(sources[SERVICE_SOURCE], filename=SERVICE_SOURCE)
+    service_nodes = [(name, _one_class(service_tree, name, SERVICE_SOURCE))
+                     for name in SERVICE_DATA_CLASSES]
+    selector, = [node for node in service_tree.body
+                 if isinstance(node, ast.FunctionDef)
+                 and node.name == "project_runtime_launch_selector"]
+    service_nodes.append((selector.name, selector))
+    for symbol, module, level in (
+        ("bundle_catalog_reexports", "tobkiri_protocol.bundle_catalog", 0),
+        ("profile_resolution_reexports", "profile_resolution", 2),
+        ("canonical_reexports", "tobkiri_protocol.canonical", 0),
+    ):
+        matches = [node for node in service_tree.body
+                   if isinstance(node, ast.ImportFrom)
+                   and node.module == module and node.level == level]
+        if len(matches) != 1:
+            raise ValueError(f"original service DATA import changed: {symbol}")
+        service_nodes.append((symbol, matches[0]))
+    for symbol, node in service_nodes:
+        stored_as = f"definitions/service_data/{symbol}.py"
+        content, record = _definition_slice(
+            SERVICE_SOURCE, sources[SERVICE_SOURCE], node, symbol,
+            source_module_sha256=_sha256(sources[SERVICE_SOURCE]), stored_as=stored_as,
+        )
+        ast.parse(content, filename=stored_as)
+        output[stored_as] = content
+        definitions.append(record)
+    initializer = ast.parse(sources[SERVICE_INITIALIZER], filename=SERVICE_INITIALIZER)
+    content, record = _definition_slice(
+        SERVICE_INITIALIZER, sources[SERVICE_INITIALIZER], initializer,
+        "runtime_v4_package_initializer",
+        source_module_sha256=_sha256(sources[SERVICE_INITIALIZER]),
+        stored_as="definitions/service_data/runtime_v4_package_initializer.py",
+    )
+    output[record["stored_as"]] = content
+    definitions.append(record)
+
     resolution_output = f"source/{PROFILE_RESOLUTION}"
     for node in resolution_defs:
         content, record = _definition_slice(
@@ -566,6 +616,8 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
             "protocol_schema_metadata" if path == SCHEMA_HASHES else
             "project_metadata" if path == PROJECT_METADATA else
             "native_exception_codec_source" if path in _NATIVE_KIT_SOURCES else
+            "mixed_source_with_captured_data_facade"
+            if path in (SERVICE_SOURCE, SERVICE_INITIALIZER) else
             "verbatim_data_with_native_io_boundary"
             if path in PROJECTION_BOUNDARY_MODULES else
             "verbatim_data_dependency" if stored_as is not None else
@@ -584,6 +636,17 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
         "sources": provenance_sources,
         "definitions": definitions,
         "excluded_definitions": excluded_definitions,
+        "service_data_facade": {
+            "source": SERVICE_SOURCE,
+            "original_package_initializer": SERVICE_INITIALIZER,
+            "generator": DATA_FACADE_SOURCE,
+            "selected_classes": list(SERVICE_DATA_CLASSES),
+            "selected_functions": ["project_runtime_launch_selector"],
+            "original_data_reexports_retained": True,
+            "native_activation_state_in_guest": False,
+            "native_exports_connected": False,
+            "whole_service_compatible": False,
+        },
         "native_imports": native_imports,
         "exception_transport": {
             "format": "tobkiri.native-exception/1",

@@ -12,6 +12,8 @@ from collections.abc import Mapping
 from importlib.util import resolve_name
 from typing import Any
 
+from .data_facade import DataFacade, assemble as assemble_data_facade
+
 
 _CAPSULE_FORMAT = "io.tobkiri.harness-native-source-capsule.v1"
 _PACKAGE_FORMAT = "io.tobkiri.harness-native-source-package.v1"
@@ -415,7 +417,7 @@ def _dependency_scan(files: dict[str, bytes], external: list[str]) -> dict[str, 
 
 def _definition_extents(
     metadata: dict[str, Any], sources: dict[str, dict[str, Any]],
-    package_files: dict[str, bytes], composition: bytes, port: bytes,
+    package_files: dict[str, bytes], composition: bytes, port: bytes, facade: DataFacade,
 ) -> list[dict[str, Any]]:
     composition_tree = ast.parse(composition, filename=_COMPOSITION_PATH)
     runtime = _one_class(composition_tree, _RUNTIME_SYMBOL, _COMPOSITION_PATH)
@@ -432,6 +434,8 @@ def _definition_extents(
         elif path == _PROFILE_PORT_SOURCE and symbol == _DECISION_SYMBOL:
             item["generated_path"] = _PROFILE_PORT_PATH
             item["generated_extent"] = _extent(port, decision_node)
+        elif (path, symbol) in facade.locations:
+            item["generated_path"], item["generated_extent"] = facade.locations[(path, symbol)]
         elif sources[path].get("stored_as") is not None:
             target = f"source-package/{path}"
             source = package_files[target]
@@ -453,7 +457,7 @@ def _definition_extents(
 def _manifest(
     capsule_metadata: dict[str, Any], metadata_checksum: str,
     sources: dict[str, dict[str, Any]], definitions: list[dict[str, Any]],
-    composition: bytes, port: bytes, files: dict[str, bytes],
+    composition: bytes, port: bytes, files: dict[str, bytes], facade: DataFacade,
 ) -> bytes:
     external = capsule_metadata.get("external_runtime_dependencies", [])
     if not isinstance(external, list) or any(not isinstance(item, str) for item in external):
@@ -469,17 +473,21 @@ def _manifest(
         if source is None:
             raise ValueError(f"native import source record is missing: {path}")
         stored_as = source.get("stored_as")
+        target = f"source-package/{path}"
         native_dependencies.append({
             "module": _module_name(path), "source_path": path,
             "status": ("source_present_but_native_io_or_admission_unconnected"
-                       if stored_as else "native_source_deferred"),
-            "package_path": f"source-package/{path}" if stored_as else None,
+                       if stored_as else "original_data_facade_native_exports_unconnected"
+                       if target in facade.files else "native_source_deferred"),
+            "package_path": target if stored_as or target in facade.files else None,
         })
 
     source_inventory = [
         {"path": path, "role": item["role"], "sha256": item["sha256"],
          "bytes": item["bytes"], "capsule_stored_as": item.get("stored_as"),
-         "package_path": f"source-package/{path}" if item.get("stored_as") else None}
+         "package_path": f"source-package/{path}" if item.get("stored_as") else None,
+         "generated_data_facade_path": (f"source-package/{path}"
+                                        if f"source-package/{path}" in facade.files else None)}
         for path, item in sorted(sources.items())
     ]
     missing_initializers = [path for path in _MISSING_PACKAGE_INITIALIZERS if path not in sources]
@@ -501,10 +509,12 @@ def _manifest(
             {"path": _PROFILE_PORT_PATH, "sha256": _digest(port),
              "bytes": len(port), "class": _DECISION_SYMBOL,
              "class_extent": _extent(port, decision_class)},
+            *facade.modules,
         ],
         "sources": source_inventory,
         "definitions": definitions,
         "native_imports": capsule_metadata.get("native_imports", []),
+        "service_data_facade": facade.custody,
         "unconnected_native_dependencies": native_dependencies,
         "external_runtime_dependencies": external,
         "dependency_scan": _dependency_scan(files, external),
@@ -526,6 +536,7 @@ def assemble(capsule: Mapping[str, bytes]) -> dict[str, bytes]:
         capsule, metadata, sources,
     )
     composition, port = _generated_modules(methods, decision_bytes)
+    facade = assemble_data_facade(capsule, metadata, _extent)
 
     files: dict[str, bytes] = {}
     for path, record in sources.items():
@@ -538,8 +549,12 @@ def assemble(capsule: Mapping[str, bytes]) -> dict[str, bytes]:
         if target in files:
             raise ValueError(f"generated module collides with captured source: {target}")
         files[target] = content
-    definitions = _definition_extents(metadata, sources, files, composition, port)
+    for target, content in facade.files.items():
+        if target in files:
+            raise ValueError(f"generated DATA facade collides with source: {target}")
+        files[target] = content
+    definitions = _definition_extents(metadata, sources, files, composition, port, facade)
     files["source-package/provenance.json"] = _manifest(
-        metadata, checksum, sources, definitions, composition, port, files,
+        metadata, checksum, sources, definitions, composition, port, files, facade,
     )
     return files
