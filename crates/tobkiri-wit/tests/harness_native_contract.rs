@@ -63,6 +63,8 @@ fn whole_native_contract_keeps_original_methods_and_only_fixed_native_inspection
     let runtime = &resolve.interfaces[package.interfaces["runtime"]];
     let names = [
         "init",
+        "bundled-profile-root",
+        "host-resource-root",
         "bootstrap-profile-id",
         "setup-profile-preview",
         "confirmation",

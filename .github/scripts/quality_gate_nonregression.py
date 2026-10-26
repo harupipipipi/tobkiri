@@ -109,6 +109,16 @@ def _check_non_regression(name: str, base_count: int, head_count: int) -> bool:
     return True
 
 
+def _report_mypy_findings(label: str, output: str) -> None:
+    """Keep a failed comparison actionable without dumping unbounded output."""
+    lines = [line for line in output.splitlines() if ": error:" in line]
+    print(f"mypy {label} diagnostics:", file=sys.stderr)
+    for line in lines[:20]:
+        print(line[:1000], file=sys.stderr)
+    if len(lines) > 20:
+        print(f"... {len(lines) - 20} further diagnostics omitted", file=sys.stderr)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-ref", default="origin/master")
@@ -131,14 +141,17 @@ def main() -> int:
         base_package_dir = _resolve_base_package_dir(base_worktree, args.package_dir)
         base_ruff, _ = _ruff_count(base_package_dir, ruff_targets)
         head_ruff, _ = _ruff_count(package_dir, ruff_targets)
-        base_mypy, _ = _mypy_count(base_package_dir, mypy_targets)
-        head_mypy, _ = _mypy_count(package_dir, mypy_targets)
+        base_mypy, base_mypy_output = _mypy_count(base_package_dir, mypy_targets)
+        head_mypy, head_mypy_output = _mypy_count(package_dir, mypy_targets)
     finally:
         _remove_base_worktree(base_worktree)
 
     ok = True
     ok &= _check_non_regression("ruff", base_ruff, head_ruff)
     ok &= _check_non_regression("mypy", base_mypy, head_mypy)
+    if head_mypy > base_mypy:
+        _report_mypy_findings("base", base_mypy_output)
+        _report_mypy_findings("head", head_mypy_output)
     return 0 if ok else 1
 
 
