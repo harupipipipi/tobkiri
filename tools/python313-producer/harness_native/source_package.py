@@ -543,5 +543,3 @@ def assemble(capsule: Mapping[str, bytes]) -> dict[str, bytes]:
         metadata, checksum, sources, definitions, composition, port, files,
     )
     return files
-
-
