@@ -47,6 +47,10 @@ const TASK_CONTROL: u64 = 4096;
 const MONITOR_CONTROL: u64 = 4096;
 const WAITER_CONTROL: u64 = 512;
 
+#[path = "native_data_io.rs"]
+mod native_data_io;
+pub use native_data_io::{NativeDataIo, NativeDataIoError};
+
 // Independent fixtures share the process-wide execution owner. Keep their
 // maintenance scans from consuming another fixture's original Joins or waking
 // its observers; intentional concurrency within each fixture is unchanged.

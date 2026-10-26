@@ -128,6 +128,16 @@ jobs:
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-native-data-program.log" --expected-passed 7 --
           cargo test --locked -p tobkiri-wasm --lib native_setup_store::entry::program::tests
+      - name: Native DATA blocking IO custody regressions
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/portable-native-data-io.log" --expected-passed 9 --
+          cargo test --locked -p tobkiri-wasm --lib child_census::native_data_io::tests
+      - name: Closed native capture import and scope regressions
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/portable-native-capture-import.log" --expected-passed 4 --
+          cargo test --locked -p tobkiri-wasm --lib native_setup_store::entry::capture_import::tests
       - name: Authenticated shared module source and import regressions
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
@@ -225,7 +235,7 @@ jobs:
         with:
           targets: aarch64-apple-darwin
       - name: Typecheck native capture and supported-platform test bodies
-        run: cargo check --locked -p tobkiri-store --all-targets --target aarch64-apple-darwin
+        run: cargo check --locked -p tobkiri-store -p tobkiri-wasm --all-targets --target aarch64-apple-darwin
 
   verified-platform-runtime:
     needs: official-python-parity
@@ -265,6 +275,11 @@ jobs:
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/native-snapshot.log" --expected-passed 4 --
           cargo test --locked -p tobkiri-store --lib native_snapshot::tests
+      - name: Actual APFS capture through the native Wasm DATA import
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-capture-import.log" --expected-passed 5 --
+          cargo test --locked -p tobkiri-wasm --lib native_setup_store::entry::capture_import::tests
       - name: Execute complete Rust workspace on the supported platform
         env:
           TOBKIRI_TEST_AUDIT_PHASE_TIMING: "1"

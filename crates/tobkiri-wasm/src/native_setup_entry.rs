@@ -18,6 +18,8 @@ use wasmtime::{Engine, StoreContextMut};
 const WALL_CLOCK_IMPORT: &str = "wasi:clocks/wall-clock@0.2.4";
 const MONOTONIC_CLOCK_IMPORT: &str = "tobkiri-ui:clock/monotonic@1.0.0";
 const CLOCK_CALL_LIMIT: u64 = 100_000;
+#[path = "native_capture_import.rs"]
+mod capture_import;
 #[path = "native_data_program.rs"]
 mod program;
 pub use program::{NativeDataBinding, NativeDataProgram};
@@ -122,9 +124,9 @@ pub struct NativeDataEntry<T: 'static> {
 impl<T: Send + 'static> NativeSetupStore<T> {
     /// Validate and instantiate a component selected by trusted nativeKit.
     ///
-    /// Only the two explicit clock interfaces are supported as imports. File
-    /// capture and every other host capability are refused until bound by a
-    /// dedicated native interface.
+    /// Supports the two explicit clocks and the exact captured-input interface
+    /// only after this invocation's IO and immutable input set are bound.
+    /// Generic filesystem and all other host capabilities remain unavailable.
     pub async fn prepare_data_entry(
         self,
         component: &Component,
@@ -160,11 +162,14 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                 contract.charge(self.allocation_owners())?;
             }
             let engine = self._engine.engine();
-            let (input, output) = validate_component(engine, component, &export, contract)?;
+            let capture_bound = self.native_data_io().is_some() && self.captured_inputs().is_some();
+            let (input, output) =
+                validate_component(engine, component, &export, contract, capture_bound)?;
 
             let mut linker = Linker::<NativeState<T>>::new(engine);
             let mut wall_clock = false;
             let mut monotonic_clock = false;
+            let mut captured_input = false;
             for (name, import) in component.component_type().imports(engine) {
                 match name {
                     WALL_CLOCK_IMPORT => {
@@ -175,6 +180,10 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                         validate_clock_instance(engine, &import.ty, ClockKind::Monotonic)?;
                         monotonic_clock = true;
                     }
+                    capture_import::INTERFACE => {
+                        capture_import::validate(engine, &import.ty)?;
+                        captured_input = true;
+                    }
                     _ => bail!("unsupported native DATA component import"),
                 }
             }
@@ -183,6 +192,9 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             }
             if monotonic_clock {
                 define_monotonic_clock(&mut linker)?;
+            }
+            if captured_input {
+                capture_import::define(&mut linker, self.allocation_owners().component())?;
             }
 
             let wasmtime_store = self
@@ -468,6 +480,7 @@ fn validate_component(
     component: &Component,
     export: &NativeDataExport<'_>,
     contract: Option<NativeDataResultContract<'_>>,
+    capture_bound: bool,
 ) -> Result<(InputShape, OutputShape)> {
     if !Engine::same(engine, component.engine()) {
         bail!("native DATA component belongs to another WasmEngine")
@@ -481,7 +494,12 @@ fn validate_component(
         if is_generic_core_identity(name) || item.implements.is_some_and(is_generic_core_identity) {
             bail!("ordinary Core Pack import is not a native DATA capability")
         }
-        if !matches!(name, WALL_CLOCK_IMPORT | MONOTONIC_CLOCK_IMPORT) {
+        if name == capture_import::INTERFACE {
+            if !capture_bound {
+                bail!("native captured input import lacks a sealed IO binding");
+            }
+            capture_import::validate(engine, &item.ty)?;
+        } else if !matches!(name, WALL_CLOCK_IMPORT | MONOTONIC_CLOCK_IMPORT) {
             bail!("unsupported native DATA component import")
         }
     }

@@ -120,6 +120,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                 component,
                 &binding.export,
                 binding.result,
+                self.native_data_io().is_some() && self.captured_inputs().is_some(),
             )?;
             table
                 .values

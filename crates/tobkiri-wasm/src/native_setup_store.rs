@@ -112,6 +112,8 @@ struct NativeState<T> {
     owners: crate::AllocationOwners,
     captured: Option<crate::NativeCapturedInputs>,
     capture_claimed: bool,
+    io: Option<crate::NativeDataIo>,
+    io_claimed: bool,
     clock_observation: NativeDataObservation,
     limits: AggregateLimits,
     deadline: Instant,
@@ -121,9 +123,9 @@ struct NativeState<T> {
 }
 
 /// Native-only prototype Store custody. It exposes no linker/import surface or
-/// raw Store extraction. Codecs share one retained allocation owner; capture,
-/// entry IO and the actual UI runner still need connection. Construction does
-/// not authorize an effect.
+/// raw Store extraction. Codecs, sealed capture and the optional managed IO
+/// share the original invocation's owners. The product UI runner still needs
+/// connection; construction does not authorize an effect.
 pub struct NativeSetupStore<T: 'static> {
     store: Option<Store<NativeState<T>>>,
     physical: Option<PhysicalOwner>,
@@ -160,6 +162,8 @@ impl WasmEngine {
             owners,
             captured: None,
             capture_claimed: false,
+            io: None,
+            io_claimed: false,
             clock_observation: NativeDataObservation::default(),
             limits: AggregateLimits {
                 memory_cap: usize::try_from(NATIVE_SETUP_MEMORY_BYTES)?,
@@ -216,6 +220,9 @@ impl<T: 'static> NativeSetupStore<T> {
         }
         state.capture_claimed = true;
         let capture = crate::NativeCapturedInputs::seal(&state.invocation, &state.owners, files)?;
+        if let Some(io) = &state.io {
+            io.bind_captured_inputs(capture.clone())?;
+        }
         state.captured = Some(capture.clone());
         Ok(capture)
     }
@@ -225,6 +232,41 @@ impl<T: 'static> NativeSetupStore<T> {
             .expect("live native Store")
             .data()
             .captured
+            .as_ref()
+    }
+
+    /// Bind the existing funded execution kernel to this actual invocation.
+    /// NativeKit retains the returned handle independently, and drives
+    /// `retire_and_wait` from Core cleanup after retiring/dropping the Store.
+    /// Capture paths remain trusted native Rust inputs; guest reads can use
+    /// only the immutable same-invocation inventory sealed above.
+    pub fn bind_native_data_io(&mut self) -> Result<crate::NativeDataIo> {
+        let state = self.store.as_mut().expect("live native Store").data_mut();
+        if state.io_claimed {
+            bail!("native DATA IO binding already claimed");
+        }
+        state.io_claimed = true;
+        let io = crate::NativeDataIo::new(
+            state.invocation.clone(),
+            state.owners.clone(),
+            state.cancel.clone(),
+            state.retirement.clone(),
+        )?;
+        if let Some(capture) = &state.captured {
+            io.bind_captured_inputs(capture.clone())?;
+        }
+        state.io = Some(io.clone());
+        Ok(io)
+    }
+
+    /// Borrow the already-bound native IO custody without exposing raw Store
+    /// or descriptors. Clones retain the same original single admission slot.
+    pub fn native_data_io(&self) -> Option<&crate::NativeDataIo> {
+        self.store
+            .as_ref()
+            .expect("live native Store")
+            .data()
+            .io
             .as_ref()
     }
     /// Freeze native-selected source DATA using the original account, deadline
@@ -290,6 +332,9 @@ impl<T: 'static> NativeSetupStore<T> {
     /// Begin immediate retirement; physical capacity remains until actual drop.
     pub fn retire(&self) {
         let state = self.store.as_ref().expect("live native Store").data();
+        if let Some(io) = &state.io {
+            io.retire();
+        }
         state.retirement.cancel();
         state.cancel.cancel();
     }

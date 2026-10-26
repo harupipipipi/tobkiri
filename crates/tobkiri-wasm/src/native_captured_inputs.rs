@@ -22,6 +22,7 @@ struct File {
 struct Inputs {
     files: Vec<File>,
     owners: crate::AllocationOwners,
+    invocation: NativeSetupInvocation,
 }
 /// Immutable native-only closed inventory. No API replaces entries or chooses
 /// another capture/descriptor. Clones retain metadata, FD and original funding.
@@ -158,6 +159,7 @@ impl NativeCapturedInputs {
             Inputs {
                 files,
                 owners: owners.clone(),
+                invocation: invocation.clone(),
             },
             control,
         )
@@ -178,6 +180,11 @@ impl NativeCapturedInputs {
     }
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub(crate) fn belongs_to(&self, invocation: &NativeSetupInvocation) -> Result<bool> {
+        charge(&self.0.get().owners, 1)?;
+        Ok(self.0.get().invocation.same_invocation(invocation))
     }
 
     /// A separately prepaid immutable copy from the fixed backing. The caller

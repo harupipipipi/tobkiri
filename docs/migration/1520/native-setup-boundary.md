@@ -570,3 +570,34 @@ original shared 64MiB payload account. Seven actual-component/control regression
 are explicitly selected on CI; until their results are read, these are source
 contracts, not runtime evidence. Whole Setup nativeKit, capture IO and GUI
 integration remain incomplete.
+
+`NativeDataIo` reuses the existing funded execution owner for native-selected
+snapshot capture and sealed ordinal/range reads. It never fabricates a Profile,
+Pack frame, grant or path supplied by a guest. Its single slot remains occupied
+through an unconsumed completion. The original blocking task and monitor Joins,
+FDs, DATA buffers and control reservations remain owned until actual task and
+storage destruction. Store drop stops admission and late publication; the Core
+owner must independently retain the returned IO handle and await
+`retire_and_wait` during cleanup. A blocked OS operation is still pending after
+the original DATA deadline; cleanup neither renews that deadline nor pretends
+that cancellation finished IO. The task allowances retain the existing kernel's
+scope and do not establish exact Tokio allocator, RSS, stack or TLS accounting.
+
+The dedicated `tobkiri-ui:inputs/captured@1.0.0` import exposes only
+`read-range(ordinal: u32, offset: u64, length: u32) -> list<u8>`. It requires both
+the IO binding and an immutable capture from the same actual invocation before
+instantiation, including an empty capture. Signature changes, extra exports and
+cross-invocation seals are refused. There is no discovery, pathname, raw FD,
+write or general filesystem import. Host callback state and simultaneous source,
+destination and canonical ABI copies use the original payload owner. IO failure
+is an execution failure, not a normal domain error or a genuine guest
+unreachable-body denial. Neither captured bytes nor their successful parsing
+authorize a Core effect.
+
+Nine portable blocking-task tests and four portable component-import tests are
+explicitly selected on CI. One additional supported macOS/APFS component test
+captures actual bytes, mutates the source, reads the frozen bytes through the
+real Wasm import and verifies owned post-return. The portable probes establish
+task/control and source-FD custody only. Actual CI results, the supported OS test,
+and whole nativeKit/GUI integration remain separate requirements; source tests
+and this inactive mechanism do not complete the product migration.
