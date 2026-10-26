@@ -14,7 +14,7 @@ fn unalias(resolve: &Resolve, mut ty: Type) -> Type {
 }
 
 #[test]
-fn whole_native_contract_has_all_original_methods_and_scoped_transport_without_imports() {
+fn whole_native_contract_keeps_original_methods_and_only_fixed_native_inspection_imports() {
     let mut resolve = Resolve::default();
     let directory =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/python313-producer/harness_native");
@@ -24,7 +24,33 @@ fn whole_native_contract_has_all_original_methods_and_scoped_transport_without_i
     let package = &resolve.packages[package];
     assert_eq!(package.name.to_string(), "tobkiri-ui:harness-native@1.0.0");
     let world = &resolve.worlds[package.worlds["harness-native"]];
-    assert!(world.imports.is_empty());
+    assert_eq!(world.imports.len(), 1);
+    let WorldItem::Interface { id, .. } = world.imports.values().next().unwrap() else {
+        panic!("only the fixed native inspection interface is allowed");
+    };
+    let native = &resolve.interfaces[*id];
+    assert_eq!(native.name.as_deref(), Some("bindings"));
+    assert_eq!(
+        resolve.packages[native.package.unwrap()].name.to_string(),
+        "tobkiri-native:harness@1.0.0"
+    );
+    assert!(native.types.is_empty());
+    assert_eq!(
+        native
+            .functions
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["inventory", "inspect"]
+    );
+    let inventory = &native.functions["inventory"];
+    assert!(inventory.params.is_empty());
+    assert_eq!(inventory.result, Some(Type::String));
+    let inspect = &native.functions["inspect"];
+    assert_eq!(inspect.params.len(), 1);
+    assert_eq!(inspect.params[0].name, "payload");
+    assert_eq!(inspect.params[0].ty, Type::String);
+    assert_eq!(inspect.result, Some(Type::String));
     let interfaces: BTreeSet<_> = world
         .exports
         .values()

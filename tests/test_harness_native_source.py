@@ -25,7 +25,8 @@ class HarnessNativeSourceTests(unittest.TestCase):
         provenance = json.loads(files["provenance.json"])
         transport = provenance["original_value_transport"]
         for key, path in (("guest_registry", prepare.VALUE_GRAPH_TRANSPORT),
-                          ("wit", prepare.NATIVE_WIT)):
+                          ("wit", prepare.NATIVE_WIT),
+                          ("native_binding_wit", prepare.NATIVE_BINDINGS_WIT)):
             self.assertEqual(transport[key], path)
             raw = prepare.bounded_read(ROOT / path)
             self.assertEqual(files[f"source/{path}"], raw)
@@ -38,7 +39,7 @@ class HarnessNativeSourceTests(unittest.TestCase):
         for key in ("native_binding_refs_confer_authority", "wasm_execution_performed",
                     "whole_export_dispatch_connected", "actual_component_export_dispatch_executed",
                     "original_module_closure_connected", "exception_fields_disclosed",
-                    "exception_reference_is_restoration_proof"):
+                    "exception_reference_is_restoration_proof", "native_binding_imports_connected"):
             self.assertIs(transport[key], False)
         self.assertEqual(transport["dispatcher_sources"], list(prepare.DISPATCHER_SOURCES))
         for path in prepare.DISPATCHER_SOURCES:
@@ -185,8 +186,8 @@ class HarnessNativeSourceTests(unittest.TestCase):
         )
         self.assertFalse(any(path.endswith("runtime_v4/service.py") for path in names))
         self.assertFalse(any(path.endswith("external_pack_catalog_v4.py") for path in names))
-        self.assertEqual([path for path in names if path.endswith(".wit")],
-                         [f"source/{prepare.NATIVE_WIT}"])
+        self.assertEqual({path for path in names if path.endswith(".wit")},
+                         {f"source/{prepare.NATIVE_WIT}", f"source/{prepare.NATIVE_BINDINGS_WIT}"})
         self.assertFalse(any(path.endswith(".wasm") for path in names))
         self.assertNotIn("plan.json", names)
         self.assertNotIn("build-plan.json", names)

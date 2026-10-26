@@ -1,0 +1,15 @@
+package tobkiri-native:harness@1.0.0;
+
+/// Sealed native inspection imports for the harness-native world.
+interface bindings {
+  /// Inventory reads installed native metadata only. It performs no filesystem
+  /// stat, read, or prefetch. Native context, account, Store, and invocation
+  /// state must already be installed before runtime bootstrap.
+  inventory: func() -> string;
+
+  /// Opaque IDs confer no authority; native code checks every target selector.
+  /// Preserve the original reach point, owner, target, operation, phase,
+  /// occurrence, and deadline. Domain failures are explicit bounded DATA;
+  /// kernel resource and cancellation failures trap.
+  inspect: func(payload: string) -> string;
+}

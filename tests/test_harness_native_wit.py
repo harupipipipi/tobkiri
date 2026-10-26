@@ -21,6 +21,10 @@ from harness_native import source_package  # noqa: E402
 
 WIT_PATH = ROOT / "tools/python313-producer/harness_native/native.wit"
 WIT = WIT_PATH.read_text(encoding="utf-8")
+NATIVE_BINDINGS_PATH = ROOT / (
+    "tools/python313-producer/harness_native/deps/native-bindings/bindings.wit"
+)
+NATIVE_BINDINGS_WIT = NATIVE_BINDINGS_PATH.read_text(encoding="utf-8")
 
 
 def _block(source: str, header: str) -> str:
@@ -140,20 +144,56 @@ class HarnessNativeWitTests(unittest.TestCase):
         for name in unit_helpers:
             self.assertEqual(functions[name], "func(payload: string) -> result<_, error>")
 
-    def test_world_exports_only_the_two_native_interfaces_without_imports(self) -> None:
+    def test_world_has_the_exact_native_import_and_two_exports(self) -> None:
         self.assertIn("package tobkiri-ui:harness-native@1.0.0;", WIT)
         world = _block(WIT, "world harness-native")
         statements = tuple(
             line.strip() for line in world.splitlines()
             if line.strip() and not line.strip().startswith("///")
         )
-        self.assertEqual(statements, ("export runtime;", "export transport;"))
-        self.assertNotRegex(world, r"\bimport\b|\binclude\b")
-        self.assertNotRegex(world, r"ordinary[- ]pack|activation|grant|owner")
+        self.assertEqual(statements, (
+            "import tobkiri-native:harness/bindings@1.0.0;",
+            "export runtime;",
+            "export transport;",
+        ))
+        imports = tuple(re.findall(r"(?m)^\s*import\s+([^;]+);", WIT))
+        self.assertEqual(imports, ("tobkiri-native:harness/bindings@1.0.0",))
+        self.assertNotRegex(world, r"\binclude\b")
 
         runtime = _block(WIT, "interface runtime")
-        self.assertNotRegex(runtime, r"\bimport\b|\binclude\b|ordinary[- ]pack")
-        self.assertNotIn("interface ordinary-pack", WIT)
+        self.assertNotRegex(runtime, r"\bimport\b|\binclude\b")
+
+    def test_dedicated_native_bindings_are_exact_and_document_the_effect_boundary(self) -> None:
+        self.assertIn("package tobkiri-native:harness@1.0.0;", NATIVE_BINDINGS_WIT)
+        bindings = _block(NATIVE_BINDINGS_WIT, "interface bindings")
+        self.assertEqual(_functions(bindings), {
+            "inventory": "func() -> string",
+            "inspect": "func(payload: string) -> string",
+        })
+
+        for requirement in (
+            "no filesystem",
+            "stat, read, or prefetch",
+            "context, account, Store, and invocation",
+            "before runtime bootstrap",
+            "Opaque IDs confer no authority",
+            "checks every target selector",
+            "reach point, owner, target, operation, phase,",
+            "occurrence, and deadline",
+            "explicit bounded DATA",
+            "kernel resource and cancellation failures trap",
+        ):
+            self.assertIn(requirement, NATIVE_BINDINGS_WIT)
+
+        declarations = WIT + NATIVE_BINDINGS_WIT
+        interfaces = tuple(re.findall(
+            r"(?m)^\s*interface\s+([a-z][a-z0-9-]*)\s*\{", declarations,
+        ))
+        self.assertEqual(interfaces, ("runtime", "transport", "bindings"))
+        self.assertNotRegex(
+            declarations,
+            r"(?i)\b(?:core|gate|ordinary-pack|lifecycle)\b",
+        )
 
 
 if __name__ == "__main__":

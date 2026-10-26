@@ -916,3 +916,13 @@ retry canceled work. The kernel supplies no application path/Pack/authority rule
 Portable actual-Wasm tests are routed through CI for this mechanism; nativeKit's
 bound paths, retained origins, full producer/oracle and original GUI integration
 still remain unconnected.
+
+The whole-native WIT now declares the exact separate
+`tobkiri-native:harness/bindings@1.0.0` dependency: `inventory()` and
+`inspect(payload: string)` each return one DATA string. These are the only
+native imports; the seventeen original methods and six DATA helpers remain
+unchanged, and no ordinary Core/Gate/lifecycle capability is introduced. The
+upstream parser test checks the dependency identity, complete function sets and
+exact signatures. Source capsule custody pins both WIT files. This declaration
+does not implement the nativeKit binding inventory or path/admission callbacks;
+the actual full component still requires that adapter and a native oracle.

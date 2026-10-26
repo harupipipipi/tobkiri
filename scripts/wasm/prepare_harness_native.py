@@ -51,6 +51,9 @@ EXCEPTION_TRANSPORT = (
 )
 VALUE_GRAPH_TRANSPORT = "tools/python313-producer/harness_native/value_graph.py"
 NATIVE_WIT = "tools/python313-producer/harness_native/native.wit"
+NATIVE_BINDINGS_WIT = (
+    "tools/python313-producer/harness_native/deps/native-bindings/bindings.wit"
+)
 DISPATCHER_SOURCES = (
     "tools/python313-producer/harness_native/dispatcher.py",
     "tools/python313-producer/harness_native/bootstrap.py",
@@ -198,6 +201,7 @@ _CAPSULE_SOURCE_FILES = (
     EXCEPTION_TRANSPORT,
     VALUE_GRAPH_TRANSPORT,
     NATIVE_WIT,
+    NATIVE_BINDINGS_WIT,
     *DISPATCHER_SOURCES,
     DATA_FACADE_SOURCE,
     PROFILE_RESOLUTION,
@@ -762,6 +766,8 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
         "original_value_transport": {
             "guest_registry": VALUE_GRAPH_TRANSPORT,
             "wit": NATIVE_WIT,
+            "native_binding_wit": NATIVE_BINDINGS_WIT,
+            "native_binding_imports_connected": False,
             "original_classes_from_trusted_bootstrap_only": True,
             "native_binding_refs_confer_authority": False,
             "shared_identity_is_not_value_memoization": True,
