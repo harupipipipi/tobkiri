@@ -459,6 +459,7 @@ class ImportDiagnosticsSourceTests(unittest.TestCase):
             {
                 "--all-five",
                 "--harness-setup",
+                "--harness-native",
                 "--native-input-stack",
                 "--native-input-stack-import-diagnostics",
             },
