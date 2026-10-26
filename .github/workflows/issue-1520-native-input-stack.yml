@@ -95,6 +95,7 @@ jobs:
             ${{ runner.temp }}/stack-candidate/harness-input-stack/inputs/provenance.json
             ${{ runner.temp }}/stack-candidate/harness-input-stack/build/
             ${{ runner.temp }}/stack-candidate/harness-input-stack/work/component.build.json
+            ${{ runner.temp }}/stack-candidate/harness-input-stack/work/generated-bindings/
             ${{ runner.temp }}/stack-candidate/harness-input-stack/work/component.wasm
             ${{ runner.temp }}/stack-original.json
           if-no-files-found: warn

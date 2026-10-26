@@ -95,7 +95,8 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
             control.write_text(json.dumps({
                 'producer_sha256': producer_report['binary']['sha256'],
                 'producer_receipt_sha256': identities[str(producer_receipt_path)]['sha256'],
-                'plan_sha256': plan_receipt['plan_sha256']}) + '\n')
+                'plan_sha256': plan_receipt['plan_sha256'],
+                'retain_generated_bindings': native_input_stack}) + '\n')
             identities[str(control)] = fingerprint(control)
             work = output / 'work'
             work.mkdir(mode=0o700)
