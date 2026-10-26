@@ -811,3 +811,38 @@ exception encoding, component producer and actual nativeKit execution remain
 unconnected. This slice does not change the default Launcher or GUI flow and
 does not satisfy whole-path parity. Original four-MiB envelope and native
 64-MiB account, fuel and deadline limits remain in force.
+
+The next source slice adds the fixed dispatcher and thin two-interface app.
+All generated per-export adapter instances use one module-global dispatcher.
+Strict initialization validates DATA scope before committing state and never
+replaces accepted state. The actual native owner remains an independent
+nativeKit obligation; a self-reported Scope does not create it. Call frames carry
+only ordered positional and keyword references, never a module, class or export
+selector. Validation does not remove, fill or reorder arguments; Python's
+original argument binder raises its original `TypeError` when appropriate.
+
+Known raised exceptions stay as actual original objects in the same Store.
+`method-raised` details carry a scoped reference, with an empty message meaning
+**undisclosed text**, not an originally empty message. A normally returned
+exception remains a successful value reference. The dispatcher does not format
+exceptions or publish their fields; its bootstrap rejects exception field
+descriptors until dedicated provenance-aware extraction is connected. This
+retains class/args/chain/identity internally but does not establish their
+cross-boundary observation or reconstruction. Unknown concrete failures remain
+explicitly unsupported. Memory and recursion execution failures escape rather
+than becoming successful domain replies.
+
+Import and description results report every new held reference; existing refs
+do not silently acquire new ownership or mutation permission. Input/result
+encoding failure rolls back newly registered holds. Unit collection helpers
+retain no hidden `None` result, and preserve the difference between an invalid
+transport reference and an original dictionary `TypeError`.
+
+The bootstrap names the original catalog, resolved Profile, decision, active
+view and exception classes. It does not supply the currently missing service
+DATA facade, native binding creation, ordered IO/admission ports or dependency
+closure. In particular, native retained origins must remain opaque capabilities,
+not reconstructed dataclasses. These source adapters have not yet executed as
+a whole component; an import/closure failure remains a failure. The next
+integration must supply the original service DATA aliases/active class, the
+native bound-path/retained-origin seam and the actual producer/native oracle.

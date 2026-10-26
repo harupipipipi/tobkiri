@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 import struct
-from typing import Any
+from typing import Any, Callable
 
 import ordered_json_v2 as wire
 
@@ -67,6 +67,13 @@ class Scope:
         return [format(n, "x") for n in (
             self.account, self.invocation, self.store, self.generation,
         )]
+
+    @classmethod
+    def from_wire(cls, value: Any) -> Scope:
+        """Decode DATA identity only; this establishes no native ownership."""
+        if type(value) is not list or len(value) != 4:
+            raise InvalidFrame("invalid original scope packet")
+        return cls(*(_hex_number(n, _U64) for n in value))
 
 
 @dataclass(frozen=True)
@@ -328,20 +335,27 @@ class Registry:
                                      for name in record.fields]
                 rows.append(row)
             return wire.dumps({"format": _VIEW, "scope": self.scope.wire(),
-                               "root": root.wire(), "nodes": rows})
+                               "root": root.wire(), "nodes": rows,
+                               "owned": [format(ref.object_id, "x")
+                                         for ref, _ in created]})
         except BaseException:
             # Failed description never leaks newly issued holds. Existing
             # references/objects/permissions are unchanged; IDs are not reused.
             self._rollback(created)
             raise
 
-    def import_values(self, payload: str) -> ImportedValues:
+    def import_values(
+        self, payload: str,
+        *, _publish: Callable[[ImportedValues], Any] | None = None,
+    ) -> ImportedValues | Any:
         """Construct new closed DATA collections/scalars, or reuse issued refs.
 
         Class instances and native bindings cannot be constructed by a frame.
         New nodes are private until the complete graph has validated and built.
         Mutable-to-immutable cycles are supported; an all-immutable cycle is
         unconstructible and rejected. Existing issued objects are never copied.
+        A trusted adapter can supply its final encoder so encoding failure also
+        rolls back new holds. Frames cannot select that callback.
         """
         self._live()
         try:
@@ -477,7 +491,8 @@ class Registry:
                     set_items=fresh and type(original) is dict,
                     created=created,
                 )
-            return ImportedValues(self.retain(root), tuple(ref for ref, _ in created))
+            result = ImportedValues(self.retain(root), tuple(ref for ref, _ in created))
+            return result if _publish is None else _publish(result)
         except BaseException:
             self._rollback(created)
             raise

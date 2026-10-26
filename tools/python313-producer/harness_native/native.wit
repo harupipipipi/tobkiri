@@ -13,9 +13,11 @@ interface runtime {
     method-raised,
   }
 
-  /// `method-raised` is valid only when details exactly preserve original
-  /// exception class, args, and cause/context. Do not normalize unknown failures
-  /// or translate native accounting and panic failures into method errors.
+  /// `method-raised` retains the actual original exception under a scoped ref.
+  /// Its empty message is undisclosed text. Class/args/cause/context stay in the
+  /// original Store; cross-boundary restoration is not established by the ref.
+  /// Dedicated field disclosure/restoration must be proven before parity use.
+  /// Do not translate native accounting and panic failures into method errors.
   record error {
     code: error-code,
     message: string,

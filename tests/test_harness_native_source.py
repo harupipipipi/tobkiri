@@ -36,8 +36,13 @@ class HarnessNativeSourceTests(unittest.TestCase):
                     "input_ownership_is_explicit"):
             self.assertIs(transport[key], True)
         for key in ("native_binding_refs_confer_authority", "wasm_execution_performed",
-                    "whole_export_dispatch_connected"):
+                    "whole_export_dispatch_connected", "actual_component_export_dispatch_executed",
+                    "original_module_closure_connected", "exception_fields_disclosed",
+                    "exception_reference_is_restoration_proof"):
             self.assertIs(transport[key], False)
+        self.assertEqual(transport["dispatcher_sources"], list(prepare.DISPATCHER_SOURCES))
+        for path in prepare.DISPATCHER_SOURCES:
+            self.assertEqual(files[f"source/{path}"], prepare.bounded_read(ROOT / path))
 
     def test_exception_transport_pins_guest_and_rust_without_a_native_python_dependency(self) -> None:
         files = prepare.captured()

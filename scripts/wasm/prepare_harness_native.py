@@ -41,6 +41,11 @@ EXCEPTION_TRANSPORT = (
 )
 VALUE_GRAPH_TRANSPORT = "tools/python313-producer/harness_native/value_graph.py"
 NATIVE_WIT = "tools/python313-producer/harness_native/native.wit"
+DISPATCHER_SOURCES = (
+    "tools/python313-producer/harness_native/dispatcher.py",
+    "tools/python313-producer/harness_native/bootstrap.py",
+    "tools/python313-producer/harness_native/app.py",
+)
 _NATIVE_KIT_SOURCES = (
     "tobkiri_launcher/harness-native/Cargo.toml",
     "tobkiri_launcher/harness-native/src/lib.rs",
@@ -182,6 +187,7 @@ _CAPSULE_SOURCE_FILES = (
     EXCEPTION_TRANSPORT,
     VALUE_GRAPH_TRANSPORT,
     NATIVE_WIT,
+    *DISPATCHER_SOURCES,
     PROFILE_RESOLUTION,
     SETUP_CONTRACT,
     DOMAIN_PACKAGE_INIT,
@@ -699,6 +705,12 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
             "input_ownership_is_explicit": True,
             "wasm_execution_performed": False,
             "whole_export_dispatch_connected": False,
+            "dispatcher_sources": list(DISPATCHER_SOURCES),
+            "fixed_method_dispatch_source_present": True,
+            "actual_component_export_dispatch_executed": False,
+            "original_module_closure_connected": False,
+            "exception_fields_disclosed": False,
+            "exception_reference_is_restoration_proof": False,
         },
         "source_capsule_only": True,
         "dependency_closure_executable": False,

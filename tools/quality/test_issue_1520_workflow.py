@@ -115,6 +115,7 @@ class RuntimeRoutingTests(unittest.TestCase):
         self.assertIn("test_harness_native_source.py", source)
         self.assertIn("test_harness_native_package.py", source)
         self.assertIn("test_harness_native_value_graph.py", source)
+        self.assertIn("test_harness_native_dispatcher.py", source)
         self.assertIn("test_harness_native_wit.py", source)
         io = step(self.linux, "Native DATA blocking IO custody regressions")
         self.assertIn("--expected-passed 13 --", io)
