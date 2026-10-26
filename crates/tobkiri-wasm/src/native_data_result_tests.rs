@@ -60,9 +60,9 @@ fn component(
     let source = format!(
         r#"(component
         (type $code-definition (enum "invalid" "internal"))
-        (export "error-code" (type $code (eq $code-definition)))
+        (export $code "error-code" (type $code-definition))
         (type $error-definition (record (field "code" $code) (field "message" string)))
-        (export "error" (type $error (eq $error-definition)))
+        (export $error "error" (type $error-definition))
         (type $reply (result {ok}(error $error)))
         (core module $m
             (memory (export "memory") {pages})

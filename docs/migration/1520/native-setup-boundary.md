@@ -552,3 +552,21 @@ and schema/validation caches initially empty. The unchanged original packaged
 fixture and independent native baseline remain required. Native capture mapping,
 same-invocation sealing, Wasm execution and GUI integration need separate proof;
 this shared parser and its captured-input test do not establish them.
+
+`NativeDataProgram` binds a nativeKit-selected fixed table of exact function
+contracts before instantiating the same component. A native caller selects a
+bound slot; there is no guest/IPC export-name selector. Calls reuse the original
+Store and instance and serialize through actual owned post-return. NativeKit
+remains responsible for its explicit initialization and original domain-state
+transitions, including retry behavior after a normal initialization error.
+This API never skips an ordinary Pack lifecycle or renews an invocation lease.
+
+The fixed function table is native control metadata: its complete Vec capacity,
+shared block and simultaneous builder/program bookkeeping are prepaid by the
+original CoreControl, and refunded only after actual storage destruction. The
+graph account charges its original work/active checks with zero DATA bytes for
+this table. Guest input/output, error strings and ABI copies still consume the
+original shared 64MiB payload account. Seven actual-component/control regressions
+are explicitly selected on CI; until their results are read, these are source
+contracts, not runtime evidence. Whole Setup nativeKit, capture IO and GUI
+integration remain incomplete.

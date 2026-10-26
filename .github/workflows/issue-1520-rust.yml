@@ -123,6 +123,11 @@ jobs:
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-native-data-result.log" --expected-passed 9 --
           cargo test --locked -p tobkiri-wasm --lib native_setup_store::entry::result_tests
+      - name: Fixed native DATA exports and original initialization regressions
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/portable-native-data-program.log" --expected-passed 7 --
+          cargo test --locked -p tobkiri-wasm --lib native_setup_store::entry::program::tests
       - name: Authenticated shared module source and import regressions
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test

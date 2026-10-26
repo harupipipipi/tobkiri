@@ -18,6 +18,9 @@ use wasmtime::{Engine, StoreContextMut};
 const WALL_CLOCK_IMPORT: &str = "wasi:clocks/wall-clock@0.2.4";
 const MONOTONIC_CLOCK_IMPORT: &str = "tobkiri-ui:clock/monotonic@1.0.0";
 const CLOCK_CALL_LIMIT: u64 = 100_000;
+#[path = "native_data_program.rs"]
+mod program;
+pub use program::{NativeDataBinding, NativeDataProgram};
 #[path = "native_data_result.rs"]
 mod result;
 pub use result::{
@@ -152,22 +155,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
         let result = async {
             // The selector is borrowed from trusted nativeKit, never copied or
             // retained here. Account for lookup work before scanning its bytes.
-            let selector_work = export
-                .interface
-                .map_or(0, str::len)
-                .checked_add(export.function.len())
-                .and_then(|bytes| u64::try_from(bytes).ok())
-                .and_then(|bytes| bytes.checked_mul(4))
-                .context("native DATA selector work overflow")?;
-            self.allocation_owners()
-                .graph()
-                .reserve(AllocationRequest {
-                    kind: AllocationKind::Temporary,
-                    bytes: 0,
-                    elements: 0,
-                    depth: 0,
-                    work: selector_work,
-                })?;
+            charge_selector(self.allocation_owners(), &export)?;
             if let Some(contract) = contract {
                 contract.charge(self.allocation_owners())?;
             }
@@ -431,6 +419,25 @@ impl<T: 'static> Drop for NativeDataEntry<T> {
     fn drop(&mut self) {
         self.retire();
     }
+}
+
+fn charge_selector(owners: &crate::AllocationOwners, export: &NativeDataExport<'_>) -> Result<()> {
+    let work = export
+        .interface
+        .map_or(0, str::len)
+        .checked_add(export.function.len())
+        .and_then(|bytes| u64::try_from(bytes).ok())
+        .and_then(|bytes| bytes.checked_mul(4))
+        .and_then(|work| work.checked_add(1))
+        .context("native DATA selector work overflow")?;
+    owners.graph().reserve(AllocationRequest {
+        kind: AllocationKind::Temporary,
+        bytes: 0,
+        elements: 0,
+        depth: 0,
+        work,
+    })?;
+    Ok(())
 }
 
 fn locate_function<T: Send + 'static>(

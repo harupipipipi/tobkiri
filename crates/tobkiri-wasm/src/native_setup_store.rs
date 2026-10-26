@@ -26,9 +26,9 @@ mod tests;
 #[path = "native_setup_entry.rs"]
 mod entry;
 pub use entry::{
-    NativeDataEntry, NativeDataError, NativeDataErrorContract, NativeDataExport,
-    NativeDataObservation, NativeDataResultContract, NativeDataResultEntry, NativeDataSuccessType,
-    NativeDataValue,
+    NativeDataBinding, NativeDataEntry, NativeDataError, NativeDataErrorContract, NativeDataExport,
+    NativeDataObservation, NativeDataProgram, NativeDataResultContract, NativeDataResultEntry,
+    NativeDataSuccessType, NativeDataValue,
 };
 
 struct NativePhysical {
