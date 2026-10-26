@@ -61,7 +61,7 @@ fn retained_setup_lease_reuses_original_funding_after_root_rename() {
 fn exhausted_metadata_funding_denies_before_native_owner_construction() {
     let parent = tempfile::tempdir().unwrap();
     let canonical = std::fs::canonicalize(parent.path()).unwrap();
-    let root = DataRoot::open(&canonical.join("root")).unwrap();
+    let root = DataRoot::open(canonical.join("root")).unwrap();
     let exhausted = restricted_control();
     assert!(matches!(
         root.native_setup_owner_lease(&exhausted),
@@ -130,7 +130,7 @@ fn exec_process_observes_the_real_root_lock() {
     let Some(path) = std::env::var_os(CHILD_ROOT) else {
         return;
     };
-    let root = DataRoot::open(&std::path::PathBuf::from(path)).unwrap();
+    let root = DataRoot::open(std::path::PathBuf::from(path)).unwrap();
     let control = CoreControl::default();
     let result = root.native_setup_owner_lease(&control);
     if std::env::var(CHILD_EXPECT_BLOCKED).unwrap() == "yes" {
