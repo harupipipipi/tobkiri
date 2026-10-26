@@ -1,0 +1,95 @@
+name: Issue 1520 whole native Harness component
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-harness-native.yml'
+      - 'scripts/wasm/prepare_harness_native.py'
+      - 'scripts/wasm/stage_harness_native.py'
+      - 'tools/python313-producer/harness_native/**'
+      - 'tools/python313-producer/build_components.py'
+      - 'tools/python313-producer/component_inputs.py'
+      - 'tools/python313-producer/component_driver.py'
+      - 'tools/python313-producer/tests/test_build_components.py'
+      - 'tobkiri_runtime/core_runtime/**'
+      - 'tobkiri_runtime/tobkiri_protocol/**'
+      - 'tobkiri_runtime/ecosystem/defaultspack/defaultspack/profile_runtime_composition.py'
+      - 'tobkiri_runtime/ecosystem/defaultspack/domain/profile_resolution.py'
+      - 'tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/**'
+      - 'sdk/python/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: issue-1520-harness-native-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-whole-native-harness:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      PRODUCER_RUN: '39956025119'
+      PRODUCER_HEAD: ae7f83080a36e823ac330342584210243dc38050
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Verify actual whole-component sources and native-only boundary
+        run: |
+          python3 -B -m unittest discover -s tests -p 'test_harness_native_*.py'
+          python3 -B -m unittest discover -s tools/python313-producer/tests -p test_build_components.py
+      - name: Authenticate the existing successful custom producer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" > "$RUNNER_TEMP/producer-run.json"
+          python3 -B - "$RUNNER_TEMP/producer-run.json" "$PRODUCER_HEAD" <<'PY'
+          import json, sys
+          from pathlib import Path
+          run = json.loads(Path(sys.argv[1]).read_bytes())
+          if (run['head_sha'] != sys.argv[2] or run['status'] != 'completed'
+                  or run['conclusion'] != 'success'):
+              raise ValueError('producer identity or completion differs')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: python313-producer-cli
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PRODUCER_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/harness-producer
+      - name: Prepare pinned tools inside CI only
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          chmod 755 "$RUNNER_TEMP/harness-producer/work/target/release/componentize-py"
+          python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/harness-validation"
+      - name: Build the actual native Harness dispatcher and original module closure
+        run: >-
+          python3 -B tools/python313-producer/build_components.py --harness-native
+          --producer "$RUNNER_TEMP/harness-producer"
+          --validation "$RUNNER_TEMP/harness-validation"
+          --destination "$RUNNER_TEMP/harness-native"
+      - name: Retain actual component and bounded build receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: whole-native-harness-component
+          path: |
+            ${{ runner.temp }}/producer-run.json
+            ${{ runner.temp }}/harness-native/components-build.json
+            ${{ runner.temp }}/harness-native/harness-native/inputs/plan.json
+            ${{ runner.temp }}/harness-native/harness-native/inputs/provenance.json
+            ${{ runner.temp }}/harness-native/harness-native/build/
+            ${{ runner.temp }}/harness-native/harness-native/work/component.build.json
+            ${{ runner.temp }}/harness-native/harness-native/work/generated-bindings/
+            ${{ runner.temp }}/harness-native/harness-native/work/component.wasm
+          if-no-files-found: warn

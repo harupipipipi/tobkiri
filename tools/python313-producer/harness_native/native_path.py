@@ -57,7 +57,8 @@ class PathBridge:
         os_flags: dict[str, int], cwd_binding: str | None = None,
         decode_error: Callable[[Any], BaseException] | None = None,
     ) -> None:
-        if type(scope) is not Scope or flavor not in {"posix", "windows"}:
+        if (type(scope) is not Scope or type(flavor) is not str
+                or flavor not in {"posix", "windows"}):
             raise UnsupportedValue("unsupported native Path context")
         if (type(os_flags) is not dict or "O_RDONLY" not in os_flags
                 or set(os_flags) - {"O_RDONLY", "O_NOFOLLOW"}

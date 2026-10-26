@@ -10,9 +10,40 @@ Release drops a transport hold; it does not close or replace the original input.
 Republication after release issues a fresh ID for that same proxy. Partial
 registration and output encoding failures roll back newly issued holds.
 
-The current original-runtime bootstrap has no admitted native input inventory.
-It therefore reports publication as unavailable rather than returning a fake
-root. Neither an issued ID nor its serialized Scope grants native authority.
+The guest bootstrap now consumes the fixed `bindings.inventory` import before
+loading any original domain module. It validates the invocation Scope, immutable
+source-index checksum, complete module-anchor set and closed path rows. The
+module-local loader installs each Path constructor and native `__file__` before
+executing the unchanged original code object. Its hook remains for lazy imports;
+late binding to previously imported original modules is rejected. True native
+aliases share one proxy; equal lexical paths with different roles do not.
+
+This does not yet supply the original Launcher's admitted native inventory or
+inspection implementation. That typed context must retain the real original
+invocation, actual AppConfig/resource owners and operation policies. No guest
+Scope, source checksum, lexical path or transport ID supplies authority. Missing
+native imports do not fall back to ambient guest filesystem access or invented
+roots. Whole-component initialization and product integration remain incomplete.
+
+`scripts/wasm/stage_harness_native.py` maps the captured original module closure
+and all schema resources into the real import layout, with the actual dispatcher
+as the component entrypoint. `build_components.py --harness-native` selects this
+independent native-only world for the existing isolated CI producer. It exports
+only `runtime` and `transport`, and imports only the fixed native `bindings`
+interface. It does not implement the ordinary Pack lifecycle or gain Core/WASI
+authority. Frozen three/five-Pack plans are unchanged. The build workflow retains
+the exact component, source plan and generated bindings; a successful build is
+not proof of Runtime.init, original methods, native IO or GUI operation.
+
+External cryptography, JSON Schema and packaging dependencies are still explicit
+and not supplied by this stage. Existing genuine Wasm rpds and original pure
+schema/packaging inputs should be reused. Dependency separation may retain the
+complete original DATA bodies while connecting reached crypto/authority work to
+real Rust/Wasm implementations; neither empty classes nor fixed-success adapters
+may replace that work. Source transformation evidence and actual runtime/ABI
+evidence must remain separate. Initialize and execute the same actual component
+through all seventeen original methods before connecting the original product
+reachpoint and retiring its Python/VM implementation.
 
 `harness_native/native_path.py` implements the guest side of the proposed native
 inspection protocol. NativeKit must supply the actual fixed import, native host

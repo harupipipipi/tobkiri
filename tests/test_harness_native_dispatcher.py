@@ -94,7 +94,7 @@ class DispatcherTests(unittest.TestCase):
     def setUp(self) -> None:
         self.runtime = PortableRuntime()
         self.scope = Scope(1, 2, 3, 4)
-        self.dispatcher = Dispatcher(lambda: original(self.runtime))
+        self.dispatcher = Dispatcher(lambda _scope: original(self.runtime))
         self.dispatcher.init(
             wire.dumps({"format": PREFIX + "init.v1", "scope": self.scope.wire()})
         )
@@ -118,7 +118,7 @@ class DispatcherTests(unittest.TestCase):
 
     def test_invalid_init_reinit_and_store_separation_do_not_replace_state(self):
         count = []
-        other = Dispatcher(lambda: count.append(1) or original())
+        other = Dispatcher(lambda _scope: count.append(1) or original())
         with self.assertRaises(NotInitialized):
             other.import_values("{}")
         for scope in (
@@ -160,7 +160,7 @@ class DispatcherTests(unittest.TestCase):
     def test_failed_bootstrap_does_not_commit_or_replace_initialization(self):
         attempts = []
 
-        def bootstrap():
+        def bootstrap(_scope):
             attempts.append(1)
             if len(attempts) == 1:
                 raise ImportError("original native facade is missing")
@@ -234,7 +234,7 @@ class DispatcherTests(unittest.TestCase):
             self.runtime, (RecordType("memory", MemoryError),), (MemoryError,)
         )
         with self.assertRaises(UnsupportedValue):
-            d = Dispatcher(lambda: invalid)
+            d = Dispatcher(lambda _scope: invalid)
             d.init(self.frame("init"))
         invalid = OriginalRuntime(
             self.runtime,
@@ -242,7 +242,7 @@ class DispatcherTests(unittest.TestCase):
             (PrivateError,),
         )
         with self.assertRaises(UnsupportedValue):
-            d = Dispatcher(lambda: invalid)
+            d = Dispatcher(lambda _scope: invalid)
             d.init(self.frame("init"))
 
     def test_import_copy_append_set_describe_release_share_original_objects(self):

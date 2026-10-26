@@ -18,6 +18,54 @@ import fetch_validation_tools as validation
 
 
 class ComponentBuildTests(unittest.TestCase):
+    def test_whole_native_harness_plan_loads_the_real_dispatcher_and_original_sources(self):
+        repo = component_inputs.HERE.parents[1]
+        original_plans = component_inputs.plans(True)
+        previous_path = sys.path[:]
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory).resolve() / 'native-harness'
+            receipt = component_inputs.stage_harness_native(repo, output)
+            sys.path.insert(0, str(repo / 'sdk/python'))
+            try:
+                import build_component as sdk
+
+                plan, _, plan_hash, captured = sdk._verify_plan(output / 'plan.json')
+            finally:
+                sys.path[:] = previous_path
+            self.assertEqual(plan_hash, receipt['plan_sha256'])
+            self.assertEqual(plan['world'], 'harness-native')
+            self.assertEqual(plan['outer_exports'], [
+                'tobkiri-ui:harness-native/runtime@1.0.0',
+                'tobkiri-ui:harness-native/transport@1.0.0',
+            ])
+            self.assertEqual(plan['allowed_imports'], [
+                'tobkiri-native:harness/bindings@1.0.0',
+            ])
+            actual = {str(path): data for path, data in captured}
+            adapter = repo / 'tools/python313-producer/harness_native'
+            self.assertEqual(actual['app.py'], (adapter / 'app.py').read_bytes())
+            self.assertEqual(actual['harness_native/bootstrap.py'],
+                             (adapter / 'bootstrap.py').read_bytes())
+            runtime = ('ecosystem/defaultspack/defaultspack/'
+                       'profile_runtime_composition.py')
+            self.assertEqual(actual[runtime],
+                             (repo / 'tobkiri_runtime' / runtime).read_bytes())
+            self.assertEqual(len([name for name in actual
+                                  if name.startswith('tobkiri_protocol/schemas/')]), 42)
+            tree = ast.parse(actual['harness_native_source_index.py'])
+            index = {n.targets[0].id: ast.literal_eval(n.value)
+                     for n in tree.body if isinstance(n, ast.Assign)}
+            self.assertEqual(len(index['MODULES']), 67)
+            provenance = json.loads((output / 'provenance.json').read_bytes())
+            self.assertFalse(provenance['external_dependencies_staged'])
+            self.assertFalse(provenance['component_init_performed'])
+            self.assertFalse(provenance['native_imports_connected'])
+            self.assertFalse(provenance['production_enabled'])
+            with self.assertRaises(FileExistsError):
+                component_inputs.stage_harness_native(repo, output)
+        self.assertEqual(component_inputs.plans(True), original_plans)
+        self.assertEqual(sys.path, previous_path)
+
     def test_native_stack_world_is_independent_and_original_plans_remain_unchanged(self):
         repo = component_inputs.HERE.parents[1]
         original = component_inputs.plans(True)

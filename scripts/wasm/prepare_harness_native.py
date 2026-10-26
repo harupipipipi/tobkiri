@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 from typing import Any
+from importlib.util import resolve_name
 
 from prepare_gateway_tool_caller import ROOT, _directory, bounded_read
 
@@ -46,6 +47,37 @@ PROTOCOL_ROOT = "tobkiri_runtime/tobkiri_protocol"
 SCHEMA_DIRECTORY = f"{PROTOCOL_ROOT}/schemas"
 SCHEMA_HASHES = f"{PROTOCOL_ROOT}/schema_hashes.json"
 PROJECT_METADATA = "tobkiri_runtime/pyproject.toml"
+CORE_RUNTIME_PACKAGE_INIT = "tobkiri_runtime/core_runtime/__init__.py"
+RUNTIME_V4_RECORD_CACHE = (
+    "tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/"
+    "_record_validation_cache.py"
+)
+HOST_PACKAGE_SOURCES = (
+    "tobkiri_runtime/tobkiri_host/__init__.py",
+    "tobkiri_runtime/tobkiri_host/artifact_compiler.py",
+    "tobkiri_runtime/tobkiri_host/contracts.py",
+    "tobkiri_runtime/tobkiri_host/errors.py",
+    "tobkiri_runtime/tobkiri_host/models.py",
+)
+PROTOCOL_PERSISTENCE_SOURCES = (
+    "tobkiri_runtime/tobkiri_protocol/secure_persistence.py",
+    "tobkiri_runtime/tobkiri_protocol/durability.py",
+    "tobkiri_runtime/tobkiri_protocol/platform_paths.py",
+    "tobkiri_runtime/tobkiri_protocol/windows_private_file.py",
+)
+RUNTIME_IMPORT_CLOSURE_SOURCES = (
+    CORE_RUNTIME_PACKAGE_INIT,
+    "tobkiri_runtime/core_runtime/resolved_profile_scope.py",
+    RUNTIME_V4_RECORD_CACHE,
+    *HOST_PACKAGE_SOURCES,
+    *PROTOCOL_PERSISTENCE_SOURCES,
+)
+# This module is the original native import target. Keep its complete body and
+# eager Python import closure available while its I/O and admission behavior
+# remains an explicit, unconnected native boundary.
+NATIVE_IMPORT_CUSTODY_SOURCES = (
+    "tobkiri_runtime/core_runtime/external_pack_catalog_v4.py",
+)
 EXCEPTION_TRANSPORT = (
     "tools/python313-producer/harness_native/exception_graph.py"
 )
@@ -58,6 +90,8 @@ NATIVE_PATH_ADAPTER = "tools/python313-producer/harness_native/native_path.py"
 DISPATCHER_SOURCES = (
     "tools/python313-producer/harness_native/dispatcher.py",
     "tools/python313-producer/harness_native/bootstrap.py",
+    "tools/python313-producer/harness_native/native_bootstrap.py",
+    "tools/python313-producer/harness_native/native_module_loader.py",
     "tools/python313-producer/harness_native/app.py",
     NATIVE_PATH_ADAPTER,
 )
@@ -221,6 +255,7 @@ _CAPSULE_SOURCE_FILES = (
     DOMAIN_PACKAGE_INIT,
     DEFAULTSPACK_PACKAGE_INIT,
     *PROJECTION_BOUNDARY_MODULES,
+    *RUNTIME_IMPORT_CLOSURE_SOURCES,
     *(f"{PROTOCOL_ROOT}/{name}" for name in PROTOCOL_MODULES),
     SCHEMA_HASHES,
     PROJECT_METADATA,
@@ -455,7 +490,9 @@ def _read_sources() -> dict[str, bytes]:
         *_ROOT_SOURCE_MODULES,
         *_CAPSULE_SOURCE_FILES,
         *(path for path in _DEFERRED_NATIVE_MODULES
-          if path not in PROJECTION_BOUNDARY_MODULES),
+          if path not in PROJECTION_BOUNDARY_MODULES
+          and path not in NATIVE_IMPORT_CUSTODY_SOURCES),
+        *NATIVE_IMPORT_CUSTODY_SOURCES,
         *_NATIVE_KIT_SOURCES,
         *_NATIVE_IO_SOURCES,
         *_NATIVE_IO_TEST_SOURCES,
@@ -464,7 +501,98 @@ def _read_sources() -> dict[str, bytes]:
     )
     if len(paths) != len(set(paths)):
         raise ValueError("source capsule input list contains duplicate paths")
-    return {path: bounded_read(ROOT / path) for path in paths}
+    sources = {path: bounded_read(ROOT / path) for path in paths}
+    _capture_eager_python_import_closure(sources)
+    return sources
+
+
+def _source_module(path: str) -> str:
+    relative = path.removeprefix("tobkiri_runtime/")
+    if relative.endswith("/__init__.py"):
+        return relative[:-len("/__init__.py")].replace("/", ".")
+    return relative[:-3].replace("/", ".") if relative.endswith(".py") else ""
+
+
+def _module_source_path(module: str) -> str | None:
+    """Resolve only Python modules physically present under tobkiri_runtime."""
+    if not module or any(not part.isidentifier() for part in module.split(".")):
+        return None
+    stem = "tobkiri_runtime/" + module.replace(".", "/")
+    for candidate in (f"{stem}/__init__.py", f"{stem}.py"):
+        if (ROOT / candidate).exists():
+            return candidate
+    return None
+
+
+def _module_scope_imports(tree: ast.Module, package: str) -> set[str]:
+    """Find imports executed while a module initializes, excluding function bodies."""
+    modules: set[str] = set()
+
+    def visit(statements: list[ast.stmt]) -> None:
+        for node in statements:
+            if isinstance(node, ast.Import):
+                modules.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                target = (resolve_name("." * node.level + (node.module or ""), package)
+                          if node.level else node.module or "")
+                if target:
+                    modules.add(target)
+                if node.module is None and target:
+                    modules.update(f"{target}.{alias.name}" for alias in node.names)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            elif isinstance(node, ast.If):
+                if not (isinstance(node.test, ast.Name)
+                        and node.test.id == "TYPE_CHECKING"):
+                    visit(node.body)
+                    visit(node.orelse)
+            elif isinstance(node, (ast.Try, ast.TryStar)):
+                visit(node.body)
+                for handler in node.handlers:
+                    visit(handler.body)
+                visit(node.orelse)
+                visit(node.finalbody)
+            elif isinstance(node, (ast.With, ast.AsyncWith, ast.For, ast.AsyncFor,
+                                   ast.While, ast.ClassDef)):
+                visit(node.body)
+                if isinstance(node, (ast.For, ast.AsyncFor, ast.While)):
+                    visit(node.orelse)
+    visit(tree.body)
+    return modules
+
+
+def _capture_eager_python_import_closure(sources: dict[str, bytes]) -> None:
+    """Capture the bounded static module-initialization closure of source roots."""
+    queue = [path for path in sources
+             if path.startswith("tobkiri_runtime/") and path.endswith(".py")]
+    visited: set[str] = set()
+    while queue:
+        path = queue.pop()
+        if path in visited:
+            continue
+        visited.add(path)
+        module = _source_module(path)
+        if not module:
+            continue
+        package = module if path.endswith("/__init__.py") else module.rpartition(".")[0]
+        tree = ast.parse(sources[path], filename=path)
+        for target in sorted(_module_scope_imports(tree, package)):
+            candidate = _module_source_path(target)
+            if candidate is None:
+                continue
+            # Importing a nested module first executes each real parent package
+            # initializer. Retain those exact bodies whenever the repository has
+            # one; namespace packages remain implicit and are not synthesized.
+            parts = target.split(".")
+            for depth in range(1, len(parts)):
+                initializer = "tobkiri_runtime/" + "/".join(parts[:depth]) + "/__init__.py"
+                if (initializer not in sources
+                        and (ROOT / initializer).exists()):
+                    sources[initializer] = bounded_read(ROOT / initializer)
+                    queue.append(initializer)
+            if candidate not in sources:
+                sources[candidate] = bounded_read(ROOT / candidate)
+            queue.append(candidate)
 
 
 def _check_schema_hash_metadata(sources: dict[str, bytes]) -> tuple[str, ...]:
@@ -509,9 +637,20 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
         composition_tree, runtime, resolution_tree,
     )
 
+    stored_source_paths = (
+        *_CAPSULE_SOURCE_FILES,
+        *_ROOT_SOURCE_MODULES,
+        SERVICE_SOURCE,
+        SERVICE_INITIALIZER,
+        *NATIVE_IMPORT_CUSTODY_SOURCES,
+        *(path for path in sources
+          if path.startswith("tobkiri_runtime/") and path.endswith(".py")),
+        *sorted(schema_paths),
+    )
+    stored_source_paths = tuple(dict.fromkeys(stored_source_paths))
     output: dict[str, bytes] = {
         f"source/{path}": sources[path]
-        for path in (*_CAPSULE_SOURCE_FILES, *sorted(schema_paths))
+        for path in stored_source_paths
     }
     definitions: list[dict[str, Any]] = []
     excluded_definitions: list[dict[str, Any]] = []
@@ -625,19 +764,24 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
     for path in sorted(sources):
         stored_as = (
             f"source/{path}"
-            if path in _CAPSULE_SOURCE_FILES or path in schema_paths
+            if path in stored_source_paths
             else None
         )
         role = (
             "selected_original_module" if path in _ROOT_SOURCE_MODULES else
+            "native_import_original_source" if path in NATIVE_IMPORT_CUSTODY_SOURCES else
+            "original_package_initializer" if path in (SERVICE_INITIALIZER,
+                                                           CORE_RUNTIME_PACKAGE_INIT,
+                                                           "tobkiri_runtime/tobkiri_host/__init__.py",
+                                                           DOMAIN_PACKAGE_INIT,
+                                                           DEFAULTSPACK_PACKAGE_INIT) else
+            "original_runtime_module" if path in (SERVICE_SOURCE, *RUNTIME_IMPORT_CLOSURE_SOURCES) else
             "protocol_schema" if path in schema_paths else
             "protocol_schema_metadata" if path == SCHEMA_HASHES else
             "project_metadata" if path == PROJECT_METADATA else
             "native_exception_codec_source" if path in _NATIVE_KIT_SOURCES else
             "native_inspection_adapter_source" if path in _NATIVE_IO_SOURCES else
             "native_inspection_adapter_test_source" if path in _NATIVE_IO_TEST_SOURCES else
-            "mixed_source_with_captured_data_facade"
-            if path in (SERVICE_SOURCE, SERVICE_INITIALIZER) else
             "verbatim_data_with_native_io_boundary"
             if path in PROJECTION_BOUNDARY_MODULES else
             "verbatim_data_dependency" if stored_as is not None else
@@ -650,8 +794,8 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
         "format": "io.tobkiri.harness-native-source-capsule.v1",
         "generator": "scripts/wasm/prepare_harness_native.py",
         "scope": (
-            "verbatim selected Setup DATA source capsule; native imports "
-            "remain hash-pinned and unconnected"
+            "verbatim selected Setup runtime source and eager import closure; "
+            "native I/O and admission imports remain unconnected"
         ),
         "sources": provenance_sources,
         "definitions": definitions,
@@ -771,7 +915,7 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
                 ),
             },
         ],
-        "external_runtime_dependencies": ["jsonschema", "packaging"],
+        "external_runtime_dependencies": ["cryptography", "jsonschema", "packaging"],
         "native_inspection_boundary": {
             "rust_adapter_sources": list(_NATIVE_IO_SOURCES),
             "rust_adapter_test_sources": list(_NATIVE_IO_TEST_SOURCES),

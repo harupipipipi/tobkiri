@@ -65,14 +65,19 @@ class HarnessNativeSourcePackageTests(unittest.TestCase):
 
     def test_all_seventeen_methods_keep_source_bytes_signature_and_body(self) -> None:
         generated = self.package[COMPOSITION_PATH]
+        source_record, = [item for item in self.metadata["sources"]
+                          if item["path"] == prepare.COMPOSITION]
+        self.assertEqual(generated, self.capsule[source_record["stored_as"]])
         tree = ast.parse(generated, filename=COMPOSITION_PATH)
         classes = [node for node in tree.body
                    if isinstance(node, ast.ClassDef)
                    and node.name == "DefaultspackProfileRuntime"]
         self.assertEqual(len(classes), 1)
-        methods = [node for node in classes[0].body
-                   if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        all_methods = [node for node in classes[0].body
+                       if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        methods = [node for node in all_methods if node.name in prepare.METHODS]
         self.assertEqual([node.name for node in methods], list(prepare.METHODS))
+        self.assertGreater(len(all_methods), len(prepare.METHODS))
 
         records = [item for item in self.metadata["definitions"]
                    if item["source_path"] == prepare.COMPOSITION]
@@ -101,6 +106,9 @@ class HarnessNativeSourcePackageTests(unittest.TestCase):
                    and item["symbol"] == "SetupActivationDecision"]
         original = self.capsule[record["stored_as"]]
         generated = self.package[PROFILE_PORT_PATH]
+        source_record, = [item for item in self.metadata["sources"]
+                          if item["path"] == prepare.PROFILE_PORT]
+        self.assertEqual(generated, self.capsule[source_record["stored_as"]])
         generated_tree = ast.parse(generated, filename=PROFILE_PORT_PATH)
         classes = [node for node in generated_tree.body
                    if isinstance(node, ast.ClassDef)
@@ -133,7 +141,7 @@ class HarnessNativeSourcePackageTests(unittest.TestCase):
         self.assertEqual(len(imports), 1)
         self.assertIn("SetupActivationDecision", [alias.name for alias in imports[0].names])
 
-    def test_full_captured_dependencies_are_copied_verbatim_and_native_deps_stay_missing(self) -> None:
+    def test_full_captured_dependencies_are_copied_verbatim_and_native_boundary_stays_open(self) -> None:
         for source in self.metadata["sources"]:
             stored_as = source.get("stored_as")
             if stored_as is None:
@@ -160,17 +168,22 @@ class HarnessNativeSourcePackageTests(unittest.TestCase):
             {item["source_path"] for item in manifest["unconnected_native_dependencies"]
              if item["package_path"] is not None},
             {
+                prepare.NATIVE_IMPORT_CUSTODY_SOURCES[0],
                 "tobkiri_runtime/core_runtime/profile_content_projection.py",
                 "tobkiri_runtime/core_runtime/profile_pack_projection.py",
                 prepare.SERVICE_SOURCE,
             },
         )
-        self.assertTrue(any(
-            item["status"] == "native_source_deferred"
+        self.assertTrue(all(
+            item["status"] == "source_present_but_native_io_or_admission_unconnected"
             for item in manifest["unconnected_native_dependencies"]
         ))
-        self.assertTrue(manifest["external_runtime_dependencies"])
-        self.assertTrue(manifest["uncaptured_package_initializers"])
+        self.assertEqual(manifest["external_runtime_dependencies"],
+                         ["cryptography", "jsonschema", "packaging"])
+        self.assertEqual(manifest["uncaptured_package_initializers"], [])
+        self.assertEqual(manifest["implicit_namespace_packages"], [
+            "ecosystem", "ecosystem.defaultspack",
+        ])
         for item in manifest["unconnected_native_dependencies"]:
             if item["package_path"] is None:
                 self.assertNotIn(f"source-package/{item['source_path']}", self.package)
@@ -179,37 +192,57 @@ class HarnessNativeSourcePackageTests(unittest.TestCase):
         self.assertIn("sys.stdlib_module_names", scan["classification_basis"])
         self.assertTrue(scan["source_paths_are_not_importability_proof"])
         self.assertIn("not prove", scan["stdlib_classification_limit"])
+        self.assertTrue(scan["module_initialization_complete"])
+        self.assertEqual(scan["module_initialization_missing_modules"], [])
         missing_modules = set(scan["missing_modules"])
         self.assertTrue({
-            "core_runtime.external_pack_catalog_v4",
-            "core_runtime.resolved_profile_scope",
-            "tobkiri_host.artifact_compiler",
+            "core_runtime.existing_host_extension_admission_v4",
+            "core_runtime.pack_version_selection",
+            "tobkiri_host.backends",
             "tobkiri_protocol.composition",
             "tobkiri_protocol.migration",
         }.issubset(missing_modules))
+        unresolved = scan["unresolved_imports"]
+        self.assertEqual({row["target"] for row in unresolved}, missing_modules)
+        self.assertTrue(all(row["source_path"].startswith("source-package/tobkiri_runtime/")
+                            and row["line"] > 0 for row in unresolved))
+        self.assertIn("type_checking", {row["phase"] for row in unresolved})
+        self.assertIn("runtime_lazy", {row["phase"] for row in unresolved})
+        self.assertFalse(scan["target_stdlib_importability_proven"])
+        self.assertTrue({"ctypes", "fcntl", "msvcrt"}.issubset(
+            scan["host_stdlib_modules_seen"],
+        ))
+        self.assertTrue(scan["dynamic_import_sites"])
+
+        schema_resources = manifest["schema_resources"]
+        schema_index = json.loads(self.package[
+            f"source-package/{prepare.SCHEMA_HASHES}"
+        ])
+        self.assertEqual({Path(item["path"]).name for item in schema_resources},
+                         set(schema_index["files"]))
+        for resource in schema_resources:
+            content = self.package[resource["path"]]
+            self.assertEqual(resource["sha256"], schema_index["files"][Path(resource["path"]).name])
+            self.assertEqual(resource["bytes"], len(content))
 
     def test_generated_module_extents_bind_original_records_without_importing_modules(self) -> None:
         manifest = json.loads(self.package["source-package/provenance.json"])
         generated_modules = {item["path"]: item for item in manifest["generated_modules"]}
-        self.assertEqual(set(generated_modules), {
-            COMPOSITION_PATH, PROFILE_PORT_PATH,
-            data_facade.SERVICE_PATH, data_facade.INITIALIZER_PATH,
-        })
+        expected_modules = {
+            path for path in self.package
+            if path.startswith("source-package/tobkiri_runtime/") and path.endswith(".py")
+        }
+        self.assertEqual(set(generated_modules), expected_modules)
         for relative, module in generated_modules.items():
             source = self.package[relative]
             self.assertEqual(module["sha256"], hashlib.sha256(source).hexdigest())
             self.assertEqual(module["bytes"], len(source))
+            self.assertEqual(module["source_kind"], "verbatim_original")
+            self.assertEqual(module["source_sha256"], module["sha256"])
             ast.parse(source, filename=relative)
-            extents = ([module["class_extent"]] if "class_extent" in module
-                       else list(module.get("definition_extents", {}).values()))
-            if relative == data_facade.SERVICE_PATH:
-                self.assertEqual(set(module["definition_extents"]),
-                                 {*data_facade.SERVICE_CLASSES, *data_facade.SERVICE_FUNCTIONS})
-            elif relative == data_facade.INITIALIZER_PATH:
-                self.assertNotIn("class", module)
-                self.assertEqual(extents, [])
-            else:
-                self.assertEqual(len(extents), 1)
+            extents = list(module.get("definition_extents", {}).values())
+            if "class_extent" in module:
+                extents.append(module["class_extent"])
             for extent in extents:
                 exact = source[extent["start_byte"]:extent["end_byte"]]
                 self.assertEqual(hashlib.sha256(exact).hexdigest(), extent["sha256"])
@@ -229,9 +262,60 @@ class HarnessNativeSourcePackageTests(unittest.TestCase):
                 sum(len(line) for line in lines[:extent["end_line"]]),
             )
 
+    def test_source_index_is_data_only_exact_and_binds_path_modules(self) -> None:
+        path = "source-package/harness_native_source_index.py"
+        source = self.package[path]
+        tree = ast.parse(source, filename=path)
+        self.assertTrue(all(isinstance(node, ast.Assign) for node in tree.body))
+        values = {
+            node.targets[0].id: ast.literal_eval(node.value)
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+        }
+        self.assertEqual(set(values), {"MODULES", "PATH_MODULES", "INDEX_SHA256"})
+        modules = values["MODULES"]
+        paths = values["PATH_MODULES"]
+        self.assertEqual(list(modules), sorted(modules))
+        self.assertEqual(len({item[0] for item in modules}), len(modules))
+        self.assertEqual({item[1] for item in modules}, {
+            path.removeprefix("source-package/tobkiri_runtime/")
+            for path in self.package
+            if path.startswith("source-package/tobkiri_runtime/")
+            and path.endswith(".py")
+        })
+        for module, runtime_path, digest in modules:
+            package_path = f"source-package/tobkiri_runtime/{runtime_path}"
+            self.assertEqual(hashlib.sha256(self.package[package_path]).hexdigest(), digest)
+        actual_path_modules = []
+        for module, runtime_path, _digest in modules:
+            package_path = f"source-package/tobkiri_runtime/{runtime_path}"
+            tree = ast.parse(self.package[package_path], filename=package_path)
+            if any(
+                (isinstance(node, ast.Import)
+                 and any(alias.name == "pathlib" or alias.name.startswith("pathlib.")
+                         for alias in node.names))
+                or (isinstance(node, ast.ImportFrom)
+                    and (node.module == "pathlib"
+                         or (node.module or "").startswith("pathlib.")))
+                for node in ast.walk(tree)
+            ):
+                actual_path_modules.append(module)
+        self.assertEqual(list(paths), sorted(actual_path_modules))
+        canonical = json.dumps(
+            {"MODULES": modules, "PATH_MODULES": paths},
+            ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":"),
+        ).encode("utf-8")
+        self.assertEqual(values["INDEX_SHA256"], hashlib.sha256(canonical).hexdigest())
+        manifest = json.loads(self.package["source-package/provenance.json"])
+        self.assertEqual(manifest["source_index"]["index_sha256"], values["INDEX_SHA256"])
+
     def test_service_data_classes_and_launch_helper_keep_original_bytes_and_aliases(self) -> None:
         manifest = json.loads(self.package["source-package/provenance.json"])
         original = prepare.bounded_read(ROOT / prepare.SERVICE_SOURCE)
+        service_path = f"source-package/{prepare.SERVICE_SOURCE}"
+        self.assertEqual(self.package[service_path], original)
         service_records = [d for d in manifest["definitions"]
                            if d["source_path"] == prepare.SERVICE_SOURCE]
         self.assertEqual({r["symbol"] for r in service_records}, {
@@ -245,43 +329,49 @@ class HarnessNativeSourcePackageTests(unittest.TestCase):
                 extent["start_byte"]:extent["end_byte"]]
             self.assertEqual(generated_bytes, original_bytes)
             self.assertEqual(hashlib.sha256(original).hexdigest(), record["source_module_sha256"])
-        tree = ast.parse(self.package[data_facade.SERVICE_PATH])
-        self.assertEqual([n.name for n in tree.body if isinstance(n, ast.ClassDef)],
-                         list(prepare.SERVICE_DATA_CLASSES))
-        self.assertFalse(any(isinstance(n, ast.ClassDef) and n.name in {
-            "BundledCatalog", "ResolvedDefaultProfile", "ProfileResolutionDenied", "ActivationStore",
-        } for n in ast.walk(tree)))
+        tree = ast.parse(self.package[service_path])
+        class_names = [n.name for n in tree.body if isinstance(n, ast.ClassDef)]
+        self.assertIn("ActivationStore", class_names)
+        self.assertIn("ActiveDefaultProfile", class_names)
+        self.assertGreater(len(class_names), len(prepare.SERVICE_DATA_CLASSES))
         reexports, = [n for n in tree.body if isinstance(n, ast.ImportFrom)
                       and n.module == "profile_resolution" and n.level == 2]
         self.assertEqual([(n.name, n.asname) for n in reexports.names],
                          [(n, n) for n in data_facade.RESOLUTION_EXPORTS])
-        initializer = ast.parse(self.package[data_facade.INITIALIZER_PATH])
+        initializer_path = f"source-package/{prepare.SERVICE_INITIALIZER}"
+        self.assertEqual(self.package[initializer_path],
+                         prepare.bounded_read(ROOT / prepare.SERVICE_INITIALIZER))
+        initializer = ast.parse(self.package[initializer_path])
         reexports, = [n for n in initializer.body if isinstance(n, ast.ImportFrom)]
         self.assertEqual(reexports.module, "service")
         self.assertEqual(reexports.level, 1)
-        self.assertEqual([n.name for n in reexports.names], list(data_facade.DATA_EXPORTS))
-        self.assertNotIn("ActivationStore", [n.name for n in reexports.names])
-        self.assertFalse(any(isinstance(n, (ast.ClassDef, ast.FunctionDef))
-                             for n in initializer.body))
+        self.assertIn("ActivationStore", [n.name for n in reexports.names])
+        self.assertEqual([n.name for n in reexports.names], list(data_facade.PACKAGE_EXPORTS))
+        self.assertEqual(
+            ast.literal_eval(initializer.body[-1].value), list(data_facade.PACKAGE_EXPORTS),
+        )
 
     def test_service_initializer_custody_and_remaining_native_gap_are_explicit(self) -> None:
         manifest = json.loads(self.package["source-package/provenance.json"])
-        facade = manifest["service_data_facade"]
+        facade = manifest["original_service_package"]
         path = facade["original_initializer_preserved_as"]
+        self.assertEqual(path, f"source-package/{prepare.SERVICE_INITIALIZER}")
         self.assertEqual(self.package[path], prepare.bounded_read(ROOT / prepare.SERVICE_INITIALIZER))
-        self.assertTrue(path.endswith(".txt"))
         self.assertEqual(facade["unconnected_native_package_exports"], ["ActivationStore"])
+        self.assertTrue(facade["complete_original_modules_staged"])
+        self.assertFalse(facade["facade_modules_used_for_execution"])
         for key in ("native_activation_state_in_guest", "original_class_aliases_executed",
                     "launch_selector_wit_connected", "whole_service_compatible"):
             self.assertIs(facade[key], False)
         self.assertIs(facade["native_state_transfer"]["connected"], False)
         for original in (prepare.SERVICE_SOURCE, prepare.SERVICE_INITIALIZER):
             row, = [r for r in manifest["sources"] if r["path"] == original]
-            self.assertIsNone(row["package_path"])
-            self.assertEqual(row["generated_data_facade_path"], f"source-package/{original}")
+            self.assertEqual(row["package_path"], f"source-package/{original}")
+            self.assertFalse(row["native_import_source"])
         service, = [r for r in manifest["unconnected_native_dependencies"]
                     if r["source_path"] == prepare.SERVICE_SOURCE]
-        self.assertEqual(service["status"], "original_data_facade_native_exports_unconnected")
+        self.assertEqual(service["status"],
+                         "source_present_but_native_io_or_admission_unconnected")
         self.assertNotIn("ecosystem.defaultspack.domain.runtime_v4.service",
                          manifest["dependency_scan"]["missing_modules"])
         self.assertFalse(manifest["dependency_closure_complete"])
@@ -307,14 +397,14 @@ class HarnessNativeSourcePackageTests(unittest.TestCase):
                 record["source_end_byte"] = record["source_start_byte"] + len(changed)
                 record["source_end_line"] = record["source_start_line"] + len(changed.splitlines()) - 1
                 _rehashed_metadata(capsule, metadata)
-                with self.assertRaisesRegex(ValueError, "original (active DATA|service DATA|service package)"):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "(definition (extent differs from source|bytes differ from source extent)|original (active DATA|service DATA|service package))",
+                ):
                     assemble(capsule)
 
-    def test_generated_class_contains_no_host_registration_or_extra_authority_objects(self) -> None:
+    def test_original_class_keeps_its_module_imports_and_contains_no_fake_authority_objects(self) -> None:
         forbidden_names = {
-            "register_profile_runtime",
-            "install_defaultspack_profile_runtime",
-            "_PROFILE_RUNTIME",
             "SimpleNamespace",
             "FakeAuthority",
         }
@@ -326,14 +416,19 @@ class HarnessNativeSourcePackageTests(unittest.TestCase):
         runtime, = [node for node in composition.body
                     if isinstance(node, ast.ClassDef)
                     and node.name == "DefaultspackProfileRuntime"]
-        self.assertEqual(
-            [node.name for node in runtime.body if isinstance(node, ast.FunctionDef)],
-            list(prepare.METHODS),
-        )
+        methods = [node.name for node in runtime.body if isinstance(node, ast.FunctionDef)]
+        self.assertEqual(methods, list(prepare._EXPECTED_RUNTIME_CLASS_METHODS))
         self.assertEqual(
             [node.name for node in trees[0].body if isinstance(node, ast.ClassDef)],
             ["DefaultspackProfileRuntime"],
         )
+        self.assertTrue(any(isinstance(node, ast.FunctionDef)
+                            and node.name == "install_defaultspack_profile_runtime"
+                            for node in trees[0].body))
+        self.assertTrue(any(isinstance(node, ast.Call)
+                            and isinstance(node.func, ast.Name)
+                            and node.func.id == "register_profile_runtime"
+                            for node in ast.walk(composition)))
 
     def test_tampered_missing_reordered_and_bad_digest_capsules_fail_closed(self) -> None:
         bad_digest = dict(self.capsule)
@@ -371,12 +466,35 @@ class HarnessNativeSourcePackageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "required source record is missing"):
             assemble(missing_source_record)
 
+        missing_eager_module = dict(self.capsule)
+        missing_eager_module.pop(
+            "source/tobkiri_runtime/tobkiri_host/artifact_compiler.py",
+        )
+        with self.assertRaisesRegex(ValueError, "stored source is missing"):
+            assemble(missing_eager_module)
+
+        changed_schema = dict(self.capsule)
+        schema_metadata = json.loads(changed_schema["provenance.json"])
+        schema_record, = [record for record in schema_metadata["sources"]
+                          if record["path"].endswith("/common_v1.schema.json")]
+        schema_source_key = schema_record["stored_as"]
+        changed_schema[schema_source_key] += b"\n"
+        schema_record["bytes"] = len(changed_schema[schema_source_key])
+        schema_record["sha256"] = hashlib.sha256(
+            changed_schema[schema_source_key],
+        ).hexdigest()
+        _rehashed_metadata(changed_schema, schema_metadata)
+        with self.assertRaisesRegex(ValueError, "differs from its hash pin"):
+            assemble(changed_schema)
+
         tampered_method = dict(self.capsule)
         method_path = "definitions/profile_runtime/setup_listing.py"
         tampered_method[method_path] = tampered_method[method_path].replace(
             b"review_required", b"changed_value____", 1,
         )
-        with self.assertRaisesRegex(ValueError, "definition bytes differ from their record"):
+        with self.assertRaisesRegex(
+            ValueError, "definition bytes differ from (their record|source extent)"
+        ):
             assemble(tampered_method)
 
         reordered = dict(self.capsule)

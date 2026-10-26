@@ -198,11 +198,14 @@ class HarnessNativeSourceTests(unittest.TestCase):
             "defaultspack_profile_bundle_root", "defaultspack_host_resource_root",
             "install_defaultspack_profile_runtime",
         ])
-        self.assertNotIn(
-            f"source/{prepare.COMPOSITION}", names,
-        )
-        self.assertFalse(any(path.endswith("runtime_v4/service.py") for path in names))
-        self.assertFalse(any(path.endswith("external_pack_catalog_v4.py") for path in names))
+        for path in (prepare.COMPOSITION, prepare.PROFILE_PORT,
+                     prepare.SERVICE_SOURCE, prepare.SERVICE_INITIALIZER,
+                     *prepare.NATIVE_IMPORT_CUSTODY_SOURCES):
+            self.assertIn(f"source/{path}", names)
+            self.assertEqual(files[f"source/{path}"], prepare.bounded_read(ROOT / path))
+        closure_paths = {record["path"] for record in provenance["sources"]}
+        self.assertIn("tobkiri_runtime/tobkiri_host/artifact_compiler.py", closure_paths)
+        self.assertIn("tobkiri_runtime/tobkiri_protocol/secure_persistence.py", closure_paths)
         self.assertEqual({path for path in names if path.endswith(".wit")},
                          {f"source/{prepare.NATIVE_WIT}", f"source/{prepare.NATIVE_BINDINGS_WIT}"})
         self.assertFalse(any(path.endswith(".wasm") for path in names))
@@ -230,11 +233,11 @@ class HarnessNativeSourceTests(unittest.TestCase):
                 self.assertEqual(record["role"], "verbatim_data_with_native_io_boundary")
                 self.assertEqual(files[record["stored_as"]], prepare.bounded_read(ROOT / path))
             elif path == prepare.SERVICE_SOURCE:
-                self.assertEqual(record["role"], "mixed_source_with_captured_data_facade")
-                self.assertNotIn("stored_as", record)
+                self.assertEqual(record["role"], "original_runtime_module")
+                self.assertEqual(files[record["stored_as"]], prepare.bounded_read(ROOT / path))
             else:
-                self.assertEqual(record["role"], "deferred_native_adapter_source")
-                self.assertNotIn("stored_as", record)
+                self.assertEqual(record["role"], "native_import_original_source")
+                self.assertEqual(files[record["stored_as"]], prepare.bounded_read(ROOT / path))
 
     def test_metadata_hash_and_schema_inventory_bind_all_fixed_source_bytes(self) -> None:
         files = prepare.captured()
@@ -277,11 +280,13 @@ class HarnessNativeSourceTests(unittest.TestCase):
                 self.assertEqual(files[record["stored_as"]], prepare.bounded_read(
                     ROOT / item["source_module_path"]))
             elif item["source_module_path"] == prepare.SERVICE_SOURCE:
-                self.assertEqual(record["role"], "mixed_source_with_captured_data_facade")
-                self.assertNotIn("stored_as", record)
+                self.assertEqual(record["role"], "original_runtime_module")
+                self.assertEqual(files[record["stored_as"]], prepare.bounded_read(
+                    ROOT / item["source_module_path"]))
             else:
-                self.assertEqual(record["role"], "deferred_native_adapter_source")
-                self.assertNotIn("stored_as", record)
+                self.assertEqual(record["role"], "native_import_original_source")
+                self.assertEqual(files[record["stored_as"]], prepare.bounded_read(
+                    ROOT / item["source_module_path"]))
 
         adapters = {
             item.get("function"): item

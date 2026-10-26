@@ -61,7 +61,7 @@ class NativeInputPublicationTests(unittest.TestCase):
     def make(self, inputs, records=None):
         if records is None:
             records = (RecordType("bound-path", OpaqueProxy, native_binding=True),)
-        dispatcher = Dispatcher(lambda: OriginalRuntime(object(), records, (), inputs))
+        dispatcher = Dispatcher(lambda _scope: OriginalRuntime(object(), records, (), inputs))
         dispatcher.init(self.frame("init"))
         return dispatcher
 
@@ -101,7 +101,7 @@ class NativeInputPublicationTests(unittest.TestCase):
             self.registry.reference(old)
 
     def test_closed_frame_rejects_selection_scope_and_preinit_without_publication(self):
-        other = Dispatcher(lambda: self.fail("must not bootstrap on publication"))
+        other = Dispatcher(lambda _scope: self.fail("must not bootstrap on publication"))
         with self.assertRaises(NotInitialized):
             other.native_inputs(self.frame())
         for payload in (
@@ -135,7 +135,7 @@ class NativeInputPublicationTests(unittest.TestCase):
              (RecordType("bound-path", OpaqueProxy, native_binding=True),)),
         ):
             dispatcher = Dispatcher(
-                lambda: OriginalRuntime(object(), records, (), inputs)
+                lambda _scope: OriginalRuntime(object(), records, (), inputs)
             )
             with self.assertRaises(UnsupportedValue):
                 dispatcher.init(self.frame("init"))

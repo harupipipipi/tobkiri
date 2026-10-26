@@ -159,6 +159,39 @@ def stage_harness_setup(repo: Path, destination: Path) -> dict:
             'source_files': plan['sources'], 'files': files}
 
 
+def stage_harness_native(repo: Path, destination: Path) -> dict:
+    """Stage the actual native Harness, separate from every frozen Pack plan."""
+    if repo != HERE.parents[1] or repo.resolve() != repo:
+        raise ValueError('physical current repository required')
+    previous_path = sys.path[:]
+    sys.path.insert(0, str(repo / 'scripts/wasm'))
+    try:
+        module = importlib.import_module('stage_harness_native')
+        if (Path(module.__file__).resolve() != repo / 'scripts/wasm/stage_harness_native.py'
+                or module.ROOT != repo):
+            raise ValueError('native Harness stager belongs to another repository')
+        plan = module.stage(destination)
+    finally:
+        sys.path[:] = previous_path
+    files = inventory(destination)
+    raw = (destination / 'plan.json').read_bytes()
+    if (json.loads(raw) != plan or plan['world'] != 'harness-native'
+            or plan['outer_exports'] != [
+                'tobkiri-ui:harness-native/runtime@1.0.0',
+                'tobkiri-ui:harness-native/transport@1.0.0',
+            ] or plan['allowed_imports'] != [
+                'tobkiri-native:harness/bindings@1.0.0',
+            ] or set(files) != {item['source'] for item in plan['sources']} | {
+                'plan.json', 'provenance.json',
+            }):
+        raise ValueError('native Harness source or boundary changed after staging')
+    for item in plan['sources']:
+        if files[item['source']]['sha256'] != item['sha256']:
+            raise ValueError('native Harness source changed after staging')
+    return {'plan_sha256': hashlib.sha256(raw).hexdigest(),
+            'source_files': plan['sources'], 'files': files}
+
+
 def stage_native_input_stack(repo: Path, destination: Path) -> dict:
     """Stage the separate synchronous-stack prerequisite, never an ordinary Pack."""
     if repo != HERE.parents[1] or repo.resolve() != repo:

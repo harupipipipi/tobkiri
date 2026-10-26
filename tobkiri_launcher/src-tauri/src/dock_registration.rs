@@ -90,6 +90,7 @@ fn with_defaultspack_launch_lock<T>(
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub(crate) struct DefaultspackDesktopMetadata {
     entrypoint: PathBuf,
     argv: Vec<OsString>,

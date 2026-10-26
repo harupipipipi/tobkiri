@@ -4491,13 +4491,7 @@ mod tests {
             crate::dock_registration::read_defaultspack_desktop_metadata_with_core(&config, &core)
                 .await
                 .unwrap();
-        assert_eq!(through_core.entrypoint, original.entrypoint);
-        assert_eq!(through_core.app_working_dir, original.app_working_dir);
-        assert_eq!(through_core.frontend_entry, original.frontend_entry);
-        assert_eq!(
-            through_core.host_contract_contributions,
-            original.host_contract_contributions
-        );
+        assert_eq!(through_core, original);
         assert!(core.profile_ids().unwrap().is_empty());
 
         // Mutate after the actual resolution: no second resolver or copied

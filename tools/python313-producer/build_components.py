@@ -16,6 +16,7 @@ import runtime_inputs
 
 def run(source: Path | None, producer: Path, validation: Path, destination: Path,
         *, all_five: bool = False, harness_setup: bool = False,
+        harness_native: bool = False,
         native_input_stack: bool = False,
         native_input_stack_import_diagnostics: bool = False) -> None:
     """Build each exact original Pack separately with no production activation."""
@@ -24,6 +25,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
     if sum((
             all_five,
             harness_setup,
+            harness_native,
             native_input_stack,
             native_input_stack_import_diagnostics,
     )) > 1:
@@ -80,6 +82,8 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         )
     elif native_input_stack:
         receipt_format = 'tobkiri.python313-native-input-stack-candidate/1'
+    elif harness_native:
+        receipt_format = 'tobkiri.python313-native-harness-candidate/1'
     elif harness_setup:
         receipt_format = 'tobkiri.python313-setup-candidate/1'
     else:
@@ -102,6 +106,8 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         component_names = ('harness-input-stack-import-diagnostics',)
     elif native_input_stack:
         component_names = ('harness-input-stack',)
+    elif harness_native:
+        component_names = ('harness-native',)
     elif harness_setup:
         component_names = ('harness-setup',)
     else:
@@ -118,6 +124,8 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                 if native_input_stack_import_diagnostics
                 else component_inputs.stage_native_input_stack(repo, inputs)
                 if native_input_stack
+                else component_inputs.stage_harness_native(repo, inputs)
+                if harness_native
                 else component_inputs.stage_harness_setup(repo, inputs)
                 if harness_setup
                 else component_inputs.stage(repo, name, inputs)
@@ -130,6 +138,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                 'plan_sha256': plan_receipt['plan_sha256'],
                 'retain_generated_bindings': (
                     native_input_stack or native_input_stack_import_diagnostics
+                    or harness_native
                 )}) + '\n')
             identities[str(control)] = fingerprint(control)
             work = output / 'work'
@@ -175,6 +184,7 @@ if __name__ == '__main__':
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--all-five', action='store_true')
     mode.add_argument('--harness-setup', action='store_true')
+    mode.add_argument('--harness-native', action='store_true')
     mode.add_argument('--native-input-stack', action='store_true')
     mode.add_argument('--native-input-stack-import-diagnostics', action='store_true')
     for name in ('producer', 'validation', 'destination'):

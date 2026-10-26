@@ -28,6 +28,8 @@ _SETUP_CONTRACT_SOURCE = (
     "tobkiri_runtime/ecosystem/defaultspack/defaultspack/setup_contract.py"
 )
 _SCHEMA_HASHES_SOURCE = "tobkiri_runtime/tobkiri_protocol/schema_hashes.json"
+_SCHEMA_DIRECTORY = "tobkiri_runtime/tobkiri_protocol/schemas"
+_NATIVE_IMPORT_SOURCE_ROLE = "native_import_original_source"
 _COMPOSITION_PATH = (
     "source-package/tobkiri_runtime/ecosystem/defaultspack/defaultspack/"
     "profile_runtime_composition.py"
@@ -59,10 +61,22 @@ _REQUIRED_STORED_SOURCES = (
     _CANONICAL_SOURCE,
     _SETUP_CONTRACT_SOURCE,
     _SCHEMA_HASHES_SOURCE,
+    "tobkiri_runtime/core_runtime/__init__.py",
+    "tobkiri_runtime/core_runtime/resolved_profile_scope.py",
+    "tobkiri_runtime/tobkiri_host/__init__.py",
+    "tobkiri_runtime/tobkiri_host/artifact_compiler.py",
+    "tobkiri_runtime/tobkiri_host/contracts.py",
+    "tobkiri_runtime/tobkiri_host/errors.py",
+    "tobkiri_runtime/tobkiri_host/models.py",
+    "tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/_record_validation_cache.py",
+    "tobkiri_runtime/tobkiri_protocol/secure_persistence.py",
+    "tobkiri_runtime/tobkiri_protocol/durability.py",
+    "tobkiri_runtime/tobkiri_protocol/platform_paths.py",
+    "tobkiri_runtime/tobkiri_protocol/windows_private_file.py",
 )
-_MISSING_PACKAGE_INITIALIZERS = (
-    "tobkiri_runtime/ecosystem/__init__.py",
-    "tobkiri_runtime/ecosystem/defaultspack/__init__.py",
+_IMPLICIT_NAMESPACE_PACKAGES = (
+    "ecosystem",
+    "ecosystem.defaultspack",
 )
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -178,9 +192,13 @@ def _validate_capsule(
             if (not isinstance(start_line, int) or not isinstance(end_line, int)
                     or start_line <= 0 or end_line < start_line
                     or sum(map(len, lines[:start_line - 1])) != start
-                    or sum(map(len, lines[:end_line])) != end
-                    or content != original):
+                    or sum(map(len, lines[:end_line])) != end):
                 raise ValueError(f"definition extent differs from source: {symbol}")
+            if stored_as == source_record["stored_as"]:
+                if content != original:
+                    raise ValueError(f"whole-module definition source changed: {symbol}")
+            elif content != excerpt:
+                raise ValueError(f"definition bytes differ from source extent: {symbol}")
         else:
             excerpt = content
         if len(excerpt) != size or _digest(excerpt) != digest:
@@ -189,6 +207,42 @@ def _validate_capsule(
     if set(capsule) != expected_files:
         raise ValueError("capsule files do not match the source and definition records")
     return sources
+
+
+def _validate_schema_resources(
+    capsule: Mapping[str, bytes], sources: dict[str, dict[str, Any]],
+) -> dict[str, str]:
+    """Bind every packaged protocol schema to the original hash inventory."""
+    record = sources.get(_SCHEMA_HASHES_SOURCE)
+    if record is None or record.get("stored_as") is None:
+        raise ValueError("protocol schema hash source is missing")
+    try:
+        metadata = json.loads(capsule[record["stored_as"]])
+        pins = metadata["files"]
+    except (KeyError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("protocol schema hash source is malformed") from error
+    if not isinstance(pins, dict) or any(
+        not isinstance(name, str) or not isinstance(digest, str)
+        for name, digest in pins.items()
+    ):
+        raise ValueError("protocol schema hash inventory is malformed")
+    prefix = _SCHEMA_DIRECTORY + "/"
+    schemas = {
+        path.rsplit("/", 1)[-1]: row
+        for path, row in sources.items()
+        if path.startswith(prefix) and path.endswith(".schema.json")
+    }
+    if set(schemas) != set(pins):
+        raise ValueError("protocol schema source inventory differs from its hash index")
+    for name, row in schemas.items():
+        stored_as = row.get("stored_as")
+        content = capsule.get(stored_as) if isinstance(stored_as, str) else None
+        if not isinstance(content, bytes):
+            raise ValueError(f"protocol schema source is missing: {name}")
+        actual = "sha256:" + _digest(content)
+        if pins[name] != actual:
+            raise ValueError(f"protocol schema source differs from its hash pin: {name}")
+    return {name: str(pins[name]) for name in sorted(pins)}
 
 
 def _definition_bytes(
@@ -266,10 +320,17 @@ def _validate_methods_and_decision(
     for path in _REQUIRED_STORED_SOURCES:
         if sources[path].get("stored_as") is None:
             raise ValueError(f"required verbatim source is missing: {path}")
+    for path in (_COMPOSITION_SOURCE, _PROFILE_PORT_SOURCE,
+                 "tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/service.py",
+                 "tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/__init__.py"):
+        if sources[path].get("stored_as") is None:
+            raise ValueError(f"complete original module source is missing: {path}")
     for item in metadata.get("native_imports", []):
         path = item.get("source_module_path") if isinstance(item, dict) else None
         if path is not None and path not in sources:
             raise ValueError(f"native import source record is missing: {path}")
+        if path is not None and sources[path].get("stored_as") is None:
+            raise ValueError(f"native import original source is missing: {path}")
 
     selected: list[tuple[str, bytes, dict[str, Any]]] = []
     for name in _METHODS:
@@ -307,34 +368,11 @@ def _validate_methods_and_decision(
     return selected, decision_bytes, decision_record
 
 
-def _generated_modules(
+def _original_modules(
     methods: list[tuple[str, bytes, dict[str, Any]]], decision_bytes: bytes,
+    composition: bytes, port: bytes,
 ) -> tuple[bytes, bytes]:
-    preamble = (
-        b"from __future__ import annotations\n\n"
-        b"from pathlib import Path\n"
-        b"from typing import TYPE_CHECKING, Any, Mapping\n\n"
-        b"from core_runtime.profile_runtime_port import SetupActivationDecision\n"
-        b"from tobkiri_protocol.canonical import canonical_digest\n\n"
-        b"if TYPE_CHECKING:\n"
-        b"    from core_runtime.bundled_artifact_retention_v4 import BundledArtifactOrigin\n"
-        b"    from ecosystem.defaultspack.domain.runtime_v4.service import (\n"
-        b"        ActivationStore,\n"
-        b"        ActiveDefaultProfile,\n"
-        b"        BundledCatalog,\n"
-        b"    )\n\n\n"
-    )
-    composition = (
-        preamble + b"class DefaultspackProfileRuntime:\n"
-        + b"\n".join(raw for _name, raw, _record_item in methods)
-    )
-    port = (
-        b"from __future__ import annotations\n\n"
-        b"from dataclasses import dataclass\n"
-        b"from pathlib import Path\n"
-        b"from typing import Any, Mapping\n\n"
-        + decision_bytes
-    )
+    """Validate and retain complete original modules, including their imports."""
     try:
         composition_tree = ast.parse(composition, filename=_COMPOSITION_PATH)
         port_tree = ast.parse(port, filename=_PROFILE_PORT_PATH)
@@ -342,32 +380,29 @@ def _generated_modules(
         raise ValueError("assembled source module does not parse") from error
 
     runtime = _one_class(composition_tree, _RUNTIME_SYMBOL, _COMPOSITION_PATH)
-    generated_methods = [item for item in runtime.body
-                         if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))]
-    if [item.name for item in generated_methods] != list(_METHODS):
-        raise ValueError("assembled method order or inventory changed")
-    for (name, raw, _record_item), generated in zip(methods, generated_methods, strict=True):
+    original_methods = [item for item in runtime.body
+                        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    selected_methods = [item for item in original_methods if item.name in _METHODS]
+    if [item.name for item in selected_methods] != list(_METHODS):
+        raise ValueError("original selected method order or inventory changed")
+    for (name, raw, _record_item), original_node in zip(
+        methods, selected_methods, strict=True,
+    ):
         original = _method_node(raw, name)
-        if ast.dump(original, include_attributes=False) != ast.dump(
-            generated, include_attributes=False,
-        ) or _extent(composition, generated)["sha256"] != _digest(raw):
-            raise ValueError(f"assembled method differs from its source: {name}")
+        if (ast.dump(original, include_attributes=False) != ast.dump(
+                original_node, include_attributes=False,
+        ) or _extent(composition, original_node)["sha256"] != _digest(raw)):
+            raise ValueError(f"original selected method differs from its source: {name}")
 
     decision = _one_class(port_tree, _DECISION_SYMBOL, _PROFILE_PORT_PATH)
-    original_tree = ast.parse(decision_bytes, filename=_DECISION_SYMBOL)
-    original_decision = _one_class(original_tree, _DECISION_SYMBOL, _DECISION_SYMBOL)
-    if (ast.dump(decision, include_attributes=False)
-            != ast.dump(original_decision, include_attributes=False)):
-        raise ValueError("assembled SetupActivationDecision differs from its source")
+    if _extent(port, decision)["sha256"] != _digest(decision_bytes):
+        raise ValueError("original SetupActivationDecision differs from its source record")
     decision_imports = [item for item in composition_tree.body
                         if isinstance(item, ast.ImportFrom)
                         and item.module == "core_runtime.profile_runtime_port"
                         and any(alias.name == _DECISION_SYMBOL for alias in item.names)]
-    if len(decision_imports) != 1 or any(
-        isinstance(item, ast.ClassDef) and item.name == _DECISION_SYMBOL
-        for item in composition_tree.body
-    ):
-        raise ValueError("composition must import one shared SetupActivationDecision class")
+    if len(decision_imports) != 1:
+        raise ValueError("original composition must import one shared SetupActivationDecision class")
     return composition, port
 
 
@@ -376,6 +411,62 @@ def _module_name(path: str) -> str:
     if relative.endswith("/__init__.py"):
         return relative[:-len("/__init__.py")].replace("/", ".")
     return relative[:-3].replace("/", ".") if relative.endswith(".py") else ""
+
+
+def _module_initialization_imports(
+    tree: ast.Module, package: str,
+) -> list[tuple[str, int]]:
+    """Return imports executed at module initialization, excluding type-only code."""
+    return [
+        (target, line)
+        for target, line, phase in _import_occurrences(tree, package)
+        if phase == "module_initialization"
+    ]
+
+
+def _import_occurrences(
+    tree: ast.Module, package: str,
+) -> list[tuple[str, int, str]]:
+    """Find direct, lazy, conditional, and type-only import occurrences."""
+    result: list[tuple[str, int, str]] = []
+
+    def visit(statements: list[ast.stmt], phase: str) -> None:
+        for node in statements:
+            if isinstance(node, ast.Import):
+                result.extend((alias.name, node.lineno, phase) for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                target = (resolve_name("." * node.level + (node.module or ""), package)
+                          if node.level else node.module or "")
+                if target:
+                    result.append((target, node.lineno, phase))
+                if node.module is None and target:
+                    result.extend((f"{target}.{alias.name}", node.lineno, phase)
+                                  for alias in node.names)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                visit(node.body, "runtime_lazy")
+            elif isinstance(node, ast.If):
+                if (isinstance(node.test, ast.Name)
+                        and node.test.id == "TYPE_CHECKING"):
+                    visit(node.body, "type_checking")
+                    visit(node.orelse, phase)
+                else:
+                    visit(node.body, "conditional_initialization"
+                          if phase == "module_initialization" else phase)
+                    visit(node.orelse, "conditional_initialization"
+                          if phase == "module_initialization" else phase)
+            elif isinstance(node, (ast.Try, ast.TryStar)):
+                visit(node.body, phase)
+                for handler in node.handlers:
+                    visit(handler.body, phase)
+                visit(node.orelse, phase)
+                visit(node.finalbody, phase)
+            elif isinstance(node, (ast.With, ast.AsyncWith, ast.For, ast.AsyncFor,
+                                   ast.While, ast.ClassDef)):
+                visit(node.body, phase)
+                if isinstance(node, (ast.For, ast.AsyncFor, ast.While)):
+                    visit(node.orelse, phase)
+    visit(tree.body, "module_initialization")
+    return result
 
 
 def _dependency_scan(files: dict[str, bytes], external: list[str]) -> dict[str, Any]:
@@ -390,21 +481,63 @@ def _dependency_scan(files: dict[str, bytes], external: list[str]) -> dict[str, 
                  for module in modules for i in range(1, len(module.split(".")) + 1)}
 
     missing = set()
+    initialization_missing = set()
+    initialization_imports = []
+    unresolved_imports = []
+    dynamic_import_sites = []
+    stdlib_imports = set()
     for module, (path, content) in modules.items():
         tree = ast.parse(content, filename=path)
         package = module if path.endswith("/__init__.py") else module.rpartition(".")[0]
+        for target, line, phase in _import_occurrences(tree, package):
+            if target.split(".", 1)[0] in sys.stdlib_module_names:
+                stdlib_imports.add(target.split(".", 1)[0])
+            if (target not in available
+                    and target.split(".", 1)[0] not in sys.stdlib_module_names
+                    and target.split(".", 1)[0] not in external):
+                missing.add(target)
+                unresolved_imports.append({
+                    "source_path": path,
+                    "module": module,
+                    "target": target,
+                    "line": line,
+                    "phase": phase,
+                })
+        for target, line in _module_initialization_imports(tree, package):
+            row = {"source_path": path, "module": module, "target": target, "line": line}
+            initialization_imports.append(row)
+            if (target not in available
+                    and target.split(".", 1)[0] not in sys.stdlib_module_names
+                    and target.split(".", 1)[0] not in external):
+                initialization_missing.add(target)
         for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                targets = [alias.name for alias in node.names]
-            elif isinstance(node, ast.ImportFrom):
-                targets = [resolve_name("." * node.level + (node.module or ""), package)
-                           if node.level else node.module or ""]
-            else:
+            if not isinstance(node, ast.Call):
                 continue
-            missing.update(target for target in targets
-                           if target not in available
-                           and target.split(".", 1)[0] not in sys.stdlib_module_names
-                           and target.split(".", 1)[0] not in external)
+            function = node.func
+            is_dynamic_import = (
+                isinstance(function, ast.Name)
+                and function.id in {"__import__", "import_module"}
+            ) or (
+                isinstance(function, ast.Attribute)
+                and function.attr == "import_module"
+            )
+            if not is_dynamic_import:
+                continue
+            target = None
+            if node.args and isinstance(node.args[0], ast.Constant) \
+                    and isinstance(node.args[0].value, str):
+                target = node.args[0].value
+                if target.startswith("."):
+                    target = resolve_name(target, package)
+                if target.split(".", 1)[0] in sys.stdlib_module_names:
+                    stdlib_imports.add(target.split(".", 1)[0])
+            dynamic_import_sites.append({
+                "source_path": path,
+                "module": module,
+                "target": target,
+                "line": node.lineno,
+                "binding": "literal" if target is not None else "runtime_value",
+            })
     return {
         "host_python_implementation": platform.python_implementation(),
         "host_python_version": platform.python_version(),
@@ -412,12 +545,70 @@ def _dependency_scan(files: dict[str, bytes], external: list[str]) -> dict[str, 
         "source_paths_are_not_importability_proof": True,
         "stdlib_classification_limit": "host Python names do not prove the pinned WASI producer stdlib closure",
         "missing_modules": sorted(missing),
+        "unresolved_imports": sorted(
+            unresolved_imports,
+            key=lambda item: (item["source_path"], item["line"], item["target"]),
+        ),
+        "dynamic_import_sites": sorted(
+            dynamic_import_sites,
+            key=lambda item: (item["source_path"], item["line"]),
+        ),
+        "host_stdlib_modules_seen": sorted(stdlib_imports),
+        "target_stdlib_importability_proven": False,
+        "module_initialization_imports": initialization_imports,
+        "module_initialization_missing_modules": sorted(initialization_missing),
+        "module_initialization_complete": not initialization_missing,
     }
+
+
+def _source_index(files: Mapping[str, bytes]) -> tuple[bytes, str, int, int]:
+    """Build a data-only index for staged original runtime modules."""
+    prefix = "source-package/tobkiri_runtime/"
+    modules: list[tuple[str, str, str]] = []
+    path_modules = []
+    for package_path, content in files.items():
+        if not package_path.startswith(prefix) or not package_path.endswith(".py"):
+            continue
+        runtime_path = package_path.removeprefix(prefix)
+        module = _module_name("tobkiri_runtime/" + runtime_path)
+        if not module:
+            continue
+        tree = ast.parse(content, filename=package_path)
+        modules.append((module, runtime_path, _digest(content)))
+        if any(
+            (isinstance(node, ast.Import)
+             and any(alias.name == "pathlib" or alias.name.startswith("pathlib.")
+                     for alias in node.names))
+            or (isinstance(node, ast.ImportFrom)
+                and (node.module == "pathlib" or (node.module or "").startswith("pathlib.")))
+            for node in ast.walk(tree)
+        ):
+            path_modules.append(module)
+    modules.sort()
+    path_modules = sorted(set(path_modules))
+    canonical = _canonical_json_bytes({
+        "MODULES": modules,
+        "PATH_MODULES": path_modules,
+    })
+    checksum = _digest(canonical)
+    lines = ["MODULES = ("]
+    lines.extend(f"    {item!r}," for item in modules)
+    lines.extend([
+        ")",
+        "PATH_MODULES = (",
+    ])
+    lines.extend(f"    {module!r}," for module in path_modules)
+    lines.extend([
+        ")",
+        f"INDEX_SHA256 = {checksum!r}",
+        "",
+    ])
+    return "\n".join(lines).encode("utf-8"), checksum, len(modules), len(path_modules)
 
 
 def _definition_extents(
     metadata: dict[str, Any], sources: dict[str, dict[str, Any]],
-    package_files: dict[str, bytes], composition: bytes, port: bytes, facade: DataFacade,
+    package_files: dict[str, bytes], composition: bytes, port: bytes,
 ) -> list[dict[str, Any]]:
     composition_tree = ast.parse(composition, filename=_COMPOSITION_PATH)
     runtime = _one_class(composition_tree, _RUNTIME_SYMBOL, _COMPOSITION_PATH)
@@ -434,8 +625,6 @@ def _definition_extents(
         elif path == _PROFILE_PORT_SOURCE and symbol == _DECISION_SYMBOL:
             item["generated_path"] = _PROFILE_PORT_PATH
             item["generated_extent"] = _extent(port, decision_node)
-        elif (path, symbol) in facade.locations:
-            item["generated_path"], item["generated_extent"] = facade.locations[(path, symbol)]
         elif sources[path].get("stored_as") is not None:
             target = f"source-package/{path}"
             source = package_files[target]
@@ -458,6 +647,8 @@ def _manifest(
     capsule_metadata: dict[str, Any], metadata_checksum: str,
     sources: dict[str, dict[str, Any]], definitions: list[dict[str, Any]],
     composition: bytes, port: bytes, files: dict[str, bytes], facade: DataFacade,
+    source_index_sha256: str, source_index_module_count: int,
+    source_index_path_module_count: int,
 ) -> bytes:
     external = capsule_metadata.get("external_runtime_dependencies", [])
     if not isinstance(external, list) or any(not isinstance(item, str) for item in external):
@@ -486,13 +677,79 @@ def _manifest(
         {"path": path, "role": item["role"], "sha256": item["sha256"],
          "bytes": item["bytes"], "capsule_stored_as": item.get("stored_as"),
          "package_path": f"source-package/{path}" if item.get("stored_as") else None,
-         "generated_data_facade_path": (f"source-package/{path}"
-                                        if f"source-package/{path}" in facade.files else None)}
+         "native_import_source": item.get("role") == _NATIVE_IMPORT_SOURCE_ROLE}
         for path, item in sorted(sources.items())
     ]
-    missing_initializers = [path for path in _MISSING_PACKAGE_INITIALIZERS if path not in sources]
+    namespace_packages = [name for name in _IMPLICIT_NAMESPACE_PACKAGES
+                          if f"tobkiri_runtime/{name.replace('.', '/')}/__init__.py"
+                          not in sources]
     runtime_class = _one_class(ast.parse(composition), _RUNTIME_SYMBOL, _COMPOSITION_PATH)
     decision_class = _one_class(ast.parse(port), _DECISION_SYMBOL, _PROFILE_PORT_PATH)
+    module_extents: dict[str, dict[str, Any]] = {}
+    for definition in definitions:
+        generated_path = definition["generated_path"]
+        module_extents.setdefault(generated_path, {})[definition["symbol"]] = (
+            definition["generated_extent"]
+        )
+    packaged_modules = []
+    prefix = "source-package/tobkiri_runtime/"
+    for path, content in sorted(files.items()):
+        if not path.startswith(prefix) or not path.endswith(".py"):
+            continue
+        source_path = path.removeprefix("source-package/")
+        source_record = sources.get(source_path)
+        row = {
+            "path": path,
+            "module": _module_name(source_path),
+            "sha256": _digest(content),
+            "bytes": len(content),
+            "source_kind": "verbatim_original" if source_record else "generated",
+        }
+        if source_record:
+            row["source_path"] = source_path
+            row["source_sha256"] = source_record["sha256"]
+        if path in module_extents:
+            row["definition_extents"] = module_extents[path]
+        if path == _COMPOSITION_PATH:
+            row["class"] = _RUNTIME_SYMBOL
+            row["class_extent"] = _extent(composition, runtime_class)
+        elif path == _PROFILE_PORT_PATH:
+            row["class"] = _DECISION_SYMBOL
+            row["class_extent"] = _extent(port, decision_class)
+        packaged_modules.append(row)
+    service_custody = dict(facade.custody)
+    service_custody.update({
+        "original_initializer_preserved_as": (
+            "source-package/tobkiri_runtime/ecosystem/defaultspack/"
+            "domain/runtime_v4/__init__.py"
+        ),
+        "original_service_package_path": (
+            "source-package/tobkiri_runtime/ecosystem/defaultspack/"
+            "domain/runtime_v4/service.py"
+        ),
+        "original_initializer_package_path": (
+            "source-package/tobkiri_runtime/ecosystem/defaultspack/"
+            "domain/runtime_v4/__init__.py"
+        ),
+        "complete_original_modules_staged": True,
+        "facade_modules_used_for_execution": False,
+    })
+    schema_hashes_path = f"source-package/{_SCHEMA_HASHES_SOURCE}"
+    try:
+        schema_pins = json.loads(files[schema_hashes_path])["files"]
+    except (KeyError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("staged protocol schema hash inventory is malformed") from error
+    schema_resources = []
+    for name, digest in sorted(schema_pins.items()):
+        path = f"source-package/{_SCHEMA_DIRECTORY}/{name}"
+        content = files.get(path)
+        if not isinstance(content, bytes) or "sha256:" + _digest(content) != digest:
+            raise ValueError(f"staged protocol schema does not match its hash pin: {name}")
+        schema_resources.append({"path": path, "sha256": digest, "bytes": len(content)})
+    dependency_scan = _dependency_scan(files, external)
+    if not dependency_scan["module_initialization_complete"]:
+        missing = ", ".join(dependency_scan["module_initialization_missing_modules"])
+        raise ValueError(f"captured module-initialization import closure is incomplete: {missing}")
     return _json_bytes({
         "format": _PACKAGE_FORMAT,
         "input_metadata_sha256": metadata_checksum,
@@ -502,23 +759,24 @@ def _manifest(
         "native_inspection_ports_connected": False,
         "whole_setup_compatible": False,
         "production_enabled": False,
-        "generated_modules": [
-            {"path": _COMPOSITION_PATH, "sha256": _digest(composition),
-             "bytes": len(composition), "class": _RUNTIME_SYMBOL,
-             "class_extent": _extent(composition, runtime_class)},
-            {"path": _PROFILE_PORT_PATH, "sha256": _digest(port),
-             "bytes": len(port), "class": _DECISION_SYMBOL,
-             "class_extent": _extent(port, decision_class)},
-            *facade.modules,
-        ],
+        "generated_modules": packaged_modules,
         "sources": source_inventory,
         "definitions": definitions,
         "native_imports": capsule_metadata.get("native_imports", []),
-        "service_data_facade": facade.custody,
+        "original_service_package": service_custody,
         "unconnected_native_dependencies": native_dependencies,
         "external_runtime_dependencies": external,
-        "dependency_scan": _dependency_scan(files, external),
-        "uncaptured_package_initializers": missing_initializers,
+        "schema_resources": schema_resources,
+        "dependency_scan": dependency_scan,
+        "source_index": {
+            "path": "source-package/harness_native_source_index.py",
+            "sha256": _digest(files["source-package/harness_native_source_index.py"]),
+            "modules": source_index_module_count,
+            "path_modules": source_index_path_module_count,
+            "index_sha256": source_index_sha256,
+        },
+        "uncaptured_package_initializers": [],
+        "implicit_namespace_packages": namespace_packages,
         "dependency_closure_complete": False,
     })
 
@@ -532,10 +790,15 @@ def assemble(capsule: Mapping[str, bytes]) -> dict[str, bytes]:
         raise TypeError("capsule must map relative paths to bytes")
     metadata, checksum = _metadata(capsule)
     sources = _validate_capsule(capsule, metadata)
+    _validate_schema_resources(capsule, sources)
     methods, decision_bytes, _decision_record = _validate_methods_and_decision(
         capsule, metadata, sources,
     )
-    composition, port = _generated_modules(methods, decision_bytes)
+    composition_source = capsule[sources[_COMPOSITION_SOURCE]["stored_as"]]
+    port_source = capsule[sources[_PROFILE_PORT_SOURCE]["stored_as"]]
+    composition, port = _original_modules(
+        methods, decision_bytes, composition_source, port_source,
+    )
     facade = assemble_data_facade(capsule, metadata, _extent)
 
     files: dict[str, bytes] = {}
@@ -545,16 +808,30 @@ def assemble(capsule: Mapping[str, bytes]) -> dict[str, bytes]:
             if target in files:
                 raise ValueError(f"duplicate package source path: {target}")
             files[target] = capsule[record["stored_as"]]
-    for target, content in ((_COMPOSITION_PATH, composition), (_PROFILE_PORT_PATH, port)):
-        if target in files:
-            raise ValueError(f"generated module collides with captured source: {target}")
-        files[target] = content
-    for target, content in facade.files.items():
-        if target in files:
-            raise ValueError(f"generated DATA facade collides with source: {target}")
-        files[target] = content
-    definitions = _definition_extents(metadata, sources, files, composition, port, facade)
+    for target, expected in ((_COMPOSITION_PATH, composition), (_PROFILE_PORT_PATH, port)):
+        if files.get(target) != expected:
+            raise ValueError(f"complete original module was not staged verbatim: {target}")
+    service_path = (
+        "source-package/tobkiri_runtime/ecosystem/defaultspack/"
+        "domain/runtime_v4/service.py"
+    )
+    initializer_path = (
+        "source-package/tobkiri_runtime/ecosystem/defaultspack/"
+        "domain/runtime_v4/__init__.py"
+    )
+    if files.get(service_path) != capsule[sources[
+            "tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/service.py"
+    ]["stored_as"]]:
+        raise ValueError("complete original service module was not staged verbatim")
+    if files.get(initializer_path) != capsule[sources[
+            "tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/__init__.py"
+    ]["stored_as"]]:
+        raise ValueError("complete original service initializer was not staged verbatim")
+    source_index, index_sha256, index_module_count, path_module_count = _source_index(files)
+    files["source-package/harness_native_source_index.py"] = source_index
+    definitions = _definition_extents(metadata, sources, files, composition, port)
     files["source-package/provenance.json"] = _manifest(
         metadata, checksum, sources, definitions, composition, port, files, facade,
+        index_sha256, index_module_count, path_module_count,
     )
     return files

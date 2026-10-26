@@ -85,7 +85,7 @@ class Dispatcher:
     constructs a class, chooses a module, runs code or replenishes a budget.
     """
 
-    def __init__(self, bootstrap: Callable[[], OriginalRuntime]) -> None:
+    def __init__(self, bootstrap: Callable[[Scope], OriginalRuntime]) -> None:
         self._bootstrap = bootstrap
         self._state: _State | None = None
 
@@ -112,7 +112,7 @@ class Dispatcher:
         if set(frame) != {"format", "scope"} or frame["format"] != PREFIX + "init.v1":
             raise InvalidFrame("invalid original initialization frame")
         scope = Scope.from_wire(frame["scope"])
-        original = self._bootstrap()
+        original = self._bootstrap(scope)
         if (
             type(original) is not OriginalRuntime
             or type(original.method_errors) is not tuple

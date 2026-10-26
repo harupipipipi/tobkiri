@@ -6,11 +6,24 @@ before this candidate can execute; an import failure is not domain success.
 """
 
 from .dispatcher import OriginalRuntime
-from .value_graph import RecordType
+from .native_bootstrap import installed_inputs
+from .native_path import NativePath
+from .value_graph import RecordType, Scope
 
 
-def load_original_runtime() -> OriginalRuntime:
+def load_original_runtime(scope: Scope) -> OriginalRuntime:
     """Use the original qualified classes; never select them from a frame."""
+    inputs = installed_inputs(scope)
+    inputs.modules.install()
+    try:
+        return _load_bound_runtime(inputs)
+    except BaseException:
+        inputs.modules.close()
+        raise
+
+
+def _load_bound_runtime(inputs) -> OriginalRuntime:
+    """Original code executes only after its actual inputs were installed."""
     from core_runtime.profile_runtime_port import SetupActivationDecision
     from ecosystem.defaultspack.defaultspack.profile_runtime_composition import (
         DefaultspackProfileRuntime,
@@ -39,6 +52,7 @@ def load_original_runtime() -> OriginalRuntime:
         ("profile-resolution-denied", ProfileResolutionDenied),
     )
     records = (
+        RecordType("native-path", NativePath, native_binding=True),
         RecordType(
             "bundled-catalog",
             BundledCatalog,
@@ -70,5 +84,6 @@ def load_original_runtime() -> OriginalRuntime:
         *(RecordType(kind, cls) for kind, cls in errors),
     )
     return OriginalRuntime(
-        DefaultspackProfileRuntime(), records, tuple(cls for _, cls in errors)
+        DefaultspackProfileRuntime(), records, tuple(cls for _, cls in errors),
+        inputs.inputs,
     )

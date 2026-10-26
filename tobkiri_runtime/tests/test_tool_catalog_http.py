@@ -57,7 +57,7 @@ def test_defaults_tools_catalog_is_authenticated_read_only_and_not_an_execution_
     connected_ids = {
         "calculator", "coding_file_create", "coding_file_list", "coding_file_read",
         "coding_file_search", "file_reader", "chat_list_targets", "chat_resolve_target",
-        "chat_send_message",
+        "chat_send_message", "python_sandbox_execute",
     }
     assert {item["tool_id"] for item in catalog["tools"] if (
         item["connection_status"] == "connected"
@@ -74,6 +74,10 @@ def test_defaults_tools_catalog_is_authenticated_read_only_and_not_an_execution_
         ("rumi_default_tools_pack.file-create-tool", "rumi_default_tools_pack.file-create-operation"),
         ("rumi_default_tools_pack.chat-reference-tools", "rumi_default_tools_pack.chat-reference-operation"),
         ("rumi_default_tools_pack.chat-message-tool", "rumi_default_tools_pack.chat-message-operation"),
+        (
+            "rumi_default_tools_pack.python-sandbox-execute-tool",
+            "rumi_default_tools_pack.python-sandbox-execute-operation",
+        ),
     }
     with pytest.raises(AuthorityDenied):
         session.invoke(local, "rumi_default_tools_pack.calculator-evaluate", {
