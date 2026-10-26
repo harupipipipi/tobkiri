@@ -285,6 +285,13 @@
       "executable": false
     },
     {
+      "path": "ecosystem/defaultspack/domain/_profile_runtime_records.py",
+      "type": "regular-file",
+      "size": 1982,
+      "sha256": "1f339efce3b8c0b92c5a27c18a5819c7d915b4fdb5c6409d671eb94133afaf06",
+      "executable": false
+    },
+    {
       "path": "ecosystem/defaultspack/domain/frontend_builtin_catalog.py",
       "type": "regular-file",
       "size": 736,
@@ -343,8 +350,8 @@
     {
       "path": "ecosystem/defaultspack/domain/runtime_v4/service.py",
       "type": "regular-file",
-      "size": 89327,
-      "sha256": "3cef7e440667d9efd281934876da098097717de931b6f48d0f801b057ec983a9",
+      "size": 88804,
+      "sha256": "2fcfacce9616175356ff38311171e2de35c91763f72a03d9fe458350bdc912ea",
       "executable": false
     },
     {
@@ -3668,8 +3675,8 @@
     {
       "path": "scripts/generator_source_manifest.py",
       "type": "regular-file",
-      "size": 35167,
-      "sha256": "b28fb08592efa0d56ca92d835f53ba95d7864c3fe5bec23629ea38ba598f6f83",
+      "size": 35232,
+      "sha256": "32ffa9bdd05cfbc952399e3d94521563d3e52786f562e7b2c19fde5e4440326e",
       "executable": false
     },
     {

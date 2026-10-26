@@ -34,6 +34,7 @@ const FILES: &[&str] = &[
     "ecosystem/defaultspack/host_contract_contributions.v1.json",
     "ecosystem/defaultspack/domain/runtime_surface_v4.py",
     "ecosystem/defaultspack/domain/profile_resolution.py",
+    "ecosystem/defaultspack/domain/_profile_runtime_records.py",
     "ecosystem/defaultspack/domain/frontend_settings_catalog.py",
     "ecosystem/defaultspack/domain/frontend_builtin_catalog.py",
     "ecosystem/defaultspack/domain/frontend_command_catalog.py",
