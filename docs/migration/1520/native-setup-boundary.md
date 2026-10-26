@@ -646,3 +646,41 @@ admission from ordinary fuel/epoch yielding before asserting stack suspension.
 Decoded guest observations use the same original funded graph, not an unowned
 host JSON copy. This probe still needs actual CI results; it is not the whole
 Setup artifact or the future ordered native admission/inspection interface.
+# Portable native exception DATA
+
+The inactive `tobkiri-harness-native` nativeKit library and the guest
+`harness_native/exception_graph.py` materializer share the closed
+`tobkiri.native-exception/1` frame. This application adapter is outside the
+generic Core/Pack result decoder. It adds no product native Python runtime,
+native operation, grant, Profile, or alternate approval path.
+
+Rust retains the original funded CoreBuffer envelopes and parses into CoreValue
+using the same invocation's allocation owner. The code, message and details
+share the original 4 MiB envelope; semantic traversal consumes original host
+work. The original 64 MiB/fuel/deadline bounds still apply. Node IDs represent
+shared or cyclic cause/context references; suppression is independent. Their
+graph IDs are scoped DATA identities, never effect capabilities.
+
+The guest uses explicitly supplied original class objects, with fixed tags and
+no dynamic class/module lookup. It reconstructs all nodes before linking their
+chains, then restores suppression last. The original already-formatted
+SchemaValidationError arguments and diagnostics are restored without invoking
+its formatting constructor again. JSONDecodeError positions count Unicode
+characters. Path-free, two-argument OSError representations preserve concrete
+classes independently of the native/Wasm numeric errno mapping. In particular,
+the absent native filename pointers must stay absent: assigning Python None to
+those fields changes the displayed error even though their properties compare
+equal to None.
+
+Unknown native classes, unmodeled fields or cause objects, host filenames,
+Windows-specific fields and other unrepresentable observations remain explicit
+unsupported migration paths. They are not redacted, substituted with a generic
+exception, or replayed after a native operation. Native ports must establish
+portable message/field provenance; scanning arbitrary text cannot prove that a
+message lacks confidential host paths. Arbitrary exceptions already created in
+guest Python remain actual objects there. Rust panics, capacity refusal and
+unexpected host failures do not become modeled Python domain errors.
+
+This library and its source/unit checks do not prove connected native inspection
+ports, actual guest materialization, or whole Setup parity. The complete existing
+Launcher/Setup/approval/settings/conversation path remains the product default.

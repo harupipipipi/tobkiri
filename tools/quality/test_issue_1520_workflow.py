@@ -75,6 +75,7 @@ class RuntimeRoutingTests(unittest.TestCase):
         self.assertEqual(set(re.findall(r"-p ([\w-]+)", packages)), {
             "tobkiri-canon", "tobkiri-wit", "tobkiri-manifest",
             "tobkiri-profile", "tobkiri-flow", "tobkiri-gate", "tobkiri-cli",
+            "tobkiri-harness-native",
         })
         wasm = step(self.linux, "Portable Wasm engine integration tests")
         self.assertIn("-p tobkiri-wasm", wasm)

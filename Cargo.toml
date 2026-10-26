@@ -13,6 +13,7 @@ members = [
   "crates/tobkiri-cli",
   "crates/tobkiri-e2e",
   "tobkiri_launcher/core-host",
+  "tobkiri_launcher/harness-native",
 ]
 exclude = ["packs", "crates/test-guests", "vendor/wasmtime", "vendor/wasmtime-internal-fiber", "pack-shell", "tobkiri_launcher/src-tauri", "tobkiri_launcher/windows-packaging-checks", "tobkiri_runtime/docs/examples/rust_pack"]
 [workspace.package]

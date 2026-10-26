@@ -20,6 +20,27 @@ import prepare_harness_native as prepare  # noqa: E402 - explicit source-tool pa
 class HarnessNativeSourceTests(unittest.TestCase):
     """Check exact original bytes and explicitly bounded capsule scope."""
 
+    def test_exception_transport_pins_guest_and_rust_without_a_native_python_dependency(self) -> None:
+        files = prepare.captured()
+        provenance = json.loads(files["provenance.json"])
+        transport = provenance["exception_transport"]
+        self.assertEqual(transport["format"], "tobkiri.native-exception/1")
+        self.assertEqual(transport["guest_materializer"], prepare.EXCEPTION_TRANSPORT)
+        self.assertEqual(
+            files[f"source/{prepare.EXCEPTION_TRANSPORT}"],
+            prepare.bounded_read(ROOT / prepare.EXCEPTION_TRANSPORT),
+        )
+        records = {item["path"]: item for item in provenance["sources"]}
+        for path in prepare._NATIVE_KIT_SOURCES:
+            self.assertEqual(records[path]["role"], "native_exception_codec_source")
+            self.assertEqual(records[path]["sha256"], hashlib.sha256(
+                prepare.bounded_read(ROOT / path)).hexdigest())
+            self.assertNotIn(f"source/{path}", files)
+        for key in ("native_python_runtime_required", "arbitrary_native_classes_supported",
+                    "host_path_fields_supported", "native_inspection_ports_connected",
+                    "guest_materializer_executed_in_wasm"):
+            self.assertIs(transport[key], False)
+
     def test_all_data_methods_and_resolution_definitions_keep_original_bytes(self) -> None:
         files = prepare.captured()
         provenance = json.loads(files["provenance.json"])

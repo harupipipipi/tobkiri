@@ -36,6 +36,14 @@ PROTOCOL_ROOT = "tobkiri_runtime/tobkiri_protocol"
 SCHEMA_DIRECTORY = f"{PROTOCOL_ROOT}/schemas"
 SCHEMA_HASHES = f"{PROTOCOL_ROOT}/schema_hashes.json"
 PROJECT_METADATA = "tobkiri_runtime/pyproject.toml"
+EXCEPTION_TRANSPORT = (
+    "tools/python313-producer/harness_native/exception_graph.py"
+)
+_NATIVE_KIT_SOURCES = (
+    "tobkiri_launcher/harness-native/Cargo.toml",
+    "tobkiri_launcher/harness-native/src/lib.rs",
+    "tobkiri_launcher/harness-native/src/exception_graph.rs",
+)
 
 PROTOCOL_MODULES = (
     "__init__.py",
@@ -162,6 +170,7 @@ _NATIVE_IMPORT_SOURCE_PATHS = {
 
 _ROOT_SOURCE_MODULES = (COMPOSITION, PROFILE_PORT)
 _CAPSULE_SOURCE_FILES = (
+    EXCEPTION_TRANSPORT,
     PROFILE_RESOLUTION,
     SETUP_CONTRACT,
     DOMAIN_PACKAGE_INIT,
@@ -400,6 +409,7 @@ def _read_sources() -> dict[str, bytes]:
         *_ROOT_SOURCE_MODULES,
         *_CAPSULE_SOURCE_FILES,
         *_DEFERRED_NATIVE_MODULES,
+        *_NATIVE_KIT_SOURCES,
         *_schema_paths(),
     )
     if len(paths) != len(set(paths)):
@@ -536,6 +546,7 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
             "protocol_schema" if path in schema_paths else
             "protocol_schema_metadata" if path == SCHEMA_HASHES else
             "project_metadata" if path == PROJECT_METADATA else
+            "native_exception_codec_source" if path in _NATIVE_KIT_SOURCES else
             "verbatim_data_dependency" if stored_as is not None else
             "deferred_native_adapter_source"
         )
@@ -553,6 +564,16 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
         "definitions": definitions,
         "excluded_definitions": excluded_definitions,
         "native_imports": native_imports,
+        "exception_transport": {
+            "format": "tobkiri.native-exception/1",
+            "guest_materializer": EXCEPTION_TRANSPORT,
+            "rust_sources": list(_NATIVE_KIT_SOURCES),
+            "native_python_runtime_required": False,
+            "arbitrary_native_classes_supported": False,
+            "host_path_fields_supported": False,
+            "native_inspection_ports_connected": False,
+            "guest_materializer_executed_in_wasm": False,
+        },
         "selected_methods": list(METHODS),
         "excluded_runtime_methods": list(_EXCLUDED_RUNTIME_METHODS),
         "excluded_runtime_module_definitions": list(

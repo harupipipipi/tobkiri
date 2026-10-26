@@ -2522,6 +2522,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobkiri-harness-native"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tobkiri-canon",
+]
+
+[[package]]
 name = "tobkiri-launcher-core-host"
 version = "0.1.0"
 dependencies = [
