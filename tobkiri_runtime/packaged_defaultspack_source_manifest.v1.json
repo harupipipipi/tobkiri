@@ -287,8 +287,8 @@
     {
       "path": "ecosystem/defaultspack/domain/_profile_runtime_records.py",
       "type": "regular-file",
-      "size": 1982,
-      "sha256": "1f339efce3b8c0b92c5a27c18a5819c7d915b4fdb5c6409d671eb94133afaf06",
+      "size": 1998,
+      "sha256": "1a21bb686088be64beb223e885f833d320b57118f8afee9e37e651775351e242",
       "executable": false
     },
     {
@@ -322,8 +322,8 @@
     {
       "path": "ecosystem/defaultspack/domain/profile_resolution.py",
       "type": "regular-file",
-      "size": 52841,
-      "sha256": "a81a193f5a37ca9ee68cb5abc8e7dded2cd9cc5a0130580186e48a56178dc115",
+      "size": 52857,
+      "sha256": "61963a52565acabe4b9fd5819851405b2ae7066fe6d597c8906388befb6be8de",
       "executable": false
     },
     {

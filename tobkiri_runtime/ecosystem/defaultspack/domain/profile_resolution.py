@@ -1184,7 +1184,7 @@ for _definition in _OWNED_DEFINITIONS:
     if isinstance(_definition, type):
         for _member in vars(_definition).values():
             if isinstance(_member, _FunctionType):
-                _function = _member
+                _function = _member  # type: object
                 while isinstance(_function, _FunctionType) and _function.__module__ == __name__:
                     _function.__module__ = _LEGACY_MODULE
                     _function = getattr(_function, "__wrapped__", None)

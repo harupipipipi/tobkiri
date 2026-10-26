@@ -48,7 +48,7 @@ for _definition in _OWNED_DEFINITIONS:
     _definition.__module__ = _LEGACY_MODULE
     for _member in vars(_definition).values():
         if isinstance(_member, _FunctionType):
-            _function = _member
+            _function = _member  # type: object
             while (
                 isinstance(_function, _FunctionType)
                 and _function.__module__ == __name__
