@@ -26,7 +26,8 @@ fn funding() -> (NativeSetupAccount, NativeSetupInvocation) {
 fn fixture(engine: &WasmEngine) -> Component {
     Component::new(
         engine.engine(),
-        r#"(component
+        wat::parse_str(
+            r#"(component
       (import "tobkiri-ui:diagnostics/import-trace@1.0.0"
         (instance $trace (export "record-import" (func (param "name" string)))))
       (alias export $trace "record-import" (func $record))
@@ -45,6 +46,8 @@ fn fixture(engine: &WasmEngine) -> Component {
         (with "host" (instance (export "record" (func $record))))))
       (func (export "run") (result string)
         (canon lift (core func $body "run") (memory $memory))))"#,
+        )
+        .unwrap(),
     )
     .unwrap()
 }
