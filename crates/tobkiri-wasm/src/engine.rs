@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tobkiri_gate::{CallCx, ControlKind, CoreControl};
 use tokio::task::JoinHandle;
-use wasmtime::{Config, Engine, Store};
+use wasmtime::{Config, Engine, OptLevel, Store};
 
 const EPOCH_PERIOD: Duration = Duration::from_millis(10);
 // Admit the full bounded control-record envelope before creating a Store.
@@ -70,10 +70,21 @@ impl WasmEngine {
     /// Native ticker control is bounded independently of guest payload funds.
     /// The slot lives inside the task until its actual completion after abort.
     pub fn new_with_control(control: &CoreControl) -> Result<Self> {
+        Self::new_with_control_and_optimization(control, OptLevel::Speed)
+    }
+
+    /// Select compilation optimization without changing execution limits,
+    /// authority, allocator policy, fuel or epoch handling. Existing callers
+    /// retain Speed through new_with_control.
+    pub fn new_with_control_and_optimization(
+        control: &CoreControl,
+        optimization: OptLevel,
+    ) -> Result<Self> {
         let runtime = tokio::runtime::Handle::try_current()
             .context("component execution requires the host async runtime")?;
         let task_control = control.reserve(ControlKind::Task, 4096)?;
         let mut config = Config::new();
+        config.cranelift_opt_level(optimization);
         #[allow(deprecated)]
         config.async_support(true);
         config.wasm_component_model(true);

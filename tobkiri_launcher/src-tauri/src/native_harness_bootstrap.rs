@@ -4,14 +4,17 @@
 //! operation. Keep that route unchanged until actual component/flow parity.
 use crate::native_harness_host_inputs::{with_original_host_inputs, NativeHostSourceRole};
 use anyhow::{anyhow, bail, Result};
-use std::sync::{Arc, Mutex};
+use std::{
+    fs::File,
+    sync::{Arc, Mutex},
+};
 use tauri::{AppHandle, Manager};
-use tobkiri_core::{Core, HostIo, NativeSetupInvocation, RuntimeOwner};
+use tobkiri_core::{Core, Digest, HostIo, NativeSetupInvocation, RuntimeOwner};
 use tobkiri_harness_native::{
     BootstrapInputOwner, BootstrapModuleIndex, BootstrapRoots, ModuleMetadataPolicy,
-    NativeBootstrap, NativeHarnessComponent, ORIGINAL_PROFILE_SOURCE_METADATA,
+    NativeBootstrap, NativeComponentPreparation, ORIGINAL_PROFILE_SOURCE_METADATA,
 };
-use tobkiri_wasm::{NativeDataError, NativeDataIoError, WasmEngine};
+use tobkiri_wasm::{NativeDataError, NativeDataIoError};
 
 enum OwnedRuntime {
     Unopened,
@@ -109,9 +112,7 @@ impl BootstrapInputOwner for OriginalBootstrapInputs {
 /// later original getters require the exact explicit module metadata policy.
 /// No frame or path value can enable general FS, approval or effect authority.
 pub(crate) struct OriginalComponentPreparation {
-    source: OriginalBootstrapInputs,
-    invocation: NativeSetupInvocation,
-    engine: WasmEngine,
+    preparation: NativeComponentPreparation<OriginalBootstrapInputs>,
 }
 
 pub(crate) fn prepare_original_component(app: AppHandle) -> Result<OriginalComponentPreparation> {
@@ -119,27 +120,26 @@ pub(crate) fn prepare_original_component(app: AppHandle) -> Result<OriginalCompo
         .try_state::<NativeRuntimeState>()
         .ok_or_else(|| anyhow!("original runtime owner is not registered"))?;
     let invocation = state.begin(&app)?;
-    let engine = WasmEngine::new_with_control(invocation.control())?;
     Ok(OriginalComponentPreparation {
-        source: OriginalBootstrapInputs { app: app.clone() },
-        invocation,
-        engine,
+        preparation: NativeComponentPreparation::new(
+            invocation,
+            OriginalBootstrapInputs { app: app.clone() },
+        )?,
     })
 }
 
 impl OriginalComponentPreparation {
-    /// The actual owner's engine, for loading the native-selected artifact.
-    pub(crate) fn engine(&self) -> &WasmEngine {
-        &self.engine
-    }
-
     /// Consume the original preparation; no retry creates another invocation.
     pub(crate) async fn initialize(
         self,
-        component: &NativeHarnessComponent,
+        artifact: File,
+        expected: &Digest,
         index: &'static BootstrapModuleIndex,
     ) -> Result<std::result::Result<NativeBootstrap<OriginalBootstrapInputs>, NativeDataError>>
     {
-        NativeBootstrap::prepare(&self.engine, component, self.invocation, self.source, index).await
+        self.preparation
+            .compile(artifact, expected)?
+            .initialize(index)
+            .await
     }
 }

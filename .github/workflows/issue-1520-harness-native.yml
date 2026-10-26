@@ -175,6 +175,13 @@ jobs:
           --log "$RUNNER_TEMP/harness-native-source-metadata.log" --expected-passed 5 --
           cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
           source_resolve::tests:: -- --nocapture
+      - name: Verify shared component preparation preserves source funding and custody
+        if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-preparation.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          preparation::tests:: -- --nocapture
       - name: Preserve init failures and reject unauthorized inspection and cancelled getters
         if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         run: >-
@@ -222,6 +229,7 @@ jobs:
             ${{ runner.temp }}/harness-native-runtime.log*
             ${{ runner.temp }}/harness-native-source-metadata.log*
             ${{ runner.temp }}/harness-native-inspection-policy.log*
+            ${{ runner.temp }}/harness-native-preparation.log*
             ${{ runner.temp }}/harness-native-owner-transfer.log*
             ${{ runner.temp }}/harness-native-runtime-features/
           if-no-files-found: warn

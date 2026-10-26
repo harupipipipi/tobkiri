@@ -1,9 +1,9 @@
 //! Actual full component, genuine physical funding and selected SDK metadata.
 //! This CI source-owner fixture does not prove the original Tauri/GUI reachpoint.
 use super::*;
-use crate::{BootstrapModule, BootstrapRoots};
+use crate::{BootstrapModule, BootstrapRoots, NativeComponentPreparation};
 use anyhow::ensure;
-use std::{fs::File, io::Read, path::PathBuf, sync::atomic::AtomicBool};
+use std::{fs::File, path::PathBuf, sync::atomic::AtomicBool};
 use tobkiri_canon::{CoreValue, Digest};
 use tobkiri_core::RuntimeOwner;
 
@@ -75,7 +75,7 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
     // must not receive an unmeasured interval before a fresh 30-second clock.
     let invocation = owner.begin_native_setup()?;
     let deadline = invocation.deadline()?;
-    let engine = WasmEngine::new_with_control(owner.control())?;
+    let preparation = NativeComponentPreparation::new(invocation.clone(), source)?;
     let path = PathBuf::from(
         std::env::var_os("TOBKIRI_TEST_NATIVE_HARNESS_COMPONENT")
             .context("actual built component required")?,
@@ -84,57 +84,28 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
         path.is_absolute() && path.canonicalize()? == path,
         "physical artifact required"
     );
-    let mut input = File::open(&path)?;
-    let size = usize::try_from(input.metadata()?.len())?;
-    ensure!(
-        size > 0 && size <= 32 * 1024 * 1024,
-        "component exceeds source bound"
-    );
-    // This real source buffer shares the original payload account, in addition
-    // to its existing code-admission control funding. Compilation's entire host
-    // heap/RSS is not claimed by this buffer reservation.
-    let payload = invocation.reserve(CapacityKind::VfsBuffer, u64::try_from(size)?)?;
-    let permit = owner
-        .control()
-        .reserve(ControlKind::Frame, u64::try_from(size)?)?;
-    let mut bytes = Vec::new();
-    bytes.try_reserve_exact(size)?;
-    ensure!(
-        bytes.capacity() == size,
-        "unsupported source allocator capacity"
-    );
-    bytes.resize(size, 0);
-    input.read_exact(&mut bytes)?;
-    let expected = std::env::var("TOBKIRI_TEST_NATIVE_HARNESS_COMPONENT_SHA256")?;
-    ensure!(
-        Digest::hash(&bytes).as_str().strip_prefix("sha256:") == Some(expected.as_str()),
-        "component changed"
-    );
-    let component = Component::new(engine.engine(), &bytes)?;
-    drop(bytes);
-    drop(payload);
-    drop(permit);
-    drop(input);
-    let preparation_elapsed = invocation.started_at().elapsed();
+    let input = File::open(&path)?;
+    let expected = Digest::parse(&format!(
+        "sha256:{}",
+        std::env::var("TOBKIRI_TEST_NATIVE_HARNESS_COMPONENT_SHA256")?,
+    ))?;
+    let prepared = preparation.compile(input, &expected)?;
+    let observation = prepared.observation();
     println!(
-        "NATIVE_HARNESS_PREPARATION elapsed_us={} peak_charged_bytes={} deadline_unchanged={}",
-        preparation_elapsed.as_micros(),
-        invocation.capacity_snapshot()?.peak_charged_bytes,
-        invocation.deadline()? == deadline
+        "NATIVE_HARNESS_PREPARATION elapsed_us={} peak_charged_bytes={} source_bytes={} optimization={:?} deadline_unchanged={}",
+        observation.elapsed_micros,
+        observation.peak_charged_bytes,
+        observation.source_bytes,
+        observation.optimization,
+        observation.deadline == deadline,
     );
     ensure!(
-        invocation.deadline()? == deadline && std::time::Instant::now() < deadline,
+        observation.deadline == deadline
+            && invocation.deadline()? == deadline
+            && std::time::Instant::now() < deadline,
         "original native deadline exhausted during component preparation"
     );
-    let mut runtime = match NativeBootstrap::prepare(
-        &engine,
-        &component,
-        invocation.clone(),
-        source,
-        &selected::INDEX,
-    )
-    .await?
-    {
+    let mut runtime = match prepared.initialize(&selected::INDEX).await? {
         Ok(runtime) => runtime,
         Err(error) => bail!(
             "actual original initialization refused: {}",

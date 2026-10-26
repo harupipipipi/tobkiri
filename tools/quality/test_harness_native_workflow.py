@@ -72,6 +72,7 @@ class NativeWorkflowContracts(unittest.TestCase):
             "&& steps.native_inputs.conclusion == 'success' }}"
         )
         for name in (
+            "Verify shared component preparation preserves source funding and custody",
             "Preserve init failures and reject unauthorized inspection and cancelled getters",
             "Run actual original Runtime.init Profile identity and opaque root getters",
             "Preserve the actual native owner when Core adopts it",
@@ -109,6 +110,12 @@ class NativeWorkflowContracts(unittest.TestCase):
     def test_mandatory_commands_keep_the_real_metadata_policy_init_and_owner_cases(self) -> None:
         commands = (
             (
+                "Verify shared component preparation preserves source funding and custody",
+                "--expected-passed 2 --",
+                "cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib",
+                "preparation::tests::",
+            ),
+            (
                 "Verify actual source metadata operations without general source rights",
                 "--expected-passed 5 --",
                 "cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib",
@@ -145,11 +152,12 @@ class NativeWorkflowContracts(unittest.TestCase):
             encoding="utf-8"
         )
         for operation in (
-            "Component::new(engine.engine(), &bytes)?",
-            "NativeBootstrap::prepare(",
+            "NativeComponentPreparation::new(invocation.clone(), source)?",
+            "preparation.compile(input, &expected)?",
+            "prepared.initialize(&selected::INDEX).await?",
             "runtime.bootstrap_profile_id().await?",
         ):
-            self.assertIn(operation, actual)
+            self.assertTrue(operation in actual, f"missing real consumer operation: {operation}")
 
     def test_actual_consumer_retains_the_shared_limits_without_ci_overrides(self) -> None:
         capacity = (ROOT / "crates/tobkiri-gate/src/native_setup_capacity.rs").read_text(
@@ -196,19 +204,66 @@ class NativeWorkflowContracts(unittest.TestCase):
         self.assertEqual(actual.count("owner.begin_native_setup()?"), 1)
         positions = [actual.index(token) for token in (
             "owner.begin_native_setup()?",
-            "WasmEngine::new_with_control",
+            "NativeComponentPreparation::new(invocation.clone(), source)?",
             "File::open(&path)?",
-            "let payload = invocation.reserve",
-            "bytes.try_reserve_exact(size)?",
-            "Component::new(engine.engine(), &bytes)?",
-            "drop(bytes);",
-            "drop(payload);",
+            "preparation.compile(input, &expected)?",
             "original native deadline exhausted during component preparation",
-            "NativeBootstrap::prepare(",
+            "prepared.initialize(&selected::INDEX).await?",
         )]
         self.assertEqual(positions, sorted(positions))
         self.assertIn("invocation.deadline()? == deadline", actual)
         self.assertIn("std::time::Instant::now() < deadline", actual)
+
+    def test_actual_adapter_and_ci_use_the_same_source_preparation(self) -> None:
+        adapter = (ROOT / "tobkiri_launcher/src-tauri/src/native_harness_bootstrap.rs").read_text()
+        actual = (ROOT / "tobkiri_launcher/harness-native/src/bootstrap_actual_ci.rs").read_text()
+        shared = (ROOT / "tobkiri_launcher/harness-native/src/preparation.rs").read_text()
+        fixtures = '\n#[cfg(all(test, target_os = "macos"))]\n'
+        self.assertEqual(shared.count(fixtures), 1)
+        shared = shared.split(fixtures, 1)[0]
+        self.assertLess(adapter.index("state.begin(&app)?"),
+                        adapter.index("NativeComponentPreparation::new("))
+        self.assertIn("self.preparation", adapter)
+        self.assertIn(".compile(artifact, expected)?", adapter)
+        self.assertIn(".initialize(index)", adapter)
+        for caller in (adapter, actual):
+            self.assertNotIn("Component::new(", caller)
+            self.assertNotIn("WasmEngine::new_", caller)
+        self.assertNotIn("begin_native_setup(", shared)
+        self.assertNotIn("RuntimeOwner::open", shared)
+        self.assertNotIn("deserialize", shared)
+        compact = re.sub(r"\s+", "", shared)
+        for token in (
+            "self.invocation.reserve(CapacityKind::VfsBuffer,",
+            "self.invocation.control().reserve(ControlKind::Frame,",
+            "bytes.try_reserve_exact(size)?",
+            "input.read_exact(&mutbytes)?",
+            "&Digest::hash(&bytes)==expected",
+            "Component::new(self.engine.engine(),&bytes)",
+            "drop(bytes);", "drop(payload);", "drop(permit);",
+        ):
+            self.assertTrue(token in compact, f"shared preparation lost {token}")
+        self.assertLess(compact.index(".reserve(CapacityKind::VfsBuffer,"),
+                        compact.index("bytes.try_reserve_exact(size)?"))
+        self.assertLess(compact.index("Component::new("), compact.index("drop(bytes);"))
+        self.assertLess(compact.index("drop(bytes);"), compact.index("drop(payload);"))
+        self.assertIn("self.invocation.deadline()? == self.deadline", shared)
+        self.assertIn("self.preparation.invocation", shared)
+        self.assertIn("self.preparation.source", shared)
+
+    def test_compiler_choice_is_generic_with_speed_preserved_for_existing_callers(self) -> None:
+        engine = (ROOT / "crates/tobkiri-wasm/src/engine.rs").read_text()
+        shared = (ROOT / "tobkiri_launcher/harness-native/src/preparation.rs").read_text()
+        self.assertIn("Self::new_with_control_and_optimization(control, OptLevel::Speed)", engine)
+        self.assertIn("config.cranelift_opt_level(optimization);", engine)
+        self.assertIn("config.consume_fuel(true);", engine)
+        self.assertIn("config.epoch_interruption(true);", engine)
+        self.assertIn("config.memory_init_cow(false);", engine)
+        self.assertIn("OptLevel::None", shared)
+        self.assertLess(shared.index("let deadline = invocation.deadline()?"),
+                        shared.index("WasmEngine::new_with_control_and_optimization("))
+        self.assertNotIn("cfg(feature", shared)
+        self.assertNotIn("std::env", shared)
 
 
 if __name__ == "__main__":

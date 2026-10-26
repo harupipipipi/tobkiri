@@ -78,9 +78,38 @@ retained IDE source hash does not prove the actual runtime callable. The new
 preload checks run during that actual producer pre-init, so a stub or foreign
 binding fails the component build. Source fixtures cover no native calls during
 preload, stable module/callable identity after seal, unknown-module refusal and
-stub rejection at the same path. Only actual CI progress into init/checkpoints
-can confirm whether this repaired the observed failure; no outer hook or
-pre-init operation probe is added.
+stub rejection at the same path. The actual 772d789 consumer (run
+`40416195917`, job `121900800880`) then reached one validated inventory import
+and four validated checkpoints, ending at `factory-entering`. It failed at the
+original deadline, with 1,621,949,300 fuel remaining, no inspection rejection
+and no unreachable trap. Cold preparation had consumed 28,468,923 microseconds;
+the full failed operation lasted 30,004,288 microseconds. The parser position
+in that deadline backtrace does not establish the dominant cost. This confirms
+forward progress through the fixed bindings, not successful initialization or
+the identity of the earlier hidden exception. No outer hook or pre-init
+operation probe is added.
+
+Cold preparation now has one shared implementation for both the opt-in actual
+Launcher adapter and the actual CI consumer. The caller begins the original
+operation before Engine creation, artifact reading and compilation. The helper
+retains that same source owner, invocation, account and absolute deadline through
+initialization. It charges source storage before allocating the read buffer,
+verifies the actual bytes against the selected digest, safely compiles them and
+drops the allocation before releasing its reservations. A File or digest grants
+no source or effect authority. The 32 MiB source, 64 MiB shared payload, 2 billion
+fuel, 4 MiB envelope and original 30 seconds remain unchanged. Source accounting
+does not claim to measure the compiler's entire native heap or compiled metadata.
+
+The generic Engine accepts an explicit compiler optimization setting. Existing
+callers retain `Speed`; only this common native composition selects `None` to
+evaluate cold compilation cost. There is no CI-only compiler choice, precompile,
+persistent cache, unsafe deserialization or replacement execution interval.
+Two required Mac preparation tests cover rejected sources, original deadline,
+reservation release and retained source custody. Actual whole-component
+preparation, initialization and methods must still pass within the same limits;
+reduced compile time alone is not acceptance. The change remains unverified
+until that actual consumer runs, and the original production route is still
+unconnected.
 
 Production singleton ownership also remains unresolved. The original callees
 retain issued-origin/class/exception identity, thread/ContextVar custody,
@@ -146,7 +175,7 @@ After successful initialization and the original pure Profile-id method, the
 consumer executes both original root getters as component-level unit operations
 and checks opaque proxy descriptions and actual module resolution observations.
 This is not the production development/packaged branch or final binding check.
-Five real native metadata fixture tests and five hostile/cancellation tests run
+Five real native metadata fixture tests and six hostile/cancellation tests run
 before that consumer. Independent execution/owner evidence is collected even
 when another test fails, only after the real platform and artifact-input steps
 succeed; every failed required test still fails the job. The same shared
