@@ -80,6 +80,7 @@ fn selected(root: PathBuf) -> Result<SelectedFixture> {
 enum InitAction {
     Unit,
     InspectThenUnit,
+    InspectTwiceThenUnit,
     InspectThenTrap,
 }
 
@@ -102,6 +103,7 @@ fn policy_component(
     let initialize = match init {
         InitAction::Unit => String::new(),
         InitAction::InspectThenUnit => inspect.clone(),
+        InitAction::InspectTwiceThenUnit => format!("{inspect} {inspect}"),
         InitAction::InspectThenTrap => format!("{inspect} unreachable"),
     };
     let source = r#"(component
@@ -216,7 +218,17 @@ async fn init_observation_and_actual_outer_trap_are_retained_separately() -> Res
     let recorded = failure
         .downcast_ref::<crate::OriginalInitializationFailure>()
         .context("the actual pre-trap observation was lost")?;
-    assert_eq!(recorded.diagnostic.as_str()?, payload);
+    assert_eq!(
+        recorded
+            .diagnostic
+            .as_ref()
+            .context("diagnostic missing")?
+            .as_str()?,
+        payload
+    );
+    assert_eq!(recorded.trace.host_phase, "export-trapped");
+    assert_eq!(recorded.trace.inspect_entries, 1);
+    assert_eq!(recorded.trace.inspect_validated, 1);
     let observation = recorded
         .observation
         .context("same Store observation missing")?;
@@ -246,7 +258,14 @@ async fn an_init_observation_cannot_be_followed_by_forged_unit_success() -> Resu
     let recorded = failure
         .downcast_ref::<crate::OriginalInitializationFailure>()
         .context("the rejected success lost its actual observation")?;
-    assert_eq!(recorded.diagnostic.as_str()?, payload);
+    assert_eq!(
+        recorded
+            .diagnostic
+            .as_ref()
+            .context("diagnostic missing")?
+            .as_str()?,
+        payload
+    );
     assert_eq!(
         recorded.original.to_string(),
         "init returned success after reporting an original failure"
@@ -261,7 +280,7 @@ async fn an_init_observation_cannot_be_followed_by_forged_unit_success() -> Resu
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn forged_init_diagnostics_never_create_an_original_failure_record() -> Result<()> {
+async fn forged_init_diagnostics_never_create_a_preprint_exception_observation() -> Result<()> {
     for forgery in [
         "scope",
         "unknown-key",
@@ -275,6 +294,9 @@ async fn forged_init_diagnostics_never_create_an_original_failure_record() -> Re
         "unrepresented",
         "string",
         "size",
+        "checkpoint-stage",
+        "checkpoint-sequence",
+        "checkpoint-extra",
     ] {
         let temporary = tempfile::tempdir()?;
         let root = temporary.path().canonicalize()?;
@@ -295,6 +317,17 @@ async fn forged_init_diagnostics_never_create_an_original_failure_record() -> Re
             "unrepresented" => frame["kind"] = serde_json::json!("unrepresented-exception"),
             "string" => frame["args"] = serde_json::json!(["x".repeat(513)]),
             "size" => frame["args"] = serde_json::json!(["x".repeat(4096)]),
+            "checkpoint-stage" | "checkpoint-sequence" | "checkpoint-extra" => {
+                frame = serde_json::json!({
+                    "format": "io.tobkiri.native-init-checkpoint.v1",
+                    "sequence": 1, "stage": "dispatcher-entry",
+                });
+                match forgery {
+                    "checkpoint-stage" => frame["stage"] = serde_json::json!("factory-returned"),
+                    "checkpoint-sequence" => frame["sequence"] = serde_json::json!(8),
+                    _ => frame["authority"] = serde_json::json!(true),
+                }
+            }
             _ => unreachable!(),
         }
         let payload = serde_json::to_string(&frame)?;
@@ -311,18 +344,24 @@ async fn forged_init_diagnostics_never_create_an_original_failure_record() -> Re
             Err(failure) => failure,
             Ok(_) => bail!("forged diagnostic was accepted: {forgery}"),
         };
+        let recorded = failure
+            .downcast_ref::<crate::OriginalInitializationFailure>()
+            .context("actual failed-init observations missing")?;
         assert!(
-            failure
-                .downcast_ref::<crate::OriginalInitializationFailure>()
-                .is_none(),
+            recorded.diagnostic.is_none(),
             "forgery created an original observation: {forgery}"
         );
+        assert_eq!(recorded.trace.inspect_entries, 1);
+        assert_eq!(recorded.trace.inspect_validated, 0);
+        assert_eq!(recorded.trace.checkpoint_count, 0);
         if forgery == "integer" {
             // The original DATA parser rejects unsafe integers before policy;
             // preserve that real outer failure rather than normalizing it.
             assert!(
                 matches!(
-                    failure.downcast_ref::<tobkiri_canon::AllocationError>(),
+                    recorded
+                        .original
+                        .downcast_ref::<tobkiri_canon::AllocationError>(),
                     Some(tobkiri_canon::AllocationError::Invalid)
                 ),
                 "unsafe integer lost its actual codec failure: {failure:#}"
@@ -336,6 +375,57 @@ async fn forged_init_diagnostics_never_create_an_original_failure_record() -> Re
             );
         }
     }
+    Ok(())
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn init_checkpoint_is_data_and_cannot_authorize_root_inspection() -> Result<()> {
+    let temporary = tempfile::tempdir()?;
+    let root = temporary.path().canonicalize()?;
+    let owner = RuntimeOwner::open(root.join("runtime-data"))?;
+    let invocation = owner.begin_native_setup()?;
+    let engine = WasmEngine::new_with_control(invocation.control())?;
+    let payload = r#"{"format":"io.tobkiri.native-init-checkpoint.v1","sequence":1,"stage":"dispatcher-entry"}"#;
+    let component = policy_component(&engine, payload, InitAction::InspectThenUnit, true)?;
+    let mut runtime = NativeBootstrap::prepare(
+        &engine,
+        &component,
+        invocation,
+        selected(root.clone())?,
+        &INDEX,
+    )
+    .await?
+    .map_err(|_| anyhow::anyhow!("checkpoint became a domain error"))?;
+    let trace = runtime.initialization_trace();
+    assert_eq!(trace.checkpoint_sequence, 1);
+    assert_eq!(trace.checkpoint_count, 1);
+    assert_eq!(trace.guest_checkpoint, Some("dispatcher-entry"));
+    assert_eq!(trace.inspect_entries, 1);
+    assert_eq!(trace.inspect_validated, 1);
+    assert_eq!(trace.host_phase, "export-returned");
+    // The exact same DATA must not acquire a root or source-operation right.
+    assert!(runtime.host_resource_root().await.is_err());
+    assert_eq!(runtime.initialization_trace().checkpoint_count, 1);
+    runtime.finish().await?;
+    let invocation = owner.begin_native_setup()?;
+    let component = policy_component(&engine, payload, InitAction::InspectTwiceThenUnit, false)?;
+    let failure =
+        match NativeBootstrap::prepare(&engine, &component, invocation, selected(root)?, &INDEX)
+            .await
+        {
+            Err(failure) => failure,
+            Ok(_) => bail!("replayed checkpoint did not fail native validation"),
+        };
+    let recorded = failure
+        .downcast_ref::<crate::OriginalInitializationFailure>()
+        .context("replayed checkpoint lost the actual execution failure")?;
+    assert!(recorded.diagnostic.is_none());
+    assert_eq!(recorded.trace.inspect_entries, 2);
+    assert_eq!(recorded.trace.checkpoint_count, 1);
+    assert_eq!(
+        recorded.trace.last_rejection,
+        crate::InitializationRejection::Sequence
+    );
     Ok(())
 }
 

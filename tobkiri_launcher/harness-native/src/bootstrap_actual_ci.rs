@@ -141,10 +141,20 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
             error.code().as_str()?
         ),
     };
+    let init_trace = runtime.initialization_trace();
+    println!("NATIVE_HARNESS_INIT trace={init_trace:?}");
     ensure!(
-        runtime.inspection_attempts() == 0,
-        "metadata init attempted native IO"
+        init_trace.checkpoint_count == 7
+            && init_trace.checkpoint_sequence == 7
+            && init_trace.inventory_entries == 1
+            && init_trace.inventory_validated == 1
+            && init_trace.inspect_entries == 7
+            && init_trace.inspect_validated == 7
+            && init_trace.last_rejection == crate::InitializationRejection::None
+            && runtime.inspection_attempts() == 7,
+        "initialization did not execute exactly the fixed checkpoint/inventory imports"
     );
+    let init_inspections = runtime.inspection_attempts();
     let result = match runtime.bootstrap_profile_id().await? {
         Ok(result) => result,
         Err(error) => bail!("actual original method refused: {}", error.code().as_str()?),
@@ -203,7 +213,7 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
         "original Profile identity changed"
     );
     ensure!(
-        runtime.inspection_attempts() == 0,
+        runtime.inspection_attempts() == init_inspections,
         "pure original method attempted native IO"
     );
     // Execute each original getter as a component-level unit operation. This
@@ -240,7 +250,7 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
         );
     }
     ensure!(
-        runtime.inspection_attempts() == 2,
+        runtime.inspection_attempts() == init_inspections + 2,
         "original getters did not each resolve their source module exactly once"
     );
     let (host, bundle) = runtime.first_source_resolutions();

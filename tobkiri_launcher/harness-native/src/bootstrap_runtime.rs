@@ -5,6 +5,7 @@
 //! only when composition explicitly admits their fixed module operation.
 //! Initialization permits bounded failure observations, never filesystem IO.
 use crate::bootstrap_metadata::{self, BootstrapInputOwner, BootstrapModuleIndex, Scope};
+use crate::init_trace::{InitTrace, InitializationRejection, checkpoint_sequence};
 use anyhow::{Context, Result, bail};
 use std::sync::{
     Arc, OnceLock,
@@ -63,6 +64,7 @@ struct Work<S> {
     first_host_resolution: OnceLock<CoreBuffer>,
     first_bundle_resolution: OnceLock<CoreBuffer>,
     init_diagnostic: OnceLock<CoreBuffer>,
+    init_trace: InitTrace,
 }
 struct Funding {
     _native: NativeSetupReservation,
@@ -114,11 +116,17 @@ fn inventory<S: BootstrapInputOwner>(
     context: NativeImportContext<'_, State<S>>,
 ) -> Result<NativeImportOperation> {
     let work = context.state().work.clone();
-    if !context.same_invocation(&work.get().invocation)
-        || work.get().phase.load(Ordering::Acquire) != INITIALIZING
-    {
+    let trace = &work.get().init_trace;
+    trace.inventory_entries.fetch_add(1, Ordering::Relaxed);
+    if !context.same_invocation(&work.get().invocation) {
+        trace.reject(InitializationRejection::Invocation);
         bail!("native bootstrap inventory is not active");
     }
+    if work.get().phase.load(Ordering::Acquire) != INITIALIZING {
+        trace.reject(InitializationRejection::Phase);
+        bail!("native bootstrap inventory is not active");
+    }
+    trace.inventory_validated.fetch_add(1, Ordering::Relaxed);
     let custody = work.project(|value| value as &(dyn std::any::Any + Send + Sync));
     context.inspect_retaining(custody, move |output| {
         let state = work.get();
@@ -149,15 +157,53 @@ fn inspect<S: BootstrapInputOwner>(
     let work = context.state().work.clone();
     let state = work.get();
     state.inspections.fetch_add(1, Ordering::Relaxed);
+    state
+        .init_trace
+        .inspect_entries
+        .fetch_add(1, Ordering::Relaxed);
     let phase = state.phase.load(Ordering::Acquire);
+    if !context.same_invocation(&state.invocation) {
+        state.init_trace.reject(InitializationRejection::Invocation);
+        bail!("native inspection is unavailable in the metadata-only bootstrap phase");
+    }
     if context.same_invocation(&state.invocation) && phase == INITIALIZING {
         let request = context
             .input()
             .context("native init observation is missing")?;
         if request.len() <= 4096 {
             let frame =
-                CoreValue::parse_guest(request.as_bytes(), context.allocation_owners().graph())?;
+                CoreValue::parse_guest(request.as_bytes(), context.allocation_owners().graph())
+                    .map_err(|original| {
+                        state.init_trace.reject(InitializationRejection::Frame);
+                        original
+                    })?;
+            if let Some(sequence) = checkpoint_sequence(&frame) {
+                state
+                    .init_trace
+                    .inspect_validated
+                    .fetch_add(1, Ordering::Relaxed);
+                let custody = work.project(|value| value as &(dyn std::any::Any + Send + Sync));
+                return context.inspect_retaining(custody, move |output| {
+                    let state = work.get();
+                    if !state.invocation.same_invocation(output.invocation())
+                        || state.phase.load(Ordering::Acquire) != INITIALIZING
+                    {
+                        state.init_trace.reject(InitializationRejection::Phase);
+                        return Err(NativeDataIoError::Retired);
+                    }
+                    state.source.check_live()?;
+                    if !state.init_trace.checkpoint(sequence) {
+                        return Err(NativeDataIoError::Unavailable);
+                    }
+                    // Fixed progress DATA carries no authority or init success.
+                    output.append(b"{}")
+                });
+            }
             if crate::init_diagnostic::valid(&frame, &state.invocation) {
+                state
+                    .init_trace
+                    .inspect_validated
+                    .fetch_add(1, Ordering::Relaxed);
                 let request = request.clone();
                 let custody = work.project(|value| value as &(dyn std::any::Any + Send + Sync));
                 return context.inspect_retaining(custody, move |output| {
@@ -179,6 +225,11 @@ fn inspect<S: BootstrapInputOwner>(
         }
     }
     if !context.same_invocation(&state.invocation) || !matches!(phase, HOST_ROOT | BUNDLE_ROOT) {
+        state.init_trace.reject(if phase == INITIALIZING {
+            InitializationRejection::Frame
+        } else {
+            InitializationRejection::Phase
+        });
         bail!("native inspection is unavailable in the metadata-only bootstrap phase");
     }
     let policy = state
@@ -328,17 +379,20 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 first_host_resolution: OnceLock::new(),
                 first_bundle_resolution: OnceLock::new(),
                 init_diagnostic: OnceLock::new(),
+                init_trace: InitTrace::new(),
             },
             Funding {
                 _native: native,
                 _control: control,
             },
         )?;
-        let store = engine.native_setup_store_with_imports(
-            invocation.clone(),
-            State { work: work.clone() },
-            &State::<S>::BINDINGS,
-        )?;
+        let store = engine
+            .native_setup_store_with_imports(
+                invocation.clone(),
+                State { work: work.clone() },
+                &State::<S>::BINDINGS,
+            )
+            .map_err(|original| initialization_failure(work.get(), None, original))?;
         let io = store
             .native_data_io()
             .context("native bootstrap IO was not bound")?
@@ -376,9 +430,11 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 result: Some(contract(NativeDataSuccessType::String)),
             },
         ];
+        work.get().init_trace.phase(1);
         let program = match store.prepare_data_program(component, &bindings).await {
             Ok(program) => program,
             Err(original) => {
+                let original = initialization_failure(work.get(), None, original);
                 work.get().phase.store(CLOSED, Ordering::Release);
                 if let Err(cleanup) = io.retire_and_wait().await {
                     return Err(BootstrapCleanupFailure {
@@ -402,12 +458,18 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             .get()
             .phase
             .store(INITIALIZING, Ordering::Release);
+        runner.work.get().init_trace.phase(2);
         let result = runner
             .program
             .as_mut()
             .context("native program was retired")?
             .invoke(0, Some(&init))
             .await;
+        runner
+            .work
+            .get()
+            .init_trace
+            .phase(if result.is_err() { 4 } else { 3 });
         drop(init);
         match result {
             Ok(Ok(NativeDataValue::Unit)) => {
@@ -573,27 +635,20 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
     }
 
     fn initialization_failure(&self, original: anyhow::Error) -> anyhow::Error {
-        match self.work.get().init_diagnostic.get() {
-            Some(diagnostic) => crate::OriginalInitializationFailure {
-                original,
-                diagnostic: diagnostic.clone(),
-                observation: self.program.as_ref().map(|p| p.observation()),
-                capacity: self.work.get().invocation.capacity_snapshot().ok(),
-                elapsed_micros: self
-                    .work
-                    .get()
-                    .invocation
-                    .started_at()
-                    .elapsed()
-                    .as_micros(),
-            }
-            .into(),
-            None => original,
-        }
+        initialization_failure(
+            self.work.get(),
+            self.program.as_ref().map(|p| p.observation()),
+            original,
+        )
     }
 
-    /// Native import observations, including failed-init diagnostics. Pure
-    /// successful initialization and Profile-id execution must not inspect.
+    /// Actual import observations, separate from guest-reported progress DATA.
+    pub fn initialization_trace(&self) -> crate::InitializationTrace {
+        self.work.get().init_trace.snapshot()
+    }
+
+    /// Actual inspection import entries, including fixed init checkpoints and
+    /// failure DATA. This count does not imply filesystem IO or grant rights.
     pub fn inspection_attempts(&self) -> u64 {
         self.work.get().inspections.load(Ordering::Acquire)
     }
@@ -630,6 +685,23 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         self.io.retire_and_wait().await?;
         Ok(())
     }
+}
+
+fn initialization_failure<S>(
+    work: &Work<S>,
+    observation: Option<tobkiri_wasm::NativeDataObservation>,
+    original: anyhow::Error,
+) -> anyhow::Error {
+    crate::OriginalInitializationFailure {
+        original,
+        diagnostic: work.init_diagnostic.get().cloned(),
+        trace: work.init_trace.snapshot(),
+        observation,
+        capacity: work.invocation.capacity_snapshot().ok(),
+        elapsed_micros: work.invocation.started_at().elapsed().as_micros(),
+        deadline: work.invocation.deadline().ok(),
+    }
+    .into()
 }
 
 #[cfg(all(

@@ -43,6 +43,27 @@ _FIELDS = {
     },
 }
 
+# Fixed DATA only: no scope assertion is needed before Scope.from_wire. The
+# native import still checks its real invocation and initialization phase.
+CHECKPOINT_STAGES = (
+    "dispatcher-entry", "wire-decoded", "scope-decoded", "factory-entering",
+    "factory-returned", "registry-entering", "registry-returned",
+)
+_CHECKPOINT_FRAMES = tuple(
+    '{"format":"io.tobkiri.native-init-checkpoint.v1",'
+    f'"sequence":{sequence},"stage":"{stage}"' + "}"
+    for sequence, stage in enumerate(CHECKPOINT_STAGES, 1)
+)
+
+
+def report_init_checkpoint(sequence: int) -> None:
+    """Send one of seven constant frames through the existing fixed import."""
+    if type(sequence) is not int or not 1 <= sequence <= len(_CHECKPOINT_FRAMES):
+        raise ValueError("unknown init checkpoint")
+    from wit_world.imports.bindings import inspect
+
+    inspect(_CHECKPOINT_FRAMES[sequence - 1])
+
 
 def _text(value: object, maximum: int) -> bool:
     if type(value) is not str or len(value) > maximum:

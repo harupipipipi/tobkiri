@@ -92,9 +92,11 @@ class Dispatcher:
         bootstrap: Callable[[Scope], OriginalRuntime],
         *,
         init_failure_observer: Callable[[Scope, str, BaseException], None] | None = None,
+        init_checkpoint_observer: Callable[[int], None] | None = None,
     ) -> None:
         self._bootstrap = bootstrap
         self._init_failure_observer = init_failure_observer
+        self._init_checkpoint_observer = init_checkpoint_observer
         self._state: _State | None = None
         self._init_failure: BaseException | None = None
         self._init_failure_scope: Scope | None = None
@@ -119,26 +121,43 @@ class Dispatcher:
         """Validate the complete scope before loading and committing any state."""
         if self._state is not None:
             raise AlreadyInitialized()
+        self._checkpoint(1)
         # A failed attempt is retained only until the next init starts. Scope
         # validation failures cannot accidentally report an older generation.
         self._init_failure = None
         self._init_failure_scope = None
         self._init_failure_phase = None
         frame = self._load(payload)
+        self._checkpoint(2)
         if set(frame) != {"format", "scope"} or frame["format"] != PREFIX + "init.v1":
             raise InvalidFrame("invalid original initialization frame")
         scope = Scope.from_wire(frame["scope"])
+        self._checkpoint(3)
         try:
+            self._checkpoint(4)
             original = self._bootstrap(scope)
+            self._checkpoint(5)
         except BaseException as error:
             self._observe_init_failure(scope, "original-factory", error)
             raise
         try:
+            self._checkpoint(6)
             state = self._registry_state(scope, original)
+            self._checkpoint(7)
         except BaseException as error:
             self._observe_init_failure(scope, "transport-registry", error)
             raise
         self._state = state
+
+    def _checkpoint(self, sequence: int) -> None:
+        """Ordinary observer errors cannot replace the original init behavior."""
+        try:
+            if self._init_checkpoint_observer is not None:
+                self._init_checkpoint_observer(sequence)
+        except BaseException:
+            # Runtime traps and exhausted budgets remain outer failures; this
+            # only contains ordinary Python observer exceptions.
+            pass
 
     def _observe_init_failure(
         self, scope: Scope, phase: str, error: BaseException,

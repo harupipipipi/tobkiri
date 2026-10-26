@@ -167,6 +167,19 @@ jobs:
             ${{ runner.temp }}/python313-native/build.log
             ${{ runner.temp }}/python313-wasi/sdk-input/sdk-manifest.json
             ${{ runner.temp }}/python313-wasi/wasi-build.json
+            ${{ runner.temp }}/python313-wasi/work/wasi/pyconfig.h
+            ${{ runner.temp }}/python313-wasi/work/wasi/install/include/python3.13/pyconfig.h
+            ${{ runner.temp }}/python313-wasi/work/wasi/config.log
+            ${{ runner.temp }}/python313-wasi/work/wasi/Makefile
+            ${{ runner.temp }}/python313-source/cpython/Tools/wasm/config.site-wasm32-wasi
+            ${{ runner.temp }}/python313-source/cpython/Python/thread.c
+            ${{ runner.temp }}/python313-source/cpython/Python/thread*.h
+            ${{ runner.temp }}/python313-source/cpython/Modules/_threadmodule.c
+            ${{ runner.temp }}/python313-source/cpython/Lib/threading.py
+            ${{ runner.temp }}/python313-source/cpython/Python/context.c
+            ${{ runner.temp }}/python313-source/cpython/Modules/_contextvarsmodule.c
+            ${{ runner.temp }}/python313-source/cpython/Include/internal/pycore_context.h
+            ${{ runner.temp }}/python313-source/cpython/Include/cpython/pystate.h
             ${{ runner.temp }}/python313-wasi/wasi-zlib/command.json
             ${{ runner.temp }}/python313-wasi/wasi-zlib/supervision.json
             ${{ runner.temp }}/python313-wasi/wasi-zlib/build.log

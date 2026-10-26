@@ -174,6 +174,25 @@ class InitDiagnosticTests(unittest.TestCase):
                              and node.func.id in {"str", "repr", "getattr"}
                              for node in ast.walk(source)))
 
+    def test_checkpoints_are_seven_fixed_closed_frames_and_no_reply_is_authority(self):
+        bindings = ModuleType("wit_world.imports.bindings")
+        calls = []
+        bindings.inspect = lambda payload: calls.append(payload) or object()
+        with patch.dict(sys.modules, {"wit_world.imports.bindings": bindings}):
+            for sequence in range(1, 8):
+                self.assertIsNone(diagnostic.report_init_checkpoint(sequence))
+            for invalid in (0, 8, True, "1", None):
+                with self.assertRaises(ValueError):
+                    diagnostic.report_init_checkpoint(invalid)
+        self.assertEqual(len(calls), 7)
+        for sequence, payload in enumerate(calls, 1):
+            self.assertLessEqual(len(payload.encode()), 128)
+            self.assertEqual(json.loads(payload), {
+                "format": "io.tobkiri.native-init-checkpoint.v1",
+                "sequence": sequence,
+                "stage": diagnostic.CHECKPOINT_STAGES[sequence - 1],
+            })
+
     def test_only_fixed_inspect_import_is_used_and_reply_is_ignored(self):
         bindings = ModuleType("wit_world.imports.bindings")
         calls = []

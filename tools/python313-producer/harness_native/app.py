@@ -12,12 +12,13 @@ from harness_native.dispatcher import (
     NotInitialized,
 )
 from harness_native.value_graph import InvalidFrame, InvalidReference, UnsupportedValue
-from harness_native.init_diagnostic import report_init_failure
+from harness_native.init_diagnostic import report_init_checkpoint, report_init_failure
 
 # The componentizer creates a separate adapter instance for each exported
 # function. All of them must use this one interpreter-local dispatcher.
 _dispatcher = Dispatcher(
     load_original_runtime, init_failure_observer=report_init_failure,
+    init_checkpoint_observer=report_init_checkpoint,
 )
 
 

@@ -22,15 +22,18 @@ const KINDS: &[&str] = &[
     "unrepresented-exception",
 ];
 
-/// The original guest execution failure plus data recorded BEFORE its runtime
-/// attempted exception printing. The diagnostic is not a reconstructed error.
+/// The actual execution failure and native trace, even when no PyErr was seen.
+/// An optional diagnostic was recorded BEFORE guest exception printing; its
+/// absence must not be mistaken for a captured original Python exception.
 /// Fuel/deadline/memory failures remain outer execution failures.
 pub struct OriginalInitializationFailure {
     pub original: anyhow::Error,
-    pub diagnostic: CoreBuffer,
+    pub diagnostic: Option<CoreBuffer>,
+    pub trace: crate::InitializationTrace,
     pub observation: Option<NativeDataObservation>,
     pub capacity: Option<NativeSetupSnapshot>,
     pub elapsed_micros: u128,
+    pub deadline: Option<std::time::Instant>,
 }
 impl fmt::Debug for OriginalInitializationFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -39,15 +42,16 @@ impl fmt::Debug for OriginalInitializationFailure {
 }
 impl fmt::Display for OriginalInitializationFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("original native initialization failed; bounded pre-print observation: ")?;
-        match self.diagnostic.as_str() {
-            Ok(text) => f.write_str(text)?,
-            Err(_) => f.write_str("unavailable UTF-8 observation")?,
+        f.write_str("native initialization execution failed; bounded pre-print observation: ")?;
+        match self.diagnostic.as_ref().map(CoreBuffer::as_str) {
+            Some(Ok(text)) => f.write_str(text)?,
+            Some(Err(_)) => f.write_str("unavailable UTF-8 observation")?,
+            None => f.write_str("not received; original Python exception unknown")?,
         }
         write!(
             f,
-            "; native={:?}; capacity={:?}; elapsed_us={}",
-            self.observation, self.capacity, self.elapsed_micros
+            "; trace={:?}; native={:?}; capacity={:?}; elapsed_us={}; deadline={:?}",
+            self.trace, self.observation, self.capacity, self.elapsed_micros, self.deadline
         )
     }
 }

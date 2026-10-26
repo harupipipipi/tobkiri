@@ -8,6 +8,7 @@ mod bootstrap_metadata;
 mod bootstrap_runtime;
 mod exception_graph;
 mod init_diagnostic;
+mod init_trace;
 mod source_metadata;
 #[cfg(target_os = "macos")]
 mod source_resolve;
@@ -16,6 +17,7 @@ pub use bootstrap_metadata::{
 };
 pub use bootstrap_runtime::{BootstrapCleanupFailure, NativeBootstrap};
 pub use init_diagnostic::OriginalInitializationFailure;
+pub use init_trace::{InitializationRejection, InitializationTrace};
 pub use source_metadata::{ModuleMetadataPolicy, ORIGINAL_PROFILE_SOURCE_METADATA};
 pub use wasmtime::component::Component as NativeHarnessComponent;
 #[cfg(unix)]

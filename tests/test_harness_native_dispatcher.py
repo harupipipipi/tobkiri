@@ -212,6 +212,53 @@ class DispatcherTests(unittest.TestCase):
         self.assertEqual(len(attempts), 2)
         self.assertIsNotNone(dispatcher._current())
 
+    def test_checkpoints_preserve_actual_init_order_and_original_failure(self):
+        events = []
+
+        def factory(_scope):
+            events.append("factory")
+            return original()
+
+        dispatcher = Dispatcher(factory, init_checkpoint_observer=events.append)
+        dispatcher.init(self.frame("init"))
+        self.assertEqual(events, [1, 2, 3, 4, "factory", 5, 6, 7])
+        with self.assertRaises(AlreadyInitialized):
+            dispatcher.init(self.frame("init"))
+        self.assertEqual(events, [1, 2, 3, 4, "factory", 5, 6, 7])
+
+        error = RuntimeError("actual factory failure")
+
+        def failing(_scope):
+            raise error
+
+        events.clear()
+        dispatcher = Dispatcher(failing, init_checkpoint_observer=events.append)
+        with self.assertRaises(RuntimeError) as caught:
+            dispatcher.init(self.frame("init"))
+        self.assertIs(caught.exception, error)
+        self.assertEqual(events, [1, 2, 3, 4])
+        self.assertIsNone(dispatcher._state)
+
+    def test_checkpoint_errors_do_not_change_frames_or_factory_outcome(self):
+        seen = []
+
+        def observer(sequence):
+            seen.append(sequence)
+            raise RuntimeError("ordinary observer failure")
+
+        dispatcher = Dispatcher(lambda _scope: original(),
+                                init_checkpoint_observer=observer)
+        dispatcher.init(self.frame("init"))
+        self.assertEqual(seen, list(range(1, 8)))
+        self.assertIsNotNone(dispatcher._state)
+        seen.clear()
+        dispatcher = Dispatcher(lambda _scope: original(),
+                                init_checkpoint_observer=observer)
+        with self.assertRaises(InvalidFrame):
+            dispatcher.init("invalid JSON")
+        self.assertEqual(seen, [1])
+        self.assertIsNone(dispatcher._state)
+
     def test_init_observer_keeps_actual_factory_exception_and_bare_reraise(self):
         for cls in (ValueError, MemoryError, RecursionError, PrivateError):
             with self.subTest(kind=cls):
@@ -469,7 +516,8 @@ class DispatcherTests(unittest.TestCase):
         ]
         self.assertEqual(
             [(kw.arg, kw.value.id) for kw in dispatcher_assignment.value.keywords],
-            [("init_failure_observer", "report_init_failure")],
+            [("init_failure_observer", "report_init_failure"),
+             ("init_checkpoint_observer", "report_init_checkpoint")],
         )
         invoke, = [n for n in tree.body if isinstance(n, ast.FunctionDef)
                    and n.name == "_invoke"]

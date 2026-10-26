@@ -20,8 +20,14 @@ aliases share one proxy; equal lexical paths with different roles do not.
 
 `NativeBootstrap` now supplies the fixed metadata inventory from an actual
 original input owner before `Runtime.init`. Its initial phase rejects filesystem
-inspection; only a closed, bounded failed-init observation may use the existing
-fixed import. Admitting inventory does not implement native filesystem IO.
+inspection; only a closed, bounded failed-init observation and seven fixed
+initialization checkpoints may use the existing fixed import. Checkpoints use
+only a fixed stage and monotonic sequence. Before Scope decoding, the actual
+native Store/invocation and `INITIALIZING` phase still validate the import;
+guest-supplied identity does not authenticate it. One fixed-size native trace
+retains actual host phase, import entries separately from validation counts,
+last rejection and last accepted checkpoint. It retains no arbitrary log list.
+Admitting inventory or a checkpoint does not implement native filesystem IO.
 The opt-in original Launcher adapter retains the actual AppHandle and borrows
 the original AppConfig/shutdown state. Its lazy `RuntimeOwner` owns the real
 pinned DataRoot, ledger and control, which Core consumes without reopening or
@@ -31,6 +37,36 @@ operation policy and physical cleanup. No guest
 Scope, source checksum, lexical path or transport ID supplies authority. Missing
 native imports do not fall back to ambient guest filesystem access or invented
 roots. Whole-component initialization and product integration remain incomplete.
+
+The 8f72 actual component (24,837,771 bytes, SHA256
+`56146382ed1c42b19f720240e3bf0b72a37ad3339a5c7b7ca9e67269d0923604`)
+passed admission and prepared in 16,514,529 microseconds inside the original
+30-second operation. Actual `Runtime.init` then failed in `PyErr.print` through
+the terminal `isatty` stub, without delivering a pre-print diagnostic. Its
+original Python exception remains unknown. Native failure records now retain
+the actual trace, fuel/capacity observations when available, original deadline,
+elapsed time and original outer error even when the diagnostic is absent.
+The seven checkpoints localize progress; they do not identify an exception or
+prove initialization success. No stdio/WASI access, exception substitution or
+resource-limit increase is introduced. The producer's outer `PyErr.print`
+boundary currently has no proven low-dependency native observation hook; this
+change does not claim to have instrumented that boundary.
+
+Production singleton ownership also remains unresolved. The original callees
+retain issued-origin/class/exception identity, thread/ContextVar custody,
+ActivationStore retry state and shared flight/waiter synchronization. Fresh
+Stores, a serial mutex, or whole-Store cancellation do not prove equivalence.
+Before a resident owner is implemented, CI must establish the actual resolved
+and compiled Wasmtime features, generated ABI, CPython thread/context backend,
+same-state concurrent progress and individual operation termination/state
+safety. The native consumer retains both the resolved feature graph and the
+actual compiler fingerprints. These observations are not concurrency tests.
+The pinned historical producer's authenticated source manifest was verified,
+but its receipts and artifacts contain no generated `pyconfig.h`. The next
+producer build retains the actual generated and installed headers and small
+thread/context sources alongside their existing source/recipe receipts; it
+cannot retroactively prove the old binary's backend selection. No resident
+wrapper or product default is enabled on the strength of these source facts.
 
 `scripts/wasm/stage_harness_native.py` maps the captured original module closure
 and all schema resources into the real import layout, with the actual dispatcher

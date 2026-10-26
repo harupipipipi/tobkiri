@@ -179,7 +179,7 @@ jobs:
         if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/harness-native-inspection-policy.log" --expected-passed 5 --
+          --log "$RUNNER_TEMP/harness-native-inspection-policy.log" --expected-passed 6 --
           cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
           bootstrap_runtime::policy_tests:: -- --nocapture
       - name: Run actual original Runtime.init Profile identity and opaque root getters
@@ -190,6 +190,21 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
           bootstrap_runtime::actual_ci::actual_original_component_initializes_and_returns_original_profile_id
           -- --nocapture
+      - name: Retain resolved and actually compiled runtime features
+        if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        run: |
+          evidence="$RUNNER_TEMP/harness-native-runtime-features"
+          mkdir "$evidence"
+          rustc --version --verbose > "$evidence/rustc.txt"
+          cargo tree --locked --offline -p tobkiri-harness-native --features bootstrap-ci \
+            --target aarch64-apple-darwin --edges features --invert wasmtime@47.0.4 \
+            > "$evidence/resolved-wasmtime-features.txt"
+          for fingerprint in "$CARGO_TARGET_DIR"/debug/.fingerprint/wasmtime-*/lib-wasmtime.json; do
+            test -f "$fingerprint"
+            test -s "${fingerprint%.json}"
+            identity="$(basename "$(dirname "$fingerprint")")"
+            cp "$fingerprint" "$evidence/$identity.json"
+          done
       - name: Preserve the actual native owner when Core adopts it
         if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         run: >-
@@ -208,4 +223,5 @@ jobs:
             ${{ runner.temp }}/harness-native-source-metadata.log*
             ${{ runner.temp }}/harness-native-inspection-policy.log*
             ${{ runner.temp }}/harness-native-owner-transfer.log*
+            ${{ runner.temp }}/harness-native-runtime-features/
           if-no-files-found: warn

@@ -84,6 +84,28 @@ class NativeWorkflowContracts(unittest.TestCase):
                 self.assertNotIn("success()", condition.group(1))
                 self.assertLess(self.native.index(metadata), self.native.index(source))
 
+    def test_runtime_features_come_from_the_same_resolved_and_compiled_consumer(self) -> None:
+        source = step(self.native, "Retain resolved and actually compiled runtime features")
+        self.assertIn("steps.native_platform.conclusion == 'success'", source)
+        self.assertIn("steps.native_inputs.conclusion == 'success'", source)
+        self.assertIn("!cancelled()", source)
+        self.assertIn("cargo tree --locked --offline -p tobkiri-harness-native", source)
+        self.assertIn("--features bootstrap-ci", source)
+        self.assertIn("--target aarch64-apple-darwin", source)
+        self.assertIn("--edges features --invert wasmtime@47.0.4", source)
+        self.assertIn('"$CARGO_TARGET_DIR"/debug/.fingerprint/wasmtime-*/lib-wasmtime.json', source)
+        self.assertIn('test -s "${fingerprint%.json}"', source)
+        self.assertNotIn("continue-on-error", source)
+        self.assertLess(
+            self.native.index(step(self.native, "Run actual original Runtime.init Profile identity and opaque root getters")),
+            self.native.index(source),
+        )
+        self.assertLess(
+            self.native.index(source),
+            self.native.index(step(self.native, "Preserve the actual native owner when Core adopts it")),
+        )
+        self.assertIn("${{ runner.temp }}/harness-native-runtime-features/", self.native)
+
     def test_mandatory_commands_keep_the_real_metadata_policy_init_and_owner_cases(self) -> None:
         commands = (
             (
@@ -94,7 +116,7 @@ class NativeWorkflowContracts(unittest.TestCase):
             ),
             (
                 "Preserve init failures and reject unauthorized inspection and cancelled getters",
-                "--expected-passed 5 --",
+                "--expected-passed 6 --",
                 "cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib",
                 "bootstrap_runtime::policy_tests::",
             ),
