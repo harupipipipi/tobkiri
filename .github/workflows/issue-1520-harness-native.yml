@@ -20,6 +20,8 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'tools/python313-producer/tests/test_build_components.py'
+      - 'tools/python313-producer/tests/test_harness_native_dependencies.py'
+      - 'tools/python313-producer/tests/test_schema_compressed_loader.py'
       - 'tobkiri_runtime/core_runtime/**'
       - 'tobkiri_runtime/tobkiri_protocol/**'
       - 'tobkiri_runtime/ecosystem/defaultspack/defaultspack/profile_runtime_composition.py'
@@ -59,6 +61,7 @@ jobs:
           python3 -B -m unittest discover -s tools/python313-producer/tests -p test_build_components.py
           python3 -B -m unittest discover -s tools/python313-producer/tests -p test_harness_native_dependencies.py
           python3 -B -m unittest discover -s tools/python313-producer/tests -p test_schema_loader.py
+          python3 -B -m unittest discover -s tools/python313-producer/tests -p test_schema_compressed_loader.py
       - name: Authenticate the existing successful custom producer
         env:
           GH_TOKEN: ${{ github.token }}

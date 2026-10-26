@@ -363,6 +363,14 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         self.work.get().inspections.load(Ordering::Acquire)
     }
 
+    /// Sample fuel from this same Store; no execution allowance is replaced.
+    pub fn fuel_remaining(&self) -> Result<u64> {
+        self.program
+            .as_ref()
+            .context("native bootstrap was retired")?
+            .fuel_remaining()
+    }
+
     /// Borrow the original DATA codec account for native frame codecs. Cloning
     /// its handle retains these same limits, deadline and physical accounting.
     pub fn data_budget(&self) -> &Arc<dyn AllocationBudget> {

@@ -168,6 +168,22 @@ def _stdlib_preimports(files: dict[str, bytes], modules: dict) -> tuple[str, ...
     return tuple(sorted(stdlib))
 
 
+def compress_sources(files: dict[str, bytes]) -> tuple:
+    """Encode each complete original member, without a code or expansion cache."""
+    import zlib
+
+    rows = []
+    for name, raw in sorted(files.items()):
+        packed = zlib.compress(raw, level=9)
+        # Incompressible/empty members retain their one original immutable bytes
+        # object; neither storage form can exceed the existing raw read bound.
+        codec, payload = (
+            ("zlib", packed) if len(packed) < len(raw) else ("identity", raw)
+        )
+        rows.append((name, codec, payload, len(raw), hashlib.sha256(raw).hexdigest()))
+    return tuple(rows)
+
+
 def stage(
     destination: Path,
     original: dict,
@@ -261,23 +277,37 @@ def stage(
     }
     from schema_probe.captured_loader import Finder
 
-    tree_accounted_bytes = Finder(
+    raw_tree_accounted_bytes = Finder(
         tree_files,
         distributions,
         "/captured-native-harness",
         namespaces,
     ).tree.accounted_bytes
-    parts = ["# Captured immutable original source/resource DATA.\nFILES = {\n"]
+    compressed_files = compress_sources(tree_files)
+    compressed_tree = Finder(
+        compressed_files,
+        distributions,
+        "/captured-native-harness",
+        namespaces,
+        compressed=True,
+    ).tree
+    # Source-tool verification only: no module body executes or code is replaced.
+    for name, raw in tree_files.items():
+        if compressed_tree.files[name] != raw:
+            raise ValueError("compressed capture differs from original source bytes")
+    parts = [
+        "# Immutable per-file original path/codec/payload/length/SHA-256.\nFILES = (\n"
+    ]
     literal_bytes = len(parts[0])
-    for name, raw in sorted(tree_files.items()):
-        literal = repr(name) + ": " + repr(raw) + ",\n"
+    for row in compressed_files:
+        literal = repr(row) + ",\n"
         literal_bytes += len(literal.encode())
         if literal_bytes > MAX_FILE:
             raise ValueError("native captured DATA literal exceeds original file bound")
         parts.append(literal)
     parts.extend(
         [
-            "}\nDISTRIBUTIONS = " + repr(distributions),
+            ")\nDISTRIBUTIONS = " + repr(distributions),
             "\nNAMESPACES = " + repr(namespaces),
             "\nSTDLIB_PREIMPORTS = " + repr(stdlib_preimports) + "\n",
         ]
@@ -297,7 +327,21 @@ def stage(
         "original_schema_count": len(schema_files),
         "captured_tree_files": len(tree_files),
         "captured_source_bytes": sum(map(len, tree_files.values())),
-        "captured_tree_accounted_bytes": tree_accounted_bytes,
+        "captured_tree_accounted_bytes": compressed_tree.accounted_bytes,
+        "captured_raw_admission_bytes": raw_tree_accounted_bytes,
+        "source_storage": {
+            "format": "tobkiri.immutable-per-file-source/1",
+            "codecs": ["zlib", "identity"],
+            "raw_lengths_and_sha256_bound_per_path": True,
+            "stored_payload_bytes": sum(len(row[2]) for row in compressed_files),
+            "retained_storage_accounted_bytes": compressed_tree.compressed_storage_bytes,
+            "max_read_bytes": 4 * 1024 * 1024,
+            "full_raw_capture_admission_retained": True,
+            "expanded_member_cache": False,
+            "code_cache": False,
+            "decompression_after_restore_proven": False,
+            "artifact_size_within_limit_proven": False,
+        },
         "namespace_packages": list(namespaces),
         "stdlib_preimports": list(stdlib_preimports),
         "dependencies": verified,

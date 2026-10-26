@@ -56,7 +56,10 @@ def capture(path: Path) -> bytes:
     with path.open('rb') as stream:
         data = stream.read(LIMIT + 1)
     if not data or len(data) > LIMIT:
-        raise ValueError('component artifact exceeds original Pack file bound')
+        raise ValueError(
+            'component artifact exceeds original Pack file bound: '
+            f'{path.stat().st_size} bytes (limit {LIMIT})'
+        )
     return data
 
 

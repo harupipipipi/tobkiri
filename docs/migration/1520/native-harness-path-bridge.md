@@ -18,9 +18,15 @@ executing the unchanged original code object. Its hook remains for lazy imports;
 late binding to previously imported original modules is rejected. True native
 aliases share one proxy; equal lexical paths with different roles do not.
 
-This does not yet supply the original Launcher's admitted native inventory or
-inspection implementation. That typed context must retain the real original
-invocation, actual AppConfig/resource owners and operation policies. No guest
+`NativeBootstrap` now supplies the fixed metadata inventory from an actual
+original input owner before `Runtime.init`. Its initial phase rejects every
+inspection request; admitting metadata does not implement native filesystem IO.
+The opt-in original Launcher adapter retains the actual AppHandle and borrows
+the original AppConfig/shutdown state. Its lazy `RuntimeOwner` owns the real
+pinned DataRoot, ledger and control, which Core consumes without reopening or
+resetting them. This adapter is not yet called from the original product
+operation. Each later inspection still needs its actual source capability,
+operation policy and physical cleanup. No guest
 Scope, source checksum, lexical path or transport ID supplies authority. Missing
 native imports do not fall back to ambient guest filesystem access or invented
 roots. Whole-component initialization and product integration remain incomplete.
@@ -35,15 +41,31 @@ authority. Frozen three/five-Pack plans are unchanged. The build workflow retain
 the exact component, source plan and generated bindings; a successful build is
 not proof of Runtime.init, original methods, native IO or GUI operation.
 
-External cryptography, JSON Schema and packaging dependencies are still explicit
-and not supplied by this stage. Existing genuine Wasm rpds and original pure
-schema/packaging inputs should be reused. Dependency separation may retain the
+The native-only dependency stage now reuses the genuinely verified Wasm RPDS
+extension, locked JSON Schema/packaging wheels and original standard library.
+An immutable loader retains all captured original/dependency code and resources,
+including namespace packages and late imports. Cryptography is still explicitly
+unprovided. Four pure Profile records moved to a private shared module with
+unchanged full definitions and legacy public module identities; the original
+composition and selector bodies remain unchanged. Dependency separation may retain the
 complete original DATA bodies while connecting reached crypto/authority work to
 real Rust/Wasm implementations; neither empty classes nor fixed-success adapters
 may replace that work. Source transformation evidence and actual runtime/ABI
 evidence must remain separate. Initialize and execute the same actual component
 through all seventeen original methods before connecting the original product
 reachpoint and retiring its Python/VM implementation.
+
+The CI consumer exercises original initialization, the first original method
+and actual DATA description under the same physical account. It records peak
+charged capacity, remaining fuel and elapsed time. Its separate hostile-component
+case rejects inspection during metadata bootstrap, and owner-transfer cases keep
+the real root/control/ledger and outstanding reservations. These execution proofs
+remain pending: the first dependency-inclusive inner artifact exceeded the
+unchanged 32 MiB artifact cap. Lossless immutable source/resource compression
+must fit that cap and the same shared 64 MiB/2 billion fuel/30-second/4 MiB
+execution limits without dropping code, caching expanded sources or introducing
+host filesystem/network fallbacks. A successful artifact build alone remains
+insufficient evidence for Runtime.init, all seventeen methods or the product GUI.
 
 `harness_native/native_path.py` implements the guest side of the proposed native
 inspection protocol. NativeKit must supply the actual fixed import, native host

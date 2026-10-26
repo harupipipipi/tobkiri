@@ -89,6 +89,7 @@ struct Record {
 #[derive(Default)]
 struct Occupancy {
     used: u64,
+    peak: u64,
     records: BTreeMap<u64, Record>,
     invalid: bool,
 }
@@ -113,6 +114,9 @@ pub struct NativeSetupSnapshot {
     pub account_generation: u64,
     pub limit_bytes: u64,
     pub charged_bytes: u64,
+    /// Largest simultaneous reservation in this SAME physical account. This
+    /// is accounting evidence, not a new allowance or process RSS estimate.
+    pub peak_charged_bytes: u64,
     pub reservations: usize,
 }
 
@@ -253,6 +257,7 @@ impl NativeSetupAccount {
             account_generation: self.state.generation,
             limit_bytes: NATIVE_SETUP_MEMORY_BYTES,
             charged_bytes: occupancy.used,
+            peak_charged_bytes: occupancy.peak,
             reservations: occupancy.records.len(),
         })
     }
@@ -268,6 +273,11 @@ struct Invocation {
 #[derive(Clone)]
 pub struct NativeSetupInvocation(LeasedShared<Invocation, ControlReservation>);
 impl NativeSetupInvocation {
+    /// Observe actual original physical accounting without renewing the lease.
+    pub fn capacity_snapshot(&self) -> Result<NativeSetupSnapshot, GateError> {
+        self.0.get().account.snapshot()
+    }
+
     /// Exact shared native invocation custody, not a comparison of serialized
     /// counters that can coincide in independently created ledgers.
     pub fn same_invocation(&self, other: &Self) -> bool {
@@ -360,6 +370,7 @@ impl NativeSetupInvocation {
                 })?;
             occupancy.records.insert(id, Record { allocated: bytes });
             occupancy.used = next;
+            occupancy.peak = occupancy.peak.max(next);
         }
         let plan = ReleasePlan {
             account: Some(account.clone()),
@@ -426,6 +437,7 @@ impl NativeSetupReservation {
             .ok_or(GateError::Unavailable)?
             .allocated = bytes;
         occupancy.used = next;
+        occupancy.peak = occupancy.peak.max(next);
         Ok(())
     }
 

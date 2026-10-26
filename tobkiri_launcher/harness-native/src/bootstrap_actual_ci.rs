@@ -187,9 +187,20 @@ async fn actual_original_component_initializes_and_returns_original_profile_id()
         invocation.deadline()? == deadline,
         "original deadline was replaced"
     );
+    let peak = invocation.capacity_snapshot()?.peak_charged_bytes;
+    let fuel_remaining = runtime.fuel_remaining()?;
+    let elapsed = invocation.started_at().elapsed();
+    ensure!(
+        peak <= tobkiri_gate::NATIVE_SETUP_MEMORY_BYTES
+            && fuel_remaining < 2_000_000_000
+            && elapsed < tobkiri_gate::NATIVE_SETUP_WALL,
+        "original shared execution limits were not observed"
+    );
     runtime.finish().await?;
     println!(
-        "NATIVE_HARNESS_ORIGINAL_INIT init=true profile_id=true inspections=0 physical_cleanup=true"
+        "NATIVE_HARNESS_ORIGINAL_INIT init=true profile_id=true inspections=0 physical_cleanup=true \
+         peak_charged_bytes={peak} fuel_remaining={fuel_remaining} elapsed_us={}",
+        elapsed.as_micros()
     );
     Ok(())
 }

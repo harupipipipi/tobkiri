@@ -16,6 +16,7 @@ import component_inputs  # noqa: E402
 import build_components  # noqa: E402
 import harness_native_dependencies as dependencies  # noqa: E402
 from fetch_sdk import inventory  # noqa: E402
+from schema_probe.captured_loader import Tree  # noqa: E402
 
 
 def identity(raw):
@@ -178,7 +179,9 @@ class NativeHarnessDependencyTests(unittest.TestCase):
             values = {
                 node.targets[0].id: ast.literal_eval(node.value) for node in data.body
             }
-            files = values["FILES"]
+            self.assertIs(type(values["FILES"]), tuple)
+            tree = Tree(values["FILES"], compressed=True)
+            files = tree.files
             self.assertEqual(
                 values["NAMESPACES"],
                 ("ecosystem", "ecosystem.defaultspack", "harness_native"),
@@ -203,6 +206,22 @@ class NativeHarnessDependencyTests(unittest.TestCase):
                 (rpds / "work/stage/rpds.abi3.so").read_bytes(),
             )
             proof = json.loads((stage / "python" / dependencies.METADATA).read_bytes())
+            storage = proof["source_storage"]
+            self.assertFalse(storage["expanded_member_cache"])
+            self.assertFalse(storage["code_cache"])
+            self.assertFalse(storage["decompression_after_restore_proven"])
+            self.assertFalse(storage["artifact_size_within_limit_proven"])
+            self.assertLess(
+                storage["stored_payload_bytes"], proof["captured_source_bytes"]
+            )
+            self.assertGreater(
+                tree.accounted_bytes, proof["captured_raw_admission_bytes"]
+            )
+            for name, codec, payload, length, digest in values["FILES"]:
+                self.assertIn(codec, ("identity", "zlib"))
+                self.assertEqual(
+                    identity(files[name]), {"bytes": length, "sha256": digest}
+                )
             self.assertEqual(proof["original_module_count"], 68)
             self.assertEqual(proof["original_schema_count"], 42)
             for flag in (

@@ -19,6 +19,7 @@ _FINDER = install(
     DISTRIBUTIONS,
     __file__.rsplit("/", 1)[0],
     NAMESPACES,
+    compressed=True,
 )
 for _module in STDLIB_PREIMPORTS:
     importlib.import_module(_module)

@@ -76,6 +76,10 @@ fn same_root_handles_share_one_fixed_payload_budget_and_last_copy_custody() {
     assert_eq!(first.snapshot().unwrap().charged_bytes, 1);
     drop(output);
     assert_eq!(first.snapshot().unwrap().charged_bytes, 0);
+    assert_eq!(
+        invocation.capacity_snapshot().unwrap().peak_charged_bytes,
+        NATIVE_SETUP_MEMORY_BYTES
+    );
 }
 
 #[test]
