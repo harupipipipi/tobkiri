@@ -273,16 +273,20 @@ pub fn stage(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
     fn fixture() -> (std::path::PathBuf, String) {
         let root = std::env::temp_dir().join(format!(
-            "tobkiri-packvm-inventory-{}-{}",
+            "tobkiri-packvm-inventory-{}-{}-{}",
             std::process::id(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed),
         ));
         fs::create_dir(&root).unwrap();
         let mut files = serde_json::Map::new();

@@ -76,12 +76,22 @@ installation, complete delegated Path/OS API audit, whole component production
 and native oracle comparisons remain required. The existing product default,
 Setup/approval windows, settings and conversations are unchanged.
 
-The delegated source audit also requires `iterdir`/`name`, schema resource
-`with_name`/`suffix`/`glob`, direct `fspath`-to-`open` provenance, `fdopen` and
-buffered file-handle ownership/read/seek/close semantics, the original monotonic
-clock domain and fixed native codesign execution. These additional adapters are
-not implemented here. In particular buffered `read(n)` cannot be replaced by a
-single raw `os.read(n)`, and a path string cannot recover authority by equality.
+The guest adapter now also supports lexical `name`, `suffix`, `suffixes`,
+`with_name` and `with_suffix`, preserving its original source binding and
+PurePath validation. `iterdir` requests original enumeration at the method call
+(the pinned Python 3.13 timing), then consumes entries in native order. `glob`
+and `rglob` request iteration when first consumed. Each live iterator closes on
+exhaustion, iteration failure or explicit generator close after iteration starts;
+native invocation teardown must also release any retained unconsumed inventory.
+Native enumeration, filtering, error timing and exact glob-pattern validation
+still require the native implementation/oracle; protocol fixtures do not prove
+them. Guest consumers retain their original sorting/cache behavior.
+
+Direct `fspath`-to-`open` provenance, `fdopen` and buffered file-handle
+ownership/read/seek/close semantics, the original monotonic clock domain and
+fixed native codesign execution remain unimplemented. In particular buffered
+`read(n)` cannot be replaced by a single raw `os.read(n)`, and a path string
+cannot recover authority by equality.
 
 ## Existing resolver handoff
 
@@ -105,3 +115,24 @@ permission or provide NativeSetup allocation funding. Native target admission,
 funded invocation retention, original-point observations and actual FD custody
 remain required. The two real-resolver tests cover owned roots/pins after rename
 and original rejection behavior; they run in Launcher CI, not locally.
+
+## Earlier original Host inputs
+
+`native_harness_host_inputs::with_original_host_inputs` borrows the existing
+`AppConfig` from the actual retained Tauri `AppHandle`, separately from the later
+signed-application resolver. Its callback receives the existing selected runtime,
+working-directory and optional development-workspace roots. It neither clones a
+PathBuf nor repeats resource-dir resolution, fallback, stat or validation. Equal
+path values preserve distinct source roles and original backing allocations.
+The higher-ranked callback prevents a root borrow escaping its actual owner;
+the original shutdown state is checked before use and before returning a result.
+
+The native caller must hold that actual AppHandle through its original managed
+worker/physical Join, check the real invocation/target/phase/disclosure and fund
+any new captures, proxies, derived paths or output before allocation. Reusing an
+actual preexisting Host allocation keeps its original accounting treatment; it
+does not exempt newly allocated nativeKit data. These root views are selection,
+not filesystem permission or current artifact verification. The API introduces
+no new startup prerequisite and is not yet wired into the complete native import
+controller or module bootstrap. Its source tests cover borrowing/retirement;
+they do not prove the full nativeKit or GUI migration.

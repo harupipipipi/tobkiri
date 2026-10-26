@@ -201,6 +201,26 @@ class NativePath:
         return self._pure.parts
 
     @property
+    def name(self) -> str:
+        return self._pure.name
+
+    @property
+    def suffix(self) -> str:
+        return self._pure.suffix
+
+    @property
+    def suffixes(self) -> list[str]:
+        return self._pure.suffixes
+
+    def with_name(self, name: str) -> NativePath:
+        # Let the pinned guest PurePath validate and compute lexical DATA.
+        # Keep the original binding; a sibling is not a new native grant.
+        return self._derive(self._pure.with_name(name), "with-name", name)
+
+    def with_suffix(self, suffix: str) -> NativePath:
+        return self._derive(self._pure.with_suffix(suffix), "with-suffix", suffix)
+
+    @property
     def parent(self) -> NativePath:
         return self._derive(self._pure.parent, "parent")
 
@@ -290,13 +310,15 @@ class NativePath:
     def lstat(self) -> _Stat:
         return self._effect("lstat", "stat")
 
-    def rglob(self, pattern: str) -> Iterator[NativePath]:
-        # Generator creation does no inspection. Native iteration starts at the
-        # first next(), stays in original order, and closes on completion/error.
-        row = self._bridge._request(self._target(), "rglob", [pattern])
+    def _iterator(self, operation: str, args: list) -> Iterator[NativePath]:
+        row = self._bridge._request(self._target(), operation, args)
         if set(row) != {"kind", "binding"} or row["kind"] != "iterator":
             raise UnsupportedValue("invalid native iterator result")
         target = {"binding": _binding(row["binding"]), "steps": []}
+
+        return self._iterate(target)
+
+    def _iterate(self, target: dict) -> Iterator[NativePath]:
         try:
             while True:
                 row = self._bridge._request(target, "iterator-next", [])
@@ -307,6 +329,21 @@ class NativePath:
             self._bridge._value(self._bridge._request(
                 target, "iterator-close", [],
             ), "unit")
+
+    def iterdir(self) -> Iterator[NativePath]:
+        # Pinned Python 3.13 Path.iterdir obtains its scandir entries at the
+        # method call, before returning its generator. NativeKit must finish
+        # that original enumeration here, not defer it to iterator-next.
+        return self._iterator("iterdir", [])
+
+    def glob(self, pattern: str) -> Iterator[NativePath]:
+        # No eager enumeration: the original consumer drives this generator.
+        yield from self._iterator("glob", [pattern])
+
+    def rglob(self, pattern: str) -> Iterator[NativePath]:
+        # Generator creation does no inspection. Native iteration starts at the
+        # first next(), stays in original order, and closes on completion/error.
+        yield from self._iterator("rglob", [pattern])
 
 
 class _Descriptor:

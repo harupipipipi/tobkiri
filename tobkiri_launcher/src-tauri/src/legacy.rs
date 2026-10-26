@@ -1,6 +1,7 @@
 mod artifact_integrity;
 mod ci_e2e_app_data;
 mod config;
+mod native_harness_host_inputs;
 mod debug_approval;
 mod defaultspack_authority;
 mod defaultspack_manager;

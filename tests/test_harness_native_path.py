@@ -103,6 +103,93 @@ class NativePathAdapterTests(unittest.TestCase):
             "binding": "source_a", "steps": [["join", ".."], ["join", "x"]]})
         self.assertEqual(port.requests[1]["target"]["binding"], "source_b")
 
+    def test_resource_names_and_suffixes_stay_lexical_and_keep_source_binding(self):
+        for flavor, cls, value in (
+            ("posix", PurePosixPath, "/app/validation.py"),
+            ("windows", PureWindowsPath, "C:\\app\\validation.py"),
+        ):
+            bridge = PathBridge(self.scope, flavor, self.fail,
+                                os_flags={"O_RDONLY": 0})
+            actual, expected = bridge.bind("module", value), cls(value)
+            for name in ("schemas", "schema.tar.gz", ".hidden", "trailing."):
+                changed, pure = actual.with_name(name), expected.with_name(name)
+                self.assertEqual(str(changed), str(pure))
+                self.assertEqual((changed.name, changed.suffix, changed.suffixes),
+                                 (pure.name, pure.suffix, pure.suffixes))
+                self.assertEqual(str(changed.with_suffix(".json")),
+                                 str(pure.with_suffix(".json")))
+            for method, invalid in (("with_name", ""), ("with_name", "a/b"),
+                                    ("with_suffix", "json")):
+                with self.assertRaises(ValueError) as original:
+                    getattr(expected, method)(invalid)
+                with self.assertRaises(ValueError) as adapted:
+                    getattr(actual, method)(invalid)
+                self.assertEqual(str(adapted.exception), str(original.exception))
+
+        bridge, port = self.bridge([("is-file", {"kind": "bool", "value": True})])
+        target = bridge.bind("actual_module", "/app/validation.py")
+        resource = target.with_name("schemas").with_suffix(".json")
+        self.assertEqual(port.requests, [])
+        self.assertTrue(resource.is_file())
+        self.assertEqual(port.requests[0]["target"], {
+            "binding": "actual_module",
+            "steps": [["with-name", "schemas"], ["with-suffix", ".json"]],
+        })
+
+    def test_iterdir_enumeration_reachpoint_precedes_returned_entry_iteration(self):
+        bridge, port = self.bridge([
+            ("iterdir", {"kind": "iterator", "binding": "entries"}),
+            ("iterator-next", path("z", "/root/z")),
+            ("iterator-next", path("a", "/root/a")),
+            ("iterator-next", {"kind": "end"}),
+            ("iterator-close", {"kind": "unit"}),
+        ])
+        entries = bridge.bind("directory", "/root").iterdir()
+        self.assertEqual([r["operation"] for r in port.requests], ["iterdir"])
+        self.assertEqual([p.name for p in entries], ["z", "a"])
+        self.assertEqual(port.requests[0]["args"], [])
+        self.assertEqual(port.requests[-1]["operation"], "iterator-close")
+        original = FileNotFoundError(2, "original iterdir failure")
+        bridge, port = self.bridge([
+            ("iterdir", {"kind": "fixture-error"}),
+        ], decode_error=lambda _: original)
+        with self.assertRaises(FileNotFoundError) as raised:
+            bridge.bind("missing", "/root/missing").iterdir()
+        self.assertIs(raised.exception, original)
+
+    def test_glob_is_lazy_without_native_presort_or_result_memoization(self):
+        bridge, port = self.bridge([
+            ("glob", {"kind": "iterator", "binding": "first"}),
+            ("iterator-next", path("z", "/schemas/z.json")),
+            ("iterator-next", path("a", "/schemas/a.json")),
+            ("iterator-next", {"kind": "end"}),
+            ("iterator-close", {"kind": "unit"}),
+            ("glob", {"kind": "iterator", "binding": "second"}),
+            ("iterator-next", {"kind": "end"}),
+            ("iterator-close", {"kind": "unit"}),
+        ])
+        source = bridge.bind("schemas", "/schemas")
+        entries = source.glob("*.json")
+        self.assertEqual(port.requests, [])
+        self.assertEqual([entry.name for entry in entries], ["z.json", "a.json"])
+        self.assertEqual(list(source.glob("*.json")), [])
+        starts = [r for r in port.requests if r["operation"] == "glob"]
+        self.assertEqual([r["args"] for r in starts], [["*.json"], ["*.json"]])
+
+    def test_directory_iterator_execution_failure_closes_without_normalization(self):
+        failure = MemoryError("original worker failure")
+        bridge, port = self.bridge([
+            ("iterdir", {"kind": "iterator", "binding": "entries"}),
+            ("iterator-next", failure),
+            ("iterator-close", {"kind": "unit"}),
+        ])
+        iterator = bridge.bind("directory", "/root").iterdir()
+        with self.assertRaises(MemoryError) as raised:
+            next(iterator)
+        self.assertIs(raised.exception, failure)
+        self.assertEqual([r["operation"] for r in port.requests],
+                         ["iterdir", "iterator-next", "iterator-close"])
+
     def test_module_anchor_resolve_stays_at_original_import_reachpoint(self):
         bridge, port = self.bridge([
             ("resolve", path("resolved_module", "/app/runtime/core_runtime/module.py")),
