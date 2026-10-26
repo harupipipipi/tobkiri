@@ -118,6 +118,7 @@ jobs:
               tests/test_production_v4_host_extension_admission.py \
               tests/test_profile_source_reconfirmation.py \
               tests/test_setup_handlers.py \
+              tests/test_bundle_catalog_data_reader.py \
               tests/test_profile_architecture_review_c.py
 
       - name: Upload recovery pytest log

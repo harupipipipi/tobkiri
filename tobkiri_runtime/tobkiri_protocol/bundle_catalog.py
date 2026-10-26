@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from threading import RLock
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from .canonical import canonical_digest, strict_loads
 from .errors import ProtocolError, SchemaValidationError
@@ -129,8 +129,69 @@ class BundledCatalog:
         if lock_path.is_symlink():
             raise BundleIntegrityError("bundle lock must not be a symlink")
         try:
-            lock = strict_loads(lock_path.read_bytes())
+            lock_bytes = lock_path.read_bytes()
         except (OSError, ProtocolError) as exc:
+            raise BundleIntegrityError(f"cannot read bundle lock: {exc}") from exc
+
+        def read_native_entry(index: int, relative: str, reread: bool) -> bytes:
+            # Keep the executable-catalog pin read identical to the native
+            # loader's original (root / path).read_bytes() call: it did not
+            # resolve or repeat the symlink walk on this second read.
+            if reread:
+                return (root / relative).read_bytes()
+            candidate = (root / relative).resolve(strict=True)
+            if candidate == root or root not in candidate.parents:
+                raise BundleIntegrityError(f"bundle entry escapes root: {relative}")
+            relative_path = Path(relative)
+            current = root
+            for part in relative_path.parts:
+                current /= part
+                if current.is_symlink():
+                    raise BundleIntegrityError(f"bundle entry contains a symlink: {relative}")
+            return candidate.read_bytes()
+
+        def resolve_native_artifact_root() -> Path | None:
+            return (
+                artifact_root.resolve(strict=True)
+                if artifact_root
+                else (
+                    (root.parent / "platform-artifacts").resolve(strict=True)
+                    if (root.parent / "platform-artifacts").is_dir()
+                    else None
+                )
+            )
+
+        return cls.load_from_reader(
+            lock_bytes,
+            entry_reader=read_native_entry,
+            root=root,
+            artifact_root_resolver=resolve_native_artifact_root,
+        )
+
+    @classmethod
+    def load_from_reader(
+        cls,
+        lock_bytes: bytes,
+        *,
+        entry_reader: Callable[[int, str, bool], bytes],
+        root: Any,
+        artifact_root_resolver: Callable[[], Any],
+    ) -> "BundledCatalog":
+        """Validate bundle DATA supplied by an ordinal, application-owned reader.
+
+        This is a data-only seam: ``root`` is retained as a presentation/data
+        view and is never converted to or used as an OS path. ``entry_reader``
+        is a private application DATA lookup, not a host import or authority
+        source. It is called once per lock entry occurrence, in lock order, and
+        again for executable-catalog pin checks with ``reread=True``. It must
+        preserve occurrence identity instead of looking entries up by
+        normalized path.
+        Artifact-root resolution is deferred until every document and pin has
+        passed validation.
+        """
+        try:
+            lock = strict_loads(lock_bytes)
+        except ProtocolError as exc:
             raise BundleIntegrityError(f"cannot read bundle lock: {exc}") from exc
         if not isinstance(lock, dict) or set(lock) != {"schema", "entries"}:
             raise BundleIntegrityError("bundle lock has unknown or missing fields")
@@ -155,7 +216,7 @@ class BundledCatalog:
             "executable_catalog": (None, "pack_id"),
         }
         seen_paths: set[str] = set()
-        executable_lock_entries: dict[str, tuple[str, str]] = {}
+        executable_lock_entries: dict[str, tuple[int, str, str]] = {}
         for index, entry in enumerate(entries):
             if not isinstance(entry, dict) or set(entry) != {"path", "kind", "digest"}:
                 raise BundleIntegrityError(f"bundle entry {index} has invalid fields")
@@ -171,16 +232,7 @@ class BundledCatalog:
                 or _DIGEST_RE.fullmatch(expected_digest) is None
             ):
                 raise BundleIntegrityError(f"bundle entry {relative} has an invalid digest")
-            candidate = (root / relative).resolve(strict=True)
-            if candidate == root or root not in candidate.parents:
-                raise BundleIntegrityError(f"bundle entry escapes root: {relative}")
-            relative_path = Path(relative)
-            current = root
-            for part in relative_path.parts:
-                current /= part
-                if current.is_symlink():
-                    raise BundleIntegrityError(f"bundle entry contains a symlink: {relative}")
-            raw = candidate.read_bytes()
+            raw = entry_reader(index, relative, False)
             actual_digest = 'sha256:' + hashlib.sha256(raw).hexdigest()
             if actual_digest != expected_digest:
                 raise BundleIntegrityError(
@@ -214,7 +266,7 @@ class BundledCatalog:
                 raise BundleIntegrityError(f"duplicate or missing {kind} identity: {identity!r}")
             collections[kind][identity] = document
             if kind == "executable_catalog":
-                executable_lock_entries[identity] = (relative, expected_digest)
+                executable_lock_entries[identity] = (index, relative, expected_digest)
             seen_paths.add(relative)
         for pack_id, executable in collections["executable_catalog"].items():
             manifest = collections["pack"].get(pack_id)
@@ -238,8 +290,8 @@ class BundledCatalog:
                 raise BundleIntegrityError(
                     f"Pack manifest does not pin executable catalog: {pack_id}"
                 )
-            catalog_path, catalog_lock_digest = executable_lock_entries[pack_id]
-            catalog_raw = (root / catalog_path).read_bytes()
+            catalog_index, catalog_path, catalog_lock_digest = executable_lock_entries[pack_id]
+            catalog_raw = entry_reader(catalog_index, catalog_path, True)
             catalog_raw_digest = 'sha256:' + hashlib.sha256(catalog_raw).hexdigest()
             if (
                 catalog_entries[0]["digest"] != catalog_raw_digest
@@ -254,14 +306,6 @@ class BundledCatalog:
             bases=collections["base"],
             shells=collections["shell"],
             profiles=collections["profile"],
-            artifact_root=(
-                artifact_root.resolve(strict=True)
-                if artifact_root
-                else (
-                    (root.parent / "platform-artifacts").resolve(strict=True)
-                    if (root.parent / "platform-artifacts").is_dir()
-                    else None
-                )
-            ),
+            artifact_root=artifact_root_resolver(),
             executable_catalogs=collections["executable_catalog"],
         )

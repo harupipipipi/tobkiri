@@ -536,3 +536,19 @@ existing typed `CanonicalCallStage` before error conversion. Observer format
 `tobkiri.native-data-schema-observation/2` requires that distinction: a cleanup
 trap must never be accepted as an original non-clock IO denial. Historical
 format-1 evidence remains unchanged and scoped to its actual frozen source.
+
+`BundledCatalog.load_from_reader` shares the original document validator with
+the native loader. It consumes the original lock bytes and a reader bound to
+each lock-entry occurrence, including executable-catalog rereads. It retains
+original path text and read order; it does not normalize aliases into one key.
+Native `.load` still owns its original path resolution, root and symlink checks,
+and artifact-root resolution occurs only after all documents and pins validate.
+The DATA reader accepts presentation roots without converting them to OS paths.
+Successful DATA parsing does not authenticate the reader or authorize effects.
+
+The new candidate-only catalog regression includes load, original resolver,
+preview, confirmation and all three listing states with external IO forbidden
+and schema/validation caches initially empty. The unchanged original packaged
+fixture and independent native baseline remain required. Native capture mapping,
+same-invocation sealing, Wasm execution and GUI integration need separate proof;
+this shared parser and its captured-input test do not establish them.

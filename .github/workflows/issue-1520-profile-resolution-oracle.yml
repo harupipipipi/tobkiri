@@ -13,6 +13,8 @@ on:
       - 'tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/**'
       - 'tobkiri_runtime/ecosystem/defaultspack/defaultspack/profile_runtime_composition.py'
       - 'tobkiri_runtime/core_runtime/profile_pack_projection.py'
+      - 'tobkiri_runtime/tobkiri_protocol/bundle_catalog.py'
+      - 'tobkiri_runtime/tests/test_bundle_catalog_data_reader.py'
       - 'tobkiri_runtime/tobkiri_host/__init__.py'
       - 'tobkiri_runtime/scripts/generator_source_manifest.py'
       - 'tobkiri_runtime/packaged_defaultspack_source_manifest.v1.json'
@@ -61,6 +63,10 @@ jobs:
           --baseline "$GITHUB_WORKSPACE/baseline"
           --candidate "$GITHUB_WORKSPACE/candidate"
           --work "$RUNNER_TEMP/profile-resolution-oracle"
+      - name: Compare captured catalog loading and complete original Setup DATA
+        if: ${{ !cancelled() && steps.verify_sources.outcome == 'success' }}
+        working-directory: candidate/tobkiri_runtime
+        run: python3 -B -m pytest -q tests/test_bundle_catalog_data_reader.py
       - name: Run the unchanged native enforcement corpus on both sources
         if: ${{ !cancelled() && steps.verify_sources.outcome == 'success' }}
         run: |
