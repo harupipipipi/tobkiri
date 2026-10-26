@@ -173,9 +173,8 @@ fn inspect<S: BootstrapInputOwner>(
         if request.len() <= 4096 {
             let frame =
                 CoreValue::parse_guest(request.as_bytes(), context.allocation_owners().graph())
-                    .map_err(|original| {
+                    .inspect_err(|_| {
                         state.init_trace.reject(InitializationRejection::Frame);
-                        original
                     })?;
             if let Some(sequence) = checkpoint_sequence(&frame) {
                 state
