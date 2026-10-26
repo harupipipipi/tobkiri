@@ -76,7 +76,12 @@ test('native callbacks use the tested close/reopen/finite shutdown and risk cont
   const host = readFileSync(new URL('../../../src-tauri/src/core_host.rs', import.meta.url), 'utf8');
   const review = readFileSync(new URL('../../../src-tauri/src/native_plan_review.rs', import.meta.url), 'utf8');
   assert.ok(host.includes('tauri_plugin_single_instance::init'));
-  assert.ok(host.indexOf('tauri_plugin_single_instance::init') < host.indexOf('LauncherCore::open'));
+  const coreOpen = host.indexOf('core::Core::open(');
+  const wrapper = host.indexOf('LauncherCore::from_shared_core_with_tickets(');
+  assert.ok(coreOpen >= 0, 'the actual runtime must be opened by native composition');
+  assert.equal([...host.matchAll(/\bCore::open\(/g)].length, 1, 'one actual Core is opened');
+  assert.ok(host.indexOf('tauri_plugin_single_instance::init') < coreOpen);
+  assert.ok(wrapper > coreOpen, 'the frontend wraps the existing runtime after opening it');
   assert.ok(host.includes('WindowEvent::CloseRequested'));
   assert.ok(host.includes('preserve_primary_close'));
   assert.ok(host.includes('restore_primary'));
