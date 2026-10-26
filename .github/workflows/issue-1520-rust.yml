@@ -143,6 +143,11 @@ jobs:
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-native-data-io.log" --expected-passed 16 --
           cargo test --locked -p tobkiri-wasm --lib child_census::native_data_io::tests
+      - name: Native inspection owner physical completion regressions
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/portable-native-inspection-custody.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-wasm --lib child_census::inspection_custody_tests
       - name: Fixed native imports and original invocation custody regressions
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test

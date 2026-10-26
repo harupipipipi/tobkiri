@@ -130,6 +130,15 @@ class RuntimeRoutingTests(unittest.TestCase):
         for bypass in ("continue-on-error", "--skip", "--list", "--no-run"):
             self.assertNotIn(bypass, fixed)
 
+    def test_native_inspection_owner_executes_both_physical_completion_cases(self) -> None:
+        custody = step(
+            self.linux, "Native inspection owner physical completion regressions")
+        self.assertIn("--expected-passed 2 --", custody)
+        self.assertIn("child_census::inspection_custody_tests", custody)
+        self.assertIn("cargo test --locked -p tobkiri-wasm --lib", custody)
+        for bypass in ("continue-on-error", "--skip", "--list", "--no-run"):
+            self.assertNotIn(bypass, custody)
+
     def test_linux_retains_portable_packages_and_explicit_test_targets(self) -> None:
         packages = step(self.linux, "Portable Rust package tests")
         self.assertEqual(set(re.findall(r"-p ([\w-]+)", packages)), {
