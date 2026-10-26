@@ -877,3 +877,42 @@ native state does not establish that all are native. The package manifest keeps
 native integration and complete service/Setup compatibility false. Bound-path
 and retained-origin creation, ordered inspection/admission imports, dependency
 closure, actual whole-component execution and original GUI adoption remain open.
+
+### Fixed native inspection imports
+
+`native_setup_store_with_imports` installs a static native-selected table before
+`Store::new`. Each entry binds a dedicated `tobkiri-native:` interface/function,
+an exact zero-parameter or one-`payload`-string signature and a function pointer.
+The result is one DATA string. Duplicate entries, unknown functions, interface
+shape changes and ordinary Core identities are refused. The existing constructor
+retains its empty import surface. Table storage is prepaid control metadata with
+physical destruction before reservation release; static names/code are borrowed.
+
+The typed context must retain the same actual `NativeSetupInvocation`; serialized
+Scope fields do not establish custody. Callback factories receive only their
+registered typed binding state, original funded input, an actual-custody comparison
+and a consumed `inspect` constructor. They cannot extract raw Store/Linker/Gate/IO,
+return arbitrary futures/buffers or renew an account. `inspect` prepares one sealed
+operation using the existing `NativeDataIo::inspect` and charged concrete
+`BudgetedFuture`. Its private ticket is compared by actual shared identity, so an
+operation from another call or invocation cannot be substituted. No worker starts
+until kernel acceptance. The operation exposes no public Future/map/catch path;
+factory allocation and writer failures prevent successful publication.
+
+The kernel checks activity before dispatch, after the original worker/actual Join,
+and before lowering. Input, concrete future, captured work, output and ABI copy
+retain their original owners. The input is automatically held by the worker as
+well as by the host call. UTF-8 and original envelope limits remain enforced.
+Domain/exception DATA is explicit callback output; outer inspection/accounting,
+panic, deadline and cancellation failures remain execution failures. Inventory
+may use the same worker for metadata only, without filesystem IO or prefetch.
+
+This API cannot fund an arbitrary `T` or its deep captures merely by charging its
+outer handle. Registered nativeKit implementations must use charged constructors
+for new deep storage and retain existing funded owners. Their worker must check
+actual owner, target, operation, phase, occurrence and deadline at the original
+reachpoint. Preparation must not consume an unexecuted occurrence as success or
+retry canceled work. The kernel supplies no application path/Pack/authority rule.
+Portable actual-Wasm tests are routed through CI for this mechanism; nativeKit's
+bound paths, retained origins, full producer/oracle and original GUI integration
+still remain unconnected.

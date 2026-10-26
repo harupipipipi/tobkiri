@@ -25,10 +25,16 @@ mod tests;
 
 #[path = "native_setup_entry.rs"]
 mod entry;
+#[path = "native_fixed_import.rs"]
+mod imports;
 pub use entry::{
     NativeDataBinding, NativeDataEntry, NativeDataError, NativeDataErrorContract, NativeDataExport,
     NativeDataObservation, NativeDataProgram, NativeDataResultContract, NativeDataResultEntry,
     NativeDataSuccessType, NativeDataValue,
+};
+pub use imports::{
+    NativeImportBinding, NativeImportContext, NativeImportInput, NativeImportOperation,
+    NativeImportState,
 };
 
 struct NativePhysical {
@@ -106,10 +112,11 @@ impl Drop for PhysicalOwner {
     }
 }
 
-struct NativeState<T> {
+struct NativeState<T: 'static> {
     data: T,
     invocation: NativeSetupInvocation,
     owners: crate::AllocationOwners,
+    imports: Option<imports::TableRef<T>>,
     captured: Option<crate::NativeCapturedInputs>,
     capture_claimed: bool,
     io: Option<crate::NativeDataIo>,
@@ -144,6 +151,31 @@ impl WasmEngine {
         invocation: NativeSetupInvocation,
         data: T,
     ) -> Result<NativeSetupStore<T>> {
+        self.native_setup_store_inner(invocation, data, None)
+    }
+
+    /// Fix native-only signatures and factories BEFORE Store construction.
+    /// The caller supplies a typed, deeply funded native binding context tied
+    /// to this actual invocation. No frame/Scope creates authority or funding.
+    /// IO is bound once; retain its handle for ordinary retire_and_wait cleanup.
+    pub fn native_setup_store_with_imports<T: NativeImportState>(
+        &self,
+        invocation: NativeSetupInvocation,
+        data: T,
+        bindings: &'static [NativeImportBinding<T>],
+    ) -> Result<NativeSetupStore<T>> {
+        let table = imports::Table::new(&invocation, &data, bindings)?;
+        let mut store = self.native_setup_store_inner(invocation, data, Some(table))?;
+        store.bind_native_data_io()?;
+        Ok(store)
+    }
+
+    fn native_setup_store_inner<T: Send + 'static>(
+        &self,
+        invocation: NativeSetupInvocation,
+        data: T,
+        imports: Option<imports::TableRef<T>>,
+    ) -> Result<NativeSetupStore<T>> {
         let deadline = invocation.deadline()?;
         if Instant::now() >= deadline {
             bail!("original native Setup deadline exceeded");
@@ -164,6 +196,7 @@ impl WasmEngine {
             data,
             invocation,
             owners,
+            imports,
             captured: None,
             capture_claimed: false,
             io: None,
@@ -216,6 +249,14 @@ impl WasmEngine {
     }
 }
 impl<T: 'static> NativeSetupStore<T> {
+    fn import_contract(&self) -> Option<&dyn imports::Contract> {
+        self.store
+            .as_ref()?
+            .data()
+            .imports
+            .as_ref()
+            .map(|table| table as &dyn imports::Contract)
+    }
     fn diagnostic_trace_bound(&self) -> bool {
         #[cfg(test)]
         {

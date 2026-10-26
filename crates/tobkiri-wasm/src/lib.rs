@@ -33,7 +33,8 @@ mod native_setup_store;
 pub use native_setup_store::{
     NativeDataBinding, NativeDataEntry, NativeDataError, NativeDataErrorContract, NativeDataExport,
     NativeDataObservation, NativeDataProgram, NativeDataResultContract, NativeDataResultEntry,
-    NativeDataSuccessType, NativeDataValue, NativeSetupStore,
+    NativeDataSuccessType, NativeDataValue, NativeImportBinding, NativeImportContext,
+    NativeImportInput, NativeImportOperation, NativeImportState, NativeSetupStore,
 };
 mod network;
 mod output;

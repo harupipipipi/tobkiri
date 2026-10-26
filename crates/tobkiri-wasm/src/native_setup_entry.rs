@@ -4,7 +4,7 @@
 //! not an IPC or guest selector, and its restricted imports do not authenticate
 //! the caller's application role. In particular, generic Core/Pack components
 //! remain on the ordinary Pack lifecycle and invocation path.
-use super::{NativeSetupStore, NativeState};
+use super::{NativeSetupStore, NativeState, imports};
 use crate::execution_epoch::check_epoch;
 use anyhow::{Context, Result, bail};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -179,12 +179,14 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                 contract,
                 capture_bound,
                 self.diagnostic_trace_bound(),
+                self.import_contract(),
             )?;
 
             let mut linker = Linker::<NativeState<T>>::new(engine);
             let mut wall_clock = false;
             let mut monotonic_clock = false;
             let mut captured_input = false;
+            let mut fixed_native = false;
             #[cfg(test)]
             let mut diagnostic_trace = false;
             for (name, import) in component.component_type().imports(engine) {
@@ -211,7 +213,16 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                         )?;
                         diagnostic_trace = true;
                     }
-                    _ => bail!("unsupported native DATA component import"),
+                    _ => {
+                        let accepted = match self.import_contract() {
+                            Some(table) => table.validate(engine, name, &import.ty)?,
+                            None => false,
+                        };
+                        if !accepted {
+                            bail!("unsupported native DATA component import");
+                        }
+                        fixed_native = true;
+                    }
                 }
             }
             if wall_clock {
@@ -222,6 +233,21 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             }
             if captured_input {
                 capture_import::define(&mut linker, self.allocation_owners().component())?;
+            }
+            if fixed_native {
+                let table = self
+                    .store
+                    .as_ref()
+                    .context("native Store missing")?
+                    .data()
+                    .imports
+                    .as_ref()
+                    .context("native imports missing")?;
+                imports::define(
+                    &mut linker,
+                    table.get().bindings,
+                    self.allocation_owners().component(),
+                )?;
             }
             #[cfg(test)]
             if diagnostic_trace {
@@ -515,6 +541,7 @@ fn validate_component(
     contract: Option<NativeDataResultContract<'_>>,
     capture_bound: bool,
     diagnostic_bound: bool,
+    fixed_imports: Option<&dyn imports::Contract>,
 ) -> Result<(InputShape, OutputShape)> {
     if !Engine::same(engine, component.engine()) {
         bail!("native DATA component belongs to another WasmEngine")
@@ -536,7 +563,12 @@ fn validate_component(
         } else if !matches!(name, WALL_CLOCK_IMPORT | MONOTONIC_CLOCK_IMPORT)
             && !ensure_diagnostic_import(engine, name, &item.ty, diagnostic_bound)?
         {
-            bail!("unsupported native DATA component import")
+            if !match fixed_imports {
+                Some(table) => table.validate(engine, name, &item.ty)?,
+                None => false,
+            } {
+                bail!("unsupported native DATA component import");
+            }
         }
     }
     for (name, item) in component_type.exports(engine) {
@@ -742,7 +774,7 @@ fn define_monotonic_clock<T: Send + 'static>(linker: &mut Linker<NativeState<T>>
     Ok(())
 }
 
-fn clock_callback<T>(
+fn clock_callback<T: 'static>(
     store: &mut StoreContextMut<'_, NativeState<T>>,
     params: &[Val],
     results: &mut [Val],
@@ -817,7 +849,7 @@ enum ClockOperation {
     MonotonicResolution,
 }
 
-fn begin_clock_call<T>(
+fn begin_clock_call<T: 'static>(
     store: &mut StoreContextMut<'_, NativeState<T>>,
     operation: ClockOperation,
     work: u64,
@@ -849,7 +881,7 @@ fn begin_clock_call<T>(
     ensure_active(state)
 }
 
-fn end_clock_call<T>(
+fn end_clock_call<T: 'static>(
     store: &mut StoreContextMut<'_, NativeState<T>>,
     operation: ClockOperation,
     resolution: Option<u64>,
@@ -867,7 +899,7 @@ fn end_clock_call<T>(
     Ok(())
 }
 
-fn ensure_active<T>(state: &mut NativeState<T>) -> Result<()> {
+pub(super) fn ensure_active<T: 'static>(state: &mut NativeState<T>) -> Result<()> {
     check_epoch(
         state.deadline,
         &state.cancel,

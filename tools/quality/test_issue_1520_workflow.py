@@ -123,6 +123,12 @@ class RuntimeRoutingTests(unittest.TestCase):
         self.assertIn("child_census::native_data_io::tests", io)
         for bypass in ("continue-on-error", "--skip", "--list", "--no-run"):
             self.assertNotIn(bypass, io)
+        fixed = step(self.linux, "Fixed native imports and original invocation custody regressions")
+        self.assertIn("--expected-passed 5 --", fixed)
+        self.assertIn("native_setup_store::imports::tests", fixed)
+        self.assertIn("cargo test --locked -p tobkiri-wasm --lib", fixed)
+        for bypass in ("continue-on-error", "--skip", "--list", "--no-run"):
+            self.assertNotIn(bypass, fixed)
 
     def test_linux_retains_portable_packages_and_explicit_test_targets(self) -> None:
         packages = step(self.linux, "Portable Rust package tests")
