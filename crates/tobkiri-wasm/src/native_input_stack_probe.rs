@@ -18,6 +18,49 @@ use tobkiri_gate::{CapacityLedger, ControlKind, CoreControl};
 const INTERFACE: &str = "tobkiri-ui:native-input-stack/probe@1.0.0";
 const SIZE: usize = 2 * 65536 + 17;
 
+#[path = "native_input_stack_state_probe.rs"]
+mod state_probe;
+
+fn stack_bindings() -> [NativeDataBinding<'static>; 2] {
+    [
+        NativeDataBinding {
+            export: NativeDataExport::new(Some(INTERFACE), "init"),
+            result: Some(NativeDataResultContract {
+                success: NativeDataSuccessType::Unit,
+                error: NativeDataErrorContract {
+                    code_field: "code",
+                    message_field: "message",
+                    details_field: Some("details"),
+                    cases: &["invalid-input", "already-initialized"],
+                },
+            }),
+        },
+        NativeDataBinding {
+            export: NativeDataExport::new(Some(INTERFACE), "run"),
+            result: None,
+        },
+    ]
+}
+
+fn expect_init_error(
+    reply: std::result::Result<NativeDataValue, crate::NativeDataError>,
+    code: &str,
+    message: &str,
+) -> Result<()> {
+    let Err(error) = reply else {
+        bail!("initialization unexpectedly succeeded");
+    };
+    ensure!(
+        error.code().as_str()? == code
+            && error.message().as_str()? == message
+            && error
+                .details()
+                .is_some_and(|value| value.as_bytes().is_empty()),
+        "original typed init refusal differs"
+    );
+    Ok(())
+}
+
 fn checked_file(label: &str, bound: u64) -> Result<(PathBuf, Vec<u8>)> {
     let path = PathBuf::from(
         std::env::var_os(format!("TOBKIRI_TEST_INPUT_STACK_{label}"))
@@ -110,9 +153,7 @@ async fn import_audit_diagnostic_preserves_the_original_python_stack_failure() -
     bail!("diagnostic-only execution cannot produce an acceptance pass")
 }
 
-async fn execute_stack_probe(diagnostic: bool) -> Result<()> {
-    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
-    let _census = crate::child_census::lock_census_fixture().await;
+fn stack_inputs(diagnostic: bool) -> Result<(Vec<u8>, Value)> {
     let (_, bytes) = checked_file("COMPONENT", 32 * 1024 * 1024)?;
     let (_, build) = checked_file("RECEIPT", 256 * 1024)?;
     let (_, reference) = checked_file("ORACLE", 1024 * 1024)?;
@@ -168,6 +209,14 @@ async fn execute_stack_probe(diagnostic: bool) -> Result<()> {
             "component does not contain the exact original reference source"
         );
     }
+    Ok((bytes, oracle))
+}
+
+async fn execute_stack_probe(diagnostic: bool) -> Result<()> {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
+    let _census = crate::child_census::lock_census_fixture().await;
+    let (bytes, oracle) = stack_inputs(diagnostic)?;
+    let component_hash = Digest::hash(&bytes);
     let raw = original_fixture();
     ensure!(
         oracle["input_bytes"] == SIZE && oracle["input_sha256"] == Digest::hash(&raw).as_str(),
@@ -266,36 +315,47 @@ async fn execute_stack_probe(diagnostic: bool) -> Result<()> {
                 store
                     .take()
                     .unwrap()
-                    .prepare_data_program(
-                        &component,
-                        &[
-                            NativeDataBinding {
-                                export: NativeDataExport::new(Some(INTERFACE), "init"),
-                                result: Some(NativeDataResultContract {
-                                    success: NativeDataSuccessType::Unit,
-                                    error: NativeDataErrorContract {
-                                        code_field: "code",
-                                        message_field: "message",
-                                        details_field: Some("details"),
-                                        cases: &["invalid-input", "already-initialized"],
-                                    },
-                                }),
-                            },
-                            NativeDataBinding {
-                                export: NativeDataExport::new(Some(INTERFACE), "run"),
-                                result: None,
-                            },
-                        ],
-                    )
+                    .prepare_data_program(&component, &stack_bindings())
                     .await?,
             );
             let program = program.as_mut().unwrap();
+            if !diagnostic {
+                let invalid = CoreBuffer::copy_from(b"not-json", owners.graph())?;
+                expect_init_error(
+                    program.invoke(0, Some(&invalid)).await?,
+                    "invalid-input",
+                    "invalid native input probe frame",
+                )?;
+                ensure!(
+                    program.observation().post_return && !program.observation().store_retired,
+                    "invalid init retired the original guest"
+                );
+            }
             let result = program.invoke(0, config.as_ref()).await?;
             ensure!(
                 matches!(result, Ok(NativeDataValue::Unit)),
                 "explicit initialization failed: {result:?}"
             );
             initialized = true;
+            if !diagnostic {
+                let other = &scenarios[(index + 1) % 2];
+                let replacement = CoreBuffer::copy_from(
+                    other["init"]
+                        .as_str()
+                        .context("replacement frame")?
+                        .as_bytes(),
+                    owners.graph(),
+                )?;
+                expect_init_error(
+                    program.invoke(0, Some(&replacement)).await?,
+                    "already-initialized",
+                    "native input probe is already initialized",
+                )?;
+                ensure!(
+                    program.observation().post_return && !program.observation().store_retired,
+                    "repeated init retired the original guest"
+                );
+            }
             baseline = control.usage().count(ControlKind::Task);
             let mut call = Box::pin(program.invoke(1, None));
             // Poll without yielding this current-thread executor until the real

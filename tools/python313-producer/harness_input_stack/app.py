@@ -7,6 +7,11 @@ from wit_world.imports import captured
 
 from logic import AlreadyInitializedError, InvalidInputError, Logic
 
+# The pinned componentizer constructs an adapter object for each exported
+# method. Keep application state once in this guest interpreter, not in those
+# distinct adapter objects. Explicit domain initialization still happens in init.
+_logic = Logic()
+
 
 def _read_range(ordinal: int, offset: int, length: int) -> bytes:
     """Adapt WIT ``list<u8>`` output to the original reader's byte contract."""
@@ -17,7 +22,7 @@ class Probe(wit_world.exports.Probe):
     """Expose one init and one original-verifier invocation."""
 
     def __init__(self) -> None:
-        self._logic = Logic()
+        self._logic = _logic
 
     def init(self, payload: str) -> None:
         """Bind one strict DATA frame without performing captured reads."""

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import sys
 import tempfile
+from types import ModuleType, SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -45,6 +47,91 @@ def _frame(path: str, content: bytes, variant: dict[str, str]) -> str:
         "files": [{"path": path, "size": len(content)}],
         "variant": variant,
     })
+
+
+def _adapter(read_range):
+    """Load the actual thin adapter with inert generated-binding stand-ins.
+
+    Each load models a separate guest interpreter. This is a source regression,
+    not execution of the componentizer or proof of actual Wasm Store isolation.
+    """
+    class BindingError(Exception):
+        def __init__(self, value):
+            super().__init__(value)
+            self.value = value
+
+    modules = {name: ModuleType(name) for name in (
+        "componentize_py_types", "wit_world", "wit_world.exports",
+        "wit_world.exports.probe", "wit_world.imports", "wit_world.imports.captured",
+    )}
+    modules["componentize_py_types"].Err = BindingError
+    modules["wit_world"].exports = modules["wit_world.exports"]
+    modules["wit_world"].imports = modules["wit_world.imports"]
+    modules["wit_world.exports"].Probe = object
+    modules["wit_world.exports.probe"].ErrorCode = SimpleNamespace(
+        INVALID_INPUT="invalid-input", ALREADY_INITIALIZED="already-initialized",
+    )
+    modules["wit_world.exports.probe"].Error = lambda code, message, details: (
+        SimpleNamespace(code=code, message=message, details=details)
+    )
+    modules["wit_world.imports"].captured = modules["wit_world.imports.captured"]
+    modules["wit_world.imports.captured"].read_range = read_range
+    path = ROOT / "tools/python313-producer/harness_input_stack/app.py"
+    spec = importlib.util.spec_from_file_location("input_stack_adapter_fixture", path)
+    module = importlib.util.module_from_spec(spec)
+    with patch.dict(sys.modules, modules):
+        spec.loader.exec_module(module)
+    return module, BindingError
+
+
+class ExportAdapterStateTests(unittest.TestCase):
+    """Model the pinned producer's distinct objects for init and run exports."""
+
+    def test_distinct_export_objects_keep_init_and_refuse_replacement(self) -> None:
+        reads = []
+        module, binding_error = _adapter(lambda *args: reads.append(args) or b"")
+        run_export = module.Probe()
+        with self.assertRaises(logic.NotInitializedError) as before:
+            run_export.run()
+        self.assertEqual(before.exception.args, ("probe must be initialized before run",))
+        self.assertEqual(reads, [])
+
+        init_export = module.Probe()
+        with self.assertRaises(binding_error) as invalid:
+            init_export.init("not-json")
+        self.assertEqual(invalid.exception.value.code, "invalid-input")
+        with self.assertRaises(logic.NotInitializedError):
+            run_export.run()
+
+        payload = dumps({"files": [], "variant": _variant(
+            "absent-artifact", "sha256:" + "0" * 64, "sha256:" + "0" * 64,
+        )})
+        init_export.init(payload)
+        initialized = init_export._logic._initialized
+        with self.assertRaises(binding_error) as repeated:
+            module.Probe().init("not-json")
+        self.assertEqual(repeated.exception.value.code, "already-initialized")
+        output = loads(run_export.run())
+        self.assertEqual(output["outcome"]["status"], "protocol_error")
+        self.assertTrue(output["local_marker_same_object"])
+        self.assertIs(module.Probe()._logic._initialized, initialized)
+
+    def test_separate_adapter_modules_have_independent_application_state(self) -> None:
+        a, _ = _adapter(lambda *_: b"")
+        b, b_error = _adapter(lambda *_: b"")
+        payload = dumps({"files": [], "variant": _variant(
+            "absent-artifact", "sha256:" + "0" * 64, "sha256:" + "0" * 64,
+        )})
+        a.Probe().init(payload)
+        with self.assertRaises(logic.NotInitializedError):
+            b.Probe().run()
+        with self.assertRaises(b_error) as invalid:
+            b.Probe().init("not-json")
+        self.assertEqual(invalid.exception.value.code, "invalid-input")
+        b.Probe().init(payload)
+        self.assertIsNot(a.Probe()._logic, b.Probe()._logic)
+        self.assertTrue(loads(a.Probe().run())["local_marker_same_object"])
+        self.assertTrue(loads(b.Probe().run())["local_marker_same_object"])
 
 
 class ProbeLogicTests(unittest.TestCase):

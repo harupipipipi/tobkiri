@@ -715,3 +715,28 @@ also inconclusive. No diagnostic job can contribute an acceptance pass. A last
 module name alone does not establish the missing dependency: its sequence must
 be correlated with the original denied import and actual Wasm stack. The tracer
 can itself change snapshot import closure, which must also be accounted for.
+
+### Export object lifetime in the inactive native input-stack probe
+
+The [pinned componentizer](https://github.com/bytecodealliance/componentize-py/blob/c0949b19d464f5d70bc1051195a3ae0e6a012df9/runtime/src/lib.rs)
+constructs a Python adapter object for every exported function. The thin probe
+adapter therefore retains its one `Logic` in the guest
+module, shared by the `init` and `run` adapter objects within that interpreter.
+Construction does not initialize the domain, and it never resets accepted state.
+The original Logic, captured reader and verifier bodies remain unchanged.
+
+The original three-case native stack check additionally exercises invalid init
+followed by valid init, and rejected replacement with the opposite original
+configuration. A separate actual-component check keeps two Stores alive in the
+same original 64 MiB native account, with distinct real invocations and APFS
+snapshot sources. It initializes A before B, then runs B/A/B against the original
+success and wrong-digest reference results. Both snapshots contain the same
+fixture bytes; this check asserts configuration/state separation and native
+ownership, not behavior with different input content. Each invocation retains
+its original fuel and deadline through post-return and physical IO cleanup.
+
+These are CI assertions until their actual jobs pass. The exact not-initialized
+exception through the current plain-string `run` ABI remains unproven; a trap
+while formatting an uncaught exception is not evidence of Python exception
+compatibility. The separate import diagnostic always fails and cannot satisfy a
+product acceptance gate. No original GUI flow or default runtime is changed.

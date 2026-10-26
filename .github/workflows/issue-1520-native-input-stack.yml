@@ -13,6 +13,7 @@ on:
       - 'tools/python313-producer/component_driver.py'
       - 'tools/python313-producer/input_stack_native_inputs.py'
       - 'crates/tobkiri-wasm/src/native_input_stack_probe.rs'
+      - 'crates/tobkiri-wasm/src/native_input_stack_state_probe.rs'
       - 'crates/tobkiri-wasm/src/native_capture_import.rs'
       - 'crates/tobkiri-wasm/src/native_data_io.rs'
       - 'crates/tobkiri-wasm/src/native_setup_entry.rs'
@@ -142,6 +143,13 @@ jobs:
           cargo test --locked -p tobkiri-wasm --lib
           native_setup_store::entry::input_stack_probe::synchronous_python_stack_uses_actual_native_input_and_original_artifact_checks
           -- --ignored --exact --nocapture --test-threads=1
+      - name: Execute initialization and interleaved native Store isolation
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/stack-native-state.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-wasm --lib
+          native_setup_store::entry::input_stack_probe::state_probe::actual_python_exports_keep_init_and_isolate_two_native_stores
+          -- --ignored --exact --nocapture --test-threads=1
       - name: Strict native probe lint
         run: cargo clippy --locked -p tobkiri-wasm --all-targets --no-deps -- -D warnings
       - name: Retain actual native stack evidence without local binary downloads
@@ -151,5 +159,7 @@ jobs:
           name: actual-native-input-stack-evidence
           path: |
             ${{ runner.temp }}/stack-native-evidence/
+            ${{ runner.temp }}/stack-native-evidence-state/
             ${{ runner.temp }}/stack-native.log*
+            ${{ runner.temp }}/stack-native-state.log*
           if-no-files-found: warn

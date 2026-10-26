@@ -89,6 +89,18 @@ class RuntimeRoutingTests(unittest.TestCase):
         self.assertLess(native.index(guard), native.index(execute))
         self.assertIn('input_stack_native_inputs.py', native)
         self.assertIn('--all-targets --no-deps -- -D warnings', native)
+        state = step(native, 'Execute initialization and interleaved native Store isolation')
+        for required in ('--expected-passed 1 --', 'cargo test --locked -p tobkiri-wasm --lib',
+                         'state_probe::actual_python_exports_keep_init_and_isolate_two_native_stores',
+                         '-- --ignored --exact --nocapture --test-threads=1'):
+            self.assertIn(required, state)
+        for bypass in ('--skip', '--exclude', '--no-run', '--list', 'continue-on-error'):
+            self.assertNotIn(bypass, state)
+        self.assertIn('native_input_stack_state_probe.rs', source)
+        retain = step(native, 'Retain actual native stack evidence without local binary downloads')
+        self.assertIn('if: always()', retain)
+        self.assertIn('stack-native-evidence-state/', retain)
+        self.assertIn('stack-native-state.log*', retain)
 
     """A portable build or skipped test must not stand in for native evidence."""
 
