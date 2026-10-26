@@ -28,7 +28,11 @@ phase, occurrence and deadline without earlier stat/resolve/prefetch. Relative
 `absolute()` obtains live cwd at that reached operation. The optional cwd target
 is not an inventory-time snapshot. A module-local Path factory maps only that
 pinned module's `__file__` to its actual native resource anchor and must be
-installed before top-level original code executes. Its native role, including
+installed before top-level original code executes. It is a fixed class facade:
+delegated original `isinstance(value, Path)` checks the concrete wrapper type,
+without trusting `__class__` or checking/creating authority. The same wrapper is
+recognized across module facades; exact type and other unobserved class APIs
+are not claimed compatible. Its native role, including
 allowed resource parent transitions, requires separate admission.
 
 The OS facade preserves O_NOFOLLOW presence, open flags, each short read and EOF,
@@ -52,3 +56,10 @@ whole Setup parity. Actual native target admission, original module preamble
 installation, complete delegated Path/OS API audit, whole component production
 and native oracle comparisons remain required. The existing product default,
 Setup/approval windows, settings and conversations are unchanged.
+
+The delegated source audit also requires `iterdir`/`name`, schema resource
+`with_name`/`suffix`/`glob`, direct `fspath`-to-`open` provenance, `fdopen` and
+buffered file-handle ownership/read/seek/close semantics, the original monotonic
+clock domain and fixed native codesign execution. These additional adapters are
+not implemented here. In particular buffered `read(n)` cannot be replaced by a
+single raw `os.read(n)`, and a path string cannot recover authority by equality.

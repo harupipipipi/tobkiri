@@ -88,7 +88,7 @@ class PathBridge:
 
     def module_path(
         self, original_file: str, anchor: NativePath,
-    ) -> Callable[[str | NativePath], NativePath]:
+    ) -> type:
         """Bind one pinned module's __file__ before its top-level execution.
 
         Original functions/classes remain unchanged. The native anchor and its
@@ -99,12 +99,24 @@ class PathBridge:
                 or anchor._bridge is not self or anchor._binding is None):
             raise UnsupportedValue("invalid native module anchor")
 
-        def path(value: str | NativePath = ".") -> NativePath:
-            if type(value) is str and value == original_file:
-                return self.path(anchor)
-            return self.path(value)
+        bridge = self
 
-        return path
+        class PathType(type):
+            def __call__(cls, value: str | NativePath = ".") -> NativePath:
+                if type(value) is str and value == original_file:
+                    return bridge.path(anchor)
+                return bridge.path(value)
+
+            def __instancecheck__(cls, value: Any) -> bool:
+                # Original delegated verification uses isinstance(value, Path).
+                # This is only a concrete wrapper type check, never authority,
+                # liveness or __class__ supplied by the object being inspected.
+                return type(value) is NativePath
+
+        class Path(metaclass=PathType):
+            """Fixed module-local constructor/type facade, not an IO grant."""
+
+        return Path
 
     def _request(self, target: dict[str, Any], operation: str, args: list) -> dict:
         # Do not catch native resource/cancellation/panic failures. Only the

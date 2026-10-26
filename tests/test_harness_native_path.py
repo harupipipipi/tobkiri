@@ -143,6 +143,30 @@ class NativePathAdapterTests(unittest.TestCase):
         with self.assertRaises(UnsupportedValue):
             disconnected.path("a").absolute()
 
+    def test_module_class_facade_preserves_isinstance_without_authority_or_class_spoof(self):
+        bridge, port = self.bridge()
+        first = bridge.module_path("/module/one.py", bridge.bind("one", "/app/one.py"))
+        second = bridge.module_path("/module/two.py", bridge.bind("two", "/app/two.py"))
+        value = first("/module/one.py")
+        self.assertTrue(isinstance(value, first))
+        self.assertTrue(isinstance(value, second))
+        self.assertTrue(isinstance(bridge.path("relative"), first))
+        foreign, _ = self.bridge()
+        self.assertTrue(isinstance(foreign.bind("other", "/app/other.py"), first))
+        # Type membership does not authorize a foreign context for native IO.
+        with self.assertRaises(UnsupportedValue):
+            bridge.os.open(foreign.bind("other", "/app/other.py"), 0)
+
+        class Pretender:
+            @property
+            def __class__(self):
+                return type(value)
+
+        self.assertFalse(isinstance(Pretender(), first))
+        self.assertFalse(isinstance(PurePosixPath("/app/one.py"), first))
+        self.assertFalse(isinstance("/app/one.py", first))
+        self.assertEqual(port.requests, [])
+
     def test_fd_short_reads_eof_stat_fields_and_finally_close_keep_original_order(self):
         bridge, port = self.bridge([
             ("open", {"kind": "fd", "binding": "fd_1"}), ("fstat", STAT),
