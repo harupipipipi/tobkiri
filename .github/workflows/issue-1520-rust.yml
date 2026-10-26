@@ -58,6 +58,7 @@ jobs:
           python3 -B scripts/wasm/prepare_harness_setup.py --verify
           python3 -B -m unittest discover -s tests -p test_harness_setup.py
           python3 -B -m unittest discover -s tests -p test_captured_setup_inputs.py
+          python3 -B -m unittest discover -s tests -p test_harness_native_source.py
       - name: Core and host boundaries
         run: python3 tools/quality/issue_1520_gate.py --stage foundation
       - name: Verify migration inventory coverage

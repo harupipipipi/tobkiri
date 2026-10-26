@@ -622,3 +622,15 @@ cancellation and payload accounting; this opaque runner does not perform that
 application-specific decoding or grant any authority. Four additional actual
 component regressions cover the new ABI, but their current CI result must be
 read before treating them as execution evidence.
+
+The whole-Setup source capsule generator captures all 17 required original DATA
+methods, the original decision dataclass, the complete 13-definition resolver,
+protocol/schema sources and actual package initializers with byte hashes and
+source extents. It does not synthesize namespace initializers or rewrite method
+bodies. Nested and lazy native imports in the selected methods and resolver
+must match the declared adapter inventory, including external Pack catalogs
+and content-projection sources, roots and inventory verification. Unexpected
+native imports fail staging. Native effects remain outside the capsule; their
+sources are hash-pinned and their required behavior is recorded for explicit
+integration. This is a source input to the whole nativeKit artifact, not an
+executable dependency closure, a Wasm build or whole-path compatibility proof.
