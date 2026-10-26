@@ -20,6 +20,25 @@ import prepare_harness_native as prepare  # noqa: E402 - explicit source-tool pa
 class HarnessNativeSourceTests(unittest.TestCase):
     """Check exact original bytes and explicitly bounded capsule scope."""
 
+    def test_value_graph_and_whole_wit_are_captured_without_execution_or_authority(self) -> None:
+        files = prepare.captured()
+        provenance = json.loads(files["provenance.json"])
+        transport = provenance["original_value_transport"]
+        for key, path in (("guest_registry", prepare.VALUE_GRAPH_TRANSPORT),
+                          ("wit", prepare.NATIVE_WIT)):
+            self.assertEqual(transport[key], path)
+            raw = prepare.bounded_read(ROOT / path)
+            self.assertEqual(files[f"source/{path}"], raw)
+            record, = [r for r in provenance["sources"] if r["path"] == path]
+            self.assertEqual(record["sha256"], hashlib.sha256(raw).hexdigest())
+        for key in ("original_classes_from_trusted_bootstrap_only",
+                    "shared_identity_is_not_value_memoization",
+                    "input_ownership_is_explicit"):
+            self.assertIs(transport[key], True)
+        for key in ("native_binding_refs_confer_authority", "wasm_execution_performed",
+                    "whole_export_dispatch_connected"):
+            self.assertIs(transport[key], False)
+
     def test_exception_transport_pins_guest_and_rust_without_a_native_python_dependency(self) -> None:
         files = prepare.captured()
         provenance = json.loads(files["provenance.json"])
@@ -161,7 +180,9 @@ class HarnessNativeSourceTests(unittest.TestCase):
         )
         self.assertFalse(any(path.endswith("runtime_v4/service.py") for path in names))
         self.assertFalse(any(path.endswith("external_pack_catalog_v4.py") for path in names))
-        self.assertFalse(any(path.endswith(".wit") or path.endswith(".wasm") for path in names))
+        self.assertEqual([path for path in names if path.endswith(".wit")],
+                         [f"source/{prepare.NATIVE_WIT}"])
+        self.assertFalse(any(path.endswith(".wasm") for path in names))
         self.assertNotIn("plan.json", names)
         self.assertNotIn("build-plan.json", names)
         self.assertFalse(provenance["build_performed"])

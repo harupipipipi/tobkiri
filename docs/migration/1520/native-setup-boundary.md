@@ -776,3 +776,38 @@ through worker execution, rather than capture a prior approval boolean. There
 is no new guest import or ordinary Pack capability. Full ordered inspection
 bindings, bound-path semantics, exception disclosure and the complete nativeKit
 artifact remain to be integrated and executed before GUI adoption.
+
+### Original DATA graph and whole method WIT contract
+
+The inactive source capsule now also pins a closed value/reference transport
+and a nativeKit-only WIT world. The world has the seventeen original method
+exports plus `init`, and a separate six-function transport interface. It imports
+no Core lifecycle, Gate, authority or ordinary Pack capability. The existing
+upstream WIT parser test runs with the portable `tobkiri-wit` package; source
+contract checks alone are not evidence that a component executes.
+
+The registry holds actual original objects by identity within one account,
+invocation, Store and generation. Equal but distinct values remain distinct;
+released IDs are never reactivated. Original record classes come only from
+trusted bootstrap code. Input frames construct only closed builtin DATA types
+or reuse issued references, preserving nested aliases and supported cycles.
+Descriptions are read views and cannot be re-imported as original values.
+Opaque native bindings convey no authority and cannot be constructed by frames.
+
+New input collections explicitly report every new held reference. NativeKit
+must retain and release those holds at the correct original lifetime. Releasing
+one hold does not destroy an object still reachable through another alias.
+Only the needed, explicitly permitted DATA list append and dictionary set/copy
+operations are available; re-importing a read-only reference cannot grant a
+mutation permission. Failed registration removes partial map entries and its
+transaction's new holds, including allocation failure during ownership tracking.
+
+The portable Python source tests exercise identity, aliases, exact scalar bits,
+cycles, invalid/foreign references, release, rollback and mutation boundaries.
+They use explicit portable record fixtures and do not substitute fake Host
+modules for the original classes. The complete method dispatcher, trusted
+original-class bootstrap, native ordered inspection bindings, exact raised
+exception encoding, component producer and actual nativeKit execution remain
+unconnected. This slice does not change the default Launcher or GUI flow and
+does not satisfy whole-path parity. Original four-MiB envelope and native
+64-MiB account, fuel and deadline limits remain in force.

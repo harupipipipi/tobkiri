@@ -114,6 +114,8 @@ class RuntimeRoutingTests(unittest.TestCase):
         source = step(self.linux, "Original Harness Setup source and DATA projection regressions")
         self.assertIn("test_harness_native_source.py", source)
         self.assertIn("test_harness_native_package.py", source)
+        self.assertIn("test_harness_native_value_graph.py", source)
+        self.assertIn("test_harness_native_wit.py", source)
         io = step(self.linux, "Native DATA blocking IO custody regressions")
         self.assertIn("--expected-passed 13 --", io)
         self.assertIn("cargo test --locked -p tobkiri-wasm --lib", io)

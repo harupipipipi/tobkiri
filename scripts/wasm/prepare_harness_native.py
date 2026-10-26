@@ -39,6 +39,8 @@ PROJECT_METADATA = "tobkiri_runtime/pyproject.toml"
 EXCEPTION_TRANSPORT = (
     "tools/python313-producer/harness_native/exception_graph.py"
 )
+VALUE_GRAPH_TRANSPORT = "tools/python313-producer/harness_native/value_graph.py"
+NATIVE_WIT = "tools/python313-producer/harness_native/native.wit"
 _NATIVE_KIT_SOURCES = (
     "tobkiri_launcher/harness-native/Cargo.toml",
     "tobkiri_launcher/harness-native/src/lib.rs",
@@ -178,6 +180,8 @@ PROJECTION_BOUNDARY_MODULES = (
 )
 _CAPSULE_SOURCE_FILES = (
     EXCEPTION_TRANSPORT,
+    VALUE_GRAPH_TRANSPORT,
+    NATIVE_WIT,
     PROFILE_RESOLUTION,
     SETUP_CONTRACT,
     DOMAIN_PACKAGE_INIT,
@@ -685,6 +689,16 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
             "preserve_rereads_duplicate_occurrences_and_failure_order": True,
             "inspection_bindings_connected": False,
             "authority_granted_by_source_capture": False,
+        },
+        "original_value_transport": {
+            "guest_registry": VALUE_GRAPH_TRANSPORT,
+            "wit": NATIVE_WIT,
+            "original_classes_from_trusted_bootstrap_only": True,
+            "native_binding_refs_confer_authority": False,
+            "shared_identity_is_not_value_memoization": True,
+            "input_ownership_is_explicit": True,
+            "wasm_execution_performed": False,
+            "whole_export_dispatch_connected": False,
         },
         "source_capsule_only": True,
         "dependency_closure_executable": False,
