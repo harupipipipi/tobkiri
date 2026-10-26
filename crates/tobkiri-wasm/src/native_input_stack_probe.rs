@@ -90,6 +90,27 @@ async fn synchronous_python_stack_uses_actual_native_input_and_original_artifact
             && std::env::var("TOBKIRI_TEST_INPUT_STACK_CI").as_deref() == Ok("1"),
         "external native stack observation requires its explicit CI harness"
     );
+    ensure!(
+        std::env::var_os("TOBKIRI_TEST_INPUT_STACK_IMPORT_DIAGNOSTICS").is_none(),
+        "baseline stack proof must not admit diagnostic capabilities"
+    );
+    execute_stack_probe(false).await
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "separate import diagnostic; every outcome must remain failure"]
+async fn import_audit_diagnostic_preserves_the_original_python_stack_failure() -> Result<()> {
+    ensure!(
+        std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
+            && std::env::var("TOBKIRI_TEST_INPUT_STACK_CI").as_deref() == Ok("1")
+            && std::env::var("TOBKIRI_TEST_INPUT_STACK_IMPORT_DIAGNOSTICS").as_deref() == Ok("1"),
+        "diagnostic requires its separate exact CI harness"
+    );
+    execute_stack_probe(true).await?;
+    bail!("diagnostic-only execution cannot produce an acceptance pass")
+}
+
+async fn execute_stack_probe(diagnostic: bool) -> Result<()> {
     let _serial = crate::allocation::TEST_CUSTODY.lock().await;
     let _census = crate::child_census::lock_census_fixture().await;
     let (_, bytes) = checked_file("COMPONENT", 32 * 1024 * 1024)?;
@@ -98,11 +119,21 @@ async fn synchronous_python_stack_uses_actual_native_input_and_original_artifact
     let build: Value = serde_json::from_slice(&build)?;
     let oracle: Value = serde_json::from_slice(&reference)?;
     let component_hash = Digest::hash(&bytes);
+    let expected_world = if diagnostic {
+        "native-input-stack-import-diagnostics"
+    } else {
+        "native-input-stack"
+    };
+    let expected_imports = if diagnostic {
+        json!([import_trace::INTERFACE, "tobkiri-ui:inputs/captured@1.0.0"])
+    } else {
+        json!(["tobkiri-ui:inputs/captured@1.0.0"])
+    };
     ensure!(
         build["format"] == "tobkiri.component-build/2"
             && build["artifact_sha256"] == component_hash.hex()
-            && build["world"] == "native-input-stack"
-            && build["imports"] == json!(["tobkiri-ui:inputs/captured@1.0.0"])
+            && build["world"] == expected_world
+            && build["imports"] == expected_imports
             && build["exports"] == json!([INTERFACE])
             && build["production_enabled"] == false,
         "built stack component provenance differs"
@@ -175,6 +206,7 @@ async fn synchronous_python_stack_uses_actual_native_input_and_original_artifact
     for (index, scenario) in scenarios
         .iter()
         .chain(std::iter::once(&scenarios[0]))
+        .take(if diagnostic { 1 } else { 3 })
         .enumerate()
     {
         let cancelled = index == 2;
@@ -182,145 +214,221 @@ async fn synchronous_python_stack_uses_actual_native_input_and_original_artifact
         let invocation = account.begin()?;
         let deadline = invocation.deadline()?;
         let started = Instant::now();
-        let mut store = engine.native_setup_store(invocation, ())?;
-        let owners = store.allocation_owners().clone();
-        let io = store.bind_native_data_io()?;
-        let source_hash = Digest::hash(&raw);
-        let snapshot = io
-            .capture_file_snapshot(
-                &owner,
-                tobkiri_store::NativeSnapshotSource {
-                    root: fixture.path(),
-                    relative: "input",
-                    length: raw.len() as u64,
-                    sha256: &source_hash,
-                },
-            )
-            .await?;
-        drop(store.seal_captured_inputs(&[crate::NativeCapturedFile {
-            path: "artifact",
-            snapshot: &snapshot,
-        }])?);
-        // The guest must read the immutable native capture, not this changed source.
-        std::fs::write(
-            fixture.path().join("input"),
-            b"changed after actual APFS snapshot",
-        )?;
-        let config = CoreBuffer::copy_from(
-            scenario["init"].as_str().context("init frame")?.as_bytes(),
-            owners.graph(),
-        )?;
-        let mut program = store
-            .prepare_data_program(
-                &component,
-                &[
-                    NativeDataBinding {
-                        export: NativeDataExport::new(Some(INTERFACE), "init"),
-                        result: Some(NativeDataResultContract {
-                            success: NativeDataSuccessType::Unit,
-                            error: NativeDataErrorContract {
-                                code_field: "code",
-                                message_field: "message",
-                                details_field: Some("details"),
-                                cases: &["invalid-input", "already-initialized"],
-                            },
-                        }),
-                    },
-                    NativeDataBinding {
-                        export: NativeDataExport::new(Some(INTERFACE), "run"),
-                        result: None,
-                    },
-                ],
-            )
-            .await?;
-        let initialized = program.invoke(0, Some(&config)).await?;
-        ensure!(
-            matches!(initialized, Ok(NativeDataValue::Unit)),
-            "explicit initialization failed: {initialized:?}"
-        );
-        let baseline = control.usage().count(ControlKind::Task);
-        let mut call = Box::pin(program.invoke(1, None));
-        // Fuel/epoch yielding alone is not IO suspension. Do not yield this
-        // current-thread executor until the actual native kernel has admitted
-        // its original body+monitor tasks. No new execution deadline is used.
-        loop {
-            ensure!(
-                Instant::now() < deadline,
-                "original stack-probe deadline expired before native IO"
-            );
-            match call
-                .as_mut()
-                .poll(&mut TaskContext::from_waker(Waker::noop()))
-            {
-                Poll::Ready(result) => {
-                    bail!("Python call completed without an admitted native wait: {result:?}")
-                }
-                Poll::Pending => {}
-            }
-            if control.usage().count(ControlKind::Task) >= baseline + 2 {
-                break;
-            }
-        }
-        ensure!(
-            control.usage().count(ControlKind::Queue) >= 1,
-            "native wait did not retain original queue custody"
-        );
-        if cancelled {
-            drop(call);
-            ensure!(
-                program.observation().store_retired,
-                "dropped Python/native call kept its Store alive"
-            );
-            ensure!(
-                program.invoke(1, None).await.is_err(),
-                "retired Python stack was reused"
-            );
+        let initial = engine.native_setup_store(invocation, ())?;
+        let owners = initial.allocation_owners().clone();
+        let mut store = Some(initial);
+        let io = store.as_mut().unwrap().bind_native_data_io()?;
+        let trace = if diagnostic {
+            Some(store.as_mut().unwrap().enable_import_trace()?)
         } else {
-            let result = call.await?;
-            let output = match result {
-                Ok(NativeDataValue::String(output)) => output,
-                _ => bail!("stack probe did not return its owned observation"),
-            };
-            let parsed = CoreValue::parse_guest(output.as_bytes(), owners.graph())?;
-            validate_observation(&parsed, scenario)?;
-            create_output(&evidence.join(format!("case-{index}.json")))?
-                .write_all(output.as_bytes())?;
-            drop(parsed);
-            ensure!(
-                program.observation().post_return,
-                "Python call did not complete actual canonical post-return"
+            None
+        };
+        let mut snapshot = None;
+        let mut config = None;
+        let mut program = None;
+        let mut baseline = control.usage().count(ControlKind::Task);
+        let mut admitted = false;
+        let mut initialized = false;
+        let mut observation = NativeDataObservation::default();
+        let mut fuel = None;
+        let operation: Result<()> = async {
+            let source_hash = Digest::hash(&raw);
+            snapshot = Some(
+                io.capture_file_snapshot(
+                    &owner,
+                    tobkiri_store::NativeSnapshotSource {
+                        root: fixture.path(),
+                        relative: "input",
+                        length: raw.len() as u64,
+                        sha256: &source_hash,
+                    },
+                )
+                .await?,
             );
-            drop(output);
-        }
-        let fuel = program.fuel_remaining().ok();
-        if !cancelled {
-            ensure!(
-                fuel.is_some_and(|remaining| remaining > 0 && remaining < super::super::FUEL),
-                "actual Python computation did not retain its original fuel accounting"
+            drop(
+                store
+                    .as_mut()
+                    .unwrap()
+                    .seal_captured_inputs(&[crate::NativeCapturedFile {
+                        path: "artifact",
+                        snapshot: snapshot.as_ref().unwrap(),
+                    }])?,
             );
+            std::fs::write(
+                fixture.path().join("input"),
+                b"changed after actual APFS snapshot",
+            )?;
+            config = Some(CoreBuffer::copy_from(
+                scenario["init"].as_str().context("init frame")?.as_bytes(),
+                owners.graph(),
+            )?);
+            program = Some(
+                store
+                    .take()
+                    .unwrap()
+                    .prepare_data_program(
+                        &component,
+                        &[
+                            NativeDataBinding {
+                                export: NativeDataExport::new(Some(INTERFACE), "init"),
+                                result: Some(NativeDataResultContract {
+                                    success: NativeDataSuccessType::Unit,
+                                    error: NativeDataErrorContract {
+                                        code_field: "code",
+                                        message_field: "message",
+                                        details_field: Some("details"),
+                                        cases: &["invalid-input", "already-initialized"],
+                                    },
+                                }),
+                            },
+                            NativeDataBinding {
+                                export: NativeDataExport::new(Some(INTERFACE), "run"),
+                                result: None,
+                            },
+                        ],
+                    )
+                    .await?,
+            );
+            let program = program.as_mut().unwrap();
+            let result = program.invoke(0, config.as_ref()).await?;
+            ensure!(
+                matches!(result, Ok(NativeDataValue::Unit)),
+                "explicit initialization failed: {result:?}"
+            );
+            initialized = true;
+            baseline = control.usage().count(ControlKind::Task);
+            let mut call = Box::pin(program.invoke(1, None));
+            // Poll without yielding this current-thread executor until the real
+            // native worker+monitor are admitted; fuel yields are not IO proof.
+            loop {
+                ensure!(
+                    Instant::now() < deadline,
+                    "original stack-probe deadline expired before native IO"
+                );
+                match call
+                    .as_mut()
+                    .poll(&mut TaskContext::from_waker(Waker::noop()))
+                {
+                    Poll::Ready(result) => {
+                        bail!("Python call completed without an admitted native wait: {result:?}")
+                    }
+                    Poll::Pending => {}
+                }
+                if control.usage().count(ControlKind::Task) >= baseline + 2 {
+                    admitted = true;
+                    break;
+                }
+            }
+            ensure!(
+                control.usage().count(ControlKind::Queue) >= 1,
+                "native wait did not retain original queue custody"
+            );
+            if cancelled {
+                drop(call);
+                ensure!(
+                    program.observation().store_retired,
+                    "dropped Python/native call kept its Store alive"
+                );
+                ensure!(
+                    program.invoke(1, None).await.is_err(),
+                    "retired Python stack was reused"
+                );
+            } else {
+                let result = call.await?;
+                let output = match result {
+                    Ok(NativeDataValue::String(output)) => output,
+                    _ => bail!("stack probe did not return its owned observation"),
+                };
+                let parsed = CoreValue::parse_guest(output.as_bytes(), owners.graph())?;
+                validate_observation(&parsed, scenario)?;
+                create_output(&evidence.join(format!("case-{index}.json")))?
+                    .write_all(output.as_bytes())?;
+                drop(parsed);
+                ensure!(
+                    program.observation().post_return,
+                    "Python call did not complete actual canonical post-return"
+                );
+                drop(output);
+            }
+            fuel = program.fuel_remaining().ok();
+            if !cancelled {
+                ensure!(
+                    fuel.is_some_and(|remaining| remaining > 0 && remaining < super::super::FUEL),
+                    "actual Python computation did not retain its original fuel accounting"
+                );
+            }
+            ensure!(
+                program.original_deadline() == deadline,
+                "native/Python call renewed its deadline"
+            );
+            Ok(())
         }
-        ensure!(
-            program.original_deadline() == deadline,
-            "native/Python call renewed its deadline"
-        );
-        program.retire();
+        .await;
+        // Cleanup and funded diagnostic retention run on EVERY error path.
+        let deadline_preserved = program
+            .as_ref()
+            .is_none_or(|program| program.original_deadline() == deadline);
+        if let Some(program) = program.as_mut() {
+            observation = program.observation();
+            program.retire();
+        }
         drop(program);
-        io.retire_and_wait().await?;
-        ensure!(
-            control.usage().count(ControlKind::Task) == baseline
-                && control.usage().count(ControlKind::Queue) == 0,
-            "native task/queue custody did not return after original physical joins"
-        );
-        drop((io, snapshot, config, owners));
+        if let Some(store) = store.as_ref() {
+            store.retire();
+        }
+        drop(store);
+        let cleanup = io.retire_and_wait().await;
+        if let Some(trace) = trace.as_ref() {
+            trace.write_snapshot(create_output(&evidence.join("import-trace.json"))?)?;
+        }
+        let outcome = if operation.is_ok() {
+            "original_succeeded_inconclusive"
+        } else if observation.unreachable_trap {
+            "unreachable_trap_requires_original_stack_correlation"
+        } else {
+            "different_or_setup_failure_inconclusive"
+        };
+        if diagnostic {
+            serde_json::to_writer(
+                create_output(&evidence.join("diagnostic-outcome.json"))?,
+                &json!({
+                "format":"tobkiri.native-import-diagnostic-outcome/1","diagnostic_only":true,
+                "outcome":outcome,"initialized":initialized,"native_io_admitted":admitted,
+                "observation":observation,"physical_cleanup_succeeded":cleanup.is_ok(),
+                "accepted_as_parity":false,"production_enabled":false}),
+            )?;
+        }
+        drop((trace, io, snapshot, config, owners));
         crate::reap_allocation_owners()?;
         ensure!(
             account.snapshot()?.charged_bytes == 0,
             "native/Python DATA remained after actual cleanup"
         );
+        ensure!(
+            control.usage().count(ControlKind::Task) == baseline
+                && control.usage().count(ControlKind::Queue) == 0,
+            "native task/queue custody did not return after original physical joins"
+        );
+        cleanup?;
+        ensure!(
+            deadline_preserved,
+            "native/Python call renewed its deadline"
+        );
+        if diagnostic {
+            return match operation {
+                Err(error) => Err(error).context(
+                    "diagnostic only; observed failure requires comparison with original stack",
+                ),
+                Ok(()) => Err(anyhow::anyhow!(
+                    "diagnostic only; original succeeded, trace is inconclusive"
+                )),
+            };
+        }
+        operation?;
         receipts.push(
-            json!({"case": index, "cancelled": cancelled, "native_io_suspension_observed": true,
-            "fuel_remaining": fuel, "elapsed_seconds": started.elapsed().as_secs_f64(),
-            "original_deadline_preserved": true, "payload_released_after_cleanup": true}),
+            json!({"case":index,"cancelled":cancelled,"native_io_suspension_observed":admitted,
+            "fuel_remaining":fuel,"elapsed_seconds":started.elapsed().as_secs_f64(),
+            "original_deadline_preserved":true,"payload_released_after_cleanup":true}),
         );
     }
     let report = json!({"format":"tobkiri.native-input-stack-observation/1",

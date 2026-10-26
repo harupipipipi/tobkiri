@@ -114,6 +114,10 @@ struct NativeState<T> {
     capture_claimed: bool,
     io: Option<crate::NativeDataIo>,
     io_claimed: bool,
+    #[cfg(test)]
+    import_trace: Option<entry::import_trace::NativeImportTrace>,
+    #[cfg(test)]
+    import_trace_claimed: bool,
     clock_observation: NativeDataObservation,
     limits: AggregateLimits,
     deadline: Instant,
@@ -164,6 +168,10 @@ impl WasmEngine {
             capture_claimed: false,
             io: None,
             io_claimed: false,
+            #[cfg(test)]
+            import_trace: None,
+            #[cfg(test)]
+            import_trace_claimed: false,
             clock_observation: NativeDataObservation::default(),
             limits: AggregateLimits {
                 memory_cap: usize::try_from(NATIVE_SETUP_MEMORY_BYTES)?,
@@ -208,6 +216,32 @@ impl WasmEngine {
     }
 }
 impl<T: 'static> NativeSetupStore<T> {
+    fn diagnostic_trace_bound(&self) -> bool {
+        #[cfg(test)]
+        {
+            self.store
+                .as_ref()
+                .is_some_and(|store| store.data().import_trace.is_some())
+        }
+        #[cfg(not(test))]
+        {
+            false
+        }
+    }
+    #[cfg(test)]
+    fn enable_import_trace(&mut self) -> Result<entry::import_trace::NativeImportTrace> {
+        let state = self.store.as_mut().expect("live native Store").data_mut();
+        if state.import_trace_claimed {
+            bail!("test diagnostic binding already claimed");
+        }
+        state.import_trace_claimed = true;
+        let trace = entry::import_trace::NativeImportTrace::new(
+            state.invocation.clone(),
+            state.owners.clone(),
+        )?;
+        state.import_trace = Some(trace.clone());
+        Ok(trace)
+    }
     /// Seal one fixed ordinal inventory before entry execution. Failure also
     /// consumes this binding attempt; neither files nor funding can be replaced.
     pub fn seal_captured_inputs(

@@ -20,6 +20,9 @@ const MONOTONIC_CLOCK_IMPORT: &str = "tobkiri-ui:clock/monotonic@1.0.0";
 const CLOCK_CALL_LIMIT: u64 = 100_000;
 #[path = "native_capture_import.rs"]
 mod capture_import;
+#[cfg(test)]
+#[path = "native_import_trace.rs"]
+pub(super) mod import_trace;
 #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
 #[path = "native_input_stack_probe.rs"]
 mod input_stack_probe;
@@ -169,13 +172,21 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             }
             let engine = self._engine.engine();
             let capture_bound = self.native_data_io().is_some() && self.captured_inputs().is_some();
-            let (input, output) =
-                validate_component(engine, component, &export, contract, capture_bound)?;
+            let (input, output) = validate_component(
+                engine,
+                component,
+                &export,
+                contract,
+                capture_bound,
+                self.diagnostic_trace_bound(),
+            )?;
 
             let mut linker = Linker::<NativeState<T>>::new(engine);
             let mut wall_clock = false;
             let mut monotonic_clock = false;
             let mut captured_input = false;
+            #[cfg(test)]
+            let mut diagnostic_trace = false;
             for (name, import) in component.component_type().imports(engine) {
                 match name {
                     WALL_CLOCK_IMPORT => {
@@ -190,6 +201,16 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                         capture_import::validate(engine, &import.ty)?;
                         captured_input = true;
                     }
+                    #[cfg(test)]
+                    import_trace::INTERFACE => {
+                        ensure_diagnostic_import(
+                            engine,
+                            name,
+                            &import.ty,
+                            self.diagnostic_trace_bound(),
+                        )?;
+                        diagnostic_trace = true;
+                    }
                     _ => bail!("unsupported native DATA component import"),
                 }
             }
@@ -201,6 +222,10 @@ impl<T: Send + 'static> NativeSetupStore<T> {
             }
             if captured_input {
                 capture_import::define(&mut linker, self.allocation_owners().component())?;
+            }
+            #[cfg(test)]
+            if diagnostic_trace {
+                import_trace::define(&mut linker, self.allocation_owners().component())?;
             }
 
             let wasmtime_store = self
@@ -489,6 +514,7 @@ fn validate_component(
     export: &NativeDataExport<'_>,
     contract: Option<NativeDataResultContract<'_>>,
     capture_bound: bool,
+    diagnostic_bound: bool,
 ) -> Result<(InputShape, OutputShape)> {
     if !Engine::same(engine, component.engine()) {
         bail!("native DATA component belongs to another WasmEngine")
@@ -507,7 +533,9 @@ fn validate_component(
                 bail!("native captured input import lacks a sealed IO binding");
             }
             capture_import::validate(engine, &item.ty)?;
-        } else if !matches!(name, WALL_CLOCK_IMPORT | MONOTONIC_CLOCK_IMPORT) {
+        } else if !matches!(name, WALL_CLOCK_IMPORT | MONOTONIC_CLOCK_IMPORT)
+            && !ensure_diagnostic_import(engine, name, &item.ty, diagnostic_bound)?
+        {
             bail!("unsupported native DATA component import")
         }
     }
@@ -543,6 +571,24 @@ fn validate_component(
         },
     };
     validate_entry_function(&function, contract)
+}
+
+fn ensure_diagnostic_import(
+    engine: &Engine,
+    name: &str,
+    item: &ComponentItem,
+    bound: bool,
+) -> Result<bool> {
+    #[cfg(test)]
+    if name == import_trace::INTERFACE {
+        if !bound {
+            bail!("test diagnostic import lacks its explicit original owner binding");
+        }
+        import_trace::validate(engine, item)?;
+        return Ok(true);
+    }
+    let _ = (engine, name, item, bound);
+    Ok(false) // production never admits any diagnostic capability
 }
 
 fn is_generic_core_identity(name: &str) -> bool {

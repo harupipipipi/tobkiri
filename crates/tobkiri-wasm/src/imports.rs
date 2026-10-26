@@ -56,6 +56,9 @@ pub(crate) fn validate_imports_with_modules(
     let mut actual = Vec::new();
     let mut module_count = 0;
     for (name, import) in component.component_type().imports(engine) {
+        if name.starts_with("tobkiri-ui:diagnostics/") {
+            bail!("private native diagnostics are never Pack capabilities");
+        }
         if matches!(import.ty, ComponentItem::Module(_)) && modules.contains_key(name) {
             module_count += 1;
             continue;

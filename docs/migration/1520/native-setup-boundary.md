@@ -684,3 +684,34 @@ unexpected host failures do not become modeled Python domain errors.
 This library and its source/unit checks do not prove connected native inspection
 ports, actual guest materialization, or whole Setup parity. The complete existing
 Launcher/Setup/approval/settings/conversation path remains the product default.
+
+## Test-only import diagnosis preserves the original denial
+
+The separate import-audit diagnostic uses the unchanged original input-stack
+app and calculation sources behind a thin wrapper. Its only extra import is
+`tobkiri-ui:diagnostics/import-trace@1.0.0`. The wrapper binds the callable
+before installing one audit hook per instance and records only import module
+names. It neither replaces the loader nor enables a filesystem fallback.
+
+The native trace module, Store field, binding and linker implementation are
+compiled only with cfg(test). Ordinary Pack admission rejects the reserved
+`tobkiri-ui:diagnostics/` namespace even if a caller lists it. Production native
+admission has no diagnostic capability. The test-only binding is one-shot and
+constructed from the Store's actual original invocation and allocation owners.
+
+At most 128 immutable, originally funded CoreBuffers retain ASCII module names
+of at most 128 bytes with a native-assigned sequence. The fixed row table and
+mutex have prepaid CoreControl storage. Recording and later borrowed snapshot
+serialization use original prepaid work; buffers remain charged through Store
+retirement and actual cleanup. No fresh guest copy is made to serialize them.
+Malformed, overflowing or failed recording is sticky and inconclusive; complete
+recording also requires the recorded and observed event counts to agree.
+
+The baseline test refuses the diagnostic environment and keeps all three
+original cases. A distinct ignored diagnostic test uses the same original
+64 MiB/fuel/30-second deadline, performs actual IO cleanup on errors, streams
+its retained trace, and always returns failure. Unexpected original success is
+also inconclusive. No diagnostic job can contribute an acceptance pass. A last
+module name alone does not establish the missing dependency: its sequence must
+be correlated with the original denied import and actual Wasm stack. The tracer
+can itself change snapshot import closure, which must also be accounted for.

@@ -184,3 +184,52 @@ def stage_native_input_stack(repo: Path, destination: Path) -> dict:
             raise ValueError('input stack source changed after staging')
     return {'plan_sha256': hashlib.sha256(raw).hexdigest(),
             'source_files': plan['sources'], 'files': files}
+
+
+def stage_native_input_stack_import_diagnostics(repo: Path, destination: Path) -> dict:
+    """Stage only the separate private import-audit diagnostic world."""
+    if repo != HERE.parents[1] or repo.resolve() != repo:
+        raise ValueError('physical current repository required')
+    previous_path = sys.path[:]
+    sys.path.insert(0, str(repo / 'scripts/wasm'))
+    try:
+        module = importlib.import_module(
+            'prepare_harness_input_stack_import_diagnostics'
+        )
+        expected_module = (
+            repo / 'scripts/wasm/prepare_harness_input_stack_import_diagnostics.py'
+        )
+        if Path(module.__file__).resolve() != expected_module or module.ROOT != repo:
+            raise ValueError('import diagnostics stager belongs to another repository')
+        plan = module.stage(destination)
+    finally:
+        sys.path[:] = previous_path
+    files = inventory(destination)
+    raw = (destination / 'plan.json').read_bytes()
+    expected_imports = [
+        'tobkiri-ui:inputs/captured@1.0.0',
+        'tobkiri-ui:diagnostics/import-trace@1.0.0',
+    ]
+    if (
+        json.loads(raw) != plan
+        or plan['world'] != 'native-input-stack-import-diagnostics'
+        or plan['outer_exports'] != [
+            'tobkiri-ui:native-input-stack/probe@1.0.0'
+        ]
+        or plan['allowed_imports'] != expected_imports
+    ):
+        raise ValueError('input-stack import diagnostic boundary changed')
+    expected_files = {item['source'] for item in plan['sources']} | {
+        'plan.json',
+        'provenance.json',
+    }
+    if set(files) != expected_files:
+        raise ValueError('input-stack diagnostic staged inventory changed')
+    for item in plan['sources']:
+        if files[item['source']]['sha256'] != item['sha256']:
+            raise ValueError('input-stack diagnostic source changed after staging')
+    return {
+        'plan_sha256': hashlib.sha256(raw).hexdigest(),
+        'source_files': plan['sources'],
+        'files': files,
+    }

@@ -16,12 +16,18 @@ import runtime_inputs
 
 def run(source: Path | None, producer: Path, validation: Path, destination: Path,
         *, all_five: bool = False, harness_setup: bool = False,
-        native_input_stack: bool = False) -> None:
+        native_input_stack: bool = False,
+        native_input_stack_import_diagnostics: bool = False) -> None:
     """Build each exact original Pack separately with no production activation."""
     if sys.platform != 'linux' or os.environ.get('GITHUB_ACTIONS') != 'true':
         raise ValueError('original component rebuilding is restricted to Linux CI')
-    if sum((all_five, harness_setup, native_input_stack)) > 1:
-        raise ValueError('original five, Setup and native input stack are separate build scopes')
+    if sum((
+            all_five,
+            harness_setup,
+            native_input_stack,
+            native_input_stack_import_diagnostics,
+    )) > 1:
+        raise ValueError('component build selectors are separate build scopes')
     if (not destination.is_absolute() or not destination.parent.is_dir()
             or destination.parent.resolve() != destination.parent
             or any(not p.is_absolute() or p.resolve() != p for p in (producer, validation))
@@ -68,9 +74,17 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
     recipe = destination / 'componentize.sh'
     recipe.write_text('set -eu\n/usr/bin/python3 -I -B /driver.py\n')
     identities[str(recipe)] = fingerprint(recipe)
-    receipt = {'format': ('tobkiri.python313-native-input-stack-candidate/1' if native_input_stack else
-                          'tobkiri.python313-setup-candidate/1' if harness_setup else
-                          'tobkiri.python313-original-components/1'), 'outcome': 'pending',
+    if native_input_stack_import_diagnostics:
+        receipt_format = (
+            'tobkiri.python313-native-input-stack-import-diagnostics-candidate/1'
+        )
+    elif native_input_stack:
+        receipt_format = 'tobkiri.python313-native-input-stack-candidate/1'
+    elif harness_setup:
+        receipt_format = 'tobkiri.python313-setup-candidate/1'
+    else:
+        receipt_format = 'tobkiri.python313-original-components/1'
+    receipt = {'format': receipt_format, 'outcome': 'pending',
                'source': source_identity, 'producer': producer_report['binary'],
                'producer_source_verification': ('actual original source tree and successful receipt'
                    if source is not None else 'successful producer and publishing-source receipts; source tree not restored'),
@@ -80,23 +94,43 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                'driver': identities[str(driver)], 'components': {},
                'guest_runtime_identity_verified': False, 'native_core_replay': False,
                'production_enabled': False, 'historical_binary_identity_claimed': False}
+    if native_input_stack_import_diagnostics:
+        receipt['diagnostic_only'] = True
+        receipt['diagnostic_outcome_must_fail'] = True
     receipt_path = destination / 'components-build.json'
+    if native_input_stack_import_diagnostics:
+        component_names = ('harness-input-stack-import-diagnostics',)
+    elif native_input_stack:
+        component_names = ('harness-input-stack',)
+    elif harness_setup:
+        component_names = ('harness-setup',)
+    else:
+        component_names = component_inputs.plans(all_five)
     try:
-        for name in (('harness-input-stack',) if native_input_stack else
-                     ('harness-setup',) if harness_setup else component_inputs.plans(all_five)):
+        for name in component_names:
             output = destination / name
             output.mkdir(mode=0o700)
             inputs = output / 'inputs'
-            plan_receipt = (component_inputs.stage_native_input_stack(repo, inputs)
-                            if native_input_stack else component_inputs.stage_harness_setup(repo, inputs)
-                            if harness_setup else component_inputs.stage(repo, name, inputs))
+            plan_receipt = (
+                component_inputs.stage_native_input_stack_import_diagnostics(
+                    repo, inputs
+                )
+                if native_input_stack_import_diagnostics
+                else component_inputs.stage_native_input_stack(repo, inputs)
+                if native_input_stack
+                else component_inputs.stage_harness_setup(repo, inputs)
+                if harness_setup
+                else component_inputs.stage(repo, name, inputs)
+            )
             snapshots[str(inputs)] = plan_receipt['files']
             control = output / 'control.json'
             control.write_text(json.dumps({
                 'producer_sha256': producer_report['binary']['sha256'],
                 'producer_receipt_sha256': identities[str(producer_receipt_path)]['sha256'],
                 'plan_sha256': plan_receipt['plan_sha256'],
-                'retain_generated_bindings': native_input_stack}) + '\n')
+                'retain_generated_bindings': (
+                    native_input_stack or native_input_stack_import_diagnostics
+                )}) + '\n')
             identities[str(control)] = fingerprint(control)
             work = output / 'work'
             work.mkdir(mode=0o700)
@@ -138,9 +172,11 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--source', type=Path)
-    parser.add_argument('--all-five', action='store_true')
-    parser.add_argument('--harness-setup', action='store_true')
-    parser.add_argument('--native-input-stack', action='store_true')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--all-five', action='store_true')
+    mode.add_argument('--harness-setup', action='store_true')
+    mode.add_argument('--native-input-stack', action='store_true')
+    mode.add_argument('--native-input-stack-import-diagnostics', action='store_true')
     for name in ('producer', 'validation', 'destination'):
         parser.add_argument('--' + name, type=Path, required=True)
     run(**vars(parser.parse_args()))

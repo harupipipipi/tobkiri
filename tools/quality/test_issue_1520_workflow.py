@@ -39,6 +39,34 @@ def step(source: str, name: str) -> str:
 
 
 class RuntimeRoutingTests(unittest.TestCase):
+    def test_import_audit_diagnostic_is_separate_failure_only_and_original_limits_remain(self) -> None:
+        source = (ROOT / '.github/workflows/issue-1520-native-input-stack-import-diagnostics.yml').read_text()
+        producer = job(source, 'build-import-diagnostics')
+        native = job(source, 'actual-native-import-diagnostics')
+        self.assertIn('--native-input-stack-import-diagnostics', producer)
+        self.assertIn("python-version: '3.13.16'", producer)
+        self.assertIn('native-input-stack-import-diagnostics-build-candidate', producer)
+        self.assertIn('generated-bindings/', producer)
+        guard = step(native, 'Require the existing supported native ownership platform')
+        for constraint in ('= Darwin', '= arm64', '= 24.6.0', 'diskutil info', 'apfs'):
+            self.assertIn(constraint, guard)
+        run = step(native, 'Run the failure-only native import-audit diagnostic')
+        self.assertIn("TOBKIRI_TEST_INPUT_STACK_IMPORT_DIAGNOSTICS: '1'", run)
+        self.assertIn('import_audit_diagnostic_preserves_the_original_python_stack_failure', run)
+        self.assertIn('--expected-passed 1 --', run)
+        self.assertIn('-- --ignored --exact --nocapture --test-threads=1', run)
+        for bypass in ('continue-on-error', '--skip', '--exclude', '--no-run', '--list'):
+            self.assertNotIn(bypass, run)
+        self.assertIn('if: always()', step(native, 'Retain native import-audit failure evidence'))
+        harness = (ROOT / 'crates/tobkiri-wasm/src/native_input_stack_probe.rs').read_text()
+        self.assertIn('baseline stack proof must not admit diagnostic capabilities', harness)
+        self.assertIn('diagnostic-only execution cannot produce an acceptance pass', harness)
+        self.assertIn('accepted_as_parity', harness)
+        custody = step(job(WORKFLOW.read_text(), 'foundations'),
+                       'Private native import diagnostic custody regressions')
+        self.assertIn('--expected-passed 3 --', custody)
+        self.assertIn('native_setup_store::entry::import_trace::tests', custody)
+
     def test_synchronous_stack_probe_requires_actual_supported_execution_and_exact_inputs(self) -> None:
         source = (ROOT / '.github/workflows/issue-1520-native-input-stack.yml').read_text()
         producer = job(source, 'build-original-stack')

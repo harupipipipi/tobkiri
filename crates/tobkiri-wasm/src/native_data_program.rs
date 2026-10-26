@@ -121,6 +121,7 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                 &binding.export,
                 binding.result,
                 self.native_data_io().is_some() && self.captured_inputs().is_some(),
+                self.diagnostic_trace_bound(),
             )?;
             table
                 .values

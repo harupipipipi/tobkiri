@@ -60,6 +60,7 @@ jobs:
           python3 -B -m unittest discover -s tests -p test_captured_setup_inputs.py
           python3 -B -m unittest discover -s tests -p test_harness_native_source.py
           python3 -B -m unittest discover -s tests -p test_harness_native_exception_graph.py
+          python3 -B -m unittest discover -s tests -p test_harness_input_stack_import_diagnostics.py
       - name: Core and host boundaries
         run: python3 tools/quality/issue_1520_gate.py --stage foundation
       - name: Verify migration inventory coverage
@@ -141,6 +142,13 @@ jobs:
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/portable-native-capture-import.log" --expected-passed 4 --
           cargo test --locked -p tobkiri-wasm --lib native_setup_store::entry::capture_import::tests
+      - name: Private native import diagnostic custody regressions
+        # Private diagnostic imports remain excluded from ordinary Pack admission.
+        # These portable fixtures do not claim actual OS/Python import proof.
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/portable-native-import-diagnostics.log" --expected-passed 3 --
+          cargo test --locked -p tobkiri-wasm --lib native_setup_store::entry::import_trace::tests
       - name: Authenticated shared module source and import regressions
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
