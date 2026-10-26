@@ -26,9 +26,13 @@ mod host;
 mod imports;
 mod instance_capacity;
 mod native_allocation;
+mod native_captured_inputs;
+pub use native_captured_inputs::{NativeCapturedFile, NativeCapturedInputs};
 mod native_preparation;
 mod native_setup_store;
-pub use native_setup_store::NativeSetupStore;
+pub use native_setup_store::{
+    NativeDataEntry, NativeDataExport, NativeDataObservation, NativeSetupStore,
+};
 mod network;
 mod output;
 mod owned_values;

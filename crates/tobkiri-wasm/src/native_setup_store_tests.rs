@@ -519,3 +519,23 @@ async fn codec_weak_handle_retains_original_metadata_until_final_block_reap() {
     assert_eq!(crate::reap_allocation_owners().unwrap(), 1);
     assert!(control.usage().bytes < held_metadata);
 }
+
+#[tokio::test]
+async fn closed_empty_capture_cannot_be_rebound_or_open_an_ambient_source() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
+    let (account, invocation) = funding();
+    let engine = WasmEngine::new_with_control(invocation.control()).unwrap();
+    let mut owned = engine.native_setup_store(invocation, ()).unwrap();
+    let capture = owned.seal_captured_inputs(&[]).unwrap();
+    assert!(capture.is_empty());
+    assert_eq!(capture.descriptors().len(), 0);
+    assert!(capture.read_range(0, 0, 1).is_err());
+    assert!(owned.seal_captured_inputs(&[]).is_err());
+    assert!(owned.captured_inputs().unwrap().is_empty());
+    assert_eq!(account.snapshot().unwrap().charged_bytes, WASM_STACK_BYTES);
+    drop(owned);
+    assert_eq!(account.snapshot().unwrap().charged_bytes, 0);
+    assert!(capture.read_range(0, 0, 0).is_err());
+    drop(capture);
+    crate::reap_allocation_owners().unwrap();
+}

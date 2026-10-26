@@ -458,3 +458,24 @@ complete original Setup/recovery/handover, Launch approval, provider settings
 and conversation flow. Verify failure/restart/CAS behavior and malicious Pack
 iframe attempts against the same native configuration boundary. This note
 closes no GUI, bootstrap, approval, platform or VM-retirement acceptance item.
+
+The inactive native DATA entry now retains one original Store across calls,
+accepts only exact typed wall/monotonic clock imports and zero-or-one string
+input with one string result, and refuses ordinary Core/Pack identities and
+their generic invoke ABI. Trusted nativeKit borrows the export selector; this
+does not create a guest/IPC selector or authenticate nativeKit by import shape.
+Owned canonical calls finish post-return before an output envelope is checked.
+Input, ABI values and retained CoreBuffer output share the original allocation
+owners, fuel and absolute deadline. A suspended call owns its Store locally:
+dropping the future destroys that Store and makes the entry unusable. Bounded
+observation counters record actual clock admission/completion and fuel before
+retirement; they are DATA and never authorization.
+
+The closed captured-input catalog preserves the original 4096-file, 1MiB
+namespace metadata and 64KiB range-read bounds, including UTF-8 accounting and
+file/directory collision rejection. Entries bind only to already sealed file
+snapshots from the exact same invocation. This catalog opens no host path and
+is not yet a guest capture import or managed IO integration. The new portable
+12 Store, 3 namespace and 9 actual-component entry regressions are explicitly
+counted in CI; their source does not prove supported-OS capture or whole GUI
+parity. The real Native Store 64MiB fullSchema comparison still needs execution.

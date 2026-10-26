@@ -23,6 +23,10 @@ const PHYSICAL_METADATA_BYTES: u64 = 1024;
 #[path = "native_setup_store_tests.rs"]
 mod tests;
 
+#[path = "native_setup_entry.rs"]
+mod entry;
+pub use entry::{NativeDataEntry, NativeDataExport, NativeDataObservation};
+
 struct NativePhysical {
     reservation: NativeSetupReservation,
     charged: Mutex<u64>,
@@ -102,6 +106,9 @@ struct NativeState<T> {
     data: T,
     invocation: NativeSetupInvocation,
     owners: crate::AllocationOwners,
+    captured: Option<crate::NativeCapturedInputs>,
+    capture_claimed: bool,
+    clock_observation: NativeDataObservation,
     limits: AggregateLimits,
     deadline: Instant,
     cancel: CoreCancellation,
@@ -147,6 +154,9 @@ impl WasmEngine {
             data,
             invocation,
             owners,
+            captured: None,
+            capture_claimed: false,
+            clock_observation: NativeDataObservation::default(),
             limits: AggregateLimits {
                 memory_cap: usize::try_from(NATIVE_SETUP_MEMORY_BYTES)?,
                 table_cap: TABLE_ELEMENTS,
@@ -190,6 +200,29 @@ impl WasmEngine {
     }
 }
 impl<T: 'static> NativeSetupStore<T> {
+    /// Seal one fixed ordinal inventory before entry execution. Failure also
+    /// consumes this binding attempt; neither files nor funding can be replaced.
+    pub fn seal_captured_inputs(
+        &mut self,
+        files: &[crate::NativeCapturedFile<'_>],
+    ) -> Result<crate::NativeCapturedInputs> {
+        let state = self.store.as_mut().expect("live native Store").data_mut();
+        if state.capture_claimed {
+            bail!("native capture inventory already claimed");
+        }
+        state.capture_claimed = true;
+        let capture = crate::NativeCapturedInputs::seal(&state.invocation, &state.owners, files)?;
+        state.captured = Some(capture.clone());
+        Ok(capture)
+    }
+    pub fn captured_inputs(&self) -> Option<&crate::NativeCapturedInputs> {
+        self.store
+            .as_ref()
+            .expect("live native Store")
+            .data()
+            .captured
+            .as_ref()
+    }
     /// Freeze native-selected source DATA using the original account, deadline
     /// and host-work budget. Call this synchronous IO primitive on a funded
     /// managed worker; cancellation does not complete an in-flight OS operation.
@@ -252,12 +285,9 @@ impl<T: 'static> NativeSetupStore<T> {
     }
     /// Begin immediate retirement; physical capacity remains until actual drop.
     pub fn retire(&self) {
-        self.store
-            .as_ref()
-            .expect("live native Store")
-            .data()
-            .retirement
-            .cancel();
+        let state = self.store.as_ref().expect("live native Store").data();
+        state.retirement.cancel();
+        state.cancel.cancel();
     }
 }
 impl<T: 'static> Drop for NativeSetupStore<T> {
