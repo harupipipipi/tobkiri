@@ -24,6 +24,10 @@ mod packaging_toolchain;
 #[path = "deferred_pack_successor.rs"]
 mod deferred_pack_successor;
 
+#[path = "native_harness_source.rs"]
+mod native_harness_source;
+pub(crate) use native_harness_source::{NativeApplicationSources, NativeSourceRoot};
+
 use crate::config::AppConfig;
 
 const DEFAULT_PROFILE_API_VERSION: &str = "io.tobkiri.profile.v5";
@@ -331,6 +335,15 @@ pub(crate) struct SignedApplicationResolver;
 impl SignedApplicationResolver {
     /// Resolve one application instance without selecting a product by name.
     pub(crate) fn resolve(config: &AppConfig) -> Result<ApplicationAuthority> {
+        Self::resolve_sources(config).map(NativeApplicationSources::into_authority)
+    }
+
+    /// Retain the actual roots at the existing resolved-application handoff.
+    ///
+    /// This runs the same resolver once, in the original order. It is not an
+    /// earlier prerequisite for Setup preview or source discovery: those phases
+    /// need their own original native input selection, not later validation.
+    pub(crate) fn resolve_sources(config: &AppConfig) -> Result<NativeApplicationSources> {
         let catalog = crate::presentation::load_catalog(config)
             .context("signed presentation catalog authority was rejected")?;
         let app_root = canonical_directory(&config.app_dir, "packaged application root")?;
@@ -497,7 +510,7 @@ impl SignedApplicationResolver {
                 ReconfirmationKind::Shell => ShellReconfirmationRequired.into(),
             });
         }
-        Ok(ApplicationAuthority {
+        let authority = ApplicationAuthority {
             pack_root,
             verified_artifacts,
             materialized_pack_id: root_pack_id,
@@ -513,7 +526,14 @@ impl SignedApplicationResolver {
             application_id: selected.application_pack_id,
             launch_contribution: selected.launch_contribution,
             deferred_external_packs,
-        })
+        };
+        Ok(NativeApplicationSources::from_resolver_result(
+            authority,
+            app_root,
+            bundle_root,
+            application_pack_root,
+            bundle_lock,
+        ))
     }
 }
 
@@ -4383,6 +4403,70 @@ mod tests {
 
     fn fixture(name: &str) -> (PathBuf, AppConfig) {
         fixture_at_layout(name, RELOCATION_LAYOUTS[0].1)
+    }
+
+    #[test]
+    fn native_sources_retain_actual_resolver_roots_without_reinspection() {
+        let (root, config) = fixture("native-resolved-source-roots");
+        let expected = resolve(&config).unwrap();
+        let selected = SignedApplicationResolver::resolve_sources(&config).unwrap();
+        assert_eq!(selected.authority(), &expected);
+        let application = config.app_dir.canonicalize().unwrap();
+        let bundle = application.join("ecosystem/defaultspack/v4");
+        let application_pack = application.join("ecosystem/defaultspack");
+        assert_eq!(
+            selected.root(NativeSourceRoot::Application),
+            application.as_path()
+        );
+        assert_eq!(selected.root(NativeSourceRoot::Bundle), bundle.as_path());
+        assert_eq!(
+            selected.root(NativeSourceRoot::ApplicationPack),
+            application_pack.as_path()
+        );
+        assert_eq!(
+            selected.root(NativeSourceRoot::MaterializedPack),
+            expected.pack_root.as_path()
+        );
+        let lock: Value =
+            serde_json::from_slice(&fs::read(bundle.join("bundle.lock.json")).unwrap()).unwrap();
+        for entry in lock["entries"].as_array().unwrap() {
+            assert_eq!(
+                selected.bundle_pin(entry["path"].as_str().unwrap()),
+                entry["digest"].as_str()
+            );
+        }
+
+        // The selection owns the original values, not an FD or a new proof
+        // that an inode still exists. Accessing it must not re-resolve/stat.
+        let relocated = root.join("relocated-after-original-handoff");
+        fs::rename(&config.app_dir, &relocated).unwrap();
+        assert!(!application.exists());
+        assert_eq!(
+            selected.root(NativeSourceRoot::Application),
+            application.as_path()
+        );
+        assert_eq!(selected.root(NativeSourceRoot::Bundle), bundle.as_path());
+        assert_eq!(selected.authority(), &expected);
+        assert_eq!(selected.into_authority(), expected);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn native_source_handoff_keeps_original_resolver_failure() {
+        let (root, config) = fixture("native-resolved-source-rejection");
+        let selected = SignedApplicationResolver::resolve_sources(&config).unwrap();
+        let lock_path = selected
+            .root(NativeSourceRoot::Bundle)
+            .join("bundle.lock.json");
+        let mut lock: Value = serde_json::from_slice(&fs::read(&lock_path).unwrap()).unwrap();
+        lock["schema"] = Value::String("invalid-fixture-bundle-schema".into());
+        fs::write(&lock_path, serde_json::to_vec(&lock).unwrap()).unwrap();
+        let original_error = resolve(&config).err().expect("original resolver must fail");
+        let selected_error = SignedApplicationResolver::resolve_sources(&config)
+            .err()
+            .expect("source selection must not publish on resolver failure");
+        assert_eq!(format!("{original_error:#}"), format!("{selected_error:#}"));
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

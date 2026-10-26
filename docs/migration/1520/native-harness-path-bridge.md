@@ -63,3 +63,26 @@ buffered file-handle ownership/read/seek/close semantics, the original monotonic
 clock domain and fixed native codesign execution. These additional adapters are
 not implemented here. In particular buffered `read(n)` cannot be replaced by a
 single raw `os.read(n)`, and a path string cannot recover authority by equality.
+
+## Existing resolver handoff
+
+`SignedApplicationResolver::resolve_sources` now retains the actual successful
+resolver result, the application/bundle/application-Pack root locals and the
+verified bundle-lock pins in a private-construction `NativeApplicationSources`.
+It moves those existing values at the original return point, without cloning
+them, re-resolving paths or repeating validation/IO. The existing `resolve`
+entrypoint returns the same `ApplicationAuthority` from that one resolver pass.
+Native root roles remain distinct even when their path values are equal.
+
+This is the later resolved-application handoff. It must not become a prerequisite
+for earlier Setup preview/source display, or precompute those original guest
+checks natively. Earlier inputs require their own actual Config/Tauri selection
+role at the original point. Native invocation phase checks must retain the real
+context; a caller phase name or this holder's existence is insufficient.
+
+Root and pin getters borrow the retained selection without IO. The selection
+does not prove that an inode/content remains unchanged, hold an FD, grant file
+permission or provide NativeSetup allocation funding. Native target admission,
+funded invocation retention, original-point observations and actual FD custody
+remain required. The two real-resolver tests cover owned roots/pins after rename
+and original rejection behavior; they run in Launcher CI, not locally.
