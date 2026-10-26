@@ -389,7 +389,7 @@ async fn unsupported_and_malformed_imports_fail_closed() {
                    (func (param "len" u64) (result $bytes)))))"#,
         r#"(import "tobkiri-ui:clock/monotonic@1.0.0" (instance $clock
                (export "now" (func (result u32)))
-               (export "resolution" (func (result u64))))"#,
+               (export "resolution" (func (result u64)))))"#,
     ] {
         let (account, invocation) = funding();
         let engine = crate::WasmEngine::new_with_control(invocation.control()).unwrap();
