@@ -91,6 +91,18 @@ opt-level = 2
 debug-assertions = true
 overflow-checks = true
 
+# Session cleanup verifies every stored audit column before and after each
+# append. Run that unchanged verification efficiently within its real grace.
+[profile.dev.package.tobkiri-store]
+opt-level = 2
+debug-assertions = true
+overflow-checks = true
+
+[profile.dev.package.sha2]
+opt-level = 2
+debug-assertions = true
+overflow-checks = true
+
 [patch.crates-io]
 wasmtime = { path = "vendor/wasmtime" }
 wasmtime-internal-fiber = { path = "vendor/wasmtime-internal-fiber" }
@@ -107,6 +119,16 @@ debug-assertions = true
 overflow-checks = true
 
 [profile.test.package.tobkiri-canon]
+opt-level = 2
+debug-assertions = true
+overflow-checks = true
+
+[profile.test.package.tobkiri-store]
+opt-level = 2
+debug-assertions = true
+overflow-checks = true
+
+[profile.test.package.sha2]
 opt-level = 2
 debug-assertions = true
 overflow-checks = true

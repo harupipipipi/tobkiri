@@ -9,6 +9,10 @@ use sha2::{Digest as _, Sha256};
 use tobkiri_canon::{Digest, ids::ProfileId};
 use tobkiri_gate::IntegrityFaultCode;
 
+#[cfg(test)]
+#[path = "audit_prefix_hash_tests.rs"]
+mod hash_tests;
+
 #[derive(Clone)]
 pub(super) struct VerifiedPrefix {
     state: Sha256,
@@ -20,7 +24,7 @@ fn integrity() -> StoreError {
     StoreError::Integrity(IntegrityFaultCode::AuditChain)
 }
 
-fn digest_bytes(value: ValueRef<'_>) -> Result<&[u8], StoreError> {
+fn digest_bytes(value: ValueRef<'_>) -> Result<&[u8; 71], StoreError> {
     match value {
         ValueRef::Text(bytes)
             if bytes.len() == 71
@@ -29,7 +33,7 @@ fn digest_bytes(value: ValueRef<'_>) -> Result<&[u8], StoreError> {
                     .iter()
                     .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte)) =>
         {
-            Ok(bytes)
+            bytes.try_into().map_err(|_| integrity())
         }
         _ => Err(integrity()),
     }
@@ -76,35 +80,52 @@ impl VerifiedPrefix {
 
     // Column index, SQLite type and length prevent concatenation, NULL/empty,
     // TEXT/BLOB or column-boundary aliases. No SQL coercions participate.
-    fn field(&mut self, index: u8, sql_type: u8, bytes: &[u8]) {
-        self.state.update([index, sql_type]);
-        self.state.update((bytes.len() as u64).to_be_bytes());
-        self.state.update(bytes);
+    fn field_header(index: u8, sql_type: u8, length: u64) -> [u8; 10] {
+        let mut header = [0; 10];
+        header[0] = index;
+        header[1] = sql_type;
+        header[2..].copy_from_slice(&length.to_be_bytes());
+        header
     }
 
     fn push(
         &mut self,
         seq: i64,
-        prev: &[u8],
-        digest: &[u8],
+        prev: &[u8; 71],
+        digest: &[u8; 71],
         body: &[u8],
-        event_id: Option<&[u8]>,
+        event_id: Option<&[u8; 71]>,
     ) -> Result<(), StoreError> {
         let count = self.rows.checked_add(1).ok_or_else(integrity)?;
         if u64::try_from(seq).ok() != Some(count) {
             return Err(integrity());
         }
-        self.state.update(b"row\0");
-        self.field(0, 1, &seq.to_be_bytes());
-        self.field(1, 3, prev);
-        self.field(2, 3, digest);
-        self.field(3, 4, body);
+        // Scanned digests retain all checks above; expected digests have the
+        // same fixed size in Canon's Digest. Only SHA update chunking changes:
+        // marker (4) + sequence (10+8) + two digests (2*(10+71)) + body
+        // header (10) = 194 bytes. Historical bodies remain borrowed.
+        let mut prefix = [0; 194];
+        prefix[..4].copy_from_slice(b"row\0");
+        prefix[4..14].copy_from_slice(&Self::field_header(0, 1, 8));
+        prefix[14..22].copy_from_slice(&seq.to_be_bytes());
+        prefix[22..32].copy_from_slice(&Self::field_header(1, 3, 71));
+        prefix[32..103].copy_from_slice(prev);
+        prefix[103..113].copy_from_slice(&Self::field_header(2, 3, 71));
+        prefix[113..184].copy_from_slice(digest);
+        prefix[184..].copy_from_slice(&Self::field_header(3, 4, body.len() as u64));
+        self.state.update(prefix);
+        self.state.update(body);
         match event_id {
-            Some(id) => self.field(4, 3, id),
-            None => self.field(4, 0, &[]),
+            Some(id) => {
+                let mut suffix = [0; 81];
+                suffix[..10].copy_from_slice(&Self::field_header(4, 3, 71));
+                suffix[10..].copy_from_slice(id);
+                self.state.update(suffix);
+            }
+            None => self.state.update(Self::field_header(4, 0, 0)),
         }
         self.rows = count;
-        self.tail = Some(digest.try_into().map_err(|_| integrity())?);
+        self.tail = Some(*digest);
         Ok(())
     }
 
@@ -120,10 +141,19 @@ impl VerifiedPrefix {
     ) -> Result<(), StoreError> {
         self.push(
             seq,
-            prev.as_str().as_bytes(),
-            digest.as_str().as_bytes(),
+            prev.as_str()
+                .as_bytes()
+                .try_into()
+                .map_err(|_| integrity())?,
+            digest
+                .as_str()
+                .as_bytes()
+                .try_into()
+                .map_err(|_| integrity())?,
             body,
-            event_id.map(|id| id.as_str().as_bytes()),
+            event_id
+                .map(|id| id.as_str().as_bytes().try_into().map_err(|_| integrity()))
+                .transpose()?,
         )
     }
 
