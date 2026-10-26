@@ -538,7 +538,8 @@ fn validate_datetime_type(item: &ComponentItem) -> Result<()> {
 }
 
 fn define_wall_clock<T: Send + 'static>(linker: &mut Linker<NativeState<T>>) -> Result<()> {
-    let mut wall = linker.root().instance(WALL_CLOCK_IMPORT)?;
+    let mut root = linker.root();
+    let mut wall = root.instance(WALL_CLOCK_IMPORT)?;
     wall.func_new("now", |mut store, _ty, params, results| {
         clock_callback(&mut store, params, results, ClockOperation::WallNow)
             .map_err(wasmtime::Error::from_anyhow)
@@ -551,7 +552,8 @@ fn define_wall_clock<T: Send + 'static>(linker: &mut Linker<NativeState<T>>) -> 
 }
 
 fn define_monotonic_clock<T: Send + 'static>(linker: &mut Linker<NativeState<T>>) -> Result<()> {
-    let mut monotonic = linker.root().instance(MONOTONIC_CLOCK_IMPORT)?;
+    let mut root = linker.root();
+    let mut monotonic = root.instance(MONOTONIC_CLOCK_IMPORT)?;
     monotonic.func_new("now", |mut store, _ty, params, results| {
         clock_callback(&mut store, params, results, ClockOperation::MonotonicNow)
             .map_err(wasmtime::Error::from_anyhow)
