@@ -31,7 +31,9 @@ pub use native_captured_inputs::{NativeCapturedFile, NativeCapturedInputs};
 mod native_preparation;
 mod native_setup_store;
 pub use native_setup_store::{
-    NativeDataEntry, NativeDataExport, NativeDataObservation, NativeSetupStore,
+    NativeDataEntry, NativeDataError, NativeDataErrorContract, NativeDataExport,
+    NativeDataObservation, NativeDataResultContract, NativeDataResultEntry, NativeDataSuccessType,
+    NativeDataValue, NativeSetupStore,
 };
 mod network;
 mod output;

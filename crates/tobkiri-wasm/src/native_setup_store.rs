@@ -25,7 +25,11 @@ mod tests;
 
 #[path = "native_setup_entry.rs"]
 mod entry;
-pub use entry::{NativeDataEntry, NativeDataExport, NativeDataObservation};
+pub use entry::{
+    NativeDataEntry, NativeDataError, NativeDataErrorContract, NativeDataExport,
+    NativeDataObservation, NativeDataResultContract, NativeDataResultEntry, NativeDataSuccessType,
+    NativeDataValue,
+};
 
 struct NativePhysical {
     reservation: NativeSetupReservation,

@@ -25,7 +25,7 @@ MEMORY = 64 * 1024 * 1024
 def validate_report(report: dict, identity: str, operation: str) -> dict:
     """Validate actual execution metadata before the original controller sees it."""
     if (
-        report.get("format") != "tobkiri.native-data-schema-observation/1"
+        report.get("format") != "tobkiri.native-data-schema-observation/2"
         or report.get("component_sha256") != identity
         or report.get("operation") != operation
         or report.get("memory_limit_bytes") != MEMORY
@@ -49,6 +49,7 @@ def validate_report(report: dict, identity: str, operation: str) -> dict:
         raise ValueError("native Store observation missing")
     if (
         type(observed.get("post_return")) is not bool
+        or observed.get("post_return_failed") is not False
         or type(observed.get("unreachable_trap")) is not bool
         or report.get("genuine_unreachable") is not observed["unreachable_trap"]
         or (observed["post_return"] and observed["unreachable_trap"])

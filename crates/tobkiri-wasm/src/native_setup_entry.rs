@@ -18,6 +18,12 @@ use wasmtime::{Engine, StoreContextMut};
 const WALL_CLOCK_IMPORT: &str = "wasi:clocks/wall-clock@0.2.4";
 const MONOTONIC_CLOCK_IMPORT: &str = "tobkiri-ui:clock/monotonic@1.0.0";
 const CLOCK_CALL_LIMIT: u64 = 100_000;
+#[path = "native_data_result.rs"]
+mod result;
+pub use result::{
+    NativeDataError, NativeDataErrorContract, NativeDataResultContract, NativeDataResultEntry,
+    NativeDataSuccessType, NativeDataValue,
+};
 #[cfg(not(unix))]
 const RESOLUTION_SAMPLE_LIMIT: u64 = 100_000;
 
@@ -25,6 +31,17 @@ const RESOLUTION_SAMPLE_LIMIT: u64 = 100_000;
 enum InputShape {
     None,
     String,
+}
+
+#[derive(Clone, Copy)]
+enum OutputShape {
+    String,
+    Result(NativeDataSuccessType),
+}
+
+enum NativeDataReply {
+    Value(NativeDataValue),
+    DomainError(NativeDataError),
 }
 
 /// Generic component export selector for the trusted nativeKit DATA runner.
@@ -58,8 +75,10 @@ pub struct NativeDataObservation {
     pub fuel_remaining: Option<u64>,
     /// The most recent owned call completed canonical post-return.
     pub post_return: bool,
-    /// The actual Wasmtime call returned its typed unreachable-code trap.
+    /// The guest body, rather than lifting or post-return, trapped unreachable.
     pub unreachable_trap: bool,
+    /// Owned canonical post-return failed; this is never a body IO denial.
+    pub post_return_failed: bool,
     /// Actual Store destruction has completed.
     pub store_retired: bool,
     /// The original absolute deadline was already reached when sampled.
@@ -92,6 +111,7 @@ pub struct NativeDataEntry<T: 'static> {
     _instance: Option<Instance>,
     function: Option<Func>,
     input: InputShape,
+    output: OutputShape,
     deadline: Instant,
     observation: NativeDataObservation,
 }
@@ -103,9 +123,31 @@ impl<T: Send + 'static> NativeSetupStore<T> {
     /// capture and every other host capability are refused until bound by a
     /// dedicated native interface.
     pub async fn prepare_data_entry(
+        self,
+        component: &Component,
+        export: NativeDataExport<'_>,
+    ) -> Result<NativeDataEntry<T>> {
+        self.prepare_entry(component, export, None).await
+    }
+
+    /// Bind a nativeKit's exact result/error contract, without importing Core
+    /// authority or treating a normal domain error as a Wasm execution failure.
+    pub async fn prepare_result_data_entry(
+        self,
+        component: &Component,
+        export: NativeDataExport<'_>,
+        contract: NativeDataResultContract<'_>,
+    ) -> Result<NativeDataResultEntry<T>> {
+        self.prepare_entry(component, export, Some(contract))
+            .await
+            .map(NativeDataResultEntry::new)
+    }
+
+    async fn prepare_entry(
         mut self,
         component: &Component,
         export: NativeDataExport<'_>,
+        contract: Option<NativeDataResultContract<'_>>,
     ) -> Result<NativeDataEntry<T>> {
         let result = async {
             // The selector is borrowed from trusted nativeKit, never copied or
@@ -126,8 +168,11 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                     depth: 0,
                     work: selector_work,
                 })?;
+            if let Some(contract) = contract {
+                contract.charge(self.allocation_owners())?;
+            }
             let engine = self._engine.engine();
-            let input = validate_component(engine, component, &export)?;
+            let (input, output) = validate_component(engine, component, &export, contract)?;
 
             let mut linker = Linker::<NativeState<T>>::new(engine);
             let mut wall_clock = false;
@@ -171,18 +216,19 @@ impl<T: Send + 'static> NativeSetupStore<T> {
                 &export,
             )?;
 
-            Ok::<_, anyhow::Error>((instance, function, input))
+            Ok::<_, anyhow::Error>((instance, function, input, output))
         }
         .await;
 
         match result {
-            Ok((instance, function, input)) => {
+            Ok((instance, function, input, output)) => {
                 let deadline = self.original_deadline();
                 Ok(NativeDataEntry {
                     store: Some(self),
                     _instance: Some(instance),
                     function: Some(function),
                     input,
+                    output,
                     deadline,
                     observation: NativeDataObservation::default(),
                 })
@@ -200,6 +246,16 @@ impl<T: Send + 'static> NativeDataEntry<T> {
     /// envelope and return an immutable CoreBuffer owned by the original
     /// native graph budget.
     pub async fn invoke(&mut self, input: Option<&CoreBuffer>) -> Result<CoreBuffer> {
+        match self.call(input).await? {
+            NativeDataReply::Value(NativeDataValue::String(output)) => Ok(output),
+            _ => {
+                self.retire();
+                bail!("native DATA string entry returned an unexpected result shape")
+            }
+        }
+    }
+
+    async fn call(&mut self, input: Option<&CoreBuffer>) -> Result<NativeDataReply> {
         // The future owns the live Store while suspended. Dropping the future
         // therefore destroys it; an interrupted entry can never be reused.
         // A successful call alone transfers custody back to the retained entry.
@@ -208,6 +264,7 @@ impl<T: Send + 'static> NativeDataEntry<T> {
             _instance: self._instance.take(),
             function: self.function.take(),
             input: self.input.clone(),
+            output: self.output,
             deadline: self.deadline,
             observation: NativeDataObservation::default(),
         };
@@ -248,7 +305,7 @@ impl<T: Send + 'static> NativeDataEntry<T> {
             .fuel_remaining()
     }
 
-    async fn invoke_inner(&mut self, input: Option<&CoreBuffer>) -> Result<CoreBuffer> {
+    async fn invoke_inner(&mut self, input: Option<&CoreBuffer>) -> Result<NativeDataReply> {
         let store = self
             .store
             .as_mut()
@@ -297,19 +354,22 @@ impl<T: Send + 'static> NativeDataEntry<T> {
             }
         };
         self.observation.unreachable_trap = result.as_ref().err().is_some_and(|error| {
-            error.downcast_ref::<wasmtime::Trap>() == Some(&wasmtime::Trap::UnreachableCodeReached)
+            matches!(
+                error.downcast_ref::<wasmtime::component::CanonicalCallStage>(),
+                Some(wasmtime::component::CanonicalCallStage::Guest)
+            ) && error.downcast_ref::<wasmtime::Trap>()
+                == Some(&wasmtime::Trap::UnreachableCodeReached)
+        });
+        self.observation.post_return_failed = result.as_ref().err().is_some_and(|error| {
+            matches!(
+                error.downcast_ref::<wasmtime::component::CanonicalCallStage>(),
+                Some(wasmtime::component::CanonicalCallStage::PostReturn)
+            )
         });
         let result = result
             .map_err(anyhow::Error::from)
             .context("invoke native DATA function")?;
         self.observation.post_return = true;
-        let [Val::String(text)] = result.as_slice() else {
-            bail!("native DATA function returned an unexpected value")
-        };
-        if text.as_str().len() > MAX_BYTES {
-            // The successful owned call has already completed post-return.
-            bail!("native DATA output exceeds the 4 MiB string envelope")
-        }
         ensure_active(
             store
                 .store
@@ -317,10 +377,25 @@ impl<T: Send + 'static> NativeDataEntry<T> {
                 .context("native Setup Store was retired")?
                 .data_mut(),
         )?;
-        Ok(CoreBuffer::copy_from(
-            text.as_str().as_bytes(),
-            owners.graph(),
-        )?)
+        let output = match self.output {
+            OutputShape::String => {
+                let [Val::String(text)] = result.as_slice() else {
+                    bail!("native DATA function returned an unexpected value");
+                };
+                Ok(NativeDataReply::Value(NativeDataValue::String(
+                    result::string(text.as_str(), &owners)?,
+                )))
+            }
+            OutputShape::Result(success) => result::decode(result.as_slice(), success, &owners),
+        }?;
+        ensure_active(
+            store
+                .store
+                .as_mut()
+                .context("native Setup Store was retired")?
+                .data_mut(),
+        )?;
+        Ok(output)
     }
 }
 
@@ -334,6 +409,7 @@ impl<T: 'static> NativeDataEntry<T> {
         observation.fuel_remaining = store.get_fuel().ok();
         observation.post_return = self.observation.post_return;
         observation.unreachable_trap = self.observation.unreachable_trap;
+        observation.post_return_failed = self.observation.post_return_failed;
         observation.deadline_exceeded = Instant::now() >= self.deadline;
         self.observation = observation;
     }
@@ -384,7 +460,8 @@ fn validate_component(
     engine: &Engine,
     component: &Component,
     export: &NativeDataExport<'_>,
-) -> Result<InputShape> {
+    contract: Option<NativeDataResultContract<'_>>,
+) -> Result<(InputShape, OutputShape)> {
     if !Engine::same(engine, component.engine()) {
         bail!("native DATA component belongs to another WasmEngine")
     }
@@ -432,7 +509,7 @@ fn validate_component(
             _ => bail!("selected native DATA export is not a component function"),
         },
     };
-    validate_entry_function(&function)
+    validate_entry_function(&function, contract)
 }
 
 fn is_generic_core_identity(name: &str) -> bool {
@@ -442,19 +519,32 @@ fn is_generic_core_identity(name: &str) -> bool {
         || name.starts_with("tobkiri:pack@")
 }
 
-fn validate_entry_function(function: &ComponentFunc) -> Result<InputShape> {
+fn validate_entry_function(
+    function: &ComponentFunc,
+    contract: Option<NativeDataResultContract<'_>>,
+) -> Result<(InputShape, OutputShape)> {
     if function.async_() {
         bail!("native DATA function must be synchronous")
     }
-    if function.results().len() != 1 || function.results().next() != Some(Type::String) {
-        bail!("native DATA function must return exactly one string")
+    if function.results().len() != 1 {
+        bail!("native DATA function must return exactly one selected value");
     }
+    let ty = function.results().next().expect("one DATA result");
+    let output = match contract {
+        None if ty == Type::String => OutputShape::String,
+        None => bail!("native DATA function must return exactly one string"),
+        Some(contract) => {
+            result::validate(&ty, contract)?;
+            OutputShape::Result(contract.success)
+        }
+    };
     let mut params = function.params();
-    match params.len() {
-        0 => Ok(InputShape::None),
-        1 if params.next().is_some_and(|(_, ty)| ty == Type::String) => Ok(InputShape::String),
+    let input = match params.len() {
+        0 => InputShape::None,
+        1 if params.next().is_some_and(|(_, ty)| ty == Type::String) => InputShape::String,
         _ => bail!("native DATA function must accept zero arguments or one string"),
-    }
+    };
+    Ok((input, output))
 }
 
 #[derive(Clone, Copy)]
@@ -805,6 +895,10 @@ fn measured_resolution(mut sample: impl FnMut() -> Result<u64>) -> Result<u64> {
 #[cfg(test)]
 #[path = "native_setup_entry_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "native_data_result_tests.rs"]
+mod result_tests;
 
 #[cfg(test)]
 #[path = "native_data_schema_probe.rs"]

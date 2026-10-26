@@ -122,7 +122,7 @@ async fn native_schema_component() -> Result<()> {
     entry.retire();
     let observation = entry.observation();
     let report = Report {
-        format: "tobkiri.native-data-schema-observation/1",
+        format: "tobkiri.native-data-schema-observation/2",
         component_sha256: identity.as_str(),
         operation: &operation,
         value: output.as_ref().map(CoreBuffer::as_str).transpose()?,

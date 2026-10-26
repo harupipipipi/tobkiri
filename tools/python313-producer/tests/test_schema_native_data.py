@@ -13,7 +13,7 @@ spec.loader.exec_module(observer)
 
 def sample():
     return {
-        "format": "tobkiri.native-data-schema-observation/1",
+        "format": "tobkiri.native-data-schema-observation/2",
         "component_sha256": "sha256:" + "a" * 64,
         "operation": "run",
         "memory_limit_bytes": 64 * 1024 * 1024,
@@ -28,6 +28,7 @@ def sample():
         "observation": {
             "fuel_remaining": 1_000_000_000,
             "post_return": True,
+            "post_return_failed": False,
             "unreachable_trap": False,
             "store_retired": True,
             "deadline_exceeded": False,
@@ -81,6 +82,7 @@ class NativeObserverContract(unittest.TestCase):
     def test_failed_callback_or_live_store_cannot_be_success(self):
         for key, value in (
             ("clock_completed", 3),
+            ("post_return_failed", True),
             ("clock_calls", 5),
             ("wall_now", True),
             ("wall_resolution_ns", None),

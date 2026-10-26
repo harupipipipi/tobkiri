@@ -520,3 +520,19 @@ domain errors. Capture IO still requires bounded, prepaid native-only managed
 custody through actual OS completion, even after timeout or Store destruction.
 The original 4MiB captured-reader bound is per returned buffer, not cumulative;
 large-artifact streaming and seek must remain available within original budgets.
+
+The native entry also binds an exact borrowed result contract: successful string
+or unit, and an error record with the nativeKit's exact field names and ordered
+enum cases. This does not import ordinary Pack nominal types. Both success and
+normal domain error complete owned canonical post-return and retain the same
+original budgets and instance; code/message copies remain funded CoreBuffers.
+Domain errors are DATA and do not implement the Core/Gate error interface.
+Unknown enum values, ABI mismatch, oversized strings, traps and post-return
+failures are execution errors and destroy the Store. Nine additional real
+component regressions cover these paths; execution remains a CI requirement.
+
+Guest unreachable and post-return failure are distinguished by Wasmtime's
+existing typed `CanonicalCallStage` before error conversion. Observer format
+`tobkiri.native-data-schema-observation/2` requires that distinction: a cleanup
+trap must never be accepted as an original non-clock IO denial. Historical
+format-1 evidence remains unchanged and scoped to its actual frozen source.
