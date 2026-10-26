@@ -16,6 +16,7 @@ mod writer_tests;
 const STAT_JSON_LITERAL_BYTES: usize =
     b"{\"kind\":\"stat\",\"st_mode\":,\"st_dev\":,\"st_ino\":,\"st_size\":,\"st_mtime_ns\":}".len();
 const MAX_STAT_JSON_BYTES: usize = STAT_JSON_LITERAL_BYTES + 10 + 20 + 20 + 20 + 40;
+const _: () = assert!(MAX_STAT_JSON_BYTES < 256);
 
 /// Append `prefix + stat JSON object + suffix` for the caller's original file.
 ///
@@ -140,6 +141,5 @@ mod bound_tests {
             + u64::MAX.to_string().len()
             + i128::MIN.to_string().len();
         assert!(MAX_STAT_JSON_BYTES >= actual_maximum);
-        assert!(MAX_STAT_JSON_BYTES < 256);
     }
 }
