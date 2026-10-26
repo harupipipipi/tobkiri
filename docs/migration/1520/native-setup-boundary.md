@@ -740,3 +740,39 @@ exception through the current plain-string `run` ABI remains unproven; a trap
 while formatting an uncaught exception is not evidence of Python exception
 compatibility. The separate import diagnostic always fails and cannot satisfy a
 product acceptance gate. No original GUI flow or default runtime is changed.
+
+### Whole source package and native-selected inspection work
+
+The source package assembler places all seventeen original composition methods
+inside their original qualified Python module. `SetupActivationDecision` remains
+a single original class in `core_runtime.profile_runtime_port`, imported by the
+composition module. Resolver, protocol, Schema and mixed projection sources are
+copied verbatim. A module being assembled or statically present does not prove
+that its dependency closure executes in the pinned Wasm interpreter. Missing
+native adapters and package dependencies remain explicit; they are not filled
+with synthetic classes, namespaces or empty modules.
+
+Projection inventory, metadata, declarations, hashes, selection order and
+duplicate occurrence handling remain original guest DATA calculation. The
+mixed projection modules are retained in the capsule for this purpose. Real IO,
+descriptor identity, admission and authority still require native bindings at
+the original reachpoints. No native precomputed projection result substitutes
+for these original calculations.
+
+`NativeDataIo::inspect` runs a native-selected callback on the existing funded
+worker/monitor and one-inflight slot. Its borrowed `NativeInspectionOutput`
+fixes the original owner and four-MiB total envelope, including framing and error
+DATA. `write_chunk` reserves original DATA space before exposing a bounded tail
+to an IO producer. A producer's typed error is preserved for the nativeKit
+adapter; it is not automatically a portable exception graph. Allocation,
+accounting, invalid-length or original-scope failures are sticky and cannot
+publish a successful partial result. Callback failure and late completion also
+cannot publish the staged bytes. Actual IO Joins and physical destruction retain
+their original cleanup path after Store retirement.
+
+This generic worker does not select or interpret paths, operations, Pack IDs,
+phases or authority. NativeKit must retain and recheck the actual binding/owner
+through worker execution, rather than capture a prior approval boolean. There
+is no new guest import or ordinary Pack capability. Full ordered inspection
+bindings, bound-path semantics, exception disclosure and the complete nativeKit
+artifact remain to be integrated and executed before GUI adoption.

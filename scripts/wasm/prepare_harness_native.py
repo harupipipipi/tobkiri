@@ -169,12 +169,20 @@ _NATIVE_IMPORT_SOURCE_PATHS = {
 }
 
 _ROOT_SOURCE_MODULES = (COMPOSITION, PROFILE_PORT)
+# These modules mix original DATA calculation with native filesystem/admission
+# reachpoints. Keep their complete source, rather than moving projection hashes,
+# declarations or ordering into a native precomputed result.
+PROJECTION_BOUNDARY_MODULES = (
+    "tobkiri_runtime/core_runtime/profile_content_projection.py",
+    "tobkiri_runtime/core_runtime/profile_pack_projection.py",
+)
 _CAPSULE_SOURCE_FILES = (
     EXCEPTION_TRANSPORT,
     PROFILE_RESOLUTION,
     SETUP_CONTRACT,
     DOMAIN_PACKAGE_INIT,
     DEFAULTSPACK_PACKAGE_INIT,
+    *PROJECTION_BOUNDARY_MODULES,
     *(f"{PROTOCOL_ROOT}/{name}" for name in PROTOCOL_MODULES),
     SCHEMA_HASHES,
     PROJECT_METADATA,
@@ -408,7 +416,8 @@ def _read_sources() -> dict[str, bytes]:
     paths = (
         *_ROOT_SOURCE_MODULES,
         *_CAPSULE_SOURCE_FILES,
-        *_DEFERRED_NATIVE_MODULES,
+        *(path for path in _DEFERRED_NATIVE_MODULES
+          if path not in PROJECTION_BOUNDARY_MODULES),
         *_NATIVE_KIT_SOURCES,
         *_schema_paths(),
     )
@@ -547,6 +556,8 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
             "protocol_schema_metadata" if path == SCHEMA_HASHES else
             "project_metadata" if path == PROJECT_METADATA else
             "native_exception_codec_source" if path in _NATIVE_KIT_SOURCES else
+            "verbatim_data_with_native_io_boundary"
+            if path in PROJECTION_BOUNDARY_MODULES else
             "verbatim_data_dependency" if stored_as is not None else
             "deferred_native_adapter_source"
         )
@@ -623,8 +634,9 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
                 "function": "resolve_profile_projection",
                 "import": "core_runtime.profile_content_projection.resolve_profile_projection",
                 "required_behavior": (
-                    "projection content inventory and digest verification "
-                    "remain native and are not ported"
+                    "preserve the original guest DATA inventory, metadata and "
+                    "digest calculations; perform only real IO and identity "
+                    "inspection natively at the original occurrence"
                 ),
             },
             {
@@ -632,7 +644,9 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
                 "function": "selected_projection_roots",
                 "import": "core_runtime.profile_content_projection.selected_projection_roots",
                 "required_behavior": (
-                    "projection root resolution remains native and is not ported"
+                    "preserve original selection order and guest DATA checks; "
+                    "perform actual root IO and repeated identity verification "
+                    "natively at each original occurrence"
                 ),
             },
             {
@@ -640,8 +654,9 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
                 "function": "admitted_projection_sources",
                 "import": "core_runtime.profile_pack_projection.admitted_projection_sources",
                 "required_behavior": (
-                    "native Pack admission and projection-source resolution "
-                    "remain unported"
+                    "keep the original guest loop, including duplicate selection "
+                    "occurrences; native Pack admission remains unconnected "
+                    "until bound to its actual original owner and reachpoint"
                 ),
             },
         ],
@@ -662,6 +677,15 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
             },
         ],
         "external_runtime_dependencies": ["jsonschema", "packaging"],
+        "native_inspection_boundary": {
+            "projection_sources": list(PROJECTION_BOUNDARY_MODULES),
+            "guest_data_calculations_preserved": True,
+            "native_precomputed_projection_results_allowed": False,
+            "native_observations_at_original_reachpoints": True,
+            "preserve_rereads_duplicate_occurrences_and_failure_order": True,
+            "inspection_bindings_connected": False,
+            "authority_granted_by_source_capture": False,
+        },
         "source_capsule_only": True,
         "dependency_closure_executable": False,
         "native_projection_io_ported": False,

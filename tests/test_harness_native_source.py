@@ -182,8 +182,12 @@ class HarnessNativeSourceTests(unittest.TestCase):
 
         for path in prepare._DEFERRED_NATIVE_MODULES:
             record, = [item for item in provenance["sources"] if item["path"] == path]
-            self.assertEqual(record["role"], "deferred_native_adapter_source")
-            self.assertNotIn("stored_as", record)
+            if path in prepare.PROJECTION_BOUNDARY_MODULES:
+                self.assertEqual(record["role"], "verbatim_data_with_native_io_boundary")
+                self.assertEqual(files[record["stored_as"]], prepare.bounded_read(ROOT / path))
+            else:
+                self.assertEqual(record["role"], "deferred_native_adapter_source")
+                self.assertNotIn("stored_as", record)
 
     def test_metadata_hash_and_schema_inventory_bind_all_fixed_source_bytes(self) -> None:
         files = prepare.captured()
@@ -221,8 +225,13 @@ class HarnessNativeSourceTests(unittest.TestCase):
         source_records = {item["path"]: item for item in provenance["sources"]}
         for item in imports:
             record = source_records[item["source_module_path"]]
-            self.assertEqual(record["role"], "deferred_native_adapter_source")
-            self.assertNotIn("stored_as", record)
+            if item["source_module_path"] in prepare.PROJECTION_BOUNDARY_MODULES:
+                self.assertEqual(record["role"], "verbatim_data_with_native_io_boundary")
+                self.assertEqual(files[record["stored_as"]], prepare.bounded_read(
+                    ROOT / item["source_module_path"]))
+            else:
+                self.assertEqual(record["role"], "deferred_native_adapter_source")
+                self.assertNotIn("stored_as", record)
 
         adapters = {
             item.get("function"): item
@@ -233,12 +242,21 @@ class HarnessNativeSourceTests(unittest.TestCase):
             "resolve_profile_projection", "selected_projection_roots",
             "admitted_projection_sources",
         })
-        self.assertIn("not ported", adapters["resolve_profile_projection"]
+        self.assertIn("original guest DATA", adapters["resolve_profile_projection"]
                       ["required_behavior"])
-        self.assertIn("not ported", adapters["selected_projection_roots"]
+        self.assertIn("each original occurrence", adapters["selected_projection_roots"]
                       ["required_behavior"])
-        self.assertIn("unported", adapters["admitted_projection_sources"]
+        self.assertIn("duplicate selection", adapters["admitted_projection_sources"]
                       ["required_behavior"])
+
+        boundary = provenance["native_inspection_boundary"]
+        self.assertEqual(boundary["projection_sources"],
+                         list(prepare.PROJECTION_BOUNDARY_MODULES))
+        self.assertTrue(boundary["guest_data_calculations_preserved"])
+        self.assertFalse(boundary["native_precomputed_projection_results_allowed"])
+        self.assertTrue(boundary["preserve_rereads_duplicate_occurrences_and_failure_order"])
+        self.assertFalse(boundary["inspection_bindings_connected"])
+        self.assertFalse(boundary["authority_granted_by_source_capture"])
         self.assertFalse(provenance["native_projection_io_ported"])
         self.assertFalse(provenance["native_pack_admission_ported"])
         self.assertFalse(provenance["dependency_closure_executable"])

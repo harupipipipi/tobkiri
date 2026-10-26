@@ -15,6 +15,9 @@ use tobkiri_gate::{
     NativeSetupLease,
 };
 
+#[path = "native_inspection_output_tests.rs"]
+mod inspection_tests;
+
 struct Proof;
 impl NativeSetupLease for Proof {
     fn validate(&self) -> std::result::Result<(), GateError> {

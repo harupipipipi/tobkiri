@@ -59,6 +59,7 @@ jobs:
           python3 -B -m unittest discover -s tests -p test_harness_setup.py
           python3 -B -m unittest discover -s tests -p test_captured_setup_inputs.py
           python3 -B -m unittest discover -s tests -p test_harness_native_source.py
+          python3 -B -m unittest discover -s tests -p test_harness_native_package.py
           python3 -B -m unittest discover -s tests -p test_harness_native_exception_graph.py
           python3 -B -m unittest discover -s tests -p test_harness_input_stack_import_diagnostics.py
       - name: Core and host boundaries
@@ -135,7 +136,7 @@ jobs:
       - name: Native DATA blocking IO custody regressions
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/portable-native-data-io.log" --expected-passed 9 --
+          --log "$RUNNER_TEMP/portable-native-data-io.log" --expected-passed 13 --
           cargo test --locked -p tobkiri-wasm --lib child_census::native_data_io::tests
       - name: Closed native capture import and scope regressions
         run: >-

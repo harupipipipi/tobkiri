@@ -110,6 +110,17 @@ class RuntimeRoutingTests(unittest.TestCase):
         self.native = job(self.source, "verified-platform-runtime")
         self.producer = job(self.source, "official-python-parity")
 
+    def test_whole_source_package_and_all_native_io_cases_have_real_ci_routes(self) -> None:
+        source = step(self.linux, "Original Harness Setup source and DATA projection regressions")
+        self.assertIn("test_harness_native_source.py", source)
+        self.assertIn("test_harness_native_package.py", source)
+        io = step(self.linux, "Native DATA blocking IO custody regressions")
+        self.assertIn("--expected-passed 13 --", io)
+        self.assertIn("cargo test --locked -p tobkiri-wasm --lib", io)
+        self.assertIn("child_census::native_data_io::tests", io)
+        for bypass in ("continue-on-error", "--skip", "--list", "--no-run"):
+            self.assertNotIn(bypass, io)
+
     def test_linux_retains_portable_packages_and_explicit_test_targets(self) -> None:
         packages = step(self.linux, "Portable Rust package tests")
         self.assertEqual(set(re.findall(r"-p ([\w-]+)", packages)), {
