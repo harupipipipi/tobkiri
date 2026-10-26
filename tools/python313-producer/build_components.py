@@ -11,6 +11,7 @@ from build_wasi import run_stage
 import component_inputs
 from fetch_sdk import inventory
 import fetch_validation_tools
+import harness_native_dependencies
 import runtime_inputs
 
 
@@ -18,7 +19,9 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         *, all_five: bool = False, harness_setup: bool = False,
         harness_native: bool = False,
         native_input_stack: bool = False,
-        native_input_stack_import_diagnostics: bool = False) -> None:
+        native_input_stack_import_diagnostics: bool = False,
+        schema_inputs: Path | None = None, stdlib: Path | None = None,
+        rpds: Path | None = None) -> None:
     """Build each exact original Pack separately with no production activation."""
     if sys.platform != 'linux' or os.environ.get('GITHUB_ACTIONS') != 'true':
         raise ValueError('original component rebuilding is restricted to Linux CI')
@@ -30,9 +33,15 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
             native_input_stack_import_diagnostics,
     )) > 1:
         raise ValueError('component build selectors are separate build scopes')
+    dependency_mode = harness_native_dependencies.selected(
+        harness_native, schema_inputs, stdlib, rpds,
+    )
+    physical_inputs = (producer, validation) + (
+        (schema_inputs, stdlib, rpds) if dependency_mode else ()
+    )
     if (not destination.is_absolute() or not destination.parent.is_dir()
             or destination.parent.resolve() != destination.parent
-            or any(not p.is_absolute() or p.resolve() != p for p in (producer, validation))
+            or any(not p.is_absolute() or p.resolve() != p for p in physical_inputs)
             or (source is not None and (not source.is_absolute() or source.resolve() != source))):
         raise ValueError('physical build inputs and new output directory required')
     destination.mkdir(mode=0o700)
@@ -64,6 +73,11 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                 k: pin[k] for k in ('bytes', 'sha256')}:
             raise ValueError('actual validation tool input changed')
     runtime_inputs.recorded_files(validation / 'wasmtime', tool_report['files'])
+    dependency_inputs = (
+        harness_native_dependencies.verify(
+            schema_inputs, producer, rpds, validation, stdlib,
+        ) if dependency_mode else None
+    )
     repo = HERE.parents[1]
     sdk = repo / 'sdk/python'
     snapshots = {str(sdk): inventory(sdk), str(validation): inventory(validation)}
@@ -130,16 +144,27 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                 if harness_setup
                 else component_inputs.stage(repo, name, inputs)
             )
+            if dependency_mode:
+                plan_receipt = harness_native_dependencies.stage(
+                    inputs, plan_receipt, dependency_inputs,
+                    schema_inputs, stdlib, rpds,
+                )
             snapshots[str(inputs)] = plan_receipt['files']
             control = output / 'control.json'
-            control.write_text(json.dumps({
+            control_data = {
                 'producer_sha256': producer_report['binary']['sha256'],
                 'producer_receipt_sha256': identities[str(producer_receipt_path)]['sha256'],
                 'plan_sha256': plan_receipt['plan_sha256'],
                 'retain_generated_bindings': (
                     native_input_stack or native_input_stack_import_diagnostics
                     or harness_native
-                )}) + '\n')
+                ),
+            }
+            if dependency_mode:
+                control_data['harness_native_dependencies'] = plan_receipt[
+                    'harness_native_dependencies'
+                ]
+            control.write_text(json.dumps(control_data) + '\n')
             identities[str(control)] = fingerprint(control)
             work = output / 'work'
             work.mkdir(mode=0o700)
@@ -160,6 +185,10 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                     or proof['build_plan_sha256'] != plan_receipt['plan_sha256']
                     or proof['compiler_executable_sha256'] != producer_report['binary']['sha256']):
                 raise ValueError('component output differs from its source and producer receipt')
+            if dependency_mode:
+                harness_native_dependencies.verify_component_receipt(
+                    proof, plan_receipt, inputs,
+                )
             receipt['components'][name] = {'artifact': artifact, 'supervision': supervision,
                 'source': plan_receipt, 'build_receipt': fingerprint(proof_path)}
             receipt_path.write_text(json.dumps(receipt, indent=2) + '\n')
@@ -170,6 +199,10 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         for path, expected in identities.items():
             if fingerprint(Path(path)) != expected:
                 raise ValueError('component build input identity changed')
+        if dependency_mode and harness_native_dependencies.verify(
+            schema_inputs, producer, rpds, validation, stdlib,
+        ) != dependency_inputs:
+            raise ValueError('native Harness dependency inputs changed')
         receipt.update(outcome='success', inputs_unchanged=True)
     except BaseException:
         receipt['outcome'] = 'failed'
@@ -187,6 +220,8 @@ if __name__ == '__main__':
     mode.add_argument('--harness-native', action='store_true')
     mode.add_argument('--native-input-stack', action='store_true')
     mode.add_argument('--native-input-stack-import-diagnostics', action='store_true')
+    for name in ('schema-inputs', 'stdlib', 'rpds'):
+        parser.add_argument('--' + name, type=Path)
     for name in ('producer', 'validation', 'destination'):
         parser.add_argument('--' + name, type=Path, required=True)
     run(**vars(parser.parse_args()))

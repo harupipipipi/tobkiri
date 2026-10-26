@@ -319,8 +319,9 @@ class HarnessNativeSourcePackageTests(unittest.TestCase):
         service_records = [d for d in manifest["definitions"]
                            if d["source_path"] == prepare.SERVICE_SOURCE]
         self.assertEqual({r["symbol"] for r in service_records}, {
-            *data_facade.SERVICE_CLASSES, *data_facade.SERVICE_FUNCTIONS,
+            *data_facade.SERVICE_FUNCTIONS,
             "bundle_catalog_reexports", "profile_resolution_reexports", "canonical_reexports",
+            "profile_runtime_record_reexports",
         })
         for record in service_records:
             original_bytes = original[record["source_start_byte"]:record["source_end_byte"]]
@@ -332,8 +333,30 @@ class HarnessNativeSourcePackageTests(unittest.TestCase):
         tree = ast.parse(self.package[service_path])
         class_names = [n.name for n in tree.body if isinstance(n, ast.ClassDef)]
         self.assertIn("ActivationStore", class_names)
-        self.assertIn("ActiveDefaultProfile", class_names)
+        self.assertTrue(set(class_names).isdisjoint(data_facade.SERVICE_CLASSES))
         self.assertGreater(len(class_names), len(prepare.SERVICE_DATA_CLASSES))
+        record_import, = [n for n in tree.body if isinstance(n, ast.ImportFrom)
+                          and n.module == "_profile_runtime_records" and n.level == 2]
+        self.assertEqual({(n.name, n.asname) for n in record_import.names},
+                         {(name, name) for name in data_facade.SERVICE_CLASSES})
+        record_path = f"source-package/{prepare.PROFILE_RUNTIME_RECORDS}"
+        original_records = prepare.bounded_read(ROOT / prepare.PROFILE_RUNTIME_RECORDS)
+        self.assertEqual(self.package[record_path], original_records)
+        relocated = [d for d in manifest["definitions"]
+                     if d["source_path"] == prepare.PROFILE_RUNTIME_RECORDS]
+        self.assertEqual(
+            {d["symbol"] for d in relocated}, set(data_facade.SERVICE_CLASSES),
+        )
+        for record in relocated:
+            self.assertEqual(record["generated_path"], record_path)
+            exact = original_records[
+                record["source_start_byte"]:record["source_end_byte"]
+            ]
+            extent = record["generated_extent"]
+            self.assertEqual(exact, self.package[record_path][
+                extent["start_byte"]:extent["end_byte"]
+            ])
+            self.assertEqual(record["sha256"], hashlib.sha256(exact).hexdigest())
         reexports, = [n for n in tree.body if isinstance(n, ast.ImportFrom)
                       and n.module == "profile_resolution" and n.level == 2]
         self.assertEqual([(n.name, n.asname) for n in reexports.names],
@@ -351,6 +374,52 @@ class HarnessNativeSourcePackageTests(unittest.TestCase):
             ast.literal_eval(initializer.body[-1].value), list(data_facade.PACKAGE_EXPORTS),
         )
 
+    def test_bootstrap_record_import_leaves_native_service_unreached(self) -> None:
+        manifest = json.loads(self.package["source-package/provenance.json"])
+        bootstrap = ast.parse(self.package[
+            "source-package/tools/python313-producer/harness_native/bootstrap.py"
+        ])
+        load, = [node for node in bootstrap.body if isinstance(node, ast.FunctionDef)
+                 and node.name == "_load_bound_runtime"]
+        imports = [node for node in load.body if isinstance(node, ast.ImportFrom)
+                   and node.level == 0]
+        active_import, = [
+            node for node in imports
+            if any(name.name == "ActiveDefaultProfile" for name in node.names)
+        ]
+        self.assertEqual(active_import.module,
+                         "ecosystem.defaultspack.domain._profile_runtime_records")
+        package_modules = {row["module"] for row in manifest["generated_modules"]
+                           if row["path"].endswith("/__init__.py")}
+        edges = {}
+        for row in manifest["dependency_scan"]["module_initialization_imports"]:
+            edges.setdefault(row["module"], set()).add(row["target"])
+        pending = [node.module for node in imports]
+        reached = set()
+        while pending:
+            module = pending.pop()
+            if module in reached:
+                continue
+            reached.add(module)
+            pending.extend(edges.get(module, ()))
+            pending.extend(".".join(module.split(".")[:i])
+                           for i in range(1, len(module.split(".")))
+                           if ".".join(module.split(".")[:i]) in package_modules)
+        self.assertTrue({"tobkiri_protocol.validation", "jsonschema"}.issubset(reached))
+        self.assertTrue(reached.isdisjoint({
+            "core_runtime.profile_content_projection",
+            "core_runtime.profile_pack_projection",
+            "ecosystem.defaultspack.domain.runtime_v4",
+            "ecosystem.defaultspack.domain.runtime_v4.service",
+            "tobkiri_protocol.secure_persistence",
+        }))
+        self.assertFalse(any(
+            module.startswith(("core_runtime.authority", "cryptography"))
+            for module in reached
+        ))
+        self.assertFalse(manifest["dependency_closure_complete"])
+        self.assertFalse(manifest["production_enabled"])
+
     def test_service_initializer_custody_and_remaining_native_gap_are_explicit(self) -> None:
         manifest = json.loads(self.package["source-package/provenance.json"])
         facade = manifest["original_service_package"]
@@ -360,6 +429,13 @@ class HarnessNativeSourcePackageTests(unittest.TestCase):
         self.assertEqual(facade["unconnected_native_package_exports"], ["ActivationStore"])
         self.assertTrue(facade["complete_original_modules_staged"])
         self.assertFalse(facade["facade_modules_used_for_execution"])
+        self.assertEqual(
+            facade["original_record_source"], prepare.PROFILE_RUNTIME_RECORDS,
+        )
+        self.assertEqual(facade["original_record_package_path"],
+                         f"source-package/{prepare.PROFILE_RUNTIME_RECORDS}")
+        self.assertFalse(facade["class_definitions_synthesized"])
+        self.assertFalse(facade["record_relocation"]["aliases_executed"])
         for key in ("native_activation_state_in_guest", "original_class_aliases_executed",
                     "launch_selector_wit_connected", "whole_service_compatible"):
             self.assertIs(facade[key], False)
@@ -380,6 +456,8 @@ class HarnessNativeSourcePackageTests(unittest.TestCase):
         cases = (
             ("ActiveDefaultProfile", b"frozen=True", b"frozen=False"),
             ("profile_resolution_reexports", b"as ProfileResolutionDenied", b"as OtherError"),
+            ("profile_runtime_record_reexports", b"as ActiveDefaultProfile",
+             b"as OtherRecord"),
             ("runtime_v4_package_initializer", b"__all__ = [", b"print('not permitted')\n\n__all__ = ["),
         )
         for symbol, before, after in cases:

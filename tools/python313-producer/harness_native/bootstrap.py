@@ -32,7 +32,9 @@ def _load_bound_runtime(inputs) -> OriginalRuntime:
         ProfileResolutionDenied,
         ResolvedDefaultProfile,
     )
-    from ecosystem.defaultspack.domain.runtime_v4.service import ActiveDefaultProfile
+    from ecosystem.defaultspack.domain._profile_runtime_records import (
+        ActiveDefaultProfile,
+    )
     from tobkiri_protocol.bundle_catalog import (
         BundleIntegrityError,
         BundledCatalog,

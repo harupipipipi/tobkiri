@@ -70,6 +70,31 @@ def run() -> None:
     plan, _, plan_hash, captures = sdk._verify_plan(Path('/inputs/plan.json'))
     if plan_hash != control['plan_sha256']:
         raise ValueError('recorded component plan changed')
+    dependencies = control.get('harness_native_dependencies')
+    dependency_evidence = None
+    if dependencies is not None:
+        if (plan['world'] != 'harness-native'
+                or plan['entrypoint'] != 'harness_native_entry'
+                or plan['outer_exports'] != [
+                    'tobkiri-ui:harness-native/runtime@1.0.0',
+                    'tobkiri-ui:harness-native/transport@1.0.0',
+                ] or plan['allowed_imports'] != [
+                    'tobkiri-native:harness/bindings@1.0.0',
+                ]):
+            raise ValueError('native dependencies cannot change another component scope')
+        selected, = [raw for name, raw in captures
+                     if str(name) == dependencies['metadata_path']]
+        if sdk.sha256(selected) != dependencies['metadata_sha256']:
+            raise ValueError('native dependency source metadata changed')
+        dependency_evidence = json.loads(selected)
+        if (dependency_evidence['format'] != 'tobkiri.harness-native-dependencies/1'
+                or dependency_evidence['entrypoint'] != plan['entrypoint']
+                or dependency_evidence['original_plan_sha256']
+                != dependencies['original_plan_sha256']
+                or dependency_evidence['production_enabled'] is not False
+                or dependency_evidence['dependency_closure_complete'] is not False
+                or dependency_evidence['component_init_performed'] is not False):
+            raise ValueError('native dependency evidence overstates its scope')
     stage = Path('/work/stage')
     stage.mkdir()
     for name in ('home', 'tmp'):
@@ -148,6 +173,8 @@ def run() -> None:
         'world': plan['world'], 'imports': imports, 'exports': exports,
         'artifact_sha256': sdk.sha256(outer), 'artifact_bytes': len(outer),
     }
+    if dependency_evidence is not None:
+        evidence['harness_native_dependencies'] = dependency_evidence
     Path('/work/component.wasm').write_bytes(outer)
     Path('/work/component.build.json').write_text(json.dumps(evidence, indent=2) + '\n')
     print(json.dumps({'artifact_sha256': sdk.sha256(outer), 'artifact_bytes': len(outer),

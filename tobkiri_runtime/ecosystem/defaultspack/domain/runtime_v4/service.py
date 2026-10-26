@@ -43,6 +43,12 @@ from tobkiri_protocol.bundle_catalog import (
 
 from ._record_validation_cache import _RECORD_VALIDATION_CACHE
 
+from .._profile_runtime_records import (
+    ActiveDefaultProfile as ActiveDefaultProfile,
+    ActivationLockTimeout as ActivationLockTimeout,
+    ArtifactVerificationTimeout as ArtifactVerificationTimeout,
+    ProfileReconfirmationRequired as ProfileReconfirmationRequired,
+)
 from ..profile_resolution import (
     ProfileResolutionDenied as ProfileResolutionDenied,
     ResolvedDefaultProfile as ResolvedDefaultProfile,
@@ -68,22 +74,6 @@ _POINTER_SCHEMA = "io.tobkiri.defaultspack-active-pointer.v1"
 _PENDING_SCHEMA = "io.tobkiri.defaultspack-pending-activation.v1"
 
 
-
-
-class ProfileReconfirmationRequired(ProfileResolutionDenied):
-    """Raised when a valid predecessor cannot authorize a changed Profile."""
-
-    verified_profile_definition_digest: str | None = None
-    verified_profile: Mapping[str, Any] | None = None
-    verified_activation_identity: tuple[str, str, str, str] | None = None
-
-
-class ActivationLockTimeout(ProfileResolutionDenied):
-    """Raised when the activation process lock is unavailable by its deadline."""
-
-
-class ArtifactVerificationTimeout(ActivationLockTimeout):
-    """Raised when a shared artifact verification misses its bounded wait."""
 
 
 class ActivationAuthority(Protocol):
@@ -129,14 +119,6 @@ class ActivationAuthority(Protocol):
 
 
 
-
-
-@dataclass(frozen=True)
-class ActiveDefaultProfile:
-    """Restart-safe v4 records plus their exact ActivationRecord."""
-
-    resolved: ResolvedDefaultProfile
-    activation: Mapping[str, Any]
 
 
 @dataclass

@@ -296,6 +296,10 @@ domains:
     may_import:
     - domain/external
     path: domain/p2p
+  _profile_runtime_records:
+    may_import:
+    - domain/profile_resolution
+    path: domain/_profile_runtime_records.py
   profile_resolution:
     may_import: []
     path: domain/profile_resolution.py
@@ -325,6 +329,7 @@ domains:
     path: domain/runtime_config.py
   runtime_v4:
     may_import:
+    - domain/_profile_runtime_records
     - domain/profile_resolution
     path: domain/runtime_v4
   runtime_surface_v4:

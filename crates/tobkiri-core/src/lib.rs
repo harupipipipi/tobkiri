@@ -6,8 +6,8 @@ pub use tobkiri_canon::{
 };
 pub use tobkiri_flow::{CoreStream, RunEvent, RunEventKind, RunHandle, StepError};
 pub use tobkiri_gate::{
-    ApprovalAnswer, ApprovalPrompt, EffectRequest, HostError, HostIo, PermissionSet, Risk,
-    TrustedPrompt, UiEmbed,
+    ApprovalAnswer, ApprovalPrompt, EffectRequest, HostError, HostIo, NativeSetupInvocation,
+    PermissionSet, Risk, TrustedPrompt, UiEmbed,
 };
 pub use tobkiri_store::ProfileCommitProgress;
 /// Generic Pack authoring and verification functions exposed by Core.
@@ -47,6 +47,7 @@ mod process_catalog;
 mod profile_review;
 mod profile_save_review;
 mod profiles;
+mod runtime_owner;
 mod session;
 #[cfg(test)]
 mod test_support;
@@ -72,6 +73,7 @@ pub use profile_review::{
     TargetReviewStatus, UserOriginReview,
 };
 pub use profile_save_review::ProfileSavePrecondition;
+pub use runtime_owner::RuntimeOwner;
 pub use session::{
     NativeInput, NativeInputCompletion, NativeInputEvent, NativeInputRouteResult,
     NativeInputRouteStatus, NativeInputRunHandle, NativeInputStatus, Session, UI_STREAM_MAX_BATCH,

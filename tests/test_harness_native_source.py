@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 from pathlib import Path
@@ -19,6 +20,69 @@ import prepare_harness_native as prepare  # noqa: E402 - explicit source-tool pa
 
 class HarnessNativeSourceTests(unittest.TestCase):
     """Check exact original bytes and explicitly bounded capsule scope."""
+
+    def test_record_relocation_preserves_class_bytes_and_public_names(self) -> None:
+        files = prepare.captured()
+        provenance = json.loads(files["provenance.json"])
+        # These hashes bind the complete definitions before this ownership move.
+        expected_hashes = {
+            "ProfileReconfirmationRequired": (
+                "632da5e4e94847f63aeaa367449c3a106a039eb25c862fb0648b6d57a60edc50"
+            ),
+            "ActivationLockTimeout": (
+                "d8b83bb8f7be9e907bc87163e7e786471cf6a335ff5ef85c98303fe2c57f1357"
+            ),
+            "ArtifactVerificationTimeout": (
+                "8a376400961452552d7741410b9612a7a05febe4ac7667934afcf73543bda8ce"
+            ),
+            "ActiveDefaultProfile": (
+                "2b5951da3f6ce3b048cc0021143c0cf384dc5da2795d1c08956f5b1c8c8664d6"
+            ),
+        }
+        source = files[f"source/{prepare.PROFILE_RUNTIME_RECORDS}"]
+        self.assertEqual(
+            source, prepare.bounded_read(ROOT / prepare.PROFILE_RUNTIME_RECORDS),
+        )
+        records = [item for item in provenance["definitions"]
+                   if item["source_path"] == prepare.PROFILE_RUNTIME_RECORDS]
+        self.assertEqual({item["symbol"] for item in records}, set(expected_hashes))
+        for record in records:
+            exact = source[record["source_start_byte"]:record["source_end_byte"]]
+            self.assertEqual(exact, files[record["stored_as"]])
+            self.assertEqual(
+                hashlib.sha256(exact).hexdigest(), expected_hashes[record["symbol"]],
+            )
+            self.assertEqual(
+                record["source_module_sha256"], hashlib.sha256(source).hexdigest(),
+            )
+        tree = ast.parse(source)
+        self.assertEqual(
+            [node.name for node in tree.body if isinstance(node, ast.ClassDef)],
+            list(prepare.SERVICE_DATA_CLASSES),
+        )
+        assignments = {node.targets[0].id: node.value for node in tree.body
+                       if isinstance(node, ast.Assign) and len(node.targets) == 1
+                       and isinstance(node.targets[0], ast.Name)}
+        self.assertEqual(ast.literal_eval(assignments["_LEGACY_MODULE"]),
+                         "ecosystem.defaultspack.domain.runtime_v4.service")
+        self.assertEqual([node.id for node in assignments["_OWNED_DEFINITIONS"].elts],
+                         list(prepare.SERVICE_DATA_CLASSES))
+        loop, = [node for node in tree.body if isinstance(node, ast.For)]
+        self.assertEqual(loop.iter.id, "_OWNED_DEFINITIONS")
+        self.assertEqual(ast.dump(loop.body[0], include_attributes=False), ast.dump(
+            ast.parse("_definition.__module__ = _LEGACY_MODULE").body[0],
+            include_attributes=False,
+        ))
+        relocation = provenance["profile_runtime_record_relocation"]
+        self.assertEqual(
+            relocation["canonical_source"], prepare.PROFILE_RUNTIME_RECORDS,
+        )
+        self.assertEqual(
+            relocation["previous_definition_source"], prepare.SERVICE_SOURCE,
+        )
+        self.assertFalse(relocation["class_bodies_rewritten"])
+        self.assertFalse(relocation["aliases_executed"])
+        self.assertIn("not execution evidence", relocation["source_byte_evidence"])
 
     def test_value_graph_and_whole_wit_are_captured_without_execution_or_authority(self) -> None:
         files = prepare.captured()

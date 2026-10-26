@@ -29,6 +29,9 @@ PROFILE_RESOLUTION = (
 SERVICE_SOURCE = (
     "tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/service.py"
 )
+PROFILE_RUNTIME_RECORDS = (
+    "tobkiri_runtime/ecosystem/defaultspack/domain/_profile_runtime_records.py"
+)
 SERVICE_INITIALIZER = (
     "tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/__init__.py"
 )
@@ -251,6 +254,7 @@ _CAPSULE_SOURCE_FILES = (
     *DISPATCHER_SOURCES,
     DATA_FACADE_SOURCE,
     PROFILE_RESOLUTION,
+    PROFILE_RUNTIME_RECORDS,
     SETUP_CONTRACT,
     DOMAIN_PACKAGE_INIT,
     DEFAULTSPACK_PACKAGE_INIT,
@@ -709,28 +713,35 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
     definitions.append(record)
 
     service_tree = ast.parse(sources[SERVICE_SOURCE], filename=SERVICE_SOURCE)
-    service_nodes = [(name, _one_class(service_tree, name, SERVICE_SOURCE))
-                     for name in SERVICE_DATA_CLASSES]
+    records_tree = ast.parse(
+        sources[PROFILE_RUNTIME_RECORDS], filename=PROFILE_RUNTIME_RECORDS,
+    )
+    service_nodes = [
+        (PROFILE_RUNTIME_RECORDS, name,
+         _one_class(records_tree, name, PROFILE_RUNTIME_RECORDS))
+        for name in SERVICE_DATA_CLASSES
+    ]
     selector, = [node for node in service_tree.body
                  if isinstance(node, ast.FunctionDef)
                  and node.name == "project_runtime_launch_selector"]
-    service_nodes.append((selector.name, selector))
+    service_nodes.append((SERVICE_SOURCE, selector.name, selector))
     for symbol, module, level in (
         ("bundle_catalog_reexports", "tobkiri_protocol.bundle_catalog", 0),
         ("profile_resolution_reexports", "profile_resolution", 2),
         ("canonical_reexports", "tobkiri_protocol.canonical", 0),
+        ("profile_runtime_record_reexports", "_profile_runtime_records", 2),
     ):
         matches = [node for node in service_tree.body
                    if isinstance(node, ast.ImportFrom)
                    and node.module == module and node.level == level]
         if len(matches) != 1:
             raise ValueError(f"original service DATA import changed: {symbol}")
-        service_nodes.append((symbol, matches[0]))
-    for symbol, node in service_nodes:
+        service_nodes.append((SERVICE_SOURCE, symbol, matches[0]))
+    for path, symbol, node in service_nodes:
         stored_as = f"definitions/service_data/{symbol}.py"
         content, record = _definition_slice(
-            SERVICE_SOURCE, sources[SERVICE_SOURCE], node, symbol,
-            source_module_sha256=_sha256(sources[SERVICE_SOURCE]), stored_as=stored_as,
+            path, sources[path], node, symbol,
+            source_module_sha256=_sha256(sources[path]), stored_as=stored_as,
         )
         ast.parse(content, filename=stored_as)
         output[stored_as] = content
@@ -776,6 +787,7 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
                                                            DOMAIN_PACKAGE_INIT,
                                                            DEFAULTSPACK_PACKAGE_INIT) else
             "original_runtime_module" if path in (SERVICE_SOURCE, *RUNTIME_IMPORT_CLOSURE_SOURCES) else
+            "original_profile_runtime_records" if path == PROFILE_RUNTIME_RECORDS else
             "protocol_schema" if path in schema_paths else
             "protocol_schema_metadata" if path == SCHEMA_HASHES else
             "project_metadata" if path == PROJECT_METADATA else
@@ -802,6 +814,7 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
         "excluded_definitions": excluded_definitions,
         "service_data_facade": {
             "source": SERVICE_SOURCE,
+            "record_source": PROFILE_RUNTIME_RECORDS,
             "original_package_initializer": SERVICE_INITIALIZER,
             "generator": DATA_FACADE_SOURCE,
             "selected_classes": list(SERVICE_DATA_CLASSES),
@@ -810,6 +823,19 @@ def _extract(sources: dict[str, bytes]) -> dict[str, bytes]:
             "native_activation_state_in_guest": False,
             "native_exports_connected": False,
             "whole_service_compatible": False,
+        },
+        "profile_runtime_record_relocation": {
+            "canonical_source": PROFILE_RUNTIME_RECORDS,
+            "previous_definition_source": SERVICE_SOURCE,
+            "symbols": list(SERVICE_DATA_CLASSES),
+            "reported_module": "ecosystem.defaultspack.domain.runtime_v4.service",
+            "service_binding": "same-object import/reexport",
+            "class_bodies_rewritten": False,
+            "source_byte_evidence": (
+                "definitions refer to the current canonical source; "
+                "relocation metadata is not execution evidence"
+            ),
+            "aliases_executed": False,
         },
         "native_imports": native_imports,
         "exception_transport": {

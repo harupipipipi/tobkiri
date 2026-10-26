@@ -32,6 +32,13 @@ pub(crate) struct NativeHostSourceInputs<'host> {
 }
 
 impl NativeHostSourceInputs<'_> {
+    /// Internal storage location already selected by the original config. It
+    /// is deliberately not a published native source role or an IO permission.
+    #[cfg(feature = "native-harness-bootstrap")]
+    pub(crate) fn internal_runtime_storage_parent(&self) -> &Path {
+        &self.config.user_data_dir
+    }
+
     /// Borrow the existing backing allocation. Equal-valued roles stay distinct;
     /// no existence/resolve/stat/validation is advanced ahead of its reachpoint.
     pub(crate) fn root(&self, role: NativeHostSourceRole) -> Option<&Path> {

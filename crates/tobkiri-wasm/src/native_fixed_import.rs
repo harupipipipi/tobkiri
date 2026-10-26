@@ -1,8 +1,9 @@
 //! Native-selected fixed DATA imports over the original managed IO operation.
 use super::{NativeState, entry::ensure_active};
 use anyhow::{Context, Result, bail};
+use std::any::Any;
 use std::sync::atomic::{AtomicU8, Ordering};
-use tobkiri_canon::{CoreBuffer, LeasedShared, MAX_BYTES};
+use tobkiri_canon::{ControlHandle, CoreBuffer, LeasedShared, MAX_BYTES};
 use tobkiri_gate::{ControlKind, ControlReservation, NativeSetupInvocation};
 use wasmtime::component::types::{ComponentItem, Type};
 use wasmtime::component::{BudgetedFuture, BudgetedString, Linker, Val};
@@ -87,6 +88,39 @@ impl<T> NativeImportContext<'_, T> {
             + Send
             + 'static,
     {
+        self.inspect_inner(None, work)
+    }
+
+    /// Keep actual source/context custody through both original worker Joins
+    /// and trailers, including an abandoned call or uncertain physical receipt.
+    /// This handle supplies lifetime only, never a native source permission.
+    pub fn inspect_retaining<F>(
+        self,
+        custody: ControlHandle<dyn Any + Send + Sync>,
+        work: F,
+    ) -> Result<NativeImportOperation>
+    where
+        F: for<'scope> FnOnce(
+                &mut crate::NativeInspectionOutput<'scope>,
+            ) -> std::result::Result<(), crate::NativeDataIoError>
+            + Send
+            + 'static,
+    {
+        self.inspect_inner(Some(custody), work)
+    }
+
+    fn inspect_inner<F>(
+        self,
+        custody: Option<ControlHandle<dyn Any + Send + Sync>>,
+        work: F,
+    ) -> Result<NativeImportOperation>
+    where
+        F: for<'scope> FnOnce(
+                &mut crate::NativeInspectionOutput<'scope>,
+            ) -> std::result::Result<(), crate::NativeDataIoError>
+            + Send
+            + 'static,
+    {
         if self
             .proof
             .get()
@@ -103,14 +137,17 @@ impl<T> NativeImportContext<'_, T> {
         let held_input = self.input;
         let future = BudgetedFuture::new(
             async move {
-                io.inspect(move |output| {
+                let operation = move |output: &mut crate::NativeInspectionOutput<'_>| {
                     let _held_input = held_input;
                     if !expected.same_invocation(output.invocation()) {
                         return Err(crate::NativeDataIoError::CompletionUnknown);
                     }
                     work(output)
-                })
-                .await
+                };
+                match custody {
+                    Some(custody) => io.inspect_retaining(custody, operation).await,
+                    None => io.inspect(operation).await,
+                }
                 .map_err(anyhow::Error::from)
             },
             self.owners.component(),

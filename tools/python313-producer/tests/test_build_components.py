@@ -55,7 +55,7 @@ class ComponentBuildTests(unittest.TestCase):
             tree = ast.parse(actual['harness_native_source_index.py'])
             index = {n.targets[0].id: ast.literal_eval(n.value)
                      for n in tree.body if isinstance(n, ast.Assign)}
-            self.assertEqual(len(index['MODULES']), 67)
+            self.assertEqual(len(index['MODULES']), 68)
             provenance = json.loads((output / 'provenance.json').read_bytes())
             self.assertFalse(provenance['external_dependencies_staged'])
             self.assertFalse(provenance['component_init_performed'])

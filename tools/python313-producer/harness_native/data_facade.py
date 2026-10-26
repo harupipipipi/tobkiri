@@ -12,8 +12,10 @@ import hashlib
 from typing import Any, Callable, Mapping
 
 SERVICE = "tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/service.py"
+RECORDS = "tobkiri_runtime/ecosystem/defaultspack/domain/_profile_runtime_records.py"
 INITIALIZER = "tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/__init__.py"
 SERVICE_PATH = f"source-package/{SERVICE}"
+RECORDS_PATH = f"source-package/{RECORDS}"
 INITIALIZER_PATH = f"source-package/{INITIALIZER}"
 ORIGINAL_INITIALIZER_PATH = "source-package/facade-inputs/runtime_v4_initializer.py.txt"
 RESOLUTION_EXPORTS = (
@@ -78,14 +80,15 @@ def assemble(
     """Assemble validated source records; never execute original or generated code."""
     records = {}
     for path, symbols in (
+        (RECORDS, SERVICE_CLASSES),
         (
             SERVICE,
             (
-                *SERVICE_CLASSES,
                 *SERVICE_FUNCTIONS,
                 "bundle_catalog_reexports",
                 "profile_resolution_reexports",
                 "canonical_reexports",
+                "profile_runtime_record_reexports",
             ),
         ),
         (INITIALIZER, ("runtime_v4_package_initializer",)),
@@ -104,6 +107,10 @@ def assemble(
 
     def raw(symbol: str) -> bytes:
         return capsule[records[symbol]["stored_as"]]
+
+    record_source, = [r for r in metadata["sources"] if r["path"] == RECORDS]
+    original_records = capsule[record_source["stored_as"]]
+    records_tree = ast.parse(original_records)
 
     active_tree = ast.parse(raw("ActiveDefaultProfile"))
     if len(active_tree.body) != 1 or not isinstance(active_tree.body[0], ast.ClassDef):
@@ -198,6 +205,17 @@ def assemble(
                 ("strict_loads", None),
             ),
         ),
+        (
+            "profile_runtime_record_reexports",
+            "_profile_runtime_records",
+            2,
+            (
+                ("ActiveDefaultProfile", "ActiveDefaultProfile"),
+                ("ActivationLockTimeout", "ActivationLockTimeout"),
+                ("ArtifactVerificationTimeout", "ArtifactVerificationTimeout"),
+                ("ProfileReconfirmationRequired", "ProfileReconfirmationRequired"),
+            ),
+        ),
     )
     for symbol, module, level, aliases in imports:
         tree = ast.parse(raw(symbol))
@@ -239,7 +257,7 @@ def assemble(
 
     service = (
         b'"""Original service DATA only; native activation APIs are unconnected."""\n'
-        b"from __future__ import annotations\n\nfrom dataclasses import dataclass\n"
+        b"from __future__ import annotations\n\n"
         b"from typing import Any, Mapping\n\n"
         + raw("bundle_catalog_reexports")
         + b"\n"
@@ -247,7 +265,9 @@ def assemble(
         + b"\n\n"
         + raw("canonical_reexports")
         + b"\n\n"
-        + b"\n\n".join(raw(name) for name in (*SERVICE_CLASSES, *SERVICE_FUNCTIONS))
+        + raw("profile_runtime_record_reexports")
+        + b"\n\n"
+        + b"\n\n".join(raw(name) for name in SERVICE_FUNCTIONS)
     )
     initializer = (
         '"""Explicit original DATA exports; native runtime exports remain unconnected."""\n\n'
@@ -259,7 +279,15 @@ def assemble(
     ).encode()
     generated_tree = ast.parse(service)
     locations = {}
-    for name in (*SERVICE_CLASSES, *SERVICE_FUNCTIONS):
+    for name in SERVICE_CLASSES:
+        (node,) = [
+            n for n in records_tree.body
+            if isinstance(n, ast.ClassDef) and n.name == name
+        ]
+        locations[(RECORDS, name)] = (
+            RECORDS_PATH, extent(original_records, node),
+        )
+    for name in SERVICE_FUNCTIONS:
         (node,) = [
             n
             for n in generated_tree.body
@@ -285,27 +313,38 @@ def assemble(
         },
     )
     for symbol in (*SERVICE_CLASSES, *SERVICE_FUNCTIONS, *(x[0] for x in imports)):
-        _, location = locations[(SERVICE, symbol)]
-        if service[location["start_byte"] : location["end_byte"]] != raw(symbol):
+        source_path = RECORDS if symbol in SERVICE_CLASSES else SERVICE
+        source = original_records if symbol in SERVICE_CLASSES else service
+        _, location = locations[(source_path, symbol)]
+        if source[location["start_byte"] : location["end_byte"]] != raw(symbol):
             raise ValueError("generated service DATA bytes changed")
     ast.parse(initializer)
     modules = []
-    for path, content in ((SERVICE_PATH, service), (INITIALIZER_PATH, initializer)):
+    for path, content in (
+        (SERVICE_PATH, service), (RECORDS_PATH, original_records),
+        (INITIALIZER_PATH, initializer),
+    ):
         record = {
             "path": path,
             "sha256": hashlib.sha256(content).hexdigest(),
             "bytes": len(content),
-            "role": "explicit_original_data_facade",
+            "role": ("verbatim_original_data_module" if path == RECORDS_PATH
+                     else "explicit_original_data_facade"),
         }
         if path == SERVICE_PATH:
             record["definition_extents"] = {
                 name: locations[(SERVICE, name)][1]
-                for name in (*SERVICE_CLASSES, *SERVICE_FUNCTIONS)
+                for name in SERVICE_FUNCTIONS
+            }
+        elif path == RECORDS_PATH:
+            record["definition_extents"] = {
+                name: locations[(RECORDS, name)][1] for name in SERVICE_CLASSES
             }
         modules.append(record)
     return DataFacade(
         {
             SERVICE_PATH: service,
+            RECORDS_PATH: original_records,
             INITIALIZER_PATH: initializer,
             ORIGINAL_INITIALIZER_PATH: original_initializer,
         },
@@ -313,6 +352,7 @@ def assemble(
         modules,
         {
             "original_service_source": SERVICE,
+            "original_record_source": RECORDS,
             "original_initializer_source": INITIALIZER,
             "original_initializer_preserved_as": ORIGINAL_INITIALIZER_PATH,
             "class_generation_dependencies": [
@@ -322,6 +362,7 @@ def assemble(
                 "profile_resolution.ResolvedDefaultProfile",
                 "profile_resolution.ProfileResolutionDenied",
             ],
+            "class_definitions_synthesized": False,
             "launch_selector_dependencies": [
                 "canonical.canonical_digest",
                 "typing.Mapping",
@@ -348,7 +389,16 @@ def assemble(
                 },
                 {
                     "names": list(SERVICE_CLASSES),
-                    "defined_in": "ecosystem.defaultspack.domain.runtime_v4.service",
+                    "defined_in": (
+                        "ecosystem.defaultspack.domain._profile_runtime_records"
+                    ),
+                    "reported_module": (
+                        "ecosystem.defaultspack.domain.runtime_v4.service"
+                    ),
+                    "service_binding": (
+                        "same-object import/reexport; "
+                        "canonical __module__ assignments retained"
+                    ),
                     "package_binding": "same-object import/reexport",
                 },
             ],

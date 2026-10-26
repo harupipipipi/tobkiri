@@ -11,11 +11,20 @@ on:
       - 'tools/python313-producer/build_components.py'
       - 'tools/python313-producer/component_inputs.py'
       - 'tools/python313-producer/component_driver.py'
+      - 'tools/python313-producer/harness_native_dependencies.py'
+      - 'tools/python313-producer/harness_native_ci_inputs.py'
+      - 'tools/python313-producer/schema_probe/captured_loader.py'
+      - 'tobkiri_launcher/harness-native/**'
+      - 'crates/tobkiri-core/**'
+      - 'crates/tobkiri-wasm/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - 'tools/python313-producer/tests/test_build_components.py'
       - 'tobkiri_runtime/core_runtime/**'
       - 'tobkiri_runtime/tobkiri_protocol/**'
       - 'tobkiri_runtime/ecosystem/defaultspack/defaultspack/profile_runtime_composition.py'
       - 'tobkiri_runtime/ecosystem/defaultspack/domain/profile_resolution.py'
+      - 'tobkiri_runtime/ecosystem/defaultspack/domain/_profile_runtime_records.py'
       - 'tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/**'
       - 'sdk/python/**'
   workflow_dispatch:
@@ -35,6 +44,8 @@ jobs:
     env:
       PRODUCER_RUN: '39956025119'
       PRODUCER_HEAD: ae7f83080a36e823ac330342584210243dc38050
+      RPDS_RUN: '40182231971'
+      RPDS_HEAD: 53163ed815c62c4853bbed3d8a082c0764e3084f
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,6 +57,8 @@ jobs:
         run: |
           python3 -B -m unittest discover -s tests -p 'test_harness_native_*.py'
           python3 -B -m unittest discover -s tools/python313-producer/tests -p test_build_components.py
+          python3 -B -m unittest discover -s tools/python313-producer/tests -p test_harness_native_dependencies.py
+          python3 -B -m unittest discover -s tools/python313-producer/tests -p test_schema_loader.py
       - name: Authenticate the existing successful custom producer
         env:
           GH_TOKEN: ${{ github.token }}
@@ -59,6 +72,15 @@ jobs:
                   or run['conclusion'] != 'success'):
               raise ValueError('producer identity or completion differs')
           PY
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RPDS_RUN" > "$RUNNER_TEMP/rpds-run.json"
+          python3 -B - "$RUNNER_TEMP/rpds-run.json" "$RPDS_HEAD" <<'PY'
+          import json, sys
+          from pathlib import Path
+          run = json.loads(Path(sys.argv[1]).read_bytes())
+          if (run['head_sha'] != sys.argv[2] or run['status'] != 'completed'
+                  or run['conclusion'] != 'success'):
+              raise ValueError('genuine rpds predecessor differs')
+          PY
       - uses: actions/download-artifact@v4
         with:
           name: python313-producer-cli
@@ -66,18 +88,30 @@ jobs:
           run-id: ${{ env.PRODUCER_RUN }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/harness-producer
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui-rpds-inactive-component
+          repository: ${{ github.repository }}
+          run-id: ${{ env.RPDS_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/schema-rpds
       - name: Prepare pinned tools inside CI only
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends bubblewrap
           chmod 755 "$RUNNER_TEMP/harness-producer/work/target/release/componentize-py"
           python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/harness-validation"
+          python3 -B tools/python313-producer/fetch_schema.py --destination "$RUNNER_TEMP/schema-inputs"
+          python3 -B tools/python313-producer/fetch_schema_stdlib.py --destination "$RUNNER_TEMP/schema-stdlib"
       - name: Build the actual native Harness dispatcher and original module closure
         run: >-
           python3 -B tools/python313-producer/build_components.py --harness-native
           --producer "$RUNNER_TEMP/harness-producer"
           --validation "$RUNNER_TEMP/harness-validation"
           --destination "$RUNNER_TEMP/harness-native"
+          --schema-inputs "$RUNNER_TEMP/schema-inputs"
+          --stdlib "$RUNNER_TEMP/schema-stdlib"
+          --rpds "$RUNNER_TEMP/schema-rpds"
       - name: Retain actual component and bounded build receipts
         if: always()
         uses: actions/upload-artifact@v4
@@ -85,6 +119,7 @@ jobs:
           name: whole-native-harness-component
           path: |
             ${{ runner.temp }}/producer-run.json
+            ${{ runner.temp }}/rpds-run.json
             ${{ runner.temp }}/harness-native/components-build.json
             ${{ runner.temp }}/harness-native/harness-native/inputs/plan.json
             ${{ runner.temp }}/harness-native/harness-native/inputs/provenance.json
@@ -92,4 +127,68 @@ jobs:
             ${{ runner.temp }}/harness-native/harness-native/work/component.build.json
             ${{ runner.temp }}/harness-native/harness-native/work/generated-bindings/
             ${{ runner.temp }}/harness-native/harness-native/work/component.wasm
+          if-no-files-found: warn
+
+  execute-original-native-bootstrap:
+    needs: build-whole-native-harness
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-harness-native
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require original supported physical ownership platform
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          device="$(df -P "$GITHUB_WORKSPACE" | awk 'NR == 2 {print $1}')"
+          diskutil info "$device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - uses: actions/download-artifact@v4
+        with:
+          name: whole-native-harness-component
+          path: ${{ runner.temp }}/harness-built
+      - name: Bind the actual component, original modules and native index
+        run: >-
+          python3 -B tools/python313-producer/harness_native_ci_inputs.py
+          --artifact "$RUNNER_TEMP/harness-built/harness-native/harness-native/work/component.wasm"
+          --output "$RUNNER_TEMP/harness-native-inputs" --github-env "$GITHUB_ENV"
+      - name: Run actual original Runtime.init and first original method with real funding
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-runtime.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          bootstrap_runtime::actual_ci::actual_original_component_initializes_and_returns_original_profile_id
+          -- --nocapture
+      - name: Reject inspection outside the metadata-only bootstrap phase
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-inspection-policy.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          bootstrap_runtime::policy_tests:: -- --nocapture
+      - name: Preserve the actual native owner when Core adopts it
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-owner-transfer.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-core --lib
+          core::runtime_owner_tests:: -- --nocapture
+      - name: Retain actual native execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: whole-native-harness-runtime
+          path: |
+            ${{ runner.temp }}/harness-native-inputs/
+            ${{ runner.temp }}/harness-native-runtime.log*
+            ${{ runner.temp }}/harness-native-inspection-policy.log*
+            ${{ runner.temp }}/harness-native-owner-transfer.log*
           if-no-files-found: warn

@@ -4,7 +4,14 @@
 //! complete original Setup, native inspection, approval and conversation paths
 //! must pass parity before the product default changes.
 
+mod bootstrap_metadata;
+mod bootstrap_runtime;
 mod exception_graph;
+pub use bootstrap_metadata::{
+    BootstrapInputOwner, BootstrapModule, BootstrapModuleIndex, BootstrapRoots,
+};
+pub use bootstrap_runtime::{BootstrapCleanupFailure, NativeBootstrap};
+pub use wasmtime::component::Component as NativeHarnessComponent;
 #[cfg(unix)]
 mod fd_protocol;
 #[cfg(unix)]

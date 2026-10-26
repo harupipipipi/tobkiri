@@ -15,12 +15,16 @@ use tobkiri_gate::{
 };
 use tobkiri_manifest::VerifiedPack;
 use tobkiri_profile::{CompiledProfile, Profile, compile};
-use tobkiri_store::{Approvals, AuditLog, AuditQuota, DataRoot};
+use tobkiri_store::{Approvals, AuditLog, AuditQuota};
 
 use crate::{
-    AuditRunJournal, CoreError, Session,
+    AuditRunJournal, CoreError, RuntimeOwner, Session,
     profiles::{Profiles, load_packs, old_hashes, published},
 };
+
+#[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
+#[path = "runtime_owner_tests.rs"]
+mod runtime_owner_tests;
 
 /// Generic Core configuration. Pack initialization is bound to verified artifact bytes.
 #[derive(Default)]
@@ -102,22 +106,17 @@ impl TrustedPrompt for Prompt {
 }
 
 impl Core {
+    /// Begin native DATA with this actual runtime owner. Source/effect policy is
+    /// separate; this cannot reset another invocation's Store claim or limits.
+    pub fn begin_native_setup(&self) -> Result<tobkiri_gate::NativeSetupInvocation, CoreError> {
+        crate::runtime_owner::begin(&self.profiles.root, &self.capacity, &self.control)
+    }
+
     #[cfg(unix)]
     pub(crate) fn native_artifact_invocation(
         &self,
     ) -> Result<tobkiri_gate::NativeSetupInvocation, CoreError> {
-        use tobkiri_gate::{GateError, NativeSetupLease};
-        Ok(self
-            .capacity
-            .native_setup_account(&self.control, || {
-                Ok(Arc::new(
-                    self.profiles
-                        .root
-                        .native_setup_owner_lease(&self.control)
-                        .map_err(|_| GateError::Unavailable)?,
-                ) as Arc<dyn NativeSetupLease>)
-            })?
-            .begin()?)
+        self.begin_native_setup()
     }
 
     /// Borrow the original account for sibling source-admission paths.
@@ -130,11 +129,22 @@ impl Core {
         let default = dirs::data_local_dir()
             .ok_or_else(|| CoreError::Invalid("platform data directory is unavailable".into()))?
             .join("Tobkiri");
-        let root = Arc::new(DataRoot::open(
-            config.test_data_root.as_ref().unwrap_or(&default),
-        )?);
-        let capacity = crate::capacity::shared(&root)?;
-        let control = CoreControl::default();
+        let owner = RuntimeOwner::open(config.test_data_root.as_ref().unwrap_or(&default))?;
+        Self::from_runtime_owner(owner, host)
+    }
+
+    /// Adopt the actual bootstrap owner, including all live native reservations.
+    /// Root descriptors, ledger and control are moved, never reopened/replaced.
+    /// The original Core recovery and service initialization then run normally.
+    pub fn from_runtime_owner(
+        owner: RuntimeOwner,
+        host: Arc<dyn HostIo>,
+    ) -> Result<Self, CoreError> {
+        let RuntimeOwner {
+            root,
+            capacity,
+            control,
+        } = owner;
         let filesystem =
             crate::filesystem_registry::CoreFilesystem::new(&root, control.clone()).ok();
         // The process owner shares THIS SAME CoreControl account; entropy or

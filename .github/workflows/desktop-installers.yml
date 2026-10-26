@@ -67,7 +67,9 @@ jobs:
       matrix:
         include:
           - label: macOS Apple Silicon
-            os: macos-latest
+            # Native physical ownership is verified on Darwin 24.6.0/APFS.
+            # A moving latest image can silently switch to an unverified OS.
+            os: macos-15
             target: aarch64-apple-darwin
             bundles: dmg
             shell_bundles: app
@@ -79,6 +81,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Verify the supported native ownership platform before packaging
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          device="$(df -P "$GITHUB_WORKSPACE" | awk 'NR == 2 {print $1}')"
+          diskutil info "$device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
 
       - name: Allocate packaging transaction
         shell: bash
@@ -407,7 +416,7 @@ jobs:
 
       - name: Run rumi viewer Rust tests
         working-directory: tobkiri_launcher/src-tauri
-        run: cargo test --locked --features native-source-inspection
+        run: cargo test --locked --features native-source-inspection,native-harness-bootstrap
 
       - name: Build release Pack Shell for verified Tauri Shell artifact
         run: cargo build --release --locked --manifest-path pack-shell/Cargo.toml --target ${{ matrix.target }}

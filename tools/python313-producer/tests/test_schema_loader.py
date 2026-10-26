@@ -43,6 +43,34 @@ def captured():
 
 
 class CapturedLoaderTests(unittest.TestCase):
+    def test_explicit_original_namespaces_need_no_initializer_or_filesystem(self):
+        files = {"namespace_fixture/domain/value.py": b"ANSWER = 42\n"}
+        before, paths = sys.meta_path[:], sys.path[:]
+        try:
+            finder = loader.install(
+                files, {}, "/captured-namespace",
+                ("namespace_fixture", "namespace_fixture.domain"),
+            )
+            finder.seal()
+            self.assertIsNone(finder.find_spec("namespace_fixture").loader)
+            with patch("builtins.open", side_effect=AssertionError("OS fallback")):
+                value = importlib.import_module("namespace_fixture.domain.value")
+            self.assertEqual(value.ANSWER, 42)
+            self.assertIsNone(sys.modules["namespace_fixture"].__file__)
+            self.assertEqual(finder.loaded, ["namespace_fixture.domain.value"])
+            self.assertEqual(dict(finder.tree.files), files)
+        finally:
+            sys.meta_path[:], sys.path[:] = before, paths
+            for name in list(sys.modules):
+                if name == "namespace_fixture" or name.startswith("namespace_fixture."):
+                    del sys.modules[name]
+        for namespaces in (("missing",), ("bad/name",), ("namespace_fixture",) * 2):
+            with self.subTest(namespaces=namespaces), self.assertRaises(ValueError):
+                loader.Finder(files, {}, "/captured-namespace", namespaces)
+        with self.assertRaisesRegex(ValueError, "conflicts"):
+            loader.Finder({"namespace_fixture/__init__.py": b""}, {},
+                          "/captured-namespace", ("namespace_fixture",))
+
     def test_original_module_and_first_lazy_import_use_the_closed_source(self):
         with captured() as finder:
             module = importlib.import_module("schema_fixture")

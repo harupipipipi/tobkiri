@@ -221,13 +221,26 @@ class Finder(importlib.abc.MetaPathFinder):
     """Serve only captured Python modules and captured distribution metadata."""
 
     def __init__(
-        self, files: dict[str, bytes], distributions: dict[str, str], root: str
+        self, files: dict[str, bytes], distributions: dict[str, str], root: str,
+        namespaces: tuple[str, ...] = (),
     ):
         self.tree, self.root = Tree(files), root
         self.distributions = MappingProxyType(dict(distributions))
         self.loaded = []
         self.metadata_queries = 0
         self.sealed = False
+        if type(namespaces) is not tuple or len(set(namespaces)) != len(namespaces):
+            raise ValueError("explicit unique captured namespace packages required")
+        for name in namespaces:
+            if (type(name) is not str or not name
+                    or any(not part.isidentifier() for part in name.split("."))):
+                raise ValueError("invalid captured namespace package")
+            relative = name.replace(".", "/")
+            if (relative not in self.tree.directories
+                    or relative + "/__init__.py" in self.tree.files
+                    or relative + ".py" in self.tree.files):
+                raise ValueError("captured namespace conflicts with original modules")
+        self.namespaces = frozenset(namespaces)
         for name, directory in self.distributions.items():
             if name != normalized(name) or not self.tree.path(directory).is_dir():
                 raise ValueError("invalid captured distribution metadata directory")
@@ -250,6 +263,11 @@ class Finder(importlib.abc.MetaPathFinder):
                 if package:
                     spec.submodule_search_locations = [self.root + "/" + relative]
                 return spec
+        if fullname in self.namespaces:
+            # A genuine namespace has no initializer or invented source body.
+            spec = importlib.machinery.ModuleSpec(fullname, None, is_package=True)
+            spec.submodule_search_locations = [self.root + "/" + relative]
+            return spec
         if self.sealed and (
             importlib.machinery.BuiltinImporter.find_spec(fullname) is None
             and importlib.machinery.FrozenImporter.find_spec(fullname) is None
@@ -278,11 +296,12 @@ class Finder(importlib.abc.MetaPathFinder):
 
 
 def install(
-    files: dict[str, bytes], distributions: dict[str, str], root: str
+    files: dict[str, bytes], distributions: dict[str, str], root: str,
+    namespaces: tuple[str, ...] = (),
 ) -> Finder:
     """Bind one closed resource/module namespace before ordinary imports."""
     if not root.startswith("/") or root.endswith("/"):
         raise ValueError("explicit virtual Python search root required")
-    finder = Finder(files, distributions, root)
+    finder = Finder(files, distributions, root, namespaces)
     sys.meta_path.insert(0, finder)
     return finder

@@ -2,6 +2,8 @@ mod artifact_integrity;
 mod ci_e2e_app_data;
 mod config;
 mod native_harness_host_inputs;
+#[cfg(feature = "native-harness-bootstrap")]
+mod native_harness_bootstrap;
 mod debug_approval;
 mod defaultspack_authority;
 mod defaultspack_manager;
@@ -4314,6 +4316,8 @@ fn launcher_setup(app: &mut tauri::App, ctx: &LauncherSetupContext) -> AnyResult
         );
     }
     app.manage(config.clone());
+    #[cfg(feature = "native-harness-bootstrap")]
+    app.manage(native_harness_bootstrap::NativeRuntimeState::default());
 
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.show();

@@ -23,6 +23,9 @@ _COMPOSITION_SOURCE = (
 )
 _PROFILE_PORT_SOURCE = "tobkiri_runtime/core_runtime/profile_runtime_port.py"
 _RESOLUTION_SOURCE = "tobkiri_runtime/ecosystem/defaultspack/domain/profile_resolution.py"
+_PROFILE_RUNTIME_RECORDS_SOURCE = (
+    "tobkiri_runtime/ecosystem/defaultspack/domain/_profile_runtime_records.py"
+)
 _CANONICAL_SOURCE = "tobkiri_runtime/tobkiri_protocol/canonical.py"
 _SETUP_CONTRACT_SOURCE = (
     "tobkiri_runtime/ecosystem/defaultspack/defaultspack/setup_contract.py"
@@ -58,6 +61,7 @@ _METHODS = (
 )
 _REQUIRED_STORED_SOURCES = (
     _RESOLUTION_SOURCE,
+    _PROFILE_RUNTIME_RECORDS_SOURCE,
     _CANONICAL_SOURCE,
     _SETUP_CONTRACT_SOURCE,
     _SCHEMA_HASHES_SOURCE,
@@ -730,6 +734,12 @@ def _manifest(
         "original_initializer_package_path": (
             "source-package/tobkiri_runtime/ecosystem/defaultspack/"
             "domain/runtime_v4/__init__.py"
+        ),
+        "original_record_package_path": (
+            f"source-package/{_PROFILE_RUNTIME_RECORDS_SOURCE}"
+        ),
+        "record_relocation": capsule_metadata.get(
+            "profile_runtime_record_relocation", {},
         ),
         "complete_original_modules_staged": True,
         "facade_modules_used_for_execution": False,
