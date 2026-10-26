@@ -12,13 +12,16 @@ use super::{
 };
 use crate::{AllocationOwners, NativeCapturedInputs};
 use std::{
+    any::Any,
     ffi::OsString,
     fmt,
     path::PathBuf,
     sync::{Arc, Mutex, OnceLock},
     time::Instant,
 };
-use tobkiri_canon::{AllocationKind, AllocationRequest, CoreBuffer, Digest, LeasedShared};
+use tobkiri_canon::{
+    AllocationKind, AllocationRequest, ControlHandle, CoreBuffer, Digest, LeasedShared,
+};
 use tobkiri_gate::{
     ControlKind, ControlReservation, CoreCancellation, GateError, NativeSetupInvocation,
 };
@@ -295,6 +298,17 @@ impl NativeDataIo {
     where
         F: FnOnce() -> Result<Value> + Send + 'static,
     {
+        self.execute_retaining(None, work).await
+    }
+
+    async fn execute_retaining<F>(
+        &self,
+        custody: Option<ControlHandle<dyn Any + Send + Sync>>,
+        work: F,
+    ) -> Result<Value>
+    where
+        F: FnOnce() -> Result<Value> + Send + 'static,
+    {
         self.0.get().scope.work(1)?;
         let waiter = self
             .0
@@ -309,7 +323,10 @@ impl NativeDataIo {
                     .ok_or(NativeDataIoError::Capacity)?,
             )
             .map_err(|_| NativeDataIoError::Capacity)?;
-        let (id, request) = self.submit(work)?;
+        let (id, request) = match custody {
+            Some(custody) => self.submit_retaining(Some(custody), work)?,
+            None => self.submit(work)?,
+        };
         let mut guard = ReadGuard {
             io: self.clone(),
             completed: false,
@@ -323,6 +340,17 @@ impl NativeDataIo {
     }
 
     fn submit<F>(&self, work: F) -> Result<(u64, Request)>
+    where
+        F: FnOnce() -> Result<Value> + Send + 'static,
+    {
+        self.submit_retaining(None, work)
+    }
+
+    fn submit_retaining<F>(
+        &self,
+        custody: Option<ControlHandle<dyn Any + Send + Sync>>,
+        work: F,
+    ) -> Result<(u64, Request)>
     where
         F: FnOnce() -> Result<Value> + Send + 'static,
     {
@@ -371,12 +399,13 @@ impl NativeDataIo {
         let (physical_tx, physical_rx) = oneshot::channel();
         let changed = Arc::new(Notify::new());
         changed.notify_waiters();
-        let (admission, mut publication) = execution_owner::reserve(
+        let (admission, mut publication) = execution_owner::reserve_with_custody(
             funding.clone(),
             body_control,
             monitor_control,
             physical_tx,
             changed.clone(),
+            custody,
         )
         .map_err(|_| NativeDataIoError::Capacity)?;
         let slot = admission.id();

@@ -2438,6 +2438,7 @@ dependencies = [
  "async-trait",
  "dirs",
  "getrandom 0.3.4",
+ "libc",
  "rusqlite",
  "serde",
  "serde_json",

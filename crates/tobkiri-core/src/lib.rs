@@ -36,6 +36,8 @@ mod funded_arc;
 mod housekeeping;
 mod inputs;
 mod journal;
+#[cfg(unix)]
+mod native_declared_artifact;
 mod native_profile_review;
 mod outcomes;
 #[cfg(test)]
@@ -57,6 +59,11 @@ pub use error::CoreError;
 pub use execution_frames::UiOperationPublishAttempt;
 pub use filesystem_registry::{FilesystemRights, FilesystemRoot};
 pub use journal::AuditRunJournal;
+#[cfg(unix)]
+pub use native_declared_artifact::{
+    NativeArtifactDeclaration, NativeArtifactError, NativeArtifactInspection,
+    NativeDeclaredArtifactSource,
+};
 pub use process_catalog::ProcessRegistrationError;
 pub use profile_review::{
     FilesystemPermissionReview, PermissionReview, ProfileReview, ProfileReviewCapacity,

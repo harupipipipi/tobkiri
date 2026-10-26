@@ -407,7 +407,7 @@ jobs:
 
       - name: Run rumi viewer Rust tests
         working-directory: tobkiri_launcher/src-tauri
-        run: cargo test --locked
+        run: cargo test --locked --features native-source-inspection
 
       - name: Build release Pack Shell for verified Tauri Shell artifact
         run: cargo build --release --locked --manifest-path pack-shell/Cargo.toml --target ${{ matrix.target }}

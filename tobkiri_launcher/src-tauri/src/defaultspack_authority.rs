@@ -4405,6 +4405,119 @@ mod tests {
         fixture_at_layout(name, RELOCATION_LAYOUTS[0].1)
     }
 
+    #[cfg(all(
+        feature = "native-source-inspection",
+        target_os = "macos",
+        target_arch = "aarch64"
+    ))]
+    #[tokio::test]
+    async fn actual_resolved_source_reaches_core_worker_and_preserves_desktop_metadata() {
+        use std::sync::Arc;
+        use tobkiri_core::{
+            ids::UiSessionId, ApprovalAnswer, ApprovalPrompt, CanonValue, Core, CoreConfig,
+            HostError, HostIo, TrustedPrompt, UiEmbed,
+        };
+
+        // Test-only host rejects any invented effect/approval. Production must
+        // pass its real composed Core; the adapter never creates a stand-in.
+        struct NoEffects;
+        #[async_trait::async_trait]
+        impl TrustedPrompt for NoEffects {
+            async fn prompt_approval(&self, _: ApprovalPrompt) -> ApprovalAnswer {
+                panic!("native metadata inspection must not invent an approval");
+            }
+        }
+        #[async_trait::async_trait]
+        impl HostIo for NoEffects {
+            fn display(&self, _: &str, _: &CanonValue) {
+                panic!("no host display effect during metadata inspection");
+            }
+            async fn terminal_read_line(&self, _: &str) -> Result<String, HostError> {
+                panic!("no Terminal approval during metadata inspection");
+            }
+            fn terminal_write(&self, _: &str) {
+                panic!("no Terminal during metadata inspection");
+            }
+            fn embed_ui(&self, _: UiEmbed) -> Result<UiSessionId, HostError> {
+                panic!("no replacement UI during metadata inspection");
+            }
+            async fn pick_directory(&self, _: &str) -> Option<PathBuf> {
+                panic!("no extra directory selection during metadata inspection");
+            }
+        }
+
+        let (root, config) = fixture("actual-native-core-declared-artifacts");
+        let sources = SignedApplicationResolver::resolve_sources(&config).unwrap();
+        assert!(sources
+            .authority()
+            .verified_artifacts
+            .contains_key("host_contract_contributions.v1.json"));
+        let expected = crate::host_contract_contributions::collect_for_verified_application(
+            sources.authority(),
+        )
+        .unwrap();
+        let root_pointer = sources
+            .root(NativeSourceRoot::MaterializedPack)
+            .as_os_str()
+            .as_encoded_bytes()
+            .as_ptr();
+        let core = Arc::new(
+            Core::open(
+                CoreConfig::for_test_data_root(
+                    root.canonicalize().unwrap().join("native-core-data"),
+                ),
+                Arc::new(NoEffects),
+            )
+            .unwrap(),
+        );
+        assert!(core.profile_ids().unwrap().is_empty());
+        let (sources, actual) =
+            crate::native_declared_artifacts::collect_for_resolved_application(&core, sources)
+                .await
+                .unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(
+            sources
+                .root(NativeSourceRoot::MaterializedPack)
+                .as_os_str()
+                .as_encoded_bytes()
+                .as_ptr(),
+            root_pointer
+        );
+
+        let original =
+            crate::dock_registration::read_defaultspack_desktop_metadata(&config).unwrap();
+        let through_core =
+            crate::dock_registration::read_defaultspack_desktop_metadata_with_core(&config, &core)
+                .await
+                .unwrap();
+        assert_eq!(through_core.entrypoint, original.entrypoint);
+        assert_eq!(through_core.app_working_dir, original.app_working_dir);
+        assert_eq!(through_core.frontend_entry, original.frontend_entry);
+        assert_eq!(
+            through_core.host_contract_contributions,
+            original.host_contract_contributions
+        );
+        assert!(core.profile_ids().unwrap().is_empty());
+
+        // Mutate after the actual resolution: no second resolver or copied
+        // manifest can silently turn these bytes into the accepted artifact.
+        fs::write(
+            sources
+                .root(NativeSourceRoot::MaterializedPack)
+                .join("host_contract_contributions.v1.json"),
+            b"changed after resolution",
+        )
+        .unwrap();
+        assert!(
+            crate::native_declared_artifacts::collect_for_resolved_application(&core, sources,)
+                .await
+                .is_err()
+        );
+        drop(core);
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn native_sources_retain_actual_resolver_roots_without_reinspection() {
         let (root, config) = fixture("native-resolved-source-roots");

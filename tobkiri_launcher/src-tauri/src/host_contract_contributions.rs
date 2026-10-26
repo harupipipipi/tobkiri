@@ -14,13 +14,13 @@ use sha2::{Digest, Sha256};
 
 use crate::defaultspack_authority::{ApplicationAuthority, VerifiedPackArtifact};
 
-const CONTRIBUTION_PATH: &str = "host_contract_contributions.v1.json";
+pub(crate) const CONTRIBUTION_PATH: &str = "host_contract_contributions.v1.json";
 const CONTRIBUTION_SCHEMA: &str = "io.tobkiri.host-contract-contribution.v1";
 const SYSTEM_PACK_DESCRIPTOR_SCHEMA: &str = "io.tobkiri.system-pack-trust.v1";
 const UPDATE_TARGET_DESCRIPTOR_SCHEMA: &str = "io.tobkiri.update-target.v1";
 const UPDATE_METADATA_SCHEMA: &str = "io.tobkiri.pack-update-metadata.v1";
-const CONTRIBUTION_ARTIFACT_ROLE: &str = "host_contract_contribution";
-const UPDATE_METADATA_ARTIFACT_ROLE: &str = "host_contract_update_metadata";
+pub(crate) const CONTRIBUTION_ARTIFACT_ROLE: &str = "host_contract_contribution";
+pub(crate) const UPDATE_METADATA_ARTIFACT_ROLE: &str = "host_contract_update_metadata";
 
 /// JSON values ready for the Launcher-owned Host contract's `values` map.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,7 +30,7 @@ pub(crate) struct HostContractContributionValues {
 }
 
 impl HostContractContributionValues {
-    fn empty() -> Self {
+    pub(crate) fn empty() -> Self {
         Self {
             system_pack_descriptors: "[]".into(),
             update_target_descriptors: "[]".into(),
@@ -76,6 +76,60 @@ fn contribution_values(
     declared_artifacts: &BTreeMap<String, VerifiedPackArtifact>,
     contribution: &Value,
 ) -> Result<HostContractContributionValues> {
+    let request = prepare_contribution(pack_root, pack_id, contribution)?;
+    let metadata = match request.version_path() {
+        Some(version_path) => read_declared_json_artifact(
+            pack_root,
+            declared_artifacts,
+            version_path,
+            UPDATE_METADATA_ARTIFACT_ROLE,
+            "Pack update metadata",
+        )?,
+        None => None,
+    };
+    request.finish(metadata.as_ref())
+}
+
+/// Pure validations reached before reading optional update metadata.
+///
+/// This borrows only the parsed contribution; no resolver root or authority
+/// reference can escape the Core inspection's source callback.
+pub(crate) struct ContributionRequest<'a> {
+    pack_id: &'a str,
+    system_descriptor: Value,
+    update_target: Option<UpdateTargetRequest<'a>>,
+}
+
+impl ContributionRequest<'_> {
+    pub(crate) fn version_path(&self) -> Option<&str> {
+        self.update_target
+            .as_ref()
+            .map(|target| target.version_path)
+    }
+
+    /// Complete the same metadata validation and serialization after its read.
+    pub(crate) fn finish(self, metadata: Option<&Value>) -> Result<HostContractContributionValues> {
+        let mut update_descriptors = Vec::new();
+        if let Some(target) = self.update_target {
+            let metadata = metadata
+                .context("update target version metadata is not a declared Pack artifact")?;
+            validate_update_metadata(metadata, self.pack_id)?;
+            update_descriptors.push(target.descriptor());
+        }
+        Ok(HostContractContributionValues {
+            system_pack_descriptors: serde_json::to_string(&vec![self.system_descriptor])
+                .context("failed to encode system Pack descriptors")?,
+            update_target_descriptors: serde_json::to_string(&update_descriptors)
+                .context("failed to encode update target descriptors")?,
+        })
+    }
+}
+
+pub(crate) fn prepare_contribution<'a>(
+    pack_root: &Path,
+    pack_id: &str,
+    contribution: &'a Value,
+) -> Result<ContributionRequest<'a>> {
     let root = exact_object(
         contribution,
         ["schema", "pack_id", "system_pack", "update_target"],
@@ -107,32 +161,44 @@ fn contribution_values(
         "allow_in_process": allow_in_process,
     });
 
-    let mut update_descriptors = Vec::new();
-    if let Some(update_target) = root.get("update_target") {
-        if !update_target.is_null() {
-            update_descriptors.push(update_target_descriptor(
-                pack_root,
-                pack_id,
-                declared_artifacts,
-                update_target,
-            )?);
-        }
-    }
-
-    Ok(HostContractContributionValues {
-        system_pack_descriptors: serde_json::to_string(&vec![system_descriptor])
-            .context("failed to encode system Pack descriptors")?,
-        update_target_descriptors: serde_json::to_string(&update_descriptors)
-            .context("failed to encode update target descriptors")?,
+    let update_target = root
+        .get("update_target")
+        .filter(|value| !value.is_null())
+        .map(|value| prepare_update_target(pack_id, value))
+        .transpose()?;
+    Ok(ContributionRequest {
+        pack_id: string_field(root, "pack_id", "Host contract contribution")?,
+        system_descriptor,
+        update_target,
     })
 }
 
-fn update_target_descriptor(
-    pack_root: &Path,
-    pack_id: &str,
-    declared_artifacts: &BTreeMap<String, VerifiedPackArtifact>,
-    value: &Value,
-) -> Result<Value> {
+struct UpdateTargetRequest<'a> {
+    target_id: &'a str,
+    source_root: &'a str,
+    destination_root: &'a str,
+    version_path: &'a str,
+    version_format: &'a str,
+    protected_paths: &'a [Value],
+    reload: bool,
+}
+
+impl UpdateTargetRequest<'_> {
+    fn descriptor(self) -> Value {
+        json!({
+            "schema": UPDATE_TARGET_DESCRIPTOR_SCHEMA,
+            "target": self.target_id,
+            "source_root": self.source_root,
+            "destination_root": self.destination_root,
+            "version_path": self.version_path,
+            "version_format": self.version_format,
+            "protected_paths": self.protected_paths,
+            "runtime_reload_recommended": self.reload,
+        })
+    }
+}
+
+fn prepare_update_target<'a>(pack_id: &str, value: &'a Value) -> Result<UpdateTargetRequest<'a>> {
     let target = exact_object(
         value,
         [
@@ -177,16 +243,20 @@ fn update_target_descriptor(
         "update target contribution",
     )?;
 
-    let metadata = read_declared_json_artifact(
-        pack_root,
-        declared_artifacts,
+    Ok(UpdateTargetRequest {
+        target_id,
+        source_root,
+        destination_root,
         version_path,
-        UPDATE_METADATA_ARTIFACT_ROLE,
-        "Pack update metadata",
-    )?
-    .context("update target version metadata is not a declared Pack artifact")?;
+        version_format,
+        protected_paths,
+        reload,
+    })
+}
+
+fn validate_update_metadata(metadata: &Value, pack_id: &str) -> Result<()> {
     let metadata = exact_object(
-        &metadata,
+        metadata,
         ["schema", "pack_id", "version"],
         "Pack update metadata",
     )?;
@@ -197,16 +267,7 @@ fn update_target_descriptor(
         bail!("Pack update metadata identity is invalid");
     }
 
-    Ok(json!({
-        "schema": UPDATE_TARGET_DESCRIPTOR_SCHEMA,
-        "target": target_id,
-        "source_root": source_root,
-        "destination_root": destination_root,
-        "version_path": version_path,
-        "version_format": version_format,
-        "protected_paths": protected_paths,
-        "runtime_reload_recommended": reload,
-    }))
+    Ok(())
 }
 
 fn read_declared_json_artifact(
@@ -216,19 +277,37 @@ fn read_declared_json_artifact(
     expected_role: &str,
     label: &str,
 ) -> Result<Option<Value>> {
+    let Some(artifact) = declared_artifact_for_role(declared, relative, expected_role, label)?
+    else {
+        return Ok(None);
+    };
+    let path = pack_root.join(relative);
+    let bytes = read_regular_file(&path, label)?;
+    if sha256(&bytes) != artifact.digest {
+        bail!("{label} digest does not match the verified Pack artifact index");
+    }
+    parse_json_artifact(&bytes, label).map(Some)
+}
+
+/// Apply the original role check before either reader reaches file IO.
+pub(crate) fn declared_artifact_for_role<'a>(
+    declared: &'a BTreeMap<String, VerifiedPackArtifact>,
+    relative: &str,
+    expected_role: &str,
+    label: &str,
+) -> Result<Option<&'a VerifiedPackArtifact>> {
     let Some(artifact) = declared.get(relative) else {
         return Ok(None);
     };
     if artifact.role != expected_role {
         bail!("{label} has an invalid verified artifact role");
     }
-    let path = pack_root.join(relative);
-    let bytes = read_regular_file(&path, label)?;
-    if sha256(&bytes) != artifact.digest {
-        bail!("{label} digest does not match the verified Pack artifact index");
-    }
-    let value = serde_json::from_slice(&bytes).with_context(|| format!("{label} is malformed"))?;
-    Ok(Some(value))
+    Ok(Some(artifact))
+}
+
+/// Retain the original native serde JSON parsing behavior for both readers.
+pub(crate) fn parse_json_artifact(bytes: &[u8], label: &str) -> Result<Value> {
+    serde_json::from_slice(bytes).with_context(|| format!("{label} is malformed"))
 }
 
 fn read_regular_file(path: &Path, label: &str) -> Result<Vec<u8>> {
@@ -314,7 +393,10 @@ mod tests {
     use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use super::{collect_from_verified_artifacts, sha256, HostContractContributionValues};
+    use super::{
+        collect_from_verified_artifacts, parse_json_artifact, prepare_contribution, sha256,
+        HostContractContributionValues,
+    };
     use crate::defaultspack_authority::VerifiedPackArtifact;
     use serde_json::json;
 
@@ -458,6 +540,107 @@ mod tests {
             &fixture_verified_artifacts(&root, true),
         )
         .is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn invalid_update_request_fails_before_version_metadata_is_read() {
+        let root = fixture_root(true);
+        let mut contribution: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(root.join("host_contract_contributions.v1.json")).unwrap(),
+        )
+        .unwrap();
+        contribution["update_target"]["destination_root"] = json!("../outside-runtime");
+        replace_declared_contribution(&root, contribution);
+        let mut declared = fixture_verified_artifacts(&root, true);
+        declared.remove("update_metadata.v1.json");
+        std::fs::remove_file(root.join("update_metadata.v1.json")).unwrap();
+        let error = collect_from_verified_artifacts(&root, "example-pack", &declared)
+            .err()
+            .unwrap();
+        assert_eq!(
+            error.to_string(),
+            "update target contribution path or format is invalid"
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn shared_parser_requires_exact_metadata_identity_after_request_validation() {
+        let root = fixture_root(true);
+        let contribution = parse_json_artifact(
+            &std::fs::read(root.join("host_contract_contributions.v1.json")).unwrap(),
+            "Host contract contribution",
+        )
+        .unwrap();
+        for metadata in [
+            json!({
+                "schema": "io.tobkiri.pack-update-metadata.v1",
+                "pack_id": "another-pack",
+                "version": "1.2.3"
+            }),
+            json!({
+                "schema": "io.tobkiri.pack-update-metadata.v1",
+                "pack_id": "example-pack",
+                "version": ""
+            }),
+            json!({
+                "schema": "io.tobkiri.pack-update-metadata.v1",
+                "pack_id": "example-pack",
+                "version": "1.2.3",
+                "extra": true
+            }),
+        ] {
+            let request = prepare_contribution(&root, "example-pack", &contribution).unwrap();
+            assert_eq!(request.version_path(), Some("update_metadata.v1.json"));
+            assert!(request.finish(Some(&metadata)).is_err());
+        }
+        let request = prepare_contribution(&root, "example-pack", &contribution).unwrap();
+        assert_eq!(
+            request.finish(None).unwrap_err().to_string(),
+            "update target version metadata is not a declared Pack artifact"
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn null_update_target_does_not_require_metadata() {
+        let contribution = json!({
+            "schema": "io.tobkiri.host-contract-contribution.v1",
+            "pack_id": "example-pack",
+            "system_pack": {"trust_class": "system", "allow_in_process": false},
+            "update_target": null
+        });
+        let request = prepare_contribution(
+            std::path::Path::new("/selected-root"),
+            "example-pack",
+            &contribution,
+        )
+        .unwrap();
+        assert_eq!(request.version_path(), None);
+        let values = request.finish(None).unwrap();
+        assert_eq!(values.update_target_descriptors, "[]");
+        let system: serde_json::Value =
+            serde_json::from_str(&values.system_pack_descriptors).unwrap();
+        assert_eq!(system[0]["allow_in_process"], false);
+    }
+
+    #[test]
+    fn wrong_contribution_role_is_rejected_before_missing_file_read() {
+        let root = fixture_root(true);
+        let mut declared = fixture_verified_artifacts(&root, true);
+        declared
+            .get_mut("host_contract_contributions.v1.json")
+            .unwrap()
+            .role = "host_contract_update_metadata".into();
+        std::fs::remove_file(root.join("host_contract_contributions.v1.json")).unwrap();
+        let error = collect_from_verified_artifacts(&root, "example-pack", &declared)
+            .err()
+            .unwrap();
+        assert_eq!(
+            error.to_string(),
+            "Host contract contribution has an invalid verified artifact role"
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 }

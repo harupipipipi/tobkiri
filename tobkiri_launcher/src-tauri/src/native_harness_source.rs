@@ -77,7 +77,7 @@ impl NativeApplicationSources {
     }
 
     /// Preserve the existing resolver's return contract without another pass.
-    pub(super) fn into_authority(self) -> ApplicationAuthority {
+    pub(crate) fn into_authority(self) -> ApplicationAuthority {
         self.authority
     }
 }

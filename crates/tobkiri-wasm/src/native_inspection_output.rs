@@ -1,8 +1,8 @@
 //! Native-selected work over the original IO slot and borrowed DATA writer.
 use super::{NativeDataIo, NativeDataIoError, Result, Scope, Value};
 use crate::AllocationOwners;
-use std::cell::Cell;
-use tobkiri_canon::{AllocationError, CoreBuffer, CoreBufferBuilder, MAX_BYTES};
+use std::{any::Any, cell::Cell};
+use tobkiri_canon::{AllocationError, ControlHandle, CoreBuffer, CoreBufferBuilder, MAX_BYTES};
 use tobkiri_gate::NativeSetupInvocation;
 
 /// Output of one nativeKit inspection at its original reachpoint.
@@ -193,9 +193,39 @@ impl NativeDataIo {
     where
         F: for<'scope> FnOnce(&mut NativeInspectionOutput<'scope>) -> Result<()> + Send + 'static,
     {
+        self.inspect_inner(None, work).await
+    }
+
+    /// Inspect while retaining an existing prepaid owner through physical Join.
+    ///
+    /// The original independent execution slot owns this allocation-free
+    /// projection until both actual task Joins and their destruction receipts
+    /// are confirmed. Dropping the observer or consuming/panicking the callback
+    /// cannot release it early. An uncertain physical receipt retains custody.
+    /// The handle grants no authority: the callback must still validate its
+    /// actual original invocation, native target and active operation phase.
+    pub async fn inspect_retaining<F>(
+        &self,
+        custody: ControlHandle<dyn Any + Send + Sync>,
+        work: F,
+    ) -> Result<CoreBuffer>
+    where
+        F: for<'scope> FnOnce(&mut NativeInspectionOutput<'scope>) -> Result<()> + Send + 'static,
+    {
+        self.inspect_inner(Some(custody), work).await
+    }
+
+    async fn inspect_inner<F>(
+        &self,
+        custody: Option<ControlHandle<dyn Any + Send + Sync>>,
+        work: F,
+    ) -> Result<CoreBuffer>
+    where
+        F: for<'scope> FnOnce(&mut NativeInspectionOutput<'scope>) -> Result<()> + Send + 'static,
+    {
         let held = self.clone();
         let value = self
-            .execute(move || {
+            .execute_retaining(custody, move || {
                 let scope = &held.0.get().scope;
                 let mut output = NativeInspectionOutput {
                     scope,

@@ -29,6 +29,8 @@ mod project_directory_requests;
 mod host_broker_types;
 mod host_contract;
 mod host_contract_contributions;
+#[cfg(all(feature = "native-source-inspection", unix))]
+mod native_declared_artifacts;
 mod kernel_manager;
 #[cfg(all(unix, any(debug_assertions, tobkiri_ci_e2e_artifact)))]
 mod packvm_acceptance;

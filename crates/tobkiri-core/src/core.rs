@@ -102,6 +102,24 @@ impl TrustedPrompt for Prompt {
 }
 
 impl Core {
+    #[cfg(unix)]
+    pub(crate) fn native_artifact_invocation(
+        &self,
+    ) -> Result<tobkiri_gate::NativeSetupInvocation, CoreError> {
+        use tobkiri_gate::{GateError, NativeSetupLease};
+        Ok(self
+            .capacity
+            .native_setup_account(&self.control, || {
+                Ok(Arc::new(
+                    self.profiles
+                        .root
+                        .native_setup_owner_lease(&self.control)
+                        .map_err(|_| GateError::Unavailable)?,
+                ) as Arc<dyn NativeSetupLease>)
+            })?
+            .begin()?)
+    }
+
     /// Borrow the original account for sibling source-admission paths.
     pub(crate) fn source_control(&self) -> &CoreControl {
         &self.control

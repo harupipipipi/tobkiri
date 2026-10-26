@@ -18,6 +18,7 @@
 //! synchronously under this mutex. Tokio spawn does not synchronously poll.
 
 use std::alloc::Layout;
+use std::any::Any;
 use std::fmt;
 use std::future::Future;
 use std::mem::size_of;
@@ -29,7 +30,7 @@ use std::task::Wake;
 use std::task::{Context, Poll, Waker};
 
 use tobkiri_canon::{
-    Digest, LeasedShared,
+    ControlHandle, Digest, LeasedShared,
     ids::{PackHash, PackId, ProfileId},
 };
 use tobkiri_flow::{StreamCloseControl, StreamCloseReason};
@@ -59,6 +60,10 @@ pub use native_data_io::{
 // Acquire once at the outer test boundary, never from a spawned child/helper.
 #[cfg(test)]
 static CENSUS_FIXTURE: AsyncMutex<()> = AsyncMutex::const_new(());
+
+#[cfg(test)]
+#[path = "native_inspection_custody_tests.rs"]
+mod inspection_custody_tests;
 
 #[cfg(test)]
 pub(crate) async fn lock_census_fixture() -> tokio::sync::MutexGuard<'static, ()> {
@@ -475,6 +480,7 @@ mod execution_owner {
         unknown: AtomicBool,
         disposal_unknown: AtomicBool,
         finalized: AtomicBool,
+        custody_pending: AtomicBool,
         unpublished: AtomicBool,
         remove_requested: AtomicBool,
         wake: Arc<OwnerWake>,
@@ -483,6 +489,9 @@ mod execution_owner {
     }
     struct State {
         prepared: [Option<Box<parking_lot::RwLock<JoinState>>>; 2],
+        // Pure storage custody, not a permission or target decision. Field
+        // order also destroys an unpublished owner before its task controls.
+        custody: Option<ControlHandle<dyn Any + Send + Sync>>,
         controls: Option<(ControlReservation, ControlReservation)>,
         physical: Option<oneshot::Sender<PhysicalResult>>,
         finalizing: bool,
@@ -1163,10 +1172,23 @@ mod execution_owner {
         physical: oneshot::Sender<PhysicalResult>,
         changed: Arc<tokio::sync::Notify>,
     ) -> Result<(UnpublishedAdmission, Publication), CensusError> {
+        reserve_with_custody(control, task, monitor, physical, changed, None)
+    }
+
+    pub(super) fn reserve_with_custody(
+        control: Funding,
+        task: ControlReservation,
+        monitor: ControlReservation,
+        physical: oneshot::Sender<PhysicalResult>,
+        changed: Arc<tokio::sync::Notify>,
+        custody: Option<ControlHandle<dyn Any + Send + Sync>>,
+    ) -> Result<(UnpublishedAdmission, Publication), CensusError> {
+        let custody_pending = custody.is_some();
         let body = Box::new(parking_lot::RwLock::new(JoinState::empty()));
         let monitor_cell = Box::new(parking_lot::RwLock::new(JoinState::empty()));
         let state = parking_lot::RwLock::new(State {
             prepared: [Some(body), Some(monitor_cell)],
+            custody,
             controls: Some((task, monitor)),
             physical: Some(physical),
             finalizing: false,
@@ -1214,6 +1236,7 @@ mod execution_owner {
                 unknown: AtomicBool::new(false),
                 disposal_unknown: AtomicBool::new(false),
                 finalized: AtomicBool::new(false),
+                custody_pending: AtomicBool::new(custody_pending),
                 unpublished: AtomicBool::new(false),
                 remove_requested: AtomicBool::new(false),
                 wake,
@@ -1625,7 +1648,9 @@ mod execution_owner {
         let slot = &entry.slot;
         (slot.unpublished.load(Ordering::Acquire)
             && !slot.attempted[Kind::Monitor.index()].load(Ordering::Acquire))
-            || (slot.finalized.load(Ordering::Acquire) && completion_resources_gone(slot))
+            || (slot.finalized.load(Ordering::Acquire)
+                && completion_resources_gone(slot)
+                && !slot.custody_pending.load(Ordering::Acquire))
     }
     fn request_finalize(entry: &FundedSlot) {
         if entry.slot.finalized.load(Ordering::Acquire) {
@@ -1668,7 +1693,16 @@ mod execution_owner {
                     } else {
                         result
                     };
-                    Some((raw.controls.take(), raw.physical.take(), result))
+                    // Both original Joins, their payload destruction and both
+                    // trailer-waker deallocations are already confirmed here.
+                    // An error/unknown physical receipt cannot release an
+                    // optional retained owner by later removing this Slot.
+                    let custody = if result.is_ok() {
+                        raw.custody.take()
+                    } else {
+                        None
+                    };
+                    Some((custody, raw.controls.take(), raw.physical.take(), result))
                 }
             }
             None => {
@@ -1688,7 +1722,13 @@ mod execution_owner {
             entry.slot.wake.mark(REPOLL);
             entry.slot.wake.flush();
         }
-        if let Some((controls, physical, result)) = finished {
+        if let Some((custody, controls, physical, result)) = finished {
+            // The actual retained payload may run arbitrary destruction. No
+            // OWNER/state/cell guard remains; funding is still held here.
+            drop(custody);
+            if result.is_ok() {
+                entry.slot.custody_pending.store(false, Ordering::Release);
+            }
             drop(controls);
             if let Some(physical) = physical {
                 let _ = physical.send(result);
@@ -1801,6 +1841,14 @@ mod execution_owner {
             return false;
         };
         poll_join(&entry, Kind::Body, false).is_none()
+    }
+    #[cfg(test)]
+    pub(super) fn original_task_resources_gone(id: SlotId, kind: Kind) -> bool {
+        let Lookup::Found(entry) = lookup(id) else {
+            return false;
+        };
+        entry.slot.destroyed[kind.index()].load(Ordering::Acquire)
+            && entry.slot.waker_destroyed[kind.index()].load(Ordering::Acquire)
     }
     #[cfg(test)]
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]

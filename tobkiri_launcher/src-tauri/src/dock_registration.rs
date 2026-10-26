@@ -1039,6 +1039,43 @@ pub(crate) fn read_defaultspack_desktop_metadata(
     let execution_identity = authority.execution_identity()?;
     let host_contract_contributions =
         crate::host_contract_contributions::collect_for_verified_application(&authority)?;
+    assemble_defaultspack_desktop_metadata(
+        config,
+        authority,
+        execution_identity,
+        host_contract_contributions,
+    )
+}
+
+/// Inspect the actual later flow-A resolver selection through an existing Core.
+///
+/// This preserves the original resolver/identity/contribution/assembly order.
+/// Product bootstrap still needs to supply its composed Core at this call site;
+/// the default Launcher path remains on the existing reader until full parity.
+#[cfg(all(feature = "native-source-inspection", unix))]
+pub(crate) async fn read_defaultspack_desktop_metadata_with_core(
+    config: &AppConfig,
+    core: &Arc<tobkiri_core::Core>,
+) -> AnyResult<DefaultspackDesktopMetadata> {
+    let sources =
+        crate::defaultspack_authority::SignedApplicationResolver::resolve_sources(config)?;
+    let execution_identity = sources.authority().execution_identity()?;
+    let (sources, host_contract_contributions) =
+        crate::native_declared_artifacts::collect_for_resolved_application(core, sources).await?;
+    assemble_defaultspack_desktop_metadata(
+        config,
+        sources.into_authority(),
+        execution_identity,
+        host_contract_contributions,
+    )
+}
+
+fn assemble_defaultspack_desktop_metadata(
+    config: &AppConfig,
+    authority: crate::defaultspack_authority::ApplicationAuthority,
+    execution_identity: crate::host_contract::ExecutionProfileIdentity,
+    host_contract_contributions: crate::host_contract_contributions::HostContractContributionValues,
+) -> AnyResult<DefaultspackDesktopMetadata> {
     let app_working_dir = authority.pack_root;
     let mut env_vars = vec![
         (
