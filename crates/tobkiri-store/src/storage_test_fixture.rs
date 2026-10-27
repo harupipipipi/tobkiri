@@ -55,7 +55,9 @@ pub(crate) struct Fixture {
 }
 impl Fixture {
     pub(crate) async fn new() -> Self {
+        use std::os::unix::fs::PermissionsExt;
         let temp = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(temp.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
         let root = DataRoot::open(temp.path().canonicalize().unwrap()).unwrap();
         let profile = ProfileId::parse("prof_storage_fence").unwrap();
         let pack = PackId::parse("local.storage-fence-test").unwrap();
