@@ -1,6 +1,88 @@
 //! The only native adapter for an already claimed physical DATA transaction.
 use super::*;
 
+pub(super) enum NativeTransactionCommit {
+    Refused {
+        error: StoreError,
+        rolled_back: bool,
+    },
+    Attempted {
+        result: Result<(), StoreError>,
+        started: bool,
+        succeeded: bool,
+    },
+}
+
+/// No connection claim or authority guard can escape into the async caller.
+pub(super) fn commit_transaction(
+    target: &NativeSqlTarget,
+    cx: &CallCx,
+    permit: &DispatchPermit,
+    effect: &EffectRequest,
+    args: &Digest,
+) -> NativeTransactionCommit {
+    let connection = match target.native().try_lock_connection() {
+        Ok(connection) => connection,
+        Err(error) => {
+            return NativeTransactionCommit::Attempted {
+                result: Err(error),
+                started: false,
+                succeeded: false,
+            };
+        }
+    };
+    let mut started = false;
+    let mut succeeded = false;
+    let mut fence_entered = false;
+    let result = CommitAdmission::consumed(permit, effect, args).finish(
+        target.native(),
+        &connection,
+        || {
+            fence_entered = true;
+            with_progress_limit(
+                target.native(),
+                &connection,
+                cx,
+                permit.deadline(),
+                permit.limits().fuel_per_call,
+                || {
+                    started = true;
+                    with_internal_authorizer(target.native(), &connection, || {
+                        connection.execute_batch("COMMIT;")?;
+                        succeeded = connection.is_autocommit();
+                        if !succeeded {
+                            return Err(target.native().commit_unknown());
+                        }
+                        Ok(())
+                    })
+                },
+            )
+        },
+    );
+    if !fence_entered {
+        let error = result
+            .err()
+            .unwrap_or_else(|| StoreError::Unavailable("storage fence skipped commit".into()));
+        let rollback = rollback_native_transaction(target.native(), &connection);
+        let rolled_back = rollback.is_ok();
+        if rolled_back {
+            target
+                .native()
+                .active_transaction
+                .store(false, Ordering::Release);
+        }
+        return NativeTransactionCommit::Refused {
+            error: rollback.err().unwrap_or(error),
+            rolled_back,
+        };
+    }
+    NativeTransactionCommit::Attempted {
+        result,
+        started,
+        succeeded,
+    }
+}
+
 pub(super) enum CommitAdmission<'a> {
     Consumed {
         permit: &'a DispatchPermit,

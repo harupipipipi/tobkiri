@@ -2788,71 +2788,33 @@ impl NativeSqlTransaction {
             operation.finish(false, None);
             return Err(error);
         }
-        let (result, commit_started, commit_succeeded) = {
-            match self.target.native().try_lock_connection() {
-                Err(error) => (Err(error), false, false),
-                Ok(connection) => {
-                    let mut commit_started = false;
-                    let mut commit_succeeded = false;
-                    let mut fence_entered = false;
-                    let result = CommitAdmission::consumed(&permit, &request, &digest).finish(
-                        self.target.native(),
-                        &connection,
-                        || {
-                            fence_entered = true;
-                            with_progress_limit(
-                                self.target.native(),
-                                &connection,
-                                cx,
-                                permit.deadline(),
-                                permit.limits().fuel_per_call,
-                                || {
-                                    commit_started = true;
-                                    with_internal_authorizer(
-                                        self.target.native(),
-                                        &connection,
-                                        || {
-                                            connection.execute_batch("COMMIT;")?;
-                                            commit_succeeded = connection.is_autocommit();
-                                            if !commit_succeeded {
-                                                return Err(self.target.native().commit_unknown());
-                                            }
-                                            Ok(())
-                                        },
-                                    )
-                                },
-                            )
+        let (result, commit_started, commit_succeeded) = match storage_commit::commit_transaction(
+            &self.target,
+            cx,
+            &permit,
+            &request,
+            &digest,
+        ) {
+            storage_commit::NativeTransactionCommit::Refused { error, rolled_back } => {
+                operation.finish(
+                    false,
+                    rolled_back.then_some(crate::SqlTransactionState::RolledBack),
+                );
+                let _ = gate
+                    .record_outcome(
+                        grant_id,
+                        Outcome::Failed {
+                            code: "storage-sql-commit-fence-refused".into(),
                         },
-                    );
-                    if !fence_entered {
-                        let error = result.err().unwrap_or_else(|| {
-                            StoreError::Unavailable("storage fence skipped commit".into())
-                        });
-                        let rollback =
-                            rollback_native_transaction(self.target.native(), &connection);
-                        if rollback.is_ok() {
-                            self.target
-                                .native()
-                                .active_transaction
-                                .store(false, Ordering::Release);
-                            operation.finish(false, Some(crate::SqlTransactionState::RolledBack));
-                        } else {
-                            operation.finish(false, None);
-                        }
-                        drop(connection);
-                        let _ = gate
-                            .record_outcome(
-                                grant_id,
-                                Outcome::Failed {
-                                    code: "storage-sql-commit-fence-refused".into(),
-                                },
-                            )
-                            .await;
-                        return Err(rollback.err().unwrap_or(error));
-                    }
-                    (result, commit_started, commit_succeeded)
-                }
+                    )
+                    .await;
+                return Err(error);
             }
+            storage_commit::NativeTransactionCommit::Attempted {
+                result,
+                started,
+                succeeded,
+            } => (result, started, succeeded),
         };
         if let Err(error) = result {
             if !commit_started {

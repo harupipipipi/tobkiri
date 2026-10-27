@@ -44,6 +44,8 @@ jobs:
           -- --nocapture
       - name: Run the complete Store and Gate regression corpus
         run: cargo test --locked -p tobkiri-store -p tobkiri-gate
+      - name: Check the actual asynchronous Wasm effects consumer
+        run: cargo check --locked -p tobkiri-wasm
       - name: Strictly lint the actual Store and Gate paths
         run: cargo clippy --locked -p tobkiri-store -p tobkiri-gate --all-targets -- -D warnings
       - name: Keep bounded test evidence in CI
