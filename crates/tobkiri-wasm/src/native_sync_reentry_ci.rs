@@ -2,7 +2,7 @@
 use super::*;
 use anyhow::{Context, ensure};
 use std::{fs::File, io::Read};
-use tobkiri_gate::{CapacityKind, CapacityLedger};
+use tobkiri_gate::{CapacityKind, CapacityLedger, CoreControl};
 use wasmtime::component::{BudgetedFuture, Component, Func, Linker, Val};
 use wasmtime::{AsContextMut, OptLevel, Trap};
 

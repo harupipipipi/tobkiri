@@ -29,8 +29,16 @@ use tobkiri_wasm::{
 const CHILD: &str = "thread_capabilities_actual_ci::isolated_thread_capabilities_child";
 const PREFIX: &str = "THREAD_CAPABILITIES_CHILD ";
 const INTERFACE: &str = "tobkiri-ui:thread-capabilities/probe@1.0.0";
-const STAGES: [&str; 7] = [
+const STAGES: [&str; 15] = [
     "starting",
+    "import-contextvars",
+    "contextvars-imported",
+    "import-struct",
+    "struct-imported",
+    "import-sys",
+    "sys-imported",
+    "import-threading",
+    "threading-imported",
     "local-context",
     "thread-start",
     "thread-coordination",
@@ -38,6 +46,7 @@ const STAGES: [&str; 7] = [
     "thread-join",
     "completed",
 ];
+const WORKER_WAITING_STAGE: u8 = 13;
 
 // This owns only actual diagnostic code. It cannot provide original Host roots
 // or authorize any filesystem, Profile, approval or native domain operation.
@@ -119,7 +128,7 @@ fn checkpoint(context: NativeImportContext<'_, State>) -> Result<NativeImportOpe
             return Err(NativeDataIoError::Unavailable);
         }
         state.changed.notify_one();
-        if stage == 5 && state.hold_waiter {
+        if stage == WORKER_WAITING_STAGE && state.hold_waiter {
             let release = state
                 .release
                 .lock()
@@ -146,6 +155,7 @@ fn checkpoint(context: NativeImportContext<'_, State>) -> Result<NativeImportOpe
 struct ErrorText {
     bytes: [u8; 1024],
     length: usize,
+    truncated: bool,
 }
 
 // A parent-side failure must still reap its actual child before fixture removal.
@@ -163,10 +173,14 @@ impl Drop for ChildGuard {
 }
 impl std::fmt::Write for ErrorText {
     fn write_str(&mut self, text: &str) -> std::fmt::Result {
+        if self.truncated {
+            return Ok(());
+        }
         for c in text.chars() {
             let mut encoded = [0; 4];
             let encoded = c.encode_utf8(&mut encoded).as_bytes();
             if self.length + encoded.len() > self.bytes.len() {
+                self.truncated = true;
                 break;
             }
             self.bytes[self.length..self.length + encoded.len()].copy_from_slice(encoded);
@@ -183,6 +197,7 @@ async fn isolated_thread_capabilities_child() -> Result<()> {
         let mut text = ErrorText {
             bytes: [0; 1024],
             length: 0,
+            truncated: false,
         };
         let _ = write!(text, "{original}");
         let _ = std::io::stderr().write_all(&text.bytes[..text.length]);
@@ -261,10 +276,11 @@ async fn child_operation() -> Result<()> {
     // The kernel's own failure retirement remains unchanged. Additional caller
     // errors must not introduce a second ordinary Drop of an unconfirmed VM.
     let mut program = std::mem::ManuallyDrop::new(program);
-    let _record_native = invocation.reserve(CapacityKind::VfsBuffer, 16 * 1024)?;
+    let reporting_bytes = u64::try_from(16 * 1024 + std::mem::size_of::<ErrorText>())?;
+    let _record_native = invocation.reserve(CapacityKind::VfsBuffer, reporting_bytes)?;
     let _record_control = invocation
         .control()
-        .reserve(ControlKind::Frame, 16 * 1024)?;
+        .reserve(ControlKind::Frame, reporting_bytes)?;
     let mut guest_record = [0_u8; 16 * 1024];
     let mut guest_length = 0;
     let mut waiter_dropped = false;
@@ -273,7 +289,7 @@ async fn child_operation() -> Result<()> {
         let reached = async {
             loop {
                 let notified = work.get().changed.notified();
-                if work.get().stage.load(Ordering::Acquire) >= 5 {
+                if work.get().stage.load(Ordering::Acquire) >= WORKER_WAITING_STAGE {
                     break;
                 }
                 notified.await;
@@ -301,11 +317,12 @@ async fn child_operation() -> Result<()> {
     let mut error = ErrorText {
         bytes: [0; 1024],
         length: 0,
+        truncated: false,
     };
     let guest = match &result {
         _ if observation.store_retired => {
             if let Err(original) = &result {
-                write!(error, "{original}")?;
+                write!(error, "{original:#}")?;
             }
             None
         }
@@ -315,7 +332,7 @@ async fn child_operation() -> Result<()> {
             None
         }
         Err(original) => {
-            write!(error, "{original}")?;
+            write!(error, "{original:#}")?;
             None
         }
     };
@@ -376,6 +393,7 @@ async fn child_operation() -> Result<()> {
         &mut stdout,
         std::str::from_utf8(&error.bytes[..error.length])?,
     )?;
+    write!(stdout, ",\"execution_error_truncated\":{}", error.truncated)?;
     write!(stdout, ",\"classification\":")?;
     serde_json::to_writer(&mut stdout, classification)?;
     write!(

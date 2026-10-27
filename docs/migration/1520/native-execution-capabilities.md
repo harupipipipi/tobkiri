@@ -59,6 +59,28 @@ source index requirement for the original bootstrap fixture, and uses the
 actual owned `CoreValue` API. Thread support remains unobserved until that
 consumer executes.
 
+The next source, `f7bf36d8`, did execute both isolated interpreter scenarios in
+[Mac job 121961921501](https://github.com/harupipipipi/tobkiri/actions/runs/40435029972/job/121961921501).
+Each accepted only `starting`, then trapped unreachable before `local-context`,
+without guest JSON or a native deadline failure. Normal preparation/total time
+was 17,573,083/17,605,017 microseconds; waiter-drop preparation/total was
+16,765,357/16,792,530 microseconds. Each retained 1,989,027,405 fuel with peak
+payload 17,870,063 bytes. Store retirement occurred at invoke return; thread
+termination, physical cleanup and waiter-drop execution were unconfirmed or
+false. The parent passed because it recorded this limitation and reaped each
+process. This is not thread/context support or rejection evidence.
+
+The next diagnostic adds fixed checkpoints immediately before and after each
+runtime import (`contextvars`, `struct`, `sys`, `threading`). It preserves the
+original producer, runtime imports, pre-init state and limits. A missing next
+checkpoint identifies only an observed boundary, not a Python exception or
+ultimate cause. Preloading or replacing those imports remains deferred.
+The existing fixed 1 KiB native error buffer now streams the actual error chain,
+keeps a UTF-8 prefix and reports truncation. It never creates an unbounded
+intermediate string or reads retired guest DATA. Its real storage is prepaid
+alongside the fixed guest record within the unchanged shared payload limit.
+The chain need not include frames and cannot establish a cause it does not show.
+
 A separate minimal WAT test now attempts same-task reentry through a
 sync-lift export, sync canonical lower and the same asynchronous owned host
 callback pattern. It uses an actual physical funded invocation, the same Engine
@@ -69,7 +91,10 @@ separately; neither is assumed before execution. A warmed external process-group
 watchdog bounds a pending result without treating a future drop as termination.
 This test is not an independent second task, actual CPython reentry or a
 substitute for the real interpreter diagnostic. The interpreter runner's
-independent-entry field remains false. No resident implementation is enabled. Before product adoption,
+independent-entry field remains false. The `f7bf36d8` constraint failed Rust
+compilation because `CoreControl` was not imported; it yielded no reentry
+observation. The import is corrected and observation now requires a successful
+warm compile gate. No resident implementation is enabled. Before product adoption,
 a concrete execution base must prove required same-state concurrent progress,
 original context/thread/wait semantics, individual operation termination without
 corrupting other operations, and continuously funded retained memory.

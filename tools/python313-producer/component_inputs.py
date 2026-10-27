@@ -34,7 +34,7 @@ THREAD_CAPABILITIES_SOURCES = {
 }
 THREAD_CAPABILITIES_SHA256 = {
     'python/app.py': 'd26ab3e2562c718193ba0e5c7cdd5d4900029f601ff036624675cb64b2a50050',
-    'python/logic.py': 'abf7a50e2775b616eda8e04f5b19669999fa48296e149911111da39031b6a7f9',
+    'python/logic.py': '31be4b54eb998763ad79d8f72013942330626823ff3e46b0bde55951aa4118c7',
     'wit/probe.wit': 'a6325c634c50cc656c3af8679840cb316140137a50b960dff20ba0ef0cb2bc34',
     'wit/deps/native-bindings/bindings.wit': (
         '31dceabd9c113f7a0bef41c6f764c35693225b235afc9b2f201c3e351c2458f2'

@@ -47,10 +47,26 @@ def run(checkpoint: Callable[[str], None]) -> dict:
         checkpoint(phase)
         # These are actual guest imports and actual operations, not the
         # producer process's threads/ContextVars frozen into the snapshot.
+        phase = "import-contextvars"
+        checkpoint(phase)
         import contextvars
+        phase = "contextvars-imported"
+        checkpoint(phase)
+        phase = "import-struct"
+        checkpoint(phase)
         import struct
+        phase = "struct-imported"
+        checkpoint(phase)
+        phase = "import-sys"
+        checkpoint(phase)
         import sys
+        phase = "sys-imported"
+        checkpoint(phase)
+        phase = "import-threading"
+        checkpoint(phase)
         import threading
+        phase = "threading-imported"
+        checkpoint(phase)
 
         result["python_version"] = list(sys.version_info[:3])
         result["pointer_bits"] = struct.calcsize("P") * 8

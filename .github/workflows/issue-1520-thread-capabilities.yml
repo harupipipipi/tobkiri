@@ -137,10 +137,11 @@ jobs:
           thread_capabilities_actual_ci::actual_thread_capabilities_in_isolated_processes
           -- --exact --ignored --nocapture
       - name: Compile the separate canonical ABI constraint test
+        id: constraint-compile
         if: ${{ !cancelled() && steps.platform.conclusion == 'success' }}
         run: cargo test --locked -p tobkiri-wasm --lib --no-run
       - name: Observe same-task sync-lift reentry without changing the safe API
-        if: ${{ !cancelled() && steps.platform.conclusion == 'success' }}
+        if: ${{ !cancelled() && steps.constraint-compile.conclusion == 'success' }}
         env:
           TOBKIRI_TEST_SYNC_REENTRY_CI: '1'
         run: >-
