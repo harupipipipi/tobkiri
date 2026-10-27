@@ -81,6 +81,23 @@ class CapturedLoaderTests(unittest.TestCase):
             with self.assertRaisesRegex(ImportError, "owner"):
                 other.__loader__._tobkiri_schema_resources(other)
 
+    def test_schema_accessor_rejects_a_different_tree_after_actual_execution(self):
+        with captured({
+            "schema_fixture/validation.py": b"LOADED = True\n",
+            "schema_fixture/schemas/a.schema.json": b"{}",
+        }) as finder:
+            module = importlib.import_module("schema_fixture.validation")
+            original = finder.tree
+            changed = dict(original.files)
+            changed["schema_fixture/schemas/a.schema.json"] = b'{"changed":true}'
+            finder.tree = loader.Tree(changed)
+            with self.assertRaisesRegex(ImportError, "owner"):
+                module.__loader__._tobkiri_schema_resources(module)
+            # Source inspection still retains the actual original source tree.
+            self.assertEqual(module.__loader__.get_source(module.__name__), "LOADED = True\n")
+            finder.tree = original
+            self.assertEqual(module.__loader__._tobkiri_schema_resources(module).tree, original)
+
     def test_explicit_original_namespaces_need_no_initializer_or_filesystem(self):
         files = {"namespace_fixture/domain/value.py": b"ANSWER = 42\n"}
         before, paths = sys.meta_path[:], sys.path[:]

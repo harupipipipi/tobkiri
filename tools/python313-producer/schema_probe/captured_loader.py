@@ -294,6 +294,7 @@ class Loader(importlib.abc.InspectLoader):
             source,
             package,
         )
+        self._source_tree = finder.tree
         self._executed_module = None
 
     def create_module(self, spec):
@@ -302,13 +303,13 @@ class Loader(importlib.abc.InspectLoader):
     def get_source(self, fullname):
         if fullname != self.name:
             raise ImportError(fullname)
-        return importlib.util.decode_source(self.finder.tree.files[self.source])
+        return importlib.util.decode_source(self._source_tree.files[self.source])
 
     def get_code(self, fullname):
         if fullname != self.name:
             raise ImportError(fullname)
         return compile(
-            self.finder.tree.files[self.source],
+            self._source_tree.files[self.source],
             self.finder.root + "/" + self.source,
             "exec",
             dont_inherit=True,
@@ -339,13 +340,14 @@ class Loader(importlib.abc.InspectLoader):
             or module.__spec__.loader is not self
             or module.__loader__ is not self
             or not any(finder is self.finder for finder in sys.meta_path)
+            or self.finder.tree is not self._source_tree
             or not self.name.endswith(".validation")
             or not self.source.endswith("/validation.py")
-            or self.source not in self.finder.tree.files
+            or self.source not in self._source_tree.files
             or module.__file__ != self.finder.root + "/" + self.source
         ):
             raise ImportError("captured schema module owner is unavailable")
-        path = self.finder.tree.path(self.source.rsplit("/", 1)[0] + "/schemas")
+        path = self._source_tree.path(self.source.rsplit("/", 1)[0] + "/schemas")
         if not path.is_dir():
             raise FileNotFoundError("captured package schemas are missing")
         return path
@@ -353,7 +355,7 @@ class Loader(importlib.abc.InspectLoader):
     def get_resource_reader(self, fullname):
         if fullname != self.name or not self.package:
             return None
-        return Reader(self.finder.tree.path(self.source.rsplit("/", 1)[0]))
+        return Reader(self._source_tree.path(self.source.rsplit("/", 1)[0]))
 
 
 def normalized(name: str) -> str:
