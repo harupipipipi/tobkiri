@@ -131,7 +131,9 @@ jobs:
           --stdlib "$RUNNER_TEMP/schema-stdlib"
           --rpds "$RUNNER_TEMP/schema-rpds"
       - name: Bind the exact original DATA supplied to both real builds
-        run: cp "$RUNNER_TEMP/bundle-cases.json" "$RUNNER_TEMP/bundle/cases.json"
+        run: |
+          cp "$RUNNER_TEMP/bundle-cases.json" "$RUNNER_TEMP/bundle/cases.json"
+          cp "$RUNNER_TEMP/bundle-native-profile.json" "$RUNNER_TEMP/bundle/native-profile.json"
       - name: Retain both real components and original comparison DATA
         if: always()
         uses: actions/upload-artifact@v4
@@ -145,7 +147,7 @@ jobs:
             ${{ runner.temp }}/bundle/harness-bundle-catalog*/inputs/plan.json
             ${{ runner.temp }}/bundle/harness-bundle-catalog*/inputs/provenance.json
             ${{ runner.temp }}/bundle/harness-bundle-catalog*/build.*
-            ${{ runner.temp }}/bundle-native-profile.json
+            ${{ runner.temp }}/bundle/native-profile.json
           retention-days: 7
 
   compare-original-data:
