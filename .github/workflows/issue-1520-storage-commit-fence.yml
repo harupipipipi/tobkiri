@@ -1,0 +1,53 @@
+name: Issue 1520 actual storage commit fencing
+
+on:
+  push:
+    branches: [codex/issue-1520-native-shared-state, codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-storage-commit-fence.yml'
+      - 'crates/tobkiri-store/**'
+      - 'crates/tobkiri-gate/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-1520-storage-commit-fence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  actual-sqlite-epoch-fence:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Require the actual supported native filesystem
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          storage_device="$(df -P "$GITHUB_WORKSPACE" | awk 'NR == 2 {print $1}')"
+          diskutil info "$storage_device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Reject a real cross-connection epoch change after consumption
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/storage-commit-fence.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-store --test security
+          storage_commit_fence::sql_write_rejects_epoch_revoked_after_consumption
+          -- --exact --nocapture
+      - name: Strictly lint the actual storage test
+        run: cargo clippy --locked -p tobkiri-store --test security -- -D warnings
+      - name: Keep bounded test evidence in CI
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: storage-commit-fence-evidence
+          path: ${{ runner.temp }}/storage-commit-fence.log
+          retention-days: 7

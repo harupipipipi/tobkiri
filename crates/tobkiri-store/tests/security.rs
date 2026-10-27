@@ -14,6 +14,9 @@ use tobkiri_canon::{
 use tobkiri_gate::*;
 use tobkiri_store::*;
 
+#[path = "support/storage_commit_fence.rs"]
+mod storage_commit_fence;
+
 struct Prompt {
     calls: AtomicUsize,
     mode: Mutex<PromptMode>,
