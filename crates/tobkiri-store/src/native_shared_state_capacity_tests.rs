@@ -43,11 +43,15 @@ fn shared_capacity_binds_two_actual_operations_without_renewing_them() {
     shared.check_account_for(&second).unwrap();
     first.claim_store().unwrap();
     second.claim_store().unwrap();
-    shared.resize(512).unwrap();
+    // Prepay old256 + replacement512 while Vec may copy/reallocate. Only
+    // shrink after the allocator has returned and the old storage is gone.
+    shared.resize(256 + 512).unwrap();
     bytes.try_reserve_exact(256).unwrap();
     bytes.resize(512, 2);
     assert_eq!(bytes.capacity(), 512);
+    shared.resize(512).unwrap();
     assert_eq!(account.snapshot().unwrap().charged_bytes, 512);
+    assert_eq!(account.snapshot().unwrap().peak_charged_bytes, 768);
     assert_eq!(first.deadline().unwrap(), first_deadline);
     assert_eq!(second.deadline().unwrap(), second_deadline);
     assert_eq!(first.provenance(), first_provenance);

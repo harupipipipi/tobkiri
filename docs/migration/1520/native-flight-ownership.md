@@ -215,6 +215,44 @@ Additional anchors: [thread-name regression](../../../tobkiri_runtime/tests/test
 [timing reader](../../../tobkiri_runtime/core_runtime/profile_operation_timing.py#L139),
 [baseline scope custody](../../../tobkiri_runtime/core_runtime/bundled_host_baseline_v4.py#L409).
 
+## Translation boundary for the next Host job
+
+Preserve observable contracts when translating Host internals into Rust; do
+not require a Rust object to be literally the former Python object. Internal
+Thread/class/exception machinery can have genuine Rust counterparts preserving
+synchronization, typed outcomes, aliases and actual scope/custody. Objects still
+observed by Python callbacks remain actual Python objects in their Pack realm:
+Context/ContextVar keys, shared mutable values, catch classes and exceptions.
+No fabricated Python thread identity may satisfy a retained baseline validator.
+
+The next vertical candidate is one RuntimeSurface job through a generic native
+lifetime mechanism and a Pack-owned callback/context port. Rust owns admission,
+the actual job/operation lifetime, owner departure, notification and accounting.
+The Pack retains each submit's real copied Python Context and callback, runs in
+that Context and restores it; it does not serialize context values into a Rust
+map. An opaque callback reference is not authority: actual realm and operation
+ownership still need validation. Test callback-port evidence must be separated
+from actual Python Pack execution. Independent progress, individual termination,
+re-entry/context retention and production custody remain unproved.
+
+Original source specifically does NOT reuse a job or Future. Every `submit`
+creates a new `_ReadJob` and Future. `cancel_pending_reads` exchanges the service
+owner object and cancels that old owner's queued and active Futures/deadlines.
+It does not end active callbacks. A worker checks the same deadline before and
+after its callback; cancelled work cannot publish its result. Its `finally`
+removes that exact job and releases admission once. A queued cancelled job is
+reclaimed at the worker's original processing boundary without running its
+callback. The existing service/executor and reclaimed slot are then reusable
+by a NEW owner/job. The original worker/queue policy is four plus sixteen,
+with stats `workers`, `live_workers`, `capacity`, `admitted`; those domain policy
+values are not new Core authority or an extra payload allowance.
+
+Sources: [original job/executor](../../../tobkiri_runtime/ecosystem/defaultspack/domain/runtime_surface_v4.py#L155),
+[owner fence and actual Context submit](../../../tobkiri_runtime/ecosystem/defaultspack/domain/runtime_surface_v4.py#L916),
+[cancellation and service reuse reference](../../../tobkiri_runtime/tests/test_runtime_surface_v4.py#L1481).
+This source check corrects the earlier ambiguous phrase "existing job reuse";
+implementing result/job memoization would change the original behavior.
+
 ## Historical diagnostic scheduling
 
 The failure-only input-stack import audit and the diagnostic-only pre-init
