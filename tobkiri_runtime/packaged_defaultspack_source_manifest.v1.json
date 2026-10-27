@@ -40,6 +40,13 @@
       "executable": false
     },
     {
+      "path": "ecosystem/defaultspack/defaultspack/_public_view_input.py",
+      "type": "regular-file",
+      "size": 2521,
+      "sha256": "e689b6dbe660f9741cfa0e2c4d5942dd0e68f85fa6c639051f6a3cd8eaa342d4",
+      "executable": false
+    },
+    {
       "path": "ecosystem/defaultspack/defaultspack/ai_strategy_presentation.py",
       "type": "regular-file",
       "size": 4376,
@@ -154,8 +161,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/http_dynamic_targets.py",
       "type": "regular-file",
-      "size": 7884,
-      "sha256": "0e147f3a9ac3abe33ce92590b402d712c3b155c99228d91ea05169af3517f4e5",
+      "size": 7886,
+      "sha256": "f2f0f9e1ce9d5a27b0e95f109d53002b366a2bbfee0722eae17a68b616d75d34",
       "executable": false
     },
     {
@@ -266,8 +273,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/v4_view_contract.py",
       "type": "regular-file",
-      "size": 12765,
-      "sha256": "8df8a3c9ddb0eda98d1573201bee22f4487baf6b69fab9b9c673afa93359f76e",
+      "size": 10776,
+      "sha256": "f82405b0786e516b3f4f387ae918451cd17259ec6583242d1fb71e4a991966ea",
       "executable": false
     },
     {

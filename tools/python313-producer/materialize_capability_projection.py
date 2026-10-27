@@ -133,7 +133,8 @@ def run(supplier: Path, input_component: Path, destination: Path) -> None:
                        "wit/projection.shape.json": canonical({"cardinality": "one", "streams": {},
                                                                "callbacks": {}, "conformance": None})}
     request_files = {"component.wasm": read(input_component, 32 * 1024 * 1024),
-                     "wit/deps/core.wit": core_wit}
+                     "wit/deps/core.wit": core_wit,
+                     "wit/deps/projection.wit": projector_files["wit/pack.wit"]}
     for name in ("wit/pack.wit", "wit/requests.shape.json", "wit/projection-flow.shape.json", "flows/project.flow.json"):
         request_files[name] = read(ROOT / "packs" / ENTRY / name, 4 * 1024 * 1024)
     sources = ["packs/Cargo.toml", "packs/Cargo.lock", *[
