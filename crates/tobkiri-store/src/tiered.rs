@@ -1546,6 +1546,7 @@ fn rollback_native_transaction(
 /// A fixed savepoint keeps an autocommit write provisional until its bounded
 /// result and activity checks succeed. SQL/host errors before RELEASE therefore
 /// have a verified rollback, including SQLite's partial `OR FAIL` behavior.
+#[allow(clippy::too_many_arguments)] // Keep borrowed authority and original limits explicit.
 fn with_native_operation<T>(
     database: &NativeDatabase,
     connection: &rusqlite::Connection,

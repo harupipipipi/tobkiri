@@ -148,3 +148,102 @@ async fn sql_write_rejects_epoch_revoked_after_consumption() {
         Err(StoreError::Gate(GateError::StaleEpoch))
     ));
 }
+
+#[tokio::test]
+async fn explicit_transaction_rejects_revocation_at_final_commit_and_rolls_back() {
+    let f = Fixture::new();
+    let cx = f.pack("local.activation-fence-test", permissions()).await;
+    let stores = TieredStore::open(&f.root, &f.profile).unwrap();
+    stores
+        .register(
+            owner(&cx),
+            "activation",
+            StoreTier::Private,
+            "local.activation-fence-test.data@1.0",
+        )
+        .unwrap();
+    let handle = open(&f, &stores, &cx, owner(&cx), "activation").await;
+    native_sql(
+        &f,
+        &handle,
+        &cx,
+        "CREATE TABLE activation(value INTEGER NOT NULL)",
+        &[],
+        false,
+    )
+    .await
+    .unwrap();
+    let budget: Arc<dyn AllocationBudget> = Arc::new(SqlTestValues(AtomicUsize::new(0)));
+    let transaction = handle
+        .sql_begin(&cx, f.gate.clone(), budget.clone())
+        .await
+        .unwrap();
+    let statement = OwnedSqlStatement::from_value(
+        CoreValue::try_from_borrowed(
+            &CanonValue::Obj(std::collections::BTreeMap::from([
+                (
+                    "statement".into(),
+                    CanonValue::Str("INSERT INTO activation(value) VALUES(1)".into()),
+                ),
+                ("params".into(), CanonValue::Arr(vec![])),
+                ("max-rows".into(), CanonValue::Int(10)),
+            ])),
+            &budget,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    transaction
+        .exec_typed(
+            &cx,
+            statement,
+            SqlResultPolicy::ForbidRows,
+            f.gate.clone(),
+            budget,
+        )
+        .await
+        .unwrap();
+    let gate = Arc::new(RevokeAfterWatch {
+        original: f.gate.clone(),
+        revoker: GateEngine::new_with_control(
+            Arc::new(Approvals::open(&f.root, &f.profile).unwrap()),
+            Arc::new(AuditLog::open(&f.root, &f.profile, AuditQuota::default()).unwrap()),
+            f.prompt.clone(),
+            MediatorChain::default(),
+            f.gate.control().clone(),
+        ),
+        revoked: AtomicBool::new(false),
+    });
+    let result = transaction.commit(&cx, gate.clone()).await;
+    assert!(gate.revoked.load(Ordering::SeqCst));
+    assert!(matches!(
+        result,
+        Err(StoreError::Gate(GateError::StaleEpoch))
+    ));
+    assert_eq!(transaction.state(), SqlTransactionState::RolledBack);
+    let fresh = f.cx(cx.principal().clone());
+    let rows = native_sql(
+        &f,
+        &handle,
+        &fresh,
+        "SELECT count(*) FROM activation",
+        &[],
+        true,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        rows.value()
+            .get_key("rows")
+            .unwrap()
+            .get_index(0)
+            .unwrap()
+            .get_index(0)
+            .unwrap()
+            .get_key("value")
+            .unwrap()
+            .as_str(),
+        Some("0"),
+        "revoked final COMMIT retained the earlier provisional INSERT"
+    );
+}

@@ -38,10 +38,10 @@ jobs:
       - name: Reject a real cross-connection epoch change after consumption
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/storage-commit-fence.log" --expected-passed 1 --
+          --log "$RUNNER_TEMP/storage-commit-fence.log" --expected-passed 2 --
           cargo test --locked -p tobkiri-store --test security
-          storage_commit_fence::sql_write_rejects_epoch_revoked_after_consumption
-          -- --exact --nocapture
+          storage_commit_fence::
+          -- --nocapture
       - name: Run the complete Store and Gate regression corpus
         run: cargo test --locked -p tobkiri-store -p tobkiri-gate
       - name: Strictly lint the actual Store and Gate paths
