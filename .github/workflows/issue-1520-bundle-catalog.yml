@@ -235,8 +235,45 @@ jobs:
           path: ${{ runner.temp }}/bundle/native-comparison.json
           retention-days: 7
 
+  request-component-build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          targets: wasm32-wasip2
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            packs -> target
+      - name: Check source contracts independently of guest runtime performance
+        run: |
+          python3 -B -m unittest discover -s tools/python313-producer/tests -p test_bundle_materialization.py
+          cargo fmt --manifest-path packs/Cargo.toml -p tobkiri-pack-harness-catalog-input -- --check
+          cargo fmt --all -- --check
+      - name: Build and strictly lint the actual request component
+        run: |
+          cargo build --manifest-path packs/Cargo.toml --locked -p tobkiri-pack-harness-catalog-input --target wasm32-wasip2 --target-dir "$RUNNER_TEMP/catalog-input-target"
+          cargo clippy --manifest-path packs/Cargo.toml --locked -p tobkiri-pack-harness-catalog-input --target wasm32-wasip2 --target-dir "$RUNNER_TEMP/catalog-input-target" -- -D warnings
+      - name: Typecheck the actual Core consumer without claiming native execution
+        run: cargo check --locked -p tobkiri-e2e --test bundle_catalog
+      - name: Retain the actual locked-build request component
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-input-component
+          path: ${{ runner.temp }}/catalog-input-target/wasm32-wasip2/debug/tobkiri_pack_harness_catalog_input.wasm
+          retention-days: 7
+
   ordinary-profile-flow:
-    needs: compare-original-data
+    needs: [compare-original-data, request-component-build]
     runs-on: macos-15
     timeout-minutes: 30
     steps:
@@ -270,16 +307,15 @@ jobs:
         with:
           name: app-bundle-catalog-components
           path: ${{ runner.temp }}/bundle
-      - name: Build the separate ordinary request Pack using the locked workspace
-        run: >-
-          cargo build --manifest-path packs/Cargo.toml --locked
-          -p tobkiri-pack-harness-catalog-input --target wasm32-wasip2
-          --target-dir "$RUNNER_TEMP/catalog-input-target"
+      - uses: actions/download-artifact@v4
+        with:
+          name: catalog-input-component
+          path: ${{ runner.temp }}/catalog-input
       - name: Materialize actual self-contained catalog and separate Flow entry
         run: >-
           python3 -B tools/python313-producer/materialize_bundle_catalog.py
           --supplier "$RUNNER_TEMP/bundle"
-          --input-component "$RUNNER_TEMP/catalog-input-target/wasm32-wasip2/debug/tobkiri_pack_harness_catalog_input.wasm"
+          --input-component "$RUNNER_TEMP/catalog-input/tobkiri_pack_harness_catalog_input.wasm"
           --destination "$RUNNER_TEMP/catalog-ordinary"
       - name: Bind the complete independent original input to the actual consumer
         run: |
