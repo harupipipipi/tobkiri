@@ -5,6 +5,10 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[features]
+# Native coordination candidate only; no product, WIT or IPC connection.
+native-shared-state = []
+
 [dependencies]
 async-trait.workspace = true
 dirs.workspace = true

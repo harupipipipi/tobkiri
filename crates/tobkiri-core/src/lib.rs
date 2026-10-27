@@ -38,6 +38,10 @@ mod inputs;
 mod journal;
 #[cfg(unix)]
 mod native_declared_artifact;
+/// Opt-in native coordination candidate, separate from the product route.
+#[cfg(feature = "native-shared-state")]
+#[doc(hidden)]
+pub mod native_flight;
 mod native_profile_review;
 mod outcomes;
 #[cfg(test)]

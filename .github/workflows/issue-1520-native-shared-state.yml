@@ -7,6 +7,7 @@ on:
       - '.github/workflows/issue-1520-native-shared-state.yml'
       - 'crates/tobkiri-gate/**'
       - 'crates/tobkiri-store/**'
+      - 'crates/tobkiri-core/**'
       - 'tools/quality/issue_1520_ci.py'
       - 'Cargo.toml'
       - 'Cargo.lock'
@@ -22,7 +23,7 @@ concurrency:
 jobs:
   actual-native-capacity:
     runs-on: macos-15
-    timeout-minutes: 25
+    timeout-minutes: 40
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-shared-state
       CARGO_BUILD_JOBS: '1'
@@ -57,8 +58,16 @@ jobs:
           --log "$RUNNER_TEMP/shared-state-capacity.log" --expected-passed 4 --
           cargo test --locked -p tobkiri-store --lib native_shared_state_capacity_tests::
           -- --nocapture
-      - name: Check strict Rust lint for both changed crates
-        run: cargo clippy --locked -p tobkiri-gate -p tobkiri-store --all-targets -- -D warnings
+      - name: Exercise the opt-in coordinator with actual native work and operations
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-flight.log" --expected-passed 7 --
+          cargo test --locked -p tobkiri-core --features native-shared-state
+          --lib native_flight::tests:: -- --nocapture
+      - name: Check strict Rust lint for all three changed crates
+        run: >-
+          cargo clippy --locked -p tobkiri-gate -p tobkiri-store -p tobkiri-core
+          --features tobkiri-core/native-shared-state --all-targets -- -D warnings
       - name: Retain actual accounting evidence without product-parity claims
         if: always()
         uses: actions/upload-artifact@v4
@@ -67,4 +76,5 @@ jobs:
           path: |
             ${{ runner.temp }}/existing-native-capacity.log*
             ${{ runner.temp }}/shared-state-capacity.log*
+            ${{ runner.temp }}/native-flight.log*
           if-no-files-found: warn

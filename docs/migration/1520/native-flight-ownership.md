@@ -115,8 +115,40 @@ same 64 MiB payload account and original control ledger, and carries no invocati
 execution rights. A future coordinator must retain those funds through actual
 work and waiter handles, even after its outer handle is dropped. Matching an
 operation to that account requires live native ownership identity. This API
-is implemented as `NativeSharedStateReservation`, with actual-root validation
-pending its dedicated CI. The coordinator and product binding remain unimplemented.
+is implemented as `NativeSharedStateReservation`. The complete supported-platform
+[7ddace963 actual-root CI](https://github.com/harupipipipi/tobkiri/actions/runs/40448775896/job/122006277066)
+passed all four added cases, the eight existing accounting cases and strict
+Clippy. This proves actual account membership, denial before publication and
+capacity retention through real work departure. The first run rejected the
+fixture's existing temporary directory at the unchanged privacy check; the
+correction lets the normal descriptor-relative creator make its own 0700 child.
+The first coordinator is now an explicit `native-shared-state` Core feature,
+awaiting its own actual CI. Default product composition, WIT and IPC do not
+expose it. It retains complete opaque key bytes and prepays registry replacement
+and key/carrier storage in the same actual account. A new registration appears
+only after all pending allocations succeed. Existing and replacement vector
+storage coexist under distinct reservations until the former is freed.
+
+`run_or_join` holds the registry lock only for enrollment/publication. The
+leader's synchronous callback retains the original operation; a private guard
+removes that actual flight identity and notifies only after callback return or
+unwind. Trusted callbacks MUST finish and Join every owned native worker on
+both paths before their scope ends; detached work is unsupported. Neither
+waiter timeout/drop nor operation deadline removes running work. Notification
+has no outcome/success flag or effect authority. Old waiters retain their own
+physical flight after same-key re-registration. Successful-waiter counts retain
+the original non-refcount semantics; timeout/abandonment removes only that
+enrollment. The opt-in candidate's seven actual-root tests include scoped-work
+cleanup during panic, timeout, old/new registration races, foreign actual
+accounts, exact keys/namespaces and admission rollback. These tests are not yet
+executed evidence. Original realm binding, Pack adapter and product integration
+remain unimplemented.
+
+`FnOnce` itself does not mechanically enforce native Join custody. The scoped
+thread case tests one real implementation of that contract. Before product
+admission, each fixed callback still needs an audited scope/owner enforcing
+termination on both return and unwind; this generic interface alone is not
+proof of that condition or of arbitrary background-work termination.
 
 Native sources: [account/begin](../../../crates/tobkiri-gate/src/native_setup_capacity.rs#L206),
 [invocation/claim](../../../crates/tobkiri-gate/src/native_setup_capacity.rs#L275),
