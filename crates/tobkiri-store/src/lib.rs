@@ -5,6 +5,8 @@ mod data;
 mod data_custody;
 mod data_moves;
 mod disk_policy;
+#[cfg(test)]
+mod native_shared_state_capacity_tests;
 mod native_snapshot;
 mod owner;
 mod profile_commit;

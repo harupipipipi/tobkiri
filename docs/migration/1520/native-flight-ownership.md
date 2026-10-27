@@ -109,13 +109,14 @@ through actual retained ownership rather than serialized generation/domain
 values. Creating state must not start/reset another execution clock or grant
 Profile, native IO, filesystem or cancellation rights.
 
-The approved first implementation is a separate account-owned shared-state
-reservation type. It must retain a real account and ledger record, prepay the
-same 64 MiB payload/control accounts, and carry no invocation provenance or
+The first implementation candidate is a separate account-owned shared-state
+reservation type. It retains a real account and ledger record, prepays the
+same 64 MiB payload account and original control ledger, and carries no invocation provenance or
 execution rights. A future coordinator must retain those funds through actual
 work and waiter handles, even after its outer handle is dropped. Matching an
 operation to that account requires live native ownership identity. This API
-and the coordinator have not yet been implemented.
+is implemented as `NativeSharedStateReservation`, with actual-root validation
+pending its dedicated CI. The coordinator and product binding remain unimplemented.
 
 Native sources: [account/begin](../../../crates/tobkiri-gate/src/native_setup_capacity.rs#L206),
 [invocation/claim](../../../crates/tobkiri-gate/src/native_setup_capacity.rs#L275),

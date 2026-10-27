@@ -4,6 +4,10 @@ use crate::{ControlKind, ControlReservation, CoreControl};
 use std::{collections::BTreeMap, sync::Arc};
 use tobkiri_canon::Digest;
 
+#[path = "native_shared_state_capacity.rs"]
+mod shared_state;
+pub use shared_state::NativeSharedStateReservation;
+
 #[cfg(test)]
 #[path = "native_setup_capacity_tests.rs"]
 mod tests;
