@@ -5,8 +5,10 @@ from __future__ import annotations
 import base64
 import binascii
 from dataclasses import dataclass
+import hashlib
 import json
 import math
+import sys
 
 from tobkiri_protocol.bundle_catalog import BundleIntegrityError, BundledCatalog
 from tobkiri_protocol.errors import SchemaValidationError
@@ -47,6 +49,7 @@ class BundleDefaultsOwner:
 
     lock_bytes: bytes
     reads: tuple[BundleReadOccurrence, ...]
+    resource_owner: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,6 +187,91 @@ def make_owner(config: str) -> BundleDefaultsOwner:
         _invalid_request()
 
     return BundleDefaultsOwner(lock_bytes=lock_bytes, reads=tuple(reads))
+
+
+def source_identity(owner: BundleDefaultsOwner) -> dict[str, object]:
+    """Describe actual retained source bytes, never authority or a parsed result."""
+    return {
+        "format": "tobkiri.bundle-source-bytes/1",
+        "lock": {
+            "bytes": len(owner.lock_bytes),
+            "sha256": hashlib.sha256(owner.lock_bytes).hexdigest(),
+        },
+        "reads": [
+            {
+                "index": row.index,
+                "path": row.path,
+                "reread": row.reread,
+                "bytes": len(row.raw_bytes),
+                "sha256": hashlib.sha256(row.raw_bytes).hexdigest(),
+            }
+            for row in owner.reads
+        ],
+    }
+
+
+def identity_text(value: object) -> str:
+    """Serialize a finite source identity without conflating bools and ordinals."""
+    return json.dumps(
+        value,
+        sort_keys=True,
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+    )
+
+
+def embedded_owner() -> BundleDefaultsOwner:
+    """Read only this actual module's fixed compiled-in immutable defaults.
+
+    No caller config, external sidecar, OS path or previous domain result is
+    accepted. Parsing and every original domain validation still occur at read.
+    """
+    module = sys.modules.get(__name__)
+    accessor = getattr(globals().get("__loader__"), "_tobkiri_bundle_defaults", None)
+    if accessor is None:
+        raise BundleCatalogError(
+            "projection-failed", "immutable bundle source owner is unavailable"
+        )
+    try:
+        resource = accessor(module)
+        raw = resource.read_bytes()
+        if len(raw) > MAX_CONFIG_BYTES:
+            _limit_exceeded("embedded bundle source exceeds four MiB")
+        value = json.loads(
+            raw.decode("utf-8", errors="strict"),
+            object_pairs_hook=_object_without_duplicates,
+            parse_constant=_reject_nonfinite_number,
+            parse_float=_parse_finite_float,
+        )
+        if (
+            type(value) is not dict
+            or set(value) != {"format", "carrier", "source_identity"}
+            or value["format"] != "tobkiri.embedded-bundle/1"
+        ):
+            _invalid_request()
+        owner = make_owner(value["carrier"])
+        if identity_text(source_identity(owner)) != identity_text(
+            value["source_identity"]
+        ):
+            raise BundleCatalogError(
+                "invalid-request", "embedded bundle source bytes changed"
+            )
+        return BundleDefaultsOwner(owner.lock_bytes, owner.reads, resource)
+    except BundleCatalogError:
+        raise
+    except (
+        ImportError,
+        OSError,
+        UnicodeError,
+        ValueError,
+        TypeError,
+        OverflowError,
+        RecursionError,
+    ):
+        raise BundleCatalogError(
+            "projection-failed", "immutable bundle source is unavailable"
+        ) from None
 
 
 class _OccurrenceReader:

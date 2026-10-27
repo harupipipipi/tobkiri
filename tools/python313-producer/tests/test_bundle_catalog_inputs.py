@@ -90,16 +90,47 @@ class BundleInputsTests(unittest.TestCase):
                     "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                 },
             }
+            bundle_cases = root / "bundle-cases.json"
+            bundle_cases.write_text(
+                json.dumps(
+                    {
+                        "format": "tobkiri.bundle-catalog-comparison/1",
+                        "oracle_commit": "54e7da008997a3eb45876cbe18459dba9902cc9d",
+                        "payload": '{"source_only_inert_fixture":true}',
+                        "source_identity": {"source_only_inert_fixture": True},
+                    }
+                )
+            )
             for native in (True, False):
                 with self.subTest(native=native):
                     destination = root / ("native" if native else "ordinary")
                     record = inputs.stage(
-                        ROOT, destination, verified, schema, stdlib, rpds, native=native
+                        ROOT,
+                        destination,
+                        verified,
+                        schema,
+                        stdlib,
+                        rpds,
+                        native=native,
+                        bundle_cases=bundle_cases,
                     )
                     plan = json.loads((destination / "plan.json").read_bytes())
                     self.assertTrue(plan["stub_wasi"])
                     self.assertEqual(
                         plan["allowed_imports"], [] if native else inputs.CORE_IMPORTS
+                    )
+                    embedded = (
+                        destination / "python/bundled-defaults/embedded.json"
+                    ).read_bytes()
+                    self.assertEqual(
+                        record["bundle_catalog"]["embedded_resource"],
+                        {
+                            "bytes": len(embedded),
+                            "sha256": hashlib.sha256(embedded).hexdigest(),
+                        },
+                    )
+                    self.assertFalse(
+                        record["bundle_catalog"]["runtime_config_override_used"]
                     )
                     for name, resource in record["bundle_catalog"][
                         "original_resources"

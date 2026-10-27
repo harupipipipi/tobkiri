@@ -119,6 +119,20 @@ def run(source: Path, output: Path) -> None:
         "reads": reads,
     }
     payload = text(carrier)
+    source_identity = {
+        "format": "tobkiri.bundle-source-bytes/1",
+        "lock": {"bytes": len(lock), "sha256": hashlib.sha256(lock).hexdigest()},
+        "reads": [
+            {
+                "index": row["index"],
+                "path": row["path"],
+                "reread": row["reread"],
+                "bytes": len(files[row["path"]]),
+                "sha256": hashlib.sha256(files[row["path"]]).hexdigest(),
+            }
+            for row in reads
+        ],
+    }
     if len(payload.encode()) > MAX_BYTES or len(expected.encode()) > MAX_BYTES:
         raise ValueError("complete original DATA exceeds the unchanged envelope")
     occurrence = next(i for i, row in enumerate(reads) if row["reread"])
@@ -146,9 +160,11 @@ def run(source: Path, output: Path) -> None:
         raise ValueError("original loader accepted different executable reread bytes")
     # Check every physical input again; this is still a CI source observation,
     # not a product capture/currentness receipt.
-    if (root / "bundle.lock.json").read_bytes() != lock or any(
-        (root / path).read_bytes() != raw for path, raw in files.items()
-    ) or any((source / path).read_bytes() != raw for path, raw in schemas.items()):
+    if (
+        (root / "bundle.lock.json").read_bytes() != lock
+        or any((root / path).read_bytes() != raw for path, raw in files.items())
+        or any((source / path).read_bytes() != raw for path, raw in schemas.items())
+    ):
         raise ValueError("original bundle changed during observation")
     result = {
         "format": FORMAT,
@@ -158,6 +174,16 @@ def run(source: Path, output: Path) -> None:
         "expected_bytes": len(expected.encode()),
         "entries": len(entries),
         "read_occurrences": len(reads),
+        "source_identity": source_identity,
+        "source_identity_sha256": hashlib.sha256(
+            json.dumps(
+                source_identity,
+                sort_keys=True,
+                ensure_ascii=False,
+                allow_nan=False,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest(),
         "collections": {name: len(getattr(original, name)) for name in COLLECTIONS},
         "reread_mutation": {
             "occurrence": occurrence,

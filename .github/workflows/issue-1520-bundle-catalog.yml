@@ -19,6 +19,12 @@ on:
       - 'tobkiri_runtime/tobkiri_protocol/schemas/**'
       - 'tools/python313-producer/schema_probe/captured_loader.py'
       - 'tools/python313-producer/capability_projection_inputs.py'
+      - 'packs/local.harness-catalog-input/**'
+      - 'packs/Cargo.toml'
+      - 'packs/Cargo.lock'
+      - 'tools/python313-producer/materialize_bundle_catalog.py'
+      - 'tools/python313-producer/tests/test_bundle_materialization.py'
+      - 'crates/tobkiri-e2e/tests/bundle_catalog.rs'
   workflow_dispatch:
 
 permissions:
@@ -26,7 +32,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: issue-1520-bundle-catalog-${{ github.ref }}
+  group: issue-1520-bundle-catalog-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -95,15 +101,6 @@ jobs:
           python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/harness-validation"
           python3 -B tools/python313-producer/fetch_schema.py --destination "$RUNNER_TEMP/schema-inputs"
           python3 -B tools/python313-producer/fetch_schema_stdlib.py --destination "$RUNNER_TEMP/schema-stdlib"
-      - name: Build identical App logic with Native comparison and ordinary Pack wrappers
-        run: >-
-          python3 -B tools/python313-producer/build_components.py --bundle-catalog
-          --producer "$RUNNER_TEMP/harness-producer"
-          --validation "$RUNNER_TEMP/harness-validation"
-          --destination "$RUNNER_TEMP/bundle"
-          --schema-inputs "$RUNNER_TEMP/schema-inputs"
-          --stdlib "$RUNNER_TEMP/schema-stdlib"
-          --rpds "$RUNNER_TEMP/schema-rpds"
       - name: Restore the exact pre-change original source with authenticated checkout
         uses: actions/checkout@v4
         with:
@@ -120,8 +117,20 @@ jobs:
           env = {**os.environ, 'PYTHONPATH': os.pathsep.join(str(p) for p in sorted(packages.iterdir()) if p.is_dir())}
           subprocess.run([sys.executable, '-B', 'tools/python313-producer/bundle_catalog_oracle.py',
                           '--source', str(Path(os.environ['GITHUB_WORKSPACE']) / 'oracle-original/tobkiri_runtime'),
-                          '--output', str(root / 'bundle/cases.json')], env=env, check=True)
+                          '--output', str(root / 'bundle-cases.json')], env=env, check=True)
           PYTHON
+      - name: Build identical App logic with Native comparison and ordinary Pack wrappers
+        run: >-
+          python3 -B tools/python313-producer/build_components.py --bundle-catalog
+          --bundle-cases "$RUNNER_TEMP/bundle-cases.json"
+          --producer "$RUNNER_TEMP/harness-producer"
+          --validation "$RUNNER_TEMP/harness-validation"
+          --destination "$RUNNER_TEMP/bundle"
+          --schema-inputs "$RUNNER_TEMP/schema-inputs"
+          --stdlib "$RUNNER_TEMP/schema-stdlib"
+          --rpds "$RUNNER_TEMP/schema-rpds"
+      - name: Bind the exact original DATA supplied to both real builds
+        run: cp "$RUNNER_TEMP/bundle-cases.json" "$RUNNER_TEMP/bundle/cases.json"
       - name: Retain both real components and original comparison DATA
         if: always()
         uses: actions/upload-artifact@v4
@@ -139,7 +148,11 @@ jobs:
 
   compare-original-data:
     needs: build-two-worlds
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-15]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -177,6 +190,13 @@ jobs:
               source = item['source']['bundle_catalog']
               if source['original_resources'] != original['schema_resources']:
                   raise ValueError('candidate schema bytes differ from the original native oracle')
+              if source['original_bundle_cases'] != fingerprint(root/'cases.json', 4*1024*1024):
+                  raise ValueError('embedded original DATA input differs')
+              if source['runtime_config_override_used'] is not False:
+                  raise ValueError('runtime config cannot substitute for embedded source')
+              captured = {row['destination']:row for row in json.loads(proof_path.read_bytes())['source_manifest']}
+              if {k:captured['bundled-defaults/embedded.json'][k] for k in ('bytes','sha256')} != source['embedded_resource']:
+                  raise ValueError('actual component source lacks its complete embedded defaults')
               for module in source['original_modules'].values():
                   if fingerprint(Path('tobkiri_runtime') / module['path']) != {k:module[k] for k in ('bytes','sha256')}:
                       raise ValueError('component original source differs from current checkout')
@@ -206,6 +226,86 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: app-bundle-catalog-native-comparison
+          name: app-bundle-catalog-native-comparison-${{ matrix.os }}
           path: ${{ runner.temp }}/bundle/native-comparison.json
+          retention-days: 7
+
+  ordinary-profile-flow:
+    needs: compare-original-data
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          targets: wasm32-wasip2
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            packs -> target
+      - name: Require actual supported native Core before execution
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          catalog_device="$(df -P "$GITHUB_WORKSPACE" | awk 'NR == 2 {print $1}')"
+          diskutil info "$catalog_device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Source contracts without runtime execution
+        run: |
+          python3 -B -m unittest discover -s tools/python313-producer/tests -p test_bundle_materialization.py
+          cargo fmt --manifest-path packs/Cargo.toml -p tobkiri-pack-harness-catalog-input -- --check
+          cargo fmt --all -- --check
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-bundle-catalog-components
+          path: ${{ runner.temp }}/bundle
+      - name: Build the separate ordinary request Pack using the locked workspace
+        run: >-
+          cargo build --manifest-path packs/Cargo.toml --locked
+          -p tobkiri-pack-harness-catalog-input --target wasm32-wasip2
+          --target-dir "$RUNNER_TEMP/catalog-input-target"
+      - name: Materialize actual self-contained catalog and separate Flow entry
+        run: >-
+          python3 -B tools/python313-producer/materialize_bundle_catalog.py
+          --supplier "$RUNNER_TEMP/bundle"
+          --input-component "$RUNNER_TEMP/catalog-input-target/wasm32-wasip2/debug/tobkiri_pack_harness_catalog_input.wasm"
+          --destination "$RUNNER_TEMP/catalog-ordinary"
+      - name: Bind the complete independent original input to the actual consumer
+        run: |
+          python3 -B - "$RUNNER_TEMP" "$GITHUB_ENV" <<'PYTHON'
+          import hashlib, sys
+          from pathlib import Path
+          root, env = map(Path,sys.argv[1:])
+          cases = root/'bundle/cases.json'
+          raw = cases.read_bytes()
+          if len(raw)>4*1024*1024:
+              raise ValueError('original comparison exceeds its unchanged bound')
+          with env.open('a') as output:
+              output.write(f'TOBKIRI_BUNDLE_PACKS={root/"catalog-ordinary/packs"}\n')
+              output.write(f'TOBKIRI_BUNDLE_CASES={cases}\n')
+              output.write(f'TOBKIRI_BUNDLE_CASES_SHA256={hashlib.sha256(raw).hexdigest()}\n')
+              output.write(f'TOBKIRI_BUNDLE_FLOW_REPORT={root/"catalog-ordinary/ordinary-flow.json"}\n')
+          PYTHON
+      - name: Execute full original catalog via actual Profile Flow and deny bypasses
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/catalog-ordinary-flow.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-e2e --test bundle_catalog
+          ordinary_bundle_catalog_uses_profile_flow_and_rejects_unapproved_route
+          -- --ignored --exact --nocapture
+      - name: Strictly lint actual request Pack and Core consumer
+        run: |
+          cargo clippy --manifest-path packs/Cargo.toml --locked -p tobkiri-pack-harness-catalog-input --target wasm32-wasip2 -- -D warnings
+          cargo clippy --locked -p tobkiri-e2e --test bundle_catalog -- -D warnings
+      - name: Retain actual components and bounded ordinary-Flow evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ordinary-bundle-catalog-flow
+          path: |
+            ${{ runner.temp }}/catalog-ordinary
+            ${{ runner.temp }}/catalog-ordinary-flow.log
           retention-days: 7

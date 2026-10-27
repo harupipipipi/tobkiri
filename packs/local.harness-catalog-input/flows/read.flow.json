@@ -1,0 +1,24 @@
+{
+  "format": "tobkiri.flow/1",
+  "id": "harness.catalog.read",
+  "implements": "local.harness-catalog-input.catalog-flow@1.0",
+  "loop_limits": "profile-default",
+  "on_error": {
+    "default": "fail",
+    "steps": {}
+  },
+  "steps": [
+    {
+      "call": {
+        "args": {},
+        "op": "read",
+        "shape": "local.harness-bundle-catalog-python.catalog@1.0"
+      },
+      "id": "catalog",
+      "out": "catalog"
+    }
+  ],
+  "trigger": {
+    "input": "local.harness-catalog-input.requests@1.0"
+  }
+}

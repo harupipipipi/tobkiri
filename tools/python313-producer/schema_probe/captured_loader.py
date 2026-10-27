@@ -326,12 +326,8 @@ class Loader(importlib.abc.InspectLoader):
         exec(self.get_code(self.name), module.__dict__)
         self._executed_module = ref(module)
 
-    def _tobkiri_schema_resources(self, module):
-        """Bind schema DATA to this loader's actual completed module execution.
-
-        This closed accessor accepts no resource root, path or replacement
-        tree. It neither manufactures a filesystem path nor grants IO.
-        """
+    def _require_executed_owner(self, module):
+        """Require the actual completed module and the same captured source tree."""
         if (
             self._executed_module is None
             or self._executed_module() is not module
@@ -341,15 +337,29 @@ class Loader(importlib.abc.InspectLoader):
             or module.__loader__ is not self
             or not any(finder is self.finder for finder in sys.meta_path)
             or self.finder.tree is not self._source_tree
-            or not self.name.endswith(".validation")
-            or not self.source.endswith("/validation.py")
             or self.source not in self._source_tree.files
             or module.__file__ != self.finder.root + "/" + self.source
         ):
             raise ImportError("captured schema module owner is unavailable")
+
+    def _tobkiri_schema_resources(self, module):
+        """Return only fixed sibling schemas; never a filesystem capability."""
+        self._require_executed_owner(module)
+        if not self.name.endswith(".validation") or not self.source.endswith("/validation.py"):
+            raise ImportError("captured schema module owner is unavailable")
         path = self._source_tree.path(self.source.rsplit("/", 1)[0] + "/schemas")
         if not path.is_dir():
             raise FileNotFoundError("captured package schemas are missing")
+        return path
+
+    def _tobkiri_bundle_defaults(self, module):
+        """Return only the immutable bundle member of the actual App adapter."""
+        self._require_executed_owner(module)
+        if self.name != "bundle_catalog_adapter" or self.source != "bundle_catalog_adapter.py":
+            raise ImportError("captured bundle module owner is unavailable")
+        path = self._source_tree.path("bundled-defaults/embedded.json")
+        if not path.is_file():
+            raise FileNotFoundError("captured immutable bundle defaults are missing")
         return path
 
     def get_resource_reader(self, fullname):

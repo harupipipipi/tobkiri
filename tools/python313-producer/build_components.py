@@ -25,6 +25,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         native_thread_capabilities: bool = False,
         capability_projection: bool = False,
         bundle_catalog: bool = False,
+        bundle_cases: Path | None = None,
         schema_inputs: Path | None = None, stdlib: Path | None = None,
         rpds: Path | None = None) -> None:
     """Build each exact original Pack separately with no production activation."""
@@ -42,6 +43,8 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
     )) > 1:
         raise ValueError('component build selectors are separate build scopes')
     app_data_mode = capability_projection or bundle_catalog
+    if bundle_catalog != (bundle_cases is not None):
+        raise ValueError('bundle catalog requires its separate original DATA input')
     if app_data_mode:
         if any(path is None for path in (schema_inputs, stdlib, rpds)):
             raise ValueError('App DATA component requires all locked schema inputs')
@@ -52,7 +55,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         )
     physical_inputs = (producer, validation) + (
         (schema_inputs, stdlib, rpds) if dependency_mode else ()
-    )
+    ) + ((bundle_cases,) if bundle_cases is not None else ())
     if (not destination.is_absolute() or not destination.parent.is_dir()
             or destination.parent.resolve() != destination.parent
             or any(not p.is_absolute() or p.resolve() != p for p in physical_inputs)
@@ -99,6 +102,8 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         binary, producer_receipt_path, source_receipt, tool_receipt_path)}
     driver = HERE / 'component_driver.py'
     identities[str(driver)] = fingerprint(driver)
+    if bundle_cases is not None:
+        identities[str(bundle_cases)] = fingerprint(bundle_cases, 4 * 1024 * 1024)
     empty = destination / 'empty-venv'
     empty.mkdir(mode=0o700)
     recipe = destination / 'componentize.sh'
@@ -177,7 +182,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
             plan_receipt = (
                 bundle_catalog_inputs.stage(
                     repo, inputs, dependency_inputs, schema_inputs, stdlib, rpds,
-                    native=bundle_native,
+                    native=bundle_native, bundle_cases=bundle_cases,
                 )
                 if bundle_catalog
                 else capability_projection_inputs.stage(
@@ -289,6 +294,7 @@ if __name__ == '__main__':
     mode.add_argument('--native-thread-capabilities', action='store_true')
     mode.add_argument('--capability-projection', action='store_true')
     mode.add_argument('--bundle-catalog', action='store_true')
+    parser.add_argument('--bundle-cases', type=Path)
     for name in ('schema-inputs', 'stdlib', 'rpds'):
         parser.add_argument('--' + name, type=Path)
     for name in ('producer', 'validation', 'destination'):

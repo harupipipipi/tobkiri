@@ -39,11 +39,38 @@ def captured(extra_files=None):
         sys.meta_path[:] = before
         sys.path[:] = paths
         for name in list(sys.modules):
-            if name == "schema_fixture" or name.startswith("schema_fixture."):
+            if (name == "schema_fixture" or name.startswith("schema_fixture.")
+                    or name == "bundle_catalog_adapter"):
                 del sys.modules[name]
 
 
 class CapturedLoaderTests(unittest.TestCase):
+    def test_fixed_bundle_source_requires_actual_module_and_same_tree(self):
+        with captured({
+            "bundle_catalog_adapter.py": b"LOADED = True\n",
+            "bundled-defaults/embedded.json": b'{"source_fixture":true}',
+        }) as finder:
+            module = importlib.import_module("bundle_catalog_adapter")
+            resource = module.__loader__._tobkiri_bundle_defaults(module)
+            self.assertIs(resource.tree, finder.tree)
+            with patch("builtins.open", side_effect=AssertionError("OS fallback")):
+                self.assertEqual(resource.read_bytes(), b'{"source_fixture":true}')
+            original = finder.tree
+            finder.tree = loader.Tree(dict(original.files))
+            with self.assertRaisesRegex(ImportError, "owner"):
+                module.__loader__._tobkiri_bundle_defaults(module)
+            finder.tree = original
+            other = importlib.import_module("schema_fixture")
+            with self.assertRaisesRegex(ImportError, "owner"):
+                module.__loader__._tobkiri_bundle_defaults(other)
+
+    def test_missing_fixed_bundle_source_has_no_external_fallback(self):
+        with captured({"bundle_catalog_adapter.py": b"LOADED = True\n"}):
+            module = importlib.import_module("bundle_catalog_adapter")
+            with patch("builtins.open", side_effect=AssertionError("OS fallback")):
+                with self.assertRaisesRegex(FileNotFoundError, "defaults"):
+                    module.__loader__._tobkiri_bundle_defaults(module)
+
     def test_schema_accessor_retains_actual_execution_and_resource_owner(self):
         with captured({
             "schema_fixture/validation.py": b"LOADED = True\n",

@@ -588,6 +588,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tobkiri-pack-harness-catalog-input"
+version = "0.1.0"
+dependencies = [
+ "tobkiri-guest-sdk",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "tobkiri-pack-harness-conversation-store"
 version = "0.1.0"
 dependencies = [

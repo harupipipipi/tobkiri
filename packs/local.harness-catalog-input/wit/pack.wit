@@ -1,0 +1,16 @@
+package local:harness-catalog-input@1.0.0;
+
+interface requests {
+  use tobkiri:core/types@1.0.0.{json, error, stream-handle};
+  type flow-frame = json;
+  submit: func() -> result<stream-handle, error>;
+}
+
+interface catalog-flow {
+  run: func();
+}
+
+world pack {
+  include tobkiri:core/pack-minimal@1.0.0;
+  export requests;
+}

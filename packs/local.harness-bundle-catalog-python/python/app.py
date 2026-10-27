@@ -6,12 +6,11 @@ from wit_world.imports.types import Error, ErrorCode
 
 from bundle_catalog_adapter import (
     BundleCatalogError,
-    BundleDefaultsOwner,
-    make_owner,
+    embedded_owner,
     read_catalog,
 )
 
-_OWNER: BundleDefaultsOwner | None = None
+_READY = False
 
 
 def _raise_core_error(error: BundleCatalogError) -> None:
@@ -29,18 +28,21 @@ class Lifecycle(wit_world.exports.Lifecycle):
     """Retain only the immutable installed-defaults DATA owner."""
 
     def init(self, config: str) -> None:
-        """Validate carrier shape and bytes without parsing bundle documents."""
-        global _OWNER
-        _OWNER = None
-        try:
-            _OWNER = make_owner(config)
-        except BundleCatalogError as error:
-            _raise_core_error(error)
+        """Keep Core's small immutable config; defaults belong to the artifact."""
+        global _READY
+        _READY = False
+        if config != "{}":
+            raise Err(
+                Error(
+                    ErrorCode.INVALID, "bundle defaults do not accept runtime overrides"
+                )
+            ) from None
+        _READY = True
 
     def shutdown(self) -> None:
         """Release the retained DATA owner."""
-        global _OWNER
-        _OWNER = None
+        global _READY
+        _READY = False
 
 
 class Catalog(wit_world.exports.Catalog):
@@ -48,8 +50,7 @@ class Catalog(wit_world.exports.Catalog):
 
     def read(self) -> str:
         """Validate and serialize the five original source collections."""
-        owner = _OWNER
-        if owner is None:
+        if not _READY:
             raise Err(
                 Error(
                     ErrorCode.INVALID,
@@ -57,6 +58,6 @@ class Catalog(wit_world.exports.Catalog):
                 )
             ) from None
         try:
-            return read_catalog(owner)
+            return read_catalog(embedded_owner())
         except BundleCatalogError as error:
             _raise_core_error(error)

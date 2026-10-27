@@ -15,6 +15,7 @@ members = [
   "local.harness-conversation-store",
   "local.harness-prompt",
   "local.harness-capability-input",
+  "local.harness-catalog-input",
   "local.terminal-input",
   "local.terminal-output",
   "local.echo-llm",

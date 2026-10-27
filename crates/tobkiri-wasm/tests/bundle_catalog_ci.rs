@@ -26,6 +26,7 @@ struct Original {
     oracle_commit: String,
     payload: String,
     expected_sha256: String,
+    source_identity_sha256: String,
     expected_bytes: usize,
     entries: usize,
     read_occurrences: usize,
@@ -105,6 +106,11 @@ async fn native_bundle_catalog_comparison() -> Result<()> {
         .context("blob array missing")?
         .push(json!("AA=="));
     let cases = [
+        (
+            "embedded-source-identity",
+            "tobkiri.embedded-bundle-identity/1".to_owned(),
+            None,
+        ),
         ("full-original-bundle", original.payload.clone(), None),
         (
             "different-executable-reread",
@@ -167,13 +173,18 @@ async fn native_bundle_catalog_comparison() -> Result<()> {
             .with_context(|| format!("actual whole-bundle invocation failed: {name}"))?;
         match (reply, expected_error) {
             (Ok(NativeDataValue::String(actual)), None) => {
+                let source_identity = name == "embedded-source-identity";
+                let expected = if source_identity {
+                    &original.source_identity_sha256
+                } else {
+                    &original.expected_sha256
+                };
                 ensure!(
-                    actual.as_bytes().len() == original.expected_bytes
-                        && Digest::hash(actual.as_bytes()).as_str()
-                            == format!("sha256:{}", original.expected_sha256),
-                    "whole original catalog differs"
+                    (source_identity || actual.as_bytes().len() == original.expected_bytes)
+                        && Digest::hash(actual.as_bytes()).as_str() == format!("sha256:{expected}"),
+                    "original source/catalog differs: {name}"
                 );
-                observed.push(json!({"name":name,"all_original_collections_equal":true,"output_bytes":actual.as_bytes().len(),"output_sha256":original.expected_sha256}));
+                observed.push(json!({"name":name,"all_original_collections_equal":!source_identity,"embedded_source_bytes_equal":source_identity,"output_bytes":actual.as_bytes().len(),"output_sha256":expected}));
             }
             (Err(error), Some(message)) => {
                 ensure!(

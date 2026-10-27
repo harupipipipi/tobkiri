@@ -57,7 +57,7 @@ def _original_schema_resources(repo: Path) -> tuple[dict[str, bytes], dict[str, 
 
 
 def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
-          stdlib: Path, rpds: Path, *, native: bool) -> dict:
+          stdlib: Path, rpds: Path, *, native: bool, bundle_cases: Path) -> dict:
     """Stage actual source bytes, schemas, and dependencies for one world."""
     if (repo.resolve() != repo or destination.exists()
             or type(native) is not bool):
@@ -80,6 +80,23 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
 
     for name, raw in resource_files.items():
         add(name, raw)
+    cases_raw = _read_source(bundle_cases)
+    if len(cases_raw) > 4 * 1024 * 1024:
+        raise ValueError("original bundle comparison exceeds four MiB")
+    cases = json.loads(cases_raw)
+    if (cases.get("format") != "tobkiri.bundle-catalog-comparison/1"
+            or cases.get("oracle_commit") != "54e7da008997a3eb45876cbe18459dba9902cc9d"
+            or type(cases.get("payload")) is not str
+            or type(cases.get("source_identity")) is not dict):
+        raise ValueError("independent pinned original bundle DATA required")
+    embedded = (json.dumps({"format": "tobkiri.embedded-bundle/1",
+                           "carrier": cases["payload"],
+                           "source_identity": cases["source_identity"]},
+                          sort_keys=True, ensure_ascii=False, allow_nan=False,
+                          separators=(",", ":")) + "\n").encode()
+    if len(embedded) > 4 * 1024 * 1024:
+        raise ValueError("embedded source member exceeds original resource bound")
+    add("bundled-defaults/embedded.json", embedded)
     for pin in verified["inputs"]:
         native_wheel = pin["role"] == "native-oracle"
         root = schema_inputs / "packages" / (
@@ -138,6 +155,10 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
         "component_name": component_name,
         "original_modules": modules,
         "original_resources": original_resources,
+        "embedded_resource": {"bytes": len(embedded), "sha256": hashlib.sha256(embedded).hexdigest()},
+        "embedded_carrier": {"bytes": len(cases["payload"].encode()), "sha256": hashlib.sha256(cases["payload"].encode()).hexdigest()},
+        "original_bundle_cases": {"bytes": len(cases_raw), "sha256": hashlib.sha256(cases_raw).hexdigest()},
+        "runtime_config_override_used": False,
         "schema_dependencies": verified,
         "adapter_sha256": hashlib.sha256(files["bundle_catalog_adapter.py"]).hexdigest(),
         "source_storage": "same original bytes, per-file zlib/identity, no expansion cache",
