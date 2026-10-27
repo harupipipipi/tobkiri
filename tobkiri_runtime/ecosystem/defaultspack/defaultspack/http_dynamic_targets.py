@@ -17,7 +17,7 @@ from core_runtime.global_contracts.http_contract_dispatch import (
     HTTPContractBinding,
     HTTPContractTarget,
 )
-from .v4_view_contract import validate_public_input
+from ._public_view_input import validate_public_input
 
 from .workflow_presentation import (
     WORKFLOW_CONTRACT_ID,

@@ -463,6 +463,7 @@ class ImportDiagnosticsSourceTests(unittest.TestCase):
                 "--native-input-stack",
                 "--native-input-stack-import-diagnostics",
                 "--native-thread-capabilities",
+                "--capability-projection",
             },
         )
 
