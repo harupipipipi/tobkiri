@@ -19,6 +19,27 @@ class Projection(wit_world.exports.Projection):
         try:
             if payload == "tobkiri.embedded-bundle-identity/1":
                 return identity_text(source_identity(embedded_owner()))
+            if payload == "tobkiri.cold-original-schema-store/1":
+                from tobkiri_protocol.validation import _schema_store, load_schema
+
+                schemas = _schema_store()
+                schema_cache = load_schema.cache_info()
+                store_cache = _schema_store.cache_info()
+                return identity_text(
+                    {
+                        "schemas": schemas,
+                        "schema_cache": {
+                            "hits": schema_cache.hits,
+                            "misses": schema_cache.misses,
+                            "size": schema_cache.currsize,
+                        },
+                        "store_cache": {
+                            "hits": store_cache.hits,
+                            "misses": store_cache.misses,
+                            "size": store_cache.currsize,
+                        },
+                    }
+                )
             if payload == "tobkiri.embedded-bundle-read/1":
                 return read_catalog(embedded_owner())
             raise BundleCatalogError(

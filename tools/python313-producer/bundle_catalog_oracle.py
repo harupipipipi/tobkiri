@@ -208,8 +208,36 @@ def run(source: Path, output: Path, profile_output: Path | None = None) -> None:
         reread_error = str(error)
     else:
         raise ValueError("original loader accepted different executable reread bytes")
-    # Check every physical input again; this is still a CI source observation,
-    # not a product capture/currentness receipt.
+    # An independent cold observation isolates the original schema operation.
+    # This never supplies a production cache and does not replace the full
+    # original bundle case, its 45 cold calls, or its validation expectations.
+    validation = importlib.import_module("tobkiri_protocol.validation")
+    validation.load_schema.cache_clear()
+    validation._schema_store.cache_clear()
+    schema_store = validation._schema_store()
+    schema_cache = validation.load_schema.cache_info()
+    store_cache = validation._schema_store.cache_info()
+    schema_observation = json.dumps(
+        {
+            "schemas": schema_store,
+            "schema_cache": {
+                "hits": schema_cache.hits,
+                "misses": schema_cache.misses,
+                "size": schema_cache.currsize,
+            },
+            "store_cache": {
+                "hits": store_cache.hits,
+                "misses": store_cache.misses,
+                "size": store_cache.currsize,
+            },
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+    ).encode()
+    # Recheck after both independent observations; neither is a product
+    # capture/currentness receipt or authority over an installed artifact.
     if (
         (root / "bundle.lock.json").read_bytes() != lock
         or any((root / path).read_bytes() != raw for path, raw in files.items())
@@ -234,6 +262,9 @@ def run(source: Path, output: Path, profile_output: Path | None = None) -> None:
                 separators=(",", ":"),
             ).encode()
         ).hexdigest(),
+        "schema_store_expected_sha256": hashlib.sha256(schema_observation).hexdigest(),
+        "schema_store_expected_bytes": len(schema_observation),
+        "schema_store_cold_selfcheck_calls": schema_cache.misses,
         "collections": {name: len(getattr(original, name)) for name in COLLECTIONS},
         "reread_mutation": {
             "occurrence": occurrence,

@@ -4,6 +4,48 @@ This is a source-backed responsibility map, not a completed migration or a
 resident-instance design. Keep the original GUI, all 839 original units plus
 the private helper TODO, R1–R11 and all 20 acceptance conditions in scope.
 
+## Actual product owner and missing first-Setup connection, 2026-10-27
+
+This is a source audit, not proof that the original GUI is connected. The
+`core-host` and legacy entrypoints are mutually exclusive in
+[lib.rs](../../../tobkiri_launcher/src-tauri/src/lib.rs#L19). The optional legacy
+[NativeRuntimeState](../../../tobkiri_launcher/src-tauri/src/legacy.rs#L4319)
+has no production call to `adopt_core` or `prepare_original_component`. Calling
+that unused constructor alone would not establish a product Session or UI.
+
+The actual core-host composition creates one real NativeHost and Core and
+shares the same `Arc<Core>` with LauncherCore and Tauri State in
+[core_host.rs](../../../tobkiri_launcher/src-tauri/src/core_host.rs#L890).
+Its [start command](../../../tobkiri_launcher/src-tauri/src/core_host.rs#L463)
+enters [the actual Session registry](../../../tobkiri_launcher/core-host/src/runtime.rs#L1777).
+Core binds the actual Host frame to its own
+[UiAttachment token](../../../crates/tobkiri-core/src/core.rs#L956). Stop and Quit
+retain that same Session through retirement and await
+[Session.close](../../../tobkiri_launcher/core-host/src/runtime.rs#L2067).
+
+The two roots are not aliases: the optional legacy owner uses the selected
+`user_data_dir/core`, while CoreConfig's production default uses the platform
+data directory's `Tobkiri` child. No old Profile/data/secret/recovery inheritance
+is proved by opening that default root. Do not switch an existing environment
+to an empty root or describe it as migrated.
+
+The agreed product owner is the existing real core-host Core/Session/UI path.
+Before an ordinary App Flow can serve first Setup, find or implement its
+legitimate initial Profile/Session bootstrap. A test Profile, fabricated lease
+or implicit approval cannot fill that missing boundary. The first App round
+trip is actual received UI → approved ordinary App Flow → installed-defaults
+catalog port → the corresponding original Setup display. Host only displays
+and forwards; App owns catalog interpretation. The Core-isolated candidate and
+permission review must bind actual candidate bytes and the real Session.
+
+That first round trip does not create activation or migrate the old root.
+Those must subsequently use the same real owner and prove physical inputs,
+currentness, commit-time authority and data inheritance independently. Missing
+active state and unconnected additional-source/recovery/developer-handover
+actions must not appear successful. Preserve all original Setup steps,
+dedicated GUI approval, settings and conversation behavior; add no terminal
+approval, UserDocument prompt or implicit grant.
+
 ## Execution evidence which constrains this boundary
 
 The `48ab3ee5` diagnostic used the declared pre-initialized stdlib configuration.

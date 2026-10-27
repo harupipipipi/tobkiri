@@ -26,6 +26,9 @@ struct Original {
     oracle_commit: String,
     expected_sha256: String,
     source_identity_sha256: String,
+    schema_store_expected_sha256: String,
+    schema_store_expected_bytes: usize,
+    schema_store_cold_selfcheck_calls: usize,
     expected_bytes: usize,
     entries: usize,
     read_occurrences: usize,
@@ -82,6 +85,8 @@ async fn native_bundle_catalog_comparison() -> Result<()> {
             && original.oracle_commit == "54e7da008997a3eb45876cbe18459dba9902cc9d"
             && original.entries == 305
             && original.read_occurrences == 453
+            && original.schema_store_cold_selfcheck_calls == 42
+            && original.schema_store_expected_bytes <= 4 * 1024 * 1024
             && original.expected_bytes <= 4 * 1024 * 1024,
         "full pinned original comparison differs"
     );
@@ -89,6 +94,12 @@ async fn native_bundle_catalog_comparison() -> Result<()> {
         (
             "embedded-source-identity",
             "tobkiri.embedded-bundle-identity/1",
+            None,
+            false,
+        ),
+        (
+            "cold-original-schema-store",
+            "tobkiri.cold-original-schema-store/1",
             None,
             false,
         ),
@@ -169,17 +180,25 @@ async fn native_bundle_catalog_comparison() -> Result<()> {
         match (reply, expected_error) {
             (Ok(NativeDataValue::String(actual)), None) => {
                 let source_identity = name == "embedded-source-identity";
+                let schema_store = name == "cold-original-schema-store";
                 let expected = if source_identity {
                     &original.source_identity_sha256
+                } else if schema_store {
+                    &original.schema_store_expected_sha256
                 } else {
                     &original.expected_sha256
                 };
+                let expected_bytes = if schema_store {
+                    original.schema_store_expected_bytes
+                } else {
+                    original.expected_bytes
+                };
                 ensure!(
-                    (source_identity || actual.as_bytes().len() == original.expected_bytes)
+                    (source_identity || actual.as_bytes().len() == expected_bytes)
                         && Digest::hash(actual.as_bytes()).as_str() == format!("sha256:{expected}"),
                     "original source/catalog differs: {name}"
                 );
-                observed.push(json!({"name":name,"all_original_collections_equal":!source_identity,"embedded_source_bytes_equal":source_identity,"output_bytes":actual.as_bytes().len(),"output_sha256":expected}));
+                observed.push(json!({"name":name,"all_original_collections_equal":!source_identity && !schema_store,"original_schema_store_and_cold_cache_equal":schema_store,"embedded_source_bytes_equal":source_identity,"output_bytes":actual.as_bytes().len(),"output_sha256":expected}));
             }
             (Err(error), Some(message)) => {
                 ensure!(
