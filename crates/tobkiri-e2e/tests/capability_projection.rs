@@ -170,8 +170,19 @@ impl Fixture {
     }
 
     async fn start(&self) -> Result<(Session, UiAttachment)> {
-        self.core.save_profile(self.profile.clone(), None).await?;
-        let session = self.core.start(&self.profile.id).await?;
+        self.core
+            .save_profile(self.profile.clone(), None)
+            .await
+            .context("ordinary fixture: save the reviewed Profile")?;
+        let started = std::time::Instant::now();
+        eprintln!("ordinary fixture: start actual Core Session");
+        let session = self.core.start(&self.profile.id).await.with_context(|| {
+            format!(
+                "ordinary fixture: start actual Core Session after {:?}",
+                started.elapsed()
+            )
+        })?;
+        eprintln!("ordinary fixture: actual Core Session ready");
         session.bind_ui_generation(GENERATION)?;
         let mut ui = session.ui_attachments()?;
         ensure!(
@@ -306,7 +317,10 @@ async fn ordinary_capability_ui_entry_runs_real_profile_flow_and_rejects_unappro
     let mut observed = Vec::new();
     for case in &cases {
         let payload = case["payload"].as_str().context("case payload missing")?;
-        let opened = submit(&session, &ui, payload).await?;
+        eprintln!("ordinary fixture: submit original case {}", case["name"]);
+        let opened = submit(&session, &ui, payload)
+            .await
+            .with_context(|| format!("ordinary fixture: submit original case {}", case["name"]))?;
         let value = parse_output(&opened)?;
         ensure!(
             value.get("kind").and_then(CanonValue::as_str) == Some("stream"),
@@ -320,10 +334,16 @@ async fn ordinary_capability_ui_entry_runs_real_profile_flow_and_rejects_unappro
         )?;
         let mut completed = false;
         let mut ended = false;
-        for _ in 0..64 {
+        for pull in 0..64 {
             let buffer = session
                 .ui_stream_pull_buffer(&ui.session, handle, 8)
-                .await?;
+                .await
+                .with_context(|| {
+                    format!(
+                        "ordinary fixture: pull {pull} for original case {}",
+                        case["name"]
+                    )
+                })?;
             let frames = parse_output(&buffer)?;
             let frames = frames.as_array().context("Flow batch is not an array")?;
             if frames.is_empty() {
