@@ -97,7 +97,7 @@ process reaping.
 
 ### Declared pre-initialized stdlib observation
 
-The next source imports `contextvars`, `struct`, `sys` and `threading` normally
+Source `48ab3ee5` imports `contextvars`, `struct`, `sys` and `threading` normally
 during componentization. Their original module objects are retained, including
 threading's module-level internal state. ContextVar/Event/worker construction
 and operations remain in the actual guest `run` body. This changes the module
@@ -112,6 +112,31 @@ to the driver receipt and reject a rehashed change in initialization scope.
 Only capabilities observed under this initialization condition can be claimed.
 Late-import equivalence and original runtime state/custody remain unproved;
 a code-only stdlib loader is deferred pending the actual backend observation.
+
+Its actual [Mac job 121978224241](https://github.com/harupipipipi/tobkiri/actions/runs/40440026881/job/121978224241)
+passed as a diagnostic. Both cases returned actual guest JSON from Python
+3.13.16/32-bit execution. Local ContextVar isolation produced
+`unset → separate-context → unset`, with the parent still `parent`. The new
+worker's `Thread.start()` reached stage 11 and raised the real
+`RuntimeError("can't start new thread")`. This is an observed start refusal
+under the declared initialization condition, not a simulated exception or
+proof of every possible backend configuration.
+
+Normal preparation/total was 18,034,283/18,108,521 microseconds; waiter-drop was
+18,455,182/18,486,385. Both peaked at 18,057,453 bytes, retained 1,987,887,921
+fuel and kept the original deadline, without an unreachable trap or invoke-side
+Store retirement. Worker/context-thread rules, termination and waiter-drop
+remain unproved; physical cleanup remained false and the isolated processes
+were reaped. The WAT u32 same-task constraint also passed again (18,532
+microseconds, same original limits), with the same restricted scope.
+
+The next migration boundary follows actual original state ownership rather
+than trying to emulate Python Threads. The source-backed
+[flight ownership map](native-flight-ownership.md) distinguishes per-call Store
+construction, module-global in-progress verification, Context-local snapshot
+reuse and RuntimeSurface's real Thread/Context contract. A generic native
+notification primitive is a candidate; its funding, realm binding and Pack
+adapter are not yet implemented or accepted as full parity.
 
 A separate minimal WAT test now attempts same-task reentry through a
 sync-lift export, sync canonical lower and the same asynchronous owned host

@@ -1,0 +1,159 @@
+# Original flight ownership and the next Rust boundary
+
+This is a source-backed responsibility map, not a completed migration or a
+resident-instance design. Keep the original GUI, all 839 original units plus
+the private helper TODO, R1–R11 and all 20 acceptance conditions in scope.
+
+## Execution evidence which constrains this boundary
+
+The `48ab3ee5` diagnostic used the declared pre-initialized stdlib configuration.
+In actual Python 3.13.16/32-bit execution, local `ContextVar` isolation returned
+`unset → separate-context → unset`, leaving the parent value `parent`. Both
+scenarios then reached `thread-start`, where the real new `Thread.start()`
+raised `RuntimeError("can't start new thread")`. They returned guest JSON without
+an unreachable trap or native deadline failure. They did not prove a worker,
+thread-context custody, waiter departure, thread termination or physical Store
+cleanup. The isolated child processes were reaped.
+
+The memoryless-u32 same-task canonical reentry constraint passed separately.
+It does not prove CPython/dynamic-string reentry, independent operations,
+individual cancellation or an original RuntimeSurface worker. Full source,
+initialization conditions and measurements are in
+[execution-base evidence](native-execution-capabilities.md).
+
+## Actual ownership
+
+| State or operation | Original owner and lifetime | Consequence for translation |
+| --- | --- | --- |
+| Profile implementation | `profile_runtime_composition` installs a fixed singleton. Its `activation_store()` constructs a **new** `ActivationStore` each call. | Do not introduce an activation factory-once/result memo contract. |
+| Store capture | Host `capture_active_profile()` creates the Store inside the Authority context and obtains its own authenticated snapshot. | Keep each caller's Authority and graph checks. |
+| In-progress artifact verification | `service.py` has one module-global flight dictionary and lock. A flight contains Event, actual exception object and waiter count; no successful result object. | A generic native notification primitive must not invent shared results or exception reconstruction. |
+| Read gates | A separate module-global dictionary retains a gate by `state_root`. | Do not confuse this publication/process-lock queue with hash-flight notification. |
+| Snapshot reuse | Host ContextVar scope cache reuses the same captured snapshot object while its pointer signature matches. Nested scopes share the dictionary; `fresh=True` makes a new dictionary; exit restores the actual token. | Context-local snapshot identity is separate from hash-flight sharing. |
+| RuntimeSurface jobs | Application composition supplies a RuntimeSurface which creates and retains real Python Threads, observes `is_alive()`, copies the actual Context and keeps jobs until work returns after owner departure. | These are real translation obligations, not evidence that Rust task metadata can replace Python Thread/Context semantics. |
+| Current native bootstrap | A funded native Work retains source `S` and one original invocation. Python initialization creates the original singleton/registry, not an ActivationStore. | The current short-lived Store is not an activation service or a long-lived runtime. |
+
+Source anchors:
+
+- [Original factory](../../../tobkiri_runtime/ecosystem/defaultspack/defaultspack/profile_runtime_composition.py#L453),
+  [Host capture](../../../tobkiri_runtime/core_runtime/bootstrap/profile_capture.py#L1070).
+- [Flight state and dictionaries](../../../tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/service.py#L125),
+  [read/verification sequence](../../../tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/service.py#L1038).
+- [Context scopes](../../../tobkiri_runtime/core_runtime/bootstrap/profile_capture.py#L68),
+  [snapshot cache](../../../tobkiri_runtime/core_runtime/bootstrap/profile_capture.py#L1033).
+- [Application composition](../../../tobkiri_runtime/ecosystem/defaultspack/defaultspack/runtime_composition.py#L459),
+  [actual worker construction](../../../tobkiri_runtime/ecosystem/defaultspack/domain/runtime_surface_v4.py#L173),
+  [worker cleanup](../../../tobkiri_runtime/ecosystem/defaultspack/domain/runtime_surface_v4.py#L232),
+  [Context transfer](../../../tobkiri_runtime/ecosystem/defaultspack/domain/runtime_surface_v4.py#L946).
+
+## Preserve the exact flight behavior
+
+The original key has seven fields, with **Path values** in its first two slots:
+
+```text
+(state_root, workspace_root, profile_id,
+ str(profile_revision), str(activation_id), str(plan_digest), str(lock_digest))
+```
+
+The native primitive can treat a key as opaque data. Its meaning and Path-value
+equality remain the adapter's responsibility. A digest, physical allocation
+domain, file descriptor, key match or metadata counter is not authority.
+
+1. Each caller reads its own authenticated graph under the publication lock.
+2. Outside that lock, it joins the module-global in-progress hash flight.
+3. The leader verifies actual selected artifact bytes. On failure it retains
+   its actual exception in `flight.error` and re-raises that same object.
+4. In `finally`, the leader removes only its own current registration and sets
+   the completion Event. Existing waiters retain their local flight references.
+5. A waiter which reaches its Event timeout decrements the original waiter
+   count and raises `ArtifactVerificationTimeout`. It does not stop the leader
+   or remove its registration. This API has no independent cancel token.
+6. On notification, **only if the leader failed**, a waiter independently
+   verifies again and obtains its own typed outcome. It does not re-raise the
+   leader's saved exception. Successful notification does not cause an extra
+   hash pass.
+7. Each caller reads its own authenticated graph again under the publication
+   lock and rejects a changed graph. Later callers start a fresh flight.
+
+The original counter is incremented on join and decremented on timeout; do not
+silently redefine it as a reference count. The process-lock retry loop is a
+different mechanism (nonblocking retry, sleep capped at 10 ms).
+
+[Exact implementation](../../../tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/service.py#L1088).
+
+## Existing native funding and operation lifetimes
+
+`NativeSetupAccount` validates the actual process and retained native root proof
+and meters shared physical payload up to 64 MiB. `begin()` captures a genuine
+operation identity and original start before metadata admission. Invocation
+clones cannot create another Store attempt or renew the absolute 30 seconds.
+The Wasm Store, allocator owners, DATA IO, cancellation and retirement currently
+retain that one invocation.
+
+```mermaid
+flowchart TD
+    R[Actual process and descriptor-pinned root lease] --> A[NativeSetupAccount: shared physical capacity]
+    A --> O1[begin: real operation 1 and original clock]
+    A --> O2[begin: real operation 2 and original clock]
+    O1 --> S[Current one-invocation Store / DATA IO / retirement]
+    A -. proposed capacity-only ownership; not implemented .-> F[Native shared notification state]
+    O1 -. genuine operation custody required .-> F
+    O2 -. genuine operation custody required .-> F
+```
+
+The candidate notification state needs explicit root-funded ownership separate
+from execution scope. The existing reservation carries real invocation
+provenance; do not invent invocation zero, reuse counters as custody or label
+an old invocation as a persistent instance. Account identity must be checked
+through actual retained ownership rather than serialized generation/domain
+values. Creating state must not start/reset another execution clock or grant
+Profile, native IO, filesystem or cancellation rights.
+
+The approved first implementation is a separate account-owned shared-state
+reservation type. It must retain a real account and ledger record, prepay the
+same 64 MiB payload/control accounts, and carry no invocation provenance or
+execution rights. A future coordinator must retain those funds through actual
+work and waiter handles, even after its outer handle is dropped. Matching an
+operation to that account requires live native ownership identity. This API
+and the coordinator have not yet been implemented.
+
+Native sources: [account/begin](../../../crates/tobkiri-gate/src/native_setup_capacity.rs#L206),
+[invocation/claim](../../../crates/tobkiri-gate/src/native_setup_capacity.rs#L275),
+[reservation](../../../crates/tobkiri-gate/src/native_setup_capacity.rs#L335),
+[Store binding](../../../crates/tobkiri-wasm/src/native_setup_store.rs#L178),
+[DATA IO custody](../../../crates/tobkiri-wasm/src/native_data_io.rs#L144).
+
+The old sharing scope is a module in a Python interpreter/process, not an
+arbitrary native root partition. Before production binding, establish which
+native owner represents that original realm. A narrower partition is not
+proved equivalent by tests in one root. Generic notification completion must
+not itself attest verified bytes, authorize effects or become a caller-controlled
+verification-success flag.
+
+## First vertical boundary and open product boundary
+
+The first candidate is a Pack-independent native primitive for in-progress
+registration, join, wait, notification and original waiter accounting. Keep the
+seven-field interpretation, authenticated graph checks, retry decision, actual
+exception-object retention and typed outcomes in the responsible adapter. This
+does not require a persistent Wasm Store. It still needs two genuine operations
+and correctly funded shared state; a passing standalone primitive does not close
+the adapter, RuntimeSurface or complete migration.
+
+Use the original reference cases:
+
+- [Coalescing](../../../tobkiri_runtime/tests/test_defaultspack_runtime_v4.py#L1653).
+- [Failure is not shared; own retry](../../../tobkiri_runtime/tests/test_defaultspack_runtime_v4.py#L1770).
+- [HTTP waiter timeout](../../../tobkiri_runtime/tests/test_production_frontend_contract_http.py#L7443).
+- [Context sharing and token restoration](../../../tobkiri_runtime/tests/test_dispatch_profile_capture_scope.py#L106).
+- [Owner departure and later reuse](../../../tobkiri_runtime/tests/test_runtime_surface_v4.py#L1481).
+
+Before translating RuntimeSurface, identify external observers of actual Thread
+objects/identity and all values/readers carried by `copy_context()`. Actual
+Python ContextVar readers require a genuine Python Context execution boundary;
+a Rust map of values is not equivalent. A real Rust translation remains a
+candidate, with generic execution/lifetime mechanisms in Core and domain rules
+outside it. No fake Thread API, serial mutex, fresh-Store replacement, renewed
+invocation, whole-Store cancellation or new native-Pack privilege is adopted by
+this document. Product connection stays gated by original behavior and the full
+acceptance scope.
