@@ -17,6 +17,10 @@ import sys
 from bundle_catalog_oracle import ORACLE_COMMIT, SOURCE_HASHES
 
 MAX_BYTES = 4 * 1024 * 1024
+ORIGINAL_SCHEMA_COUNT = 42
+ORIGINAL_SCHEMA_INVENTORY_SHA256 = (
+    "2311b39b1f946c1ba45a9d87d57fde15c28a6a79afef1a44a5b98f3603b63008"
+)
 
 
 def encoded(value: object) -> bytes:
@@ -123,16 +127,26 @@ def run(source: Path, output: Path) -> None:
 
     cases = []
     originals = sorted((source / "tobkiri_protocol/schemas").glob("*.schema.json"))
-    if len(originals) != 45:
+    if len(originals) != ORIGINAL_SCHEMA_COUNT:
         raise ValueError("complete original protocol schema inventory changed")
     inputs = []
+    inventory = []
     for path in originals:
         if path.resolve(strict=True) != path or not path.is_file():
             raise ValueError("original schema is not a physical source file")
         raw = path.read_bytes()
+        inventory.append(
+            {
+                "name": path.name,
+                "bytes": len(raw),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+            }
+        )
         inputs.append(
             ("original/" + path.name, json.loads(raw), hashlib.sha256(raw).hexdigest())
         )
+    if node_digest(inventory) != ORIGINAL_SCHEMA_INVENTORY_SHA256:
+        raise ValueError("original complete schema byte inventory differs")
     curated = [
         ("boolean-true", True),
         ("boolean-false", False),
@@ -180,7 +194,8 @@ def run(source: Path, output: Path) -> None:
         "format": "tobkiri.schema-kernel-reference/1",
         "oracle_commit": ORACLE_COMMIT,
         "jsonschema_version": "4.26.0",
-        "original_schema_count": 45,
+        "original_schema_count": ORIGINAL_SCHEMA_COUNT,
+        "original_schema_inventory_sha256": ORIGINAL_SCHEMA_INVENTORY_SHA256,
         "meta_schema": Draft202012Validator.META_SCHEMA,
         "meta_registry": [
             {"uri": uri, "schema": REGISTRY.contents(uri)} for uri in sorted(REGISTRY)
@@ -201,7 +216,7 @@ def run(source: Path, output: Path) -> None:
         json.dumps(
             {
                 "schema_kernel_reference_cases": len(cases),
-                "original_schemas": 45,
+                "original_schemas": ORIGINAL_SCHEMA_COUNT,
                 "bytes": len(raw),
                 "production_enabled": False,
             }
