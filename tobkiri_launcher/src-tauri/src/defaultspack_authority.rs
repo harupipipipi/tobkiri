@@ -4411,6 +4411,21 @@ mod tests {
         target_arch = "aarch64"
     ))]
     fn activate_fixture_profile(owner: &Path, config: &AppConfig) {
+        let source_checkout = owner.join("authoritative-source");
+        assert_clean_fixture_source(&source_checkout);
+        // The Pack generator deliberately has a smaller source closure than
+        // the original Host activation path. Add tracked runtime inputs from
+        // that same checkout/revision only after packaging has completed.
+        let status = Command::new(verified_git())
+            .args(["sparse-checkout", "add", "tobkiri_runtime"])
+            .current_dir(&source_checkout)
+            .status()
+            .expect("original Host fixture source checkout should run");
+        assert!(
+            status.success(),
+            "original Host fixture source checkout failed"
+        );
+        assert_clean_fixture_source(&source_checkout);
         let python = verified_python();
         let code = include_str!("../tests/support/activate_fixture_profile.py");
         for action in ["stage", "activate"] {
@@ -4419,7 +4434,7 @@ mod tests {
                 .env_clear()
                 .args(["-I", "-B", "-c", code, action])
                 .arg(owner.canonicalize().unwrap())
-                .arg(owner.join("authoritative-source/tobkiri_runtime"))
+                .arg(source_checkout.join("tobkiri_runtime"))
                 .arg(config.app_dir.canonicalize().unwrap())
                 .arg(&config.user_data_dir);
             // command() pins the sealed interpreter's runtime cwd. Keep that

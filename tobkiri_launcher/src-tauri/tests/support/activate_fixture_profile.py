@@ -16,6 +16,19 @@ import sys
 
 
 MANIFEST = "runtime-resource-manifest.v1.json"
+HOST_SOURCE_ANCHORS = (
+    "core_runtime/__init__.py",
+    "core_runtime/bootstrap/__init__.py",
+    "core_runtime/bootstrap/profile_capture.py",
+    "core_runtime/profile_runtime_port.py",
+    "tobkiri_host/__init__.py",
+    "tobkiri_host/runtime.py",
+)
+SOURCE_SKIP_DIRS = (
+    ".git", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".rumi_snapshots",
+    ".venv", "__pycache__", "node_modules", "target", "tests", "user_data",
+    "userdata", "venv", "virtualenv",
+)
 
 
 def regular_files(root: Path, *, skip: tuple[str, ...] = ()) -> list[Path]:
@@ -39,18 +52,22 @@ def regular_files(root: Path, *, skip: tuple[str, ...] = ()) -> list[Path]:
 
 def stage(source: Path, host: Path) -> None:
     """Place unchanged original code beside the already generated Profile."""
-    for path in regular_files(
-        source, skip=(".git", "__pycache__", "node_modules", "tests")
-    ):
+    # A valid Pack-generator manifest does not include the original Host.
+    # Reject that incomplete input before publishing a plausible byte manifest.
+    for relative in HOST_SOURCE_ANCHORS:
+        path = source / relative
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f"original Host source is missing: {relative}")
+    for path in regular_files(source, skip=SOURCE_SKIP_DIRS):
         relative = path.relative_to(source)
         if relative.parts[:3] in {
             ("ecosystem", "defaultspack", "v4"),
             ("ecosystem", "defaultspack", "platform-artifacts"),
         }:
             continue
-        if path.suffix != ".py" and not (
-            path.suffix == ".json" and "schemas" in relative.parts
-        ):
+        if path.suffix not in {".py", ".json"}:
+            continue
+        if path.name in {"ecosystem.json", "rumi.pack.v3.json"}:
             continue
         destination = host / relative
         if destination.exists():

@@ -82,6 +82,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check original Profile fixture source inputs before packaging
+        run: /usr/bin/python3 -B tobkiri_launcher/src-tauri/tests/test_profile_fixture_source.py
+
       - name: Verify the supported native ownership platform before packaging
         run: |
           test "$(uname -m)" = arm64
