@@ -178,6 +178,14 @@ class _CompressedFiles(Mapping):
         return self._records[name][3]
 
     def __getitem__(self, name):
+        return self._read_verified(name)[0]
+
+    def _read_verified(self, name):
+        """Return these immutable bytes and their actual computed digest.
+
+        Every read restores/verifies again. The returned digest is never the
+        expected manifest value; expanded bytes and results are never cached.
+        """
         _path, codec, payload, length, digest = self._records[name]
         if codec == "identity":
             raw = payload
@@ -198,9 +206,10 @@ class _CompressedFiles(Mapping):
                 or decoder.unconsumed_tail
             ):
                 raise ValueError("incomplete or oversized captured member: " + name)
-        if len(raw) != length or self._sha256(raw).hexdigest() != digest:
+        actual = self._sha256(raw).hexdigest()
+        if len(raw) != length or actual != digest:
             raise ValueError("captured member differs from its original hash: " + name)
-        return raw
+        return raw, actual
 
 
 class ResourcePath(Traversable):
@@ -254,6 +263,24 @@ class ResourcePath(Traversable):
 
     def __truediv__(self, descendant):
         return self.joinpath(descendant)
+
+    def _read_verified_bytes(self):
+        """Read owned DATA once; retain actual digest and ordinary read checks."""
+        key = "/".join(self.path)
+        if self.is_dir():
+            raise IsADirectoryError(key)
+        if key not in self.tree.files:
+            raise FileNotFoundError(key)
+        if type(self.tree.files) is _CompressedFiles:
+            raw, actual = self.tree.files._read_verified(key)
+        else:
+            import hashlib
+
+            raw = self.tree.files[key]
+            actual = hashlib.sha256(raw).hexdigest()
+        self.tree.reads += 1
+        self.tree.bytes_read += len(raw)
+        return raw, actual
 
     def open(self, mode="r", *args, **kwargs):
         if mode not in ("r", "rb"):

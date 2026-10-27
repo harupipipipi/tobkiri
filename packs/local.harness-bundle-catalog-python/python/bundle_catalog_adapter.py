@@ -173,11 +173,8 @@ def embedded_owner() -> BundleDefaultsOwner:
                 or any(c not in "0123456789abcdef" for c in expected["sha256"])
             ):
                 _invalid_request()
-            member = (resource / name).read_bytes()
-            if (
-                len(member) != expected["bytes"]
-                or hashlib.sha256(member).hexdigest() != expected["sha256"]
-            ):
+            member, actual = (resource / name)._read_verified_bytes()
+            if len(member) != expected["bytes"] or actual != expected["sha256"]:
                 _invalid_request()
             return member
 

@@ -50,6 +50,42 @@ FILES = {
 
 
 class CompressedLoaderTests(unittest.TestCase):
+    def test_owned_reader_hashes_actual_immutable_bytes_again_on_every_read(self):
+        raw = b"exact original resource\n" * 100
+        for compressed in (False, True):
+            with self.subTest(compressed=compressed):
+                tree = loader.Tree(
+                    compress_sources({"file": raw}) if compressed else {"file": raw},
+                    compressed=compressed,
+                )
+                reader = tree.path("file")
+                target = (
+                    patch.object(tree.files, "_sha256", wraps=hashlib.sha256)
+                    if compressed
+                    else patch("hashlib.sha256", wraps=hashlib.sha256)
+                )
+                with (
+                    target as digest,
+                    patch("builtins.open", side_effect=AssertionError("OS fallback")),
+                ):
+                    first = reader._read_verified_bytes()
+                    second = reader._read_verified_bytes()
+                    self.assertEqual(digest.call_count, 2)
+                    self.assertEqual(
+                        first, (raw, hashlib.new("sha256", raw).hexdigest())
+                    )
+                    self.assertEqual(second, first)
+                    self.assertIs(type(first[0]), bytes)
+                    self.assertIs(digest.call_args_list[0].args[0], first[0])
+                    self.assertIs(digest.call_args_list[1].args[0], second[0])
+                self.assertEqual(tree.reads, 2)
+                self.assertEqual(tree.bytes_read, 2 * len(raw))
+                self.assertEqual(reader.read_bytes(), raw)
+                with self.assertRaises(IsADirectoryError):
+                    tree.path()._read_verified_bytes()
+                with self.assertRaises(FileNotFoundError):
+                    tree.path("absent")._read_verified_bytes()
+
     def test_membership_iteration_find_spec_and_directory_index_never_expand(self):
         with captured(FILES) as finder:
             with patch.object(
@@ -159,12 +195,16 @@ class CompressedLoaderTests(unittest.TestCase):
                 )
                 with self.assertRaises(ValueError):
                     tree.files["file"]
+                with self.assertRaises(ValueError):
+                    tree.path("file")._read_verified_bytes()
         for codec, stored in (("identity", raw), ("zlib", payload)):
             tree = loader.Tree(
                 (("file", codec, stored, len(raw), "0" * 64),), compressed=True
             )
             with self.assertRaisesRegex(ValueError, "hash"):
                 tree.files["file"]
+            with self.assertRaisesRegex(ValueError, "hash"):
+                tree.path("file")._read_verified_bytes()
 
     def test_bomb_stops_at_declared_length_plus_one_without_flush_or_cache(self):
         payload = zlib.compress(b"x" * 100_000)
