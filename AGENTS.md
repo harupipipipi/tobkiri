@@ -32,6 +32,17 @@ These notes are for coding agents working in this repository.
 
 ## Coding Workflow
 
+- During the Python-to-Rust/Wasm migration, maintain
+  [cleanup notes](docs/migration/1520/cleanup-notes.md) and read them before a
+  migration slice. Record obsolete processing, duplicate responsibilities,
+  unnecessary conversions, and opportunities to reduce code/dependencies as
+  they are discovered, including relevant findings from subagent reports.
+  Include the concrete source, proposed simplification, behavior to preserve,
+  removal prerequisites, and status. Update existing entries instead of
+  duplicating them. Record implemented changes with their commit and verification
+  scope; distinguish unresolved ideas from completed work. These notes do not
+  authorize changing agreed product behavior or deleting legacy code before
+  replacement parity is proved.
 - Use subagents aggressively for verification and audit work. For any multi-step review, hardening, or merge-readiness task, launch parallel subagents (one per independent question: lifecycle, sandbox, CI, tests, security, coverage). Do not serialize investigation through the main agent when independent workstreams exist. Dozens of subagents are expected for large audits.
 - PERIODIC REMINDER: after every investigation milestone, re-read the todo list and fan out background subagents again for each still-open audit item. Keep 10+ subagents running whenever the todo list has independent items. If the active subagent count is 0 while audits remain, you are under-parallelizing — launch more immediately.
 - Open pull requests against the `soon` branch. Do not target `master` unless the user explicitly requests an exception.
