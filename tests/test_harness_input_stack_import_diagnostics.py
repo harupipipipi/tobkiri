@@ -462,6 +462,7 @@ class ImportDiagnosticsSourceTests(unittest.TestCase):
                 "--harness-native",
                 "--native-input-stack",
                 "--native-input-stack-import-diagnostics",
+                "--native-thread-capabilities",
             },
         )
 
@@ -491,8 +492,15 @@ class ImportDiagnosticsSourceTests(unittest.TestCase):
         self.assertIn("python-version: '3.13.16'", workflow)
         self.assertIn("--native-input-stack-import-diagnostics", workflow)
         self.assertIn("--expected-passed 1", workflow)
-        self.assertIn("native_import_trace.rs", workflow)
-        self.assertIn("native_import_trace_tests.rs", workflow)
+        # This historical failure-only workflow is now dispatched explicitly;
+        # its source paths are no longer automatic push-trigger entries.
+        events = workflow.split("permissions:", 1)[0]
+        self.assertIn("workflow_dispatch:", events)
+        self.assertNotIn("push:", events)
+        trace = ROOT / "crates/tobkiri-wasm/src/native_import_trace.rs"
+        trace_tests = trace.with_name("native_import_trace_tests.rs")
+        self.assertIn('#[path = "native_import_trace_tests.rs"]', trace.read_text())
+        self.assertTrue(trace_tests.is_file())
         self.assertIn(
             "import_audit_diagnostic_preserves_the_original_python_stack_failure",
             workflow,
