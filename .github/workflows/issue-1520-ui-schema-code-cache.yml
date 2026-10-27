@@ -1,34 +1,6 @@
 name: Issue 1520 native64 diagnostic-only fullSchema comparison
 
 on:
-  push:
-    branches: [codex/issue-1520-rust-core]
-    paths:
-      - '.github/workflows/issue-1520-ui-schema-code-cache.yml'
-      - 'tools/python313-producer/build_schema.py'
-      - 'tools/python313-producer/build_native.py'
-      - 'tools/python313-producer/build_rpds.py'
-      - 'tools/python313-producer/build_wasi.py'
-      - 'tools/python313-producer/fetch_sdk.py'
-      - 'tools/python313-producer/fetch_validation_tools.py'
-      - 'tools/python313-producer/runtime_inputs.py'
-      - 'tools/python313-producer/schema_probe/**'
-      - 'sdk/python/composition.py'
-      - 'tools/python313-producer/empty-poll-comparison-inputs.json'
-      - 'tools/python313-producer/schema-poll-reference-inputs.json'
-      - 'tools/python313-producer/poll_comparison_inputs.py'
-      - 'tools/python313-producer/poll_producer_pair.py'
-      - 'tools/python313-producer/poll_reference_results.py'
-      - 'tools/python313-producer/ci_link_trace_source.py'
-      - 'tools/python313-producer/ui_empty_poll_assets.py'
-      - 'tools/python313-producer/fetch_schema.py'
-      - 'tools/python313-producer/fetch_schema_stdlib.py'
-      - 'tools/python313-producer/tests/test_schema_*.py'
-      - 'crates/tobkiri-wasm/**'
-      - 'crates/tobkiri-gate/**'
-      - 'crates/tobkiri-canon/**'
-      - 'vendor/wasmtime/**'
-      - 'Cargo.lock'
   workflow_dispatch:
 
 permissions:

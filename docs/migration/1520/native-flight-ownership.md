@@ -180,3 +180,18 @@ Additional anchors: [thread-name regression](../../../tobkiri_runtime/tests/test
 [Host capture scope](../../../tobkiri_runtime/core_runtime/pack_control_v4.py#L584),
 [timing reader](../../../tobkiri_runtime/core_runtime/profile_operation_timing.py#L139),
 [baseline scope custody](../../../tobkiri_runtime/core_runtime/bundled_host_baseline_v4.py#L409).
+
+## Historical diagnostic scheduling
+
+The failure-only input-stack import audit and the diagnostic-only pre-init
+code-cache comparison are retained with `workflow_dispatch` but no automatic
+push trigger. The former deliberately cannot produce an acceptance pass; the
+latter explicitly rejects candidate acceptance. Their implementation, source
+checks and earlier evidence remain available. Neither has a workflow caller or
+external artifact consumer in the repository. The inspected repository ruleset
+list was empty and `soon` had no classic required-status-check protection.
+
+The normal Schema workflow, synchronous native-input stack validation, original
+Pack replay, whole component, native UI, producer, Installer and completion gate
+remain automatic. In particular, APFS snapshot/native-IO retirement/two-Store
+tests are not replaced by the initialization or thread diagnostics.

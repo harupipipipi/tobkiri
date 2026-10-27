@@ -1,30 +1,6 @@
 name: Issue 1520 native input-stack import-audit diagnostics (must fail)
 
 on:
-  push:
-    branches: [codex/issue-1520-rust-core]
-    paths:
-      - '.github/workflows/issue-1520-native-input-stack-import-diagnostics.yml'
-      - 'tools/python313-producer/harness_input_stack/**'
-      - 'tools/python313-producer/harness_input_stack_import_diagnostics/**'
-      - 'scripts/wasm/prepare_harness_input_stack.py'
-      - 'scripts/wasm/prepare_harness_input_stack_import_diagnostics.py'
-      - 'tests/test_harness_input_stack_source.py'
-      - 'tests/test_harness_input_stack_import_diagnostics.py'
-      - 'tools/python313-producer/build_components.py'
-      - 'tools/python313-producer/component_inputs.py'
-      - 'tools/python313-producer/component_driver.py'
-      - 'tools/python313-producer/input_stack_native_inputs.py'
-      - 'crates/tobkiri-wasm/src/native_*.rs'
-      - 'crates/tobkiri-wasm/src/native_import_trace.rs'
-      - 'crates/tobkiri-wasm/src/native_import_trace_tests.rs'
-      - 'crates/tobkiri-wasm/src/native_setup_store.rs'
-      - 'crates/tobkiri-wasm/src/native_data_program.rs'
-      - 'crates/tobkiri-wasm/src/imports.rs'
-      - 'crates/tobkiri-wasm/wit/**'
-      - 'tobkiri_runtime/tobkiri_protocol/captured_inputs.py'
-      - 'tobkiri_runtime/tobkiri_protocol/platform_artifact.py'
-      - 'sdk/python/**'
   workflow_dispatch:
 
 permissions:
