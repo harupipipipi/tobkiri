@@ -138,6 +138,7 @@ async fn native_bundle_catalog_comparison() -> Result<()> {
     // Each independent input has a new actual invocation. No invocation's
     // deadline/fuel is replenished, including during Python initialization.
     for (name, payload, expected_error) in cases {
+        eprintln!("bundle comparison: begin {name}");
         ensure!(
             payload.len() <= 4 * 1024 * 1024,
             "carrier exceeds original envelope"
@@ -210,6 +211,7 @@ async fn native_bundle_catalog_comparison() -> Result<()> {
             account.snapshot()?.charged_bytes == 0,
             "guest payload remains charged"
         );
+        eprintln!("bundle comparison: completed {name}; fuel_remaining={fuel}; retained_payload=0");
     }
     let file = OpenOptions::new()
         .write(true)
