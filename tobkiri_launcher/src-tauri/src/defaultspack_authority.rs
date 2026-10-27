@@ -4421,8 +4421,9 @@ mod tests {
                 .arg(owner.canonicalize().unwrap())
                 .arg(owner.join("authoritative-source/tobkiri_runtime"))
                 .arg(config.app_dir.canonicalize().unwrap())
-                .arg(&config.user_data_dir)
-                .current_dir(owner);
+                .arg(&config.user_data_dir);
+            // command() pins the sealed interpreter's runtime cwd. Keep that
+            // stdlib binding; fixture modules/state/temp use explicit paths.
             for key in ISOLATED_ENVIRONMENT_KEYS {
                 if let Some(value) = std::env::var_os(key) {
                     command.env(key, value);
