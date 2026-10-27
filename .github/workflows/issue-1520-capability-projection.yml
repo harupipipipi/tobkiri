@@ -1,0 +1,200 @@
+name: Issue 1520 App capability projection through original Wasm
+
+on:
+  push:
+    branches: [codex/issue-1520-native-shared-state, codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-capability-projection.yml'
+      - 'packs/local.harness-capability-projection-python/**'
+      - 'tools/python313-producer/capability_projection*'
+      - 'tools/python313-producer/capability_projection/**'
+      - 'tools/python313-producer/tests/test_capability_projection*'
+      - 'tools/python313-producer/build_components.py'
+      - 'tests/test_capability_projection_adapter_source.py'
+      - 'tobkiri_runtime/ecosystem/defaultspack/defaultspack/_public_view_input.py'
+      - 'tobkiri_runtime/ecosystem/defaultspack/defaultspack/v4_view_contract.py'
+      - 'tobkiri_runtime/ecosystem/defaultspack/defaultspack/http_dynamic_targets.py'
+      - 'crates/tobkiri-wasm/tests/capability_projection_ci.rs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: issue-1520-capability-projection-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-two-worlds:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      PRODUCER_RUN: '39956025119'
+      PRODUCER_HEAD: ae7f83080a36e823ac330342584210243dc38050
+      RPDS_RUN: '40182231971'
+      RPDS_HEAD: 53163ed815c62c4853bbed3d8a082c0764e3084f
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Check closed source adapters and new build scopes
+        run: |
+          python3 -B -m unittest discover -s tests -p test_capability_projection_adapter_source.py
+          python3 -B -m unittest discover -s tools/python313-producer/tests -p 'test_capability_projection_*.py'
+          python3 -B -m unittest discover -s tools/python313-producer/tests -p test_build_components.py
+      - name: Authenticate the existing successful custom producer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" > "$RUNNER_TEMP/producer-run.json"
+          python3 -B - "$RUNNER_TEMP/producer-run.json" "$PRODUCER_HEAD" <<'PY'
+          import json, sys
+          from pathlib import Path
+          run = json.loads(Path(sys.argv[1]).read_bytes())
+          if (run['head_sha'] != sys.argv[2] or run['status'] != 'completed'
+                  or run['conclusion'] != 'success'):
+              raise ValueError('producer identity or completion differs')
+          PY
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RPDS_RUN" > "$RUNNER_TEMP/rpds-run.json"
+          python3 -B - "$RUNNER_TEMP/rpds-run.json" "$RPDS_HEAD" <<'PY'
+          import json, sys
+          from pathlib import Path
+          run = json.loads(Path(sys.argv[1]).read_bytes())
+          if (run['head_sha'] != sys.argv[2] or run['status'] != 'completed'
+                  or run['conclusion'] != 'success'):
+              raise ValueError('genuine rpds predecessor differs')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: python313-producer-cli
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PRODUCER_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/harness-producer
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui-rpds-inactive-component
+          repository: ${{ github.repository }}
+          run-id: ${{ env.RPDS_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/schema-rpds
+      - name: Prepare pinned tools inside CI only
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          chmod 755 "$RUNNER_TEMP/harness-producer/work/target/release/componentize-py"
+          python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/harness-validation"
+          python3 -B tools/python313-producer/fetch_schema.py --destination "$RUNNER_TEMP/schema-inputs"
+          python3 -B tools/python313-producer/fetch_schema_stdlib.py --destination "$RUNNER_TEMP/schema-stdlib"
+      - name: Build identical App logic with Native comparison and ordinary Pack wrappers
+        run: >-
+          python3 -B tools/python313-producer/build_components.py --capability-projection
+          --producer "$RUNNER_TEMP/harness-producer"
+          --validation "$RUNNER_TEMP/harness-validation"
+          --destination "$RUNNER_TEMP/projection"
+          --schema-inputs "$RUNNER_TEMP/schema-inputs"
+          --stdlib "$RUNNER_TEMP/schema-stdlib"
+          --rpds "$RUNNER_TEMP/schema-rpds"
+      - name: Restore the exact pre-change bf8 source with authenticated checkout
+        uses: actions/checkout@v4
+        with:
+          ref: bf8cf14664580b7ca226b56d7bd5a311a19f44b4
+          path: oracle-bf8
+          persist-credentials: false
+      - name: Compare against the actual pre-change bf8 factory
+        run: |
+          python3 -B - "$RUNNER_TEMP" <<'PYTHON'
+          import os, subprocess, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          packages = root / 'schema-inputs/packages'
+          env = {**os.environ, 'PYTHONPATH': os.pathsep.join(str(p) for p in sorted(packages.iterdir()) if p.is_dir())}
+          subprocess.run([sys.executable, '-B', 'tools/python313-producer/capability_projection_oracle.py',
+                          '--source', str(Path(os.environ['GITHUB_WORKSPACE']) / 'oracle-bf8/tobkiri_runtime'),
+                          '--output', str(root / 'projection/cases.json')], env=env, check=True)
+          PYTHON
+      - name: Retain both real components and original comparison DATA
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-capability-projection-components
+          path: |
+            ${{ runner.temp }}/projection/components-build.json
+            ${{ runner.temp }}/projection/cases.json
+            ${{ runner.temp }}/projection/harness-capability-projection*/work/component.wasm
+            ${{ runner.temp }}/projection/harness-capability-projection*/work/component.build.json
+            ${{ runner.temp }}/projection/harness-capability-projection*/inputs/plan.json
+            ${{ runner.temp }}/projection/harness-capability-projection*/inputs/provenance.json
+            ${{ runner.temp }}/projection/harness-capability-projection*/build.*
+          retention-days: 7
+
+  compare-original-data:
+    needs: build-two-worlds
+    runs-on: macos-14
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-capability-projection-components
+          path: ${{ runner.temp }}/projection
+      - name: Recheck component receipts and bind exact comparison inputs
+        run: |
+          python3 -B - "$RUNNER_TEMP/projection" "$GITHUB_ENV" <<'PYTHON'
+          import hashlib, json, sys
+          from pathlib import Path
+          sys.path.insert(0, 'tools/python313-producer')
+          import capability_projection_inputs as inputs
+          from build_native import fingerprint
+          root, env = map(Path, sys.argv[1:])
+          report = json.loads((root / 'components-build.json').read_bytes())
+          if (report['format'] != 'tobkiri.python313-capability-projection-candidates/1'
+                  or report['outcome'] != 'success' or report['inputs_unchanged'] is not True
+                  or report['production_enabled'] is not False):
+              raise ValueError('actual two-world producer did not complete')
+          adapters = []
+          for name, native in [('harness-capability-projection-native', True), ('harness-capability-projection', False)]:
+              item = report['components'][name]
+              actual = root / name / 'work/component.wasm'
+              proof_path = root / name / 'work/component.build.json'
+              if fingerprint(actual, 32*1024*1024) != item['artifact'] or fingerprint(proof_path) != item['build_receipt']:
+                  raise ValueError('component or actual build receipt changed')
+              inputs.verify_component(json.loads(proof_path.read_bytes()), item['source'], native=native)
+              source = item['source']['capability_projection']
+              for module in source['original_modules'].values():
+                  if fingerprint(Path('tobkiri_runtime') / module['path']) != {k:module[k] for k in ('bytes','sha256')}:
+                      raise ValueError('component original source differs from current checkout')
+              expected = hashlib.sha256(Path(inputs.PACK, 'python/projection_adapter.py').read_bytes()).hexdigest()
+              if source['adapter_sha256'] != expected:
+                  raise ValueError('component adapter differs')
+              adapters.append(source['adapter_sha256'])
+          if len(set(adapters)) != 1:
+              raise ValueError('two worlds do not share the original adapter')
+          values = {'COMPONENT':root/'harness-capability-projection-native/work/component.wasm', 'CASES':root/'cases.json'}
+          with env.open('a') as output:
+              for key, path in values.items():
+                  digest = fingerprint(path, 32*1024*1024 if key=='COMPONENT' else 4*1024*1024)
+                  output.write(f'TOBKIRI_PROJECTION_{key}={path}\nTOBKIRI_PROJECTION_{key}_SHA256={digest["sha256"]}\n')
+              output.write(f'TOBKIRI_PROJECTION_REPORT={root / "native-comparison.json"}\n')
+          PYTHON
+      - name: Execute original comparison through existing bounded Native DATA runner
+        run: >-
+          cargo test --locked -p tobkiri-wasm --test capability_projection_ci
+          native_capability_projection_comparison -- --ignored --exact --nocapture
+      - name: Strictly lint the actual consumer
+        run: cargo clippy --locked -p tobkiri-wasm --test capability_projection_ci -- -D warnings
+      - name: Retain actual comparison without ordinary Pack or GUI parity claims
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-capability-projection-native-comparison
+          path: ${{ runner.temp }}/projection/native-comparison.json
+          retention-days: 7

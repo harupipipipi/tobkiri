@@ -5,6 +5,8 @@ import time
 import uuid
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from domain.tool.executor import ToolExecutor
 
 from ._agent_os_common import err, ok, workspace
@@ -36,14 +38,19 @@ def _load_workflow(workflow_id: str, context: dict[str, Any] | None) -> dict[str
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def workflow_run(arguments: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:
+def workflow_run(
+    arguments: dict[str, Any],
+    context: dict[str, Any] | None = None,
+    *,
+    settings_owner: SettingsOwnerPort | None = None,
+) -> dict[str, Any]:
     workflow_id = str(arguments.get("workflow_id") or "")
     workflow = _load_workflow(workflow_id, context) if workflow_id else arguments
     if not isinstance(workflow, dict) or not isinstance(workflow.get("steps"), list):
         return err("workflow not found or invalid", "WORKFLOW_NOT_FOUND")
     run_id = "run_" + uuid.uuid4().hex[:10]
     outputs: dict[str, Any] = {}
-    executor = ToolExecutor()
+    executor = ToolExecutor(settings_owner=settings_owner)
     run_context = dict(context or {})
     for step in workflow["steps"]:
         if not isinstance(step, dict):
@@ -77,9 +84,18 @@ def workflow_status(arguments: dict[str, Any], context: dict[str, Any] | None = 
     return ok(json.loads(path.read_text(encoding="utf-8")))
 
 
-def workflow_retry(arguments: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:
+def workflow_retry(
+    arguments: dict[str, Any],
+    context: dict[str, Any] | None = None,
+    *,
+    settings_owner: SettingsOwnerPort | None = None,
+) -> dict[str, Any]:
     workflow_id = str(arguments.get("workflow_id") or "")
-    return workflow_run({"workflow_id": workflow_id}, context)
+    return workflow_run(
+        {"workflow_id": workflow_id},
+        context,
+        **({"settings_owner": settings_owner} if settings_owner is not None else {}),
+    )
 
 
 def workflow_cancel(arguments: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:

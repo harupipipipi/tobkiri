@@ -14,7 +14,7 @@ It does not own provider execution or runtime routing mutation. Defaultspack rem
 - `specs/layered_eval_contract.yaml`: contract, smoke, and e2e eval layers.
 - `specs/metrics.schema.yaml`: pass@k, pass^k, flakiness, cost, and latency fields.
 - `specs/model_fit_matrix.schema.yaml`: task-to-model fit evidence shape.
-- `specs/defaultspack_promotion_gates.yaml`: promotion gate requirements.
+- `specs/base_pack_promotion_gates.yaml`: promotion gate requirements.
 - `recipes/`: repeatable declarative eval recipes.
 - `profiles/`, `prompts/`, `presets/`, `examples/`: role and workflow declarations.
 

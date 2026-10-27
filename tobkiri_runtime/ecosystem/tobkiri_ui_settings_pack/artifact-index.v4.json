@@ -1,0 +1,57 @@
+{
+  "artifact_set_digest": "sha256:6ec9439c35dd24d64070fc83e3739fa33be12d9ae573836721e0f6045a52b0f8",
+  "artifacts": [
+    {
+      "digest": "sha256:301e904ed3612e20bee03be18f9ba9858e55fc270dc97195cce7fee58d931da0",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:e0a7e70650a1eb3d329344d3126e680c1cf7bba17ec07e7a7dfdb3c39abfd85a",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:12d90a6edf9ef74a90fd636a3bac5cbbf096ba0420c1c04abb3ba9116bc93365",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:504473c89cad6d7c0e3ec471447aa7561771b7b26e5fa8f193cb9700fbeb1faf",
+      "path": "runtime/model_search.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:0242b933fcb15b9747624523fc614903ae298e117a70bfbf62410e8cdefd0987",
+      "path": "runtime/projects.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:b2c913039a4bd94928ac698ac9f3c9795208251bddac9afe795c040ae72901b3",
+      "path": "runtime/public-settings-fields.v1.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:ccdcab6cea03aca6af9939c9cfc5bc9cbcc61ed9e90e0285e0aa6130b8e2fec8",
+      "path": "runtime/settings.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
+      "path": "runtime/state_changes.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:4b1813a4c9059254dcbd7b23234ca4b7ddcae1184aa806ffdcb3d290b1e223b2",
+      "path": "runtime/store.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:e593609bac7905e0c4c15cbc9a481a0c1d5a2a25c710f32d534f7cc8197ed7e3"
+  },
+  "pack_id": "tobkiri_ui_settings_pack",
+  "source_identity": "sha256:7dea3f06a529127bc250f2e2fb83b121db503e7cd965a77e7cec9afb5ff901f4"
+}

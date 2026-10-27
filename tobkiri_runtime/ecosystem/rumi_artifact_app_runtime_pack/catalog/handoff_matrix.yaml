@@ -2,7 +2,7 @@ handoff_matrix:
   pack_boundary_rule: owner_surface_wins_then_explicit_handoff
   items:
   - surface: frontend_design_generation
-    resolution: handoff_to_rumi_reference_ui_pack
+    resolution: handoff_to_rumi_frontend_design_pack
     requires_human_review: true
   - surface: file_persistence
     resolution: handoff_to_defaultspack

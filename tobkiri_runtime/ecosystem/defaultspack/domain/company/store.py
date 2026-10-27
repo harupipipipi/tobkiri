@@ -46,6 +46,15 @@ class CompanyStore:
         if override:
             path = Path(override)
             return path if path.suffix == ".json" else path / "companies.json"
+        user_data = os.environ.get("RUMI_USER_DATA", "").strip()
+        if user_data:
+            return (
+                Path(user_data).expanduser()
+                / "defaultspack"
+                / "shared"
+                / "companies"
+                / "companies.json"
+            )
         return Path(__file__).resolve().parents[2] / "user_data" / "shared" / "companies" / "companies.json"
 
     @property

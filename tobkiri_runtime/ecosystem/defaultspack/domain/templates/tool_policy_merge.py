@@ -95,6 +95,8 @@ def normalize_template_tool_policy(item: dict[str, Any]) -> NormalizedTemplateTo
     default_enabled = _merged_string_list(source, DEFAULT_ENABLED_KEYS)
     default_disabled = _merged_string_list(source, DEFAULT_DISABLED_KEYS)
     selected_tools = _merged_string_list(source, SELECTED_TOOLS_KEYS)
+    raw_params = source.get("params")
+    params = raw_params if isinstance(raw_params, dict) else {}
     return NormalizedTemplateToolPolicy(
         source_ids=tuple(source_ids),
         projected_ids=tuple(projected_ids),
@@ -109,7 +111,7 @@ def normalize_template_tool_policy(item: dict[str, Any]) -> NormalizedTemplateTo
         if isinstance(source.get("parallel_tool_calls"), bool)
         else None,
         toggleable=source.get("toggleable") if isinstance(source.get("toggleable"), bool) else None,
-        params=deepcopy(source.get("params")) if isinstance(source.get("params"), dict) else {},
+        params=deepcopy(params),
     )
 
 

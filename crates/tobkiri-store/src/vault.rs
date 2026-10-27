@@ -1,0 +1,272 @@
+use crate::{DataRoot, StoreError, canonical};
+use chacha20poly1305::{
+    KeyInit, XChaCha20Poly1305, XNonce,
+    aead::{Aead, Payload},
+};
+use serde::{Deserialize, Serialize};
+use std::{collections::BTreeMap, sync::Arc};
+use tobkiri_canon::{Digest, ids::ProfileId};
+use tobkiri_gate::{CallCx, EffectRequest, Grant, Principal};
+use zeroize::{Zeroize, Zeroizing};
+
+#[path = "vault_secret_work.rs"]
+mod vault_secret_work;
+pub use vault_secret_work::*;
+
+#[path = "vault_secret_network.rs"]
+mod vault_secret_network;
+
+const MAGIC: &[u8; 8] = b"TBKVLT01";
+/// Key custody belongs to core; Packs never receive a key-provider object.
+pub trait VaultKeyProvider: Send + Sync {
+    fn key(&self, profile: &ProfileId) -> Result<[u8; 32], StoreError>;
+}
+/// OS keychain provider. Linux CLI falls back to a private Profile key file.
+pub struct DefaultKeyProvider {
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    root: DataRoot,
+}
+impl DefaultKeyProvider {
+    pub fn new(root: DataRoot) -> Self {
+        Self { root }
+    }
+}
+impl VaultKeyProvider for DefaultKeyProvider {
+    fn key(&self, profile: &ProfileId) -> Result<[u8; 32], StoreError> {
+        #[cfg(unix)]
+        let _lock = self.root.profile_lock(profile, ".vault-key.lock")?;
+        let result = (|| {
+            let entry = keyring::Entry::new("Tobkiri", profile.as_str())
+                .map_err(|_| StoreError::Unavailable("OS keychain unavailable".into()))?;
+            match entry.get_secret() {
+                Ok(bytes) => key_array(Zeroizing::new(bytes)),
+                Err(keyring::Error::NoEntry) => {
+                    let mut key = Zeroizing::new([0; 32]);
+                    getrandom::fill(key.as_mut())
+                        .map_err(|e| StoreError::Unavailable(e.to_string()))?;
+                    entry.set_secret(key.as_ref()).map_err(|_| {
+                        StoreError::Unavailable("OS keychain key storage failed".into())
+                    })?;
+                    Ok(*key)
+                }
+                Err(_) => Err(StoreError::Unavailable(
+                    "OS keychain locked or unavailable".into(),
+                )),
+            }
+        })();
+        #[cfg(target_os = "linux")]
+        if result.is_err() {
+            eprintln!("Tobkiri: OS keychain unavailable; using a private 0600 Profile key file.");
+            return match _lock.directory.read("vault.key", 32) {
+                Ok(bytes) => key_array(Zeroizing::new(bytes)),
+                Err(StoreError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
+                    let mut key = Zeroizing::new([0; 32]);
+                    getrandom::fill(key.as_mut())
+                        .map_err(|e| StoreError::Unavailable(e.to_string()))?;
+                    _lock.directory.write_atomic("vault.key", key.as_ref())?;
+                    Ok(*key)
+                }
+                Err(e) => Err(e),
+            };
+        }
+        result
+    }
+}
+fn key_array(bytes: Zeroizing<Vec<u8>>) -> Result<[u8; 32], StoreError> {
+    bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| StoreError::Invalid("invalid vault key length".into()))
+}
+/// Secret vectors wipe on every exit path, including map replacement and decoding failure.
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct SecretBytes(Vec<u8>);
+impl Drop for SecretBytes {
+    fn drop(&mut self) {
+        self.0.zeroize();
+    }
+}
+type SecretMap = BTreeMap<String, SecretBytes>;
+fn secret_wire(values: &SecretMap) -> Result<Zeroizing<Vec<u8>>, StoreError> {
+    // Names are restricted ASCII and values are u8 arrays. BTreeMap order and
+    // serde's compact integer encoding are exactly this StrictV1 subset.
+    serde_json::to_vec(values)
+        .map(Zeroizing::new)
+        .map_err(|e| StoreError::Canon(e.to_string()))
+}
+/// An opaque, Profile/principal-bound secret. Debug never prints its contents.
+pub struct SecretRef {
+    profile: ProfileId,
+    principal: Principal,
+    name: String,
+    bytes: SecretBytes,
+}
+impl std::fmt::Debug for SecretRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SecretRef")
+            .field("name", &self.name)
+            .finish_non_exhaustive()
+    }
+}
+/// XChaCha20-Poly1305 encrypted per-Profile vault. No data-export API exists.
+pub struct Vault {
+    root: DataRoot,
+    profile: ProfileId,
+    key: Zeroizing<[u8; 32]>,
+}
+impl Vault {
+    pub fn open(
+        root: &DataRoot,
+        profile: &ProfileId,
+        keys: Arc<dyn VaultKeyProvider>,
+    ) -> Result<Self, StoreError> {
+        let key = Zeroizing::new(keys.key(profile)?);
+        let vault = Self {
+            root: root.clone(),
+            profile: profile.clone(),
+            key,
+        };
+        let _ = vault.load()?;
+        Ok(vault)
+    }
+    pub fn open_default(root: &DataRoot, profile: &ProfileId) -> Result<Self, StoreError> {
+        Self::open(
+            root,
+            profile,
+            Arc::new(DefaultKeyProvider::new(root.clone())),
+        )
+    }
+    /// Core user operation. This is deliberately absent from guest imports.
+    pub fn set(&self, name: &str, value: &[u8]) -> Result<(), StoreError> {
+        crate::secure::name(name)?;
+        if value.len() > 64 * 1024 {
+            return Err(StoreError::Quota);
+        }
+        #[cfg(unix)]
+        let _lock = self.root.profile_lock(&self.profile, ".vault.lock")?;
+        #[cfg(unix)]
+        let mut values =
+            self.decode_file(_lock.directory.read("secrets.vault", 4 * 1024 * 1024 + 48))?;
+        #[cfg(not(unix))]
+        let mut values = self.load()?;
+        values.insert(name.into(), SecretBytes(value.to_vec()));
+        let plaintext = secret_wire(&values)?;
+        if plaintext.len() > 4 * 1024 * 1024 {
+            return Err(StoreError::Quota);
+        }
+        let mut nonce = [0; 24];
+        getrandom::fill(&mut nonce).map_err(|e| StoreError::Unavailable(e.to_string()))?;
+        let cipher = XChaCha20Poly1305::new(self.key.as_ref().into());
+        let aad = format!("tobkiri.vault/1:{}", self.profile);
+        let encrypted = cipher
+            .encrypt(
+                XNonce::from_slice(&nonce),
+                Payload {
+                    msg: &plaintext,
+                    aad: aad.as_bytes(),
+                },
+            )
+            .map_err(|_| StoreError::Invalid("vault encryption failed".into()))?;
+        let mut file = Vec::with_capacity(32 + encrypted.len());
+        file.extend_from_slice(MAGIC);
+        file.extend_from_slice(&nonce);
+        file.extend_from_slice(&encrypted);
+        #[cfg(unix)]
+        {
+            _lock.directory.write_atomic("secrets.vault", &file)
+        }
+        #[cfg(not(unix))]
+        {
+            self.root
+                .write_profile_file_atomic(&self.profile, "secrets.vault", &file)
+        }
+    }
+    fn load(&self) -> Result<SecretMap, StoreError> {
+        self.decode_file(self.root.read_profile_file(
+            &self.profile,
+            "secrets.vault",
+            4 * 1024 * 1024 + 48,
+        ))
+    }
+    fn decode_file(&self, file: Result<Vec<u8>, StoreError>) -> Result<SecretMap, StoreError> {
+        let bytes = match file {
+            Ok(v) => v,
+            Err(StoreError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(BTreeMap::new());
+            }
+            Err(e) => return Err(e),
+        };
+        if bytes.len() < 48 || &bytes[..8] != MAGIC {
+            return Err(StoreError::Invalid("invalid vault file".into()));
+        }
+        let aad = format!("tobkiri.vault/1:{}", self.profile);
+        let cipher = XChaCha20Poly1305::new(self.key.as_ref().into());
+        let plaintext = Zeroizing::new(
+            cipher
+                .decrypt(
+                    XNonce::from_slice(&bytes[8..32]),
+                    Payload {
+                        msg: &bytes[32..],
+                        aad: aad.as_bytes(),
+                    },
+                )
+                .map_err(|_| StoreError::Denied("vault authentication failed".into()))?,
+        );
+        let values: SecretMap =
+            serde_json::from_slice(&plaintext).map_err(|e| StoreError::Canon(e.to_string()))?;
+        for (name, value) in &values {
+            crate::secure::name(name)?;
+            if value.0.len() > 64 * 1024 {
+                return Err(StoreError::Quota);
+            }
+        }
+        if secret_wire(&values)?.as_slice() != plaintext.as_slice() {
+            return Err(StoreError::Canon(
+                "vault record is not StrictV1 canonical".into(),
+            ));
+        }
+        Ok(values)
+    }
+    pub fn secret_digest(name: &str) -> Result<Digest, StoreError> {
+        Ok(Digest::hash(&canonical(&name)?))
+    }
+    pub fn get(&self, cx: &CallCx, name: &str, grant: Grant) -> Result<SecretRef, StoreError> {
+        if self.profile != *cx.profile() {
+            return Err(StoreError::Denied("vault Profile mismatch".into()));
+        }
+        grant.consume(
+            cx,
+            &EffectRequest::Secret {
+                name: name.into(),
+                reveal: false,
+            },
+            &Self::secret_digest(name)?,
+        )?;
+        let mut values = self.load()?;
+        let secret = values.remove(name).ok_or(StoreError::NotFound)?;
+        Ok(SecretRef {
+            profile: self.profile.clone(),
+            principal: cx.principal().clone(),
+            name: name.into(),
+            bytes: secret,
+        })
+    }
+    pub fn reveal(&self, cx: &CallCx, name: &str, grant: Grant) -> Result<Vec<u8>, StoreError> {
+        if self.profile != *cx.profile() {
+            return Err(StoreError::Denied("vault Profile mismatch".into()));
+        }
+        grant.consume(
+            cx,
+            &EffectRequest::Secret {
+                name: name.into(),
+                reveal: true,
+            },
+            &Self::secret_digest(name)?,
+        )?;
+        let mut values = self.load()?;
+        let mut secret = values.remove(name).ok_or(StoreError::NotFound)?;
+        // An explicitly approved reveal transfers custody to the trusted caller.
+        Ok(std::mem::take(&mut secret.0))
+    }
+}

@@ -1,0 +1,322 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.mcp.connection.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:mcp.connection.prepare",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:34981289ad32eae11883495f6f333de425f3a743108c07bb64900eecbe3d89fc",
+          "operation_id": "mcp.connection.prepare",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        },
+        {
+          "effect_ceiling": [
+            "capability:mcp.connection.connect",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:34981289ad32eae11883495f6f333de425f3a743108c07bb64900eecbe3d89fc",
+          "operation_id": "mcp.connection.connect",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        },
+        {
+          "effect_ceiling": [
+            "capability:mcp.tool.call",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:34981289ad32eae11883495f6f333de425f3a743108c07bb64900eecbe3d89fc",
+          "operation_id": "mcp.connection.call",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        },
+        {
+          "effect_ceiling": [
+            "capability:mcp.connection.disconnect",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:34981289ad32eae11883495f6f333de425f3a743108c07bb64900eecbe3d89fc",
+          "operation_id": "mcp.connection.disconnect",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        },
+        {
+          "effect_ceiling": [
+            "capability:mcp.connection.read",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:34981289ad32eae11883495f6f333de425f3a743108c07bb64900eecbe3d89fc",
+          "operation_id": "mcp.connection.list",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "tobkiri_mcp_connection_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:14951bd35a0e8006f43f3e42dfbc1b672cc0053048e493db4235051223f26073",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:14951bd35a0e8006f43f3e42dfbc1b672cc0053048e493db4235051223f26073",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_mcp_connection_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "captured-host-mcp-connections",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "mcp.connection.prepare.service",
+        "required_capabilities": [
+          "mcp.connection.prepare",
+          "mcp.connection.connect",
+          "mcp.tool.call",
+          "mcp.connection.disconnect",
+          "mcp.connection.read"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:57c40f4779dce5e36c9a5ed5a8cbd483ef657246035494d4c3409bf5f7411d8f",
+      "schema_catalog": {
+        "sha256:34981289ad32eae11883495f6f333de425f3a743108c07bb64900eecbe3d89fc": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "allowed_tools": {
+                  "items": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  },
+                  "maxItems": 64,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "config": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "command": {
+                      "items": {
+                        "maxLength": 16384,
+                        "type": "string"
+                      },
+                      "maxItems": 256,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "cwd": {
+                      "maxLength": 4096,
+                      "type": "string"
+                    },
+                    "env": {
+                      "additionalProperties": {
+                        "maxLength": 16384,
+                        "type": "string"
+                      },
+                      "maxProperties": 128,
+                      "type": "object"
+                    },
+                    "transport": {
+                      "const": "stdio"
+                    }
+                  },
+                  "required": [
+                    "transport",
+                    "command",
+                    "env",
+                    "cwd"
+                  ],
+                  "type": "object"
+                },
+                "server_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "server_id",
+                "config",
+                "allowed_tools"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "plan": {
+                  "type": "object"
+                },
+                "request": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "allowed_tools": {
+                      "items": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "minItems": 1,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "config": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "command": {
+                          "items": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "maxItems": 256,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "cwd": {
+                          "maxLength": 4096,
+                          "type": "string"
+                        },
+                        "env": {
+                          "additionalProperties": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "maxProperties": 128,
+                          "type": "object"
+                        },
+                        "transport": {
+                          "const": "stdio"
+                        }
+                      },
+                      "required": [
+                        "transport",
+                        "command",
+                        "env",
+                        "cwd"
+                      ],
+                      "type": "object"
+                    },
+                    "server_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "server_id",
+                    "config",
+                    "allowed_tools"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "request",
+                "plan"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "arguments": {
+                  "type": "object"
+                },
+                "connection_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "tool": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "connection_id",
+                "tool",
+                "arguments"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "connection_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "connection_id"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "maxProperties": 0,
+              "type": "object"
+            }
+          ]
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    }
+  ],
+  "pack_id": "tobkiri_mcp_connection_pack",
+  "source_identity": "sha256:14951bd35a0e8006f43f3e42dfbc1b672cc0053048e493db4235051223f26073"
+}

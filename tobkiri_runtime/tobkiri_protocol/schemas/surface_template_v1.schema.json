@@ -1,0 +1,409 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "tobkiri.ui.surface-template.v1"
+    },
+    "template_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "renderer_contribution_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "renderer_api_version": {
+      "const": "1.0.0"
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    }
+  },
+  "required": [
+    "version",
+    "template_id",
+    "renderer_contribution_id",
+    "renderer_api_version",
+    "nodes"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tobkiri.ui.surface-template.v1",
+  "$defs": {
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contribution_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "contract_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "operation_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "contribution_id",
+        "contract_id",
+        "operation_id"
+      ]
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "$ref": "#/$defs/operation"
+        },
+        "input": {
+          "type": "object",
+          "maxProperties": 32
+        },
+        "source_bindings": {
+          "type": "object",
+          "maxProperties": 32,
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,15}$",
+            "maxLength": 256
+          }
+        },
+        "context_bindings": {
+          "type": "object",
+          "maxProperties": 16,
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+          },
+          "additionalProperties": {
+            "enum": [
+              "conversation_id",
+              "turn_id"
+            ]
+          }
+        }
+      },
+      "required": [
+        "operation"
+      ]
+    },
+    "intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "event": {
+          "enum": [
+            "activate",
+            "retry",
+            "dismiss",
+            "cancel",
+            "submit",
+            "select",
+            "confirm",
+            "decline",
+            "close"
+          ]
+        },
+        "request": {
+          "$ref": "#/$defs/request"
+        },
+        "intent_key": {
+          "const": "surface_intent"
+        },
+        "outcome_path": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,15}$",
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "event",
+        "request",
+        "intent_key"
+      ]
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "pattern": {
+          "enum": [
+            "content",
+            "problem",
+            "notice",
+            "progress",
+            "resource_input",
+            "choice",
+            "form",
+            "confirmation",
+            "collection",
+            "detail"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "value_path": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,15}$",
+          "maxLength": 256
+        },
+        "total_path": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,15}$",
+          "maxLength": 256
+        },
+        "items_path": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,15}$",
+          "maxLength": 256
+        },
+        "id_path": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,15}$",
+          "maxLength": 256
+        },
+        "label_path": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,15}$",
+          "maxLength": 256
+        },
+        "intents": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/intent"
+          }
+        },
+        "choices": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            },
+            "required": [
+              "id",
+              "label"
+            ]
+          }
+        },
+        "multiple": {
+          "type": "boolean"
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "type": {
+                "enum": [
+                  "text",
+                  "integer",
+                  "boolean"
+                ]
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "min": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "max": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "type"
+            ]
+          }
+        },
+        "resource": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "file",
+                "image",
+                "audio"
+              ]
+            },
+            "acquire": {
+              "$ref": "#/$defs/request"
+            },
+            "exchange": {
+              "$ref": "#/$defs/request"
+            }
+          },
+          "required": [
+            "kind",
+            "acquire",
+            "exchange"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "pattern",
+        "label"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "pattern": {
+                "const": "progress"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "value_path",
+              "total_path"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "pattern": {
+                "const": "choice"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "choices"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "pattern": {
+                "const": "form"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "fields"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "pattern": {
+                "const": "collection"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "items_path",
+              "id_path",
+              "label_path"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "pattern": {
+                "const": "resource_input"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "resource"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

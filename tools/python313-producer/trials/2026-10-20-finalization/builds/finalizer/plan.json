@@ -1,0 +1,88 @@
+{
+  "allowed_imports": [
+    "tobkiri:core/types@1.0.0",
+    "tobkiri:core/flow@1.0.0",
+    "tobkiri:core/clock@1.0.0",
+    "tobkiri:core/random@1.0.0",
+    "tobkiri:core/audit@1.0.0",
+    "local:ai-gateway-tool-caller-python/caller@1.0.0",
+    "local:ai-usage-cost-python/usage-cost@1.0.0",
+    "local:ai-stream-normalizer-python/stream-normalizer@1.0.0"
+  ],
+  "entrypoint": "app",
+  "format": "tobkiri.python-build/3",
+  "outer_exports": [
+    "tobkiri:core/lifecycle@1.0.0",
+    "local:ai-gateway-finalizer-python/finalizer@1.0.0"
+  ],
+  "sources": [
+    {
+      "destination": "app.py",
+      "sha256": "17de95bc837421e64b9cc6b48830e7dcce270cced8b10e4505eae7c3f8b7c8d9",
+      "source": "python/app.py"
+    },
+    {
+      "destination": "gateway_finalizer_adapter.py",
+      "sha256": "3292fed55af50ac8252ec6eb3df42b7d884bcc9635df64d25e96759463951a35",
+      "source": "python/gateway_finalizer_adapter.py"
+    },
+    {
+      "destination": "inventory.json",
+      "sha256": "5fb62c5dfa9a5fa2aa4b1f62081394e66484da46d9f536f0cf3af0fcb0d292ca",
+      "source": "python/inventory.json"
+    },
+    {
+      "destination": "ordered_json.py",
+      "sha256": "7df89c2e5275fdc795c13e0d70d6ec69f7f022aa968c58a3c1b1637e0eee2158",
+      "source": "python/ordered_json.py"
+    },
+    {
+      "destination": "ordered_json_v2.py",
+      "sha256": "495b613a37807cf10e831a2332b7f401148d3aaec29ec84c16a22f0a2c05d3a2",
+      "source": "python/ordered_json_v2.py"
+    },
+    {
+      "destination": "original_gateway_finalizer.py",
+      "sha256": "73ddc86e677f93ced70e0ce2d352b94cd7a5238e15b438d0bc046b31417a01c2",
+      "source": "python/original_gateway_finalizer.py"
+    },
+    {
+      "destination": "provenance.json",
+      "sha256": "129862fc28f1e37643b13e982813997b0b6722fce52841c3bc66c286744e43c0",
+      "source": "python/provenance.json"
+    },
+    {
+      "destination": "wit/deps/ai-gateway-tool-caller-python/pack.wit",
+      "sha256": "34cad3a098d41f9103386b0dab1988624c0de7f81721807b4da1e5c0f64bdd41",
+      "source": "wit/deps/ai-gateway-tool-caller-python/pack.wit"
+    },
+    {
+      "destination": "wit/deps/ai-stream-normalizer-python/pack.wit",
+      "sha256": "8a080544d35dfcd2a72d7195954c9a09953f7c1d9fe2619ac42bae8b1933bc07",
+      "source": "wit/deps/ai-stream-normalizer-python/pack.wit"
+    },
+    {
+      "destination": "wit/deps/ai-tool-bridge-ordered-python/pack.wit",
+      "sha256": "513454d839ac468205bc5b4ed93032625ed4f5d3064aa17f643f907e80bfeb78",
+      "source": "wit/deps/ai-tool-bridge-ordered-python/pack.wit"
+    },
+    {
+      "destination": "wit/deps/ai-usage-cost-python/pack.wit",
+      "sha256": "196a11e594cc85d0213a6ad6e5d62e3e5b8921e78e24a75fef647acd28d59e50",
+      "source": "wit/deps/ai-usage-cost-python/pack.wit"
+    },
+    {
+      "destination": "wit/deps/tobkiri-core/core.wit",
+      "sha256": "f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "source": "wit/deps/tobkiri-core/core.wit"
+    },
+    {
+      "destination": "wit/pack.wit",
+      "sha256": "b260bfcf0822d4bcd4006ff041625a6cca472d89cb5232c6188deff7a51ff952",
+      "source": "wit/pack.wit"
+    }
+  ],
+  "stub_wasi": true,
+  "wit": "wit/pack.wit",
+  "world": "pack"
+}

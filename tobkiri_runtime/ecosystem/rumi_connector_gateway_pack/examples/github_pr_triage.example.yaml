@@ -2,5 +2,5 @@ example_id: rumi_connector_gateway.github_pr_triage
 request: Route a PR review request to the right Rumi pack.
 expected_handoff:
   connector_id: github
-  delivery_target: rumi_local_agent_pack
+  delivery_target: tobkiri.profile-content.local-agent.v1
   inbound_risk: mixed

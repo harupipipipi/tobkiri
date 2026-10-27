@@ -1,0 +1,135 @@
+name: Issue 1520 ordinary App capability Profile Flow
+
+on:
+  push:
+    branches: [codex/issue-1520-native-shared-state, codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-capability-flow.yml'
+      - 'packs/local.harness-capability-input/**'
+      - 'packs/Cargo.toml'
+      - 'packs/Cargo.lock'
+      - 'tools/python313-producer/materialize_capability_projection.py'
+      - 'tools/python313-producer/tests/test_capability_materialization.py'
+      - 'crates/tobkiri-e2e/tests/capability_projection.rs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: issue-1520-capability-flow-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  actual-ordinary-flow:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      SUPPLIER_RUN: '40462099581'
+      SUPPLIER_HEAD: 9521b4969ee6cbd42ec2e644ca1fc2f2726f8a6d
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          targets: wasm32-wasip2
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            packs -> target
+      - name: Check actual supported native platform before execution
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          capability_device="$(df -P "$GITHUB_WORKSPACE" | awk 'NR == 2 {print $1}')"
+          diskutil info "$capability_device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Check source staging without importing original runtime
+        run: |
+          python3 -B -m unittest discover -s tools/python313-producer/tests -p test_capability_materialization.py
+          cargo fmt --manifest-path packs/Cargo.toml -p tobkiri-pack-harness-capability-input -- --check
+          cargo fmt --all -- --check
+      - name: Authenticate the actual successful original-source supplier
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SUPPLIER_RUN" > "$RUNNER_TEMP/projection-supplier.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SUPPLIER_RUN/jobs" > "$RUNNER_TEMP/projection-supplier-jobs.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SUPPLIER_RUN/artifacts" > "$RUNNER_TEMP/projection-supplier-artifacts.json"
+          python3 -B - "$RUNNER_TEMP" "$SUPPLIER_HEAD" <<'PYTHON'
+          import json, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          run = json.loads((root/'projection-supplier.json').read_bytes())
+          if run['head_sha'] != sys.argv[2] or run['status'] != 'completed' or run['conclusion'] != 'success':
+              raise ValueError('original component supplier is not the actual successful source')
+          jobs = json.loads((root/'projection-supplier-jobs.json').read_bytes())['jobs']
+          selected = {j['name']:j for j in jobs if j['name'] in {'build-two-worlds','compare-original-data'}}
+          if set(selected) != {'build-two-worlds','compare-original-data'} or any(j['conclusion']!='success' for j in selected.values()):
+              raise ValueError('actual build/original comparison/strict consumer did not complete')
+          artifacts = json.loads((root/'projection-supplier-artifacts.json').read_bytes())['artifacts']
+          (artifact,) = [a for a in artifacts if a['name']=='app-capability-projection-components']
+          if (artifact['id'] != 12714229887 or artifact['expired']
+                  or artifact['digest'] != 'sha256:5c5d033b9cb93e1d48b6a124bbc349ebd17146622fb3876c66697e39188e7e36'):
+              raise ValueError('actual paired component artifact changed')
+          PYTHON
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-capability-projection-components
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SUPPLIER_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/projection-supplier
+      - name: Build the separate ordinary request Pack with the locked guest workspace
+        run: >-
+          cargo build --manifest-path packs/Cargo.toml --locked
+          -p tobkiri-pack-harness-capability-input --target wasm32-wasip2
+          --target-dir "$RUNNER_TEMP/capability-input-target"
+      - name: Materialize independent ordinary Pack manifests from actual component bytes
+        run: >-
+          python3 -B tools/python313-producer/materialize_capability_projection.py
+          --supplier "$RUNNER_TEMP/projection-supplier"
+          --input-component "$RUNNER_TEMP/capability-input-target/wasm32-wasip2/debug/tobkiri_pack_harness_capability_input.wasm"
+          --destination "$RUNNER_TEMP/capability-ordinary"
+      - name: Bind original cases and ordinary Pack paths
+        run: |
+          python3 -B - "$RUNNER_TEMP" "$GITHUB_ENV" <<'PYTHON'
+          import hashlib, sys
+          from pathlib import Path
+          root, env = map(Path,sys.argv[1:])
+          cases = root/'projection-supplier/cases.json'
+          raw = cases.read_bytes()
+          if len(raw)>4*1024*1024:
+              raise ValueError('original cases exceed their existing bound')
+          with env.open('a') as output:
+              output.write(f'TOBKIRI_CAPABILITY_PACKS={root/"capability-ordinary/packs"}\n')
+              output.write(f'TOBKIRI_CAPABILITY_CASES={cases}\n')
+              output.write(f'TOBKIRI_CAPABILITY_CASES_SHA256={hashlib.sha256(raw).hexdigest()}\n')
+              output.write(f'TOBKIRI_CAPABILITY_FLOW_REPORT={root/"capability-ordinary/ordinary-flow.json"}\n')
+          PYTHON
+      - name: Execute actual UI received entry through Profile Flow and reject unapproved nested route
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/capability-ordinary-flow.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-e2e --test capability_projection
+          ordinary_capability_ui_entry_runs_real_profile_flow_and_rejects_unapproved_route
+          -- --ignored --exact --nocapture
+      - name: Strictly lint ordinary request and actual Core consumer
+        run: |
+          cargo clippy --manifest-path packs/Cargo.toml --locked -p tobkiri-pack-harness-capability-input --target wasm32-wasip2 -- -D warnings
+          cargo clippy --locked -p tobkiri-e2e --test capability_projection -- -D warnings
+      - name: Retain actual ordinary Packs and bounded Flow evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ordinary-capability-flow
+          path: |
+            ${{ runner.temp }}/capability-ordinary
+            ${{ runner.temp }}/capability-ordinary-flow.log
+            ${{ runner.temp }}/projection-supplier.json
+            ${{ runner.temp }}/projection-supplier-jobs.json
+            ${{ runner.temp }}/projection-supplier-artifacts.json
+          retention-days: 7

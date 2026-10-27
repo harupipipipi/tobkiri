@@ -1,0 +1,9 @@
+package tobkiri-ui:rpds-probe@1.0.0;
+
+interface probe {
+  run: func() -> string;
+}
+
+world ui-rpds-probe {
+  export probe;
+}

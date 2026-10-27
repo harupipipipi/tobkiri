@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-check-launcher-update"
+description = "Enables the check_launcher_update command without any pre-configured scope."
+commands.allow = ["check_launcher_update"]
+
+[[permission]]
+identifier = "deny-check-launcher-update"
+description = "Denies the check_launcher_update command without any pre-configured scope."
+commands.deny = ["check_launcher_update"]

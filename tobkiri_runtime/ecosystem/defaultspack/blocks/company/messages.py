@@ -1,25 +1,13 @@
 from blocks._common import ok, error
-from domain.company.message_router import CompanySlackRuntime
-from domain.company.mimo_sync import sync_mimo_company_workspace
-from domain.company.runtime_store import CompanyRuntimeStore
-from domain.company.store import CompanyStore
+from domain.company.contract_facade import CompanyContractFacade, CompanyFacadeError
 
-from ._helpers import company_id_from, invalid, limit_offset, missing_company, require_dict, subagent_team_write_denied
-
-
-def _bool_param(value):
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "on", "tail", "latest"}
-    return False
-
-
-def _message_order(value):
-    normalized = str(value or "").strip().lower()
-    if normalized in {"desc", "descending", "latest", "newest"}:
-        return "desc"
-    return "asc"
+from ._helpers import (
+    company_id_from,
+    invalid,
+    missing_company,
+    require_dict,
+    subagent_team_write_denied_for_company,
+)
 
 
 def run(input_data, context):
@@ -29,61 +17,38 @@ def run(input_data, context):
     if not company_id:
         return invalid("company_id is required")
     action = str(input_data.get("action") or "list").lower()
-    store = CompanyStore()
-    runtime_store = CompanyRuntimeStore()
     try:
+        facade = CompanyContractFacade(input_data, context)
         if action == "list":
-            limit, offset = limit_offset(input_data)
-            sync_mimo_company_workspace(company_id)
-            if store.get_company(company_id) is None:
+            result = facade.run("list_messages")
+            if result is None:
                 return missing_company(company_id)
-            if _bool_param(input_data.get("tail")) or _bool_param(input_data.get("latest")):
-                _head, total = runtime_store.list_messages(
-                    company_id,
-                    channel_id=input_data.get("channel_id"),
-                    thread_id=input_data.get("thread_id"),
-                    limit=1,
-                    offset=0,
-                )
-                offset = max(int(total) - int(limit), 0)
-            result = runtime_store.list_messages(
-                company_id,
-                channel_id=input_data.get("channel_id"),
-                thread_id=input_data.get("thread_id"),
-                limit=limit,
-                offset=offset,
-                order=_message_order(input_data.get("order")),
-            )
-            messages, total = result
-            return ok({"messages": messages, "total": total})
+            return ok(result)
         if action == "get":
             message_id = input_data.get("message_id") or input_data.get("id")
             if not message_id:
                 return invalid("message_id is required")
-            message = runtime_store.get_message(str(message_id))
+            request = {**input_data, "message_id": str(message_id)}
+            message = CompanyContractFacade(request, context).run("get_message")
             if message is None:
                 return error("message not found: " + str(message_id), "NOT_FOUND")
             return ok(message)
         if action in {"add", "create"}:
-            blocked = subagent_team_write_denied(company_id)
+            company = facade.run("get")
+            if company is None:
+                return missing_company(company_id)
+            blocked = subagent_team_write_denied_for_company(company)
             if blocked is not None:
                 return blocked
             content = input_data.get("content")
             if not content:
                 return invalid("content is required")
-            result = CompanySlackRuntime(company_store=store, runtime_store=runtime_store).post_message(
-                company_id,
-                content=str(content),
-                sender_id=str(input_data.get("sender_id") or "user"),
-                channel_id=str(input_data.get("channel_id") or "ops-company"),
-                thread_id=input_data.get("thread_id"),
-                target_agent_ids=input_data.get("target_agent_ids") if isinstance(input_data.get("target_agent_ids"), list) else None,
-                metadata=input_data.get("metadata") if isinstance(input_data.get("metadata"), dict) else None,
-                context=context if isinstance(context, dict) else {},
-            )
+            result = facade.run("append_message")
             if result is None:
                 return missing_company(company_id)
             return ok(result)
         return invalid("unsupported messages action: " + action)
+    except CompanyFacadeError as exc:
+        return error(str(exc), exc.code)
     except Exception as exc:
         return error("company messages failed: " + str(exc), "COMPANY_MESSAGES_ERROR")

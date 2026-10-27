@@ -1,0 +1,2473 @@
+{
+  "schema": "io.tobkiri.original-provider-configuration-prepare.v1",
+  "scope": "finite prepare only; no execute, credential, persistent or GUI parity",
+  "interpreter": {
+    "version": "3.13.9 (main, Oct 15 2025, 02:43:58) [GCC 11.4.0]",
+    "implementation": "cpython",
+    "executable_sha256": "3a980a1123ca55f81addb02551e0bdf3c6fba8382e3d0b5aac6d7f73ded0063d"
+  },
+  "producer": {
+    "path": "tools/quality/python_provider_registry_compat/configuration_prepare.py",
+    "sha256": "646f6c0d3066ca226175e6cdfbe762782e0aa7d2f1748630dffb405ff169dda0"
+  },
+  "sources": [
+    {
+      "path": "tobkiri_runtime/backend_core/ecosystem/__init__.py",
+      "bytes": 1755,
+      "sha256": "2eb2d581a27b403773433cd0789e362d216ae4fa614097d3a3c27c0efaf83d1b",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/backend_core/ecosystem/compat.py",
+      "bytes": 4188,
+      "sha256": "76d875b25627be9c02367c122ac2b001126190bedcd6405047df00dc4add5f9e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/backend_core/ecosystem/mounts.py",
+      "bytes": 10791,
+      "sha256": "90c524337503580561d7d23b47e682a53e63752917af24de4388fbda763452a1",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/backend_core/ecosystem/registry.py",
+      "bytes": 2855,
+      "sha256": "1a381960282194fff02ed3aec81adad1790eb5bb97adb3f8569568fc42d6baa7",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/backend_core/ecosystem/uuid_utils.py",
+      "bytes": 3635,
+      "sha256": "51de575e1c53a373e6e39ea338da0e3c5217fa59cdeafc80a2c86ad4c8c9df45",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/__init__.py",
+      "bytes": 5061,
+      "sha256": "686c3971e74d622c934d41861b66b29d2d1c163359e08556ab3b4248d6aa7d4d",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/_pack_catalog_read.py",
+      "bytes": 8441,
+      "sha256": "7f28568dad4f27115ba0193ab3d64bb82e0f1e12cc75165cc76f2d0ef2af9a4d",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/activation_handoff.py",
+      "bytes": 212,
+      "sha256": "3591378e8a5af30ca503e0b1d5829de30accad96a1c252fe2977826dd371a79e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/active_profile_store_v4.py",
+      "bytes": 31240,
+      "sha256": "8d7bfc604d0219075f1cd63531247d01bd5ef8accd00b8ce9342909528e66c4f",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/admitted_pack_read_v4.py",
+      "bytes": 6794,
+      "sha256": "94a8632a00e192bfa4119a4357922666246ee9d120b271fba3c3e116a1b3e988",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/api/__init__.py",
+      "bytes": 1169,
+      "sha256": "64200cd5842727f5a549ae38208d1aaae006f5ab973dbd8c70c24ec327cdf04b",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/api/api_response.py",
+      "bytes": 535,
+      "sha256": "5e951ecb353e4db8f7c3d63103b53e5c889bb882531c815054cd4c574ac1186e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/api/auth_gate.py",
+      "bytes": 5103,
+      "sha256": "d3485405eeb90594b56276e3c59b9708a443bb66089d6edfa3f1bdcebaae3ecf",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/api/browser_access.py",
+      "bytes": 17323,
+      "sha256": "c849068b55f0b05071b54904901e75a85af0ae2d9307fc5af0f6371fc5248a50",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/api/http_response.py",
+      "bytes": 9293,
+      "sha256": "3f043ab7e3e7624697eee387dc30f4a45daf5843d3642bb3a1fddef4c63142ac",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/api/packvm_capacity_errors.py",
+      "bytes": 1751,
+      "sha256": "a3b5732a58b880ff04c987dc5db8a17bef48f52eff6775e3634f7945a265c622",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/api/request_body.py",
+      "bytes": 3455,
+      "sha256": "9d4a36522f6d4ce0a66f339af321eec8a255e51a93482aa3ca9bfaf2d97c47c2",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/api/setup_handlers.py",
+      "bytes": 10196,
+      "sha256": "257e8d7ae74731a29a8ab6039e606fa7c7d41be53f0ddd4f7ddfb153ba21feb0",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/api/web_mounts.py",
+      "bytes": 6307,
+      "sha256": "6cd60ffe7143d07884d5ef708653d72bee9f06ee7367fb01222bc368ca2f9554",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/app_lifecycle_manager.py",
+      "bytes": 19343,
+      "sha256": "70f34f610cc7b553f440e5eac0942945c84926daf0a0fc00f8a8b8f3be24a8ea",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/approval_manager.py",
+      "bytes": 62949,
+      "sha256": "027874ce05e6d581e6a8ad626f45b7a2b54fa4482c1cd8a6ec89854081b232e8",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/approval_policy_capabilities_v4.py",
+      "bytes": 4775,
+      "sha256": "4b49ddb87d0c88e79c2a2fef38ee0cafa4a4b119febda9b376d906e8e2185a82",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/audit_logger.py",
+      "bytes": 19804,
+      "sha256": "9aefdbb44218dbd127c3df4ca865a2c36d6ca767dfb57b1c3c8487476a74477d",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/authority/__init__.py",
+      "bytes": 640,
+      "sha256": "6e65c2bd004e878510f653e8ec4af69727a4cd2bbd0685ab2ecc1d62291619db",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/authority/_definition_cache.py",
+      "bytes": 3790,
+      "sha256": "5504968449d09e7c16d30f99afd3e7c764006082408e154194e61ced7bfc9423",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/authority/config_lattice.py",
+      "bytes": 11872,
+      "sha256": "d01a1af7ef2d6e8900ac98f0fcd0f85367797805382ba224b37b7ff1bc7a8a1a",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/authority/models.py",
+      "bytes": 5124,
+      "sha256": "3411e5ef7b7a81f19b8465985ce1a015464ad7ed587dd06cd5e1746c321992ad",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/authority/pack_approval_binding.py",
+      "bytes": 875,
+      "sha256": "d5f495abd43163741cf4a8673977b2138767edcfdbe2c23b51e0e8b54c7214b3",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/authority/policy_consumed_selection.py",
+      "bytes": 5929,
+      "sha256": "abb664bc2101de87d0db9418b7de6f31eaff2c9594fad989573a514427f42f40",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/authority/policy_derived_store.py",
+      "bytes": 10298,
+      "sha256": "702e12dd2d1c873aafd47522c6be2215fff7e54877c419597461476bf3ce2691",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/authority/policy_exact_grant.py",
+      "bytes": 26236,
+      "sha256": "25c9d4643d3c7faa69a7f00db4ed33ab91d7f1c55121c9ab10902a7d04d51c92",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/authority/principal.py",
+      "bytes": 2308,
+      "sha256": "c8f6b8a11e1f3669892cb560f1ce994bb52bd7162c2a399b8fbf9ebe8fbe6e4a",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/authority/store_contracts.py",
+      "bytes": 1509,
+      "sha256": "7a03d73bff3fb1238b14df14e2c3194464ba9c7d9c3aed0268b301ac4e23f72d",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/authority/ui_operator.py",
+      "bytes": 13039,
+      "sha256": "99787339204fe04c6a708a1da29846d3d9fddcc4fc3135ca9ec2820c376a0e02",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/authority/v4.py",
+      "bytes": 2271,
+      "sha256": "a77389d26ed2fbe37560cecbcf9bd7f40e040ed348b514502096c716700a0d6a",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/authority/v4_kernel.py",
+      "bytes": 58811,
+      "sha256": "07168fee584a9372ac9ec72711e43f49281a05156a46ef41eb263821da047db3",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/authority/v4_models.py",
+      "bytes": 54232,
+      "sha256": "61c505e7fb2e73d17c5f3972e6ef4e657d2571fe2b6e99ecd6a3ad577ebd9a8e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/authority/v4_store.py",
+      "bytes": 179537,
+      "sha256": "27c4af9822bad5fc1a1c9ddefebfc6e6ac7e8f61b6debbca87da114a8de63e7b",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/__init__.py",
+      "bytes": 482,
+      "sha256": "0009dd5d4cd5a495e8c8f582fbf5c632a9e6de8f1a7433c7ee696f0ac46b7817",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/action_review_v4/__init__.py",
+      "bytes": 55,
+      "sha256": "3aa61859bdcbdd3673198b9dcbd1366ec97fc30ba16c2d2bcca1b7c38c70f094",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/action_review_v4/canonical_reviewer_port.py",
+      "bytes": 12401,
+      "sha256": "d396a2b37890acafd23eb633f6531f1a5fe268fa97e1280a0830c0fbfb1f6a08",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/action_review_v4/exact_operation_review_adapter.py",
+      "bytes": 8456,
+      "sha256": "7c0413060dccc2e2379ffdcfd35a735e1bc78b0e140af591f18b63629c7f382e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/action_review_v4/host_operation_reviewer.py",
+      "bytes": 15181,
+      "sha256": "223497afc488c88234556a488acf5e1fa58b8dd7e57df305e58bb0bb9aa37968",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/action_review_v4/reviewer_capture_factory.py",
+      "bytes": 6778,
+      "sha256": "9a33accce96cdc1c77b6709cde8e49461c21009b5bc101dd2def8f814ca7e584",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/action_review_v4/reviewer_route_current.py",
+      "bytes": 3392,
+      "sha256": "2f2d7d036f4c831783fd7eb351c8603c5ecd91674c2d0b07d58091e9735de7be",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/action_review_v4/reviewer_session_binder.py",
+      "bytes": 11764,
+      "sha256": "4ec91d4c7c91ef161fe41b26608e0e428dbf80c3166347eed6bad7a7dbd15b50",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/action_review_v4/reviewer_transport_authentication.py",
+      "bytes": 11125,
+      "sha256": "ba6b4ac8facb19e7d96df844f79b81d6ddb747f48edf70555c240a309f426b59",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/bridge_diagnostics.py",
+      "bytes": 6307,
+      "sha256": "4742d8f8f982e8bf7279915d8b67e8165829f80d327ed4c757457cb968fec1ab",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/default_builtin_grants.py",
+      "bytes": 1446,
+      "sha256": "53e847d354668408c570c1ac0d4fdb0c4ac2db28e2a84b1ffb6df5b4ca69c8de",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/external_profile_catalog.py",
+      "bytes": 4577,
+      "sha256": "37ae20487ff3a543b5a9c431a03ed9ec86e1ddc49e6ccc92465c01f50b28b54c",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/production_v4.py",
+      "bytes": 208456,
+      "sha256": "8579ecceceb62a9df2c62a03c716405954364d7cad64726272f7d05e87d48259",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/profile_capture.py",
+      "bytes": 62317,
+      "sha256": "bf71d3daeb13fc697840972e544951ca6eaf82fe4fe75c11058932c620caaf0e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/profile_context_workflow.py",
+      "bytes": 6021,
+      "sha256": "dd51859d2d5ed78a35796a9b47f98e67e8011c6fad90f46c44486a9721386a70",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/profile_pack_pin_recovery.py",
+      "bytes": 7823,
+      "sha256": "83bf645ea6a23d4e1427aaa2204c33210fe6d1e835c53a3cc32881e9f2b69751",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/profile_predecessor.py",
+      "bytes": 5136,
+      "sha256": "1918e3f2ecc5882905f7808e105435e9635a8f4bf650a2adc9f60f910e32997a",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/profile_publication.py",
+      "bytes": 7036,
+      "sha256": "4bcc43ee80c4a0a18546a1fbff3fe0d592bbda9c5fcb67369bf248888babcb71",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/profile_registry.py",
+      "bytes": 19589,
+      "sha256": "fdd2429943aa0d4fcd04158279fdf9bd8794a29624082beea970259f965fd7e3",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/profile_source_update.py",
+      "bytes": 8754,
+      "sha256": "5b8a827373e02dd2b33731ee19354ea93329c1a960c582e1675e271c26b03db0",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/runtime.py",
+      "bytes": 15981,
+      "sha256": "5b5ffd265807350428e63b7489e2d108014cd14238545a800eb8ee2eb2627efd",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/saved_bridge.py",
+      "bytes": 46477,
+      "sha256": "b83244d0af6a203848ab39e4a2882fef5cdf00165fb5be945c78fdef308e45f8",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bootstrap/saved_tool_policy_composition_v4.py",
+      "bytes": 16648,
+      "sha256": "e93bdca40678fb6052fdca07062a4316e8b3b143690bc57943d902e325f918ba",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/browser_access.py",
+      "bytes": 10243,
+      "sha256": "a7986e1ce12567a482b9dd1842bb5195cb2669d10e45f594e34823507342ac3c",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/browser_access_launcher.py",
+      "bytes": 5450,
+      "sha256": "90ec93a35b3c2ce76a5206e0816f82da955733058fa7d4a7f9b1c576dfdf2e3d",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/browser_access_native_auth.py",
+      "bytes": 3166,
+      "sha256": "37f458a4a1bd79db3e22c9f73d3782986cf0b70b797ee489418f3f23c9ec25cf",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bundled_artifact_retention_v4.py",
+      "bytes": 28996,
+      "sha256": "ca2d4f9b5859c8418fd057674cb66b87efa29c62e51140a37261516db07c56cf",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/bundled_host_baseline_v4.py",
+      "bytes": 20366,
+      "sha256": "6b03eef4e423e3a88071f6ad16a382412b69ff363c2706b9fbc2bae84541b130",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/capability_grant_manager.py",
+      "bytes": 23330,
+      "sha256": "5c2b6ec9b7f5e57f5f799e9d44d8cbce2f8ae04cfdf86bcdb8e5d8f0d1739f77",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/capability_trust_store.py",
+      "bytes": 13438,
+      "sha256": "ca54bde4486c8b1a2552572de168ca884018c3f25f84ea706b1f5cf4e73153f8",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/capture_guard_traversal_v4.py",
+      "bytes": 2095,
+      "sha256": "2a5d1cc03716cf374a9426202d043e337cede219a375ede1397dd539d72358c9",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/captured_pack_ui_assets_v4.py",
+      "bytes": 13565,
+      "sha256": "2a8b266b3095dbf2179b25aa3b72b4ed87b6af65eb220504e3a4da9aae8a126a",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/captured_provider_modules_v4.py",
+      "bytes": 9137,
+      "sha256": "b05067018dcac2e7aec64f52c8bc10c508f0f04da1b9e78c5e7ed6663143a2d0",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/captured_ui_asset_delegation_v4.py",
+      "bytes": 9287,
+      "sha256": "5b8d628bb60bab45b8a231f093feb80024a342b92a887179a8dc0cd186ffcf94",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/captured_wake_v4.py",
+      "bytes": 24863,
+      "sha256": "402cc558aa61344a2abbb8f06810ebcb3d1f791f29b94e844648e0ab5f4fcb75",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/compat.py",
+      "bytes": 810,
+      "sha256": "cffe9813c3b8457eaec58eb7c49649f24e32a2e6f347bf6391625d8f0bdf35bc",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/control_reconciliation_v4.py",
+      "bytes": 90025,
+      "sha256": "54a8d5671c6e8e3a3cb1bc0c292065cf4ac98219aef5af40f07772a02b524e49",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/credential_stream.py",
+      "bytes": 4588,
+      "sha256": "7f9afc24e58a127bebad7ac1089959c24adf8cd8b64d099895e967c226ea44ad",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/credential_transport.py",
+      "bytes": 80415,
+      "sha256": "6a732feea32ed504129cba2f5d181361617cb648d1f100fddcbe637f23e133d7",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/desktop_app_manager.py",
+      "bytes": 22829,
+      "sha256": "d42cee45244c92209713273b8c2d719d3da581a02ab4562d874fb45405743ef0",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/desktop_capability.py",
+      "bytes": 5283,
+      "sha256": "b007ece92063098361d42f21a4f1342483abaf5a79e9a0b15597796951e2ce15",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/development_host_handover_guard.py",
+      "bytes": 3463,
+      "sha256": "d1df7bc4bfd85b81b89d3af9d019f39fd833bc47ed1710ad02fca2c09165380d",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/di_container.py",
+      "bytes": 12156,
+      "sha256": "4d0fc88d53064c5396a31a154cae4ff33f826b54e2a3573234e256446cb9aaab",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/diagnostics.py",
+      "bytes": 6059,
+      "sha256": "13329f3b8aed41d96ca1a0c619d81de9fe554737394a2bca90ed59e17eea5722",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/dispatch_diagnostics.py",
+      "bytes": 1875,
+      "sha256": "7f2618abe926adc4c1167aede93385147baa146de85170138d3b702ea92e9fbd",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/env_compat.py",
+      "bytes": 1046,
+      "sha256": "2ed4df1da1cfbdf6f69d1675e51fd7fe3b3961c60a6ccba33b3334361ade2391",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/event_bus.py",
+      "bytes": 5110,
+      "sha256": "e0ca2b7f1518f9c7d9fd1800c01a1289d80fac4002c66e31434a703986acd17d",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/executable_trust.py",
+      "bytes": 25986,
+      "sha256": "8e020edf67551c24510772ab2099265a271ce0aeb91db8008eb0c5e1713f0508",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/existing_host_extension_admission_v4.py",
+      "bytes": 21925,
+      "sha256": "cd0bbe613390c5394c896d9f52fafc4b8d97fe6613c91cb8fdd79f6af4c2a6ef",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/external_pack_catalog_v4.py",
+      "bytes": 76223,
+      "sha256": "9ae94d11d818de5b49a6f4e2b9cb1c937d4fd5c907a4a240bee2699d459369e6",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/file_edit_receipts.py",
+      "bytes": 11139,
+      "sha256": "12d7c038cc5bfd3dbdc76e1144e9b800be18b335b8d08a5c7aadb84cfdc59705",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/function_alias.py",
+      "bytes": 6147,
+      "sha256": "434d992e144829fedb755797d73211fa5f6678599011f6a8e0d5c3d12bca2711",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/generation_transport_budget.py",
+      "bytes": 15575,
+      "sha256": "b64db8f0cc3653bfa14a5f8c2c7c79e6b69fed38273271e26ec2a21b6b847eb8",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/github_update_manager.py",
+      "bytes": 29277,
+      "sha256": "afdac3432f5b15b97e00a9699009448f7b77b2ea129bb9fd4f7729d5b04b11b7",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/global_contract_dispatch.py",
+      "bytes": 17989,
+      "sha256": "f1cc60d7361b0716430c715c529fc36d41d1db5a130e47c2ae835962f6f7d893",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/global_contracts/__init__.py",
+      "bytes": 785,
+      "sha256": "77c71d76df89a0ce034cc3c7ab52a43b623d4c52a01739fe656a064b6eb4f10b",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/global_contracts/canonical.py",
+      "bytes": 647,
+      "sha256": "51bb2d362060b64045d218c9bedb3cc0ed0c11bf0476297349f324b7583575d0",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/global_contracts/clients.py",
+      "bytes": 1322,
+      "sha256": "7165cdab03ad8d90b989a8341d83634dee82b5dd6325a99c729fe2708a5cb317",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/global_contracts/http_contract_dispatch.py",
+      "bytes": 10103,
+      "sha256": "d8be5fe03201c7fd35169bad5914339beceadc8fea2d7a4467ed959f878e99e2",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/global_contracts/models.py",
+      "bytes": 4797,
+      "sha256": "97dfdaa41e0878a8856c3db2b6ca795a2426f5e2092bd30bab76c91252909ecb",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/global_contracts/registry.py",
+      "bytes": 10622,
+      "sha256": "7b7e9768f90ef629abaa39972dafb6adf9a90575b3362e1d842afd4cbe159aed",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/global_contracts/semver.py",
+      "bytes": 3540,
+      "sha256": "fb4a34cd6d34367e19bb303196ee29b35a893cefb633ef3b3bc7140fb2f81b1b",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/health.py",
+      "bytes": 11560,
+      "sha256": "76a88e13b64689f1a2c7ef7f8ca003660b5b5f257a8f1e1167934e528b7e3acc",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/hierarchical_grant.py",
+      "bytes": 3081,
+      "sha256": "6fc2d99ca17fa872f5c5f78d62193656cb921dc129079f278ba03a305e2256a6",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/hmac_key_manager.py",
+      "bytes": 35644,
+      "sha256": "be8ffcb69f13394a88539f1cc7b56a1aa33a648190dd089a946ed6756013b921",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/host_contract.py",
+      "bytes": 15952,
+      "sha256": "74cfe4927cb6899b75392ae83a0f7efc7a3796fbae4f9df5ab9d4b504ae1bf4d",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/host_extension_update_v4.py",
+      "bytes": 16421,
+      "sha256": "cdf326adcd8bd867a670ce97125a9c27481592405aee4e7942ba9af33d23caa6",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/host_permissions/__init__.py",
+      "bytes": 771,
+      "sha256": "998aada485d46bf4c9be390e4f3e3d589cd38ac59de4ee60673054c3c8e17eff",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/host_permissions/models.py",
+      "bytes": 3896,
+      "sha256": "a9df137c4a229841de3dc08ce444ae07d4a1f8294d5c55a3100f10994ecf6c60",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/host_permissions/os_mapping.py",
+      "bytes": 762,
+      "sha256": "c15a5813b4245b888a0a312ab289f8a291da8a41ff9a92c141ce19dc2b09676c",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/host_permissions/registry.py",
+      "bytes": 1964,
+      "sha256": "aa5bc2c685272bbcd2a920fcbed41b835daaa0beec1db2b34f6ecf4ab487c848",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/host_provider_backend_v4.py",
+      "bytes": 15864,
+      "sha256": "772b7e06c6a622b0fa63caaf2398645f58833d5a35c83956331503bc861940c7",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/host_provider_data_v4.py",
+      "bytes": 4777,
+      "sha256": "c072b480782d3cd0a665927768fc52bf5d79f420c7188025bcd9eba16d28076c",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/host_provider_function_v4.py",
+      "bytes": 3770,
+      "sha256": "78d99592edc27dfccc29d037ede31d13bd960e96eb96563d33b5ff46a41aa7c8",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/host_provider_hooks_v4.py",
+      "bytes": 5913,
+      "sha256": "9eb7d923d2b9ad6f444fc5491fb96a97d2ffe2bca321dc08825a1e9fe8da078d",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/http_failure_diagnostic.py",
+      "bytes": 3447,
+      "sha256": "a04185d75bbb5fa08b4a98f598eab6e75ac4262439f2c70a3b24a63106aef801",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/http_request_lifetime.py",
+      "bytes": 4637,
+      "sha256": "c61c110e2d697ec0ced1fbb44d6a05924dbcde914a2e6abd8852ea5d1526e02d",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/install_journal.py",
+      "bytes": 9564,
+      "sha256": "0c611e9356e1091b34c6ddde24ae6179f72535dbe503e056eba0385e788e02ed",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/interactive_effect_coordinator.py",
+      "bytes": 62358,
+      "sha256": "0fe1c606e97f881a79f0d47d3700c1d8e854737545864f6c33b26d04e9b3ca5f",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/invocation_evidence.py",
+      "bytes": 9364,
+      "sha256": "f081435f25ff05fc0209f17202acb4a5f45f702ac9b36d92cc2380cc7366ce1c",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/invocation_scope_v4.py",
+      "bytes": 5561,
+      "sha256": "fbfe4917e0ffde4a0d2bec364bcb9fd33dcf762f90da0c069426e42aad9ed2f4",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/legacy_profile_successor_v4.py",
+      "bytes": 13714,
+      "sha256": "1e329aaaa9ef532520e6a59eb17523149a95c362ec0838e7099e530e3f0577bc",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/local_model_authority.py",
+      "bytes": 9521,
+      "sha256": "a38eb5989b1e1557d8026279f7bc61dcf92e678089678e31b673c9cd1c65225e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/local_model_transport.py",
+      "bytes": 11070,
+      "sha256": "624d0bac38819087ebeb92e8e7c855efb0afd09c8d1e722a8d644bc303a69bc4",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/metrics.py",
+      "bytes": 9624,
+      "sha256": "0e67c1ce68aaff1c5ed41a982408c9d762668cdc94e7545e453bd16091331e6d",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/native_generation_budget.py",
+      "bytes": 16607,
+      "sha256": "08da3e70073dee966f0e0b1796ebf46a84dd3b544f61374b8f1744d4a45e8017",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/native_host_handover_http.py",
+      "bytes": 2303,
+      "sha256": "3e009ef88c802557fe018837d100daa46610a40b6c627870f836742def013168",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/native_pack_key_authorization.py",
+      "bytes": 9807,
+      "sha256": "68923e9be175b03bbff61f0c0443e199a8301b4a4f5c39b4e0eed3d58ada25a2",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/native_pack_onboarding.py",
+      "bytes": 21367,
+      "sha256": "4cf3292a37bc9dc0edf5621b73f7c4efff7a160943ca580ab6eb3849653b3516",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/native_pack_onboarding_http.py",
+      "bytes": 9054,
+      "sha256": "b7827518592ef7d60e9f7264eea9dd662de90ea2d4ef46bda9ef8c63786e4af8",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/native_pack_owner_binding.py",
+      "bytes": 2714,
+      "sha256": "e99d491c32f813e672142f50b2f9730ffbb84bded1ec97970691d8a107463dee",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/native_saved_tool_policy_v4.py",
+      "bytes": 9498,
+      "sha256": "060b6bb4263385b07c8450c5f8a770f51c23273887ee6204ccbc5b4430da2c22",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/network_grant_manager.py",
+      "bytes": 17954,
+      "sha256": "d34ef089ec43a247bc11300dd476ca9624bd29eb4ad6ef5aef21f2e099ebb74f",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/owned_chat_message_approval_v4.py",
+      "bytes": 16097,
+      "sha256": "16ef5b741a9ff19d6c5d4d3815a0ba3b8e9d24990d5cf7c20778c6e6f9ed99c8",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/owned_file_approval_v4.py",
+      "bytes": 13197,
+      "sha256": "345c8629619fab93644700208673438a39e4bb1f9bb41127867c42e28fda69cf",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/pack_api_server.py",
+      "bytes": 174953,
+      "sha256": "c5ceab2ea9a96d130b8577e9ac88f0ab32bce60b8f15ba1392362edb1197e568",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/pack_artifact_integrity.py",
+      "bytes": 52484,
+      "sha256": "09b9a66235361a13270ef84e4721479ab2c4699943e4e1797474af0981897196",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/pack_boundary.py",
+      "bytes": 7434,
+      "sha256": "f96959481806c1e745ac2e992244603cdf6e3baea169a2b7c79f7eb1df795b8a",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/pack_catalog_backend_v4.py",
+      "bytes": 8842,
+      "sha256": "62de62215bd3b0d176ea6881560019eee1f8c1c15b8f45239a21b330d2154f40",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/pack_control_v4.py",
+      "bytes": 122691,
+      "sha256": "f7a7d004079b7cf4a87b03e60264eb1485312f418afd33dd42d1bb9efa25f83f",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/pack_signature.py",
+      "bytes": 19276,
+      "sha256": "abe62f0226c151c849f49e27b9fbdbe6c399cccb36a5827230fa7399c01ece6d",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/pack_version_selection.py",
+      "bytes": 4405,
+      "sha256": "cd3547325172db5da237989179fdfb393f8688956f79f394031c7162835e0b88",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/panel_auth.py",
+      "bytes": 15404,
+      "sha256": "44289d88619d642ba3d5bdbf1378bfb833cd6e47a07278fb8a458c4c183ce640",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/paths.py",
+      "bytes": 14436,
+      "sha256": "07679581cea2eaeaf6aea3be2df0b1dfdc0066bf211d9b03b8e1ba973c10d91f",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/policy_invocation_v4.py",
+      "bytes": 3936,
+      "sha256": "ce7975600b1b982d5ad690d3a50e0dd8d2aacb8def29a6964c9e72f2381792cf",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/private_file.py",
+      "bytes": 1599,
+      "sha256": "08005ac024f985b8548fe84d5b0dfa68c4b42713ef48350ef7bb235a52c9ce15",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/process_identity.py",
+      "bytes": 11411,
+      "sha256": "63558e7e4b8da32c59ae6c71b4f7eaee7c06f189dc17f6f754cb240c727b5022",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/production_wake_binding_v4.py",
+      "bytes": 6693,
+      "sha256": "34748e2caf02db27cc47acdd43c238469150d471cee183ef812e84ede838f060",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/profile_activation_receipt_v4.py",
+      "bytes": 3009,
+      "sha256": "7e6917856271aca99ce078a330ca99b0f7e8273fe4e6a715943dc5e065276328",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/profile_catalog_v4.py",
+      "bytes": 22093,
+      "sha256": "b218ecbd31e53301581dcdc0c12c6ea146afcea8d6375639c0b512c781e78c8d",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/profile_composition_v4.py",
+      "bytes": 6466,
+      "sha256": "ca846ef18df85d48602fb1b6f0ea7ab9ca6568194ceabb1c39c6918039a6e4c7",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/profile_content_projection.py",
+      "bytes": 8815,
+      "sha256": "7fb335bee8c5414036df636835c093cfd4f79253f1b78ba27faf3180082451a5",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/profile_credentials.py",
+      "bytes": 4752,
+      "sha256": "78c1beab448b6a83c17ddf4be53eb4229252bd459739962d7a56d0f645d416b7",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/profile_definition_store_v4.py",
+      "bytes": 102119,
+      "sha256": "2f08c4a3035d672570c995eebf1c9dec4fc056675b2933d05b1b28fbee783c5b",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/profile_operation_timing.py",
+      "bytes": 5416,
+      "sha256": "e079994f28a81eaf8fe120ce5bf861d28989a06a98a725ce3c82e3094175d3e4",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/profile_pack_projection.py",
+      "bytes": 4186,
+      "sha256": "3eb708f0248f5c5dd802471827e112d7465b5ec10cc378b6334a8eb1bf7734c4",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/profile_pack_version_http.py",
+      "bytes": 2058,
+      "sha256": "b1d7affbb535a8ba78484a0c0207d71a0b14a4e32b6c8aa09359f9481f229677",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/profile_pack_versions.py",
+      "bytes": 9641,
+      "sha256": "fc38ce8a053fdf2977fca711d95a442edbdab5f4bd1a44e99a15973bb7611590",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/profile_paths.py",
+      "bytes": 2902,
+      "sha256": "709b27a1007a2b8a8bcb07007fcfe583fc06c8321478655d32f5061261a637aa",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/profile_projection_migration.py",
+      "bytes": 8822,
+      "sha256": "3d5e1a0c778990008b8d2a2199af21a97aefa37d2a983b4e4f4543b3c91ee250",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/profile_runtime_port.py",
+      "bytes": 7200,
+      "sha256": "4eaa3dbc7f63427667fcb284c7e78207852f304b9353cab69ea1ce0ebc423419",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/profile_workflow_catalog.py",
+      "bytes": 6510,
+      "sha256": "534fbc7774fcca127a3d34a02586c86f00ed0c241a4705a11e7ddb3fbcae00a6",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/profile_workspace.py",
+      "bytes": 4977,
+      "sha256": "576df6a58ddb8887be7ab86c8399b2987134849de16e92a93c826176cd55f569",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/profiling.py",
+      "bytes": 11424,
+      "sha256": "a5684e76ce9f2ac85d1a5aace8661523feaf6a30ad686f94c512c14111925258",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/project_directory_launcher.py",
+      "bytes": 10040,
+      "sha256": "8b3d203c166409d0a8e1d5ff69a7359dd8f941a96ce3abcc23262767ff3d8f1e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/project_directory_port.py",
+      "bytes": 1599,
+      "sha256": "085c8d44efa1161bd242c29c272d4af78b863861693907692d4774c277dc311b",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/provider_model_access_effect.py",
+      "bytes": 1676,
+      "sha256": "3e3487613a8a633f62997980e0d710bb2bfe10d450059c6181b342bfc5964b25",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/publisher_key_versions.py",
+      "bytes": 15820,
+      "sha256": "815d6b38169da859fa7d3a8481087b98ff2e0c0b7790759bf5ee5d436d792d24",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/request_failure_diagnostics.py",
+      "bytes": 5875,
+      "sha256": "faec3106f8ff57b4cf3d13ea094da6970fb9a8b9609483467e8f021161d0d3b9",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/resolved_profile_scope.py",
+      "bytes": 6010,
+      "sha256": "1fd6fb5f8ffd17eb6782d6d18da1cf2f5380c304f10507298cc57b4348de9974",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/restart_control.py",
+      "bytes": 645,
+      "sha256": "4a8d3a231cb1c97af4da11a69e753ae96960189b319c20f2ec84876afb1df1c0",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/retained_bundled_context_v4.py",
+      "bytes": 2648,
+      "sha256": "4b028e79ec40305a93a17e8a499f628c481d6f3a8b76f20f2b8484fd93645305",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/runtime_locks.py",
+      "bytes": 7187,
+      "sha256": "b39a0250736ea73773707bf4fc6e395e2e206babb9d8fe2c666343ff9e8f0979",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/runtime_port.py",
+      "bytes": 627,
+      "sha256": "d6843264ff318331658d6e8fd0924d93fae097a26b9820be313db1511aad3c17",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/saved_tool_capture_v4.py",
+      "bytes": 5047,
+      "sha256": "a7076d223e79d4eef7ce540d0ed305407a7be243f958ad935d2f46640e098087",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/saved_tool_policy_context_v4.py",
+      "bytes": 6967,
+      "sha256": "ef6ee08e96086ad29a6a202b0196ed2a7bc1c92a60b13ae34d3f9cfaf1ae59b4",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/saved_tool_policy_roots_v4.py",
+      "bytes": 3965,
+      "sha256": "963047df319043038c268130c41ae55b92692058cbead6f6e99629e9d8d2c993",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/saved_tool_policy_routes_v4.py",
+      "bytes": 4162,
+      "sha256": "84fa16d2355c3517b066f41d241e665da3432985ae0a57a7060c05dabf3a0bfd",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/saved_tool_policy_selection_v4.py",
+      "bytes": 4462,
+      "sha256": "33aeb7abdec17492cea27ef886172ab4f145d8bcc051673d6147dd3f0cb85e3f",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/secrets_grant_manager.py",
+      "bytes": 12984,
+      "sha256": "cd4f755cbeabf1e29ccffb5ca45f2f21202068f65eb35844133be0d3d2bf2eaa",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/secrets_store.py",
+      "bytes": 25501,
+      "sha256": "740cf77665cda59369d16058888b34fb8525e4d4284766b53b0055fd959e93b5",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/secure_sqlite_path.py",
+      "bytes": 16327,
+      "sha256": "b8dcf3f3177e4888e7aea18850f87bbc7eed3ed1ed13ef79966bafdc6cd80180",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/store_migration.py",
+      "bytes": 6724,
+      "sha256": "84c645ad0f2edf7f50c18bcf1c45c930bc275f402b5f93642773ec354b6231f0",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/store_registry.py",
+      "bytes": 38074,
+      "sha256": "7fd3f91f59bba0803490c3f5155671cb63eacd9cd0d13def12abd951d15bef37",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/store_sharing_manager.py",
+      "bytes": 10338,
+      "sha256": "0684cda9c787720bcc0a8591f6e0f60de5ae30fb91b57b5def0b2684825b1def",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/validation.py",
+      "bytes": 6605,
+      "sha256": "00179d6b4d4de9747c4c65c41c2ae0e25b99bb2c06150ce3160fa81ff44c621e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/vocab_registry.py",
+      "bytes": 36810,
+      "sha256": "2ecd906ea0f697a8ae7c2c5e770cb3a5b5b3bfdd772f58b184dd8f4b183ecfd8",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/__init__.py",
+      "bytes": 808,
+      "sha256": "da40d71dce8a893305036c767481cd60fad1675fe2ca91e603ec899d8e77d16e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/attempt_binding.py",
+      "bytes": 2835,
+      "sha256": "234fb14016c8b8487a9fdc29eccd5ba5a4b7a479ea06c690710d881a1ef16fe3",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/attempt_capacity.py",
+      "bytes": 4488,
+      "sha256": "1032c352db62f57d2d483e40cd0ad8098982dd81affbb536fd2001d21a2f3ae7",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/attempt_port.py",
+      "bytes": 10317,
+      "sha256": "62277f393506d993bdc801a2681c6b3941f61c0e4cd9a7952972007e0580d857",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/attempt_service.py",
+      "bytes": 26936,
+      "sha256": "acaab2417b47f38f4b48153f5d0270bc07b14a4f30e1e8b0a846e6bd44fc9db2",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/attempt_store.py",
+      "bytes": 9837,
+      "sha256": "45847234b3805184ec8b59d8031b2d3cfb0816a33f7d75671c9002d4f554eb66",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/binding.py",
+      "bytes": 16323,
+      "sha256": "500753ab72d387a0fb9f42f0ecf562068663de481b469491cfbd622139b86585",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/data_codec.py",
+      "bytes": 3269,
+      "sha256": "7e613d8f9b62eff5760a603920d4849778266ad1174916ba078e844deebc3ac2",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/engine.py",
+      "bytes": 59508,
+      "sha256": "f3787f8e5982a91be5f93afccb92d3a540439b73eb7949e9473110c567989e29",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/evidence.py",
+      "bytes": 9829,
+      "sha256": "47286c43299cd9aa2adc6dbd5a4f51b2ddfd10365691330f9adef6083eab4755",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/models.py",
+      "bytes": 7280,
+      "sha256": "d48adcc1c345f8df2ca3d9d03d3fef825371e313e2bb7615ecfb0593dd62cd8b",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/observation.py",
+      "bytes": 4075,
+      "sha256": "6450e8714ec7882e74823be8c8bf574efe784ecdd3f8406e961b994fc786647f",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/production_capture.py",
+      "bytes": 6502,
+      "sha256": "6c1ccfe08905dd9fe2e21ce5a64edd428bd60fef29c3fb0d0bb8e7ffca3cae0d",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/protocols.py",
+      "bytes": 2551,
+      "sha256": "aa43d981217744706ad90db98180b502bf0adb0b4ee7793db9565a95c9a412f8",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/provider.py",
+      "bytes": 10205,
+      "sha256": "e6fe4d749bb63a1cc005914d14768a910b2e065b145f8c5921fd8d03b8423d33",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/run_ownership.py",
+      "bytes": 2723,
+      "sha256": "c8d3eabf9087bec9bfee60e982853b5a0dd7c446399cfc34a2bedb676c5fed06",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/seal_key.py",
+      "bytes": 5607,
+      "sha256": "a6ed35c67806873209e1d66ff454e23e6aa578208bb1382a035c1370ab8459ec",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/selected_run.py",
+      "bytes": 3720,
+      "sha256": "c6fd7b5d1fb28d9d5bf530bb573e4a5e8f9d9f4b277a65e3fd18929053e1f027",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/store.py",
+      "bytes": 34163,
+      "sha256": "1181ab5f6975af843d82dd624d5dabc49514d0aa9d916bf968815ce7586417ef",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workflow_v4/value_binding.py",
+      "bytes": 7306,
+      "sha256": "df98152bef48cd8164857b4e0e9eabf078f71afa5ed2cee7fa66682d677bc064",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workspace_mount_effect.py",
+      "bytes": 7502,
+      "sha256": "c3a74291127fdbb4dc573aa5413024800d7732932f7ce2fa3ab532d4b34ba936",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/core_runtime/workspace_task_effect.py",
+      "bytes": 1600,
+      "sha256": "3eea6fc8627faf41470b6c67dc4e3656ba97d347cb5d36d2609037da53965b2e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/__init__.py",
+      "bytes": 539,
+      "sha256": "b72919cf2d64f5a78802582a56a53483c1e9f1f4661d8f601c5267b9e84d00f2",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/domain/__init__.py",
+      "bytes": 50,
+      "sha256": "89ac9f6f8b5d9efb9815522319bab4994db5b9646e27a9d50ac83700f2b6481b",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/domain/tool/__init__.py",
+      "bytes": 56,
+      "sha256": "65d155be30cf1080a1f3a80af81e633df62c87a8ef1d21c6967c15179d457677",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/domain/tool/calculator.py",
+      "bytes": 3255,
+      "sha256": "b6f18ad76b5b661d9f4e30f5d53e1d68bd044068a56b55839e8422687a4e63f2",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/domain/tool/host_contract_adapter.py",
+      "bytes": 6007,
+      "sha256": "993ae7e2a9580264e78a629e0dbb06f229faa8aec2c023228a8a20a019b90a25",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/runtime/__init__.py",
+      "bytes": 58,
+      "sha256": "e75ae319844010b69f382591b3483915421352b2c510296279639f28a9d8d7a6",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/runtime/files.py",
+      "bytes": 5851,
+      "sha256": "5bd7c2a6361ecedf78d18715bffbe24202a986d49e695388155e0e3dc94d973d",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/runtime/__init__.py",
+      "bytes": 151,
+      "sha256": "bf06a7bdec60f689279ff379d9b0c7f47898d8bb559eca1eb6e205dd35f4f273",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/runtime/catalog.py",
+      "bytes": 33146,
+      "sha256": "14a9fb214d04dd4b511b512d0704408b2f6f30a2c78cec0586e70e845b0270c7",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/runtime/__init__.py",
+      "bytes": 121,
+      "sha256": "70a156cfce2e38caa85cd299302c8161d958fbc60947f80e1e6bfd8bf373029b",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/runtime/registry.py",
+      "bytes": 19251,
+      "sha256": "e80b6c16c13fdc69318477b6db8392d951094d5cbaf23db454a1d101a625fa9c",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/runtime/__init__.py",
+      "bytes": 123,
+      "sha256": "a4772ae69d4ed2171ac32ca418afc9c2245bf3d8dc0100137cc71afb90435472",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/runtime/configuration.py",
+      "bytes": 11607,
+      "sha256": "ca859ba37c02733712f203d00023630fc1e2aeb747238d3757f943a957696bfc",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/runtime/local_endpoint.py",
+      "bytes": 1287,
+      "sha256": "f88df64fb81657369a3a70daa5b7d28ffedee47f8365b412324f60911e49c995",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/runtime/model_access.py",
+      "bytes": 419,
+      "sha256": "676805b627cee2ea3e3f0a44687b8f72b7b080d7264c79e04f76fec9a61ddd05",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/runtime/process.py",
+      "bytes": 13417,
+      "sha256": "40a9696df2a4e03aaef91da5dc2ce05e75ae3f1eca1bda25bee5961b89caca9e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/runtime/registry.py",
+      "bytes": 15898,
+      "sha256": "1126c8d5664feac7e2b2ab98950a9b9166bb5475b65314b82c6810686ab86bd2",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/runtime/service.py",
+      "bytes": 2544,
+      "sha256": "479f9917e3ba5a7db821878a7644698e94d07272253bdc096c96694a0765d041",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_tool_broker_pack/__init__.py",
+      "bytes": 45,
+      "sha256": "0292b46212c6a3d87a398561bcce59e1ee2ffdd536f415830b4d6a8e607027d8",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_tool_broker_pack/runtime/__init__.py",
+      "bytes": 53,
+      "sha256": "189fa5d96cc80d2a1dc2019b2c6beb12fd4c045fcb24ea581586c3e1fe7eb978",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_tool_broker_pack/runtime/chat_delivery.py",
+      "bytes": 15168,
+      "sha256": "b58425aec000613255312a0f411b4801bc3054773549ee814908cbab8fc26ee2",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/__init__.py",
+      "bytes": 34,
+      "sha256": "40f7f265178071eee1ce995919b6ff233dc5eeca3b1046839cd7f89df0b14ee1",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/runtime/__init__.py",
+      "bytes": 32,
+      "sha256": "1fe83cb2351ba196253a69a6aa0ed99cf3d53c362f96944dcf8bbe9256f12381",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/runtime/mounts.py",
+      "bytes": 33270,
+      "sha256": "6a66ac3cfe3bc3395c8cc179d14938509b352c698925454a572811fa2ecbae60",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/runtime/settings.py",
+      "bytes": 15928,
+      "sha256": "ccdcab6cea03aca6af9939c9cfc5bc9cbcc61ed9e90e0285e0aa6130b8e2fec8",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/runtime/store.py",
+      "bytes": 34959,
+      "sha256": "4b1813a4c9059254dcbd7b23234ca4b7ddcae1184aa806ffdcb3d290b1e223b2",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/rumi_ai/__init__.py",
+      "bytes": 108,
+      "sha256": "0d0731714118bb6d46aa73b2ec8a53a2cc4d1a0889ff8323f05a727f4bc3ec28",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tests/test_provider_model_access_configuration.py",
+      "bytes": 10706,
+      "sha256": "56c4680dedeac6d0d3b45879dc53c9992d972008c72bdb4cc4dfe9e33f8f658c",
+      "role": "original-test-input-source"
+    },
+    {
+      "path": "tobkiri_runtime/tests/test_provider_registry_host.py",
+      "bytes": 7432,
+      "sha256": "ff2342b25a59464e9bcd9f58cc83054956c9ca764e0d75f0a704cebccd801f19",
+      "role": "original-test-input-source"
+    },
+    {
+      "path": "tobkiri_runtime/tests/test_provider_registry_pack.py",
+      "bytes": 4327,
+      "sha256": "43f71c91f7934d262faf0919054d99969e0bffc89ec41fc2f1dd63e314743606",
+      "role": "original-test-input-source"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri/__init__.py",
+      "bytes": 113,
+      "sha256": "8a33d7dada7c58a8e7033bb2474104defce97b16a68013ffd2b1bd38f66a40db",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri/_version.py",
+      "bytes": 1676,
+      "sha256": "f1d39af808c76d0eccdfe8e8ea62ce07f1fff8db6747231c53ad1878fc7eff66",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/__init__.py",
+      "bytes": 4504,
+      "sha256": "219b7cd97b035967c31e5d31f9dcac8be3ab7838cd7b03fdfbbf147dfc4bb76b",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/_metadata_validation_cache.py",
+      "bytes": 6105,
+      "sha256": "06d388fbd2da2445b4194de646fbd202b558e87a138f86aac0f7cde1948191e2",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/acceptance_receipts.py",
+      "bytes": 12501,
+      "sha256": "bd5976f74a6e39ef7f31be5a2f477166b55af9b16ece573f24ab588a2d840eff",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/action_approval_policy.py",
+      "bytes": 13357,
+      "sha256": "5d054b15a444b29d062242706bbb35f16eb125b81d1b01bca2eb738e675f5936",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/admission.py",
+      "bytes": 30082,
+      "sha256": "c193c903fb267e1f81811777827143b0777379b73e7e47f48aada06f652bb5f4",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/approved_interrupt.py",
+      "bytes": 6572,
+      "sha256": "fd66dee216e3c5aa91a9d4091a887c1785f3e58dac5e8a3eb9cb8cb238173cb3",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/artifact_compiler.py",
+      "bytes": 16901,
+      "sha256": "45e6bf8c1801cfbb5576b4e44932910798280be6d44d39c359b8754e69cf696e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/artifact_materialization.py",
+      "bytes": 20680,
+      "sha256": "c2add8a497f48a85030b42f54b5b24ec7a04f69ea927d49d568d915b6c24cf46",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/authority_approval_window.py",
+      "bytes": 1719,
+      "sha256": "88513ea06900659870389b788ffe13c47436b67defa61b079c3a2510e4ca4599",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/authority_v4.py",
+      "bytes": 39000,
+      "sha256": "162c1593e8992b04467f9f2f9c5a718f2b4ff6a4d778a0486526608c6bbf8168",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/backends.py",
+      "bytes": 7357,
+      "sha256": "593cdd9b6ed2ee5a058fb4a507f35ed6a236106ef630fddd44d058d28dcf749b",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/bounded_child_io.py",
+      "bytes": 9056,
+      "sha256": "2dc69a6180107162e970f54c84fadae0e63ef6837dae85b22275b00a45d8ecca",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/broker.py",
+      "bytes": 78663,
+      "sha256": "5a1e76765a525058268cd62b23bf6bdd460b53eac2198715ecbb44f03244eed9",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/calendar_dispatch_branch.py",
+      "bytes": 3499,
+      "sha256": "c0c73587ab50efa69572df01f4b72504d0e4c525f4cabaaed738aabe6c625479",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/chat_approval_continuation.py",
+      "bytes": 6099,
+      "sha256": "c6b56c03246b89c15a18ec06eb25f112a0620248840358214022d7e7ec6ad66a",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/committed_selection_receipt.py",
+      "bytes": 9419,
+      "sha256": "32d5e7d0bbe79b0298d4ca104411afe9160eb18b7647528c4f3f3a47c6bb9edc",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/composition.py",
+      "bytes": 21822,
+      "sha256": "a84a5990518088989971f3dc13419e90d318435cef51a1c50d05e3610063268a",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/consumed_tool_consent.py",
+      "bytes": 11322,
+      "sha256": "2b0dd7c4835275deb9c96ec61cdb7a42b643b7d5879a6a1b387caf6d0e8ebd1e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/continuation_chain.py",
+      "bytes": 7864,
+      "sha256": "55718b1a91b841f13a7b1ae33e5c5045ca9a688a79f86ded640c1841e79c98ae",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/continuation_envelope.py",
+      "bytes": 7700,
+      "sha256": "1ddf973e40cbe01ef2a634308b4eb3d07afe3e520f74e1a12708714bf7eb019e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/continuation_session.py",
+      "bytes": 8735,
+      "sha256": "525b18e0b4d9073ac2311b8dec9ad2bdf10432cb0299b05d5ba3bd3c4c86e2a9",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/contracts.py",
+      "bytes": 12705,
+      "sha256": "6825ce3d95e3e714656a390b693205e104d2b292a3cc35ec688353735616406e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/directory_picker.py",
+      "bytes": 3044,
+      "sha256": "5d61f42c4bce61b33afc14ac4b94f45f26f72c40c84671d5fa5352035face0d5",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/directory_selections.py",
+      "bytes": 8117,
+      "sha256": "8264c625653718505d738179725d9399d567451a66acaf4ce0b515a8e1ff5e91",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/effects.py",
+      "bytes": 4725,
+      "sha256": "9bf3584e456b9731f99d6933c1b26a057cb68c21220dc36d3ef13e9e0651f5ce",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/errors.py",
+      "bytes": 5387,
+      "sha256": "9a0d4a01b2c0f6290eacca964511f83ff5e6448a6477d44b2020f1b42cd1babe",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/extension_sdk.py",
+      "bytes": 20610,
+      "sha256": "d4e4d67784e9e9217d74a2a854a023689a47deee8962e5096f7948999f4d2b16",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/finite_chat_dispatch.py",
+      "bytes": 12199,
+      "sha256": "78e0f31b42ed1df4d58daf74e23e713d1553a15dbac83877e5e68104a8a6f122",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/generation_budget_persistence.py",
+      "bytes": 5294,
+      "sha256": "08715f0a130b6765d546e9896a5bd7ef1d62e6d64ab522de4b35540c929b0922",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/host_tool_policy_types.py",
+      "bytes": 748,
+      "sha256": "8205cafee24dbc7760d5fef3d07d7fef9db2fe5a8e3cdad9aee34a6e315a2c4e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/interactive_effects.py",
+      "bytes": 66544,
+      "sha256": "6fb163fd4f08197b652782216abc5206cbe42d2870f8c2b7660646c1f8efd13f",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/macos_vz_supervisor.py",
+      "bytes": 103670,
+      "sha256": "a2d6b2283f75c0421da3608d3618f361970ef8f731fc0907c276b225122992f2",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/materialization.py",
+      "bytes": 2264,
+      "sha256": "154898a299528a7d4aa0708e6a32e2e5fcb628ee63756917b60547c214ce3e76",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/model_search.py",
+      "bytes": 2485,
+      "sha256": "67bc3e9d9c7fbdea72e61fbeaca286fa48cc2bb739edbc74022ffd6034ac68d2",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/models.py",
+      "bytes": 9950,
+      "sha256": "3dbff86b015e2e2cc311ed27d27da1b17116bdbf6e828e52a97e5508b582c468",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/native_host_handover_diagnostic.py",
+      "bytes": 4776,
+      "sha256": "f466148e1ee06187edbec3b739b332668fa97dc95b392ad15a0ea1525f1fd27a",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/native_policy_ports.py",
+      "bytes": 367,
+      "sha256": "d8663c3eb0bc748e734663bad5219a8c7663acd3127fec14809f9de659634e6f",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/native_saved_tool_approval.py",
+      "bytes": 6891,
+      "sha256": "ae81a39e169bc4c988a37facd17acbeed60c4f9555540249379117cc1f642024",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/operation_cancellation.py",
+      "bytes": 40291,
+      "sha256": "81c292f43850ca7e62a376ffc2bdda7cbe69632ffa443f8d916059000090cf98",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/packvm_bridge_budget.py",
+      "bytes": 14453,
+      "sha256": "4f5bb02f3198ec9dcf340ef627539ee50d92c8f0cd8a862bedfcda887f2fe80e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/platform_backends.py",
+      "bytes": 43052,
+      "sha256": "ad5880b985d3731bb3c349731f4d0bf20fcd064da8ab1584ea32b45f16ebd6bc",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/policy_delegation_boundary.py",
+      "bytes": 6453,
+      "sha256": "1d56d89aafe93d9e9c1b97cfb5b4c0d7d4a279f2b33cbfa1308b0e25582afdae",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/policy_effect_authorization.py",
+      "bytes": 8165,
+      "sha256": "9f66299ebe0c082bdfb508ae2664a689080e075d46fa0b22d2c9b8218cb2bc0f",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/policy_exact_authority_adapter.py",
+      "bytes": 16272,
+      "sha256": "874035ac55837e53f6fd004d102dab41ca75ab0c4ea6a02ab80790feba9043af",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/policy_review_errors.py",
+      "bytes": 558,
+      "sha256": "f8cc444780faebcfb9e3565a3ae97fd5244a6570ec11adfa48c9bd80227310e0",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/ports.py",
+      "bytes": 23809,
+      "sha256": "9ae5b8fb3535f8fd9f5010423bbba5b55e2e849f26a72fbc996632a80a11fb7a",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/resource_controller.py",
+      "bytes": 11061,
+      "sha256": "9f108c0ac555b17083cdfb28697a8eeb78eeed036e778ccb5c9333d6924ae1f4",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/resources.py",
+      "bytes": 59204,
+      "sha256": "9942d2faee3468ea94df404c8867525771027f2775179051a90e063f845bb859",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/retained_policy_selection_port.py",
+      "bytes": 4217,
+      "sha256": "af5f4d7c8caf0e93bacae483fd3dd1fd1e779b6ad9ae4fd51397d351a4e01094",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/route_bound_policy_selection.py",
+      "bytes": 3249,
+      "sha256": "faa7f7bbfdd03887368547ae6ce2b3b69689895f2d6c6e41c9497bf88b358d65",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/runtime.py",
+      "bytes": 23132,
+      "sha256": "d3f4083d1cfd72bde321bfeeba1e12e78149285c05af88b4dc0905bd13008468",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/saved_guest_dispatch.py",
+      "bytes": 9888,
+      "sha256": "aa7e6417b0f35edc23a65d4292ac9caf3256a8b767ea3c663543dcafbaf64de3",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/saved_host_exchange.py",
+      "bytes": 11111,
+      "sha256": "8b2b7b4e34a8ff75ea60e99faa5c73b31785beba96895a39dbaa903cf3eb7bd6",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/saved_tool_admission_store.py",
+      "bytes": 6911,
+      "sha256": "4aff25216f6f5c48d536656e4b7eee315b069cad30bc5235cf9274965f33f5c6",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/saved_tool_consent.py",
+      "bytes": 24704,
+      "sha256": "c4676d55b2aadcff5d1ca0162271127df59c41e09e8cb4532b7cc5857a123778",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/saved_tool_context.py",
+      "bytes": 3177,
+      "sha256": "faa211fb91f2d900a4ff38a132a90785c27d3c1584166196e2cca294d288bcd0",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/saved_tool_entry_guards.py",
+      "bytes": 2279,
+      "sha256": "898f3efb37897540c680eb120724124c5e11608062000274c22123b2085b026c",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/saved_tool_policy_execution.py",
+      "bytes": 15390,
+      "sha256": "dae1e860b0b9816880cdd7e7d67a5514d34fb795bd59ce4aee59ccd7e0afb6e5",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/saved_tool_request_scope.py",
+      "bytes": 8936,
+      "sha256": "e18bab1777fcffe2051cd21709668910339df13dc8528b57a3f290b68ef83daf",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/saved_turn_plan.py",
+      "bytes": 7292,
+      "sha256": "173477cca8688781caa2fa681e9e91ba20485696775575b9c2e1459880e3fbd1",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/saved_workspace_context.py",
+      "bytes": 15513,
+      "sha256": "c910225b2dfe1430c99415e79206b3bde531db2f9cc2f0a543c0176bc3c16a3e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/scheduled_job_cancellation.py",
+      "bytes": 7303,
+      "sha256": "de1629a73a6c466aae4474e401fe178e92ad971f7e74b9e07a07b88723a4ffb5",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/tauri_roles.py",
+      "bytes": 1723,
+      "sha256": "b8a5dd64d14def00aad190586b44c5ffb7c2e694c3e136e8effa0973b964fa10",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/triggers.py",
+      "bytes": 13943,
+      "sha256": "72dcdeb8fb4b411124c2e39869c1ab63732df7a6857645e40303abc0309ddfe8",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/typed_pending_effect_persistence.py",
+      "bytes": 2865,
+      "sha256": "8f862281ead4b78e6664fd4e2986bdad3dd368d5a930fbd8bf323ec5805d453e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/wasm_backend.py",
+      "bytes": 21708,
+      "sha256": "bcf17b27babcef7ede0a74dcf3c255e789e22d0dec9a431029f00a1f1926e462",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/wasm_worker.py",
+      "bytes": 11625,
+      "sha256": "dfcd90c292165535df571a1c6e77ff8c2a88424ca8ea5d820801ea4bb02861f1",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_host/workspace_mutation.py",
+      "bytes": 31344,
+      "sha256": "68038ef2117fd55590687aef626ca6b5c04f50bd1d72fe1eae585ffe01f71f32",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/__init__.py",
+      "bytes": 3138,
+      "sha256": "fe5cc79898dfbc1154f11f01a498e32eb7566dfe527769069acd4dc88b63b424",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/canonical.py",
+      "bytes": 5465,
+      "sha256": "9f068ab737e2c9c152348601d604c6c81a060edf207c483849a90ca97ccd434e",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/captured_inputs.py",
+      "bytes": 11901,
+      "sha256": "9b48a2ac901ecb256583017571aa9925cfa671e76224b5733f24f143a97825c5",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/chat_message_v1.py",
+      "bytes": 12083,
+      "sha256": "7b55ff5d68b19778c57e15f1953bd7794ac04b6dfbe2c5ceda3f5a796a657899",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/composition.py",
+      "bytes": 18099,
+      "sha256": "7fddaa782eef7e39b4040167c64fc6c917e30d83a7a1b97d83462abc8225c764",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/conversation_context.py",
+      "bytes": 8764,
+      "sha256": "89389300cac92baf077b4f6061a2527700d78b1cdd702b57995ed43d6db22f34",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/conversation_lifecycle.py",
+      "bytes": 8253,
+      "sha256": "d645ad36d8248516a619c5dbcd4051c782bdbe909df9df5386e7503301c27ece",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/data_codec.py",
+      "bytes": 19678,
+      "sha256": "359c29ead49bb69cbd504f9e2f4f6e2ed3301ebaff9deb4ac82e9e7dac4d5484",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/durability.py",
+      "bytes": 4619,
+      "sha256": "600627fb8d8be1738c45282de0cd338a7aae9624f4014e7a500eb9f736fa56ad",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/errors.py",
+      "bytes": 1047,
+      "sha256": "2292de2b3fd27e3fe644979d7aee20a40e4b77b2366dd4c5ac3ad3a449acbddf",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/file_create_v1.py",
+      "bytes": 2581,
+      "sha256": "dc54375a05fbbac5b173d57d331c506de52ae65c3ff6c7203a4af1c5325ac061",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/flow_values.py",
+      "bytes": 3378,
+      "sha256": "b759c6ed92e708f160aa378655986b769d1f7135e4e9e387661c1df7a171b53c",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/ids.py",
+      "bytes": 2968,
+      "sha256": "833ff21e644c69e6693244d81331e5afc8f6ed5e15f8a1cdda866274c05eb15c",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/migration.py",
+      "bytes": 16782,
+      "sha256": "69703eebbf1f29b33e4e41c04d501fd48efd2bd785e522da1856cf3f7a6a0292",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/packvm_data_wire.py",
+      "bytes": 6073,
+      "sha256": "acfc27475d80a89887c93849b6a7733b5f39bfd013e5303f2ded800eaa066ec6",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/platform_artifact.py",
+      "bytes": 10471,
+      "sha256": "ea895f92aa659f871172165143f633316a8fc9d37e17417387c87c0d9304971b",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/platform_paths.py",
+      "bytes": 1477,
+      "sha256": "afb6aa3229ce968f61757e16698073aebc9807891d8a47d7935f71d4c1ea3657",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/profile_scope.py",
+      "bytes": 3891,
+      "sha256": "1ade83af2666f6db934652b6b10070bffc8f89145b2b5711b7dcb9d960f925fa",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/provenance.py",
+      "bytes": 10901,
+      "sha256": "9598187b7a80a22505ee7eb7de391f1886c289da2d87e9e89d7a86d563571a31",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/provider_compiler/__init__.py",
+      "bytes": 295,
+      "sha256": "642a141e6138595d80fec764c2ab4e3c7079efb5447e26f399951c04ed61eeb6",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/provider_compiler/model_access.py",
+      "bytes": 3706,
+      "sha256": "06eae9e3eebebb328e64084688609d25d8e0f9042d4ede07918aab88d1eb5900",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/provider_compiler/native_filters.py",
+      "bytes": 7889,
+      "sha256": "7738868e45ca6b334d3b95d541a2f4f0ddfebd98ada7eff82cc653f481446f03",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/provider_sse_v1.py",
+      "bytes": 4987,
+      "sha256": "73d4006bac1691a423b93b62188b868c9a230ac61deda3cfdf984b1f4c4ac946",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/saved_context.py",
+      "bytes": 2241,
+      "sha256": "57b6be67eb86348ac22f58e503ab0dbe8e7b677803e0a7cb871b80f19be009ee",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/saved_conversation.py",
+      "bytes": 20197,
+      "sha256": "60c913fd19deff210fe7e8b362b8e70d0d3f0571044e495084a238a8bcdd1a45",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/saved_internal_context.py",
+      "bytes": 1393,
+      "sha256": "37a13f1c17b4c205259c65e4d90ff606f472dcd8fc2509c0a2e5b2dd6fd5c715",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/saved_messages.py",
+      "bytes": 8175,
+      "sha256": "911f74c1d25e3e2cdcc8f693d0cd19a8a425c227523834691e790a41212ea996",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/saved_task_context.py",
+      "bytes": 3233,
+      "sha256": "bdda3237aa8172d8e28eea2bf33809d4db19bbf6c9dd5a3baf0a362e0bdfeffe",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/saved_tools.py",
+      "bytes": 5495,
+      "sha256": "168ea3136a2fa9982085466787f594046cab8889c8f61f4012087a466714f7c2",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/secure_persistence.py",
+      "bytes": 40516,
+      "sha256": "3f3f4496399012cb937fce6ec15984b03c9dec0a55232fe38eceb2e104ee4105",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/settings_state.py",
+      "bytes": 3715,
+      "sha256": "8f0555026ceaab7b243d72f6e1df427eaa0d4d3f22be9aa1c1567e3399530fae",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/turn_progress_v1.py",
+      "bytes": 4533,
+      "sha256": "2078707997f5f70b66fdff6e171d0792566bae548f9f26355eea172fe0f99f47",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/validation.py",
+      "bytes": 21024,
+      "sha256": "91b382f8c2494da7368c56b6bd55a6200d29e1db797a76dd501f3fcdd6f5c9bb",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/windows_private_file.py",
+      "bytes": 6028,
+      "sha256": "75d0494343007f4bab23f6b6539b0da9554addc1a319020e51013d11ff025d79",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/workspace_capsule_v1.py",
+      "bytes": 12349,
+      "sha256": "27ac7545ce0ad483b7d0847a60c3b70d600f5bad2499d9beb502f0a81e34163a",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tobkiri_runtime/tobkiri_protocol/workspace_task_v1.py",
+      "bytes": 5024,
+      "sha256": "672ec1832aefca81a2c970513986e85f9af3aa518012b2f582d3a9b0d7fb0af3",
+      "role": "runtime-import-closure"
+    },
+    {
+      "path": "tools/quality/python_provider_registry_compat/README.md",
+      "bytes": 4989,
+      "sha256": "70f33caa38e918787be9785ebdb0bcaf197ffb6f39b05b660cb5f7b2c342f201",
+      "role": "oracle-producer"
+    },
+    {
+      "path": "tools/quality/python_provider_registry_compat/cases.py",
+      "bytes": 25899,
+      "sha256": "d9b5d432a262354facbaf1e67b74265c29c0f5fec00c83f7af3bb9eeeeb9eba8",
+      "role": "oracle-producer"
+    },
+    {
+      "path": "tools/quality/python_provider_registry_compat/generate.py",
+      "bytes": 59166,
+      "sha256": "6cd9a6e796468794a1e46bd1cc891cf4f550a9fe9469b21a3633b47f3269458a",
+      "role": "oracle-producer"
+    }
+  ],
+  "loaded_sources": [
+    "tobkiri_runtime/core_runtime/__init__.py",
+    "tobkiri_runtime/core_runtime/global_contract_dispatch.py",
+    "tobkiri_runtime/core_runtime/paths.py",
+    "tobkiri_runtime/core_runtime/profile_workspace.py",
+    "tobkiri_runtime/core_runtime/runtime_locks.py",
+    "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/runtime/__init__.py",
+    "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/runtime/configuration.py",
+    "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/runtime/local_endpoint.py",
+    "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/runtime/model_access.py",
+    "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/runtime/registry.py",
+    "tobkiri_runtime/tobkiri_protocol/__init__.py",
+    "tobkiri_runtime/tobkiri_protocol/canonical.py",
+    "tobkiri_runtime/tobkiri_protocol/durability.py",
+    "tobkiri_runtime/tobkiri_protocol/errors.py",
+    "tobkiri_runtime/tobkiri_protocol/ids.py",
+    "tobkiri_runtime/tobkiri_protocol/platform_paths.py",
+    "tobkiri_runtime/tobkiri_protocol/provider_compiler/__init__.py",
+    "tobkiri_runtime/tobkiri_protocol/provider_compiler/model_access.py",
+    "tobkiri_runtime/tobkiri_protocol/provider_compiler/native_filters.py",
+    "tobkiri_runtime/tobkiri_protocol/secure_persistence.py",
+    "tobkiri_runtime/tobkiri_protocol/windows_private_file.py"
+  ],
+  "network_attempts": [],
+  "cases": [
+    {
+      "id": "minimal",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "openai-compatible",
+        "endpoint": "https://provider.example/v1",
+        "key_value": "fixture-secret-123"
+      },
+      "result": {
+        "profile_id": "defaults",
+        "provider_instance_id": "provider.fixture",
+        "adapter_id": "openai-compatible",
+        "endpoint": "https://provider.example/v1",
+        "expected_revision": 0,
+        "request_digest": "sha256:4d852455047c72f70e49444c32c67bf38e85760dd9a654fd480e431ce7afdec5"
+      }
+    },
+    {
+      "id": "empty-port",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "openai-compatible",
+        "endpoint": "https://provider.example:/v1",
+        "key_value": "fixture-secret-123"
+      },
+      "result": {
+        "profile_id": "defaults",
+        "provider_instance_id": "provider.fixture",
+        "adapter_id": "openai-compatible",
+        "endpoint": "https://provider.example:/v1",
+        "expected_revision": 0,
+        "request_digest": "sha256:0463ae12626e28d63b381e2abdcad31c27a9fa78ed7bd17cc0f1738f1e19ce25"
+      }
+    },
+    {
+      "id": "port-zero",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "openai-compatible",
+        "endpoint": "https://provider.example:0/v1",
+        "key_value": "fixture-secret-123"
+      },
+      "error": {
+        "class": "ValueError",
+        "message": "provider endpoint is invalid"
+      }
+    },
+    {
+      "id": "port-plus",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "openai-compatible",
+        "endpoint": "https://provider.example:+123/v1",
+        "key_value": "fixture-secret-123"
+      },
+      "error": {
+        "class": "ValueError",
+        "message": "provider endpoint is invalid"
+      }
+    },
+    {
+      "id": "port-underscore",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "openai-compatible",
+        "endpoint": "https://provider.example:1_23/v1",
+        "key_value": "fixture-secret-123"
+      },
+      "error": {
+        "class": "ValueError",
+        "message": "provider endpoint is invalid"
+      }
+    },
+    {
+      "id": "port-unicode",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "openai-compatible",
+        "endpoint": "https://provider.example:\u0661\u0662\u0663/v1",
+        "key_value": "fixture-secret-123"
+      },
+      "error": {
+        "class": "ValueError",
+        "message": "provider endpoint is invalid"
+      }
+    },
+    {
+      "id": "port-overflow",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "openai-compatible",
+        "endpoint": "https://provider.example:65536/v1",
+        "key_value": "fixture-secret-123"
+      },
+      "error": {
+        "class": "ValueError",
+        "message": "provider endpoint is invalid"
+      }
+    },
+    {
+      "id": "userinfo",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "openai-compatible",
+        "endpoint": "https://user@provider.example/v1",
+        "key_value": "fixture-secret-123"
+      },
+      "error": {
+        "class": "ValueError",
+        "message": "provider endpoint is invalid"
+      }
+    },
+    {
+      "id": "query",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "openai-compatible",
+        "endpoint": "https://provider.example/v1?x=1",
+        "key_value": "fixture-secret-123"
+      },
+      "error": {
+        "class": "ValueError",
+        "message": "provider endpoint is invalid"
+      }
+    },
+    {
+      "id": "key-leak",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "openai-compatible",
+        "endpoint": "https://provider.example/v1",
+        "key_value": "fixture-secret-123",
+        "display_name": "fixture-secret-123"
+      },
+      "error": {
+        "class": "ValueError",
+        "message": "provider endpoint is invalid"
+      }
+    },
+    {
+      "id": "bad-name",
+      "request": {
+        "connection_name": "bad/name",
+        "protocol": "openai-compatible",
+        "endpoint": "https://provider.example/v1",
+        "key_value": "fixture-secret-123"
+      },
+      "error": {
+        "class": "ValueError",
+        "message": "provider configuration values are invalid"
+      }
+    },
+    {
+      "id": "null-optional",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "openai-compatible",
+        "endpoint": "https://provider.example/v1",
+        "key_value": "fixture-secret-123",
+        "display_name": null
+      },
+      "error": {
+        "class": "ValueError",
+        "message": "provider configuration fields are invalid"
+      }
+    },
+    {
+      "id": "unknown-field",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "openai-compatible",
+        "endpoint": "https://provider.example/v1",
+        "key_value": "fixture-secret-123",
+        "approved": true
+      },
+      "error": {
+        "class": "ValueError",
+        "message": "provider configuration fields are invalid"
+      }
+    },
+    {
+      "id": "empty-scopes",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "openai-compatible",
+        "endpoint": "https://provider.example/v1",
+        "key_value": "fixture-secret-123",
+        "capabilities": []
+      },
+      "error": {
+        "class": "ValueError",
+        "message": "provider configuration capabilities are invalid"
+      }
+    },
+    {
+      "id": "duplicate-scopes",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "openai-compatible",
+        "endpoint": "https://provider.example/v1",
+        "key_value": "fixture-secret-123",
+        "capabilities": [
+          "ai.stream",
+          "ai.stream"
+        ]
+      },
+      "error": {
+        "class": "ValueError",
+        "message": "provider configuration capabilities are invalid"
+      }
+    },
+    {
+      "id": "audio-scopes",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "openai-compatible",
+        "endpoint": "https://provider.example/v1",
+        "key_value": "fixture-secret-123",
+        "capabilities": [
+          "ai.stream",
+          "ai.audio.speech"
+        ]
+      },
+      "result": {
+        "profile_id": "defaults",
+        "provider_instance_id": "provider.fixture",
+        "adapter_id": "openai-compatible",
+        "endpoint": "https://provider.example/v1",
+        "expected_revision": 0,
+        "request_digest": "sha256:b603349b2c7d44e95165bba0845439f11ad9e3c5bd38c9ae5f10b8f220b2275b",
+        "credential_scopes": [
+          "ai.audio.speech",
+          "ai.stream"
+        ]
+      }
+    },
+    {
+      "id": "anthropic-audio",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "anthropic",
+        "endpoint": "https://provider.example/v1",
+        "key_value": "fixture-secret-123",
+        "capabilities": [
+          "ai.audio.speech"
+        ]
+      },
+      "error": {
+        "class": "ValueError",
+        "message": "provider configuration capabilities are invalid"
+      }
+    },
+    {
+      "id": "unicode-digest",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "openai-compatible",
+        "endpoint": "https://provider.example/v1",
+        "key_value": "fixture-secret-123",
+        "display_name": "\u65e5\u672c\u8a9e \ud83d\ude80 \"quoted\" \\ path",
+        "catalog_provider_id": "catalog.fixture",
+        "capabilities": [
+          "ai.stream",
+          "ai.generate"
+        ]
+      },
+      "result": {
+        "profile_id": "defaults",
+        "provider_instance_id": "provider.fixture",
+        "adapter_id": "openai-compatible",
+        "endpoint": "https://provider.example/v1",
+        "expected_revision": 0,
+        "request_digest": "sha256:cb45804c1743ed23d06377050e65b176d2585a7ba4ab680c2dda80026f1d6baa",
+        "credential_scopes": [
+          "ai.generate",
+          "ai.stream"
+        ]
+      }
+    },
+    {
+      "id": "local",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "local-openai-compatible",
+        "endpoint": "http://127.0.0.1:1234/v1",
+        "key_value": ""
+      },
+      "result": {
+        "profile_id": "defaults",
+        "provider_instance_id": "provider.fixture",
+        "adapter_id": "local-openai-compatible",
+        "endpoint": "http://127.0.0.1:1234/v1",
+        "expected_revision": 0,
+        "request_digest": "sha256:b8e8393c9a8293e51ccbd3bc64aa25af46fd1030f2413a2e84c5f6a6afe58acf"
+      }
+    },
+    {
+      "id": "local-slash",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "local-openai-compatible",
+        "endpoint": "http://127.0.0.1:1234/v1/",
+        "key_value": ""
+      },
+      "result": {
+        "profile_id": "defaults",
+        "provider_instance_id": "provider.fixture",
+        "adapter_id": "local-openai-compatible",
+        "endpoint": "http://127.0.0.1:1234/v1",
+        "expected_revision": 0,
+        "request_digest": "sha256:1c5a8596f02047792a153a95afe56acdfdc7dac0b3950548a2ea0ed2b7145974"
+      }
+    },
+    {
+      "id": "local-ipv6",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "local-openai-compatible",
+        "endpoint": "http://[::1]:1234/v1",
+        "key_value": ""
+      },
+      "result": {
+        "profile_id": "defaults",
+        "provider_instance_id": "provider.fixture",
+        "adapter_id": "local-openai-compatible",
+        "endpoint": "http://[::1]:1234/v1",
+        "expected_revision": 0,
+        "request_digest": "sha256:1cbf03dbd89e7350469ec4a23e78e11994fa5a7501b28375f706b3d84791b4f9"
+      }
+    },
+    {
+      "id": "local-nonloopback",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "local-openai-compatible",
+        "endpoint": "http://example.com:1234/v1",
+        "key_value": ""
+      },
+      "error": {
+        "class": "ValueError",
+        "message": "local provider endpoint is invalid"
+      }
+    },
+    {
+      "id": "local-with-key",
+      "request": {
+        "connection_name": "fixture",
+        "protocol": "local-openai-compatible",
+        "endpoint": "http://127.0.0.1:1234/v1",
+        "key_value": "fixture-secret-123"
+      },
+      "error": {
+        "class": "ValueError",
+        "message": "local provider credentials are not permitted"
+      }
+    }
+  ]
+}

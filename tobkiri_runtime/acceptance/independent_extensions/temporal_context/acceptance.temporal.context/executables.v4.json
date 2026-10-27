@@ -1,0 +1,358 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:16557baa86c42e1181229e33b812bd587a696eac549c950720ba9659ae6a5dcd",
+  "pack_id": "acceptance.temporal.context",
+  "source_identity": "sha256:e8e9495320e1241e29a37bf0a945e1a1a0ce846445232d1792069626cba89f0d",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "acceptance.temporal.context.reduce",
+      "implementation_digest": "sha256:11799f15a71027f04c76fb6128080c2ef87a12807b0621a8743e8d641b4bb869",
+      "implementation_path": "runtime/temporal.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "acceptance.temporal.context.v1",
+          "contract_version": "0.1.0",
+          "effect_class": "pure",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "enum": [
+                  "invalid_input",
+                  "stale_event",
+                  "namespace_mismatch"
+                ]
+              }
+            },
+            "required": [
+              "code"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "event": {
+                "additionalProperties": false,
+                "properties": {
+                  "at": {
+                    "maxLength": 64,
+                    "pattern": "(Z|[+-][0-9]{2}:[0-9]{2})$",
+                    "type": "string"
+                  },
+                  "id": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "assistant.completed",
+                      "assistant.error",
+                      "assistant.cancelled",
+                      "tool.completed",
+                      "user.received"
+                    ]
+                  },
+                  "sequence": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "id",
+                  "sequence",
+                  "kind",
+                  "at"
+                ],
+                "type": "object"
+              },
+              "namespace": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              "state": {
+                "oneOf": [
+                  {
+                    "maxProperties": 0,
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "event_id": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "last_event_at": {
+                        "maxLength": 64,
+                        "pattern": "(Z|[+-][0-9]{2}:[0-9]{2})$",
+                        "type": "string"
+                      },
+                      "last_task_completed_at": {
+                        "oneOf": [
+                          {
+                            "maxLength": 64,
+                            "pattern": "(Z|[+-][0-9]{2}:[0-9]{2})$",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "namespace": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "sequence": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "namespace",
+                      "sequence",
+                      "event_id",
+                      "last_event_at",
+                      "last_task_completed_at"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "namespace",
+              "state",
+              "event"
+            ],
+            "type": "object"
+          },
+          "operation_id": "temporal.reduce",
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "internal_temporal_context": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "current_user_message_at": {
+                        "maxLength": 64,
+                        "pattern": "(Z|[+-][0-9]{2}:[0-9]{2})$",
+                        "type": "string"
+                      },
+                      "elapsed_seconds": {
+                        "minimum": 3600,
+                        "type": "number"
+                      },
+                      "previous_task_completed_at": {
+                        "maxLength": 64,
+                        "pattern": "(Z|[+-][0-9]{2}:[0-9]{2})$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "previous_task_completed_at",
+                      "current_user_message_at",
+                      "elapsed_seconds"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "state": {
+                "additionalProperties": false,
+                "properties": {
+                  "event_id": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "last_event_at": {
+                    "maxLength": 64,
+                    "pattern": "(Z|[+-][0-9]{2}:[0-9]{2})$",
+                    "type": "string"
+                  },
+                  "last_task_completed_at": {
+                    "oneOf": [
+                      {
+                        "maxLength": 64,
+                        "pattern": "(Z|[+-][0-9]{2}:[0-9]{2})$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "namespace": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "sequence": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "namespace",
+                  "sequence",
+                  "event_id",
+                  "last_event_at",
+                  "last_task_completed_at"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "state",
+              "internal_temporal_context"
+            ],
+            "type": "object"
+          },
+          "revision_digest": "sha256:8b622eeb9699df17c604afb89728ea106e09ab043a2bf5b48e07c02af04a9d34",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "acceptance.temporal.context.v1",
+          "contract_version": "0.1.0",
+          "effect_class": "pure",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "enum": [
+                  "invalid_input",
+                  "stale_event",
+                  "namespace_mismatch"
+                ]
+              }
+            },
+            "required": [
+              "code"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "owner_snapshot": {
+                "type": "object"
+              },
+              "profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "owner_snapshot"
+            ],
+            "type": "object"
+          },
+          "operation_id": "timing.project.owner",
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "active_user_message_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "context": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "completion_message_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "current_user_message_at": {
+                        "maxLength": 64,
+                        "pattern": "(Z|[+-][0-9]{2}:[0-9]{2})$",
+                        "type": "string"
+                      },
+                      "elapsed_seconds": {
+                        "minimum": 3600,
+                        "type": "integer"
+                      },
+                      "previous_task_completed_at": {
+                        "maxLength": 64,
+                        "pattern": "(Z|[+-][0-9]{2}:[0-9]{2})$",
+                        "type": "string"
+                      },
+                      "version": {
+                        "const": "tobkiri.conversation-lifecycle.v1"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "completion_message_id",
+                      "previous_task_completed_at",
+                      "current_user_message_at",
+                      "elapsed_seconds"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "conversation_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "conversation_revision": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "internal_context_api_version": {
+                "const": "io.tobkiri.saved-internal-context.v1"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "internal_context_api_version",
+              "profile_id",
+              "conversation_id",
+              "conversation_revision",
+              "active_user_message_id",
+              "context"
+            ],
+            "type": "object"
+          },
+          "revision_digest": "sha256:8b622eeb9699df17c604afb89728ea106e09ab043a2bf5b48e07c02af04a9d34",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "acceptance.temporal.context.reduce.python"
+    }
+  ]
+}

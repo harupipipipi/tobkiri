@@ -2,12 +2,15 @@ import { AlertTriangle, Clipboard, RefreshCw, Settings2 } from "lucide-react";
 
 import { cn } from "../../lib/cn";
 import type { RuntimeAvailability } from "../../features/sandboxes/runtimeStatus";
-import { providerLabel, providerStatusTone } from "../../features/sandboxes/runtimeStatus";
-import type { RuntimeOperation } from "../../features/sandboxes/types";
+import { providerLabel, providerStatusTone, providerReadinessLabel, runtimeOperationAllowed, DESKTOP_UNSUPPORTED_REASON } from "../../features/sandboxes/runtimeStatus";
+import type { RuntimeOperation, RuntimeOperationSupport } from "../../features/sandboxes/types";
+import { ErrorNotice } from "../ErrorNotice";
 import { RuntimeSetupDialog } from "./RuntimeSetupDialog";
 
 type DesktopProviderNoticeProps = {
   availability: RuntimeAvailability;
+  operationSupport?: RuntimeOperationSupport;
+  onRefresh?: () => void;
   operation: RuntimeOperation | null;
   doctorLoading?: boolean;
   setupLoading?: boolean;
@@ -27,6 +30,8 @@ function providerToneClassName(tone: "success" | "warning" | "danger" | "idle") 
 
 export function DesktopProviderNotice({
   availability,
+  operationSupport,
+  onRefresh,
   operation,
   doctorLoading = false,
   setupLoading = false,
@@ -36,7 +41,12 @@ export function DesktopProviderNotice({
   onCancelOperation,
   onCopyDiagnostics,
 }: DesktopProviderNoticeProps) {
+  const undiagnosed = availability.status === "registered" || availability.providers.some((provider) => provider.diagnostics?.probe_status === "not_run");
   const showSetup = availability.status !== "ready";
+  const availabilityDetails = [
+    availability.message,
+    ...availability.missing.flatMap((issue) => [issue.message, issue.remediation].filter(Boolean)),
+  ].join("\n\n");
 
   return (
     <section className={cn(
@@ -44,66 +54,87 @@ export function DesktopProviderNotice({
       showSetup ? "border-amber-500/25 bg-amber-500/[0.06]" : "border-zinc-800 bg-zinc-950/50",
     )}>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className={cn(
-              "flex h-7 w-7 items-center justify-center rounded-md border",
-              showSetup ? "border-amber-500/30 bg-amber-500/10 text-amber-200" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
-            )}>
-              <AlertTriangle size={15} />
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-zinc-100">{availability.message}</p>
-              <p className="truncate text-xs text-zinc-500">
-                Selected provider: {providerLabel(availability.selectedProvider)}
-              </p>
+        {showSetup ? (
+          <ErrorNotice
+            className="min-w-0 flex-1"
+            copyLabel="デスクトップランタイムの問題をコピー"
+            copyText={availabilityDetails}
+            message={`選択中: ${providerLabel(availability.selectedProvider)}`}
+            severity="warning"
+            title={availability.message}
+          >
+            {availability.missing.length > 0 && (
+              <div className="mt-3 grid gap-1.5">
+                {availability.missing.map((issue, index) => (
+                  <div key={`${issue.code}-${index}`} className="rounded-md border border-amber-500/20 bg-black/25 px-2 py-1.5">
+                    <p className="text-xs font-medium text-amber-50">{issue.message}</p>
+                    {issue.remediation && <p className="mt-0.5 text-[11px] text-amber-100/70">{issue.remediation}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {availability.providers.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {availability.providers.map((provider) => (
+                  <span
+                    key={provider.provider_id}
+                    className={cn("rounded-md border px-2 py-1 text-[11px]", providerToneClassName(providerStatusTone(provider)))}
+                    title={provider.message || provider.provider_id}
+                  >
+                    {providerLabel(provider)} · {providerReadinessLabel(provider)}
+                  </span>
+                ))}
+              </div>
+            )}
+          </ErrorNotice>
+        ) : (
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="flex h-7 w-7 items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-200">
+                <AlertTriangle size={15} />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-zinc-100">{availability.message}</p>
+                <p className="truncate text-xs text-zinc-500">選択中: {providerLabel(availability.selectedProvider)}</p>
+              </div>
             </div>
+            {availability.providers.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {availability.providers.map((provider) => (
+                  <span
+                    key={provider.provider_id}
+                    className={cn("rounded-md border px-2 py-1 text-[11px]", providerToneClassName(providerStatusTone(provider)))}
+                    title={provider.message || provider.provider_id}
+                  >
+                    {providerLabel(provider)} · {providerReadinessLabel(provider)}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
-
-          {availability.missing.length > 0 && (
-            <div className="mt-3 grid gap-1.5">
-              {availability.missing.map((issue, index) => (
-                <div key={`${issue.code}-${index}`} className="rounded-md border border-zinc-800 bg-black/25 px-2 py-1.5">
-                  <p className="text-xs font-medium text-zinc-200">{issue.message}</p>
-                  {issue.remediation && <p className="mt-0.5 text-[11px] text-zinc-500">{issue.remediation}</p>}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {availability.providers.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {availability.providers.map((provider) => (
-                <span
-                  key={provider.provider_id}
-                  className={cn("rounded-md border px-2 py-1 text-[11px]", providerToneClassName(providerStatusTone(provider)))}
-                  title={provider.message || provider.provider_id}
-                >
-                  {providerLabel(provider)} · {provider.status}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
+        )}
 
         <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+          {onRefresh && <button type="button" onClick={onRefresh} className="h-8 rounded-md border border-zinc-800 px-3 text-xs">登録情報を更新</button>}
           <button
             type="button"
             onClick={onSetup}
-            disabled={setupLoading}
+            disabled={setupLoading || !runtimeOperationAllowed(operationSupport, "setup")}
+            title={!runtimeOperationAllowed(operationSupport, "setup") ? DESKTOP_UNSUPPORTED_REASON : undefined}
             className="flex h-8 items-center gap-1.5 rounded-md bg-zinc-100 px-3 text-xs font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-wait disabled:opacity-60"
           >
             <Settings2 size={13} />
-            <span>Provision guest runtime</span>
+            <span>ゲストを準備</span>
           </button>
           <button
             type="button"
             onClick={onDoctor}
-            disabled={doctorLoading}
+            disabled={doctorLoading || !runtimeOperationAllowed(operationSupport, "doctor")}
+            title={!runtimeOperationAllowed(operationSupport, "doctor") ? DESKTOP_UNSUPPORTED_REASON : undefined}
             className="flex h-8 items-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-950/70 px-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-900 hover:text-zinc-100 disabled:cursor-wait disabled:opacity-60"
           >
             <RefreshCw size={13} />
-            <span>Run doctor again</span>
+            <span>動作を診断</span>
           </button>
           <button
             type="button"
@@ -111,11 +142,16 @@ export function DesktopProviderNotice({
             className="flex h-8 items-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-950/70 px-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-900 hover:text-zinc-100"
           >
             <Clipboard size={13} />
-            <span>Copy diagnostics</span>
+            <span>診断情報をコピー</span>
           </button>
         </div>
       </div>
 
+      {!undiagnosed && Object.values(operationSupport ?? {}).some((supported) => supported === false) && <p className="mt-3 text-xs leading-6 text-amber-100/90">{DESKTOP_UNSUPPORTED_REASON}</p>}
+      {undiagnosed && <div className="mt-3 text-xs leading-6 text-amber-100/90">
+        <p>{availability.selectedProvider?.provider_id === "mac_lima" ? "MacはLimaに対応しています。" : ""}現在の版は一覧の表示までで、ゲストの診断・作成・操作は未接続です。Tobkiri本体の実行環境とは別です。</p>
+        <p>対応する更新後に、登録情報を再読み込みしてください。</p>
+      </div>}
       <div className="mt-3">
         <RuntimeSetupDialog
           operation={operation}

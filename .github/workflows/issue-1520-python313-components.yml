@@ -1,0 +1,150 @@
+name: Issue 1520 coherent original Python components
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-python313-components.yml'
+      - 'tools/python313-producer/component_inputs.py'
+      - 'tools/python313-producer/build_components.py'
+      - 'tools/python313-producer/component_driver.py'
+      - 'tools/python313-producer/verify_original_components.py'
+      - 'tools/python313-producer/tests/test_build_components.py'
+      - 'tools/quality/test_python313_sharing.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  original-five-components:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.original-five-target
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
+      PRODUCER_RUN: '39956025119'
+      PRODUCER_HEAD: ae7f83080a36e823ac330342584210243dc38050
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - name: Check original source and artifact boundaries
+        run: |
+          python3 -B -m unittest discover -s tools/python313-producer/tests
+          python3 -B tools/quality/test_python313_sharing.py
+      - name: Authenticate the completed producer run and source head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" > "$RUNNER_TEMP/producer-run.json"
+          python3 -B - "$RUNNER_TEMP/producer-run.json" "$PRODUCER_HEAD" <<'PY'
+          import json, sys
+          from pathlib import Path
+          run = json.loads(Path(sys.argv[1]).read_bytes())
+          if run['head_sha'] != sys.argv[2]:
+              raise SystemExit('producer source head differs from the recorded commit')
+          if run['status'] != 'completed' or run['conclusion'] != 'success':
+              raise SystemExit('producer run did not complete successfully')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: python313-producer-cli
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PRODUCER_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/original-producer
+      - name: Prepare isolated build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          chmod 755 "$RUNNER_TEMP/original-producer/work/target/release/componentize-py"
+          python3 -B tools/python313-producer/fetch_validation_tools.py \
+            --destination "$RUNNER_TEMP/original-validation"
+      - name: Rebuild all five original Packs with the same producer
+        run: >-
+          python3 -B tools/python313-producer/build_components.py
+          --all-five
+          --producer "$RUNNER_TEMP/original-producer"
+          --validation "$RUNNER_TEMP/original-validation"
+          --destination "$RUNNER_TEMP/original-five"
+      - name: Stage and verify only the complete component artifact inventory
+        run: |
+          python3 -B - "$RUNNER_TEMP/original-five" "$RUNNER_TEMP/original-five-artifacts" <<'PY'
+          import shutil, sys
+          from pathlib import Path
+          source, destination = map(Path, sys.argv[1:])
+          destination.mkdir(mode=0o700)
+          shutil.copy2(source / 'components-build.json', destination / 'components-build.json')
+          for name in ('usage-cost', 'stream-normalizer', 'bridge-v2', 'caller', 'finalizer'):
+              target = destination / name / 'work'
+              target.mkdir(parents=True)
+              for file in ('component.wasm', 'component.build.json'):
+                  shutil.copy2(source / name / 'work' / file, target / file)
+          PY
+          python3 -B tools/python313-producer/verify_original_components.py \
+            --all-five --root "$RUNNER_TEMP/original-five-artifacts" \
+            > "$RUNNER_TEMP/original-five-verification.json"
+      - name: Build the existing bounded inspection worker
+        run: cargo build --locked --manifest-path tools/component-unbundle/Cargo.toml
+      - name: Measure the complete graph under the original 64 MiB source budget
+        run: |
+          python3 -B tools/component-unbundle/measure.py \
+            --worker "$CARGO_TARGET_DIR/debug/tobkiri-component-unbundle" \
+            "$RUNNER_TEMP/original-five/usage-cost/work/component.wasm" \
+            "$RUNNER_TEMP/original-five/stream-normalizer/work/component.wasm" \
+            "$RUNNER_TEMP/original-five/bridge-v2/work/component.wasm" \
+            "$RUNNER_TEMP/original-five/caller/work/component.wasm" \
+            "$RUNNER_TEMP/original-five/finalizer/work/component.wasm" \
+            > "$RUNNER_TEMP/original-five-sharing.json"
+          python3 -B - "$RUNNER_TEMP/original-five-sharing.json" <<'PY'
+          import json, sys
+          from pathlib import Path
+          result = json.loads(Path(sys.argv[1]).read_bytes())
+          print(json.dumps({key: result[key] for key in ('source_bytes',
+              'transformed_closure_bytes', 'current_catalog_input_limit',
+              'within_current_catalog_input_limit')}))
+          if result['within_current_catalog_input_limit'] is not True:
+              raise SystemExit('complete graph exceeds the unchanged catalog input limit')
+          PY
+      - name: Materialize exact shared code for the five original Packs
+        run: >-
+          python3 -B tools/component-unbundle/materialize.py
+          --worker "$CARGO_TARGET_DIR/debug/tobkiri-component-unbundle"
+          --output "$RUNNER_TEMP/original-five-shared"
+          "$RUNNER_TEMP/original-five/usage-cost/work/component.wasm"
+          "$RUNNER_TEMP/original-five/stream-normalizer/work/component.wasm"
+          "$RUNNER_TEMP/original-five/bridge-v2/work/component.wasm"
+          "$RUNNER_TEMP/original-five/caller/work/component.wasm"
+          "$RUNNER_TEMP/original-five/finalizer/work/component.wasm"
+      - name: Retain exact original components and shared-code inputs for native acceptance
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-five-components-and-shared-code
+          path: |
+            ${{ runner.temp }}/original-five-artifacts
+            ${{ runner.temp }}/original-five-shared
+          if-no-files-found: error
+      - name: Retain bounded diagnostics and proof boundaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-five-build-evidence
+          path: |
+            ${{ runner.temp }}/producer-run.json
+            ${{ runner.temp }}/original-validation/validation-inputs.json
+            ${{ runner.temp }}/original-five/components-build.json
+            ${{ runner.temp }}/original-five/*/build/command.json
+            ${{ runner.temp }}/original-five/*/build/supervision.json
+            ${{ runner.temp }}/original-five/*/build/build.log
+            ${{ runner.temp }}/original-five/*/work/component.build.json
+            ${{ runner.temp }}/original-five-verification.json
+            ${{ runner.temp }}/original-five-sharing.json
+            ${{ runner.temp }}/original-five-shared/extraction.json
+          if-no-files-found: warn

@@ -157,7 +157,7 @@
     }
   ],
   "adapter": {
-    "python": "ecosystem.defaultspack.domain.connections.codex:CodexConnectionAdapter",
+    "python": "core_runtime.connections.adapter:GenericConnectionAdapter",
     "sdk_optional": true
   },
   "settings": {

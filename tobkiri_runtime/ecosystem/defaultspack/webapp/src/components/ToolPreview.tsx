@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X, Globe, FileText, Image, ExternalLink,
-  Eye, EyeOff, Code, NotebookPen, Maximize2,
-  Plus, Clock, Layers
+  Code, NotebookPen, Maximize2,
+  Plus
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
 import { ArtifactPreviewDialog, type ArtifactPreviewDialogItem } from './ArtifactPreviewDialog';
+import { ErrorNotice } from './ErrorNotice';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -66,7 +67,6 @@ export type ToolPreviewItem = {
   data: ToolPreviewData;
 };
 
-export type ToolPreviewMode = 'auto' | 'manual';
 
 export const MEMO_PREVIEW_ID = '__memo__';
 const TIMELINE_TAB_ID = '__timeline__';
@@ -150,6 +150,11 @@ export function buildCanvasTabPickerItems(
   return [memoPreviewItem(memo), ...displayItems];
 }
 
+/** Apply each external request once, while allowing a pending artifact to arrive later. */
+export function shouldApplyPreviewRequest(appliedKey: string | null, requestKey: string, itemAvailable: boolean): boolean {
+  return itemAvailable && appliedKey !== requestKey;
+}
+
 export function selectCanvasTab(openPreviewIds: string[], item: ToolPreviewItem) {
   return {
     openPreviewIds: openPreviewIds.includes(item.id)
@@ -158,14 +163,6 @@ export function selectCanvasTab(openPreviewIds: string[], item: ToolPreviewItem)
     activeTabId: item.id,
     memoTabCreated: item.id === MEMO_PREVIEW_ID,
   };
-}
-
-export function buildToolPreviewTimelineItems(items: ToolPreviewItem[]): ToolPreviewItem[] {
-  return items.filter(isCanvasPreviewItemRenderable).sort((left, right) => {
-    const leftTime = Number.isFinite(left.timestamp) ? left.timestamp : 0;
-    const rightTime = Number.isFinite(right.timestamp) ? right.timestamp : 0;
-    return leftTime - rightTime || left.id.localeCompare(right.id);
-  });
 }
 
 function shortPreviewDetail(value: unknown, limit = 260): string {
@@ -839,7 +836,13 @@ function HtmlPreviewContent({
           />
         ) : !isLoading ? (
           <div className="flex h-full items-center justify-center bg-zinc-950 px-4 text-center text-[11px] text-zinc-500">
-            {error ? `HTML を読み込めませんでした: ${error}` : 'HTML preview の内容がありません。'}
+            {error ? (
+              <ErrorNotice
+                className="max-w-md text-left"
+                copyLabel="HTML プレビューエラーをコピー"
+                message={`HTML を読み込めませんでした: ${error}`}
+              />
+            ) : 'HTML preview の内容がありません。'}
           </div>
         ) : null}
       </div>
@@ -860,9 +863,11 @@ function FilePreviewContent({ data }: { data: FilePreview }) {
     }
     if (loaded.error && !content) {
       return (
-        <div className="m-3 rounded-md border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-[11px] text-zinc-500">
-          diff を読み込めませんでした: {loaded.error}
-        </div>
+        <ErrorNotice
+          className="m-3 text-[11px]"
+          copyLabel="diff プレビューエラーをコピー"
+          message={`diff を読み込めませんでした: ${loaded.error}`}
+        />
       );
     }
     return <CodePreviewContent data={{ type: 'code', filename: data.filename, language: 'diff', diff: content }} />;
@@ -902,9 +907,11 @@ function FilePreviewContent({ data }: { data: FilePreview }) {
         {loaded.isLoading ? (
           <div className="flex h-full items-center justify-center text-[11px] text-zinc-600">内容を読み込んでいます</div>
         ) : loaded.error && !content ? (
-          <div className="m-3 rounded-md border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-[11px] text-zinc-500">
-            内容を読み込めませんでした: {loaded.error}
-          </div>
+          <ErrorNotice
+            className="m-3 text-[11px]"
+            copyLabel="ファイルプレビューエラーをコピー"
+            message={`内容を読み込めませんでした: ${loaded.error}`}
+          />
         ) : (
           <pre className="text-[11px] font-mono leading-[1.6]">
             {(content || '').split('\n').map((line, i) => (
@@ -983,53 +990,6 @@ function ImagePreviewContent({ data }: { data: ImagePreview }) {
 // Canvas timeline
 // ============================================================
 
-function CanvasTimelineContent({
-  items,
-  onOpenPreview,
-}: {
-  items: ToolPreviewItem[];
-  onOpenPreview: (item: ToolPreviewItem) => void;
-}) {
-  const timelineItems = useMemo(() => buildToolPreviewTimelineItems(items), [items]);
-
-  return (
-    <div className="h-full overflow-y-auto bg-[#0a0a0c] p-3">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <Clock size={13} className="shrink-0 text-amber-300" />
-          <h2 className="truncate text-[12px] font-semibold text-zinc-300">Timeline</h2>
-        </div>
-        <span className="shrink-0 rounded-md border border-zinc-800 bg-zinc-950 px-2 py-0.5 font-mono text-[10px] text-zinc-500">
-          {timelineItems.length}
-        </span>
-      </div>
-      <div className="grid gap-2">
-        {timelineItems.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => onOpenPreview(item)}
-            className="group flex min-w-0 items-start gap-3 rounded-lg border border-zinc-800/80 bg-zinc-950/45 px-3 py-2 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-900/70 focus-visible:border-zinc-600 focus-visible:outline-none"
-          >
-            <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-zinc-900 text-zinc-400">
-              {previewIcon(item.data, 13)}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[12px] font-medium text-zinc-300">{previewTitle(item.data)}</span>
-              <span className="mt-0.5 block truncate text-[10px] text-zinc-600">{previewTypeLabel(item.data)} · {item.toolStepId}</span>
-            </span>
-          </button>
-        ))}
-        {timelineItems.length === 0 && (
-          <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-8 text-center text-[11px] text-zinc-600">
-            Canvas に表示できる成果物はまだありません。
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ============================================================
 // ToolPreviewPanel (main export)
 // ============================================================
@@ -1038,9 +998,8 @@ interface ToolPreviewPanelProps {
   previews: ToolPreviewItem[];
   isVisible: boolean;
   onClose: () => void;
-  mode: ToolPreviewMode;
-  onModeChange: (mode: ToolPreviewMode) => void;
   activePreviewId?: string | null;
+  activePreviewRevision?: number;
   memo?: string;
   onMemoChange?: (value: string) => void;
 }
@@ -1065,12 +1024,12 @@ export function ToolPreviewPanel({
   previews,
   isVisible,
   onClose,
-  mode,
-  onModeChange,
   activePreviewId,
+  activePreviewRevision = 0,
   memo,
   onMemoChange,
 }: ToolPreviewPanelProps) {
+  const appliedPreviewRequest = useRef<string | null>(null);
   const [foregroundPreview, setForegroundPreview] = useState<ArtifactPreviewDialogItem | null>(null);
   const [activeTabId, setActiveTabId] = useState(TIMELINE_TAB_ID);
   const [openPreviewIds, setOpenPreviewIds] = useState<string[]>([]);
@@ -1117,18 +1076,23 @@ export function ToolPreviewPanel({
   }, [activeTabId, displayItemIdsKey, displayItems]);
 
   useEffect(() => {
-    if (!activePreviewId) return;
+    if (!activePreviewId) {
+      appliedPreviewRequest.current = null;
+      return;
+    }
+    const requestKey = JSON.stringify([activePreviewId, activePreviewRevision]);
     const item = displayItems.find((candidate) => matchesPreviewId(candidate, activePreviewId));
-    if (item) {
+    if (shouldApplyPreviewRequest(appliedPreviewRequest.current, requestKey, Boolean(item)) && item) {
+      appliedPreviewRequest.current = requestKey;
       openPreviewTab(item);
     }
-  }, [activePreviewId, mode, displayItemIdsKey]);
+  }, [activePreviewId, activePreviewRevision, displayItemIdsKey]);
 
   useEffect(() => {
     if (!isVisible) setForegroundPreview(null);
   }, [isVisible]);
 
-  if (!isVisible || displayItems.length === 0) return null;
+  if (!isVisible) return null;
 
   const openTabItems = openPreviewIds
     .map((id) => displayItems.find((item) => item.id === id))
@@ -1139,7 +1103,11 @@ export function ToolPreviewPanel({
   const isMemo = current?.id === MEMO_PREVIEW_ID;
 
   const renderContent = () => {
-    if (!current) return <CanvasTimelineContent items={displayItems} onOpenPreview={openPreviewTab} />;
+    if (!current) return (
+      <div className="flex h-full items-center justify-center p-4 text-center text-xs text-zinc-500">
+        「＋」からプレビューやメモを選択してください。
+      </div>
+    );
     if (isMemo) return <MemoPreviewContent value={memo ?? ''} onChange={onMemoChange} />;
     switch (current.data.type) {
       case 'web':
@@ -1156,25 +1124,7 @@ export function ToolPreviewPanel({
   return (
     <div className="flex flex-col h-full border-l border-zinc-800/60 bg-[#0a0a0c] w-full rumi-anim-fade-right">
       <div className="relative flex min-h-11 items-center gap-1.5 border-b border-zinc-800/60 bg-zinc-950/60 px-2">
-        <div className="flex shrink-0 items-center gap-1.5 px-1 text-[11px] font-semibold text-zinc-300">
-          <Layers size={13} className="text-zinc-500" />
-          <span>Canvas</span>
-        </div>
         <div className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto pt-2">
-          <button
-            type="button"
-            onClick={() => setActiveTabId(TIMELINE_TAB_ID)}
-            className={cn(
-              'flex h-8 max-w-[132px] shrink-0 items-center gap-1.5 rounded-t-md border px-2 text-[11px] transition-colors',
-              activeTabId === TIMELINE_TAB_ID
-                ? 'border-zinc-800 border-b-[#0a0a0c] bg-[#0a0a0c] text-zinc-100'
-                : 'border-transparent bg-zinc-900/45 text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300'
-            )}
-            title="Timeline"
-          >
-            <Clock size={12} />
-            <span className="truncate">Timeline</span>
-          </button>
           {openTabItems.map((item) => (
             <div
               key={item.id}
@@ -1241,24 +1191,6 @@ export function ToolPreviewPanel({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
-          <button
-            onClick={() => onModeChange(mode === 'auto' ? 'manual' : 'auto')}
-            className={cn(
-              'flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors border',
-              mode === 'auto'
-                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                : 'bg-zinc-800 text-zinc-500 border-zinc-800'
-            )}
-            title={
-              mode === 'auto'
-                ? 'Auto: ツール使用時に自動切替'
-                : 'Manual: クリックで表示'
-            }
-          >
-            {mode === 'auto' ? <Eye size={10} /> : <EyeOff size={10} />}
-            {mode === 'auto' ? 'Auto' : 'Manual'}
-          </button>
-
           <button
             onClick={() => current && setForegroundPreview(artifactDialogItemFromToolPreview(current))}
             disabled={!current}

@@ -1,0 +1,1298 @@
+{
+  "schema": "io.tobkiri.migration.legacy-feature-ledger.v1",
+  "issue": 1520,
+  "status": "migration_incomplete",
+  "baseline": {
+    "branch": "codex/issue-1520-rust-core",
+    "parents": [
+      "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+      "6eb9704e573135771d85e160be6d3bfdd8fb9701"
+    ],
+    "tags": {
+      "pr-1322": "273aed66b50190b640c6b93e03cea9519b21b7f1",
+      "pr-1516": "526f08c83f2555ad39d652d684fbc9405ca07fc5",
+      "pr-1518": "925fca59d74b37d9480a527dfe87b6141f772bde",
+      "pr-1519": "6eb9704e573135771d85e160be6d3bfdd8fb9701",
+      "signed-gateway": "cd7c20e9d52535674c36cccac4d03ef70e9f809b"
+    },
+    "all_heads_must_remain_reachable": true,
+    "merge_commit": "7260658b22dae1412fd2ac187ddd7cc0c0cafd84",
+    "latest_verified_legacy_source_commit": "4c2a5c6f6150f69b8b40e2008a59b0e38eebf496"
+  },
+  "acceptance_policy": "A planned suite/case is a trace target, not an implemented or passing test. No row is complete or retired without parity evidence and any required human approval.",
+  "rows": [
+    {
+      "id": "1322.pending-save",
+      "source": "pr-1322",
+      "feature": "Submitted text appears immediately with a clock, then a saved check matching the registered user message.",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1322_pending_save",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [
+        "tobkiri_runtime/ecosystem/defaultspack/webapp/src/lib/optimisticSavedTurn.ts"
+      ],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1322.view-binding",
+      "source": "pr-1322",
+      "feature": "Delayed reads, previews, polls and command results remain bound to the exact conversation/current view, including A→B→A.",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-chat",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1322_view_binding",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1322.registration",
+      "source": "pr-1322",
+      "feature": "Saved-turn events wait for the exact owner-registered root; empty registration stays pending and invalid identities fail.",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-chat",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1322_registration",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1322.stop",
+      "source": "pr-1322",
+      "feature": "Authenticated Stop carries cancellation and the original deadline to the provider, and confirms the exact execution and nested completion.",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.openai-compat-provider",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1322_stop",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "Rust gate/Flow cancellation must preserve these invariants; UI acknowledgment alone is not acceptance.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1322.no-resend",
+      "source": "pr-1322",
+      "feature": "Lost start/transport replies never automatically resend the user message.",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-chat",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1322_no_resend",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1322.composer",
+      "source": "pr-1322",
+      "feature": "Composer remains visible in new/loading chats; Stop and follow-up instructions appear only after canonical registration.",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1322_composer",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1322.local-model",
+      "source": "pr-1322",
+      "feature": "Local OpenAI-compatible model registration works without an API key through ordinary Host approval.",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.openai-compat-provider",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1322_local_model",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1322.loopback",
+      "source": "pr-1322",
+      "feature": "Numeric loopback model origins require an explicit non-privileged port and /v1; hosted origins require HTTPS/credentials.",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.openai-compat-provider",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1322_loopback",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "Outbound provider loopback remains a declared Profile network permission. Runtime listening HTTP retires only at M5.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1322.local-first-startup",
+      "source": "pr-1322",
+      "feature": "Ordinary documented Apple Silicon startup and local-first operation without cloud keys.",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1322_local_first_startup",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "Legacy native startup evidence is not Rust migration acceptance.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1322.windows",
+      "source": "pr-1322",
+      "feature": "Windows Profile activation and truthful reporting of unavailable execution backends.",
+      "preserved_in_m0": true,
+      "migration_status": "platform_acceptance_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1322_windows",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "Existing Windows PackVM chat restriction remains visible; new Windows runtime validation has not run.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1516.navigation",
+      "source": "pr-1516",
+      "feature": "Defaults navigation",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1516_navigation",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1516.composer",
+      "source": "pr-1516",
+      "feature": "Defaults composer and repeated confirmed mention editing ranges with unique submitted IDs",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1516_composer",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1516.provider-settings",
+      "source": "pr-1516",
+      "feature": "Provider connection/model settings and model access disclosure",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1516_provider_settings",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1516.side-chat",
+      "source": "pr-1516",
+      "feature": "Side Chat and authenticated progress",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-chat",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1516_side_chat",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1516.typed-references",
+      "source": "pr-1516",
+      "feature": "Typed conversation/history references bound to the captured route",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-conversation-store",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1516_typed_references",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1516.project-folders",
+      "source": "pr-1516",
+      "feature": "Multiple project folders with opaque primary tickets and durable workspace IDs",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1516_project_folders",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1516.model-pins",
+      "source": "pr-1516",
+      "feature": "Model pins and preserved selected model bindings",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1516_model_pins",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1516.approval-preferences",
+      "source": "pr-1516",
+      "feature": "Approval preferences retain local authority and never grant permission from a display flag",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1516_approval_preferences",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1516.canvas-timeline",
+      "source": "pr-1516",
+      "feature": "Canvas/Timeline file receipts, previews, editing history and persisted artifacts",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1516_canvas_timeline",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1516.optional-mcp",
+      "source": "pr-1516",
+      "feature": "Optional MCP reads require admitted contributions",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-agent",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1516_optional_mcp",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1516.saved-context",
+      "source": "pr-1516",
+      "feature": "Saved execution retains captured consent scope, revision/model/context/workspace/prompt bindings and declared stream plan",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-chat",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1516_saved_context",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1516.capability-metadata",
+      "source": "pr-1516",
+      "feature": "Capability hashes include read_only and optional schema digest with strict type validation",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-agent",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1516_capability_metadata",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1516.calendar-clock",
+      "source": "pr-1516",
+      "feature": "Calendar editing, recurring schedules and Clock-triggered execution",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-agent",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1516_calendar_clock",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1516.tool-owner",
+      "source": "pr-1516",
+      "feature": "Owned terminal/Git/file operations, receipts and workspace authority",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-agent",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1516_tool_owner",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1516.ime-drag",
+      "source": "pr-1516",
+      "feature": "IME submission and history drag transport preserve confirmed entity metadata",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1516_ime_drag",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1516.git-push-cas",
+      "source": "pr-1516",
+      "feature": "Successful approved Git push retains caller session/domain CAS binding through prepare and effect.",
+      "preserved_in_m0": true,
+      "migration_status": "legacy_acceptance_open",
+      "target_pack": "tobkiri.harness-agent",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1516_git_push_cas",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "The PR reports a real push refusal caused by changed caller binding. The failure remains open; no binding weakened.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1518.pack-revision",
+      "source": "pr-1518",
+      "feature": "Explicit signed same-ID Pack revision selection by exact digest, predecessor/publisher continuity, immutable Profile CAS successor and separate review/approval/activation/rollback",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1518_pack_revision",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1518.pack-authoring",
+      "source": "pr-1518",
+      "feature": "Public offline Python Pack/Contract authoring through the actual compiler",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-agent",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1518_pack_authoring",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1518.profile-authoring",
+      "source": "pr-1518",
+      "feature": "Named Profile authoring, exact selected content/dependency closure and signed onboarding",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1518_profile_authoring",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1518.workflow-context",
+      "source": "pr-1518",
+      "feature": "Selected Workflow execution preserves the selected conversation owner context",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-chat",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1518_workflow_context",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1518.cli-authoring",
+      "source": "pr-1518",
+      "feature": "Independent CLI Application frontend and public CLI authoring",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.terminal-input",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1518_cli_authoring",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1518.output-cap",
+      "source": "pr-1518",
+      "feature": "Saved/requested model output cap is validated and their minimum reaches the provider",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.openai-compat-provider",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1518_output_cap",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1518.picker-cancel",
+      "source": "pr-1518",
+      "feature": "Native folder selection resets prior filters, has owner nonce/Profile/lifetime cancellation and discards late results",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1518_picker_cancel",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1518.handover",
+      "source": "pr-1518",
+      "feature": "Native development Host handover/recovery preserves source owner, exact plan, consent, custody, empty destination and data boundaries.",
+      "preserved_in_m0": true,
+      "migration_status": "retirement_approval_pending",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1518_handover",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "The VM transfer mechanism is planned to retire with PackVM after parity. It is still present in M0; no human retirement approval exists.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1518.data-import",
+      "source": "pr-1518",
+      "feature": "Sanitized Profile definitions, disabled provider/model metadata and inert history can migrate; secrets/grants/authority/active pointers never import.",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-conversation-store",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1518_data_import",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "Maps to Rust storage migration. Re-approval is mandatory; the legacy native handover proof does not prove new migration.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1518.optional-revision",
+      "source": "pr-1518",
+      "feature": "Optional Pack revision intent remains deferred and must not be implicitly made mandatory.",
+      "preserved_in_m0": true,
+      "migration_status": "legacy_requirement_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1518_optional_revision",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "Experiment b5695d62e was reverted by 5b8bc5aa5; retained history is not shipped acceptance.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1519.flow-v12",
+      "source": "pr-1519",
+      "feature": "Workflow/Flow v12 editor, literal/model/tool inputs, run observations and authenticated stop/evidence",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1519_flow_v12",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1519.flow-bindings",
+      "source": "pr-1519",
+      "feature": "Declared same-run dependency outputs carry committed provenance, retry-pinned inputs and run ownership",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-agent",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1519_flow_bindings",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1519.calendar-decoupled",
+      "source": "pr-1519",
+      "feature": "Calendar validation is independent of Turn execution",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-agent",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1519_calendar_decoupled",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1519.approval-persistence",
+      "source": "pr-1519",
+      "feature": "Approval preferences persist before an effect, preserving the draft if command ownership changes",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1519_approval_persistence",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1519.draft-preservation",
+      "source": "pr-1519",
+      "feature": "Composer drafts survive delayed approval and asynchronous command results",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1519_draft_preservation",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1519.canvas-feedback",
+      "source": "pr-1519",
+      "feature": "Stale Canvas feedback is ignored and preview interactions retain view ownership",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1519_canvas_feedback",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1519.touch-attachments",
+      "source": "pr-1519",
+      "feature": "Coarse-pointer attachment targets remain usable",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1519_touch_attachments",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1519.pet-hide",
+      "source": "pr-1519",
+      "feature": "Pet Hide requires ordinary acknowledgment without fabricated TargetClosed proof",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1519_pet_hide",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1519.model-access",
+      "source": "pr-1519",
+      "feature": "Owning-Pack model-access policy presentation and bounded pure metadata validation caching",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1519_model_access",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1519.guest-archive",
+      "source": "pr-1519",
+      "feature": "Isolated guest archive/materialization and Flow approval fixtures preserve safe input validation",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-agent",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1519_guest_archive",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1519.browser.project-search",
+      "source": "pr-1519",
+      "feature": "Project selection/search from the composer",
+      "preserved_in_m0": true,
+      "migration_status": "known_browser_failure_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1519_browser_project_search",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "One of eight unskipped failures retained by PR1519; fixture observer failures do not alone establish a production cause. No native/browser acceptance claimed.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1519.browser.mention-metadata",
+      "source": "pr-1519",
+      "feature": "Tool/skill/service mention semantic metadata submission",
+      "preserved_in_m0": true,
+      "migration_status": "known_browser_failure_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1519_browser_mention_metadata",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "One of eight unskipped failures retained by PR1519; fixture observer failures do not alone establish a production cause. No native/browser acceptance claimed.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1519.browser.file-mention-remove",
+      "source": "pr-1519",
+      "feature": "Removing file mention metadata with its attachment",
+      "preserved_in_m0": true,
+      "migration_status": "known_browser_failure_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1519_browser_file_mention_remove",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "One of eight unskipped failures retained by PR1519; fixture observer failures do not alone establish a production cause. No native/browser acceptance claimed.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1519.browser.workspace-await",
+      "source": "pr-1519",
+      "feature": "Waiting for a workspace mention attachment before submit",
+      "preserved_in_m0": true,
+      "migration_status": "known_browser_failure_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1519_browser_workspace_await",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "One of eight unskipped failures retained by PR1519; fixture observer failures do not alone establish a production cause. No native/browser acceptance claimed.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1519.browser.workspace-cancel-late",
+      "source": "pr-1519",
+      "feature": "Discarding a canceled workspace mention late result",
+      "preserved_in_m0": true,
+      "migration_status": "known_browser_failure_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1519_browser_workspace_cancel_late",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "One of eight unskipped failures retained by PR1519; fixture observer failures do not alone establish a production cause. No native/browser acceptance claimed.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1519.browser.workspace-sibling",
+      "source": "pr-1519",
+      "feature": "Preserving another transaction when one workspace mention is canceled",
+      "preserved_in_m0": true,
+      "migration_status": "known_browser_failure_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1519_browser_workspace_sibling",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "One of eight unskipped failures retained by PR1519; fixture observer failures do not alone establish a production cause. No native/browser acceptance claimed.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1519.browser.coding-file-metadata",
+      "source": "pr-1519",
+      "feature": "Stable coding-file mention metadata through submit",
+      "preserved_in_m0": true,
+      "migration_status": "known_browser_failure_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1519_browser_coding_file_metadata",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "One of eight unskipped failures retained by PR1519; fixture observer failures do not alone establish a production cause. No native/browser acceptance claimed.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "1519.browser.canvas-peek",
+      "source": "pr-1519",
+      "feature": "Opening the preview pane through chat Canvas peek",
+      "preserved_in_m0": true,
+      "migration_status": "known_browser_failure_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "1519_browser_canvas_peek",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "One of eight unskipped failures retained by PR1519; fixture observer failures do not alone establish a production cause. No native/browser acceptance claimed.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "signed.pack-only-update",
+      "source": "signed-gateway",
+      "feature": "Independent signed Pack updates preserve Host data and perform fresh compatibility/pin review without replacing Launcher",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "signed_pack_only_update",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "signed.permission-diff",
+      "source": "signed-gateway",
+      "feature": "Pack updates must approve only newly added permissions while hash changes count as updates",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "signed_permission_diff",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "signed.publisher-keys",
+      "source": "signed-gateway",
+      "feature": "Persistent development signer and additive exact-artifact publisher-key versions require one-use Native consent",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "signed_publisher_keys",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "signed.ui-assets",
+      "source": "signed-gateway",
+      "feature": "Signed UI asset delegation and captured UI byte staging remain exact, bounded and revocation-aware",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "signed_ui_assets",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "signed.generation-budget",
+      "source": "signed-gateway",
+      "feature": "Native-approved generation budget and credential policies remain Profile-bound and fail closed",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.openai-compat-provider",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "signed_generation_budget",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "signed.saved-workspace",
+      "source": "signed-gateway",
+      "feature": "Saved Coding workspace ownership is rechecked at execution/file-effect boundaries",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-agent",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "signed_saved_workspace",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "signed.python-jobs",
+      "source": "signed-gateway",
+      "feature": "Bounded saved Python job execution with cancellation preserves the actual tool functionality",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-agent",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "signed_python_jobs",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "signed.failure-display",
+      "source": "signed-gateway",
+      "feature": "Saved terminal failures publish before history refresh and expose bounded private-data-free diagnostics",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "signed_failure_display",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "signed.stream-diagnostics",
+      "source": "signed-gateway",
+      "feature": "Finite provider stream/deadline/cancellation diagnostics remain in the fresh authority context",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.openai-compat-provider",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "signed_stream_diagnostics",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "signed.retained-revisions",
+      "source": "signed-gateway",
+      "feature": "Exact retained bundled Pack revisions and immutable Host baselines require authenticated active captures",
+      "preserved_in_m0": true,
+      "migration_status": "migration_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "signed_retained_revisions",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "signed.host-slot",
+      "source": "signed-gateway",
+      "feature": "Explicit admission for an existing authenticated Host Extension slot.",
+      "preserved_in_m0": true,
+      "migration_status": "retirement_approval_pending",
+      "target_pack": "tobkiri.harness-agent",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "signed_host_slot",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "The privileged Host Extension concept is planned for retirement; ordinary/native Pack admission and gate invariants carry forward. Still present in M0; no functionality retirement is approved.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "signed.wip-native",
+      "source": "signed-gateway",
+      "feature": "cd7c20e9d native owner binding and failure-stage investigation.",
+      "preserved_in_m0": true,
+      "migration_status": "unverified_legacy",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "signed_wip_native",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "Original WIP states focused tests were not run. M0 retention is not native/security acceptance; new tests, if run, are recorded separately.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "legacy.architecture",
+      "source": "all",
+      "feature": "Inherited Pack architecture gate remains RED",
+      "preserved_in_m0": true,
+      "migration_status": "legacy_acceptance_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "legacy_architecture",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "No baseline, test, approval, signature or evidence requirement has been weakened.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "legacy.release-proof",
+      "source": "all",
+      "feature": "Inherited independent migration/release proofs remain incomplete",
+      "preserved_in_m0": true,
+      "migration_status": "legacy_acceptance_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "legacy_release_proof",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "No baseline, test, approval, signature or evidence requirement has been weakened.",
+      "human_retirement_approval": null
+    },
+    {
+      "id": "legacy.native-acceptance",
+      "source": "all",
+      "feature": "Actual native UI, real Gemma coding, file/Calendar/Clock, Flow and resource-drain acceptance remains incomplete",
+      "preserved_in_m0": true,
+      "migration_status": "legacy_acceptance_open",
+      "target_pack": "tobkiri.harness-ui",
+      "acceptance": {
+        "planned_suite": "crates/tobkiri-e2e/tests/legacy_parity.rs",
+        "case": "legacy_native_acceptance",
+        "implemented": false,
+        "result": "not_run"
+      },
+      "legacy_evidence": [],
+      "note": "No baseline, test, approval, signature or evidence requirement has been weakened.",
+      "human_retirement_approval": null
+    }
+  ],
+  "m0_source_integration_verification": {
+    "status": "source_integration_verified_migration_open",
+    "source_commit": "4c2a5c6f6150f69b8b40e2008a59b0e38eebf496",
+    "source_cluster": {
+      "passed": 311,
+      "failed": 0,
+      "skipped": 1,
+      "existing_skip": "native Windows MAX_PATH regression"
+    },
+    "broader_boundary_cluster": {
+      "source_commit": "682b8e8a0b0e7214da7a45bdbe9bdf9ebca48813",
+      "passed": 362,
+      "failed": 0
+    },
+    "producer_freshness": {
+      "passed": 9,
+      "failed": 0
+    },
+    "lint": {
+      "ruff": "passed",
+      "mypy_source_files": 571
+    },
+    "qualification": "M0 preserves legacy source. These checks do not implement or establish acceptance for any planned Rust migration row, native launch, local model execution, or the eight known browser failures.",
+    "final_boundary_targeted_cluster": {
+      "source_commit": "4c2a5c6f6150f69b8b40e2008a59b0e38eebf496",
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "m5_launcher_preparation": {
+    "status": "implemented_source_native_unverified",
+    "core_host_internal_dependencies": [
+      "tobkiri-core"
+    ],
+    "local_checks": {
+      "rust_adapter": {
+        "passed": 4,
+        "failed": 0
+      },
+      "renderer_and_actual_sdk": {
+        "passed": 8,
+        "failed": 0
+      },
+      "frontend_lint": "passed",
+      "separate_ui_build": "passed",
+      "owned_clippy": "passed"
+    },
+    "native_feature_typecheck": "passed_macos_checkpoint_final_acl_scope_recheck_pending",
+    "native_tauri_build": "not_run",
+    "native_isolation_acceptance": "open",
+    "guest_ui_attachment_lifecycle": "open",
+    "non_macos_complete_approval_renderer": "open",
+    "legacy_default_startup": "preserved",
+    "retired_features": 0,
+    "receipt": ".work/evidence/m5-launcher-preparation-receipt.json",
+    "non_macos_owned_picker_renderer": "open",
+    "swe_b1_b6": {
+      "status": "source_fixed_native_unverified",
+      "rust_contract_tests": {
+        "passed": 8,
+        "failed": 0
+      },
+      "js_sdk_config_tests": {
+        "passed": 9,
+        "failed": 0
+      },
+      "guest_slot_guard": "supplementary_not_provenance",
+      "guest_wasm_unavailable_path": "separate_core_wasm_owner",
+      "caller_url": "top_level_not_frame_origin_proof",
+      "shutdown_budget_seconds": 155,
+      "forced_shutdown_audit_completion": "unconfirmed",
+      "core_build_appmanifest_commands": 8,
+      "native_run": "not_run",
+      "receipt": ".work/evidence/m5-launcher-b1-b6-receipt.json",
+      "generated_appmanifest_closed_eight": "pending_final_producer_scope_verification"
+    },
+    "native_typecheck_checkpoint": {
+      "target": "aarch64-apple-darwin",
+      "rustc": "1.94.0",
+      "status": "passed_before_final_acl_scope_change",
+      "command": "cargo check --offline --locked --lib --no-default-features --features core-host --manifest-path tobkiri_launcher/src-tauri/Cargo.toml",
+      "jobs": 2,
+      "debug": 0,
+      "incremental": false,
+      "elapsed_seconds": 8.04,
+      "minimum_available_gib": 5.48,
+      "linked_or_run": false,
+      "ui_regressions_passed": 9,
+      "generated_acl_before_scope": {
+        "commands": 47,
+        "permissions": 94
+      },
+      "final_acl_scope": "source_only_pending_capacity_restoration",
+      "capacity_floor_gib": 5,
+      "receipt": ".work/evidence/m5-native-typecheck-capacity-pause.json"
+    }
+  }
+}

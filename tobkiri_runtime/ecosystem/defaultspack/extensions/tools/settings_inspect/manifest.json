@@ -1,0 +1,58 @@
+{
+  "id": "settings_inspect",
+  "category": "tool",
+  "description": "Inspect Tobkiri's safe settings schema and current non-secret values.",
+  "skills": [
+    "settings_assistant"
+  ],
+  "config": {
+    "tool_id": "settings_inspect",
+    "name": "Settings Inspect",
+    "summary": "Inspect safe settings fields and their current values before advising the user.",
+    "tool_category": "settings",
+    "action_type": "read",
+    "write_action": false,
+    "requires_approval": false,
+    "risk": "low",
+    "tags": [
+      "settings",
+      "configuration",
+      "inspect"
+    ],
+    "ui": {
+      "group_id": "settings",
+      "group_label": "Settings",
+      "group_icon": "settings",
+      "item_icon": "search",
+      "widget_kind": "tool_toggle",
+      "composer_label": "Settings Inspect",
+      "composer_description": "Read safe Tobkiri settings and current values.",
+      "composer_icon": "search"
+    },
+    "schema": {
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Optional field, section, or intent search text."
+          },
+          "section_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "description": "Optional exact section ids to inspect."
+          }
+        },
+        "required": []
+      }
+    },
+    "execution": {
+      "type": "local",
+      "handler": "domain.tool.settings_tools:settings_inspect"
+    }
+  }
+}

@@ -1,0 +1,87 @@
+name: Issue 1520 inactive empty-poll libc candidate
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-ui-empty-poll.yml'
+      - 'tools/python313-producer/build_ui_poll_libc.py'
+      - 'tools/python313-producer/fetch_ui_poll_libc.py'
+      - 'tools/python313-producer/fetch_ui_poll_tools.py'
+      - 'tools/python313-producer/ui_empty_poll_source.py'
+      - 'tools/python313-producer/ui_poll_wit_workspace.py'
+      - 'tools/python313-producer/empty_poll_probe/**'
+      - 'tools/python313-producer/tests/test_fetch_ui_poll*.py'
+      - 'tools/python313-producer/tests/test_ui_empty_poll_source.py'
+      - 'tools/python313-producer/tests/test_ui_poll_wit_workspace.py'
+      - 'tools/python313-producer/tests/fixtures/wasi-libc-161b3195*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-1520-ui-empty-poll-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  isolated-libc-build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Verify bounded acquisition and exact source derivation offline
+        run: python3 -B -m unittest discover -s tools/python313-producer/tests
+      - name: Install the existing private build namespace dependency
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap make
+      - name: Acquire exact separate upstream source inputs
+        run: |
+          python3 -B tools/python313-producer/fetch_ui_poll_libc.py \
+            --destination "$RUNNER_TEMP/ui-poll-libc-source"
+          python3 -B tools/python313-producer/fetch_ui_poll_libc.py \
+            --destination "$RUNNER_TEMP/ui-poll-libc-source" --verify
+      - name: Restore pinned CMake and wasm-tools as data
+        run: |
+          python3 -B tools/python313-producer/fetch_ui_poll_tools.py \
+            --destination "$RUNNER_TEMP/ui-poll-build-tools"
+          python3 -B tools/python313-producer/fetch_ui_poll_tools.py \
+            --destination "$RUNNER_TEMP/ui-poll-build-tools" --verify
+      - name: Build only the inactive shared libc with immutable SDK33 inputs
+        run: >-
+          python3 -B tools/python313-producer/build_ui_poll_libc.py
+          --source "$RUNNER_TEMP/ui-poll-libc-source"
+          --tools "$RUNNER_TEMP/ui-poll-build-tools"
+          --destination "$RUNNER_TEMP/ui-poll-libc-build"
+      - name: Retain source, tool, compiler and physical-cleanup evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-empty-poll-libc-build-evidence
+          path: |
+            ${{ runner.temp }}/ui-poll-libc-source/source-inputs.json
+            ${{ runner.temp }}/ui-poll-build-tools/tool-inputs.json
+            ${{ runner.temp }}/ui-poll-libc-build/libc-build.json
+            ${{ runner.temp }}/ui-poll-libc-build/build-libc.sh
+            ${{ runner.temp }}/ui-poll-libc-build/sdk-input/sdk-manifest.json
+            ${{ runner.temp }}/ui-poll-libc-build/work/builtins.json
+            ${{ runner.temp }}/ui-poll-libc-build/work/*-version.txt
+            ${{ runner.temp }}/ui-poll-libc-build/work/*.log
+            ${{ runner.temp }}/ui-poll-libc-build/supervision/*.json
+            ${{ runner.temp }}/ui-poll-libc-build/supervision/*.log
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Keep the inactive compiled libc on CI only
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-empty-poll-libc-inactive-binary
+          path: ${{ runner.temp }}/ui-poll-libc-build/work/cmake/libc.so
+          if-no-files-found: error
+          retention-days: 14

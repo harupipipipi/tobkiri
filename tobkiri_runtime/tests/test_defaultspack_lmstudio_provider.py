@@ -178,9 +178,13 @@ def test_lmstudio_explicit_load_and_unload_use_native_endpoints_only():
 
 
 def test_lmstudio_component_owns_runtime_discovery_and_has_no_placeholder():
+    # The bundled model-catalog pack is the executable provider trust root;
+    # the retired defaultspack/domain/providers path must not be recreated.
     component_manifest_path = (
-        DEFAULTSPACK_ROOT
-        / "domain"
+        ROOT
+        / "ecosystem"
+        / "rumi_model_catalog_pack"
+        / "catalog"
         / "providers"
         / "lmstudio"
         / "manifest.json"

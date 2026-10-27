@@ -1,0 +1,17 @@
+[package]
+name = "tobkiri-pack-ai-usage-cost-rust"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wit-bindgen.workspace = true
+ordered-python-compat = { path = "../ordered-python-compat" }
+
+[dev-dependencies]
+serde_json.workspace = true
+sha2 = "=0.10.9"

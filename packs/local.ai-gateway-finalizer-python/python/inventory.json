@@ -1,0 +1,328 @@
+{
+  "caller_edges": [
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "contract_id": "tobkiri.service.ai.stream.normalize.v1",
+      "declarations": [
+        {
+          "json_pointer": "/requested_edges/71",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
+        },
+        {
+          "json_pointer": "/requested_edges/71",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
+        }
+      ],
+      "operation_id": "rumi_ai_stream_pack.ai-stream-normalize",
+      "target_provider_id": "rumi_ai_stream_pack.ai-stream.normalize"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+      "contract_id": "tobkiri.service.ai.tool_intent.normalize.v1",
+      "declarations": [
+        {
+          "json_pointer": "/requested_edges/72",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
+        },
+        {
+          "json_pointer": "/requested_edges/72",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
+        }
+      ],
+      "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "target_provider_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "contract_id": "tobkiri.service.ai.tool_intent.normalize.v1",
+      "declarations": [
+        {
+          "json_pointer": "/requested_edges/73",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
+        },
+        {
+          "json_pointer": "/requested_edges/73",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
+        }
+      ],
+      "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "target_provider_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+      "contract_id": "tobkiri.service.ai.usage.cost.v1",
+      "declarations": [
+        {
+          "json_pointer": "/requested_edges/74",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
+        },
+        {
+          "json_pointer": "/requested_edges/74",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
+        }
+      ],
+      "operation_id": "rumi_ai_usage_pack.ai-usage-cost.generate",
+      "target_provider_id": "rumi_ai_usage_pack.ai-usage.cost"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "contract_id": "tobkiri.service.ai.usage.cost.v1",
+      "declarations": [
+        {
+          "json_pointer": "/requested_edges/75",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
+        },
+        {
+          "json_pointer": "/requested_edges/75",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
+        }
+      ],
+      "operation_id": "rumi_ai_usage_pack.ai-usage-cost.stream",
+      "target_provider_id": "rumi_ai_usage_pack.ai-usage.cost"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.text-generate",
+      "contract_id": "tobkiri.service.ai.tool_intent.normalize.v1",
+      "declarations": [
+        {
+          "json_pointer": "/requested_edges/284",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
+        },
+        {
+          "json_pointer": "/requested_edges/284",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
+        }
+      ],
+      "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "target_provider_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.text-generate",
+      "contract_id": "tobkiri.service.ai.usage.cost.v1",
+      "declarations": [
+        {
+          "json_pointer": "/requested_edges/285",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
+        },
+        {
+          "json_pointer": "/requested_edges/285",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
+        }
+      ],
+      "operation_id": "rumi_ai_usage_pack.ai-usage-cost.generate",
+      "target_provider_id": "rumi_ai_usage_pack.ai-usage.cost"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.messages-generate",
+      "contract_id": "tobkiri.service.ai.tool_intent.normalize.v1",
+      "declarations": [
+        {
+          "json_pointer": "/requested_edges/307",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
+        },
+        {
+          "json_pointer": "/requested_edges/307",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
+        }
+      ],
+      "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "target_provider_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.messages-generate",
+      "contract_id": "tobkiri.service.ai.usage.cost.v1",
+      "declarations": [
+        {
+          "json_pointer": "/requested_edges/308",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
+        },
+        {
+          "json_pointer": "/requested_edges/308",
+          "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
+        }
+      ],
+      "operation_id": "rumi_ai_usage_pack.ai-usage-cost.generate",
+      "target_provider_id": "rumi_ai_usage_pack.ai-usage.cost"
+    }
+  ],
+  "exported_helper_operations": [
+    "generate",
+    "stream"
+  ],
+  "exported_interface": "local:ai-gateway-finalizer-python/finalizer@1.0.0",
+  "not_migrated": [
+    "_invoke",
+    "provider generation",
+    "routing",
+    "credential handling",
+    "retry and failover",
+    "Host capture",
+    "PackVM response serialization",
+    "text-generate wrapper",
+    "messages-generate wrapper",
+    "production registration and activation"
+  ],
+  "notes": [
+    "Recorded Candidate and provider result are DATA, not authority.",
+    "Only ordinary packvm_response=False is admitted by the new boundary.",
+    "Source domain rejection and imported Core errors remain disjoint.",
+    "Every imported Core error is terminal and retains exact code/message.",
+    "Event loops preserve original ordering and partial mutation locally.",
+    "No partial successful response is exposed after an imported error.",
+    "Source doubles do not prove guest execution, composition, or Gate.",
+    "Codec and dependency WIT are hash-bound staged references, not copies."
+  ],
+  "production_seam_calls": [
+    {
+      "sha256": "2270acfd00e68dab851e80024613470b7085dba582825aad1f2c9d537e6abd94",
+      "source_end_byte": 19309,
+      "source_end_line": 516,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 18998,
+      "source_start_line": 508,
+      "symbol": "_finalize_stream_result"
+    },
+    {
+      "sha256": "cbae4789d35be1975096eb18816449350192fb110ba587d4756321c92ae98b10",
+      "source_end_byte": 19591,
+      "source_end_line": 525,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "source_start_byte": 19309,
+      "source_start_line": 517,
+      "symbol": "_finalize_generate_result"
+    }
+  ],
+  "required_interfaces": [
+    "local:ai-gateway-tool-caller-python/caller@1.0.0",
+    "local:ai-usage-cost-python/usage-cost@1.0.0",
+    "local:ai-stream-normalizer-python/stream-normalizer@1.0.0"
+  ],
+  "schema": "io.tobkiri.gateway-finalizer-inventory.v1",
+  "sources": [
+    {
+      "bytes": 66097,
+      "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+      "sha256": "9df95525a3c467ba3313d8b3ea9bc1ddc7de7f8d1d4a14a9cf8d9f3fa849b208"
+    },
+    {
+      "bytes": 17989,
+      "path": "tobkiri_runtime/core_runtime/global_contract_dispatch.py",
+      "sha256": "f1cc60d7361b0716430c715c529fc36d41d1db5a130e47c2ae835962f6f7d893"
+    },
+    {
+      "bytes": 8253,
+      "path": "tobkiri_runtime/tobkiri_protocol/conversation_lifecycle.py",
+      "sha256": "d645ad36d8248516a619c5dbcd4051c782bdbe909df9df5386e7503301c27ece"
+    },
+    {
+      "bytes": 255256,
+      "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json",
+      "sha256": "4c66d34286551d93df2778321a989c81e007c13f03fdec53bf7ad65c4faafdb2"
+    },
+    {
+      "bytes": 220761,
+      "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json",
+      "sha256": "a011d0559a5bf485393ed738830e03ab09e54761539ec3c3961feeefc5b9ed29"
+    },
+    {
+      "bytes": 8961,
+      "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json.py",
+      "sha256": "7df89c2e5275fdc795c13e0d70d6ec69f7f022aa968c58a3c1b1637e0eee2158"
+    },
+    {
+      "bytes": 8184,
+      "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json_v2.py",
+      "sha256": "495b613a37807cf10e831a2332b7f401148d3aaec29ec84c16a22f0a2c05d3a2"
+    },
+    {
+      "bytes": 5732,
+      "path": "crates/tobkiri-wit/wit/core/core.wit",
+      "sha256": "f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb"
+    },
+    {
+      "bytes": 731,
+      "path": "packs/local.ai-gateway-tool-caller-python/wit/pack.wit",
+      "sha256": "34cad3a098d41f9103386b0dab1988624c0de7f81721807b4da1e5c0f64bdd41"
+    },
+    {
+      "bytes": 447,
+      "path": "packs/local.ai-usage-cost-python/wit/pack.wit",
+      "sha256": "196a11e594cc85d0213a6ad6e5d62e3e5b8921e78e24a75fef647acd28d59e50"
+    },
+    {
+      "bytes": 474,
+      "path": "packs/local.ai-stream-normalizer-python/wit/pack.wit",
+      "sha256": "8a080544d35dfcd2a72d7195954c9a09953f7c1d9fe2619ac42bae8b1933bc07"
+    },
+    {
+      "bytes": 364,
+      "path": "packs/local.ai-tool-bridge-ordered-python/wit/pack-v2.wit",
+      "sha256": "513454d839ac468205bc5b4ed93032625ed4f5d3064aa17f643f907e80bfeb78"
+    },
+    {
+      "bytes": 2046,
+      "path": "packs/local.ai-gateway-tool-caller-python/python/original_gateway_tool_caller.py",
+      "sha256": "9b0d671807095cf2211b8bb51db703cea563133b2e8d935a50e9f77ea40ff1b1"
+    },
+    {
+      "bytes": 5456,
+      "path": "packs/local.ai-gateway-tool-caller-python/python/gateway_tool_caller_adapter.py",
+      "sha256": "743f3b338ecb8a66031fb5b721a4272773ae24552231e0ec8b6d70659aa412df"
+    },
+    {
+      "bytes": 2474,
+      "path": "packs/local.ai-gateway-tool-caller-python/python/app.py",
+      "sha256": "caf0b4be78264a60588b6f6a85e9e34554440263782e83d0be7047263aaa7081"
+    },
+    {
+      "bytes": 2334,
+      "path": "packs/local.ai-usage-cost-python/python/original_usage_cost.py",
+      "sha256": "b4eccb3633fba3341599ed017271c427a20b5628a8629fe7e4c626b6261b4954"
+    },
+    {
+      "bytes": 2762,
+      "path": "packs/local.ai-usage-cost-python/python/usage_cost_adapter.py",
+      "sha256": "e300acb490bbc851971c7972be299ae7634949a350644f2b34087e6c382ea2b8"
+    },
+    {
+      "bytes": 2148,
+      "path": "packs/local.ai-usage-cost-python/python/app.py",
+      "sha256": "2226cb07e6b0b6af8a9f8285f0fbebc75b041c7472cf506c8284e5f10a5c204f"
+    },
+    {
+      "bytes": 3189,
+      "path": "packs/local.ai-stream-normalizer-python/python/original_stream_normalizer.py",
+      "sha256": "611e174b7b101ffe67960b80501421261e6a9322977b2a3c991253a1c28fc38f"
+    },
+    {
+      "bytes": 2508,
+      "path": "packs/local.ai-stream-normalizer-python/python/stream_normalizer_adapter.py",
+      "sha256": "c77c5c0f14c28ec60bba0586102743556e0438e7f581792c336371ebc12fed20"
+    },
+    {
+      "bytes": 2211,
+      "path": "packs/local.ai-stream-normalizer-python/python/app.py",
+      "sha256": "bfbfc5a8d2d6fa184f162585c370b96eb23b51f46d47a4aa1dd441906eb9e4f2"
+    },
+    {
+      "bytes": 2867,
+      "path": "packs/local.ai-tool-bridge-ordered-python/python/original_bridge.py",
+      "sha256": "4e964fbfa066dc656d36144b96d26a3a03df94295517781cf29815c1f90ba0d6"
+    },
+    {
+      "bytes": 1477,
+      "path": "packs/local.ai-tool-bridge-ordered-python/python/caller_adapter.py",
+      "sha256": "68f56bae4262eedf4427c63929897597c051a88e347ba96cc970b07eeb101528"
+    },
+    {
+      "bytes": 1972,
+      "path": "packs/local.ai-tool-bridge-ordered-python/python/caller_adapter_v2.py",
+      "sha256": "ec5b33231f7226b6040486eb6cd43ff5e39409dd14562927a748915e7511041b"
+    },
+    {
+      "bytes": 1978,
+      "path": "packs/local.ai-tool-bridge-ordered-python/python/app_v2.py",
+      "sha256": "0e0ba561b6ea7ce749024b2656384d14e040bca5f1505949ad51322882e29f75"
+    }
+  ]
+}

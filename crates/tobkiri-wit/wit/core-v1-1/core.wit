@@ -1,0 +1,107 @@
+package tobkiri:core@1.1.0;
+
+interface types {
+  enum error-code { denied, approval-required, cancelled, not-found, invalid, limit-exceeded, conflict, unavailable, internal }
+  record error { code: error-code, message: string }
+  type json = string;
+  record stream-handle { id: u64 }
+  record callback-handle { id: u64 }
+  enum risk { normal, elevated, dangerous }
+  record pending { request-id: string, caller: string, effect: string, summary: json, risk: risk }
+  variant verdict { pass, deny(string), constrain(json) }
+}
+interface secrets { use types.{error};
+  resource secret;
+  get: func(name: string) -> result<secret, error>;
+  reveal: func(name: string) -> result<string, error>; }
+interface network { use types.{error}; use secrets.{secret};
+  record header-from-secret { name: string, prefix: string, index: u32 }
+  record request { method: string, url: string, headers: list<tuple<string, string>>,
+                   secret-headers: list<header-from-secret>, body: option<list<u8>>, timeout-ms: option<u32> }
+  resource response { status: func() -> u16; headers: func() -> list<tuple<string, string>>;
+                      read: func(max: u32) -> result<option<list<u8>>, error>; }
+  fetch: func(req: request, secrets: list<borrow<secret>>) -> result<response, error>; }
+interface fs { use types.{error};
+  record entry { name: string, is-dir: bool, size: u64 }
+  resource dir {
+    read: func(path: string, offset: u64, len: u32) -> result<list<u8>, error>;
+    write: func(path: string, data: list<u8>, append: bool) -> result<_, error>;
+    %list: func(path: string) -> result<list<entry>, error>;
+    stat: func(path: string) -> result<entry, error>;
+    rename: func(src: string, dst: string) -> result<_, error>;
+    remove: func(path: string) -> result<_, error>;
+    mkdir: func(path: string) -> result<_, error>; }
+  open-grant: func(grant: string) -> result<dir, error>; }
+interface proc { use types.{error}; use fs.{dir};
+  resource process {
+    read-stdout: func(max: u32) -> result<option<list<u8>>, error>;
+    read-stderr: func(max: u32) -> result<option<list<u8>>, error>;
+    write-stdin: func(data: list<u8>) -> result<_, error>;
+    close-stdin: func(); kill: func(); wait: func() -> result<s32, error>; }
+  spawn: func(program: string, args: list<string>, cwd: option<borrow<dir>>, env: list<tuple<string, string>>) -> result<process, error>; }
+interface pty { use types.{error}; use fs.{dir};
+  resource terminal {
+    read: func(max: u32) -> result<option<list<u8>>, error>;
+    write: func(data: list<u8>) -> result<_, error>;
+    resize: func(cols: u16, rows: u16) -> result<_, error>;
+    kill: func(); wait: func() -> result<s32, error>; }
+  spawn: func(program: string, args: list<string>, cwd: option<borrow<dir>>, env: list<tuple<string, string>>, cols: u16, rows: u16) -> result<terminal, error>; }
+interface clock { use types.{error};
+  now-ms: func() -> u64; monotonic-ns: func() -> u64; sleep-ms: func(ms: u32) -> result<_, error>; }
+interface random { bytes: func(n: u32) -> list<u8>; }
+interface storage { use types.{error, json};
+  enum sql-result-policy { allow-rows, forbid-rows }
+  record typed-sql-result {
+    columns: list<string>, rows: list<list<json>>,
+    affected-rows: option<string>, last-insert-rowid: option<string>
+  }
+  resource sql-transaction {
+    sql-exec-typed: func(statement: string, params: list<json>, max-rows: u32, result-policy: sql-result-policy) -> result<typed-sql-result, error>;
+    sql-query-typed: func(statement: string, params: list<json>, max-rows: u32) -> result<typed-sql-result, error>;
+    commit: func() -> result<_, error>;
+    rollback: func() -> result<_, error>;
+  }
+  resource store {
+    kv-get: func(key: string) -> result<option<list<u8>>, error>;
+    kv-put: func(key: string, value: list<u8>) -> result<_, error>;
+    kv-delete: func(key: string) -> result<_, error>;
+    kv-list: func(prefix: string, after: option<string>, limit: u32) -> result<list<string>, error>;
+    sql-exec: func(sql: string, params: list<json>) -> result<u64, error>;
+    sql-query: func(sql: string, params: list<json>, limit: u32) -> result<list<list<json>>, error>;
+    sql-exec-typed: func(statement: string, params: list<json>, max-rows: u32, result-policy: sql-result-policy) -> result<typed-sql-result, error>;
+    sql-query-typed: func(statement: string, params: list<json>, max-rows: u32) -> result<typed-sql-result, error>;
+    sql-begin: func() -> result<sql-transaction, error>; }
+  open: func(name: string) -> result<store, error>;
+  open-foreign: func(owner-pack: string, name: string) -> result<store, error>;
+  open-user-global: func(name: string) -> result<store, error>; }
+interface audit { use types.{error, json};
+  append: func(kind: string, payload: json) -> result<_, error>;
+  read: func(after: u64, max: u32) -> result<list<json>, error>; }
+interface flow { use types.{error, json, stream-handle, callback-handle};
+  pull: func(s: stream-handle, max: u32) -> result<list<json>, error>;
+  cancel-stream: func(s: stream-handle);
+  invoke-callback: func(c: callback-handle, args: json) -> result<json, error>;
+  is-cancelled: func() -> bool;
+  call-port: func(shape: string, op: string, args: json) -> result<json, error>;
+  call-port-stream: func(shape: string, op: string, args: json) -> result<stream-handle, error>;
+  run-flow: func(implements: string, input: json) -> result<stream-handle, error>;
+  emit: func(output-shape: string, event: json) -> result<_, error>; }
+interface approvals { use types.{error, pending};
+  list-pending: func() -> result<list<pending>, error>;
+  submit-attestation: func(request-id: string, attestation: list<u8>) -> result<_, error>; }
+interface host-io { use types.{error, json};
+  display: func(surface: string, content: json) -> result<_, error>;
+  terminal-read-line: func(prompt: string) -> result<string, error>;
+  terminal-write: func(text: string) -> result<_, error>;
+  request-ui-embed: func(slot: string) -> result<_, error>;
+  pick-directory: func(purpose: string) -> result<string, error>; }
+interface lifecycle { use types.{error, json};
+  init: func(config: json) -> result<_, error>; shutdown: func(); }
+interface stream-source { use types.{error, json};
+  pull: func(local-id: u64, max: u32) -> result<list<json>, error>; cancel: func(local-id: u64); }
+interface callback-sink { use types.{error, json};
+  invoke: func(local-id: u64, args: json) -> result<json, error>; }
+interface gate-mediator { use types.{pending, verdict};
+  review: func(p: pending) -> verdict; }
+
+world pack-minimal { import types; import flow; import clock; import random; import audit; export lifecycle; }

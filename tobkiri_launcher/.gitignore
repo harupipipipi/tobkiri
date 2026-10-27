@@ -1,3 +1,4 @@
 # Tauri build artifacts
 src-tauri/target/
 src-tauri/gen/
+core-host-ui/

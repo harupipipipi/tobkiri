@@ -1,0 +1,23 @@
+package tobkiri-ui:native-input-stack@1.0.0;
+
+interface probe {
+    enum error-code {
+        invalid-input,
+        already-initialized,
+    }
+
+    record error {
+        code: error-code,
+        message: string,
+        details: string,
+    }
+
+    init: func(payload: string) -> result<_, error>;
+    run: func() -> string;
+}
+
+world native-input-stack-import-diagnostics {
+    import tobkiri-ui:inputs/captured@1.0.0;
+    import tobkiri-ui:diagnostics/import-trace@1.0.0;
+    export probe;
+}

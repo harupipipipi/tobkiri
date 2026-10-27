@@ -11,6 +11,7 @@ from domain.ui_compiler.models import canonical_id
 from .agent_backend import UIAgentBackend
 from .project_writer import write_json
 from .prompts import foundation_prompt
+from domain.tool.schema_adapter import list_or_empty, mapping_or_empty
 
 
 FOUNDATION_SPECIALIST_ROLES = [
@@ -180,12 +181,12 @@ class FoundationGenerator:
         report = _read_json(output_dir / "report.json") or {"status": "pass", "score": 0.5}
         spec = FoundationSpec(
             candidate_id=canonical_id(str(payload.get("candidateId") or candidate_id)),
-            direction=dict(payload.get("direction") or {}),
-            typography=dict(payload.get("typography") or {}),
-            spacing=dict(payload.get("spacing") or {}),
-            color=dict(payload.get("color") or {}),
-            surface=dict(payload.get("surface") or {}),
-            primitives=list(payload.get("primitives") if isinstance(payload.get("primitives"), list) else []),
+            direction=mapping_or_empty(payload.get("direction")),
+            typography=mapping_or_empty(payload.get("typography")),
+            spacing=mapping_or_empty(payload.get("spacing")),
+            color=mapping_or_empty(payload.get("color")),
+            surface=mapping_or_empty(payload.get("surface")),
+            primitives=list_or_empty(payload.get("primitives")),
         )
         return FoundationCandidate(
             candidate_id=spec.candidate_id,
@@ -256,7 +257,7 @@ def _validate_foundation_output(root: Path, base_report: dict[str, Any]) -> dict
             }
         )
     report = dict(base_report or {})
-    report["issues"] = [*list(report.get("issues") if isinstance(report.get("issues"), list) else []), *issues]
+    report["issues"] = [*list_or_empty(report.get("issues")), *issues]
     report["status"] = "fail" if any(issue["severity"] == "blocker" for issue in report["issues"]) else "pass"
     if report["status"] == "fail":
         report["score"] = 1.0

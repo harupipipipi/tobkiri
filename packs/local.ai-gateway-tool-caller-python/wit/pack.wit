@@ -1,0 +1,17 @@
+package local:ai-gateway-tool-caller-python@1.0.0;
+
+/// Source helper operations, NOT the four original full Gateway caller identities.
+/// All payload/result strings use pack-owned ordered-finite-json-v2, not Core json.
+interface caller {
+  use tobkiri:core/types@1.0.0.{error};
+  /// Diagnostic only; not an additional migrated Gateway caller identity.
+  runtime-info: func() -> string;
+  generate-intents: func(payload: string) -> result<string, error>;
+  stream-intents: func(payload: string) -> result<string, error>;
+  stream-event-intents: func(payload: string) -> result<string, error>;
+}
+world pack {
+  include tobkiri:core/pack-minimal@1.0.0;
+  import local:ai-tool-bridge-ordered-python/bridge@2.0.0;
+  export caller;
+}

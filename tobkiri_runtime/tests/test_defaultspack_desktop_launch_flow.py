@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shlex
@@ -154,25 +155,111 @@ def test_runtime_desktop_launch_uses_scoped_capability_path(monkeypatch):
     direct_launch.assert_not_called()
 
 
-def test_defaultspack_ecosystem_registers_desktop_app_metadata(tmp_path):
-    from core_runtime.desktop_app_manager import DesktopAppManager
+def test_defaultspack_ecosystem_registers_desktop_app_metadata():
+    """The v4 authority artifacts replace legacy ecosystem metadata."""
+    manifest = json.loads(
+        (DEFAULTSPACK_ROOT / "pack.v4.json").read_text(encoding="utf-8")
+    )
+    artifact_index = json.loads(
+        (DEFAULTSPACK_ROOT / "artifact-index.v4.json").read_text(encoding="utf-8")
+    )
 
-    pack_shell = tmp_path / "pack-shell"
-    pack_shell.write_text("#!/bin/sh\n", encoding="utf-8")
-    pack_shell.chmod(0o755)
-    manager = DesktopAppManager(repo_dir=str(tmp_path / "repo"))
-
-    with mock.patch.dict(os.environ, {"RUMI_PACK_SHELL_PATH": str(pack_shell)}):
-        with mock.patch.object(manager, "_create_shortcut", return_value=str(tmp_path / "Defaultspack.app")):
-            result = manager.register_from_ecosystem(str(DEFAULTSPACK_ROOT / "ecosystem.json"))
-
-    assert result["success"] is True
-    meta_path = tmp_path / "repo" / "user_data" / "apps" / "defaultspack.json"
-    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    assert meta["pack_id"] == "defaultspack"
-    assert meta["command"] == "python defaultspack/desktop_app.py"
-    assert meta["pack_dir"] == str(DEFAULTSPACK_ROOT)
-    assert meta["env"]["RUMI_DEFAULTSPACK_PORT"] == "8766"
+    assert manifest["pack_api_version"] == "io.tobkiri.pack.v4"
+    assert manifest["pack"]["id"] == "defaultspack"
+    assert manifest["pack"]["artifact_digest"] == artifact_index["artifact_set_digest"]
+    assert artifact_index["pack_id"] == manifest["pack"]["id"]
+    assert artifact_index["integrity_seal"]["algorithm"] == "sha256-canonical-v1"
+    tool_paths = {
+        path.relative_to(DEFAULTSPACK_ROOT).as_posix()
+        for prefix in ("tools", "extensions/tools")
+        for path in (DEFAULTSPACK_ROOT / prefix).glob("*/manifest.json")
+    }
+    assert tool_paths
+    runtime_paths = {
+        "runtime/application_presentation.py",
+        "runtime/conversation.py",
+        "runtime/python_sandbox_guest.py",
+    }
+    # The shipped Shell and its public resources are declared Pack artifacts.
+    ui_paths = {
+        "ui/assets/tobkiri-startup-blade-cut.svg",
+        "ui/codex.png",
+        "ui/dev_panel.js",
+        "ui/licenses/Beautiful-UI-MIT.txt",
+        "ui/mediapipe/NOTICE.md",
+        "ui/mediapipe/wasm/vision_wasm_internal.js",
+        "ui/mediapipe/wasm/vision_wasm_internal.wasm",
+        "ui/mediapipe/wasm/vision_wasm_module_internal.js",
+        "ui/mediapipe/wasm/vision_wasm_module_internal.wasm",
+        "ui/mediapipe/wasm/vision_wasm_nosimd_internal.js",
+        "ui/mediapipe/wasm/vision_wasm_nosimd_internal.wasm",
+        "ui/models/hand_landmarker.task",
+        "ui/pet/tobkiri-pet.png",
+        "ui/shell-app.css",
+        "ui/shell-app.js",
+        "ui/shell-defaultspack-app.js",
+        "ui/shell-icons.js",
+        "ui/shell-rolldown-runtime.js",
+        "ui/shell-vendor.js",
+        "ui/shell.html",
+    }
+    assert {
+        artifact["path"] for artifact in artifact_index["artifacts"]
+    } == {
+        "pack.v4.json",
+        "contracts.v4.json",
+        "executables.v4.json",
+        "host_contract_contributions.v1.json",
+        "update_metadata.v1.json",
+        "defaultspack/chat_reference_presentation.py",
+        "defaultspack/frontend_contract_map.v4.json",
+        "defaultspack/http_surface_presentation.py",
+        "defaultspack/kanban_presentation.py",
+        "defaultspack/managed_desktop_presentation.py",
+        "defaultspack/provider_status_presentation.py",
+        "defaultspack/turn_progress_presentation.py",
+    } | tool_paths | ui_paths | runtime_paths
+    assert all(
+        artifact["role"] == "sidecar"
+        for artifact in artifact_index["artifacts"]
+        if artifact["path"] in tool_paths
+    )
+    executable_sidecars = [
+        artifact
+        for artifact in artifact_index["artifacts"]
+        if artifact["path"] == "executables.v4.json"
+    ]
+    assert len(executable_sidecars) == 1
+    assert executable_sidecars[0]["role"] == "sidecar"
+    assert executable_sidecars[0]["digest"] == (
+        "sha256:"
+        + hashlib.sha256(
+            (DEFAULTSPACK_ROOT / "executables.v4.json").read_bytes()
+        ).hexdigest()
+    )
+    presentation_paths = {
+        "defaultspack/chat_reference_presentation.py",
+        "defaultspack/frontend_contract_map.v4.json",
+        "defaultspack/http_surface_presentation.py",
+        "defaultspack/kanban_presentation.py",
+        "defaultspack/managed_desktop_presentation.py",
+        "defaultspack/provider_status_presentation.py",
+        "defaultspack/turn_progress_presentation.py",
+    }
+    for artifact in artifact_index["artifacts"]:
+        if artifact["path"] in presentation_paths | ui_paths | runtime_paths:
+            assert artifact["role"] == (
+                "asset"
+                if artifact["path"] in ui_paths or artifact["path"].endswith(".json")
+                else "runtime"
+            )
+            assert artifact["digest"] == (
+                "sha256:"
+                + hashlib.sha256(
+                    (DEFAULTSPACK_ROOT / artifact["path"]).read_bytes()
+                ).hexdigest()
+            )
+    assert not (DEFAULTSPACK_ROOT / "ecosystem.json").exists()
 
 
 def test_desktop_capability_can_launch_registered_pack_with_issued_token():
@@ -426,3 +513,35 @@ def test_desktop_capability_delegates_non_launch_actions(action):
 
     assert result["app"][expected_key] == expected_value
     delegated.assert_called_once()
+
+
+def test_saved_conversation_is_owned_by_independent_pack() -> None:
+    """Defaults presents chat; the selected orchestration Pack executes turns."""
+    pack = DEFAULTSPACK_ROOT.parent / "tobkiri_conversation_orchestration_pack"
+    manifest = json.loads((pack / "pack.v4.json").read_text(encoding="utf-8"))
+    defaults = json.loads((DEFAULTSPACK_ROOT / "pack.v4.json").read_text(encoding="utf-8"))
+    assert not (DEFAULTSPACK_ROOT / "runtime/saved_conversation.py").exists()
+    assert (pack / "runtime/saved_conversation.py").is_file()
+    assert any(item["id"] == "tobkiri_conversation_orchestration_pack.saved"
+               for item in manifest["functions"])
+    assert all(item["id"] != "defaultspack.conversation.saved"
+               for item in defaults["functions"])
+    intent = json.loads((DEFAULTSPACK_ROOT / "v4/defaults.profile.intent.v1.json").read_text())
+    assert any(item["pack_id"] == "tobkiri_conversation_orchestration_pack"
+               for item in intent["packs"])
+    incoming = [item for item in intent["requested_edges"]
+                if item["target_provider_id"] == "tobkiri_conversation_orchestration_pack.saved"]
+    # Both direct and scheduled turns enter through the turn owner. Defaults
+    # must not regain an executable saved-turn provider or a direct edge.
+    assert len(incoming) == 2
+    assert {item["caller_function_id"] for item in incoming} == {
+        "rumi_turn_runtime_pack.turn-runtime.saved",
+        "rumi_turn_runtime_pack.chat-saved-job-adapter",
+    }
+    for edge in incoming:
+        assert edge["contract_id"] == "conversation.saved-turn.v1"
+        assert edge["operation_id"] == "saved_complete"
+        assert edge["requested_scope_template"]["dimensions"] == {
+            "contract": ["conversation.saved-turn.v1"],
+            "operation": ["saved_complete"],
+        }

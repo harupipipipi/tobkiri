@@ -1,0 +1,262 @@
+{
+  "audit_encryption_not_covered": "original audit hash routine runs against identity encryption fixture sink and :memory: SQLite",
+  "canonical_cases_per_variant": 885,
+  "generator_sha256": "24da0edaa71b75c00b2c8569d23f3f293eba08370265d719766e8032deb8dddd",
+  "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+  "seal_cases_per_format": 300,
+  "source_calls": {
+    "artifact.artifact_digest": {
+      "callable_source_sha256_hex": "674b0ba7ade713bb74eb2d8d372350fa75dd42365185b203b31a807a7704c029",
+      "execution": "direct call to original imported source callable",
+      "first_line": 17,
+      "qualified_name": "artifact_digest",
+      "source": "tobkiri_runtime/tobkiri_protocol/platform_artifact.py"
+    },
+    "authority.InvocationLease.digest": {
+      "callable_source_sha256_hex": "1b2195970d4d8e5360697c5393b7882d4faa85915b7366766d993bbfc5ec87d8",
+      "execution": "direct call to original imported source callable",
+      "first_line": 1217,
+      "qualified_name": "InvocationLease.digest",
+      "source": "tobkiri_runtime/core_runtime/authority/v4_models.py"
+    },
+    "authority.InvocationLease.from_dict": {
+      "callable_source_sha256_hex": "bca8bd209d8f645390dd7b7e7e90411c8b62dde7ed3d763eaf3de34f6ad1a761",
+      "execution": "direct call to original imported source callable",
+      "first_line": 1258,
+      "qualified_name": "InvocationLease.from_dict",
+      "source": "tobkiri_runtime/core_runtime/authority/v4_models.py"
+    },
+    "authority.InvocationLease.to_dict": {
+      "callable_source_sha256_hex": "f0ab04ddde82e1108132d42a4a05345f1979bd2a59de17325b7e7e12c752eb0e",
+      "execution": "direct call to original imported source callable",
+      "first_line": 1223,
+      "qualified_name": "InvocationLease.to_dict",
+      "source": "tobkiri_runtime/core_runtime/authority/v4_models.py"
+    },
+    "authority.authority_digest": {
+      "callable_source_sha256_hex": "87800d5bc68f1b52ec751356929cc93dfa3ab551c6481eae346b4971f74b7a07",
+      "execution": "direct call to original imported source callable",
+      "first_line": 116,
+      "qualified_name": "authority_digest",
+      "source": "tobkiri_runtime/core_runtime/authority/v4_models.py"
+    },
+    "authority.canonical_json": {
+      "callable_source_sha256_hex": "f2cbf8b42f4ebd5f8642155ada084b0422b0afcf90b77479005cd75e162223cc",
+      "execution": "direct call to original imported source callable",
+      "first_line": 100,
+      "qualified_name": "canonical_json",
+      "source": "tobkiri_runtime/core_runtime/authority/v4_models.py"
+    },
+    "authority.interactive_confirmation_digest": {
+      "callable_source_sha256_hex": "2de723ea34ed2d12f33ecf88f7411d92c56c312a3434068db7ed0529998407c0",
+      "execution": "direct call to original imported source callable",
+      "first_line": 173,
+      "qualified_name": "interactive_confirmation_digest",
+      "source": "tobkiri_runtime/core_runtime/authority/v4_models.py"
+    },
+    "authority_store.__init__._mac_key_assignment": {
+      "exact_source_segment": "self._mac_key = hashlib.sha256(self._fernet_key + b\":lease-mac:v1\").digest()",
+      "execution": "compile and execute the original AST assignment only; no constructor",
+      "first_line": 339,
+      "source": "tobkiri_runtime/core_runtime/authority/v4_store.py",
+      "source_segment_sha256_hex": "1d12b96c55a5e8e264fb00875a7c7e333601683cbb8f22fcbb00e0efc19e5a4e"
+    },
+    "authority_store._append_audit": {
+      "callable_source_sha256_hex": "a678ff08178c9ba47191a545fc493fd1f69b9339212b5414b80d6b6875504625",
+      "execution": "direct call to original imported source callable",
+      "first_line": 3397,
+      "qualified_name": "AuthorityStore._append_audit",
+      "source": "tobkiri_runtime/core_runtime/authority/v4_store.py"
+    },
+    "authority_store._decode_lease_token": {
+      "callable_source_sha256_hex": "ff5cbe2851685c7ab54a28850f5a7af695300ea3781107a7c92863ffc7268b0a",
+      "execution": "direct call to original imported source callable",
+      "first_line": 3457,
+      "qualified_name": "AuthorityStore._decode_lease_token",
+      "source": "tobkiri_runtime/core_runtime/authority/v4_store.py"
+    },
+    "authority_store._encode_lease_token": {
+      "callable_source_sha256_hex": "98efd1c8da07e9c72111905a007ff4c9ad198450f9f0bfad6b52614f90e76914",
+      "execution": "direct call to original imported source callable",
+      "first_line": 3449,
+      "qualified_name": "AuthorityStore._encode_lease_token",
+      "source": "tobkiri_runtime/core_runtime/authority/v4_store.py"
+    },
+    "authority_store._verify_audit_rows": {
+      "callable_source_sha256_hex": "edd0be1eb46ebe31c66345c87b7d1c727402e622f29463538ea9145c4033a336",
+      "execution": "direct call to original imported source callable",
+      "first_line": 4064,
+      "qualified_name": "AuthorityStore._verify_audit_rows",
+      "source": "tobkiri_runtime/core_runtime/authority/v4_store.py"
+    },
+    "capsule.canonical": {
+      "callable_source_sha256_hex": "6f2b518ea7f3a592b47020ca388ce352fb030d6bf53fb0d8933a306d3efcf688",
+      "first_line": 63,
+      "qualified_name": "canonical",
+      "source": "tobkiri_runtime/tobkiri_protocol/workspace_capsule_v1.py"
+    },
+    "capsule.digest": {
+      "callable_source_sha256_hex": "0eb9dd370eba3967070778e8614287bbd288cf1f5bca78b7ab4da6395200aeb8",
+      "first_line": 74,
+      "qualified_name": "digest",
+      "source": "tobkiri_runtime/tobkiri_protocol/workspace_capsule_v1.py"
+    },
+    "continuation.seal_continuation_intent": {
+      "callable_source_sha256_hex": "af5dc1a07cbc3899c8f14450c2e824cae3dce11fe3caabe3ed9bef89d7f35460",
+      "first_line": 55,
+      "qualified_name": "seal_continuation_intent",
+      "source": "tobkiri_runtime/tobkiri_host/continuation_envelope.py"
+    },
+    "global.canonical_json": {
+      "callable_source_sha256_hex": "1c6d49468156ff3294ca3fe4fe92cce8199e2674412af0375339c6e309cc8b2a",
+      "first_line": 10,
+      "qualified_name": "canonical_json",
+      "source": "tobkiri_runtime/core_runtime/global_contracts/canonical.py"
+    },
+    "pack._canonical_bytes": {
+      "callable_source_sha256_hex": "1b6e416a0c55fb41248ac698763ac445fd2521910ed27289d8bc37ec7600a0bf",
+      "execution": "direct call to original imported source callable",
+      "first_line": 438,
+      "qualified_name": "_canonical_bytes",
+      "source": "tobkiri_runtime/core_runtime/pack_signature.py"
+    },
+    "pack.build_signed_manifest": {
+      "callable_source_sha256_hex": "f1683694baaaf8f773e2df039ef94533530cdb51fba411f45c3b8d7863a3ad64",
+      "execution": "direct call to original imported source callable",
+      "first_line": 63,
+      "qualified_name": "build_signed_manifest",
+      "source": "tobkiri_runtime/core_runtime/pack_signature.py"
+    },
+    "pack.sign_manifest": {
+      "callable_source_sha256_hex": "a4d3c9eaa81fed3af3756957777faa10b1150faf8ebc1ff3779c346827b68b1d",
+      "execution": "direct call to original imported source callable",
+      "first_line": 109,
+      "qualified_name": "sign_manifest",
+      "source": "tobkiri_runtime/core_runtime/pack_signature.py"
+    },
+    "pack.verify_signed_manifest": {
+      "callable_source_sha256_hex": "61f5a8c41f5039a84df5fdfe803b733a29e5a9a604a4ba1ba9646a2c11951bf6",
+      "execution": "direct call to original imported source callable",
+      "first_line": 134,
+      "qualified_name": "verify_signed_manifest",
+      "source": "tobkiri_runtime/core_runtime/pack_signature.py"
+    },
+    "pack.verify_signed_pack": {
+      "callable_source_sha256_hex": "73ec1d5da5d1a65a70d7ba64ae5911be00bf5dea16eeb5c72344e37d65ab879c",
+      "execution": "direct call to original imported source callable",
+      "first_line": 225,
+      "qualified_name": "verify_signed_pack",
+      "source": "tobkiri_runtime/core_runtime/pack_signature.py"
+    },
+    "protocol.canonical_bytes": {
+      "callable_source_sha256_hex": "7f27c68f22f2608be947693d5147709e84dcd0976376a473c89ad82cff1ae654",
+      "execution": "direct call to original imported source callable",
+      "first_line": 104,
+      "qualified_name": "canonical_bytes",
+      "source": "tobkiri_runtime/tobkiri_protocol/canonical.py"
+    },
+    "protocol.canonical_digest": {
+      "callable_source_sha256_hex": "3bcda5f8aafd92772b70ea8351d43ab501fddacd881f4c138550f0bc34fb5d79",
+      "execution": "direct call to original imported source callable",
+      "first_line": 111,
+      "qualified_name": "canonical_digest",
+      "source": "tobkiri_runtime/tobkiri_protocol/canonical.py"
+    },
+    "protocol.canonical_json": {
+      "callable_source_sha256_hex": "c2f8ef224a72e70deda05b7b3cf08cbe13343153d6e094c32591c614fdceab5f",
+      "execution": "direct call to original imported source callable",
+      "first_line": 86,
+      "qualified_name": "canonical_json",
+      "source": "tobkiri_runtime/tobkiri_protocol/canonical.py"
+    },
+    "protocol.strict_loads": {
+      "callable_source_sha256_hex": "ee030e565eaecfa581b0de26f3a8c35509ac6ecff353e8132435477596e64c53",
+      "execution": "direct call to original imported source callable",
+      "first_line": 24,
+      "qualified_name": "strict_loads",
+      "source": "tobkiri_runtime/tobkiri_protocol/canonical.py"
+    },
+    "workflow._decode": {
+      "callable_source_sha256_hex": "91ccf76ebc63918ee1eaa566eb1af306c2effb2508684ebf60c32b8f13d1f886",
+      "execution": "direct call to original imported source callable",
+      "first_line": 167,
+      "qualified_name": "WorkflowStoreV4._decode",
+      "source": "tobkiri_runtime/core_runtime/workflow_v4/store.py"
+    },
+    "workflow._encode": {
+      "callable_source_sha256_hex": "a0760711d9d7d7b215ff08f1ff591f21da020e5a4f10a568e5429062941c4249",
+      "execution": "direct call to original imported source callable",
+      "first_line": 158,
+      "qualified_name": "WorkflowStoreV4._encode",
+      "source": "tobkiri_runtime/core_runtime/workflow_v4/store.py"
+    }
+  },
+  "sources": {
+    "tobkiri_launcher/scripts/tests/fixtures/artifact_integrity_vectors.json": {
+      "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+      "length": 795,
+      "sha256_hex": "0505017d0080f8dd0fb87322bcf34969fcfa68c8627599e2c34284a7d5a36298"
+    },
+    "tobkiri_runtime/core_runtime/authority/store_contracts.py": {
+      "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+      "length": 1509,
+      "sha256_hex": "7a03d73bff3fb1238b14df14e2c3194464ba9c7d9c3aed0268b301ac4e23f72d"
+    },
+    "tobkiri_runtime/core_runtime/authority/v4_models.py": {
+      "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+      "length": 54232,
+      "sha256_hex": "61c505e7fb2e73d17c5f3972e6ef4e657d2571fe2b6e99ecd6a3ad577ebd9a8e"
+    },
+    "tobkiri_runtime/core_runtime/authority/v4_store.py": {
+      "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+      "length": 179537,
+      "sha256_hex": "27c4af9822bad5fc1a1c9ddefebfc6e6ac7e8f61b6debbca87da114a8de63e7b"
+    },
+    "tobkiri_runtime/core_runtime/global_contracts/canonical.py": {
+      "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+      "length": 647,
+      "sha256_hex": "51bb2d362060b64045d218c9bedb3cc0ed0c11bf0476297349f324b7583575d0"
+    },
+    "tobkiri_runtime/core_runtime/pack_signature.py": {
+      "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+      "length": 19276,
+      "sha256_hex": "abe62f0226c151c849f49e27b9fbdbe6c399cccb36a5827230fa7399c01ece6d"
+    },
+    "tobkiri_runtime/core_runtime/workflow_v4/models.py": {
+      "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+      "length": 6002,
+      "sha256_hex": "b10c9fda239788a3333e58b1ba0245375a592541dd3459f95d2e3caaa3e79684"
+    },
+    "tobkiri_runtime/core_runtime/workflow_v4/store.py": {
+      "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+      "length": 24776,
+      "sha256_hex": "fc6592c70f0e25a1f06a5a0de5834504affea40b70326e042fd88cfb1c0311ea"
+    },
+    "tobkiri_runtime/tobkiri_host/continuation_envelope.py": {
+      "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+      "length": 7700,
+      "sha256_hex": "1ddf973e40cbe01ef2a634308b4eb3d07afe3e520f74e1a12708714bf7eb019e"
+    },
+    "tobkiri_runtime/tobkiri_protocol/canonical.py": {
+      "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+      "length": 5465,
+      "sha256_hex": "9f068ab737e2c9c152348601d604c6c81a060edf207c483849a90ca97ccd434e"
+    },
+    "tobkiri_runtime/tobkiri_protocol/errors.py": {
+      "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+      "length": 1047,
+      "sha256_hex": "2292de2b3fd27e3fe644979d7aee20a40e4b77b2366dd4c5ac3ad3a449acbddf"
+    },
+    "tobkiri_runtime/tobkiri_protocol/platform_artifact.py": {
+      "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+      "length": 9528,
+      "sha256_hex": "c55797250942fe23a48a971860ea5b55d722abb3fad1ecc83ebdce1ffe7a80c8"
+    },
+    "tobkiri_runtime/tobkiri_protocol/workspace_capsule_v1.py": {
+      "git_commit": "cd7c20e9d52535674c36cccac4d03ef70e9f809b",
+      "length": 12349,
+      "sha256_hex": "27ac7545ce0ad483b7d0847a60c3b70d600f5bad2499d9beb502f0a81e34163a"
+    }
+  },
+  "test_only_keys": true
+}

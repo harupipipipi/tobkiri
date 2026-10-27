@@ -1,0 +1,30 @@
+{
+  "scope": "final reviewed source after four semantics-preserving Clippy changes; static compilation preceded those style changes",
+  "sources": [
+    {
+      "bytes": 32912,
+      "path": "crates/tobkiri-e2e/tests/ordered_python.rs",
+      "sha256": "7adac58c32bc8d690b0507e8db7cb795aaff12a4e2dd1d2ac3853bde81b5c34c"
+    },
+    {
+      "bytes": 37999,
+      "path": "crates/tobkiri-e2e/tests/ordered_python/evidence_gateway_tool_caller.rs",
+      "sha256": "b3a0704d0f0a7ab049c30a690defd5640e69147168cec0984795b457a5c5cc70"
+    },
+    {
+      "bytes": 31041,
+      "path": "crates/tobkiri-e2e/tests/ordered_python/gateway_tool_caller.rs",
+      "sha256": "a9eef86c781a0bc17d8b1f38f56d8b1177453a2e10b8a83ef10173c5239940e1"
+    },
+    {
+      "bytes": 17721,
+      "path": "scripts/wasm/materialize_gateway_tool_caller_graph.py",
+      "sha256": "99eda7acee4a45d48ab673110755d705034fc6160652c13014183947d37d35c5"
+    },
+    {
+      "bytes": 26298,
+      "path": "tests/test_gateway_tool_caller_graph_materialization.py",
+      "sha256": "a80752084e82f92973fb377a54a4a98c76c6d4ce638c43c83ce5e1789477cdde"
+    }
+  ]
+}

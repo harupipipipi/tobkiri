@@ -1,0 +1,105 @@
+{
+  "allowed_imports": [
+    "tobkiri:core/flow@1.0.0",
+    "tobkiri:core/clock@1.0.0",
+    "tobkiri:core/random@1.0.0",
+    "tobkiri:core/audit@1.0.0",
+    "tobkiri:core/types@1.0.0"
+  ],
+  "entrypoint": "app",
+  "format": "tobkiri.python-build/2",
+  "outer_exports": [
+    "tobkiri:core/lifecycle@1.0.0",
+    "local:shell-policy-python/policy@1.0.0"
+  ],
+  "sources": [
+    {
+      "destination": "policy.py",
+      "sha256": "4474513154ced3474da4db2d6bf90ece67c0da9406ee3ac392660d7bd9ddcf51",
+      "source": "../../tobkiri_runtime/ecosystem/rumi_shell_policy_pack/runtime/policy.py"
+    },
+    {
+      "destination": "app.py",
+      "sha256": "ea5ebf7c64f55313195dc6a1958f54b54850603526353f148b439aea0848a1e0",
+      "source": "python/app.py"
+    },
+    {
+      "destination": "wit/pack.wit",
+      "sha256": "30ae8aafcba5845e7ebbc76c69f5e9abc48fbb54b7bdc76fe80efaf84013ea7e",
+      "source": "wit/pack.wit"
+    },
+    {
+      "destination": "wit/deps/core.wit",
+      "sha256": "f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "source": "wit/deps/core.wit"
+    },
+    {
+      "destination": "tobkiri_sdk/__init__.py",
+      "sha256": "a67b8eb7566d943f2003c06e6efe35fb7cdc133f4426532cbb82d31d6f264ccd",
+      "source": "../../sdk/python/tobkiri_sdk/__init__.py"
+    },
+    {
+      "destination": "tobkiri_sdk/_binding.py",
+      "sha256": "6ef3ade0b0a14e0e6e5f785d5e57197fe91ec22a5e8ab23c7ee9ddcbd5ee2360",
+      "source": "../../sdk/python/tobkiri_sdk/_binding.py"
+    },
+    {
+      "destination": "tobkiri_sdk/audit.py",
+      "sha256": "149a2b89c420a21cd339acf157200546c59437f40796f000a5c8ee222d57f71f",
+      "source": "../../sdk/python/tobkiri_sdk/audit.py"
+    },
+    {
+      "destination": "tobkiri_sdk/floats.py",
+      "sha256": "cf103d968b57103a6258c4d998bc98c7840ee87b0945990a768699d66bdede37",
+      "source": "../../sdk/python/tobkiri_sdk/floats.py"
+    },
+    {
+      "destination": "tobkiri_sdk/generated.py",
+      "sha256": "5d534487dc1c04ce6f0b3e1fa66f3f7b27c1f8666fca842568904580c45dd9dc",
+      "source": "../../sdk/python/tobkiri_sdk/generated.py"
+    },
+    {
+      "destination": "tobkiri_sdk/http.py",
+      "sha256": "adc0cef6d52ec1134b2d5c44ebe67ed5d214ff7a5bba395aff6bdb4785add7eb",
+      "source": "../../sdk/python/tobkiri_sdk/http.py"
+    },
+    {
+      "destination": "tobkiri_sdk/ports.py",
+      "sha256": "688658aebb61d8cfbd29d9732d9150ed5c114fdf6981d1ba88f13646a805caaf",
+      "source": "../../sdk/python/tobkiri_sdk/ports.py"
+    },
+    {
+      "destination": "tobkiri_sdk/proc.py",
+      "sha256": "62a602c9087d3b4dce571c4fa2c429a142660df556187013ef327e164a850720",
+      "source": "../../sdk/python/tobkiri_sdk/proc.py"
+    },
+    {
+      "destination": "tobkiri_sdk/secrets.py",
+      "sha256": "a548d86ea79faee6226da8e99633e1daf2faa54c4540985d3d664fb14a40e049",
+      "source": "../../sdk/python/tobkiri_sdk/secrets.py"
+    },
+    {
+      "destination": "tobkiri_sdk/storage.py",
+      "sha256": "b0719b3b1c907f73afc2b5c64a0b273e1298f761f9324062b0eb2d6986cfcee2",
+      "source": "../../sdk/python/tobkiri_sdk/storage.py"
+    },
+    {
+      "destination": "tobkiri_sdk/streams.py",
+      "sha256": "f5694f124485bccf9667a555eef03bc870af481aa7e01dde9e9e29d99ec45da7",
+      "source": "../../sdk/python/tobkiri_sdk/streams.py"
+    },
+    {
+      "destination": "tobkiri_sdk/sql_codec.py",
+      "sha256": "863adde3b6eb7fae8b9b173ecf6f32c71f9d79b9d90971478c6258bcef4305ef",
+      "source": "../../sdk/python/tobkiri_sdk/sql_codec.py"
+    },
+    {
+      "destination": "tobkiri_sdk/sql_result.py",
+      "sha256": "032f595b86177b30324eb47e8fa2a6113b2186d5ccef7ab7a72a59be6a74b258",
+      "source": "../../sdk/python/tobkiri_sdk/sql_result.py"
+    }
+  ],
+  "stub_wasi": true,
+  "wit": "wit",
+  "world": "pack"
+}

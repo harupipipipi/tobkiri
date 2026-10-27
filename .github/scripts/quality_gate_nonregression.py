@@ -19,12 +19,14 @@ from pathlib import Path
 
 
 def _run(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    # Keep stderr separate: stdout is parsed as JSON (ruff) or scanned for
+    # error lines (mypy), so warnings on stderr must not poison it.
     return subprocess.run(
         command,
         cwd=cwd,
         text=True,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stderr=subprocess.PIPE,
         check=False,
     )
 
@@ -37,7 +39,10 @@ def _ruff_count(package_dir: Path, targets: list[str]) -> tuple[int, str]:
     try:
         diagnostics = json.loads(result.stdout or "[]")
     except json.JSONDecodeError as exc:
-        raise RuntimeError(f"failed to parse Ruff JSON output:\n{result.stdout}") from exc
+        raise RuntimeError(
+            "failed to parse Ruff JSON output:\n"
+            f"{result.stdout}\nstderr:\n{result.stderr}"
+        ) from exc
     return len(diagnostics), result.stdout
 
 
@@ -55,7 +60,9 @@ def _mypy_count(package_dir: Path, targets: list[str]) -> tuple[int, str]:
     fallback = sum(1 for line in output.splitlines() if ": error:" in line)
     if fallback:
         return fallback, output
-    raise RuntimeError(f"failed to parse mypy output:\n{output}")
+    raise RuntimeError(
+        f"failed to parse mypy output:\n{output}\nstderr:\n{result.stderr}"
+    )
 
 
 def _add_base_worktree(repo_root: Path, base_ref: str) -> Path:
@@ -64,7 +71,10 @@ def _add_base_worktree(repo_root: Path, base_ref: str) -> Path:
     result = _run(["git", "worktree", "add", "--detach", str(base_worktree), base_ref], cwd=repo_root)
     if result.returncode != 0:
         shutil.rmtree(temp_root, ignore_errors=True)
-        raise RuntimeError(f"failed to create base worktree for {base_ref}:\n{result.stdout}")
+        raise RuntimeError(
+            f"failed to create base worktree for {base_ref}:\n"
+            f"{result.stdout}\nstderr:\n{result.stderr}"
+        )
     return base_worktree
 
 
@@ -99,6 +109,16 @@ def _check_non_regression(name: str, base_count: int, head_count: int) -> bool:
     return True
 
 
+def _report_mypy_findings(label: str, output: str) -> None:
+    """Keep a failed comparison actionable without dumping unbounded output."""
+    lines = [line for line in output.splitlines() if ": error:" in line]
+    print(f"mypy {label} diagnostics:", file=sys.stderr)
+    for line in lines[:20]:
+        print(line[:1000], file=sys.stderr)
+    if len(lines) > 20:
+        print(f"... {len(lines) - 20} further diagnostics omitted", file=sys.stderr)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-ref", default="origin/master")
@@ -112,19 +132,26 @@ def main() -> int:
     ruff_targets = args.ruff_target or ["core_runtime", "app.py"]
     mypy_targets = args.mypy_target or ["core_runtime", "app.py"]
 
+    resolved = _run(["git", "rev-parse", "--verify", args.base_ref], cwd=repo_root)
+    base_sha = resolved.stdout.strip() if resolved.returncode == 0 else "unresolved"
+    print(f"static-analysis base: {args.base_ref} (sha: {base_sha})")
+
     base_worktree = _add_base_worktree(repo_root, args.base_ref)
     try:
         base_package_dir = _resolve_base_package_dir(base_worktree, args.package_dir)
         base_ruff, _ = _ruff_count(base_package_dir, ruff_targets)
         head_ruff, _ = _ruff_count(package_dir, ruff_targets)
-        base_mypy, _ = _mypy_count(base_package_dir, mypy_targets)
-        head_mypy, _ = _mypy_count(package_dir, mypy_targets)
+        base_mypy, base_mypy_output = _mypy_count(base_package_dir, mypy_targets)
+        head_mypy, head_mypy_output = _mypy_count(package_dir, mypy_targets)
     finally:
         _remove_base_worktree(base_worktree)
 
     ok = True
     ok &= _check_non_regression("ruff", base_ruff, head_ruff)
     ok &= _check_non_regression("mypy", base_mypy, head_mypy)
+    if head_mypy > base_mypy:
+        _report_mypy_findings("base", base_mypy_output)
+        _report_mypy_findings("head", head_mypy_output)
     return 0 if ok else 1
 
 

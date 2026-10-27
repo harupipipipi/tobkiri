@@ -1,0 +1,25 @@
+{
+  "artifacts": [
+    {
+      "path": "runtime/__init__.py",
+      "sha256": "sha256:08f90b5cf858099d62200b839418caa5b15cdcb36fb03e5ec1b55efe5603cbbb"
+    },
+    {
+      "path": "runtime/gateway.py",
+      "sha256": "sha256:9df95525a3c467ba3313d8b3ea9bc1ddc7de7f8d1d4a14a9cf8d9f3fa849b208"
+    },
+    {
+      "path": "runtime/model_parameters.py",
+      "sha256": "sha256:d57cfdb76c328ae9c54c045e1d5446b7d51f5afce9735ecc6052eff870f50608"
+    },
+    {
+      "path": "runtime/route_quote.py",
+      "sha256": "sha256:efb1761895c8b3577813c48cea9d996f4c4ab4859e158445a51778c9968c9ec2"
+    },
+    {
+      "path": "runtime/text_generate.py",
+      "sha256": "sha256:7b794e600eb49701a972a142bd2c3c76a5c01e0787446fb0c1b0989f9fe1e5e7"
+    }
+  ],
+  "version": "rumi.pack-artifacts.v1"
+}

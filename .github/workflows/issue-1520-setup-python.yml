@@ -1,0 +1,178 @@
+name: Issue 1520 original Harness Setup Wasm candidate
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-setup-python.yml'
+      - 'packs/local.harness-setup-python/**'
+      - 'scripts/wasm/prepare_harness_setup.py'
+      - 'scripts/wasm/replay_harness_setup.py'
+      - 'tests/test_harness_setup.py'
+      - 'tests/test_captured_setup_inputs.py'
+      - 'tobkiri_runtime/tobkiri_protocol/captured_inputs.py'
+      - 'tobkiri_runtime/tobkiri_protocol/platform_artifact.py'
+      - 'tools/python313-producer/build_components.py'
+      - 'tools/python313-producer/component_inputs.py'
+      - 'tools/python313-producer/component_driver.py'
+      - 'tools/python313-producer/replay_harness_setup.py'
+      - 'tools/python313-producer/setup_native_inputs.py'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'sdk/python/**'
+      - 'packs/local.ai-tool-bridge-ordered-python/ordered_json*.py'
+      - 'tobkiri_runtime/core_runtime/profile_runtime_port.py'
+      - 'tobkiri_runtime/ecosystem/defaultspack/defaultspack/profile_runtime_composition.py'
+      - 'tobkiri_runtime/tobkiri_protocol/__init__.py'
+      - 'tobkiri_runtime/tobkiri_protocol/canonical.py'
+      - 'tobkiri_runtime/tobkiri_protocol/errors.py'
+      - 'tobkiri_runtime/tobkiri_protocol/ids.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: issue-1520-setup-python-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  setup-source-and-build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      PRODUCER_RUN: '39956025119'
+      PRODUCER_HEAD: ae7f83080a36e823ac330342584210243dc38050
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Verify original Setup semantics and isolated source plan
+        run: |
+          python3 -B scripts/wasm/prepare_harness_setup.py --verify
+          python3 -B -m unittest discover -s tests -p test_harness_setup.py
+          python3 -B -m unittest discover -s tests -p test_captured_setup_inputs.py
+          python3 -B -m unittest discover -s tools/python313-producer/tests -p test_build_components.py
+      - name: Authenticate the completed producer and its recorded source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" > "$RUNNER_TEMP/producer-run.json"
+          python3 -B - "$RUNNER_TEMP/producer-run.json" "$PRODUCER_HEAD" <<'PY'
+          import json, sys
+          from pathlib import Path
+          run = json.loads(Path(sys.argv[1]).read_bytes())
+          if (run['head_sha'] != sys.argv[2] or run['status'] != 'completed'
+                  or run['conclusion'] != 'success'):
+              raise SystemExit('producer source or completed outcome differs')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: python313-producer-cli
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PRODUCER_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/setup-producer
+      - name: Prepare the existing isolated producer tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          chmod 755 "$RUNNER_TEMP/setup-producer/work/target/release/componentize-py"
+          python3 -B tools/python313-producer/fetch_validation_tools.py \
+            --destination "$RUNNER_TEMP/setup-validation"
+      - name: Build the original Setup methods as an inactive Wasm candidate
+        run: >-
+          python3 -B tools/python313-producer/build_components.py
+          --harness-setup
+          --producer "$RUNNER_TEMP/setup-producer"
+          --validation "$RUNNER_TEMP/setup-validation"
+          --destination "$RUNNER_TEMP/setup-candidate"
+      - name: Compare actual Wasm results with the complete original Setup module
+        run: >-
+          python3 -B tools/python313-producer/replay_harness_setup.py
+          --artifact "$RUNNER_TEMP/setup-candidate/harness-setup/work/component.wasm"
+          --validation "$RUNNER_TEMP/setup-validation"
+          --destination "$RUNNER_TEMP/setup-replay"
+      - name: Export original source oracle for the separate native Core job
+        run: >-
+          python3 -B scripts/wasm/replay_harness_setup.py
+          --artifact "$RUNNER_TEMP/setup-candidate/harness-setup/work/component.wasm"
+          --output "$RUNNER_TEMP/setup-native-oracle.json"
+          --export-native-oracle
+      - name: Retain candidate bytes and bounded build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-harness-setup-wasm-candidate
+          path: |
+            ${{ runner.temp }}/producer-run.json
+            ${{ runner.temp }}/setup-candidate/components-build.json
+            ${{ runner.temp }}/setup-candidate/harness-setup/inputs/plan.json
+            ${{ runner.temp }}/setup-candidate/harness-setup/inputs/source-stage.json
+            ${{ runner.temp }}/setup-candidate/harness-setup/build/
+            ${{ runner.temp }}/setup-candidate/harness-setup/work/component.build.json
+            ${{ runner.temp }}/setup-candidate/harness-setup/work/component.wasm
+            ${{ runner.temp }}/setup-replay/
+            ${{ runner.temp }}/setup-native-oracle.json
+          if-no-files-found: warn
+
+  native-core:
+    needs: setup-source-and-build
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-setup-core
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify the supported native owner platform
+        shell: bash
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          device="$(df -P "$GITHUB_WORKSPACE" | awk 'NR == 2 {print $1}')"
+          test -n "$device"
+          diskutil info "$device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          components: rustfmt, clippy
+      - uses: actions/download-artifact@v4
+        with:
+          name: original-harness-setup-wasm-candidate
+          path: ${{ runner.temp }}/setup-native
+      - name: Bind exact artifact and original source oracle inputs
+        run: >-
+          python3 -B tools/python313-producer/setup_native_inputs.py
+          --artifact "$RUNNER_TEMP/setup-native/setup-candidate/harness-setup/work/component.wasm"
+          --oracle "$RUNNER_TEMP/setup-native/setup-native-oracle.json"
+          --evidence "$RUNNER_TEMP/setup-core-evidence"
+          --github-env "$GITHUB_ENV"
+      - name: Compare original Setup results through actual Core and Gate
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/setup-core.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-e2e --test harness_setup
+          original_setup_runs_through_core_without_changing_profile_authority
+          -- --ignored --exact --nocapture --test-threads=1
+      - name: Strict native fixture lint
+        run: cargo clippy --locked -p tobkiri-e2e --test harness_setup --no-deps -- -D warnings
+      - name: Retain closed native Core replay evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-harness-setup-native-core-evidence
+          path: |
+            ${{ runner.temp }}/setup-core-evidence/
+            ${{ runner.temp }}/setup-core.log*
+          if-no-files-found: warn

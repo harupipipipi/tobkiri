@@ -1,0 +1,22 @@
+{
+  "format": "tobkiri.archived-checkpoint-index/1",
+  "issue": 1520,
+  "completion": false,
+  "recorded_at": "2026-10-15T20:12:59.820598+00:00",
+  "inventory": {
+    "total": 837,
+    "closed": 1,
+    "todo": 836
+  },
+  "scope": "Historical checkpoint only; not current-source validation or migration completion. Every original byte, including every check and diagnostic, is preserved in the verified gzip archive.",
+  "original_format": "tobkiri.draft-checkpoint-validation/1",
+  "archive": {
+    "path": "evidence/checkpoint-validation-20261015.json.gz",
+    "compression": "gzip",
+    "original_bytes": 19839119,
+    "original_sha256": "d31746d666c6c9f8a7f36b1e9eb6782e712a1238fc3bf74bb5892e3e1a530ab6",
+    "archive_bytes": 6292947,
+    "archive_sha256": "597cb9898b4729dcd8751b66da2be0566c4539f3b4ad9d95323dafe55268730f"
+  },
+  "inspection": "Decompress the archive into a separate file and verify original_sha256 before reading the complete historical document. Historical references to this path now resolve to this archive index."
+}

@@ -22,6 +22,7 @@ import {
   updateChangeRequestComment,
 } from "../../lib/changeRequests";
 import { codingResources } from "../../features/coding/resources/codingResources";
+import { ErrorNotice } from "../ErrorNotice";
 import { ChangeReviewChecksTab } from "./ChangeReviewChecksTab";
 import { FilesChangedPane, filesFromStatusAndDiff } from "./FilesChangedPane";
 
@@ -398,16 +399,26 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
         </button>
       </div>
 
-      {error && <p className="mb-2 rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] text-red-200">{error}</p>}
+      {error && (
+        <ErrorNotice
+          className="mb-2 px-2 py-1 text-[11px]"
+          copyLabel="レビューのエラーをコピー"
+          message={error}
+        />
+      )}
       {conflict && (
-        <div className="mb-2 rounded border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] text-amber-100" role="alert">
-          <p>{conflict} Draft text is preserved.</p>
+        <ErrorNotice
+          className="mb-2 p-2 text-[11px]"
+          copyLabel="レビュー競合の詳細をコピー"
+          message={`${conflict} Draft text is preserved.`}
+          severity="warning"
+        >
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             <button type="button" onClick={() => { if (selectedReview) void handleSelectReview(selectedReview); }} className="h-7 rounded border border-amber-500/30 px-2 text-[11px] hover:bg-amber-500/10">Reload latest</button>
             <button type="button" onClick={() => setDetailTab("files")} className="h-7 rounded border border-amber-500/30 px-2 text-[11px] hover:bg-amber-500/10">Compare</button>
             <button type="button" onClick={() => setConflict(null)} className="h-7 rounded border border-amber-500/30 px-2 text-[11px] hover:bg-amber-500/10">Cancel</button>
           </div>
-        </div>
+        </ErrorNotice>
       )}
       {notice && <p className="mb-2 rounded border border-teal-500/30 bg-teal-500/10 px-2 py-1 text-[11px] text-teal-100">{notice}</p>}
       {!apiAvailable && (

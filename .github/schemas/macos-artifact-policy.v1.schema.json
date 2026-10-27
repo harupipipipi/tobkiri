@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tobkiri.dev/schemas/macos-artifact-policy.v1.schema.json",
+  "title": "Tobkiri macOS artifact policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "policy",
+    "publishable",
+    "bundle_identifier",
+    "display_name"
+  ],
+  "properties": {
+    "schema": {
+      "const": "io.tobkiri.macos-artifact-policy.v1"
+    },
+    "policy": {
+      "enum": ["production-v1", "ci-e2e-v1"]
+    },
+    "publishable": {
+      "type": "boolean"
+    },
+    "bundle_identifier": {
+      "type": "string",
+      "minLength": 1
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"policy": {"const": "production-v1"}}},
+      "then": {
+        "properties": {
+          "publishable": {"const": true},
+          "bundle_identifier": {"const": "dev.rumiai.app"},
+          "display_name": {"const": "Tobkiri Launcher"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"policy": {"const": "ci-e2e-v1"}}},
+      "then": {
+        "properties": {
+          "publishable": {"const": false},
+          "bundle_identifier": {"const": "dev.tobkiri.launcher.ci-e2e"},
+          "display_name": {"const": "Tobkiri Launcher CI E2E"}
+        }
+      }
+    }
+  ]
+}

@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { ProjectFolderList } from "../features/projects/ProjectFolderList";
+import { emptyProjectFolderDraft, appendProjectFolderSelections, removeProjectFolderSelection, setPrimaryProjectFolderSelection, projectFolderSelectionSet, consumeProjectFolderSelections } from "../lib/projectFolderDraft";
+import type { ProjectWorkspaceBinding } from "../features/projects/projectStorage";
+import type { ProjectDirectorySelection, ProjectDirectorySelectionSet, ProjectWorkspaceSet } from "../lib/projectWorkspaceMount";
+import React, { useState, useEffect, useMemo, useRef, createContext, useContext } from 'react';
+import { ErrorNotice } from './ErrorNotice';
+import { ProjectFolderSelection } from '../lib/projectFolderSelection';
 import {
   DndContext,
   DragOverlay,
@@ -25,8 +31,9 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  Globe, Terminal, MessageSquare, Plus, ChevronRight, Settings,
-  GripVertical, FolderOpen, Folder, KanbanSquare, Monitor, PanelLeftOpen, PanelLeftClose, X,
+  Calendar, Globe, MessageSquare, Settings, Shield, Terminal,
+  Plus, ChevronRight,
+  AlertTriangle, Download, GripVertical, FolderOpen, Folder, RotateCcw, Undo2, X,
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -36,7 +43,43 @@ import type { CodingWorkspaceRecord } from '../lib/api';
 import { ConversationPinStarMenu } from './history/ConversationPinStarMenu';
 import { ConversationSearchBar } from './history/ConversationSearchBar';
 import { ConversationTagFilter } from './history/ConversationTagFilter';
+import { HistoryNavigation } from './history/HistoryNavigation';
+import { ModalFoundation } from './ModalFoundation';
+import { LayerPortal } from '../ui/layers/LayerPortal';
+import { layerZ } from '../ui/layers/layerTokens';
+import { HistoryMembershipMove, historyMembershipDecision, withoutHistoryChatPlacement, applyCanonicalHistoryOrganization } from '../lib/historyMembershipMove';
+import { buildHistoryChatReference, buildHistoryGroupReference, canonicalHistoryTagGroupId, HISTORY_REFERENCE_DROP_MIME, type HistoryReferenceDragPayload } from '../lib/historyReferences';
+import { historyReferenceTargetAtPoint, dispatchHistoryReferenceDrop } from '../lib/historyReferenceTransport';
+
+const HistoryReferenceProfile = createContext<string | undefined>(undefined);
+
+function writeNativeHistoryReference(event: React.DragEvent, payload: HistoryReferenceDragPayload | null): void {
+  if (!payload) return;
+  event.dataTransfer.setData(HISTORY_REFERENCE_DROP_MIME, JSON.stringify(payload));
+  event.dataTransfer.effectAllowed = "copyMove";
+}
+import { ConversationAttentionIndicator } from './conversation/ConversationAttentionIndicator';
+import { ConversationGlyph } from './conversation/ConversationGlyph';
 import { WarmActionIcon } from './WarmActionIcon';
+import {
+  fallbackConversationPresentation,
+  type ConversationPresentation,
+} from '../features/conversations/conversationPresentation';
+import {
+  PROJECTS_CHANGED_EVENT,
+  loadProjects,
+  newProjectId,
+  saveProjects,
+  type ProjectInfo,
+} from '../features/projects/projectStorage';
+import {
+  loadHistoryOrganization,
+  historyOrganizationStorageKey,
+  organizationFromGroups,
+  resetHistoryOrganization,
+  saveHistoryOrganization,
+  type HistoryOrganizationV1,
+} from '../features/history/historyOrganization';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -61,8 +104,31 @@ export type ChatItem = {
   companyId?: string | null;
   workspaceId?: string | null;
   metadata?: Record<string, unknown> | null;
+  presentation?: ConversationPresentation;
   children?: ChatItem[];
 };
+
+const HISTORY_CHAT_ICON_SIZE = 14;
+
+function presentationForChat(chat: ChatItem): ConversationPresentation {
+  return chat.presentation ?? fallbackConversationPresentation({
+    conversationId: chat.id,
+    title: chat.title,
+    metadata: chat.metadata,
+  });
+}
+
+function HistoryChatIcon({ chat, tone = "text-zinc-500" }: { chat: ChatItem; tone?: string }) {
+  return (
+    <ConversationGlyph
+      presentation={presentationForChat(chat)}
+      fallbackKind={chat.type}
+      size={HISTORY_CHAT_ICON_SIZE}
+      tone={tone}
+      historyCompatibility
+    />
+  );
+}
 
 export type ChatGroup = {
   id: string;
@@ -75,23 +141,19 @@ export type ChatGroup = {
   workspaceId?: string | null;
   workspaceLabel?: string | null;
   workspaceRoot?: string | null;
+  workspaceBindings?: ProjectWorkspaceBinding[];
   rumiDataPath?: string | null;
 };
 
-export type CustomGroupInfo = {
-  id: string;
-  title: string;
-  workspaceId?: string | null;
-  workspaceLabel?: string | null;
-  workspaceRoot?: string | null;
-  rumiDataPath?: string | null;
-};
+/** @deprecated API/storage compatibility alias. Use ProjectInfo in new UI code. */
+export type CustomGroupInfo = ProjectInfo;
 
 export type HistoryBoardNewTaskOptions = {
   groupId?: string;
   workspaceId?: string | null;
   workspaceLabel?: string | null;
   workspaceRoot?: string | null;
+  workspaceBindings?: ProjectWorkspaceBinding[];
   rumiDataPath?: string | null;
 };
 
@@ -134,17 +196,17 @@ function classifyChatType(chat: ChatItem): ChatItem['type'] {
 }
 
 function groupDateLabel(dateText: string): 'today' | 'recent' | 'older' {
-  if (dateText === 'Today') {
+  if ((dateText === 'Today' || dateText === '今日')) {
     return 'today';
   }
-  if (dateText === 'Yesterday' || dateText === 'Previous 7 Days') {
+  if (dateText === 'Yesterday' || dateText === 'Previous 7 Days' || dateText === '昨日' || dateText === '過去7日') {
     return 'recent';
   }
   return 'older';
 }
 
 function cleanTag(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, "-").slice(0, 40);
+  return Array.from(value.trim().toLowerCase().replace(/\s+/g, "-")).slice(0, 40).join("");
 }
 
 function chatTags(chat: ChatItem): string[] {
@@ -171,11 +233,12 @@ type ClientPoint = { x: number; y: number };
 function clientPointFromEvent(event: Event | null | undefined): ClientPoint | null {
   const pointer = event as (Event & { clientX?: number; clientY?: number; touches?: TouchList; changedTouches?: TouchList }) | null | undefined;
   if (!pointer) return null;
-  if (typeof pointer.clientX === "number" && typeof pointer.clientY === "number") {
+  if (typeof pointer.clientX === "number" && typeof pointer.clientY === "number"
+      && Number.isFinite(pointer.clientX) && Number.isFinite(pointer.clientY)) {
     return { x: pointer.clientX, y: pointer.clientY };
   }
   const touch = pointer.touches?.[0] ?? pointer.changedTouches?.[0];
-  if (touch) return { x: touch.clientX, y: touch.clientY };
+  if (touch && Number.isFinite(touch.clientX) && Number.isFinite(touch.clientY)) return { x: touch.clientX, y: touch.clientY };
   return null;
 }
 
@@ -227,46 +290,16 @@ function hasWorkspaceGroupingMetadata(chat: ChatItem): boolean {
   return Boolean(chat.isPinned || chat.isStarred || chatTags(chat).length || isCompanyChat(chat) || isCodingChat(chat));
 }
 
-const CUSTOM_GROUPS_STORAGE_KEY = 'rumi-history-custom-groups';
-
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function customGroupFromStorageItem(item: unknown): CustomGroupInfo | null {
-  if (!item || typeof item !== "object") return null;
-  const record = item as Record<string, unknown>;
-  const id = stringOrNull(record.id);
-  const title = stringOrNull(record.title);
-  if (!id || !title) return null;
-  return {
-    id,
-    title,
-    workspaceId: stringOrNull(record.workspaceId ?? record.workspace_id),
-    workspaceLabel: stringOrNull(record.workspaceLabel ?? record.workspace_label),
-    workspaceRoot: stringOrNull(record.workspaceRoot ?? record.workspace_root ?? record.rootPath),
-    rumiDataPath: stringOrNull(record.rumiDataPath ?? record.rumi_data_path ?? record.rumiDPPath),
-  };
-}
-
 export function loadCustomGroups(): CustomGroupInfo[] {
-  try {
-    const raw = localStorage.getItem(CUSTOM_GROUPS_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed)
-      ? parsed.map(customGroupFromStorageItem).filter((item): item is CustomGroupInfo => Boolean(item))
-      : [];
-  } catch {
-    return [];
-  }
+  return loadProjects();
 }
 
 function saveCustomGroups(groups: CustomGroupInfo[]) {
-  try {
-    localStorage.setItem(CUSTOM_GROUPS_STORAGE_KEY, JSON.stringify(groups));
-  } catch {
-    // localStorage can be unavailable in restricted contexts.
-  }
+  return saveProjects(groups);
 }
 
 function collectGroupIds(groups: ChatGroup[], ids = new Set<string>()): Set<string> {
@@ -325,14 +358,9 @@ export function buildGroupsFromChats(chatItems: ChatItem[], customGroups: Custom
       type: classifyChatType(chat),
     };
     const customGroupId = stringOrNull(normalized.metadata?.group_id ?? normalized.metadata?.groupId);
-    if (customGroupId) {
-      if (!metadataGroupsById.has(customGroupId)) {
-        metadataGroupsById.set(customGroupId, {
-          id: customGroupId,
-          title: stringOrNull(normalized.metadata?.group_title ?? normalized.metadata?.groupTitle) ?? customGroupId,
-        });
-        customChatBuckets.set(customGroupId, []);
-      }
+    // Metadata hints alone do not create Projects. Membership is resolved only
+    // against the canonical Project owner snapshot.
+    if (customGroupId && metadataGroupsById.has(customGroupId)) {
       customChatBuckets.get(customGroupId)?.push(normalized);
       return;
     }
@@ -412,6 +440,7 @@ export function buildGroupsFromChats(chatItems: ChatItem[], customGroups: Custom
             .sort(([left], [right]) => left.localeCompare(right))
             .map(([tag, chats]) => ({
               id: `group-tag-${tag}`,
+              sourceGroupId: canonicalHistoryTagGroupId(tag),
               title: `#${tag}`,
               isCollapsed: false,
               chats,
@@ -461,6 +490,7 @@ export function buildGroupsFromChats(chatItems: ChatItem[], customGroups: Custom
     workspaceId: group.workspaceId ?? null,
     workspaceLabel: group.workspaceLabel ?? null,
     workspaceRoot: group.workspaceRoot ?? null,
+    workspaceBindings: group.workspaceBindings,
     rumiDataPath: group.rumiDataPath ?? null,
     isCollapsed: false,
     chats: customChatBuckets.get(group.id) ?? [],
@@ -558,6 +588,37 @@ function mapGroups(groups: ChatGroup[], fn: (g: ChatGroup) => ChatGroup): ChatGr
   });
 }
 
+export function toggleHistoryGroupCollapsed(groups: ChatGroup[], id: string): ChatGroup[] {
+  return mapGroups(groups, group => (
+    group.id === id ? { ...group, isCollapsed: !group.isCollapsed } : group
+  ));
+}
+
+function filterGroupsToChats(groups: ChatGroup[], visibleChatIds: Set<string>): ChatGroup[] {
+  return groups.flatMap((group) => {
+    const chats = group.chats.filter((chat) => visibleChatIds.has(chat.id));
+    const subGroups = filterGroupsToChats(group.subGroups, visibleChatIds);
+    if (chats.length === 0 && subGroups.length === 0) return [];
+    return [{ ...group, chats, subGroups }];
+  });
+}
+
+function groupCollapsedState(groups: ChatGroup[], result = new Map<string, boolean | undefined>()) {
+  for (const group of groups) {
+    result.set(group.id, group.isCollapsed);
+    groupCollapsedState(group.subGroups, result);
+  }
+  return result;
+}
+
+function withCollapsedState(groups: ChatGroup[], collapsed: Map<string, boolean | undefined>): ChatGroup[] {
+  return groups.map((group) => ({
+    ...group,
+    isCollapsed: collapsed.get(group.id) ?? group.isCollapsed,
+    subGroups: withCollapsedState(group.subGroups, collapsed),
+  }));
+}
+
 function getAllChatIds(groups: ChatGroup[]): string[] {
   const ids: string[] = [];
   for (const g of groups) {
@@ -645,6 +706,7 @@ interface SortableChatItemProps {
 }
 
 function SortableChatItem({ chat, activeChatId, selectedChatId = null, selectionMode = false, selectionLabel = "選択中", onChatSelect, onRename, onTogglePinned, onToggleStarred, onToggleChildren, isChildrenExpanded, depth = 0 }: SortableChatItemProps) {
+  const referenceProfile = useContext(HistoryReferenceProfile);
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(chat.title);
   const children = chat.children ?? [];
@@ -672,16 +734,8 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
     else setTitle(chat.title);
   };
 
-  const icon = chat.metadata?.icon_svg ? (
-    <span
-      className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full"
-      dangerouslySetInnerHTML={{ __html: chat.metadata.icon_svg }}
-    />
-  ) : (
-    chat.type === 'research' ? <Globe size={13} className="text-zinc-500 flex-shrink-0" /> :
-    chat.type === 'code' ? <Terminal size={13} className="text-zinc-500 flex-shrink-0" /> :
-    <MessageSquare size={13} className="text-zinc-500 flex-shrink-0" />
-  );
+  const presentation = presentationForChat(chat);
+  const icon = <HistoryChatIcon chat={chat} />;
 
   return (
     <>
@@ -693,6 +747,7 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
         draggable={!selectionMode}
         onDragStart={(event) => {
           if (selectionMode) return;
+          writeNativeHistoryReference(event, buildHistoryChatReference(chat, referenceProfile ?? ""));
           const payload = historyChatDragPayload({ ...chat, groupId: chatGroupId(chat) || undefined });
           event.dataTransfer.setData(HISTORY_CHAT_DROP_MIME, JSON.stringify(payload));
           event.dataTransfer.setData("text/plain", chat.title);
@@ -702,9 +757,9 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
         className={cn(
           "box-border w-full max-w-full min-h-7 flex items-center gap-1.5 pr-1.5 py-1 rounded-[3px] text-left group/chat transition-colors cursor-grab active:cursor-grabbing outline-none",
           selectionMode && "cursor-pointer active:cursor-pointer",
-          isSelected ? "bg-emerald-500/15 ring-1 ring-inset ring-emerald-400/25" : isActive ? "bg-zinc-800/80" : "hover:bg-zinc-800/50",
+          isSelected ? "bg-zinc-500/15 ring-1 ring-inset ring-zinc-400/25" : isActive ? "bg-zinc-800/80" : "hover:bg-zinc-800/50",
           chat.conversationKind === "subagent" && "text-zinc-400",
-          isDragging && "ring-1 ring-emerald-500/50 rumi-layer-modal"
+          isDragging && "ring-1 ring-zinc-500/50 rumi-layer-modal"
         )}
         onClick={() => { if (!isEditing) onChatSelect(chat.id); }}
         onKeyDown={(event) => {
@@ -743,7 +798,7 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
               if (e.key === 'Escape') { setIsEditing(false); setTitle(chat.title); }
             }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-zinc-900 text-zinc-100 text-[13px] px-1 py-0.5 rounded outline-none w-full border border-emerald-500/50"
+            className="bg-zinc-900 text-zinc-100 text-[13px] px-1 py-0.5 rounded outline-none w-full border border-zinc-500/50"
           />
         ) : (
           <span className={cn(
@@ -751,13 +806,14 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
             isActive ? "text-zinc-100" : "text-zinc-300 group-hover/chat:text-zinc-100"
           )}>{chat.title}</span>
         )}
+        {!isEditing && <ConversationAttentionIndicator presentation={presentation} />}
         {!isEditing && chat.date && (
           <span className="ml-auto hidden shrink-0 font-mono text-[10px] leading-none text-zinc-600 opacity-0 transition-opacity group-hover/chat:inline group-hover/chat:opacity-100 group-focus-within/chat:inline group-focus-within/chat:opacity-100">
             {chat.date}
           </span>
         )}
         {selectionMode && isSelected && (
-          <span className="ml-auto shrink-0 rounded border border-emerald-400/25 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] leading-none text-emerald-100">
+          <span className="ml-auto shrink-0 rounded border border-zinc-400/25 bg-zinc-400/10 px-1.5 py-0.5 text-[10px] leading-none text-zinc-100">
             {selectionLabel}
           </span>
         )}
@@ -817,6 +873,7 @@ interface SubGroupProps {
 }
 
 function SubGroup({ group, activeChatId, selectedChatId = null, selectionMode = false, selectionLabel = "選択中", onChatSelect, onChatRename, onToggleCollapse, onRenameGroup, onUngroup, onTogglePinned, onToggleStarred, onToggleChatChildren, isChatChildrenExpanded, onGroupHeaderClick, depth }: SubGroupProps) {
+  const referenceProfile = useContext(HistoryReferenceProfile);
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(group.title);
 
@@ -858,8 +915,8 @@ function SubGroup({ group, activeChatId, selectedChatId = null, selectionMode = 
       style={style}
       className={cn(
         "transition-colors rounded-[3px]",
-        isOver && !isDragging && "bg-emerald-500/5 ring-1 ring-emerald-500/20",
-        isDragging && "ring-1 ring-emerald-500/50"
+        isOver && !isDragging && "bg-zinc-500/5 ring-1 ring-zinc-500/20",
+        isDragging && "ring-1 ring-zinc-500/50"
       )}
     >
       <div
@@ -867,7 +924,9 @@ function SubGroup({ group, activeChatId, selectedChatId = null, selectionMode = 
         style={{ paddingLeft: `${depth * 14 + 4}px` }}
         onClick={() => onGroupHeaderClick(group)}
       >
-        <ChevronRight size={13} className={cn("text-zinc-600 transition-transform duration-200 flex-shrink-0", !group.isCollapsed && "rotate-90")} />
+          <button type="button" aria-label={`${group.title}を${group.isCollapsed ? "開く" : "閉じる"}`} aria-expanded={!group.isCollapsed} onClick={(event) => { event.stopPropagation(); onGroupHeaderClick(group); }} className="flex h-6 w-5 shrink-0 items-center justify-center rounded text-zinc-500 hover:text-zinc-200">
+            <ChevronRight size={13} className={cn("transition-transform duration-200", !group.isCollapsed && "rotate-90")} />
+          </button>
         {group.isCollapsed
           ? <Folder size={13} className="text-zinc-500 flex-shrink-0" />
           : <FolderOpen size={13} className="text-zinc-400 flex-shrink-0" />}
@@ -882,11 +941,12 @@ function SubGroup({ group, activeChatId, selectedChatId = null, selectionMode = 
               if (e.key === 'Escape') { setIsEditing(false); setTitle(group.title); }
             }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-zinc-900 text-zinc-100 text-[12px] px-1 py-0.5 rounded outline-none flex-1 border border-emerald-500/50"
+            className="bg-zinc-900 text-zinc-100 text-[12px] px-1 py-0.5 rounded outline-none flex-1 border border-zinc-500/50"
           />
         ) : (
           <span
             className="min-w-0 text-[12px] font-medium text-zinc-400 truncate flex-1 select-none group-hover/folder:text-zinc-200"
+            onClick={(e) => e.stopPropagation()}
             onDoubleClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
           >
             {group.title}
@@ -896,6 +956,8 @@ function SubGroup({ group, activeChatId, selectedChatId = null, selectionMode = 
         <div
           {...attributes}
           {...listeners}
+          draggable={!selectionMode && !isEditing}
+          onDragStart={(event) => writeNativeHistoryReference(event, buildHistoryGroupReference(group, referenceProfile ?? ""))}
           className="flex h-5 w-4 items-center justify-center text-zinc-700 hover:text-zinc-400 opacity-0 group-hover/folder:opacity-100 transition-all cursor-grab active:cursor-grabbing"
           onClick={(e) => e.stopPropagation()}
           title="Drag to move"
@@ -905,7 +967,7 @@ function SubGroup({ group, activeChatId, selectedChatId = null, selectionMode = 
         <button
           onClick={(e) => { e.stopPropagation(); onUngroup(group.id); }}
           className="flex h-5 w-5 items-center justify-center text-zinc-600 hover:text-zinc-300 opacity-0 group-hover/folder:opacity-100 transition-all"
-          title="Ungroup"
+          title="Remove from project"
         >
           <X size={11} />
         </button>
@@ -1013,8 +1075,8 @@ function DroppableColumn({ group, activeChatId, selectedChatId = null, selection
     <div
       ref={setDropRef}
       className={cn(
-        "w-full flex-shrink-0 border-b border-zinc-900/80 bg-[#09090b] flex flex-col transition-all duration-300",
-        isDraggedOver && !isDragging && "ring-2 ring-inset ring-emerald-500/50 bg-emerald-500/[0.08]",
+        "w-full flex-shrink-0 border-b border-zinc-900/80 bg-[var(--rumi-surface-base)] flex flex-col transition-all duration-300",
+        isDraggedOver && !isDragging && "ring-2 ring-inset ring-zinc-500/50 bg-zinc-500/[0.08]",
       )}
     >
       {/* Header */}
@@ -1022,7 +1084,7 @@ function DroppableColumn({ group, activeChatId, selectedChatId = null, selection
         onClick={() => onGroupHeaderClick(group)}
         className={cn(
           "h-7 flex items-center px-2 border-b border-zinc-900/70 justify-between hover:bg-zinc-900/50 transition-colors cursor-pointer group/colheader",
-          isDraggedOver && !isDragging && "bg-emerald-500/15"
+          isDraggedOver && !isDragging && "bg-zinc-500/15"
         )}
       >
         <div className="flex items-center gap-1.5 text-zinc-100 font-medium flex-1 min-w-0">
@@ -1033,11 +1095,13 @@ function DroppableColumn({ group, activeChatId, selectedChatId = null, selection
               "flex h-5 w-3 flex-shrink-0 items-center justify-center rounded text-zinc-700 transition-all cursor-grab active:cursor-grabbing hover:bg-zinc-800 hover:text-zinc-400",
               group.isCollapsed ? "opacity-100" : "opacity-0 group-hover/colheader:opacity-100"
             )}
-            title="Drag group"
+            title="Drag project"
           >
             <GripVertical size={10} />
           </div>
-          <ChevronRight size={13} className={cn("transition-transform duration-200 text-zinc-500 flex-shrink-0", !group.isCollapsed && "rotate-90")} />
+          <button type="button" aria-label={`${group.title}を${group.isCollapsed ? "開く" : "閉じる"}`} aria-expanded={!group.isCollapsed} onClick={(event) => { event.stopPropagation(); onGroupHeaderClick(group); }} className="flex h-6 w-5 shrink-0 items-center justify-center rounded text-zinc-500 hover:text-zinc-200">
+            <ChevronRight size={13} className={cn("transition-transform duration-200", !group.isCollapsed && "rotate-90")} />
+          </button>
           {group.isCollapsed
             ? <Folder size={13} className="text-zinc-500 flex-shrink-0" />
             : <FolderOpen size={13} className="text-zinc-400 flex-shrink-0" />}
@@ -1052,10 +1116,11 @@ function DroppableColumn({ group, activeChatId, selectedChatId = null, selection
                 if (e.key === 'Escape') { setIsEditing(false); setTitle(group.title); }
               }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-zinc-800 text-zinc-100 text-[12px] px-1 py-0.5 rounded outline-none w-full border border-emerald-500/50"
+              className="bg-zinc-800 text-zinc-100 text-[12px] px-1 py-0.5 rounded outline-none w-full border border-zinc-500/50"
             />
           ) : (
             <span
+              onClick={(e) => e.stopPropagation()}
               onDoubleClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
               className="min-w-0 truncate flex-1 cursor-text select-none hover:text-white transition-colors text-[12px]"
             >
@@ -1064,7 +1129,7 @@ function DroppableColumn({ group, activeChatId, selectedChatId = null, selection
           )}
           {workspaceText && (
             <span
-              className="hidden max-w-[78px] flex-shrink truncate rounded border border-emerald-500/20 bg-emerald-500/10 px-1 py-px text-[9px] font-normal text-emerald-200 min-[260px]:inline"
+              className="hidden max-w-[78px] flex-shrink truncate rounded border border-zinc-500/20 bg-zinc-500/10 px-1 py-px text-[9px] font-normal text-zinc-200 min-[260px]:inline"
               title={group.workspaceRoot || group.workspaceId || workspaceText}
             >
               {workspaceText}
@@ -1073,7 +1138,7 @@ function DroppableColumn({ group, activeChatId, selectedChatId = null, selection
           <span className="ml-auto text-[10px] text-zinc-600 flex-shrink-0">{totalChats}</span>
         </div>
         <div className="flex items-center gap-0.5 opacity-0 group-hover/colheader:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => onNewTask(group.id)} className="flex h-5 w-5 items-center justify-center text-zinc-500 hover:text-emerald-400 transition-colors" title="New chat in group">
+          <button onClick={() => onNewTask(group.id)} className="flex h-5 w-5 items-center justify-center text-zinc-500 hover:text-zinc-400 transition-colors" title="New chat in project">
             <Plus size={13} />
           </button>
         </div>
@@ -1129,9 +1194,9 @@ function DroppableColumn({ group, activeChatId, selectedChatId = null, selection
           ))}
 
           {isDraggedOver && !isDragging && (
-            <div className="mx-2 my-2 p-3 border-2 border-dashed border-emerald-500/40 rounded-lg text-center">
-              <FolderOpen size={18} className="text-emerald-400 mx-auto mb-1" />
-              <p className="text-[11px] text-emerald-400 font-medium">フォルダとして追加</p>
+            <div className="mx-2 my-2 p-3 border-2 border-dashed border-zinc-500/40 rounded-lg text-center">
+              <FolderOpen size={18} className="text-zinc-400 mx-auto mb-1" />
+              <p className="text-[11px] text-zinc-400 font-medium">フォルダとして追加</p>
             </div>
           )}
         </div>
@@ -1149,7 +1214,11 @@ function DraggableColumnHandle({ group, children }: { group: ChatGroup; children
     id: `drag-col-${group.id}`,
     data: { type: 'ColumnDrag', group },
   });
-  const dragHandleProps = { ...attributes, ...listeners } as React.HTMLAttributes<HTMLDivElement>;
+  const referenceProfile = useContext(HistoryReferenceProfile);
+  const dragHandleProps = { ...attributes, ...listeners,
+    draggable: true,
+    onDragStart: (event: React.DragEvent<HTMLDivElement>) => writeNativeHistoryReference(event, buildHistoryGroupReference(group, referenceProfile ?? "")),
+  } as React.HTMLAttributes<HTMLDivElement>;
 
   return (
     <div ref={setNodeRef} className={cn("relative", isDragging && "opacity-30")}>
@@ -1170,12 +1239,12 @@ function ExtractDropZone() {
       ref={setNodeRef}
       className={cn(
         "w-[180px] flex-shrink-0 flex items-center justify-center border-r border-dashed border-zinc-800/60 transition-all duration-200",
-        isOver ? "bg-emerald-500/10 border-emerald-500/40" : "bg-zinc-900/30"
+        isOver ? "bg-zinc-500/10 border-zinc-500/40" : "bg-zinc-900/30"
       )}
     >
       <div className={cn(
         "text-center p-4 rounded-xl border-2 border-dashed transition-all",
-        isOver ? "border-emerald-500/50 text-emerald-400 scale-105" : "border-zinc-800 text-zinc-600"
+        isOver ? "border-zinc-500/50 text-zinc-400 scale-105" : "border-zinc-800 text-zinc-600"
       )}>
         <Plus size={24} className="mx-auto mb-2" />
         <p className="text-xs font-medium">ドロップで<br/>独立カラムに</p>
@@ -1189,6 +1258,7 @@ function ExtractDropZone() {
 // ============================================================
 
 interface HistoryBoardProps {
+  profileId?: string;
   activeChatId: string | null;
   chatItems: ChatItem[];
   account?: AccountInfo;
@@ -1203,14 +1273,16 @@ interface HistoryBoardProps {
   onDesktopsOpen?: () => void;
   isDesktopsActive?: boolean;
   onSettingsClick: () => void;
+  onChatGroupMove?: (conversationId: string, targetProjectId: string | null) => Promise<void>;
   onChatMetadataChange?: (chatId: string, updates: { is_pinned?: boolean; is_starred?: boolean; tags?: string[] }) => void;
+  onSearchOpen?: () => void;
   onMinimize?: () => void;
   onRestore?: () => void;
   isCompact?: boolean;
   codingWorkspaces?: CodingWorkspaceRecord[];
   selectedCodingWorkspaceId?: string | null;
-  onCodingWorkspaceCreate?: (rootPath: string) => Promise<CodingWorkspaceRecord | null | undefined>;
-  onDirectorySelect?: () => Promise<string | null | undefined>;
+  onCodingWorkspaceCreate?: (selection: ProjectDirectorySelectionSet, isCurrent: () => boolean) => Promise<ProjectWorkspaceSet | null | undefined>;
+  onDirectorySelect?: () => Promise<ProjectDirectorySelection | ProjectDirectorySelectionSet | null | undefined>;
   onGroupDataPathPrepare?: (rootPath: string) => Promise<{ rootPath: string; rumiDataPath: string } | null | undefined>;
   onCodingWorkspacesRefresh?: () => void | Promise<void>;
   selectionMode?: boolean;
@@ -1219,6 +1291,11 @@ interface HistoryBoardProps {
 }
 
 type GroupWorkspaceChoice = "none" | "current" | "custom";
+type HistorySaveState = {
+  kind: "idle" | "saved" | "unsaved" | "corrupt";
+  message: string;
+  raw?: string;
+};
 
 function workspaceSummary(workspaceId?: string | null, workspaceLabel?: string | null, workspaceRoot?: string | null): string {
   if (workspaceLabel) return workspaceLabel;
@@ -1228,10 +1305,11 @@ function workspaceSummary(workspaceId?: string | null, workspaceLabel?: string |
 
 function newTaskOptionsForGroup(group: ChatGroup | null, fallbackGroupId: string): HistoryBoardNewTaskOptions {
   return {
-    groupId: group?.id ?? fallbackGroupId,
+    groupId: group?.sourceGroupId ?? group?.id ?? fallbackGroupId,
     workspaceId: group?.workspaceId ?? null,
     workspaceLabel: group?.workspaceLabel ?? null,
     workspaceRoot: group?.workspaceRoot ?? null,
+    workspaceBindings: group?.workspaceBindings,
     rumiDataPath: group?.rumiDataPath ?? null,
   };
 }
@@ -1269,8 +1347,8 @@ export function buildHistoryCalendarSummary(chatItems: ChatItem[]): HistoryCalen
 
   visitChats(chatItems, (chat) => {
     summary.total += 1;
-    if (chat.date === "Today") summary.today += 1;
-    else if (chat.date === "Yesterday" || chat.date === "Previous 7 Days") summary.recent += 1;
+    if (groupDateLabel(chat.date) === "today") summary.today += 1;
+    else if (groupDateLabel(chat.date) === "recent") summary.recent += 1;
     else summary.older += 1;
     if (chat.isPinned) summary.pinned += 1;
     if (chat.isStarred) summary.starred += 1;
@@ -1400,6 +1478,7 @@ function filterChatTree(chats: ChatItem[], query: string, activeTag: string | nu
 }
 
 export function HistoryBoard({
+  profileId,
   activeChatId,
   chatItems,
   account,
@@ -1415,6 +1494,8 @@ export function HistoryBoard({
   isDesktopsActive = false,
   onSettingsClick,
   onChatMetadataChange,
+  onChatGroupMove,
+  onSearchOpen,
   onMinimize,
   onRestore,
   isCompact = false,
@@ -1422,7 +1503,6 @@ export function HistoryBoard({
   selectedCodingWorkspaceId = null,
   onCodingWorkspaceCreate,
   onDirectorySelect,
-  onGroupDataPathPrepare,
   onCodingWorkspacesRefresh,
   selectionMode = false,
   selectedChatId = null,
@@ -1431,16 +1511,103 @@ export function HistoryBoard({
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const visibleChatItems = useMemo(() => filterChatTree(chatItems, searchQuery, activeTag), [activeTag, chatItems, searchQuery]);
-  const [customGroups, setCustomGroups] = useState<CustomGroupInfo[]>(() => loadCustomGroups());
-  const [groups, setGroups] = useState<ChatGroup[]>(() => buildGroupsFromChats(visibleChatItems, customGroups));
+  const [customGroups, setCustomGroups] = useState<CustomGroupInfo[]>(() => loadProjects());
+  const initialOrganizationLoad = useMemo(() => loadHistoryOrganization(undefined, profileId), [profileId]);
+  const initialOrganization = initialOrganizationLoad.status === "ready"
+    ? initialOrganizationLoad.organization
+    : null;
+  const organizationRef = useRef<HistoryOrganizationV1 | null>(initialOrganization);
+  const organizationRevisionRef = useRef(initialOrganization?.revision ?? 0);
+  const [groups, setGroups] = useState<ChatGroup[]>(() => applyCanonicalHistoryOrganization(
+    buildGroupsFromChats(chatItems, customGroups),
+    initialOrganization,
+  ));
+  const groupsRef = useRef(groups);
+  const pendingGroupsRef = useRef<ChatGroup[] | null>(null);
+  const undoGroupsRef = useRef<ChatGroup[] | null>(null);
+  const membershipMoveRef = useRef(new HistoryMembershipMove());
+  const membershipProfileRef = useRef(profileId);
+  membershipProfileRef.current = profileId;
+  const membershipMountedRef = useRef(true);
+  const membershipChatItemsRef = useRef(chatItems);
+  membershipChatItemsRef.current = chatItems;
+  const membershipCustomGroupsRef = useRef(customGroups);
+  membershipCustomGroupsRef.current = customGroups;
+  useEffect(() => {
+    membershipMountedRef.current = true;
+    return () => {
+      membershipMountedRef.current = false;
+      membershipMoveRef.current.invalidate();
+    };
+  }, []);
+  useEffect(() => { membershipMoveRef.current.invalidate(); }, [profileId]);
+  const [saveState, setSaveState] = useState<HistorySaveState>(() => {
+    if (initialOrganizationLoad.status === "corrupt") {
+      return { kind: "corrupt", message: initialOrganizationLoad.message, raw: initialOrganizationLoad.raw };
+    }
+    if (initialOrganizationLoad.status === "unavailable") {
+      return { kind: "unsaved", message: initialOrganizationLoad.message };
+    }
+    return { kind: "idle", message: "" };
+  });
+  const [historyAnnouncement, setHistoryAnnouncement] = useState("");
+  const [resetArmed, setResetArmed] = useState(false);
   const [expandedChatIds, setExpandedChatIds] = useState<Set<string>>(() => new Set());
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
+  const projectNameRef = useRef<HTMLInputElement>(null);
   const [newGroupTitle, setNewGroupTitle] = useState("");
   const [newGroupWorkspaceChoice, setNewGroupWorkspaceChoice] = useState<GroupWorkspaceChoice>("none");
   const [newGroupCustomPath, setNewGroupCustomPath] = useState("");
+  const [newGroupFolderDraft, setNewGroupFolderDraft] = useState(emptyProjectFolderDraft);
+  const [newGroupMounted, setNewGroupMounted] = useState<ProjectWorkspaceSet | null>(null);
   const [newGroupError, setNewGroupError] = useState<string | null>(null);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [isSelectingGroupDirectory, setIsSelectingGroupDirectory] = useState(false);
+  const projectOperationRef = useRef(new ProjectFolderSelection());
+  const projectProfileRef = useRef(profileId);
+  projectProfileRef.current = profileId;
+
+  useEffect(() => {
+    projectOperationRef.current.invalidate();
+    setIsCreateGroupOpen(false);
+    setIsSelectingGroupDirectory(false);
+    setIsCreatingGroup(false);
+    setNewGroupCustomPath("");
+    setNewGroupFolderDraft(emptyProjectFolderDraft());
+    setNewGroupMounted(null);
+    setNewGroupWorkspaceChoice("none");
+    setNewGroupError(null);
+    return () => projectOperationRef.current.invalidate();
+  }, [profileId]);
+
+  useEffect(() => {
+    const refreshProjects = () => setCustomGroups(loadProjects());
+    window.addEventListener(PROJECTS_CHANGED_EVENT, refreshProjects);
+    return () => window.removeEventListener(PROJECTS_CHANGED_EVENT, refreshProjects);
+  }, []);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== historyOrganizationStorageKey(profileId)) return;
+      const current = loadHistoryOrganization(undefined, profileId);
+      if (pendingGroupsRef.current) {
+        setSaveState({ kind: "unsaved", message: "History changed in another window. Your unsaved arrangement is preserved for export." });
+        return;
+      }
+      if (current.status === "ready" || current.status === "empty") {
+        organizationRef.current = current.status === "ready" ? current.organization : null;
+        organizationRevisionRef.current = current.status === "ready" ? current.organization.revision : 0;
+        const next = applyCanonicalHistoryOrganization(buildGroupsFromChats(chatItems, customGroups), organizationRef.current);
+        groupsRef.current = next;
+        setGroups(next);
+        setSaveState({ kind: "idle", message: "" });
+      } else {
+        setSaveState({ kind: current.status === "corrupt" ? "corrupt" : "unsaved", message: current.message });
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [profileId, chatItems, customGroups]);
 
   const selectedCodingWorkspace = useMemo(
     () => codingWorkspaces.find((workspace) => workspace.workspace_id === selectedCodingWorkspaceId) ?? null,
@@ -1448,20 +1615,148 @@ export function HistoryBoard({
   );
 
   useEffect(() => {
-    setGroups((previousGroups) => {
-      const collapsedById = new Map(previousGroups.map((group) => [group.id, group.isCollapsed]));
-      return buildGroupsFromChats(visibleChatItems, customGroups).map((group) => ({
-        ...group,
-        isCollapsed: collapsedById.get(group.id) ?? group.isCollapsed,
-      }));
-    });
-  }, [visibleChatItems, customGroups]);
+    const collapsed = groupCollapsedState(groupsRef.current);
+    const organization = pendingGroupsRef.current
+      ? organizationFromGroups(pendingGroupsRef.current, organizationRevisionRef.current)
+      : organizationRef.current;
+    const next = withCollapsedState(
+      applyCanonicalHistoryOrganization(buildGroupsFromChats(chatItems, customGroups), organization),
+      collapsed,
+    );
+    groupsRef.current = next;
+    setGroups(next);
+  }, [chatItems, customGroups]);
+
+  const visibleChatIds = useMemo(() => {
+    const ids = new Set<string>();
+    visitChats(visibleChatItems, (chat) => ids.add(chat.id));
+    return ids;
+  }, [visibleChatItems]);
+  const isFilteringHistory = Boolean(searchQuery.trim() || activeTag);
+  const displayGroups = useMemo(
+    () => isFilteringHistory ? filterGroupsToChats(groups, visibleChatIds) : groups,
+    [groups, isFilteringHistory, visibleChatIds],
+  );
+
+  const replaceGroups = (next: ChatGroup[]) => {
+    groupsRef.current = next;
+    setGroups(next);
+  };
+
+  const persistArrangement = (next: ChatGroup[], previous: ChatGroup[], message: string) => {
+    if (membershipMoveRef.current.pending) return;
+    replaceGroups(next);
+    const result = saveHistoryOrganization(next, organizationRevisionRef.current, undefined, undefined, profileId);
+    undoGroupsRef.current = previous;
+    setResetArmed(false);
+    if (result.ok) {
+      organizationRef.current = result.organization;
+      organizationRevisionRef.current = result.organization.revision;
+      pendingGroupsRef.current = null;
+      setSaveState({ kind: "saved", message: "Saved locally" });
+      setHistoryAnnouncement(`${message} Saved locally.`);
+      return;
+    }
+    pendingGroupsRef.current = next;
+    setSaveState({ kind: result.reason === "corrupt" ? "corrupt" : "unsaved", message: result.message });
+    setHistoryAnnouncement(`${message} Not saved. ${result.message}`);
+  };
+
+  const retryHistorySave = () => {
+    if (membershipMoveRef.current.pending) return;
+    const pending = pendingGroupsRef.current;
+    if (!pending) return;
+    const current = loadHistoryOrganization(undefined, profileId);
+    if (current.status === "corrupt") {
+      setSaveState({ kind: "corrupt", message: current.message, raw: current.raw });
+      setHistoryAnnouncement(`Retry failed. ${current.message}`);
+      return;
+    }
+    if (current.status === "unavailable") {
+      setSaveState({ kind: "unsaved", message: current.message });
+      setHistoryAnnouncement(`Retry failed. ${current.message}`);
+      return;
+    }
+    const currentRevision = current.status === "ready" ? current.organization.revision : 0;
+    if (currentRevision !== organizationRevisionRef.current) {
+      setSaveState({ kind: "unsaved", message: "History changed in another window. Export your unsaved arrangement before resetting or reopening History." });
+      return;
+    }
+    const result = saveHistoryOrganization(pending, organizationRevisionRef.current, undefined, undefined, profileId);
+    if (!result.ok) {
+      setSaveState({ kind: result.reason === "corrupt" ? "corrupt" : "unsaved", message: result.message });
+      setHistoryAnnouncement(`Retry failed. ${result.message}`);
+      return;
+    }
+    organizationRef.current = result.organization;
+    organizationRevisionRef.current = result.organization.revision;
+    pendingGroupsRef.current = null;
+    setSaveState({ kind: "saved", message: "Saved locally" });
+    setHistoryAnnouncement("History organization saved locally.");
+  };
+
+  const undoHistoryChange = () => {
+    if (membershipMoveRef.current.pending) return;
+    const previous = undoGroupsRef.current;
+    if (!previous) return;
+    const current = groupsRef.current;
+    undoGroupsRef.current = null;
+    persistArrangement(previous, current, "History organization change undone.");
+    undoGroupsRef.current = null;
+  };
+
+  const exportHistoryOrganization = () => {
+    const projectItems = loadProjects();
+    const historyLoad = loadHistoryOrganization(undefined, profileId);
+    const exportValue = JSON.stringify({
+      schema: "io.tobkiri.history-recovery.v1",
+      history: historyLoad.status === "corrupt"
+        ? { status: historyLoad.status, raw: historyLoad.raw }
+        : pendingGroupsRef.current
+          ? organizationFromGroups(pendingGroupsRef.current, organizationRevisionRef.current)
+          : organizationRef.current ?? organizationFromGroups(groupsRef.current, organizationRevisionRef.current),
+      projects: projectItems,
+    }, null, 2);
+    const url = URL.createObjectURL(new Blob([exportValue], { type: "application/json" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "tobkiri-history-organization.json";
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setHistoryAnnouncement("History organization recovery file exported.");
+  };
+
+  const resetHistoryArrangement = () => {
+    if (membershipMoveRef.current.pending) return;
+    if (!resetArmed) {
+      setResetArmed(true);
+      setHistoryAnnouncement("Reset requires confirmation. Activate Confirm reset to continue.");
+      return;
+    }
+    if (!resetHistoryOrganization(undefined, profileId)) {
+      setSaveState({ kind: "unsaved", message: "History organization storage could not be reset." });
+      setHistoryAnnouncement("History organization could not be reset.");
+      return;
+    }
+    const previous = groupsRef.current;
+    const next = buildGroupsFromChats(chatItems, customGroups);
+    organizationRef.current = null;
+    organizationRevisionRef.current = 0;
+    pendingGroupsRef.current = null;
+    undoGroupsRef.current = previous;
+    replaceGroups(next);
+    setResetArmed(false);
+    setSaveState({ kind: "saved", message: "Arrangement reset locally" });
+    setHistoryAnnouncement("History organization reset.");
+  };
 
   const [activeColumnDrag, setActiveColumnDrag] = useState<ChatGroup | null>(null);
   const [activeChat, setActiveChat] = useState<ChatItem | null>(null);
   const [overColumnId, setOverColumnId] = useState<string | null>(null);
   const [activeType, setActiveType] = useState<string | null>(null);
   const activeDragStartPointRef = useRef<ClientPoint | null>(null);
+  const activeDragGroupsSnapshotRef = useRef<ChatGroup[] | null>(null);
+  const activeReferenceRef = useRef<HistoryReferenceDragPayload | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -1471,10 +1766,15 @@ export function HistoryBoard({
   // --- Drag Start ---
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
+    activeDragGroupsSnapshotRef.current = groupsRef.current;
+    activeReferenceRef.current = active.data.current?.type === 'Chat'
+      ? buildHistoryChatReference(active.data.current.chat, profileId ?? "")
+      : active.data.current?.type === 'ColumnDrag'
+        ? buildHistoryGroupReference(active.data.current.group, profileId ?? "") : null;
     if (active.data.current?.type === 'ColumnDrag') {
       setActiveColumnDrag(active.data.current.group);
       setActiveType('ColumnDrag');
-      activeDragStartPointRef.current = null;
+      activeDragStartPointRef.current = clientPointFromEvent(event.activatorEvent);
     } else if (active.data.current?.type === 'Chat') {
       setActiveChat(active.data.current.chat);
       setActiveType('Chat');
@@ -1482,9 +1782,23 @@ export function HistoryBoard({
     }
   };
 
+  const handleDragCancel = () => {
+    const snapshot = activeDragGroupsSnapshotRef.current;
+    if (snapshot) replaceGroups(snapshot);
+    activeDragGroupsSnapshotRef.current = null;
+    activeDragStartPointRef.current = null;
+    setActiveColumnDrag(null);
+    setActiveChat(null);
+    setOverColumnId(null);
+    setActiveType(null);
+    activeReferenceRef.current = null;
+    setHistoryAnnouncement("History move cancelled.");
+  };
+
   // --- Drag Over ---
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
+    if (membershipMoveRef.current.pending || projectOperationRef.current.creating) return;
     if (!over) { setOverColumnId(null); return; }
 
     if (active.data.current?.type === 'ColumnDrag') {
@@ -1504,7 +1818,8 @@ export function HistoryBoard({
     const isOverSubGroup = over.data.current?.type === 'SubGroup';
 
     if (isOverChat) {
-      setGroups(prev => {
+      const prev = groupsRef.current;
+      const next = (() => {
         const activeGroupId = findGroupContainingChat(prev, active.id as string);
         const overGroupId = findGroupContainingChat(prev, over.id as string);
         if (!activeGroupId || !overGroupId) return prev;
@@ -1532,28 +1847,41 @@ export function HistoryBoard({
             return g;
           });
         }
-      });
+      })();
+      replaceGroups(next);
     }
 
     if (isOverColumn || isOverSubGroup) {
       const targetId = isOverSubGroup ? over.data.current?.group?.id : over.id as string;
       if (!targetId) return;
-      setGroups(prev => {
+      const prev = groupsRef.current;
+      const next = (() => {
         const currentGroupId = findGroupContainingChat(prev, active.id as string);
         if (currentGroupId === targetId) return prev;
         const { groups: stripped, chat } = removeChatFromTree(prev, active.id as string);
         if (!chat) return prev;
         return addChatToGroup(stripped, targetId, chat);
-      });
+      })();
+      replaceGroups(next);
     }
   };
 
   // --- Drag End ---
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
+    const dragSnapshot = activeDragGroupsSnapshotRef.current;
+    activeDragGroupsSnapshotRef.current = null;
     const draggedChat = active.data.current?.type === 'Chat' ? active.data.current.chat as ChatItem : null;
     const dragStartPoint = activeDragStartPointRef.current;
-    if (draggedChat && dragStartPoint) {
+    const reference = activeReferenceRef.current;
+    activeReferenceRef.current = null;
+    const finalPoint = dragStartPoint ? {
+      x: dragStartPoint.x + event.delta.x,
+      y: dragStartPoint.y + event.delta.y,
+    } : null;
+    const referenceTargetId = finalPoint ? historyReferenceTargetAtPoint(finalPoint) : null;
+    let droppedOnKanban = false;
+    if (!referenceTargetId && draggedChat && dragStartPoint) {
       const finalPoint = {
         x: dragStartPoint.x + event.delta.x,
         y: dragStartPoint.y + event.delta.y,
@@ -1561,6 +1889,7 @@ export function HistoryBoard({
       const kanbanColumnId = kanbanColumnIdAtPoint(finalPoint);
       if (kanbanColumnId) {
         dispatchHistoryChatKanbanDrop(draggedChat, kanbanColumnId);
+        droppedOnKanban = true;
       }
     }
     activeDragStartPointRef.current = null;
@@ -1569,6 +1898,82 @@ export function HistoryBoard({
     setOverColumnId(null);
     setActiveType(null);
 
+    if (referenceTargetId && finalPoint) {
+      if (dragSnapshot) replaceGroups(dragSnapshot);
+      if (reference && reference.profile_id === profileId) {
+        dispatchHistoryReferenceDrop(reference, finalPoint, referenceTargetId);
+      }
+      return;
+    }
+
+    if (active.data.current?.type === 'Chat') {
+      if (!dragSnapshot) return;
+      if (droppedOnKanban || !over) {
+        replaceGroups(dragSnapshot);
+        return;
+      }
+      if (membershipMoveRef.current.pending || projectOperationRef.current.creating) return;
+      const next = groupsRef.current;
+      if (next !== dragSnapshot) {
+        const sourceId = findGroupContainingChat(dragSnapshot, String(active.id));
+        const targetId = findGroupContainingChat(next, String(active.id));
+        const source = sourceId ? findGroupById(dragSnapshot, sourceId) : null;
+        const target = targetId ? findGroupById(next, targetId) : null;
+        if (!source || !target) { replaceGroups(dragSnapshot); return; }
+        const decision = historyMembershipDecision(source, target);
+        if (decision.kind === "blocked") {
+          replaceGroups(dragSnapshot);
+          setHistoryAnnouncement("This group is based on conversation details. Move the conversation to a Project to organize it.");
+          return;
+        }
+        if (decision.kind === "owner") {
+          if (!onChatGroupMove) {
+            replaceGroups(dragSnapshot);
+            setSaveState({ kind: "unsaved", message: "Project moves are unavailable. Refresh history and try again." });
+            return;
+          }
+          setSaveState({ kind: "unsaved", message: "Moving conversation…" });
+          setHistoryAnnouncement("Moving conversation.");
+          const scopeCurrent = () => membershipMountedRef.current && membershipProfileRef.current === profileId;
+          const result = await membershipMoveRef.current.run(
+            () => onChatGroupMove(String(active.id), decision.targetProjectId), scopeCurrent);
+          if (!scopeCurrent()) return;
+          if (result.kind === "failed") {
+            if (groupsRef.current === next) replaceGroups(dragSnapshot);
+            const reason = result.error instanceof Error ? result.error.message : "Conversation move failed.";
+            setSaveState({ kind: "unsaved", message: `Conversation move was not confirmed. ${reason}` });
+            setHistoryAnnouncement(`Move cancelled. ${reason}`);
+          } else if (result.kind === "acknowledged") {
+            // Remove the old local override before owner metadata reprojects
+            // membership. Preserve every other chat's order and group nesting.
+            const localOrganization = pendingGroupsRef.current
+              ? organizationFromGroups(pendingGroupsRef.current, organizationRevisionRef.current)
+              : organizationRef.current;
+            const sanitized = withoutHistoryChatPlacement(localOrganization, String(active.id));
+            const projected = applyCanonicalHistoryOrganization(buildGroupsFromChats(
+              membershipChatItemsRef.current, membershipCustomGroupsRef.current), sanitized);
+            const placementOnly = removeChatFromTree(projected, String(active.id)).groups;
+            const saved = saveHistoryOrganization(placementOnly, organizationRevisionRef.current,
+              undefined, undefined, profileId);
+            organizationRef.current = saved.ok ? saved.organization : sanitized;
+            if (saved.ok) organizationRevisionRef.current = saved.organization.revision;
+            pendingGroupsRef.current = saved.ok ? null : placementOnly;
+            replaceGroups(projected);
+            undoGroupsRef.current = null;
+            const message = saved.ok
+              ? "Conversation moved. Undo is unavailable for this move."
+              : `Conversation moved; sidebar layout could not be saved. ${saved.message} Undo is unavailable for this move.`;
+            setSaveState({ kind: saved.ok ? "saved" : "unsaved", message });
+            setHistoryAnnouncement(message);
+          }
+          return;
+        }
+        persistArrangement(next, dragSnapshot, `Moved ${draggedChat?.title ?? "chat"}.`);
+      }
+      return;
+    }
+
+    if (membershipMoveRef.current.pending || projectOperationRef.current.creating) return;
     if (!over || active.id === over.id) return;
 
     // Column → Column: nest inside
@@ -1577,7 +1982,9 @@ export function HistoryBoard({
       const targetGroupId = over.id as string;
       if (draggedGroupId === targetGroupId) return;
 
-      setGroups(prev => {
+      const previous = groupsRef.current;
+      const next = (() => {
+        const prev = previous;
         const draggedGroup = findGroupById(prev, draggedGroupId);
         if (!draggedGroup) return prev;
         if (findGroupById(draggedGroup.subGroups, targetGroupId)) return prev;
@@ -1591,7 +1998,9 @@ export function HistoryBoard({
           }
           return g;
         });
-      });
+      })();
+      if (next !== previous) persistArrangement(next, previous, `Moved ${active.data.current.group.title}.`);
+      return;
     }
 
     // Column → SubGroup: nest inside subgroup
@@ -1600,7 +2009,9 @@ export function HistoryBoard({
       const targetGroupId = over.data.current.group.id;
       if (draggedGroupId === targetGroupId) return;
 
-      setGroups(prev => {
+      const previous = groupsRef.current;
+      const next = (() => {
+        const prev = previous;
         const draggedGroup = findGroupById(prev, draggedGroupId);
         if (!draggedGroup) return prev;
         if (findGroupById(draggedGroup.subGroups, targetGroupId)) return prev;
@@ -1614,33 +2025,45 @@ export function HistoryBoard({
           }
           return g;
         });
-      });
+      })();
+      if (next !== previous) persistArrangement(next, previous, `Moved ${active.data.current.group.title}.`);
+      return;
     }
 
     // Column → extract zone: promote to top-level
     if (active.data.current?.type === 'ColumnDrag' && over.id === 'extract-to-top-level') {
       const draggedGroupId = active.data.current.group.id;
-      setGroups(prev => {
-        const { groups: stripped, removed } = removeGroupFromTree(prev, draggedGroupId);
-        if (!removed) return prev;
+      const previous = groupsRef.current;
+      const next = (() => {
+        const { groups: stripped, removed } = removeGroupFromTree(previous, draggedGroupId);
+        if (!removed) return previous;
         return [...stripped, { ...removed, isCollapsed: false }];
-      });
+      })();
+      if (next !== previous) persistArrangement(next, previous, `Promoted ${active.data.current.group.title}.`);
     }
   };
 
   // --- Actions ---
-  const handleRenameGroup = (id: string, newTitle: string) => {
+  const handleRenameGroup = async (id: string, newTitle: string) => {
+    if (membershipMoveRef.current.pending) return;
     const sourceGroupId = findGroupById(groups, id)?.sourceGroupId ?? id;
-    setGroups(prev => mapGroups(prev, g => g.id === id ? { ...g, title: newTitle } : g));
-    setCustomGroups((prev) => {
-      const next = prev.map((group) => group.id === sourceGroupId ? { ...group, title: newTitle } : group);
-      saveCustomGroups(next);
-      return next;
-    });
+    const nextCustomGroups = customGroups.map((group) => group.id === sourceGroupId ? { ...group, title: newTitle } : group);
+    try {
+      const saved = await saveCustomGroups(nextCustomGroups);
+      if (membershipMoveRef.current.pending) return;
+      setCustomGroups(saved);
+      setGroups(prev => mapGroups(prev, g => g.id === id ? { ...g, title: newTitle } : g));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to rename project.";
+      setSaveState({ kind: "unsaved", message });
+      setHistoryAnnouncement(`Project rename was not saved. ${message}`);
+    }
   };
 
   const handleToggleCollapse = (id: string) => {
-    setGroups(prev => mapGroups(prev, g => g.id === id ? { ...g, isCollapsed: !g.isCollapsed } : g));
+    if (membershipMoveRef.current.pending) return;
+    // Drag handlers read groupsRef, so collapse changes must update that snapshot too.
+    replaceGroups(toggleHistoryGroupCollapsed(groupsRef.current, id));
   };
 
   const handleGroupHeaderClick = (group: ChatGroup) => {
@@ -1657,14 +2080,17 @@ export function HistoryBoard({
   };
 
   const handleRenameChat = (chatId: string, newTitle: string) => {
-    setGroups(prev => mapGroups(prev, g => ({
+    if (membershipMoveRef.current.pending) return;
+    replaceGroups(mapGroups(groupsRef.current, g => ({
       ...g,
       chats: g.chats.map(c => c.id === chatId ? { ...c, title: newTitle } : c),
     })));
   };
 
   const handleUngroup = (subGroupId: string) => {
-    setGroups(prev => mapGroups(prev, g => {
+    if (membershipMoveRef.current.pending) return;
+    const previous = groupsRef.current;
+    const next = mapGroups(previous, g => {
       const subIdx = g.subGroups.findIndex(s => s.id === subGroupId);
       if (subIdx !== -1) {
         const sub = g.subGroups[subIdx];
@@ -1675,23 +2101,43 @@ export function HistoryBoard({
         };
       }
       return g;
-    }));
+    });
+    if (next !== previous) persistArrangement(next, previous, "Removed nested project grouping.");
   };
 
   const openCreateGroup = () => {
-    setNewGroupTitle(`Group ${groups.length + 1}`);
+    if (membershipMoveRef.current.pending) return;
+    if (projectOperationRef.current.creating) return;
+    projectOperationRef.current.invalidate();
+    setIsSelectingGroupDirectory(false);
+    setNewGroupTitle(`Project ${customGroups.length + 1}`);
     setNewGroupWorkspaceChoice("none");
     setNewGroupCustomPath("");
+    setNewGroupFolderDraft(emptyProjectFolderDraft());
+    setNewGroupMounted(null);
     setNewGroupError(null);
     setIsCreateGroupOpen((value) => !value);
   };
 
-  const createCustomGroup = (customGroup: CustomGroupInfo) => {
-    setCustomGroups((prev) => {
-      const next = [...prev, customGroup];
-      saveCustomGroups(next);
-      return next;
-    });
+  const closeCreateGroup = () => {
+    if (projectOperationRef.current.creating) return;
+    projectOperationRef.current.invalidate();
+    setIsSelectingGroupDirectory(false);
+    setIsCreateGroupOpen(false);
+    setNewGroupError(null);
+  };
+
+  const handleMinimizeHistory = () => {
+    onMinimize?.();
+  };
+
+  const createCustomGroup = async (customGroup: CustomGroupInfo, ticket: number) => {
+    if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return false;
+    const nextCustomGroups = [...customGroups, customGroup];
+    const saved = await saveCustomGroups(nextCustomGroups);
+    if (membershipMoveRef.current.pending) return false;
+    if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return false;
+    setCustomGroups(saved);
     const newGroup: ChatGroup = {
       ...customGroup,
       chats: [],
@@ -1699,38 +2145,47 @@ export function HistoryBoard({
       isCollapsed: false,
       custom: true,
     };
-    setGroups(prev => [...prev, newGroup]);
+    const previous = groupsRef.current;
+    persistArrangement([...previous, newGroup], previous, `Created ${customGroup.title}.`);
+    return true;
   };
 
   const handleSelectGroupDirectory = async () => {
-    if (isSelectingGroupDirectory) return;
     if (!onDirectorySelect) {
       setNewGroupError("Folder selection is unavailable.");
       return;
     }
+    const ticket = projectOperationRef.current.begin("selection");
+    if (ticket === null) return;
     setIsSelectingGroupDirectory(true);
     setNewGroupError(null);
     try {
       const selected = await onDirectorySelect();
+      if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return;
       if (selected) {
         setNewGroupWorkspaceChoice("custom");
-        setNewGroupCustomPath(selected);
+        setNewGroupFolderDraft(appendProjectFolderSelections(newGroupFolderDraft, selected));
+        setNewGroupMounted(null);
+        setNewGroupCustomPath("Selected folders");
       }
     } catch (error) {
+      if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return;
       setNewGroupError(error instanceof Error ? error.message : "Failed to select folder.");
     } finally {
-      setIsSelectingGroupDirectory(false);
+      if (projectOperationRef.current.finish(ticket)) setIsSelectingGroupDirectory(false);
     }
   };
 
   const handleCreateGroup = async (event?: React.FormEvent) => {
     event?.preventDefault();
-    if (isCreatingGroup) return;
+    if (membershipMoveRef.current.pending) return;
+    const ticket = projectOperationRef.current.begin("creation");
+    if (ticket === null) return;
     setIsCreatingGroup(true);
     setNewGroupError(null);
-    const title = newGroupTitle.trim() || `Group ${groups.length + 1}`;
+    const title = newGroupTitle.trim() || `Project ${customGroups.length + 1}`;
     let workspace: Pick<CodingWorkspaceRecord, "workspace_id" | "label" | "root_path"> | null = null;
-    let rumiDataPath: string | null = null;
+    let mounted: ProjectWorkspaceSet | null = null;
     try {
       if (newGroupWorkspaceChoice === "current") {
         if (!selectedCodingWorkspaceId) {
@@ -1747,54 +2202,44 @@ export function HistoryBoard({
           return;
         }
       } else if (newGroupWorkspaceChoice === "custom") {
-        const rootPath = newGroupCustomPath.trim();
-        if (!rootPath) {
-          setNewGroupError("保存先フォルダを選択してください。");
-          return;
+        if (!onCodingWorkspaceCreate) throw new Error("Workspace creation is unavailable.");
+        mounted = newGroupMounted;
+        if (!mounted) {
+          const selection = projectFolderSelectionSet(newGroupFolderDraft);
+          setNewGroupFolderDraft(consumeProjectFolderSelections(newGroupFolderDraft));
+          mounted = await onCodingWorkspaceCreate(selection,
+            () => projectOperationRef.current.matches(ticket) && projectProfileRef.current === profileId) ?? null;
+          if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return;
+          if (!mounted?.workspace.workspace_id) throw new Error("Workspace creation did not return all selected folders.");
+          setNewGroupMounted(mounted);
         }
-        workspace = codingWorkspaces.find((candidate) => candidate.root_path === rootPath) ?? null;
-        if (!workspace && !onCodingWorkspaceCreate) {
-          setNewGroupError("Workspace creation is unavailable.");
-          return;
-        }
-        if (!workspace) {
-          const created = await onCodingWorkspaceCreate?.(rootPath);
-          if (!created?.workspace_id) {
-            setNewGroupError("Workspace creation did not return a workspace.");
-            return;
-          }
-          workspace = created;
-          await onCodingWorkspacesRefresh?.();
-        }
+        workspace = mounted.workspace;
       }
 
-      if (workspace?.root_path) {
-        if (!onGroupDataPathPrepare) {
-          setNewGroupError(".rumiDP storage preparation is unavailable.");
-          return;
-        }
-        const prepared = await onGroupDataPathPrepare(workspace.root_path);
-        if (!prepared?.rumiDataPath) {
-          setNewGroupError(".rumiDP storage preparation did not return a path.");
-          return;
-        }
-        rumiDataPath = prepared.rumiDataPath;
+      if (workspace && !workspace.root_path?.trim()) {
+        setNewGroupError("Workspace creation did not return a folder path.");
+        return;
       }
 
       const customGroup: CustomGroupInfo = {
-        id: `group-${Date.now()}`,
+        id: newProjectId(),
         title,
         workspaceId: workspace?.workspace_id ?? null,
         workspaceLabel: workspace?.label ?? null,
         workspaceRoot: workspace?.root_path ?? null,
-        rumiDataPath,
+        ...(mounted ? { workspaceBindings: mounted.workspaces.map((item) => ({
+          workspaceId: item.workspace_id, workspaceLabel: item.label, workspaceRoot: item.root_path,
+        })) } : {}),
+        rumiDataPath: null,
       };
-      createCustomGroup(customGroup);
+      await createCustomGroup(customGroup, ticket);
+      if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return;
       setIsCreateGroupOpen(false);
     } catch (error) {
-      setNewGroupError(error instanceof Error ? error.message : "Failed to create group.");
+      if (!projectOperationRef.current.matches(ticket) || projectProfileRef.current !== profileId) return;
+      setNewGroupError(error instanceof Error ? error.message : "Failed to create project.");
     } finally {
-      setIsCreatingGroup(false);
+      if (projectOperationRef.current.finish(ticket)) setIsCreatingGroup(false);
     }
   };
 
@@ -1828,16 +2273,18 @@ export function HistoryBoard({
   }, [visibleChatItems]);
 
   const handleTogglePinned = (chat: ChatItem) => {
+    if (membershipMoveRef.current.pending) return;
     onChatMetadataChange?.(chat.id, { is_pinned: !chat.isPinned });
   };
 
   const handleToggleStarred = (chat: ChatItem) => {
+    if (membershipMoveRef.current.pending) return;
     onChatMetadataChange?.(chat.id, { is_starred: !chat.isStarred });
   };
 
   const allSortableIds = [
-    ...getAllGroupDragIds(groups),
-    ...getAllChatIds(groups),
+    ...getAllGroupDragIds(displayGroups),
+    ...getAllChatIds(displayGroups),
   ];
 
   const collisionDetection = createCustomCollision(activeType);
@@ -1846,187 +2293,179 @@ export function HistoryBoard({
   const accountInitial = account?.initial || accountName.charAt(0).toUpperCase();
   const accountIcon = account?.avatar_url || '';
   const accountIconIsImage = /^(https?:|data:image|\/)/.test(accountIcon);
-  const compactRailItems = useMemo(() => buildCompactHistoryRailItems(groups), [groups]);
+  const compactRailItems = useMemo(() => buildCompactHistoryRailItems(displayGroups), [displayGroups]);
   const currentWorkspaceText = selectedCodingWorkspace
     ? workspaceSummary(selectedCodingWorkspace.workspace_id, selectedCodingWorkspace.label, selectedCodingWorkspace.root_path)
     : "";
   const createGroupForm = isCreateGroupOpen ? (
+    <LayerPortal layer="modal">
+      <ModalFoundation
+        title="New Project"
+        onClose={closeCreateGroup}
+        dismissible={!isCreatingGroup}
+        initialFocusRef={projectNameRef}
+        backdropClassName="fixed inset-0 rumi-layer-modal flex items-start justify-center bg-black/40 px-4 pt-[10dvh]"
+        panelClassName="w-full max-w-2xl max-h-[80dvh] overflow-y-auto rounded-2xl border border-white/10 bg-neutral-800 shadow-2xl outline-none"
+      >
     <form
+      data-new-project-flow="single-screen"
       onSubmit={(event) => void handleCreateGroup(event)}
-      className={cn(
-        "rumi-layer-modal flex w-full flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-950/95 p-2 text-xs shadow-xl shadow-black/30",
-        isCompact && "absolute left-full top-14 ml-2 w-64"
-      )}
+      className="flex w-full flex-col gap-5 p-6 text-sm"
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-medium text-zinc-200">New Group</span>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-base font-semibold text-zinc-100">New Project</span>
+          </div>
+          <p className="mt-1 text-[10px] text-zinc-500">Name this project and choose a workspace when it helps.</p>
+        </div>
         <button
           type="button"
-          onClick={() => setIsCreateGroupOpen(false)}
-          className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100"
-          aria-label="Close new group form"
+          onClick={closeCreateGroup}
+          disabled={isCreatingGroup}
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-50"
+          aria-label="Close new project form"
         >
-          <X size={12} />
+          <X size={13} />
         </button>
       </div>
-      <input
-        value={newGroupTitle}
-        onChange={(event) => setNewGroupTitle(event.target.value)}
-        className="h-8 rounded-md border border-zinc-800 bg-zinc-900/70 px-2 text-[12px] text-zinc-100 outline-none focus:border-emerald-500/60"
-        placeholder={`Group ${groups.length + 1}`}
-      />
-      <div className="grid grid-cols-3 gap-1">
+      <label className="flex flex-col gap-1.5 text-[10px] font-medium text-zinc-400" htmlFor="new-history-group-title">
+        Project name
+        <input
+          id="new-history-group-title"
+          ref={projectNameRef}
+          autoFocus
+          value={newGroupTitle}
+          onChange={(event) => setNewGroupTitle(event.target.value)}
+          className="h-9 rounded-lg border border-zinc-800 bg-black/20 px-2.5 text-[12px] font-medium text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-zinc-500/60 focus:ring-2 focus:ring-zinc-500/10"
+          placeholder={`Project ${customGroups.length + 1}`}
+        />
+      </label>
+      <div role="radiogroup" aria-label="Workspace for the new project" className="flex flex-col gap-1.5">
         {([
-          ["none", "No path"],
-          ["current", "Current"],
-          ["custom", "Custom"],
-        ] as const).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            disabled={value === "current" && !selectedCodingWorkspaceId}
-            onClick={() => setNewGroupWorkspaceChoice(value)}
-            className={cn(
-              "h-7 rounded-md border px-1 text-[10px] transition-colors",
-              newGroupWorkspaceChoice === value
-                ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-100"
-                : "border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100",
-              value === "current" && !selectedCodingWorkspaceId && "cursor-not-allowed opacity-50 hover:bg-zinc-900/60 hover:text-zinc-400"
-            )}
-          >
-            {label}
-          </button>
-        ))}
+          ["none", "No workspace", "Keep this as a standalone project"],
+          ["current", "Current workspace", currentWorkspaceText || "No coding workspace selected"],
+          ["custom", "Choose folders", "Link folders and choose the primary workspace"],
+        ] as const).map(([value, label, description]) => {
+          const disabled = isCreatingGroup || (value === "current" && !selectedCodingWorkspaceId);
+          const selected = newGroupWorkspaceChoice === value;
+          return (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              disabled={disabled}
+              onClick={() => {
+                if (projectOperationRef.current.creating) return;
+                projectOperationRef.current.invalidate();
+                setIsSelectingGroupDirectory(false);
+                setNewGroupError(null);
+                setNewGroupWorkspaceChoice(value);
+              }}
+              className={cn(
+                "flex min-h-11 items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors",
+                selected
+                  ? "border-zinc-500/50 bg-zinc-500/10 text-zinc-100"
+                  : "border-zinc-800 bg-black/15 text-zinc-400 hover:border-zinc-700 hover:bg-zinc-900/80 hover:text-zinc-100",
+                disabled && "cursor-not-allowed opacity-45 hover:border-zinc-800 hover:bg-black/15 hover:text-zinc-400",
+              )}
+            >
+              <span className={cn(
+                "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+                selected ? "border-zinc-400 bg-zinc-400" : "border-zinc-600",
+              )}>
+                {selected && <span className="h-1.5 w-1.5 rounded-full bg-zinc-950" />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[11px] font-medium">{label}</span>
+                <span className="mt-0.5 block truncate text-[10px] text-zinc-500" title={value === "current" ? selectedCodingWorkspace?.root_path ?? "" : undefined}>
+                  {description}
+                </span>
+              </span>
+            </button>
+          );
+        })}
       </div>
-      {newGroupWorkspaceChoice === "current" && (
-        <p className="truncate rounded border border-zinc-800 bg-zinc-900/50 px-2 py-1 text-[10px] text-zinc-400" title={selectedCodingWorkspace?.root_path ?? ""}>
-          {currentWorkspaceText || "No coding workspace selected"}
-        </p>
-      )}
+
       {newGroupWorkspaceChoice === "custom" && (
-        <div className="flex flex-col gap-1 rounded-md border border-zinc-800 bg-zinc-900/60 p-1.5">
+        <div className="rounded-lg border border-zinc-800 bg-black/20 p-2">
           <button
             type="button"
             onClick={() => void handleSelectGroupDirectory()}
-            disabled={isSelectingGroupDirectory}
-            className="flex h-7 items-center justify-center gap-1.5 rounded bg-zinc-100 px-2 text-[11px] font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-wait disabled:opacity-60"
+            disabled={isSelectingGroupDirectory || isCreatingGroup}
+            className="flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-900 px-2 text-[11px] font-semibold text-zinc-100 hover:bg-zinc-800 disabled:cursor-wait disabled:opacity-60"
           >
             <FolderOpen size={12} />
-            {isSelectingGroupDirectory ? "選択中..." : "ファイルを設定"}
+            {isSelectingGroupDirectory ? "選択中..." : "フォルダを選択"}
           </button>
-          <p
-            className={cn(
-              "min-h-4 truncate px-1 font-mono text-[10px]",
-              newGroupCustomPath ? "text-zinc-300" : "text-zinc-500"
-            )}
-            title={newGroupCustomPath || undefined}
-          >
-            {newGroupCustomPath || "保存先フォルダ未選択"}
-          </p>
+          <ProjectFolderList draft={newGroupFolderDraft} disabled={isSelectingGroupDirectory || isCreatingGroup}
+            onRemove={(id) => { setNewGroupFolderDraft((draft) => removeProjectFolderSelection(draft, id)); setNewGroupMounted(null); }}
+            onPrimaryChange={(id) => { setNewGroupFolderDraft((draft) => setPrimaryProjectFolderSelection(draft, id)); setNewGroupMounted(null); }} />
         </div>
       )}
-      {newGroupError && <p className="rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-200">{newGroupError}</p>}
+
+      {newGroupError && (
+        <ErrorNotice
+          className="px-2.5 py-2 text-[10px]"
+          copyLabel="プロジェクト作成エラーをコピー"
+          message={newGroupError}
+        />
+      )}
+
       <button
         type="submit"
-        disabled={isCreatingGroup}
-        className="h-8 rounded-md bg-zinc-100 px-2 text-[11px] font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-wait disabled:opacity-60"
+        disabled={isCreatingGroup || isSelectingGroupDirectory}
+        className="h-9 rounded-lg bg-zinc-100 px-2.5 text-[11px] font-semibold text-zinc-950 hover:bg-white disabled:cursor-wait disabled:opacity-60"
       >
-        {isCreatingGroup ? "Creating..." : "Create Group"}
+        {isCreatingGroup ? "Creating..." : "Create Project"}
       </button>
     </form>
+      </ModalFoundation>
+    </LayerPortal>
   ) : null;
+
+  const navigation = (
+    <HistoryNavigation
+      compact={isCompact}
+      selectionMode={selectionMode}
+      onToggle={isCompact ? onRestore : onMinimize ? handleMinimizeHistory : undefined}
+      onSearchOpen={onSearchOpen}
+      onCreateChat={handleCreateChat}
+      onCreateProject={openCreateGroup}
+      projectOpen={isCreateGroupOpen}
+      projectForm={createGroupForm}
+      onCalendarOpen={onCalendarOpen}
+      onKanbanOpen={onKanbanOpen}
+      onDesktopsOpen={onDesktopsOpen}
+      calendarActive={isCalendarActive}
+      kanbanActive={isKanbanActive}
+      desktopsActive={isDesktopsActive}
+      searchFilter={selectionMode && <ConversationSearchBar value={searchQuery} resultCount={visibleChatCount} onChange={setSearchQuery} />}
+      tagFilter={<ConversationTagFilter tags={allTags} activeTag={activeTag} onChange={setActiveTag} />}
+      hasTags={allTags.length > 0}
+    />
+  );
 
   if (isCompact) {
     return (
-      <div className="relative flex h-full w-full flex-col items-center bg-[#09090b] text-zinc-400">
-        <div className="flex w-full flex-col items-center gap-1 border-b border-zinc-800/60 px-1.5 py-2">
-          {onRestore && (
-            <button
-              type="button"
-              onClick={onRestore}
-              className="flex h-9 w-9 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-              title="サイドバーを開く"
-              aria-label="サイドバーを開く"
-            >
-              <PanelLeftOpen size={18} aria-hidden="true" />
-            </button>
-          )}
-          {!selectionMode && (
-            <>
-              <button
-                onClick={handleCreateChat}
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-                title="New Chat"
-                aria-label="New Chat"
-              >
-                <WarmActionIcon kind="newChat" size="sm" iconClassName="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={openCreateGroup}
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-                title="New Group"
-                aria-label="New Group"
-              >
-                <WarmActionIcon kind="group" size="sm" iconClassName="h-3.5 w-3.5" />
-              </button>
-              {createGroupForm}
-              <button
-                type="button"
-                onClick={() => {
-                  onCalendarOpen?.();
-                }}
-                className={cn(
-                  "flex h-9 w-9 items-center justify-center rounded-xl transition-colors",
-                  isCalendarActive ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100",
-                )}
-                title="Calendar"
-                aria-label="Calendar"
-              >
-                <WarmActionIcon kind="calendar" size="sm" iconClassName="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onKanbanOpen?.();
-                }}
-                className={cn(
-                  "flex h-9 w-9 items-center justify-center rounded-xl transition-colors",
-                  isKanbanActive ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100",
-                )}
-                title="Kanban"
-                aria-label="Kanban"
-              >
-                <KanbanSquare size={14} />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onDesktopsOpen?.();
-                }}
-                className={cn(
-                  "flex h-9 w-9 items-center justify-center rounded-xl transition-colors",
-                  isDesktopsActive ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100",
-                )}
-                title="Desktops"
-                aria-label="Desktops"
-                aria-current={isDesktopsActive ? "page" : undefined}
-              >
-                <Monitor size={14} />
-              </button>
-            </>
-          )}
-        </div>
+      <HistoryReferenceProfile.Provider value={profileId}>
+      <div className="relative flex h-full w-full flex-col items-center bg-[var(--rumi-surface-base)] text-zinc-400">
+        {navigation}
+        <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{historyAnnouncement}</span>
 
-        <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto px-1.5 py-2">
+        <div className="flex min-h-0 w-full flex-1 flex-col items-center overflow-x-hidden overflow-y-auto px-2.5">
           {compactRailItems.map((item) => {
             if (item.type === "group") {
               return (
                 <button
                   key={`group-${item.id}`}
+                  draggable={!selectionMode}
+                  onDragStart={(event) => writeNativeHistoryReference(event, buildHistoryGroupReference(item.group, profileId ?? ""))}
                   type="button"
                   onClick={() => handleGroupHeaderClick(item.group)}
                   className={cn(
-                    "relative flex h-9 min-h-9 w-9 min-w-9 shrink-0 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800/70 hover:text-zinc-100",
+                    "relative flex h-7 min-h-7 w-9 min-w-9 shrink-0 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800/70 hover:text-zinc-100",
                     item.isCollapsed && "bg-zinc-900/80 text-zinc-400"
                   )}
                   title={`${item.title} (${item.total})`}
@@ -2044,32 +2483,34 @@ export function HistoryBoard({
             return (
               <button
                 key={chat.id}
+                draggable={!selectionMode}
+                onDragStart={(event) => {
+                  writeNativeHistoryReference(event, buildHistoryChatReference(chat, profileId ?? ""));
+                  event.dataTransfer.setData(HISTORY_CHAT_DROP_MIME, JSON.stringify(historyChatDragPayload({ ...chat, groupId: chatGroupId(chat) || undefined })));
+                  event.dataTransfer.setData("text/plain", chat.title);
+                  event.dataTransfer.effectAllowed = "copyMove";
+                }}
                 type="button"
                 onClick={() => onChatSelect(chat.id)}
                 className={cn(
-                  "relative flex h-9 min-h-9 w-9 min-w-9 shrink-0 items-center justify-center rounded-md transition-colors",
+                  "relative flex h-8 min-h-8 w-9 min-w-9 shrink-0 items-center justify-center rounded-md transition-colors",
                   isActive ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-800/70 hover:text-zinc-100"
                 )}
                 title={chat.title}
                 aria-label={chat.title}
               >
-                {chat.metadata?.icon_svg ? (
-                  <span
-                    className="flex h-3.5 w-3.5 items-center justify-center [&>svg]:h-full [&>svg]:w-full"
-                    dangerouslySetInnerHTML={{ __html: chat.metadata.icon_svg }}
-                  />
-                ) : (
-                  chat.type === 'research' ? <Globe size={14} className="flex-shrink-0" /> :
-                  chat.type === 'code' ? <Terminal size={14} className="flex-shrink-0" /> :
-                  <MessageSquare size={14} className="flex-shrink-0" />
-                )}
-                {isActive && <span className="absolute left-0 h-5 w-0.5 rounded-r bg-emerald-400" />}
+                <HistoryChatIcon chat={chat} tone={isActive ? "text-zinc-100" : "text-zinc-500"} />
+                {isActive && <span className="absolute left-0 h-5 w-0.5 rounded-r bg-zinc-400" />}
+                <ConversationAttentionIndicator
+                  presentation={presentationForChat(chat)}
+                  className="absolute -bottom-0.5 -right-0.5 rounded-full bg-[#09090b]"
+                />
               </button>
             );
           })}
         </div>
 
-        <div className="flex w-full flex-col items-center border-t border-zinc-800/60 px-1.5 py-2">
+        <div className="flex h-12 w-full shrink-0 items-center justify-center border-t border-zinc-800/60 px-2.5">
           <button
             type="button"
             onClick={onSettingsClick}
@@ -2081,116 +2522,85 @@ export function HistoryBoard({
           </button>
         </div>
       </div>
+      </HistoryReferenceProfile.Provider>
     );
   }
 
   return (
+    <HistoryReferenceProfile.Provider value={profileId}>
     <DndContext
       sensors={sensors}
       collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
-      <div className="relative flex flex-col h-full min-w-0">
-        {/* Top action bar */}
-        <div className="flex flex-col gap-1 px-4 py-4 flex-shrink-0">
-          <div className="flex h-8 items-center justify-between gap-2 px-2.5">
-            <span className="text-xs font-semibold tracking-wide text-zinc-400">rumi DP</span>
-            {onMinimize && (
-              <button
-                type="button"
-                onClick={onMinimize}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-                title="サイドバーを閉じる"
-                aria-label="サイドバーを閉じる"
-              >
-                <PanelLeftClose size={18} aria-hidden="true" />
-              </button>
-            )}
-          </div>
-          {!selectionMode && (
-            <>
-              <div className="mt-2 flex flex-col gap-1.5">
-                <button
-                  onClick={handleCreateChat}
-                  className="flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1.5 text-left text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-900/70 hover:text-zinc-100"
-                  title="New Chat"
-                >
-                  <WarmActionIcon kind="newChat" size="sm" />
-                  <span className="truncate">New Chat</span>
-                </button>
-                <button
-                  onClick={openCreateGroup}
-                  className="flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1.5 text-left text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-900/70 hover:text-zinc-100"
-                  title="New Group"
-                >
-                  <WarmActionIcon kind="group" size="sm" />
-                  <span className="truncate">New Group</span>
-                </button>
-                {createGroupForm}
+      <div
+        data-history-pane-content="true"
+        className={cn(
+          "relative flex h-full min-w-0 origin-left flex-col overflow-hidden bg-[var(--rumi-surface-base)] transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none",
+        )}
+      >
+        {navigation}
+        <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+          {historyAnnouncement}
+        </span>
+        {(saveState.kind === "unsaved" || saveState.kind === "corrupt") && (
+          <div className="px-3 py-1">
+            <div
+              className="mt-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-2 text-[10px] text-amber-100"
+              data-history-save-state={saveState.kind}
+            >
+              <div className="flex items-start gap-2">
+                <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold">History changes are not saved</p>
+                  <p className="mt-0.5 text-amber-200/75">{saveState.message}</p>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  onCalendarOpen?.();
-                }}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-1.5 py-1.5 text-left text-xs font-medium transition-colors",
-                  isCalendarActive
-                    ? "bg-zinc-800/80 text-zinc-100"
-                    : "text-zinc-400 hover:bg-zinc-900/70 hover:text-zinc-100",
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
+                {undoGroupsRef.current && (
+                  <button
+                    type="button"
+                    onClick={undoHistoryChange}
+                    className="flex min-h-11 items-center justify-center gap-1 rounded-md border border-current/20 px-2 font-semibold hover:bg-white/10"
+                  >
+                    <Undo2 size={12} aria-hidden="true" /> Undo
+                  </button>
                 )}
-                title="Calendar"
-                aria-expanded={isCalendarActive}
-              >
-                <WarmActionIcon kind="calendar" size="sm" />
-                <span className="truncate">Calendar</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onKanbanOpen?.();
-                }}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-1.5 py-1.5 text-left text-xs font-medium transition-colors",
-                  isKanbanActive
-                    ? "bg-zinc-800/80 text-zinc-100"
-                    : "text-zinc-400 hover:bg-zinc-900/70 hover:text-zinc-100",
+                {pendingGroupsRef.current && (
+                  <button
+                    type="button"
+                    onClick={retryHistorySave}
+                    className="flex min-h-11 items-center justify-center gap-1 rounded-md border border-current/20 px-2 font-semibold hover:bg-white/10"
+                  >
+                    <RotateCcw size={12} aria-hidden="true" /> Retry
+                  </button>
                 )}
-                title="Kanban"
-                aria-expanded={isKanbanActive}
-              >
-                <KanbanSquare size={15} className="shrink-0 text-zinc-500" />
-                <span className="truncate">Kanban</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onDesktopsOpen?.();
-                }}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-1.5 py-1.5 text-left text-xs font-medium transition-colors",
-                  isDesktopsActive
-                    ? "bg-zinc-800/80 text-zinc-100"
-                    : "text-zinc-400 hover:bg-zinc-900/70 hover:text-zinc-100",
-                )}
-                title="Desktops"
-                aria-current={isDesktopsActive ? "page" : undefined}
-              >
-                <Monitor size={15} className="shrink-0 text-zinc-500" />
-                <span className="truncate">Desktops</span>
-              </button>
-            </>
-          )}
-          <ConversationSearchBar value={searchQuery} resultCount={visibleChatCount} onChange={setSearchQuery} />
-          <ConversationTagFilter tags={allTags} activeTag={activeTag} onChange={setActiveTag} />
-        </div>
+                <button
+                  type="button"
+                  onClick={exportHistoryOrganization}
+                  className="flex min-h-11 items-center justify-center gap-1 rounded-md border border-current/20 px-2 font-semibold hover:bg-white/10"
+                >
+                  <Download size={12} aria-hidden="true" /> Export
+                </button>
+                <button
+                  type="button"
+                  onClick={resetHistoryArrangement}
+                  className="min-h-11 rounded-md border border-current/20 px-2 font-semibold hover:bg-white/10"
+                >
+                  {resetArmed ? "Confirm reset" : "Reset"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Columns */}
         <SortableContext items={allSortableIds} strategy={verticalListSortingStrategy}>
           <div className="flex flex-1 flex-col overflow-x-hidden overflow-y-auto pb-12">
-            {groups.map((group) => (
+            {displayGroups.map((group) => (
               <DraggableColumnHandle key={group.id} group={group}>
                 {(dragHandleProps) => (
                   <DroppableColumn
@@ -2224,8 +2634,8 @@ export function HistoryBoard({
         </SortableContext>
 
         {/* Fixed Account Bar */}
-        <div className="absolute bottom-0 left-0 right-0 h-12 px-3 border-t border-zinc-800/60 bg-[#09090b]/95 backdrop-blur-sm rumi-layer-global-overlay flex items-center">
-          <div className="flex items-center gap-2.5 px-1 w-full">
+        <div className="absolute bottom-0 left-0 right-0 h-12 px-2.5 border-t border-zinc-800/60 bg-[var(--rumi-surface-base)]/95 backdrop-blur-sm rumi-layer-global-overlay flex items-center">
+          <div className="flex items-center gap-2 w-full">
             {accountIcon && accountIconIsImage ? (
               <img src={accountIcon} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0 bg-zinc-800" />
             ) : (
@@ -2238,9 +2648,11 @@ export function HistoryBoard({
               <p className="text-[10px] text-zinc-500 truncate">{accountPlan}</p>
             </div>
             <button
+              type="button"
               onClick={onSettingsClick}
-              className="p-1.5 hover:bg-zinc-800 rounded-md transition-colors text-zinc-500 hover:text-zinc-300 flex-shrink-0"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
               title="Settings"
+              aria-label="Settings"
             >
               <Settings size={14} />
             </button>
@@ -2248,27 +2660,24 @@ export function HistoryBoard({
         </div>
       </div>
 
-      <DragOverlay dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0.3' } } }) }}>
+      {typeof document !== "undefined" && <LayerPortal layer="globalOverlay">
+      <DragOverlay zIndex={layerZ.globalOverlay} style={{ pointerEvents: "none" }} dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0.3' } } }) }}>
         {activeColumnDrag ? (
-          <div className="w-[260px] h-10 flex items-center px-4 border border-emerald-500/50 bg-zinc-900 rounded-lg shadow-2xl">
-            <Folder size={16} className="text-emerald-400 mr-2" />
+          <div className="w-[260px] h-10 flex items-center px-4 border border-zinc-500/50 bg-zinc-900 rounded-lg shadow-2xl">
+            <Folder size={16} className="text-zinc-400 mr-2" />
             <span className="truncate text-sm text-zinc-100 font-medium">{activeColumnDrag.title}</span>
           </div>
         ) : activeChat ? (
-          <div className="w-[220px] flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 border border-emerald-500/50 shadow-2xl">
+          <div className="w-[220px] flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-500/50 shadow-2xl">
             <GripVertical size={12} className="text-zinc-500" />
-            {activeChat.metadata?.icon_svg ? (
-              <span
-                className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full"
-                dangerouslySetInnerHTML={{ __html: activeChat.metadata.icon_svg }}
-              />
-            ) : activeChat.type === 'research' ? <Globe size={14} className="text-zinc-400" /> :
-             activeChat.type === 'code' ? <Terminal size={14} className="text-zinc-400" /> :
-             <MessageSquare size={14} className="text-zinc-400" />}
+            <HistoryChatIcon chat={activeChat} tone="text-zinc-400" />
             <span className="text-sm truncate text-zinc-100">{activeChat.title}</span>
+            <ConversationAttentionIndicator presentation={presentationForChat(activeChat)} />
           </div>
         ) : null}
       </DragOverlay>
+      </LayerPortal>}
     </DndContext>
+    </HistoryReferenceProfile.Provider>
   );
 }

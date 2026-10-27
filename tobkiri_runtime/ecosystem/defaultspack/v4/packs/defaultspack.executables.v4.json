@@ -1,0 +1,396 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "defaultspack",
+  "source_identity": "sha256:e99a8c666683ec60cd8f47bb46ae06518eefd468cf71f15e7b5288b3c7cc6ad2",
+  "variants": [
+    {
+      "variant_id": "defaultspack.application-presentation.python",
+      "function_id": "defaultspack.application-presentation",
+      "implementation_path": "runtime/application_presentation.py",
+      "implementation_digest": "sha256:7d2351d8447d19de8afbf49fb140b02cd508e6b9a07be4de3d89571c2c22ca29",
+      "execution_kind": "pack_vm",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-pack-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "sandbox.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.application.presentation.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:d6e1d7af7ba7009863707c15c253dfe43728453b901c6db7c1d33e0861357967",
+          "operation_id": "defaultspack.presentation.read",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "_session_id": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "ui",
+                  "commands"
+                ]
+              },
+              "model_options": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "label": {
+                      "maxLength": 4096,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "value": {
+                      "maxLength": 4096,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "label"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 256,
+                "type": "array"
+              },
+              "profile_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "effect_class": "pure",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "defaultspack.conversation.python",
+      "function_id": "defaultspack.conversation",
+      "implementation_path": "runtime/conversation.py",
+      "implementation_digest": "sha256:28f40236e26209bc3360cd59618291f5b98be5354ea70d0f39d2dbbaef86d793",
+      "execution_kind": "pack_vm",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-pack-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "sandbox.default.v1",
+      "operations": [
+        {
+          "contract_id": "conversation.turn.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:4ab185713b507f4cece1a3fadadcd9b8ed0918f66570d9d6d7b3b22f0ebca59a",
+          "operation_id": "complete",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "context": {
+                "type": "object"
+              },
+              "messages": {
+                "items": {
+                  "type": "object"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              "model": {
+                "type": "string"
+              },
+              "params": {
+                "type": "object"
+              },
+              "runtime_context": {
+                "type": "object"
+              },
+              "timezone": {
+                "type": "string"
+              },
+              "tools": {
+                "items": {
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "messages"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "effect_class": "pure",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "defaultspack.python-sandbox-guest.python",
+      "function_id": "defaultspack.python-sandbox-guest",
+      "implementation_path": "runtime/python_sandbox_guest.py",
+      "implementation_digest": "sha256:316ee596109435c2b861dc1c40a74f3253bef81f221ef349beccaab0f8cdf421",
+      "execution_kind": "pack_vm",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-pack-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "sandbox.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.python.sandbox.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:4a63f37526ae3f20bc144a03553fff7597e7b391213dd6b3ca841b3fd004e682",
+          "operation_id": "defaultspack.python-sandbox-guest-execute",
+          "input_schema": {
+            "additionalProperties": false,
+            "oneOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "test_targets"
+                      ]
+                    }
+                  ]
+                },
+                "properties": {
+                  "mode": {
+                    "const": "script"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "script_path",
+                  "arguments",
+                  "stdin"
+                ]
+              },
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "script_path"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "arguments"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "stdin"
+                      ]
+                    }
+                  ]
+                },
+                "properties": {
+                  "mode": {
+                    "const": "unittest"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "test_targets"
+                ]
+              }
+            ],
+            "properties": {
+              "arguments": {
+                "items": {
+                  "maxLength": 1024,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 32,
+                "type": "array"
+              },
+              "cwd": {
+                "default": ".",
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).*$",
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "script",
+                  "unittest"
+                ]
+              },
+              "script_path": {
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+\\.py$",
+                "type": "string"
+              },
+              "stdin": {
+                "maxLength": 16384,
+                "type": "string"
+              },
+              "test_targets": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+                  "type": "string"
+                },
+                "maxItems": 16,
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "timeout_seconds": {
+                "maximum": 60,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "workspace_snapshot": {
+                "description": "Host-captured typed source bytes; Host enforces decoded aggregate <=512 KiB, each file <=64 KiB, path depth <=64, entry count <=1024, and regular files only.",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "content_base64": {
+                      "maxLength": 87384,
+                      "type": "string"
+                    },
+                    "path": {
+                      "maxLength": 512,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "content_base64"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 256,
+                "type": "array"
+              }
+            },
+            "required": [
+              "mode",
+              "cwd",
+              "timeout_seconds",
+              "workspace_snapshot"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "duration_ms": {
+                "maximum": 60000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "exit_code": {
+                "maximum": 255,
+                "minimum": -255,
+                "type": "integer"
+              },
+              "status": {
+                "enum": [
+                  "completed",
+                  "failed"
+                ]
+              },
+              "stderr": {
+                "maxLength": 65536,
+                "type": "string"
+              },
+              "stdout": {
+                "maxLength": 65536,
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "exit_code",
+              "stdout",
+              "stderr",
+              "duration_ms"
+            ],
+            "type": "object"
+          },
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "effect_class": "pure",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    }
+  ],
+  "materialization_catalog_digest": "sha256:3866ec2a80a117ccd68df2524a23dd62da3f411ef84ec525de59a8594056f464",
+  "catalog_digest": "sha256:7f1c57e8bf8740d92181d3c9d309c4a0dc3570c42cb9f9d3a36d60edd3973619"
+}

@@ -1,0 +1,150 @@
+{
+  "build_performed": false,
+  "byte_offsets": "zero-based-half-open",
+  "extraction": "verbatim-complete-source-lines",
+  "generator": "scripts/wasm/prepare_ordered_tool_bridge.py",
+  "inventory": {
+    "bytes": 16854,
+    "path": "inventory.json",
+    "sha256": "512332db549b6ea86b8ae11e827cc5feb520724f13a34b0234b110d6e45e861c"
+  },
+  "line_numbers": "one-based-inclusive",
+  "output": {
+    "bytes": 2867,
+    "path": "original_bridge.py",
+    "sha256": "4e964fbfa066dc656d36144b96d26a3a03df94295517781cf29815c1f90ba0d6"
+  },
+  "production_enabled": false,
+  "schema": "io.tobkiri.python-source-extraction.v1",
+  "slices": [
+    {
+      "output_end_byte": 153,
+      "output_end_line": 4,
+      "output_start_byte": 118,
+      "output_start_line": 4,
+      "sha256": "5384bfdb2df380b6557cc7a71d16891415bccaa87699406e236f752c6415389f",
+      "source_end_byte": 118,
+      "source_end_line": 3,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/runtime/bridge.py",
+      "source_start_byte": 83,
+      "source_start_line": 3,
+      "symbol": "import:__future__"
+    },
+    {
+      "output_end_byte": 167,
+      "output_end_line": 7,
+      "output_start_byte": 155,
+      "output_start_line": 7,
+      "sha256": "261a9112a2918e2aba03e19a2f221a027ab4b6f9e946a6c39814f54e18e07dfc",
+      "source_end_byte": 131,
+      "source_end_line": 5,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/runtime/bridge.py",
+      "source_start_byte": 119,
+      "source_start_line": 5,
+      "symbol": "import:json"
+    },
+    {
+      "output_end_byte": 179,
+      "output_end_line": 10,
+      "output_start_byte": 169,
+      "output_start_line": 10,
+      "sha256": "a830333312c4c9c2233bb02762bd498203b1c3bf0527614735693b4b79f6d167",
+      "source_end_byte": 141,
+      "source_end_line": 6,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/runtime/bridge.py",
+      "source_start_byte": 131,
+      "source_start_line": 6,
+      "symbol": "import:re"
+    },
+    {
+      "output_end_byte": 223,
+      "output_end_line": 13,
+      "output_start_byte": 181,
+      "output_start_line": 13,
+      "sha256": "06a8e93e3fe4a71a5e9e8809353e3bdf39e493381ff84b0e9a385705f8e8e94e",
+      "source_end_byte": 183,
+      "source_end_line": 7,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/runtime/bridge.py",
+      "source_start_byte": 141,
+      "source_start_line": 7,
+      "symbol": "import:typing"
+    },
+    {
+      "output_end_byte": 472,
+      "output_end_line": 21,
+      "output_start_byte": 225,
+      "output_start_line": 16,
+      "sha256": "60c02dabf8c507c07ddfe30784a66bf90036cca26ded9aed1234d4c1ff7a58fb",
+      "source_end_byte": 600,
+      "source_end_line": 19,
+      "source_path": "tobkiri_runtime/core_runtime/global_contract_dispatch.py",
+      "source_start_byte": 353,
+      "source_start_line": 14,
+      "symbol": "GlobalContractInvocationError"
+    },
+    {
+      "output_end_byte": 538,
+      "output_end_line": 24,
+      "output_start_byte": 474,
+      "output_start_line": 24,
+      "sha256": "54ebca8cab2a175e8492325af31aa4ee055005d0a48fd7ec61d5ab7173085919",
+      "source_end_byte": 514,
+      "source_end_line": 17,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/runtime/bridge.py",
+      "source_start_byte": 450,
+      "source_start_line": 17,
+      "symbol": "_TOOL_NAME"
+    },
+    {
+      "output_end_byte": 1614,
+      "output_end_line": 53,
+      "output_start_byte": 540,
+      "output_start_line": 27,
+      "sha256": "e542835545fac67efd6f14b084a07a9ac80265a7d1a067a74c46c0b48ea91ec3",
+      "source_end_byte": 1590,
+      "source_end_line": 46,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/runtime/bridge.py",
+      "source_start_byte": 516,
+      "source_start_line": 20,
+      "symbol": "create_tool_intent_operation"
+    },
+    {
+      "output_end_byte": 2734,
+      "output_end_line": 84,
+      "output_start_byte": 1616,
+      "output_start_line": 56,
+      "sha256": "e3d147d862785a9ce1c12e8fbe0bba15c6f6404c62b0c24af368090b04539b02",
+      "source_end_byte": 2710,
+      "source_end_line": 77,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/runtime/bridge.py",
+      "source_start_byte": 1592,
+      "source_start_line": 49,
+      "symbol": "_normalize"
+    },
+    {
+      "output_end_byte": 2867,
+      "output_end_line": 88,
+      "output_start_byte": 2736,
+      "output_start_line": 87,
+      "sha256": "49776fb214807aacea1516513b388bc0ea03d01ef459b2487d730f5563564e84",
+      "source_end_byte": 2843,
+      "source_end_line": 81,
+      "source_path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/runtime/bridge.py",
+      "source_start_byte": 2712,
+      "source_start_line": 80,
+      "symbol": "_invalid"
+    }
+  ],
+  "sources": [
+    {
+      "bytes": 5407,
+      "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/runtime/bridge.py",
+      "sha256": "27c6d726d1c1db4bb7a67565e4d56c9bddaab875d30824f330e15ec5c3e7e6b0"
+    },
+    {
+      "bytes": 17989,
+      "path": "tobkiri_runtime/core_runtime/global_contract_dispatch.py",
+      "sha256": "f1cc60d7361b0716430c715c529fc36d41d1db5a130e47c2ae835962f6f7d893"
+    }
+  ]
+}

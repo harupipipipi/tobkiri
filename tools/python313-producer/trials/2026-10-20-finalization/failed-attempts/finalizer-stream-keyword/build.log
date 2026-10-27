@@ -1,0 +1,17 @@
+Error: failed to resolve directory while parsing WIT for path [wit]
+
+Caused by:
+    0: failed to parse package: wit
+    1: expected `type`, `resource` or `func`, found keyword `stream`
+            --> wit/pack.wit:15:3
+             |
+          15 |   stream: func(payload: string) -> result<finalization-outcome, error>;
+             |   ^-----
+Traceback (most recent call last):
+  File "/driver.py", line 47, in <module>
+    subprocess.run(bindings_cmd, cwd=stage, env=env, check=True, timeout=180)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/subprocess.py", line 577, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['/producer', '-d', 'wit', '-w', 'pack', 'bindings', '.']' returned non-zero exit status 1.

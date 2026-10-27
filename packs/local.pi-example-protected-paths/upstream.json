@@ -1,0 +1,7 @@
+{
+  "commit": "b06c1f2cf1dea6af8748ddeee18c23587d2cb7c6",
+  "path": "packages/coding-agent/examples/extensions/protected-paths.ts",
+  "repository": "https://github.com/badlogic/pi-mono",
+  "sha256": "9ca66b1f3b1b9a61cc5ddc660f92cca2ea66c4264a1bdb6b00e0da5844399fe2",
+  "stored_path": "upstream/protected-paths.ts"
+}

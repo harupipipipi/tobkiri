@@ -1,0 +1,276 @@
+{
+  "schema": "tobkiri.conversation-completion-adoption.v1",
+  "pack_catalog_additions": {
+    "rumi_conversation_store_pack": {
+      "provided_contracts": [
+        {
+          "contract_id": "tobkiri.action.conversation.completion.v1",
+          "version": "1.0.0",
+          "owner": "rumi_conversation_store_pack",
+          "provider_id": "rumi_conversation_store_pack.conversation-store.completion",
+          "cardinality": "one",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "security": "restricted",
+          "required_capabilities": [
+            "conversation.manage"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "profile_id",
+                "operation",
+                "turn_id"
+              ],
+              "properties": {
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                },
+                "operation": {
+                  "const": "confirm"
+                },
+                "turn_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                },
+                "_session_id": {
+                  "type": "string"
+                }
+              }
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "confirmed",
+                "conversation_id",
+                "conversation_revision",
+                "store_revision"
+              ],
+              "properties": {
+                "confirmed": {
+                  "type": "boolean"
+                },
+                "conversation_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                },
+                "conversation_revision": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "store_revision": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "error": {
+              "type": "object"
+            }
+          },
+          "lifecycle": {
+            "data_owner": "rumi_conversation_store_pack",
+            "deprecated": false,
+            "introduced": "1.0.0",
+            "migration_id": "saved-completion-v1",
+            "rollback_id": "saved-completion-v1"
+          },
+          "operations": [
+            {
+              "id": "rumi_conversation_store_pack.conversation-completion",
+              "entrypoint_id": "conversation-completion",
+              "implementation_digest": "sha256:3e7e269f403cb628ae8ec7a374b6068a079588b7e44d78c8992aaa0185be1e01"
+            }
+          ]
+        }
+      ],
+      "required_contracts": [
+        {
+          "contract_id": "tobkiri.resource.turn.v1",
+          "cardinality": "one",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0",
+          "operations": [
+            "rumi_turn_runtime_pack.turn-resource"
+          ]
+        }
+      ],
+      "runtime_artifacts": [
+        {
+          "path": "runtime/completion_host.py",
+          "kind": "executable",
+          "digest": "sha256:3e7e269f403cb628ae8ec7a374b6068a079588b7e44d78c8992aaa0185be1e01"
+        }
+      ]
+    },
+    "rumi_turn_runtime_pack": {
+      "required_contracts": [
+        {
+          "contract_id": "tobkiri.action.conversation.completion.v1",
+          "cardinality": "one",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0",
+          "operations": [
+            "rumi_conversation_store_pack.conversation-completion"
+          ]
+        }
+      ]
+    }
+  },
+  "semantic_source_entry": {
+    "pack_id": "rumi_conversation_store_pack",
+    "entries": [
+      {
+        "function_id": "rumi_conversation_store_pack.conversation-store.completion",
+        "operation_ids": [
+          "rumi_conversation_store_pack.conversation-completion"
+        ],
+        "contract_id": "tobkiri.action.conversation.completion.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/completion_host.py",
+        "schemas": {
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "profile_id",
+              "operation",
+              "turn_id"
+            ],
+            "properties": {
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "operation": {
+                "const": "confirm"
+              },
+              "turn_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "_session_id": {
+                "type": "string"
+              }
+            }
+          },
+          "output": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "confirmed",
+              "conversation_id",
+              "conversation_revision",
+              "store_revision"
+            ],
+            "properties": {
+              "confirmed": {
+                "type": "boolean"
+              },
+              "conversation_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+              },
+              "conversation_revision": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "store_revision": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "error": {
+            "type": "object"
+          }
+        }
+      }
+    ]
+  },
+  "function_edges": [
+    {
+      "function_id": "rumi_conversation_store_pack.conversation-store.completion",
+      "operation_ids": [
+        "rumi_conversation_store_pack.conversation-completion"
+      ],
+      "effect_class": "privileged",
+      "effect_ceiling": [
+        "capability:conversation.manage",
+        "host:brokered-execution"
+      ],
+      "required_contracts": [
+        {
+          "contract_id": "tobkiri.resource.turn.v1",
+          "cardinality": "one",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0",
+          "operations": [
+            "rumi_turn_runtime_pack.turn-resource"
+          ]
+        }
+      ],
+      "factory": "ecosystem.rumi_conversation_store_pack.runtime.completion_host:HOST_PROVIDER_FACTORY",
+      "trusted_caller_function_ids": [
+        "rumi_turn_runtime_pack.turn-runtime.saved",
+        "rumi_turn_runtime_pack.turn-runtime.reconcile"
+      ]
+    },
+    {
+      "function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
+      "operation_ids": [
+        "rumi_turn_runtime_pack.turn-saved"
+      ],
+      "additional_required_contracts": [
+        {
+          "contract_id": "tobkiri.action.conversation.completion.v1",
+          "cardinality": "one",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0",
+          "operations": [
+            "rumi_conversation_store_pack.conversation-completion"
+          ]
+        }
+      ]
+    },
+    {
+      "function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+      "operation_ids": [
+        "rumi_turn_runtime_pack.turn-reconcile"
+      ],
+      "additional_required_contracts": [
+        {
+          "contract_id": "tobkiri.action.conversation.completion.v1",
+          "cardinality": "one",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0",
+          "operations": [
+            "rumi_conversation_store_pack.conversation-completion"
+          ]
+        }
+      ]
+    }
+  ],
+  "source_digest_refresh": [
+    "ecosystem/rumi_conversation_store_pack/runtime/store.py",
+    "ecosystem/rumi_turn_runtime_pack/runtime/host.py",
+    "ecosystem/rumi_turn_runtime_pack/runtime/saved.py"
+  ],
+  "source_only": true
+}

@@ -1,0 +1,223 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:b3c7ff0f7b16574c237c8a280739a01f5b40c18deedd0240431d60c00341ddc9",
+  "pack_id": "rumi_ai_strategy_runtime_pack",
+  "source_identity": "sha256:596f501b341ec3457357d71bd5d393cf369fb83937a1fd3d179682171f031add",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+      "implementation_digest": "sha256:9c9f81b839e3e755cc6fe832816362932ceb15431cccb671cc114d1ff86c1d39",
+      "implementation_path": "runtime/strategy.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.ai.strategy.catalog.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "maxProperties": 0,
+            "type": "object"
+          },
+          "operation_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "count": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "strategies": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "artifact_digest": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "implementation_digest": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "operation_id": {
+                      "type": "string"
+                    },
+                    "pack_id": {
+                      "type": "string"
+                    },
+                    "provider_id": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                      "type": "string"
+                    },
+                    "provider_instance_id": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                      "type": "string"
+                    },
+                    "strategy_reference": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "provider_instance_id",
+                    "provider_id",
+                    "pack_id",
+                    "operation_id",
+                    "artifact_digest",
+                    "implementation_digest",
+                    "strategy_reference",
+                    "label",
+                    "description"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "strategies",
+              "count"
+            ],
+            "type": "object"
+          },
+          "revision_digest": "sha256:21cc37f4ce63fdef6dd4b377f9c42bfe3f85d05659c4e8b3fd8f8748c30286bc",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_ai_strategy_runtime_pack.ai-strategy.dispatch",
+      "implementation_digest": "sha256:9c9f81b839e3e755cc6fe832816362932ceb15431cccb671cc114d1ff86c1d39",
+      "implementation_path": "runtime/strategy.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.ai.strategy.dispatch.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "request": {
+                "additionalProperties": false,
+                "properties": {
+                  "allow_failover": {
+                    "type": "boolean"
+                  },
+                  "deadline": {
+                    "description": "Host-bounded Unix epoch milliseconds.",
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "idempotency_key": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                    "type": "string"
+                  },
+                  "input": {
+                    "type": "string"
+                  },
+                  "maximum_cost_microusd": {
+                    "description": "Host-enforced maximum total cost in integer micro-USD (at most 1 USD).",
+                    "maximum": 1000000,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "messages": {
+                    "items": {
+                      "type": "object"
+                    },
+                    "maxItems": 2048,
+                    "type": "array"
+                  },
+                  "model_profile_id": {
+                    "type": "string"
+                  },
+                  "model_reference": {
+                    "type": "string"
+                  },
+                  "parameters": {
+                    "type": "object"
+                  },
+                  "policy_revision": {
+                    "type": "string"
+                  },
+                  "profile_id": {
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                    "type": "string"
+                  },
+                  "requirements": {
+                    "type": "object"
+                  },
+                  "system_prompt_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "tools": {
+                    "items": {
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "request_id",
+                  "messages",
+                  "deadline",
+                  "idempotency_key"
+                ],
+                "type": "object"
+              },
+              "strategy_reference": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "strategy_reference",
+              "request"
+            ],
+            "type": "object"
+          },
+          "operation_id": "rumi_ai_strategy_runtime_pack.ai-strategy.dispatch",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:275128dd43a7021f715d389badff32ef30fa3820bf1f5e563462ba8281da486c",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_ai_strategy_runtime_pack.ai-strategy.dispatch.python"
+    }
+  ]
+}

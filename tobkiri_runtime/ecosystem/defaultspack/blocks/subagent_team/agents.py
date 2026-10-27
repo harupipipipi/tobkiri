@@ -4,14 +4,14 @@ from domain.subagent_team.service import SubagentTeamService
 from ._helpers import company_id_from, denied, direct_lifecycle_denied, invalid, is_denied, lifecycle_actor, missing_team, normalize_action, require_dict
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner=None):
     if require_dict(input_data) is None:
         return invalid("input_data must be a dict")
     company_id = company_id_from(input_data)
     if not company_id:
         return invalid("company_id is required")
     action = normalize_action(input_data.get("action"), "list")
-    service = SubagentTeamService()
+    service = SubagentTeamService(settings_owner=settings_owner)
     try:
         if action == "list":
             agents = service.list_agents(company_id)
@@ -28,7 +28,11 @@ def run(input_data, context):
                 return error("agent not found: " + str(agent_id), "NOT_FOUND")
             return ok(agent)
         if action in {"create", "upsert"}:
-            blocked = direct_lifecycle_denied(input_data, context if isinstance(context, dict) else {})
+            blocked = direct_lifecycle_denied(
+                input_data,
+                context if isinstance(context, dict) else {},
+                settings_owner=settings_owner,
+            )
             if blocked is not None:
                 return blocked
             agent = input_data.get("agent")
@@ -53,7 +57,11 @@ def run(input_data, context):
                 return missing_team(company_id)
             return ok(updated)
         if action in {"patch", "update"}:
-            blocked = direct_lifecycle_denied(input_data, context if isinstance(context, dict) else {})
+            blocked = direct_lifecycle_denied(
+                input_data,
+                context if isinstance(context, dict) else {},
+                settings_owner=settings_owner,
+            )
             if blocked is not None:
                 return blocked
             agent_id = input_data.get("agent_id") or input_data.get("short_id") or input_data.get("id")
@@ -76,7 +84,11 @@ def run(input_data, context):
                 return error("agent not found: " + str(agent_id), "NOT_FOUND")
             return ok(updated)
         if action in {"archive", "delete", "remove"}:
-            blocked = direct_lifecycle_denied(input_data, context if isinstance(context, dict) else {})
+            blocked = direct_lifecycle_denied(
+                input_data,
+                context if isinstance(context, dict) else {},
+                settings_owner=settings_owner,
+            )
             if blocked is not None:
                 return blocked
             agent_id = input_data.get("agent_id") or input_data.get("short_id") or input_data.get("id")
@@ -92,7 +104,11 @@ def run(input_data, context):
                 return error("agent not found: " + str(agent_id), "NOT_FOUND")
             return ok({"archived": True, "agent": archived})
         if action in {"pause", "resume"}:
-            blocked = direct_lifecycle_denied(input_data, context if isinstance(context, dict) else {})
+            blocked = direct_lifecycle_denied(
+                input_data,
+                context if isinstance(context, dict) else {},
+                settings_owner=settings_owner,
+            )
             if blocked is not None:
                 return blocked
             agent_id = input_data.get("agent_id") or input_data.get("short_id") or input_data.get("id")

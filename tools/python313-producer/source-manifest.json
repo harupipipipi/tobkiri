@@ -1,0 +1,94 @@
+{
+  "status": "source-review-only; not compiled or executed",
+  "componentize_py_commit": "c0949b19d464f5d70bc1051195a3ae0e6a012df9",
+  "cpython_release": "3.13.16",
+  "cpython_source_url": "https://www.python.org/ftp/python/3.13.16/Python-3.13.16.tar.xz",
+  "cpython_archive_sha256": "f4b1bfb3c79b5bb11b8d228a12504163b4c0dab4d679828d8f5f26b6cb6ab35d",
+  "files": {
+    "componentize-py/build.rs": {
+      "sha256": "095f36269e52f90b720c8920b3991b472ea8826333957e390638ab31428cf96c",
+      "role": "patch-input",
+      "patched_sha256": "e1a2f5415faafbe157a19610fdb68d1f1ba7c287ac0168a0daf9451688006806",
+      "url": "https://raw.githubusercontent.com/bytecodealliance/componentize-py/c0949b19d464f5d70bc1051195a3ae0e6a012df9/build.rs"
+    },
+    "componentize-py/src/prelink.rs": {
+      "sha256": "e02e424d67ef38600a514ea476ab07689aa12c2c8f3dfd1afc42edef35cc46c7",
+      "role": "patch-input",
+      "patched_sha256": "76c2e1fdc3d8e96bf6754185b9e7c6de6babe9176d423ebd5f5cd4a5e9b57b2c",
+      "url": "https://raw.githubusercontent.com/bytecodealliance/componentize-py/c0949b19d464f5d70bc1051195a3ae0e6a012df9/src/prelink.rs"
+    },
+    "componentize-py/pyo3-config.txt": {
+      "sha256": "c59c334c4b114c833688f651b8ee5261757461ecdf41698543b81c8e34b1b024",
+      "role": "patch-input",
+      "patched_sha256": "7f7899f3c76242a1917a5f8c47cfb32758241cb9ea0180a2a9e09ad5243adc5a",
+      "url": "https://raw.githubusercontent.com/bytecodealliance/componentize-py/c0949b19d464f5d70bc1051195a3ae0e6a012df9/pyo3-config.txt"
+    },
+    "componentize-py/runtime/pyo3-config-clippy.txt": {
+      "sha256": "2f115527778bd6cd1a9aa33b29f1722a9eb439c78e62d024cef53e53c3ab7817",
+      "role": "patch-input",
+      "patched_sha256": "9cc1451222277ce5f4a1291a18dd11b2e6bdcf88f3701776f00782002442e7a4",
+      "url": "https://raw.githubusercontent.com/bytecodealliance/componentize-py/c0949b19d464f5d70bc1051195a3ae0e6a012df9/runtime/pyo3-config-clippy.txt"
+    },
+    "componentize-py/alt-build.rs": {
+      "sha256": "80226b417d1299dd14bc22ae74bb8e284d2ae9188030a6c5832630d9fde88024",
+      "role": "patch-input",
+      "patched_sha256": "17840973ec0768200b907067b11df9e1fc24e9c10c1d3b1bde93391c0c8f908a",
+      "url": "https://raw.githubusercontent.com/bytecodealliance/componentize-py/c0949b19d464f5d70bc1051195a3ae0e6a012df9/alt-build.rs"
+    },
+    "cpython/configure": {
+      "sha256": "75b8ac90ad67d6ff1975565a9a866e8eb8b0b910a5fd07551e540d21a37e61fc",
+      "role": "patch-input",
+      "patched_sha256": "efc09a45f57bf6932f9651b6902cc041eae2018f7a7873f887a3bfb654cdbc98",
+      "archive_member": "Python-3.13.16/configure"
+    },
+    "cpython/configure.ac": {
+      "sha256": "bef3740fde8fa4937ff2b4dfe8f0570d8bb33bd1a634df5ecfaa8b4f7cb07283",
+      "role": "patch-input",
+      "patched_sha256": "eac8d100e00681ab2fcc60fa66c521b151e804836028da90b83558a6e66bc23b",
+      "archive_member": "Python-3.13.16/configure.ac"
+    },
+    "componentize-py/Cargo.toml": {
+      "sha256": "52e951de8e10ff3d59283986763fbcde9e5992fd6bdc3e56adf48950afd53079",
+      "role": "review-evidence",
+      "url": "https://raw.githubusercontent.com/bytecodealliance/componentize-py/c0949b19d464f5d70bc1051195a3ae0e6a012df9/Cargo.toml"
+    },
+    "componentize-py/Cargo.lock": {
+      "sha256": "de6970a5ccef3fd9f5f2454ed38424dde34ea79c71d210107446099119adb9df",
+      "role": "review-evidence",
+      "url": "https://raw.githubusercontent.com/bytecodealliance/componentize-py/c0949b19d464f5d70bc1051195a3ae0e6a012df9/Cargo.lock"
+    },
+    "cpython/Makefile.pre.in": {
+      "sha256": "c36d7a9f7df3711cf61714a7a8799c4161a4f17dbec93f51a4cefa2808d51d01",
+      "role": "review-evidence",
+      "archive_member": "Python-3.13.16/Makefile.pre.in"
+    },
+    "cpython/Modules/Setup.stdlib.in": {
+      "sha256": "43a04a1d214a99638476ab35261347b337b6c48d614839186f989054ed51cb4a",
+      "role": "review-evidence",
+      "archive_member": "Python-3.13.16/Modules/Setup.stdlib.in"
+    },
+    "cpython/Tools/wasm/config.site-wasm32-wasi": {
+      "sha256": "c5a748adda8e186a2287cf82e02e1167a025838234b46bf7afe7298aa02c9106",
+      "role": "review-evidence",
+      "archive_member": "Python-3.13.16/Tools/wasm/config.site-wasm32-wasi"
+    },
+    "cpython/Tools/wasm/wasi-env": {
+      "sha256": "ff6734cb89ac543f38901e6491baab709f9316513f38df75aa33d8eb3261a8c3",
+      "role": "review-evidence",
+      "archive_member": "Python-3.13.16/Tools/wasm/wasi-env"
+    },
+    "cpython/Lib/socket.py": {
+      "sha256": "382289c864b6a74abf0f411ec254a1dea596a45463746b05a590f9547db19d03",
+      "role": "review-evidence",
+      "archive_member": "Python-3.13.16/Lib/socket.py"
+    }
+  },
+  "patch_sha256": "160cbaa6ceaf8b3707cb0d8d8eec630ea585ee52e08af5360553397638bcdeaa",
+  "reconstruction": {
+    "basis": "Surviving selected source bytes, not recovered output or commit.",
+    "cpython_members_checked_against_archive": true,
+    "componentize_py_provenance": "Recovered selected files attributed to the recorded upstream commit; full upstream tree not independently authenticated in this reconstruction.",
+    "compiled": false,
+    "upstream_code_executed": false
+  }
+}

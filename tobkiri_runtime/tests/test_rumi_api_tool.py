@@ -3,15 +3,13 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-import urllib.error
-from io import BytesIO
 from pathlib import Path
 
 
 RUMI_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_rumi_api_function_subprocess_lists_routes():
+def test_rumi_api_function_subprocess_has_zero_legacy_routes():
     function_dir = RUMI_ROOT / "ecosystem" / "rumi_default_tools_pack" / "functions" / "rumi_api"
     runner = RUMI_ROOT / "core_runtime" / "function_runner.py"
     payload = {
@@ -34,30 +32,83 @@ def test_rumi_api_function_subprocess_lists_routes():
     assert result.returncode == 0, result.stderr or result.stdout
     output = json.loads(result.stdout)
     assert output["status"] == "ok"
-    assert output["data"]["count"] > 0
-    assert any(route["path"] == "/api/company/{company_id}/channels" for route in output["data"]["routes"])
+    assert output["data"]["count"] == 0
+    assert output["data"]["routes"] == []
+    assert output["data"]["dispatch"] == "disabled"
 
 
-def test_rumi_api_http_error_returns_structured_details(monkeypatch):
+class _CapturedSession:
+    profile_id = "profile:defaults"
+    plan_digest = "sha256:" + "1" * 64
+
+    def __init__(self):
+        self.calls = []
+
+    def provider_metadata(self, contract_id):
+        return ({"contract_id": contract_id},)
+
+    def invoke(self, contract_id, operation_id, payload, *, version_range=">=1,<2"):
+        self.calls.append((contract_id, operation_id, payload, version_range))
+        return {"value": "captured"}
+
+
+def test_rumi_api_retires_hidden_generic_dispatch_even_with_captured_session():
     from ecosystem.rumi_default_tools_pack.domain.tool import rumi_api
 
-    def fail_request(method, path, body):
-        del method, path, body
-        raise urllib.error.HTTPError(
-            "http://127.0.0.1:8766/api/does-not-exist",
-            404,
-            "Not Found",
-            {},
-            BytesIO(b'{"error":"missing"}'),
-        )
-
-    monkeypatch.setattr(rumi_api, "_request", fail_request)
-
+    session = _CapturedSession()
     result = rumi_api.run(
-        {"action": "request", "method": "GET", "path": "/api/does-not-exist"},
-        {"_tool_server_approved": True, "principal_id": "defaultspack"},
+        {
+            "action": "dispatch",
+            "contract_id": "company.messaging.v1",
+            "operation_id": "channels.list",
+            "payload": {"workspace_id": "workspace:alpha"},
+        },
+        {
+            "_tool_server_approved": True,
+            "principal_id": "defaultspack",
+            "v4_dispatch_session": session,
+        },
     )
 
-    assert result["status"] == "error"
-    assert result["error"]["code"] == "HTTP_ERROR"
-    assert result["error"]["details"]["status_code"] == 404
+    assert result["error"]["code"] == "INVALID_ACTION"
+    assert session.calls == []
+
+
+def test_rumi_api_rejects_legacy_http_and_hidden_dispatch_without_session():
+    from ecosystem.rumi_default_tools_pack.domain.tool import rumi_api
+
+    legacy = rumi_api.run(
+        {"action": "request", "method": "GET", "path": "/api/health"},
+        {"_tool_server_approved": True, "principal_id": "defaultspack"},
+    )
+    assert legacy["error"]["code"] == "LEGACY_HTTP_DISABLED"
+
+    missing = rumi_api.run(
+        {
+            "action": "dispatch",
+            "contract_id": "company.messaging.v1",
+            "operation_id": "channels.list",
+            "payload": {},
+        },
+        {"_tool_server_approved": True, "principal_id": "defaultspack"},
+    )
+    assert missing["error"]["code"] == "INVALID_ACTION"
+
+
+def test_rumi_api_hidden_dispatch_does_not_inspect_forged_consumer_identity():
+    from ecosystem.rumi_default_tools_pack.domain.tool import rumi_api
+
+    result = rumi_api.run(
+        {
+            "action": "dispatch",
+            "contract_id": "company.messaging.v1",
+            "operation_id": "channels.list",
+            "payload": {"_contract_consumer_pack_id": "forged"},
+        },
+        {
+            "_tool_server_approved": True,
+            "principal_id": "defaultspack",
+            "v4_dispatch_session": _CapturedSession(),
+        },
+    )
+    assert result["error"]["code"] == "INVALID_ACTION"

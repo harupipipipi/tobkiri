@@ -117,9 +117,10 @@ def _cleanup_empty_parents(directory: Path, stop_at: Path) -> None:
         while current != stop:
             if not current.is_dir():
                 break
-            if any(current.iterdir()):
+            try:
+                current.rmdir()
+            except OSError:
                 break
-            current.rmdir()
             current = current.parent
     except OSError:
         pass

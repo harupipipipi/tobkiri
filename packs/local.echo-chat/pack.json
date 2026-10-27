@@ -1,0 +1,214 @@
+{
+  "files": [
+    {
+      "path": "flows/turn.flow.json",
+      "sha256": "sha256:ada55c4933d4d267f13b7ebba4f91b49a1c41eb803d540a54f30cebfb3b19486",
+      "size": 1553
+    },
+    {
+      "path": "wit/assemble-prompt.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/assistant-output.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/conversation-store.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/deps/core.wit",
+      "sha256": "sha256:f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "size": 5732
+    },
+    {
+      "path": "wit/echo-chat.wit",
+      "sha256": "sha256:ef33d57bac75158f1b58cf6c0a7547002bcc90fd4cf6cd671e8fbdff84de1585",
+      "size": 1762
+    },
+    {
+      "path": "wit/generate.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/llm-provider.shape.json",
+      "sha256": "sha256:f2baa4aa314badc0c2ebba4895c79ef3323b9306770ffe2086c3dcf414702f81",
+      "size": 114
+    },
+    {
+      "path": "wit/load-context.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/messages.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/prompt-builder.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/turn-flow.shape.json",
+      "sha256": "sha256:e94852d68aa71ae1984a5141ea757d84e201269650cae7d15fc53eec095d6cf8",
+      "size": 86
+    },
+    {
+      "path": "wit/user-input.shape.json",
+      "sha256": "sha256:a3de3bba17dd35763b60f6b31201d3cfdf870e54cbd361679c7198a65ec947de",
+      "size": 116
+    }
+  ],
+  "flows": [
+    "flows/turn.flow.json"
+  ],
+  "format": "tobkiri.pack/1",
+  "id": "local.echo-chat",
+  "overlays": [],
+  "permissions": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 16,
+      "max_wall_ms": 300000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": []
+    },
+    "ports": [
+      "local.echo-chat.user-input@1.0",
+      "local.echo-chat.conversation-store@1.0",
+      "local.echo-chat.prompt-builder@1.0",
+      "local.echo-chat.llm-provider@1.0",
+      "local.echo-chat.assistant-output@1.0"
+    ],
+    "proc": [],
+    "pty": false,
+    "secrets": [],
+    "storage": {
+      "private": false,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  },
+  "ports": {
+    "consumes": [
+      {
+        "optional": false,
+        "shape": "local.echo-chat.user-input",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.echo-chat.conversation-store",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.echo-chat.prompt-builder",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.echo-chat.llm-provider",
+        "version": "1.0"
+      },
+      {
+        "optional": false,
+        "shape": "local.echo-chat.assistant-output",
+        "version": "1.0"
+      }
+    ],
+    "provides": [],
+    "untyped": []
+  },
+  "publisher_key": null,
+  "runtime": {
+    "kind": "data"
+  },
+  "shapes": [
+    {
+      "kind": "data",
+      "name": "local.echo-chat.messages",
+      "version": "1.0",
+      "wit": "wit/echo-chat.wit"
+    },
+    {
+      "kind": "port",
+      "name": "local.echo-chat.user-input",
+      "version": "1.0",
+      "wit": "wit/echo-chat.wit"
+    },
+    {
+      "kind": "port",
+      "name": "local.echo-chat.conversation-store",
+      "version": "1.0",
+      "wit": "wit/echo-chat.wit"
+    },
+    {
+      "kind": "port",
+      "name": "local.echo-chat.prompt-builder",
+      "version": "1.0",
+      "wit": "wit/echo-chat.wit"
+    },
+    {
+      "kind": "port",
+      "name": "local.echo-chat.llm-provider",
+      "version": "1.0",
+      "wit": "wit/echo-chat.wit"
+    },
+    {
+      "kind": "port",
+      "name": "local.echo-chat.assistant-output",
+      "version": "1.0",
+      "wit": "wit/echo-chat.wit"
+    },
+    {
+      "kind": "flow",
+      "name": "local.echo-chat.turn-flow",
+      "version": "1.0",
+      "wit": "wit/echo-chat.wit"
+    },
+    {
+      "kind": "role",
+      "name": "local.echo-chat.load-context",
+      "version": "1.0",
+      "wit": "wit/echo-chat.wit"
+    },
+    {
+      "kind": "role",
+      "name": "local.echo-chat.assemble-prompt",
+      "version": "1.0",
+      "wit": "wit/echo-chat.wit"
+    },
+    {
+      "kind": "role",
+      "name": "local.echo-chat.generate",
+      "version": "1.0",
+      "wit": "wit/echo-chat.wit"
+    }
+  ],
+  "stores": [],
+  "ui": null,
+  "version": "0.1.0"
+}

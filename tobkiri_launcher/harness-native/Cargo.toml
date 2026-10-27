@@ -1,0 +1,28 @@
+[package]
+name = "tobkiri-harness-native"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+bootstrap-ci = []
+thread-capabilities-ci = []
+
+[dependencies]
+anyhow.workspace = true
+tobkiri-canon.workspace = true
+tobkiri-gate.workspace = true
+tobkiri-wasm.workspace = true
+wasmtime.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+[dev-dependencies]
+tobkiri-core.workspace = true
+base64.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+tokio.workspace = true
+wat.workspace = true

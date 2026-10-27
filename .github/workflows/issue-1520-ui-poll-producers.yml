@@ -1,0 +1,214 @@
+name: Issue 1520 paired inactive poll comparison producers
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-ui-poll-producers.yml'
+      - 'tools/python313-producer/ci_link_trace_source.py'
+      - 'tools/python313-producer/ui_empty_poll_assets.py'
+      - 'tools/python313-producer/poll_producer_pair.py'
+      - 'tools/python313-producer/build_assets.py'
+      - 'tools/python313-producer/build_cli.py'
+      - 'tools/python313-producer/build_native.py'
+      - 'tools/python313-producer/build_wasi.py'
+      - 'tools/python313-producer/build_runtimes.py'
+      - 'tools/python313-producer/asset_inputs.py'
+      - 'tools/python313-producer/ui_clock_source.py'
+      - 'tools/python313-producer/ui_monotonic_source.py'
+      - 'tools/python313-producer/fetch_sdk.py'
+      - 'tools/python313-producer/fetch_ui_poll_libc.py'
+      - 'tools/python313-producer/fetch_ui_poll_tools.py'
+      - 'tools/python313-producer/fetch_validation_tools.py'
+      - 'tools/python313-producer/ui_empty_poll_source.py'
+      - 'tools/python313-producer/ui_poll_wit_workspace.py'
+      - 'tools/python313-producer/stage_sources.py'
+      - 'tools/python313-producer/source-manifest.json'
+      - 'tools/python313-producer/python313-source.patch'
+      - 'tools/python313-producer/packager/**'
+      - 'tools/python313-producer/build_ui_poll_libc.py'
+      - 'tools/python313-producer/build_ui_poll_oracle.py'
+      - 'tools/python313-producer/empty_poll_probe/_tobkiri_poll_oracle.c'
+      - 'tools/python313-producer/empty_poll_probe/inspect_helper.py'
+      - 'tools/python313-producer/tests/test_ci_link_trace_source.py'
+      - 'tools/python313-producer/tests/test_ui_empty_poll_assets.py'
+      - 'tools/python313-producer/tests/test_poll_producer_pair.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-1520-ui-poll-producers-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  paired-producers:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Check source derivation and inactive asset boundaries offline
+        run: python3 -B -m unittest discover -s tools/python313-producer/tests
+      - name: Fetch and stage the exact original producer inputs
+        run: |
+          python3 -B tools/python313-producer/fetch_sources.py \
+            --destination "$RUNNER_TEMP/python313-archives"
+          python3 -B tools/python313-producer/stage_sources.py \
+            --archives "$RUNNER_TEMP/python313-archives" \
+            --cpython-archive "$RUNNER_TEMP/python313-archives/Python-3.13.16.tar.xz" \
+            --destination "$RUNNER_TEMP/python313-source"
+      - name: Restore exact locked registry, compiler and Git inputs
+        run: |
+          python3 -B tools/python313-producer/fetch_registry.py \
+            --source "$RUNNER_TEMP/python313-source" \
+            --destination "$RUNNER_TEMP/python313-registry"
+          python3 -B tools/python313-producer/fetch_toolchain.py \
+            --destination "$RUNNER_TEMP/python313-rust"
+          python3 -B tools/python313-producer/fetch_git.py \
+            --destination "$RUNNER_TEMP/python313-git"
+      - name: Install the existing private build namespace dependency
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap make
+      - name: Build original native and WASI Python with actual target headers
+        run: |
+          python3 -B tools/python313-producer/build_native.py \
+            --source "$RUNNER_TEMP/python313-source" \
+            --destination "$RUNNER_TEMP/python313-native"
+          python3 -B tools/python313-producer/build_wasi.py \
+            --source "$RUNNER_TEMP/python313-source" \
+            --native "$RUNNER_TEMP/python313-native" \
+            --destination "$RUNNER_TEMP/python313-wasi"
+      - name: Build one actual raw C helper for both later components
+        run: |
+          python3 -B tools/python313-producer/fetch_validation_tools.py \
+            --destination "$RUNNER_TEMP/python313-validation"
+          python3 -B tools/python313-producer/build_ui_poll_oracle.py \
+            --source "$RUNNER_TEMP/python313-source" \
+            --wasi "$RUNNER_TEMP/python313-wasi" \
+            --validation "$RUNNER_TEMP/python313-validation" \
+            --destination "$RUNNER_TEMP/ui-poll-c-helper"
+      - name: Build the separate exact-source inactive libc
+        run: |
+          python3 -B tools/python313-producer/fetch_ui_poll_libc.py \
+            --destination "$RUNNER_TEMP/ui-poll-libc-source"
+          python3 -B tools/python313-producer/fetch_ui_poll_tools.py \
+            --destination "$RUNNER_TEMP/ui-poll-build-tools"
+          python3 -B tools/python313-producer/build_ui_poll_libc.py \
+            --source "$RUNNER_TEMP/ui-poll-libc-source" \
+            --tools "$RUNNER_TEMP/ui-poll-build-tools" \
+            --destination "$RUNNER_TEMP/ui-poll-libc-build"
+      - name: Rebuild the shared original frozen Rust runtimes
+        run: >-
+          python3 -B tools/python313-producer/build_runtimes.py
+          --source "$RUNNER_TEMP/python313-source"
+          --registry "$RUNNER_TEMP/python313-registry"
+          --rust "$RUNNER_TEMP/python313-rust"
+          --git "$RUNNER_TEMP/python313-git"
+          --wasi "$RUNNER_TEMP/python313-wasi"
+          --destination "$RUNNER_TEMP/python313-runtimes"
+      - name: Package both explicit comparison asset sets without replacing the SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          for poll_variant in original candidate; do
+            poll_asset_options=()
+            if [ "$poll_variant" = candidate ]; then
+              poll_asset_options+=(--inactive-ui-libc-build "$RUNNER_TEMP/ui-poll-libc-build")
+            fi
+            python3 -B tools/python313-producer/build_assets.py \
+              --source "$RUNNER_TEMP/python313-source" \
+              --registry "$RUNNER_TEMP/python313-registry" \
+              --rust "$RUNNER_TEMP/python313-rust" \
+              --git "$RUNNER_TEMP/python313-git" \
+              --wasi "$RUNNER_TEMP/python313-wasi" \
+              --runtimes "$RUNNER_TEMP/python313-runtimes" \
+              --destination "$RUNNER_TEMP/poll-$poll_variant-assets" \
+              "${poll_asset_options[@]}"
+          done
+      - name: Build both separately identified CLIs with the same observation feature
+        shell: bash
+        run: |
+          set -euo pipefail
+          for poll_variant in original candidate; do
+            poll_cli_options=()
+            if [ "$poll_variant" = candidate ]; then
+              poll_cli_options+=(--allow-inactive-ui-libc)
+            fi
+            python3 -B tools/python313-producer/build_cli.py \
+              --source "$RUNNER_TEMP/python313-source" \
+              --registry "$RUNNER_TEMP/python313-registry" \
+              --rust "$RUNNER_TEMP/python313-rust" \
+              --git "$RUNNER_TEMP/python313-git" \
+              --wasi "$RUNNER_TEMP/python313-wasi" \
+              --runtimes "$RUNNER_TEMP/python313-runtimes" \
+              --assets "$RUNNER_TEMP/poll-$poll_variant-assets" \
+              --destination "$RUNNER_TEMP/poll-$poll_variant-producer" \
+              --allow-ui-wall-clock --allow-ui-monotonic-clock --allow-ci-link-trace \
+              "${poll_cli_options[@]}"
+          done
+      - name: Require exactly one asset difference and unchanged source and lock
+        run: >-
+          python3 -B tools/python313-producer/poll_producer_pair.py
+          --original-assets "$RUNNER_TEMP/poll-original-assets"
+          --candidate-assets "$RUNNER_TEMP/poll-candidate-assets"
+          --original-producer "$RUNNER_TEMP/poll-original-producer"
+          --candidate-producer "$RUNNER_TEMP/poll-candidate-producer"
+          --helper "$RUNNER_TEMP/ui-poll-c-helper"
+          --output "$RUNNER_TEMP/poll-producer-pair.json"
+      - name: Keep the real paired producers and single helper on CI only
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-empty-poll-paired-producers-inactive
+          path: |
+            ${{ runner.temp }}/poll-producer-pair.json
+            ${{ runner.temp }}/poll-original-producer/work/target/release/componentize-py
+            ${{ runner.temp }}/poll-original-producer/cli-build.json
+            ${{ runner.temp }}/poll-original-producer/cli-source.json
+            ${{ runner.temp }}/poll-candidate-producer/work/target/release/componentize-py
+            ${{ runner.temp }}/poll-candidate-producer/cli-build.json
+            ${{ runner.temp }}/poll-candidate-producer/cli-source.json
+            ${{ runner.temp }}/ui-poll-c-helper/work/_tobkiri_poll_oracle.abi3.so
+            ${{ runner.temp }}/ui-poll-c-helper/helper-build.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retain bounded independent build evidence without binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-empty-poll-paired-producer-build-evidence
+          path: |
+            ${{ runner.temp }}/poll-producer-pair.json
+            ${{ runner.temp }}/python313-source/stage-manifest.json
+            ${{ runner.temp }}/python313-native/native-build.json
+            ${{ runner.temp }}/python313-native/build.log
+            ${{ runner.temp }}/python313-wasi/wasi-build.json
+            ${{ runner.temp }}/python313-wasi/wasi-*/*.log
+            ${{ runner.temp }}/python313-runtimes/runtimes-build.json
+            ${{ runner.temp }}/python313-runtimes/*/*.log
+            ${{ runner.temp }}/ui-poll-libc-build/libc-build.json
+            ${{ runner.temp }}/ui-poll-libc-build/supervision/*.json
+            ${{ runner.temp }}/ui-poll-libc-build/supervision/*.log
+            ${{ runner.temp }}/ui-poll-c-helper/helper-build.json
+            ${{ runner.temp }}/ui-poll-c-helper/compile/*.json
+            ${{ runner.temp }}/ui-poll-c-helper/compile/*.log
+            ${{ runner.temp }}/ui-poll-c-helper/inspect/*.json
+            ${{ runner.temp }}/ui-poll-c-helper/inspect/*.log
+            ${{ runner.temp }}/poll-*-assets/assets-build.json
+            ${{ runner.temp }}/poll-*-assets/asset-inputs.json
+            ${{ runner.temp }}/poll-*-producer/cli-build.json
+            ${{ runner.temp }}/poll-*-producer/cli-source.json
+            ${{ runner.temp }}/poll-*-producer/*-cli.sh
+            ${{ runner.temp }}/poll-*-producer/producer-cli/*.json
+            ${{ runner.temp }}/poll-*-producer/producer-cli/*.log
+            ${{ runner.temp }}/poll-*-producer/cli-startup/*.json
+            ${{ runner.temp }}/poll-*-producer/cli-startup/*.log
+          if-no-files-found: warn
+          retention-days: 14

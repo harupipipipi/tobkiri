@@ -1,0 +1,130 @@
+{
+  "source_api_version": "tobkiri.pack-source.v1",
+  "pack_id": "tobkiri_conversation_lifecycle_pack",
+  "version": "1.0.0",
+  "display_name": "Tobkiri Conversation Lifecycle",
+  "kind": "host_extension",
+  "optional": true,
+  "runtime_module": "ecosystem.tobkiri_conversation_lifecycle_pack.runtime.host",
+  "factory_symbol": "HOST_PROVIDER_FACTORY",
+  "implementation_path": "runtime/host.py",
+  "public_dependencies": [
+    {
+      "contract_id": "tobkiri.resource.conversation.v1",
+      "operation_id": "rumi_conversation_store_pack.conversation-resource",
+      "version_range": ">=1.0.0 <2.0.0"
+    },
+    {
+      "contract_id": "tobkiri.action.conversation.manage.v1",
+      "operation_id": "rumi_conversation_store_pack.conversation-manage",
+      "version_range": ">=1.0.0 <2.0.0"
+    },
+    {
+      "contract_id": "tobkiri.resource.schedule.v1",
+      "operation_id": "rumi_schedule_store_pack.schedule-resource",
+      "version_range": ">=1.0.0 <2.0.0"
+    },
+    {
+      "contract_id": "tobkiri.action.schedule.v1",
+      "operation_id": "rumi_schedule_store_pack.schedule-action",
+      "version_range": ">=1.0.0 <2.0.0"
+    }
+  ],
+  "providers": [
+    {
+      "function_id": "tobkiri_conversation_lifecycle_pack.status",
+      "contract_id": "tobkiri.resource.conversation.lifecycle.v1",
+      "operation_id": "tobkiri_conversation_lifecycle_pack.lifecycle-status",
+      "effect_class": "read",
+      "capability": "conversation.lifecycle.read"
+    },
+    {
+      "function_id": "tobkiri_conversation_lifecycle_pack.manage",
+      "contract_id": "tobkiri.action.conversation.lifecycle.v1",
+      "operation_id": "tobkiri_conversation_lifecycle_pack.lifecycle-manage",
+      "effect_class": "write",
+      "capability": "conversation.lifecycle.manage"
+    },
+    {
+      "function_id": "tobkiri_conversation_lifecycle_pack.archive-job",
+      "contract_id": "tobkiri.action.job.adapter.v2",
+      "operation_id": "tobkiri_conversation_lifecycle_pack.archive-job-adapter",
+      "effect_class": "write",
+      "capability": "conversation.lifecycle.archive",
+      "action_ids": [
+        "conversation-lifecycle.archive-due"
+      ],
+      "contract_version": "2.0.0"
+    }
+  ],
+  "source_contract": "tobkiri.conversation-lifecycle.v1",
+  "source_authority": "canonical_conversation_owner_transaction",
+  "completion_delay_ms": 3600000,
+  "wake_interval_ms": 60000,
+  "network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "secrets": [],
+  "approval_policy": "capability_gated",
+  "release_evidence": {
+    "installed": false,
+    "enabled": false,
+    "real_model": false,
+    "computer_use": false
+  },
+  "shared_job_adapter_schemas": {
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "enum": [
+            "describe",
+            "dispatch",
+            "cancel",
+            "status"
+          ]
+        },
+        "profile_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+        },
+        "action_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+        },
+        "payload": {
+          "type": "object"
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+        },
+        "schedule_id": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "lease_id": {
+          "type": "string",
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "operation"
+      ]
+    },
+    "output": {
+      "type": "object"
+    },
+    "error": {
+      "type": "object"
+    }
+  }
+}
