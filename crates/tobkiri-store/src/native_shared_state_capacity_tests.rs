@@ -9,7 +9,9 @@ use tobkiri_gate::{
 };
 
 fn funding(path: &Path) -> (DataRoot, CoreControl, CapacityLedger, NativeSetupAccount) {
-    let root = DataRoot::open(path).unwrap();
+    // Let the unchanged descriptor-relative creator make its own 0700 root;
+    // a runner's existing temporary directory need not satisfy that policy.
+    let root = DataRoot::open(path.canonicalize().unwrap().join("root")).unwrap();
     let control = CoreControl::default();
     let lease = root.native_setup_owner_lease(&control).unwrap();
     let ledger = CapacityLedger::new();
