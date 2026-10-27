@@ -138,10 +138,12 @@ waiter timeout/drop nor operation deadline removes running work. Notification
 has no outcome/success flag or effect authority. Old waiters retain their own
 physical flight after same-key re-registration. Successful-waiter counts retain
 the original non-refcount semantics; timeout/abandonment removes only that
-enrollment. The opt-in candidate's seven actual-root tests include scoped-work
+enrollment. The opt-in candidate's eight actual-root tests include scoped-work
 cleanup during panic, timeout, old/new registration races, foreign actual
 accounts, exact keys/namespaces and admission rollback. These tests are not yet
-executed evidence. Original realm binding, Pack adapter and product integration
+executed evidence. The added eighth case waits out the real original 30 seconds
+and proves that this deadline caps the waiter and refuses new work without
+relabeling unfinished native work as complete. Original realm binding, Pack adapter and product integration
 remain unimplemented.
 
 `FnOnce` itself does not mechanically enforce native Join custody. The scoped

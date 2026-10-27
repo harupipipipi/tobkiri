@@ -7,10 +7,11 @@ use std::sync::{
 };
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
-use tobkiri_gate::{CapacityLedger, CoreControl, NATIVE_SETUP_MEMORY_BYTES};
+use tobkiri_gate::{CapacityLedger, CoreControl, NATIVE_SETUP_MEMORY_BYTES, NATIVE_SETUP_WALL};
 use tobkiri_store::DataRoot;
 
 const ISOLATION: Duration = Duration::from_secs(5);
+type NativeWork = JoinHandle<Result<NativeFlightJoin<u64>, GateError>>;
 
 fn actual() -> (
     tempfile::TempDir,
@@ -41,10 +42,7 @@ fn start(
     flights: &NativeFlights,
     operation: &NativeSetupInvocation,
     key: &'static [u8],
-) -> (
-    mpsc::Sender<()>,
-    JoinHandle<Result<NativeFlightJoin<u64>, GateError>>,
-) {
+) -> (mpsc::Sender<()>, NativeWork) {
     let flights = flights.clone();
     let operation = operation.clone();
     let (ready_tx, ready_rx) = mpsc::channel();
@@ -368,6 +366,59 @@ fn failed_work_keeps_its_actual_outcome_private_and_later_call_runs_again() {
             .unwrap(),
         NativeFlightJoin::Leader(Ok(()))
     ));
+    drop(flights);
+    assert_eq!(account.snapshot().unwrap().charged_bytes, 0);
+}
+
+#[test]
+fn real_original_deadline_caps_wait_but_never_relabels_running_work_as_finished() {
+    let (_temporary, _root, _control, _ledger, account) = actual();
+    let first = account.begin().unwrap();
+    let second = account.begin().unwrap();
+    let deadline = second.deadline().unwrap();
+    let flights = NativeFlights::new(&account).unwrap();
+    let worker_flights = flights.clone();
+    let (ready_tx, ready_rx) = mpsc::channel();
+    let (finish_tx, finish_rx) = mpsc::channel();
+    let work = thread::spawn(move || {
+        worker_flights.run_or_join(&first, b"original-clock", || {
+            ready_tx.send(()).unwrap();
+            // Harness isolation only: pure blocked work has no effects or
+            // extra execution budget. Its custody must outlive caller expiry.
+            finish_rx
+                .recv_timeout(NATIVE_SETUP_WALL + ISOLATION)
+                .unwrap();
+            31
+        })
+    });
+    ready_rx.recv_timeout(ISOLATION).unwrap();
+    let waiting = waiter(
+        flights
+            .run_or_join(&second, b"original-clock", || 99)
+            .unwrap(),
+    );
+    let retained = waiting.flight.clone();
+    // Real elapsed time, without a fake clock or changing the original30s.
+    assert_eq!(
+        waiting.wait_until(deadline + ISOLATION).unwrap(),
+        NativeFlightObservation::TimedOut
+    );
+    assert!(Instant::now() >= deadline);
+    assert_eq!(second.deadline().unwrap(), deadline);
+    assert!(!work.is_finished());
+    assert!(!held(&retained.get().state).completed);
+    assert_eq!(held(&flights.0.get().registry).flights.len(), 1);
+    assert!(matches!(
+        flights.run_or_join(&second, b"late", || 99),
+        Err(GateError::Deadline)
+    ));
+    finish_tx.send(()).unwrap();
+    assert!(matches!(
+        work.join().unwrap().unwrap(),
+        NativeFlightJoin::Leader(31)
+    ));
+    assert!(held(&retained.get().state).completed);
+    drop(retained);
     drop(flights);
     assert_eq!(account.snapshot().unwrap().charged_bytes, 0);
 }
