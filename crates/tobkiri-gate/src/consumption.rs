@@ -36,6 +36,7 @@ struct Progress {
     prepared: Option<PreparedDispatch>,
     handed_off: bool,
     reconciled: bool,
+    storage_commit_attempted: bool,
 }
 struct Slot {
     serial: u64,
@@ -364,6 +365,77 @@ impl UnknownConsumption {
 #[derive(Debug)]
 pub(crate) struct SuccessfulConsumption {
     _record: Record,
+}
+
+impl SuccessfulConsumption {
+    pub(crate) fn commit_storage(
+        &self,
+        expected: &Reservation,
+        deadline: Instant,
+        operation: &mut dyn crate::NativeStorageCommit,
+    ) -> Result<(), GateError> {
+        let state = self._record.get();
+        if !consumed_row_matches(
+            &state.original.reservation,
+            expected,
+            state.requested_expiry,
+        ) || state.original.request != *operation.effect()
+            || state.original.reservation.args != *operation.args_digest()
+        {
+            return Err(GateError::Denied(
+                "storage commit lost original consumption".into(),
+            ));
+        }
+        {
+            let mut progress = state.progress.lock().map_err(|_| GateError::Unavailable)?;
+            if !progress.handed_off || progress.reconciled || progress.storage_commit_attempted {
+                return Err(GateError::Consumed);
+            }
+            progress.storage_commit_attempted = true;
+        }
+        let _scratch = state
+            .cx
+            .control()
+            // Bounded row, decoded identity, authority comparison/canonical
+            // copies and SQLite inspection scratch; original account/cap.
+            .reserve(ControlKind::Frame, 64 * 1024)?;
+        state.cx.check_active()?;
+        if Instant::now() >= deadline {
+            return Err(GateError::Deadline);
+        }
+        let mut entered = false;
+        let mut invoked = false;
+        let mut failed = false;
+        let result = state
+            .original
+            .approvals
+            .with_storage_commit_fence(expected, &mut || {
+                if entered {
+                    failed = true;
+                    return Err(GateError::Consumed);
+                }
+                entered = true;
+                let active = state.cx.check_active().and_then(|()| {
+                    if Instant::now() >= deadline {
+                        Err(GateError::Deadline)
+                    } else {
+                        Ok(())
+                    }
+                });
+                if let Err(error) = active {
+                    failed = true;
+                    return Err(error);
+                }
+                invoked = true;
+                let result = operation.commit();
+                failed |= result.is_err();
+                result
+            });
+        match result {
+            Ok(()) if !invoked || failed => Err(GateError::Unavailable),
+            result => result,
+        }
+    }
 }
 
 /// Explicit bounded recovery over the original process owners. It never

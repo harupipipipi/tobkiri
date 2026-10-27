@@ -24,6 +24,9 @@ use tobkiri_gate::{
     StoreOperation, StoreTier,
 };
 
+mod storage_commit;
+use storage_commit::CommitAdmission;
+
 const MAX_DATABASE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_JOURNAL_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_DATA_VALUE_BYTES: usize = 1024 * 1024;
@@ -1550,6 +1553,7 @@ fn with_native_operation<T>(
     deadline: std::time::Instant,
     fuel_limit: u64,
     autocommit_write: bool,
+    admission: CommitAdmission<'_>,
     run: impl FnOnce() -> Result<T, StoreError>,
 ) -> Result<T, StoreError> {
     let work = Arc::new(NativeSqlWork {
@@ -1584,14 +1588,16 @@ fn with_native_operation<T>(
     };
     let mut commit_started = false;
     let mut commit_succeeded = false;
-    let committed = with_progress_work(database, connection, cx, deadline, &work, || {
-        commit_started = true;
-        with_internal_authorizer(database, connection, || {
-            connection.execute_batch("RELEASE __tobkiri_call;")?;
-            // Latch SQL certainty before authorizer/progress restoration and
-            // delivery checks can fail after the actual commit.
-            commit_succeeded = true;
-            Ok(())
+    let committed = admission.finish(database, connection, || {
+        with_progress_work(database, connection, cx, deadline, &work, || {
+            commit_started = true;
+            with_internal_authorizer(database, connection, || {
+                connection.execute_batch("RELEASE __tobkiri_call;")?;
+                // Latch SQL certainty before authorizer/progress restoration and
+                // delivery checks can fail after the actual commit.
+                commit_succeeded = true;
+                Ok(())
+            })
         })
     });
     if let Err(error) = committed {
@@ -2006,7 +2012,9 @@ impl UserGlobalStore {
             }
         };
         let _task = cx.control().reserve(ControlKind::Task, task_bytes)?;
-        let permit = grant.consume(cx, &self.request(&call), &call.digest()?)?;
+        let effect = self.request(&call);
+        let digest = call.digest()?;
+        let permit = grant.consume(cx, &effect, &digest)?;
         let output_limit = effective_output_limit(cx, &permit)?;
         let connection = self.native.try_lock_connection()?;
         if self.native.active_transaction.load(Ordering::Acquire) {
@@ -2022,6 +2030,7 @@ impl UserGlobalStore {
             permit.deadline(),
             permit.limits().fuel_per_call,
             write,
+            CommitAdmission::consumed(&permit, &effect, &digest),
             || {
                 with_internal_authorizer(&self.native, &connection, || {
                     execute_legacy_native(&connection, &self.name, call, output_limit)
@@ -2087,6 +2096,7 @@ impl UserGlobalStore {
             permit.deadline(),
             permit.limits().fuel_per_call,
             operation.is_write(),
+            CommitAdmission::consumed(&permit, &request_effect, request.digest()),
             || {
                 with_internal_authorizer(&self.native, &connection, || {
                     execute_fixed_native(
@@ -2473,6 +2483,7 @@ impl StoreHandle {
             permit.deadline(),
             permit.limits().fuel_per_call,
             operation.is_write(),
+            CommitAdmission::consumed(&permit, &effect, request.digest()),
             || {
                 with_internal_authorizer(&self.native, &connection, || {
                     execute_fixed_native(
@@ -2630,7 +2641,8 @@ impl StoreHandle {
             }
         };
         let _task = cx.control().reserve(ControlKind::Task, task_bytes)?;
-        let permit = grant.consume(cx, &req, &call.digest()?)?;
+        let digest = call.digest()?;
+        let permit = grant.consume(cx, &req, &digest)?;
         let output_limit = effective_output_limit(cx, &permit)?;
         let connection = self.native.try_lock_connection()?;
         if self.native.active_transaction.load(Ordering::Acquire) {
@@ -2647,6 +2659,7 @@ impl StoreHandle {
             permit.deadline(),
             permit.limits().fuel_per_call,
             write,
+            CommitAdmission::consumed(&permit, &req, &digest),
             || {
                 with_internal_authorizer(&self.native, &connection, || {
                     execute_legacy_native(&connection, &self.name, call, output_limit)
@@ -2780,24 +2793,62 @@ impl NativeSqlTransaction {
                 Ok(connection) => {
                     let mut commit_started = false;
                     let mut commit_succeeded = false;
-                    let result = with_progress_limit(
+                    let mut fence_entered = false;
+                    let result = CommitAdmission::consumed(&permit, &request, &digest).finish(
                         self.target.native(),
                         &connection,
-                        cx,
-                        permit.deadline(),
-                        permit.limits().fuel_per_call,
                         || {
-                            commit_started = true;
-                            with_internal_authorizer(self.target.native(), &connection, || {
-                                connection.execute_batch("COMMIT;")?;
-                                commit_succeeded = connection.is_autocommit();
-                                if !commit_succeeded {
-                                    return Err(self.target.native().commit_unknown());
-                                }
-                                Ok(())
-                            })
+                            fence_entered = true;
+                            with_progress_limit(
+                                self.target.native(),
+                                &connection,
+                                cx,
+                                permit.deadline(),
+                                permit.limits().fuel_per_call,
+                                || {
+                                    commit_started = true;
+                                    with_internal_authorizer(
+                                        self.target.native(),
+                                        &connection,
+                                        || {
+                                            connection.execute_batch("COMMIT;")?;
+                                            commit_succeeded = connection.is_autocommit();
+                                            if !commit_succeeded {
+                                                return Err(self.target.native().commit_unknown());
+                                            }
+                                            Ok(())
+                                        },
+                                    )
+                                },
+                            )
                         },
                     );
+                    if !fence_entered {
+                        let error = result.err().unwrap_or_else(|| {
+                            StoreError::Unavailable("storage fence skipped commit".into())
+                        });
+                        let rollback =
+                            rollback_native_transaction(self.target.native(), &connection);
+                        if rollback.is_ok() {
+                            self.target
+                                .native()
+                                .active_transaction
+                                .store(false, Ordering::Release);
+                            operation.finish(false, Some(crate::SqlTransactionState::RolledBack));
+                        } else {
+                            operation.finish(false, None);
+                        }
+                        drop(connection);
+                        let _ = gate
+                            .record_outcome(
+                                grant_id,
+                                Outcome::Failed {
+                                    code: "storage-sql-commit-fence-refused".into(),
+                                },
+                            )
+                            .await;
+                        return Err(rollback.err().unwrap_or(error));
+                    }
                     (result, commit_started, commit_succeeded)
                 }
             }
@@ -3297,6 +3348,7 @@ async fn execute_store_sql(
             output_budget: &output_budget,
             deadline: permit.deadline(),
             fuel_limit: permit.limits().fuel_per_call,
+            admission: CommitAdmission::consumed(&permit, &request, &digest),
             in_transaction,
         },
     );
@@ -3428,6 +3480,7 @@ struct TypedSqlExecution<'a> {
     output_budget: &'a Arc<dyn AllocationBudget>,
     deadline: std::time::Instant,
     fuel_limit: u64,
+    admission: CommitAdmission<'a>,
     in_transaction: bool,
 }
 
@@ -3447,6 +3500,7 @@ fn execute_authorized_typed_sql(
         output_budget,
         deadline,
         fuel_limit,
+        admission,
         in_transaction,
     } = execution;
     let database = target.native();
@@ -3483,6 +3537,7 @@ fn execute_authorized_typed_sql(
             deadline,
             fuel_limit,
             !fingerprint.readonly && !in_transaction,
+            admission,
             || {
                 step_typed(
                     &connection,
@@ -4068,6 +4123,7 @@ mod native_review_tests {
             cx.deadline(),
             cx.limits().fuel_per_call,
             !fingerprint.readonly,
+            CommitAdmission::RawReviewFixture,
             || {
                 step_typed(
                     connection,
@@ -4362,6 +4418,7 @@ mod native_review_tests {
             cx.deadline(),
             cx.limits().fuel_per_call,
             true,
+            CommitAdmission::RawReviewFixture,
             || {
                 step_typed(
                     &connection,
@@ -4401,6 +4458,7 @@ mod native_review_tests {
             cx.deadline(),
             cx.limits().fuel_per_call,
             true,
+            CommitAdmission::RawReviewFixture,
             || {
                 connection.execute("INSERT OR FAIL INTO payload VALUES(1),(2),(1)", [])?;
                 Ok(())
@@ -4433,6 +4491,7 @@ mod native_review_tests {
             cx.deadline(),
             cx.limits().fuel_per_call,
             true,
+            CommitAdmission::RawReviewFixture,
             || {
                 connection.execute("INSERT INTO payload VALUES(1)", [])?;
                 cx.cancel().cancel();
@@ -4469,6 +4528,7 @@ mod native_review_tests {
             cx.deadline(),
             cx.limits().fuel_per_call,
             true,
+            CommitAdmission::RawReviewFixture,
             || {
                 connection.execute("INSERT INTO payload VALUES(1)", [])?;
                 Ok(())

@@ -16,6 +16,7 @@ mod ingress;
 mod permissions;
 mod process_binding;
 mod protocol;
+mod storage_commit;
 
 pub use admission::*;
 pub use approval_evidence::*;
@@ -32,3 +33,4 @@ pub use ingress::*;
 pub use permissions::*;
 pub use process_binding::*;
 pub use protocol::*;
+pub use storage_commit::NativeStorageCommit;

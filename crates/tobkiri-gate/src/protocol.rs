@@ -846,6 +846,19 @@ pub trait ApprovalStore: Send + Sync {
     ) -> Result<Reservation, GateError> {
         Err(GateError::Unavailable)
     }
+    /// Native DATA commit only. Validate this exact still-consumed reservation
+    /// and current epoch under durable exclusion of every authority writer.
+    /// Invoke `commit` at most once, keeping exclusion through its return.
+    /// The callback is fixed synchronous Store work, never guest/Gate reentry.
+    /// Unsupported stores fail closed. An error after callback entry is not
+    /// evidence that the separate DATA transaction was rolled back.
+    fn with_storage_commit_fence(
+        &self,
+        _expected: &Reservation,
+        _commit: &mut dyn FnMut() -> Result<(), GateError>,
+    ) -> Result<(), GateError> {
+        Err(GateError::Unavailable)
+    }
     /// Read exact consumed/terminal binding and current persisted epoch under
     /// one logically read-only IMMEDIATE transaction, with bounded acquisition.
     /// Call `inspect` at most once, only after validation, while that transaction

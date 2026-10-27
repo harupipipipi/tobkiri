@@ -42,8 +42,10 @@ jobs:
           cargo test --locked -p tobkiri-store --test security
           storage_commit_fence::sql_write_rejects_epoch_revoked_after_consumption
           -- --exact --nocapture
-      - name: Strictly lint the actual storage test
-        run: cargo clippy --locked -p tobkiri-store --test security -- -D warnings
+      - name: Run the complete Store and Gate regression corpus
+        run: cargo test --locked -p tobkiri-store -p tobkiri-gate
+      - name: Strictly lint the actual Store and Gate paths
+        run: cargo clippy --locked -p tobkiri-store -p tobkiri-gate --all-targets -- -D warnings
       - name: Keep bounded test evidence in CI
         if: always()
         uses: actions/upload-artifact@v4

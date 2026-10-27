@@ -94,7 +94,7 @@ impl Approvals {
             batch: Digest::hash(b"uncommitted"),
             members: 0,
         };
-        let mut conn = self.connection.lock().map_err(persistence)?;
+        let mut conn = self.lock_connection()?;
         Self::durable_save_connection(&conn)?;
         let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         batch.check_active()?;
@@ -182,7 +182,7 @@ impl Approvals {
         &self,
         operation: Option<&GrantId>,
     ) -> Result<Option<(Decision, bool)>, StoreError> {
-        let mut conn = self.connection.lock().map_err(persistence)?;
+        let mut conn = self.lock_connection()?;
         let tx = conn.transaction()?;
         deny_faulted(&tx)?;
         let raw: Option<(String, Vec<u8>, bool)> = tx
@@ -301,7 +301,7 @@ impl Approvals {
     }
 
     pub(super) fn settle_profile_save(&self, d: &Decision) -> Result<(), StoreError> {
-        let mut conn = self.connection.lock().map_err(persistence)?;
+        let mut conn = self.lock_connection()?;
         Self::durable_save_connection(&conn)?;
         let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         deny_faulted(&tx)?;

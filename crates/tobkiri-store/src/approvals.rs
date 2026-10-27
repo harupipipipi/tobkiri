@@ -1,6 +1,9 @@
 use crate::{DataRoot, StoreError, canonical, decode};
 use rusqlite::{OptionalExtension, params};
-use std::sync::Mutex;
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 use tobkiri_canon::{
     Digest,
     ids::{PackHash, PackId, ProfileId},
@@ -16,6 +19,7 @@ use tobkiri_gate::{
 mod permission_commit;
 #[path = "profile_save.rs"]
 mod profile_save;
+mod storage_commit;
 pub use profile_save::{ProfileSaveOperation, ProfileSaveReceipt};
 
 const MAX_TERMINAL_BYTES: i64 = 100 * 1024 * 1024;
@@ -40,9 +44,19 @@ mod read_tests;
 pub struct Approvals {
     profile: ProfileId,
     connection: Mutex<rusqlite::Connection>,
+    connection_fault: AtomicBool,
     _directory: crate::vfs::DatabaseGuard,
 }
 impl Approvals {
+    fn lock_connection(
+        &self,
+    ) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>, GateError> {
+        let connection = self.connection.lock().map_err(persistence)?;
+        if self.connection_fault.load(Ordering::Acquire) {
+            return Err(GateError::Unavailable);
+        }
+        Ok(connection)
+    }
     pub fn open(root: &DataRoot, profile: &ProfileId) -> Result<Self, StoreError> {
         Self::open_database(
             root,
@@ -146,11 +160,12 @@ impl Approvals {
         Ok(Self {
             profile: profile.clone(),
             connection: Mutex::new(connection),
+            connection_fault: AtomicBool::new(false),
             _directory: directory,
         })
     }
     pub(crate) fn ensure_no_pending_profile_save(&self) -> Result<(), StoreError> {
-        let conn = self.connection.lock().map_err(persistence)?;
+        let conn = self.lock_connection()?;
         Ok(profile_save::deny_pending(&conn)?)
     }
 
@@ -170,7 +185,7 @@ impl Approvals {
         expected: Option<u64>,
     ) -> Result<u64, StoreError> {
         self.local(profile)?;
-        let mut conn = self.connection.lock().map_err(persistence)?;
+        let mut conn = self.lock_connection()?;
         let tx = conn
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(persistence)?;
@@ -217,6 +232,9 @@ impl Approvals {
             .connection
             .lock()
             .map_err(|_| StoreError::Conflict("approval lock poisoned".into()))?;
+        if self.connection_fault.load(Ordering::Acquire) {
+            return Err(GateError::Unavailable.into());
+        }
         conn.execute("INSERT INTO paired_devices(device,key) VALUES(?1,?2) ON CONFLICT(device) DO UPDATE SET key=excluded.key",params![device,key.as_slice()])?;
         Ok(())
     }
@@ -225,6 +243,9 @@ impl Approvals {
             .connection
             .lock()
             .map_err(|_| StoreError::Conflict("approval lock poisoned".into()))?;
+        if self.connection_fault.load(Ordering::Acquire) {
+            return Err(GateError::Unavailable.into());
+        }
         let mut statement = conn.prepare(
             "SELECT body FROM reservations WHERE state='pending' ORDER BY rowid LIMIT 1000",
         )?;
@@ -238,6 +259,9 @@ impl Approvals {
             .connection
             .lock()
             .map_err(|_| StoreError::Conflict("approval lock poisoned".into()))?;
+        if self.connection_fault.load(Ordering::Acquire) {
+            return Err(GateError::Unavailable.into());
+        }
         Ok(conn
             .query_row(
                 "SELECT state FROM reservations WHERE id=?1",
@@ -252,7 +276,7 @@ impl Approvals {
         expected: Option<&Reservation>,
         public: Option<&PublicWriteApproval>,
     ) -> Result<(), GateError> {
-        let mut conn = self.connection.lock().map_err(persistence)?;
+        let mut conn = self.lock_connection()?;
         let tx = conn
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(persistence)?;
@@ -572,6 +596,9 @@ fn cleanup_snapshot_attempt(
     expected: &Reservation,
     inspect: &mut dyn FnMut(CleanupAuthoritySnapshot<'_>) -> Result<(), GateError>,
 ) -> CleanupAttempt {
+    if approvals.connection_fault.load(Ordering::Acquire) {
+        return CleanupAttempt::Uncertain(GateError::Unavailable);
+    }
     let valid = approvals
         .local(&expected.profile)
         .and_then(|()| validate_reservation_identity(expected))
@@ -600,6 +627,9 @@ fn cleanup_snapshot_attempt(
             return CleanupAttempt::Uncertain(persistence("approval lock poisoned"));
         }
     };
+    if approvals.connection_fault.load(Ordering::Acquire) {
+        return CleanupAttempt::Uncertain(GateError::Unavailable);
+    }
     let previous_ms = match conn
         .pragma_query_value(None, "busy_timeout", |row| crate::sql_u64(row, 0))
         .map_err(persistence)
@@ -785,9 +815,16 @@ fn deny_faulted(conn: &rusqlite::Connection) -> Result<(), GateError> {
     }
 }
 impl ApprovalStore for Approvals {
+    fn with_storage_commit_fence(
+        &self,
+        expected: &Reservation,
+        commit: &mut dyn FnMut() -> Result<(), GateError>,
+    ) -> Result<(), GateError> {
+        storage_commit::commit_fenced(self, expected, commit)
+    }
     fn admission_status(&self, profile: &ProfileId) -> Result<AdmissionStatus, GateError> {
         self.local(profile)?;
-        let conn = self.connection.lock().map_err(persistence)?;
+        let conn = self.lock_connection()?;
         admitted_status(&conn)
     }
     fn latch_integrity(
@@ -796,12 +833,12 @@ impl ApprovalStore for Approvals {
         code: IntegrityFaultCode,
     ) -> Result<(), GateError> {
         self.local(profile)?;
-        let conn = self.connection.lock().map_err(persistence)?;
+        let conn = self.lock_connection()?;
         latch(&conn, code)
     }
     fn security_epoch(&self, profile: &ProfileId) -> Result<u64, GateError> {
         self.local(profile)?;
-        let conn = self.connection.lock().map_err(persistence)?;
+        let conn = self.lock_connection()?;
         let mut statement = conn
             .prepare_cached("SELECT epoch FROM security_epoch WHERE singleton=1")
             .map_err(persistence)?;
@@ -811,7 +848,7 @@ impl ApprovalStore for Approvals {
     }
     fn advance_security_epoch(&self, profile: &ProfileId) -> Result<u64, GateError> {
         self.local(profile)?;
-        let mut conn = self.connection.lock().map_err(persistence)?;
+        let mut conn = self.lock_connection()?;
         let tx = conn
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(persistence)?;
@@ -841,7 +878,7 @@ impl ApprovalStore for Approvals {
         hash: &PackHash,
     ) -> Result<Option<PermissionSet>, GateError> {
         self.local(profile)?;
-        let conn = self.connection.lock().map_err(persistence)?;
+        let conn = self.lock_connection()?;
         // Both subqueries share this actual SQLite read snapshot. A separate
         // preliminary status read would race another connection's decision.
         let mut statement = conn
@@ -868,7 +905,7 @@ impl ApprovalStore for Approvals {
     ) -> Result<(), GateError> {
         self.local(profile)?;
         let body = canonical(p).map_err(persistence)?;
-        let mut conn = self.connection.lock().map_err(persistence)?;
+        let mut conn = self.lock_connection()?;
         let tx = conn
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(persistence)?;
@@ -884,7 +921,7 @@ impl ApprovalStore for Approvals {
         epoch: u64,
     ) -> Result<Option<PermissionSet>, GateError> {
         self.local(profile)?;
-        let conn = self.connection.lock().map_err(persistence)?;
+        let conn = self.lock_connection()?;
         let mut statement = conn.prepare_cached(
             "SELECT EXISTS(SELECT 1 FROM profile_save_decisions WHERE settled=0),
                     (SELECT body FROM user_approvals WHERE profile_hash=?1 AND revision=?2 AND epoch=?3)",
@@ -912,7 +949,7 @@ impl ApprovalStore for Approvals {
         permissions: &PermissionSet,
     ) -> Result<(), GateError> {
         self.local(profile)?;
-        let mut conn = self.connection.lock().map_err(persistence)?;
+        let mut conn = self.lock_connection()?;
         let tx = conn
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(persistence)?;
@@ -925,7 +962,7 @@ impl ApprovalStore for Approvals {
         // Legacy trusted fixtures use this API. Production Gate always uses
         // reserve_fresh, whose sequence and identity are minted atomically.
         if r.authority.is_some() {
-            let conn = self.connection.lock().map_err(persistence)?;
+            let conn = self.lock_connection()?;
             let reused:bool=conn.query_row("SELECT EXISTS(SELECT 1 FROM reservations WHERE id=?1) OR EXISTS(SELECT 1 FROM terminal_outbox WHERE grant_id=?1)",[r.id.as_str()],|row|row.get(0)).map_err(persistence)?;
             if reused {
                 return Err(GateError::Consumed);
@@ -935,7 +972,7 @@ impl ApprovalStore for Approvals {
             ));
         }
         let result = (|| {
-            let mut conn = self.connection.lock().map_err(persistence)?;
+            let mut conn = self.lock_connection()?;
             let tx = conn
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(persistence)?;
@@ -948,7 +985,7 @@ impl ApprovalStore for Approvals {
     fn reserve_fresh(&self, request: &ReservationRequest) -> Result<Reservation, GateError> {
         self.local(request.profile())?;
         let result = (|| {
-            let mut conn = self.connection.lock().map_err(persistence)?;
+            let mut conn = self.lock_connection()?;
             let tx = conn
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(persistence)?;
@@ -1040,7 +1077,7 @@ impl ApprovalStore for Approvals {
     }
     fn sweep_expired(&self, profile: &ProfileId, now: u64) -> Result<u64, GateError> {
         let changed = self.expire_terminal(profile, now)?.len() as u64;
-        let conn = self.connection.lock().map_err(persistence)?;
+        let conn = self.lock_connection()?;
         conn.execute(
             "DELETE FROM reservations WHERE state='finished' AND expires<?1",
             [now.saturating_sub(86400000).min(i64::MAX as u64) as i64],
@@ -1064,7 +1101,7 @@ impl ApprovalStore for Approvals {
         self.local(&r.profile)?;
         validate_reservation_identity(r)?;
         let result = (|| {
-            let mut conn = self.connection.lock().map_err(persistence)?;
+            let mut conn = self.lock_connection()?;
             let tx = conn
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(persistence)?;
@@ -1099,7 +1136,7 @@ impl ApprovalStore for Approvals {
     fn narrow_consumed(&self, r: &Reservation, deadline: u64) -> Result<Reservation, GateError> {
         self.local(&r.profile)?;
         let result = (|| {
-            let mut conn = self.connection.lock().map_err(persistence)?;
+            let mut conn = self.lock_connection()?;
             let tx = conn
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(persistence)?;
@@ -1166,7 +1203,7 @@ impl ApprovalStore for Approvals {
     fn settle_deadline(&self, r: &Reservation) -> Result<TerminalDelivery, GateError> {
         self.local(&r.profile)?;
         let result = (|| {
-            let mut conn = self.connection.lock().map_err(persistence)?;
+            let mut conn = self.lock_connection()?;
             let tx = conn
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(persistence)?;
@@ -1216,7 +1253,7 @@ impl ApprovalStore for Approvals {
         effect: PermissionEffect<'_>,
     ) -> Result<TerminalDelivery, GateError> {
         let result = (|| {
-            let mut conn = self.connection.lock().map_err(persistence)?;
+            let mut conn = self.lock_connection()?;
             let tx = conn
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(persistence)?;
@@ -1232,7 +1269,7 @@ impl ApprovalStore for Approvals {
     ) -> Result<(), GateError> {
         let result = (|| {
             batch.check_active()?;
-            let mut conn = self.connection.lock().map_err(persistence)?;
+            let mut conn = self.lock_connection()?;
             let tx = conn
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(persistence)?;
@@ -1270,7 +1307,7 @@ impl ApprovalStore for Approvals {
     }
     fn terminal_delivery(&self, id: &GrantId) -> Result<Option<TerminalDelivery>, GateError> {
         let result = (|| {
-            let mut conn = self.connection.lock().map_err(persistence)?;
+            let mut conn = self.lock_connection()?;
             let tx = conn.transaction().map_err(persistence)?;
             let record = Self::terminal(&tx, &self.profile, id)?;
             tx.commit().map_err(persistence)?;
@@ -1284,7 +1321,7 @@ impl ApprovalStore for Approvals {
         outcome: &Outcome,
     ) -> Result<TerminalDelivery, GateError> {
         let result = (|| {
-            let mut conn = self.connection.lock().map_err(persistence)?;
+            let mut conn = self.lock_connection()?;
             let tx = conn
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(persistence)?;
@@ -1337,7 +1374,7 @@ impl ApprovalStore for Approvals {
     }
     fn abandon_terminal(&self, id: &GrantId) -> Result<Option<TerminalDelivery>, GateError> {
         let result = (|| {
-            let mut conn = self.connection.lock().map_err(persistence)?;
+            let mut conn = self.lock_connection()?;
             let tx = conn
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(persistence)?;
@@ -1389,7 +1426,7 @@ impl ApprovalStore for Approvals {
     ) -> Result<Vec<TerminalDecision>, GateError> {
         self.local(profile)?;
         let result = (|| {
-            let mut conn = self.connection.lock().map_err(persistence)?;
+            let mut conn = self.lock_connection()?;
             let tx = conn
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(persistence)?;
@@ -1463,7 +1500,7 @@ impl ApprovalStore for Approvals {
     }
     fn terminal_watermark(&self, profile: &ProfileId) -> Result<u64, GateError> {
         self.local(profile)?;
-        let conn = self.connection.lock().map_err(persistence)?;
+        let conn = self.lock_connection()?;
         conn.query_row(
             "SELECT COALESCE(MAX(rowid),0) FROM terminal_outbox",
             [],
@@ -1482,7 +1519,7 @@ impl ApprovalStore for Approvals {
             return Err(GateError::Limit("terminal delivery batch".into()));
         }
         let result = (|| {
-            let mut conn = self.connection.lock().map_err(persistence)?;
+            let mut conn = self.lock_connection()?;
             let tx = conn
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(persistence)?;
@@ -1522,7 +1559,7 @@ impl ApprovalStore for Approvals {
     }
     fn acknowledge_terminal(&self, event_id: &Digest, event: &AuditEvent) -> Result<(), GateError> {
         let result = (|| {
-            let mut conn = self.connection.lock().map_err(persistence)?;
+            let mut conn = self.lock_connection()?;
             let tx = conn
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(persistence)?;
@@ -1562,7 +1599,7 @@ impl ApprovalStore for Approvals {
         store: &str,
     ) -> Result<bool, GateError> {
         self.local(profile)?;
-        let conn = self.connection.lock().map_err(persistence)?;
+        let conn = self.lock_connection()?;
         conn.query_row(
             "SELECT EXISTS(SELECT 1 FROM public_writers WHERE writer=?1 AND owner=?2 AND store=?3)",
             params![writer.as_str(), owner.as_str(), store],
@@ -1578,7 +1615,7 @@ impl ApprovalStore for Approvals {
         store: &str,
     ) -> Result<(), GateError> {
         self.local(profile)?;
-        let conn = self.connection.lock().map_err(persistence)?;
+        let conn = self.lock_connection()?;
         conn.execute(
             "INSERT OR IGNORE INTO public_writers(writer,owner,store) VALUES(?1,?2,?3)",
             params![writer.as_str(), owner.as_str(), store],
@@ -1592,7 +1629,7 @@ impl ApprovalStore for Approvals {
         device: &str,
     ) -> Result<Option<[u8; 32]>, GateError> {
         self.local(profile)?;
-        let conn = self.connection.lock().map_err(persistence)?;
+        let conn = self.lock_connection()?;
         let key: Option<Vec<u8>> = conn
             .query_row(
                 "SELECT key FROM paired_devices WHERE device=?1",
@@ -1616,7 +1653,7 @@ impl ApprovalStore for Approvals {
         expires_unix_ms: u64,
     ) -> Result<bool, GateError> {
         self.local(profile)?;
-        let mut conn = self.connection.lock().map_err(persistence)?;
+        let mut conn = self.lock_connection()?;
         let tx = conn
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(persistence)?;
