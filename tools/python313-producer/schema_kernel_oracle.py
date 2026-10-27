@@ -69,6 +69,19 @@ def run(source: Path, output: Path) -> None:
             raise ValueError("original protocol source differs: " + name)
     if importlib.metadata.version("jsonschema") != "4.26.0":
         raise ValueError("original locked validator version differs")
+    if any(
+        name == "tobkiri_protocol" or name.startswith("tobkiri_protocol.")
+        for name in sys.modules
+    ):
+        raise ValueError("original protocol was imported before source admission")
+    sys.path.insert(0, str(source))
+    from tobkiri_protocol.canonical import strict_loads
+
+    if (
+        Path(sys.modules["tobkiri_protocol.canonical"].__file__).resolve(strict=True)
+        != source / "tobkiri_protocol/canonical.py"
+    ):
+        raise ValueError("original strict parser escaped the pinned source")
     from jsonschema import Draft202012Validator, exceptions
     from jsonschema_specifications import REGISTRY
 
@@ -148,7 +161,11 @@ def run(source: Path, output: Path) -> None:
             }
         )
         inputs.append(
-            ("original/" + path.name, json.loads(raw), hashlib.sha256(raw).hexdigest())
+            (
+                "original/" + path.name,
+                strict_loads(raw),
+                hashlib.sha256(raw).hexdigest(),
+            )
         )
     if node_digest(inventory) != ORIGINAL_SCHEMA_INVENTORY_SHA256:
         raise ValueError("original complete schema byte inventory differs")
