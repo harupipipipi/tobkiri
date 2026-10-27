@@ -23,20 +23,20 @@ ORIGINAL_SCHEMA_INVENTORY_SHA256 = (
 )
 
 
-def encoded(value: object) -> bytes:
+def encoded(value: object, *, sort_keys: bool = False) -> bytes:
     """Encode reference DATA without losing integer/float/bool distinctions."""
     return json.dumps(
         value,
         ensure_ascii=False,
         allow_nan=False,
-        sort_keys=True,
+        sort_keys=sort_keys,
         separators=(",", ":"),
     ).encode()
 
 
 def node_digest(value: object) -> str:
     """Fingerprint complete related values; this never grants authority."""
-    return hashlib.sha256(encoded(value)).hexdigest()
+    return hashlib.sha256(encoded(value, sort_keys=True)).hexdigest()
 
 
 def at(root: object, path: list) -> object:
@@ -104,6 +104,11 @@ def run(source: Path, output: Path) -> None:
             "absolute_schema_path": list(error.absolute_schema_path),
             "validator": error.validator,
             "validator_value": error.validator_value,
+            "validator_value_is_original_schema_child": (
+                error.schema.get(error.validator) is error.validator_value
+                if isinstance(error.schema, dict) and error.validator in error.schema
+                else None
+            ),
             "instance_sha256": node_digest(error.instance),
             "schema_sha256": node_digest(error.schema),
             "instance_is_original_at_absolute_path": at(original, absolute)
