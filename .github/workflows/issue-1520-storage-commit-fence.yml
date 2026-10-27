@@ -38,10 +38,16 @@ jobs:
       - name: Reject a real cross-connection epoch change after consumption
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/storage-commit-fence.log" --expected-passed 2 --
+          --log "$RUNNER_TEMP/storage-commit-fence.log" --expected-passed 3 --
           cargo test --locked -p tobkiri-store --test security
           storage_commit_fence::
           -- --nocapture
+      - name: Verify actual contention, cross-process exclusion, teardown and replay
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/storage-commit-custody.log" --expected-passed 4 --
+          cargo test --locked -p tobkiri-store --lib storage_commit::tests::
+          -- --nocapture --skip storage_fence_child_epoch_holder
       - name: Run the complete Store and Gate regression corpus
         run: cargo test --locked -p tobkiri-store -p tobkiri-gate
       - name: Check the actual asynchronous Wasm effects consumer
@@ -53,5 +59,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: storage-commit-fence-evidence
-          path: ${{ runner.temp }}/storage-commit-fence.log
+          path: |
+            ${{ runner.temp }}/storage-commit-fence.log
+            ${{ runner.temp }}/storage-commit-custody.log
           retention-days: 7

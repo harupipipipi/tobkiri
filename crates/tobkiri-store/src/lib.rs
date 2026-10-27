@@ -15,6 +15,8 @@ mod profile_snapshot;
 mod quota_vfs;
 mod secure;
 mod sql;
+#[cfg(all(test, unix))]
+mod storage_test_fixture;
 mod tiered;
 mod vault;
 #[cfg(unix)]

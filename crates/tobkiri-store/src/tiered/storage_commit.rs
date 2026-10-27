@@ -1,6 +1,99 @@
 //! The only native adapter for an already claimed physical DATA transaction.
 use super::*;
 
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use crate::storage_test_fixture::{Fixture, sql, sql_statement};
+    use tobkiri_gate::Outcome;
+
+    #[tokio::test]
+    async fn same_consumed_permit_cannot_commit_a_second_actual_data_transaction() {
+        let f = Fixture::new().await;
+        let handle = f.store().await;
+        for text in [
+            "CREATE TABLE replay_count(value INTEGER NOT NULL)",
+            "INSERT INTO replay_count(value) VALUES(0)",
+        ] {
+            sql(&handle, &f.cx, f.gate.clone(), text, false)
+                .await
+                .unwrap();
+        }
+        // A second execution of the same actual SQL must increment again.
+        // No triggers or changes to the production SQLite limits are needed.
+        let (statement, budget) = sql_statement("UPDATE replay_count SET value=value+1");
+        let target = NativeSqlTarget::Profile(handle.clone());
+        let tier = target.current_tier(&f.cx, StoreOperation::SqlRead).unwrap();
+        let args = statement.value().digest_guest(&budget).unwrap();
+        let read_grant = f
+            .gate
+            .authorize(
+                &f.cx,
+                target.request(tier, StoreOperation::SqlRead),
+                args.clone(),
+            )
+            .await
+            .unwrap();
+        let params = owned_sql_params(&statement).unwrap();
+        let policy = Some(crate::SqlResultPolicy::ForbidRows);
+        let fingerprint =
+            classify_typed_sql(&target, &f.cx, &statement, &params, policy, false).unwrap();
+        assert!(!fingerprint.readonly);
+        drop(read_grant);
+        let effect = target.request(tier, StoreOperation::SqlWrite);
+        let grant = f
+            .gate
+            .authorize(&f.cx, effect.clone(), args.clone())
+            .await
+            .unwrap();
+        let permit = grant.consume(&f.cx, &effect, &args).unwrap();
+        f.gate.watch_lease(&f.cx, &permit).unwrap();
+        for replay in [false, true] {
+            let result = execute_authorized_typed_sql(
+                &target,
+                TypedSqlExecution {
+                    cx: &f.cx,
+                    statement: &statement,
+                    params: &params,
+                    expected_fingerprint: &fingerprint,
+                    admitted_tier: tier,
+                    policy,
+                    max_rows: statement.max_rows(),
+                    output_limit: effective_output_limit(&f.cx, &permit).unwrap(),
+                    output_budget: &budget,
+                    deadline: permit.deadline(),
+                    fuel_limit: permit.limits().fuel_per_call,
+                    admission: CommitAdmission::consumed(&permit, &effect, &args),
+                    in_transaction: false,
+                },
+            );
+            if replay {
+                assert!(matches!(
+                    result,
+                    Err(StoreError::Gate(tobkiri_gate::GateError::Consumed))
+                ));
+            } else {
+                result.unwrap();
+            }
+        }
+        {
+            let connection = handle.native.try_lock_connection().unwrap();
+            let count: i64 = connection
+                .query_row("SELECT value FROM replay_count", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(
+                count, 1,
+                "a consumed permit produced another physical effect"
+            );
+            assert!(connection.is_autocommit());
+        }
+        f.gate
+            .record_outcome(permit.id().clone(), Outcome::Succeeded)
+            .await
+            .unwrap();
+    }
+}
+
 pub(super) enum NativeTransactionCommit {
     Refused {
         error: StoreError,

@@ -1,6 +1,10 @@
 //! Read-only durable exclusion around one separately owned native DATA commit.
 use super::*;
 
+#[cfg(all(test, unix))]
+#[path = "storage_commit_tests.rs"]
+mod tests;
+
 struct RestoreBusy<'a> {
     approvals: &'a Approvals,
     connection: &'a rusqlite::Connection,
