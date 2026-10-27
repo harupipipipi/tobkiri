@@ -117,7 +117,8 @@ jobs:
           env = {**os.environ, 'PYTHONPATH': os.pathsep.join(str(p) for p in sorted(packages.iterdir()) if p.is_dir())}
           subprocess.run([sys.executable, '-B', 'tools/python313-producer/bundle_catalog_oracle.py',
                           '--source', str(Path(os.environ['GITHUB_WORKSPACE']) / 'oracle-original/tobkiri_runtime'),
-                          '--output', str(root / 'bundle-cases.json')], env=env, check=True)
+                          '--output', str(root / 'bundle-cases.json'),
+                          '--profile-output', str(root / 'bundle-native-profile.json')], env=env, check=True)
           PYTHON
       - name: Build identical App logic with Native comparison and ordinary Pack wrappers
         run: >-
@@ -144,6 +145,7 @@ jobs:
             ${{ runner.temp }}/bundle/harness-bundle-catalog*/inputs/plan.json
             ${{ runner.temp }}/bundle/harness-bundle-catalog*/inputs/provenance.json
             ${{ runner.temp }}/bundle/harness-bundle-catalog*/build.*
+            ${{ runner.temp }}/bundle-native-profile.json
           retention-days: 7
 
   compare-original-data:
@@ -158,6 +160,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
       - uses: dtolnay/rust-toolchain@1.94.0
       - uses: Swatinem/rust-cache@v2
       - uses: actions/download-artifact@v4
@@ -238,6 +243,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
       - uses: dtolnay/rust-toolchain@1.94.0
         with:
           targets: wasm32-wasip2

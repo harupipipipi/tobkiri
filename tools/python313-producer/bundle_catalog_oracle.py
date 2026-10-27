@@ -6,6 +6,7 @@ installed-artifact admission, filesystem custody, active Profile or GUI proof.
 
 import argparse
 import base64
+import cProfile
 import hashlib
 import importlib
 import json
@@ -38,7 +39,7 @@ def text(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
 
 
-def run(source: Path, output: Path) -> None:
+def run(source: Path, output: Path, profile_output: Path | None = None) -> None:
     """Require authenticated source before invoking its unchanged native loader."""
     if sys.platform != "linux" or os.environ.get("GITHUB_ACTIONS") != "true":
         raise ValueError("bundle catalog oracle is restricted to Linux GitHub Actions")
@@ -52,6 +53,15 @@ def run(source: Path, output: Path) -> None:
         or source in output.parents
     ):
         raise ValueError("physical source and new external JSON output required")
+    if profile_output is not None and (
+        not profile_output.is_absolute()
+        or profile_output.suffix != ".json"
+        or profile_output.parent.resolve(strict=True) != profile_output.parent
+        or os.path.lexists(profile_output)
+        or source in profile_output.parents
+        or profile_output == output
+    ):
+        raise ValueError("new external diagnostic JSON path required")
     for name, expected in SOURCE_HASHES.items():
         path = source / "tobkiri_protocol" / name
         if (
@@ -83,7 +93,47 @@ def run(source: Path, output: Path) -> None:
         != source / "tobkiri_protocol/bundle_catalog.py"
     ):
         raise ValueError("original module escaped the pinned checkout")
-    original = module.BundledCatalog.load(root)
+    if profile_output is None:
+        original = module.BundledCatalog.load(root)
+    else:
+        profiler = cProfile.Profile()
+        original = profiler.runcall(module.BundledCatalog.load, root)
+        stats = []
+        for item in sorted(
+            profiler.getstats(), key=lambda row: row.totaltime, reverse=True
+        )[:30]:
+            code = item.code
+            stats.append(
+                {
+                    "function": code if isinstance(code, str) else code.co_name,
+                    "file": None if isinstance(code, str) else code.co_filename,
+                    "line": None if isinstance(code, str) else code.co_firstlineno,
+                    "calls": item.callcount,
+                    "recursive_calls": item.reccallcount,
+                    "internal_seconds": item.inlinetime,
+                    "cumulative_seconds": item.totaltime,
+                }
+            )
+        diagnostic = (
+            json.dumps(
+                {
+                    "format": "tobkiri.bundle-cold-native-profile/1",
+                    "oracle_commit": ORACLE_COMMIT,
+                    "cold_original_native_loader": True,
+                    "proof_scope": "bottleneck selection only; not Wasm performance or semantic acceptance",
+                    "functions_by_cumulative_time": stats,
+                },
+                ensure_ascii=False,
+                allow_nan=False,
+                indent=2,
+            )
+            + "\n"
+        ).encode()
+        if len(diagnostic) > 32 * 1024:
+            raise ValueError("native profile metadata exceeds its diagnostic bound")
+        with profile_output.open("xb") as stream:
+            stream.write(diagnostic)
+        print(diagnostic.decode(), end="")
     entries = json.loads(lock)["entries"]
     if len(entries) != 305:
         raise ValueError("full original inventory was narrowed or changed")
@@ -207,4 +257,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--profile-output", type=Path)
     run(**vars(parser.parse_args()))
