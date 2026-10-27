@@ -146,11 +146,11 @@ impl Fixture {
         profile.bindings = BTreeMap::from([
             (
                 "local.harness-capability-input.requests@1".to_owned(),
-                ENTRY.to_owned(),
+                entry.manifest.id.clone(),
             ),
             (
                 "local.harness-capability-projection-python.projection@1".to_owned(),
-                PROJECTOR.to_owned(),
+                projector.manifest.id.clone(),
             ),
         ]);
         let host = Arc::new(Host::default());
