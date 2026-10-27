@@ -326,10 +326,7 @@ fn callback_panic_waits_for_scoped_cleanup_before_slot_recovery() {
     assert_eq!(jobs.snapshot().unwrap().admitted, 1);
     assert!(!worker.is_finished());
     finish_tx.send(()).unwrap();
-    let panic = worker
-        .join()
-        .err()
-        .expect("original Rust panic must escape");
+    let panic = worker.join().expect_err("original Rust panic must escape");
     assert_eq!(
         panic.downcast_ref::<&str>(),
         Some(&"actual native callback panic")
