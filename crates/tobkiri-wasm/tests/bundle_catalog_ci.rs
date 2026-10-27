@@ -167,7 +167,11 @@ async fn native_bundle_catalog_comparison() -> Result<()> {
                 }],
             )
             .await?;
+        let prepared_fuel = program.fuel_remaining()?;
+        eprintln!("bundle comparison: prepared {name}; fuel_remaining={prepared_fuel}");
         let input = CoreBuffer::copy_from(payload.as_bytes(), owners.graph())?;
+        let input_fuel = program.fuel_remaining()?;
+        eprintln!("bundle comparison: input copied {name}; fuel_remaining={input_fuel}");
         let reply = program
             .invoke(0, Some(&input))
             .await
@@ -204,6 +208,12 @@ async fn native_bundle_catalog_comparison() -> Result<()> {
         );
         let fuel = program.fuel_remaining()?;
         ensure!(fuel <= 2_000_000_000, "fuel raised");
+        ensure!(
+            prepared_fuel >= input_fuel && input_fuel >= fuel,
+            "fuel increased between phases"
+        );
+        observed.last_mut().unwrap()["fuel_after_prepare"] = json!(prepared_fuel);
+        observed.last_mut().unwrap()["fuel_after_input_copy"] = json!(input_fuel);
         observed.last_mut().unwrap()["fuel_remaining"] = json!(fuel);
         drop((input, program, owners));
         tobkiri_wasm::reap_allocation_owners()?;
