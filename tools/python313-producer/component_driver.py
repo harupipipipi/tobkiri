@@ -195,6 +195,12 @@ def run() -> None:
         evidence.update(
             diagnostic_only=True,
             diagnostic_scope='CPython thread/context/termination capability probe',
+            stdlib_initialization={
+                'phase': 'componentize-preinit',
+                'modules': ['contextvars', 'struct', 'sys', 'threading'],
+                'operations_phase': 'guest-runtime',
+                'late_import_parity': False,
+            },
             whole_component_parity=False,
             product_resident_concurrency_cancel_acceptance_claimed=False,
         )

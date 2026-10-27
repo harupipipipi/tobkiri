@@ -23,6 +23,12 @@ THREAD_CAPABILITIES_EXPORTS = [
 THREAD_CAPABILITIES_IMPORTS = [
     'tobkiri-native:thread-capabilities/bindings@1.0.0',
 ]
+THREAD_CAPABILITIES_INITIALIZATION = {
+    'phase': 'componentize-preinit',
+    'modules': ['contextvars', 'struct', 'sys', 'threading'],
+    'operations_phase': 'guest-runtime',
+    'late_import_parity': False,
+}
 THREAD_CAPABILITIES_SOURCES = {
     'python/app.py': 'tools/python313-producer/harness_thread_capabilities/app.py',
     'python/logic.py': 'tools/python313-producer/harness_thread_capabilities/logic.py',
@@ -33,8 +39,8 @@ THREAD_CAPABILITIES_SOURCES = {
     ),
 }
 THREAD_CAPABILITIES_SHA256 = {
-    'python/app.py': 'd26ab3e2562c718193ba0e5c7cdd5d4900029f601ff036624675cb64b2a50050',
-    'python/logic.py': '31be4b54eb998763ad79d8f72013942330626823ff3e46b0bde55951aa4118c7',
+    'python/app.py': 'b6870536dcdcb66e4fd2f3f27ab1226d653d65c27592733ba1e650de8587f12b',
+    'python/logic.py': '6e95802b4b228dfc3bda954b57e26ffaaddd7058d9c5c55688b788858d89a7a4',
     'wit/probe.wit': 'a6325c634c50cc656c3af8679840cb316140137a50b960dff20ba0ef0cb2bc34',
     'wit/deps/native-bindings/bindings.wit': (
         '31dceabd9c113f7a0bef41c6f764c35693225b235afc9b2f201c3e351c2458f2'

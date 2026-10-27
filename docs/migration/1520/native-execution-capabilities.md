@@ -70,7 +70,7 @@ termination, physical cleanup and waiter-drop execution were unconfirmed or
 false. The parent passed because it recorded this limitation and reaped each
 process. This is not thread/context support or rejection evidence.
 
-The next diagnostic adds fixed checkpoints immediately before and after each
+Source `666a3353` adds fixed checkpoints immediately before and after each
 runtime import (`contextvars`, `struct`, `sys`, `threading`). It preserves the
 original producer, runtime imports, pre-init state and limits. A missing next
 checkpoint identifies only an observed boundary, not a Python exception or
@@ -80,6 +80,38 @@ keeps a UTF-8 prefix and reports truncation. It never creates an unbounded
 intermediate string or reads retired guest DATA. Its real storage is prepaid
 alongside the fixed guest record within the unchanged shared payload limit.
 The chain need not include frames and cannot establish a cause it does not show.
+
+The actual `666a3353` consumer
+([job 121968705314](https://github.com/harupipipipi/tobkiri/actions/runs/40437122348/job/121968705314))
+passed its diagnostic job. Both interpreter cases accepted stage 2,
+`import-contextvars`, then trapped before the return checkpoint. The actual
+bounded chain includes `filesystem_preopens_get_directories`,
+`__wasilibc_populate_preopens`, path resolution, `stat`, `posix_do_stat` and
+Python's import machinery. It confirms a filesystem path during this runtime
+import, not a failure of the still-unreached ContextVar/Thread operations.
+Normal preparation/total was 13,741,204/13,772,135 microseconds; waiter-drop was
+13,298,791/13,327,139. Both retained 1,988,947,409 fuel and peaked at 17,877,457
+bytes without renewing the deadline. Retired Store, unconfirmed termination,
+physical cleanup=false and waiter-drop=false remain distinct from parent-side
+process reaping.
+
+### Declared pre-initialized stdlib observation
+
+The next source imports `contextvars`, `struct`, `sys` and `threading` normally
+during componentization. Their original module objects are retained, including
+threading's module-level internal state. ContextVar/Event/worker construction
+and operations remain in the actual guest `run` body. This changes the module
+initialization condition: build receipts and guest records declare
+`phase=componentize-preinit`, `operations_phase=guest-runtime` and
+`late_import_parity=false`. The source-bound consumer requires that exact
+description and does not treat it as an execution success or permission.
+
+No ambient WASI filesystem, replacement stdlib/thread/backend, manufactured
+exception/ID or new native right is added. Source tests bind the module tuple
+to the driver receipt and reject a rehashed change in initialization scope.
+Only capabilities observed under this initialization condition can be claimed.
+Late-import equivalence and original runtime state/custody remain unproved;
+a code-only stdlib loader is deferred pending the actual backend observation.
 
 A separate minimal WAT test now attempts same-task reentry through a
 sync-lift export, sync canonical lower and the same asynchronous owned host
@@ -94,7 +126,13 @@ substitute for the real interpreter diagnostic. The interpreter runner's
 independent-entry field remains false. The `f7bf36d8` constraint failed Rust
 compilation because `CoreControl` was not imported; it yielded no reentry
 observation. The import is corrected and observation now requires a successful
-warm compile gate. No resident implementation is enabled. Before product adoption,
+warm compile gate. The actual `666a3353` constraint then passed: nested
+`Returned`, first call completed, 1,999,999,997 fuel remaining, 45,287
+microseconds total, peak 4,752,537 bytes and original deadline unchanged. The
+process was reaped without forced termination, and the test verified zero
+remaining payload charge. This establishes the memoryless u32 same-task path,
+not dynamic-string/CPython reentry, independent tasks or individual cancellation.
+No resident implementation is enabled. Before product adoption,
 a concrete execution base must prove required same-state concurrent progress,
 original context/thread/wait semantics, individual operation termination without
 corrupting other operations, and continuously funded retained memory.

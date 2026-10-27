@@ -45,8 +45,9 @@ def run(checkpoint: Callable[[str], None]) -> dict:
     variable = None
     try:
         checkpoint(phase)
-        # These are actual guest imports and actual operations, not the
-        # producer process's threads/ContextVars frozen into the snapshot.
+        # These guest calls reuse the explicitly pre-initialized modules.
+        # ContextVar/Event/worker instances below are created here; module
+        # initialization and threading's internal state are recorded separately.
         phase = "import-contextvars"
         checkpoint(phase)
         import contextvars

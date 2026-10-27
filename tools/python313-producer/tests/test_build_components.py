@@ -58,6 +58,26 @@ class ComponentBuildTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 component_inputs.stage_native_thread_capabilities(repo, output)
 
+    def test_thread_initialization_scope_matches_captured_sources_and_build_receipt(self):
+        repo = component_inputs.HERE.parents[1]
+        tree = ast.parse((repo / component_inputs.THREAD_CAPABILITIES_SOURCES['python/app.py']).read_text())
+        declared = next(node.value for node in tree.body
+                        if isinstance(node, ast.Assign)
+                        and any(isinstance(target, ast.Name)
+                                and target.id == '_PREINITIALIZED_STDLIB'
+                                for target in node.targets))
+        self.assertEqual([node.id for node in declared.elts],
+                         component_inputs.THREAD_CAPABILITIES_INITIALIZATION['modules'])
+        for statement in tree.body:
+            if not isinstance(statement, (ast.ClassDef, ast.FunctionDef)):
+                self.assertFalse(any(isinstance(node, ast.Call)
+                                     for node in ast.walk(statement)))
+        driver = ast.parse((component_inputs.HERE / 'component_driver.py').read_text())
+        receipts = [ast.literal_eval(keyword.value)
+                    for node in ast.walk(driver) if isinstance(node, ast.Call)
+                    for keyword in node.keywords if keyword.arg == 'stdlib_initialization']
+        self.assertEqual(receipts, [component_inputs.THREAD_CAPABILITIES_INITIALIZATION])
+
     def test_native_thread_capabilities_rejects_source_change_during_staging(self):
         source_repo = component_inputs.HERE.parents[1]
         with tempfile.TemporaryDirectory() as directory:

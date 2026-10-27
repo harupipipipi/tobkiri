@@ -69,6 +69,9 @@ def bind(artifact: Path, receipt: Path, proof: Path, plan: Path) -> dict[str, st
             or build["target_validation"]["exact_exports"] is not True
             or build["target_validation"]["typed_target_check"] is not True
             or build["diagnostic_only"] is not True
+            or type(build.get("stdlib_initialization")) is not dict
+            or build["stdlib_initialization"] != component_inputs.THREAD_CAPABILITIES_INITIALIZATION
+            or build["stdlib_initialization"]["late_import_parity"] is not False
             or build["whole_component_parity"] is not False
             or build["guest_runtime_identity_verified"] is not False
             or build["product_resident_concurrency_cancel_acceptance_claimed"] is not False

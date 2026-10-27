@@ -27,6 +27,7 @@ class ReceiptTests(unittest.TestCase):
             "whole_component_parity": False, "production_enabled": False,
             "guest_runtime_identity_verified": False,
             "product_resident_concurrency_cancel_acceptance_claimed": False,
+            "stdlib_initialization": component_inputs.THREAD_CAPABILITIES_INITIALIZATION,
             "artifact_sha256": hashlib.sha256(raw).hexdigest(), "artifact_bytes": len(raw),
             "build_plan_sha256": plan_hash,
             "compiler_executable_sha256": "1" * 64, "producer_ci_receipt_sha256": "2" * 64,
@@ -69,6 +70,9 @@ class ReceiptTests(unittest.TestCase):
 
     def test_unstubbed_imports_and_acceptance_claims_are_rejected_even_if_rehashed(self):
         for field, value in [("production_enabled", True), ("whole_component_parity", True),
+                             ("stdlib_initialization", {"phase": "runtime", "late_import_parity": True}),
+                             ("stdlib_initialization", dict(component_inputs.THREAD_CAPABILITIES_INITIALIZATION,
+                                                            late_import_parity=0)),
                              ("options", {"stub_wasi": False, "inherited_environment": True}),
                              ("imports", ["wasi:filesystem/types@0.2.0"])]:
             with self.subTest(field=field), tempfile.TemporaryDirectory() as temporary:
