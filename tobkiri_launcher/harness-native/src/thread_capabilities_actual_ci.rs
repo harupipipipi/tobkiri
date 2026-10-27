@@ -91,15 +91,14 @@ fn checkpoint(context: NativeImportContext<'_, State>) -> Result<NativeImportOpe
     ensure!(input.len() <= 512, "checkpoint exceeds closed bound");
     let value = CoreValue::parse_guest(input.as_bytes(), context.allocation_owners().graph())?;
     ensure!(
-        value.object_len() == Some(2)
-            && value.get_key("format").and_then(|v| v.as_str())
-                == Some("tobkiri.thread-capabilities.checkpoint.v1"),
+        crate::source_metadata::exact(&value, &["format", "stage"]).is_some()
+            && value
+                .get_key("format")
+                .is_some_and(|v| v.as_str() == Some("tobkiri.thread-capabilities.checkpoint.v1")),
         "invalid checkpoint frame"
     );
-    let name = value
-        .get_key("stage")
-        .and_then(|v| v.as_str())
-        .context("stage missing")?;
+    let stage_value = value.get_key("stage").context("stage missing")?;
+    let name = stage_value.as_str().context("stage is not a string")?;
     let stage = u8::try_from(
         STAGES
             .iter()
@@ -329,8 +328,9 @@ async fn child_operation() -> Result<()> {
         );
         let value = CoreValue::parse_guest(bytes, &budget)?;
         ensure!(
-            value.get_key("format").and_then(|v| v.as_str())
-                == Some("tobkiri.thread-capabilities.observation.v1"),
+            value
+                .get_key("format")
+                .is_some_and(|v| v.as_str() == Some("tobkiri.thread-capabilities.observation.v1")),
             "wrong observation frame"
         );
         confirmed = value
@@ -342,8 +342,7 @@ async fn child_operation() -> Result<()> {
         } else if value
             .get_key("failure")
             .and_then(|v| v.get_key("stage"))
-            .and_then(|v| v.as_str())
-            == Some("thread-start")
+            .is_some_and(|v| v.as_str() == Some("thread-start"))
         {
             "start-refused-termination-unconfirmed"
         } else {

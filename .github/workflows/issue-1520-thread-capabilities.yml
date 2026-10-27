@@ -12,6 +12,7 @@ on:
       - 'tools/python313-producer/component_driver.py'
       - 'tobkiri_launcher/harness-native/**'
       - 'crates/tobkiri-wasm/**'
+      - 'tools/quality/run_isolated_diagnostic.py'
       - 'Cargo.lock'
   workflow_dispatch:
 
@@ -41,6 +42,8 @@ jobs:
         run: |
           python3 -B tools/python313-producer/tests/test_build_components.py
           python3 -B tools/python313-producer/tests/test_thread_capabilities_ci_inputs.py
+          python3 -B tools/quality/test_isolated_diagnostic.py
+          python3 -B tools/quality/test_thread_capabilities_workflow.py
       - name: Authenticate the same successful interpreter producer
         env:
           GH_TOKEN: ${{ github.token }}
@@ -130,8 +133,21 @@ jobs:
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/thread-capabilities.log" --expected-passed 1 --
-          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          cargo test --locked -p tobkiri-harness-native --features thread-capabilities-ci --lib
           thread_capabilities_actual_ci::actual_thread_capabilities_in_isolated_processes
+          -- --exact --ignored --nocapture
+      - name: Compile the separate canonical ABI constraint test
+        if: ${{ !cancelled() && steps.platform.conclusion == 'success' }}
+        run: cargo test --locked -p tobkiri-wasm --lib --no-run
+      - name: Observe same-task sync-lift reentry without changing the safe API
+        if: ${{ !cancelled() && steps.platform.conclusion == 'success' }}
+        env:
+          TOBKIRI_TEST_SYNC_REENTRY_CI: '1'
+        run: >-
+          python3 -B tools/quality/run_isolated_diagnostic.py
+          --log "$RUNNER_TEMP/sync-reentry-constraint.log" --
+          cargo test --locked -p tobkiri-wasm --lib
+          native_setup_store::sync_reentry_ci::actual_same_task_sync_lift_reentry_constraint
           -- --exact --ignored --nocapture
       - name: Retain observed limitations without claiming product acceptance
         if: always()
@@ -141,4 +157,5 @@ jobs:
           path: |
             ${{ runner.temp }}/thread-capabilities-observations.json
             ${{ runner.temp }}/thread-capabilities.log*
+            ${{ runner.temp }}/sync-reentry-constraint.log*
           if-no-files-found: warn

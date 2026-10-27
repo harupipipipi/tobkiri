@@ -19,6 +19,9 @@ const FUEL: u64 = 2_000_000_000;
 const TABLE_ELEMENTS: usize = 65_536;
 const PHYSICAL_METADATA_BYTES: u64 = 1024;
 
+#[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
+#[path = "native_sync_reentry_ci.rs"]
+mod sync_reentry_ci;
 #[cfg(test)]
 #[path = "native_setup_store_tests.rs"]
 mod tests;

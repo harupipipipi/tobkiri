@@ -7,6 +7,7 @@ license.workspace = true
 
 [features]
 bootstrap-ci = []
+thread-capabilities-ci = []
 
 [dependencies]
 anyhow.workspace = true

@@ -52,9 +52,24 @@ with unconfirmed threads is safe.
 
 The workflow and receipts are explicitly diagnostic-only. A passing diagnostic
 job may record an unsupported capability; it does not waive the final migration
-gate. The second-sync-export constraint observation remains unimplemented and
-is explicitly false in the current runner, even though `ping` is available for
-that later test. No resident implementation is enabled. Before product adoption,
+gate. The first diagnostic source (`5f55ce5c`) built its component successfully,
+but its Mac consumer failed Rust compilation before executing the interpreter.
+The diagnostic now has a separate Cargo feature, preserving the genuine whole
+source index requirement for the original bootstrap fixture, and uses the
+actual owned `CoreValue` API. Thread support remains unobserved until that
+consumer executes.
+
+A separate minimal WAT test now attempts same-task reentry through a
+sync-lift export, sync canonical lower and the same asynchronous owned host
+callback pattern. It uses an actual physical funded invocation, the same Engine
+settings and original limits, with no safe-API changes or unsafe Store access.
+Dynamic owned calls avoid this vendor's legacy TypedFunc allocation-refusal
+stub. Nested outcome and the first call's actual completion are recorded
+separately; neither is assumed before execution. A warmed external process-group
+watchdog bounds a pending result without treating a future drop as termination.
+This test is not an independent second task, actual CPython reentry or a
+substitute for the real interpreter diagnostic. The interpreter runner's
+independent-entry field remains false. No resident implementation is enabled. Before product adoption,
 a concrete execution base must prove required same-state concurrent progress,
 original context/thread/wait semantics, individual operation termination without
 corrupting other operations, and continuously funded retained memory.

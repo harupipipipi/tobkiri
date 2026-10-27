@@ -15,7 +15,7 @@ mod source_metadata;
 mod source_resolve;
 #[cfg(all(
     test,
-    feature = "bootstrap-ci",
+    feature = "thread-capabilities-ci",
     target_os = "macos",
     target_arch = "aarch64"
 ))]

@@ -134,7 +134,7 @@ impl<S: BootstrapInputOwner> NativeComponentPreparation<S> {
 impl<S: BootstrapInputOwner> PreparedNativeComponent<S> {
     #[cfg(all(
         test,
-        feature = "bootstrap-ci",
+        feature = "thread-capabilities-ci",
         target_os = "macos",
         target_arch = "aarch64"
     ))]
