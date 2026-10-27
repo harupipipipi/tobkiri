@@ -157,3 +157,25 @@ outside it. No fake Thread API, serial mutex, fresh-Store replacement, renewed
 invocation, whole-Store cancellation or new native-Pack privilege is adopted by
 this document. Product connection stays gated by original behavior and the full
 acceptance scope.
+
+The canonical-runtime/reference search found Thread objects retained and
+observed inside the executor, with integers and Future objects returned to
+production callers. No external production Thread-object/ident transfer was
+found. Regression tests do inspect real Python Thread names/counts using
+`threading.enumerate()`; this is not a license to fabricate Thread objects in a
+translation. External plugins and dynamic reflection remain outside that search.
+
+Context copying is the entire actual Context, not a fixed Host dictionary.
+Constructor-provided Python callbacks can read additional ContextVars. Confirmed
+readers include the Profile snapshot cache, user-data Path and a shared mutable
+timing `_Trace` object. Another Host scope, `BundledHostBaselineRead`, requires
+all three of active state, the same actual ContextVar object and the original
+real thread ident. Copying that scope value to a worker does not make it usable
+there. Whether it is already set at every ordinary RuntimeSurface call remains
+unconfirmed.
+
+Additional anchors: [thread-name regression](../../../tobkiri_runtime/tests/test_runtime_surface_v4.py#L1460),
+[callback constructor](../../../tobkiri_runtime/ecosystem/defaultspack/domain/runtime_surface_v4.py#L2195),
+[Host capture scope](../../../tobkiri_runtime/core_runtime/pack_control_v4.py#L584),
+[timing reader](../../../tobkiri_runtime/core_runtime/profile_operation_timing.py#L139),
+[baseline scope custody](../../../tobkiri_runtime/core_runtime/bundled_host_baseline_v4.py#L409).
