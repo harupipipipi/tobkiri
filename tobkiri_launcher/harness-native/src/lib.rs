@@ -13,6 +13,13 @@ mod preparation;
 mod source_metadata;
 #[cfg(target_os = "macos")]
 mod source_resolve;
+#[cfg(all(
+    test,
+    feature = "bootstrap-ci",
+    target_os = "macos",
+    target_arch = "aarch64"
+))]
+mod thread_capabilities_actual_ci;
 pub use bootstrap_metadata::{
     BootstrapInputOwner, BootstrapModule, BootstrapModuleIndex, BootstrapRoots,
 };

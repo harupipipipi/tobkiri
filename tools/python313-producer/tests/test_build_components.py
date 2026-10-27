@@ -1,6 +1,7 @@
 import ast
 import hashlib
 import json
+import os
 from pathlib import Path
 import stat
 import sys
@@ -18,6 +19,94 @@ import fetch_validation_tools as validation
 
 
 class ComponentBuildTests(unittest.TestCase):
+    def test_native_thread_capabilities_plan_pins_exact_diagnostic_world(self):
+        repo = component_inputs.HERE.parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory).resolve() / 'thread-capabilities'
+            receipt = component_inputs.stage_native_thread_capabilities(repo, output)
+
+            plan = json.loads((output / 'plan.json').read_bytes())
+            self.assertEqual(receipt['files'], inventory(output))
+            self.assertEqual(plan['world'], 'thread-capabilities')
+            self.assertEqual(plan['entrypoint'], 'app')
+            self.assertTrue(plan['stub_wasi'])
+            self.assertEqual(plan['outer_exports'], [
+                'tobkiri-ui:thread-capabilities/probe@1.0.0',
+            ])
+            self.assertEqual(plan['allowed_imports'], [
+                'tobkiri-native:thread-capabilities/bindings@1.0.0',
+            ])
+            self.assertEqual({item['source'] for item in plan['sources']},
+                             set(component_inputs.THREAD_CAPABILITIES_SOURCES))
+            self.assertEqual(plan['sources'], receipt['source_files'])
+            for item in plan['sources']:
+                self.assertEqual(item['sha256'],
+                                 component_inputs.THREAD_CAPABILITIES_SHA256[
+                                     item['source']])
+            probe_wit = (output / 'wit/probe.wit').read_text()
+            bindings_wit = (output / 'wit/deps/native-bindings/bindings.wit').read_text()
+            self.assertIn('package tobkiri-ui:thread-capabilities@1.0.0;', probe_wit)
+            self.assertIn('run: func() -> string;', probe_wit)
+            self.assertIn('ping: func() -> string;', probe_wit)
+            self.assertIn('export probe;', probe_wit)
+            self.assertIn(
+                'package tobkiri-native:thread-capabilities@1.0.0;', bindings_wit,
+            )
+            self.assertIn('inspect: func(payload: string) -> string;', bindings_wit)
+            self.assertEqual(receipt['plan_sha256'], hashlib.sha256(
+                (output / 'plan.json').read_bytes()).hexdigest())
+            with self.assertRaises(FileExistsError):
+                component_inputs.stage_native_thread_capabilities(repo, output)
+
+    def test_native_thread_capabilities_rejects_source_change_during_staging(self):
+        source_repo = component_inputs.HERE.parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            repo = root / 'repo'
+            app_source = repo / component_inputs.THREAD_CAPABILITIES_SOURCES[
+                'python/app.py'
+            ]
+            for staged, source in component_inputs.THREAD_CAPABILITIES_SOURCES.items():
+                path = repo / source
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes((source_repo / source).read_bytes())
+
+            producer_dir = repo / 'tools/python313-producer'
+            original_capture = component_inputs._capture_thread_capabilities_sources
+            calls = 0
+
+            def mutate_after_capture(source_repo):
+                nonlocal calls
+                captured = original_capture(source_repo)
+                calls += 1
+                if calls == 1:
+                    app_source.write_bytes(b'modified app source')
+                return captured
+
+            with patch.object(component_inputs, 'HERE', producer_dir), patch.object(
+                component_inputs,
+                '_capture_thread_capabilities_sources',
+                side_effect=mutate_after_capture,
+            ):
+                with self.assertRaisesRegex(ValueError, 'reviewed pin'):
+                    component_inputs.stage_native_thread_capabilities(
+                        repo, root / 'thread-capabilities',
+                    )
+
+    def test_native_thread_capabilities_selector_is_exclusive(self):
+        with patch.object(build_components.sys, 'platform', 'linux'), patch.dict(
+            os.environ, {'GITHUB_ACTIONS': 'true'},
+        ):
+            with self.assertRaisesRegex(ValueError, 'separate build scopes'):
+                build_components.run(
+                    None,
+                    Path('/producer'),
+                    Path('/validation'),
+                    Path('/destination'),
+                    all_five=True,
+                    native_thread_capabilities=True,
+                )
+
     def test_whole_native_harness_plan_loads_the_real_dispatcher_and_original_sources(self):
         repo = component_inputs.HERE.parents[1]
         original_plans = component_inputs.plans(True)

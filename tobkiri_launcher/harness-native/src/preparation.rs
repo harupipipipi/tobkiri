@@ -132,6 +132,24 @@ impl<S: BootstrapInputOwner> NativeComponentPreparation<S> {
 }
 
 impl<S: BootstrapInputOwner> PreparedNativeComponent<S> {
+    #[cfg(all(
+        test,
+        feature = "bootstrap-ci",
+        target_os = "macos",
+        target_arch = "aarch64"
+    ))]
+    pub(crate) fn into_diagnostic_parts(
+        self,
+    ) -> Result<(WasmEngine, Component, NativeSetupInvocation, S)> {
+        self.preparation.check_live()?;
+        Ok((
+            self.preparation.engine,
+            self.component,
+            self.preparation.invocation,
+            self.preparation.source,
+        ))
+    }
+
     /// Actual observations only; not an initialization success or permission.
     pub fn observation(&self) -> NativePreparationObservation {
         self.observation

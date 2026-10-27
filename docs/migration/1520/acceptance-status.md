@@ -1,21 +1,31 @@
 # Issue #1520 acceptance status
 
-Audit date: 2026-10-18. The 20 items below follow the acceptance list in
-[issue #1520](https://github.com/harupipipipi/tobkiri/issues/1520), fetched on this
-date. The issue is normative; [resource boundaries](resource-boundaries.md)
+Scope rechecked: 2026-10-27. The 20 items below still follow the full acceptance
+list in [issue #1520](https://github.com/harupipipipi/tobkiri/issues/1520).
+The issue is normative; [resource boundaries](resource-boundaries.md)
 record the later implementation decisions. This is a checklist, not a new
 execution receipt or permission to remove legacy code.
 
-The [migration inventory](../../../migration/inventory.json) has **837 units:
-1 `core+vectors`, 836 `todo`**. Only the legacy global-contracts canonical module
-is closed. Source and test links establish where implementation and coverage
+The [migration inventory](../../../migration/inventory.json) has **840 rows:
+1 `core+vectors`, 839 `todo`**. It preserves all 839 original units and adds the
+separated private record helper as an explicit TODO. Only the legacy
+global-contracts canonical module is closed. Source and test links establish
+where implementation and coverage
 live, not that those tests passed on the current tree. An unchecked item means
 this audit does not establish its complete current acceptance, not that all of
 its implementation is missing.
 
-Focused checks after this slice: foundation gate **0 failures**; complete gate
+The original DMG/Setup/Launch/native approval/settings/conversation flow remains
+the product requirement. The native Harness component is still an opt-in
+candidate: its complete original operation corpus, production adoption
+and final GUI/model/provider/API evidence are incomplete. Test-only Profile
+capture, a component build, mechanism replay or provisional inventory target
+does not close these requirements. Keep legacy removal and final acceptance
+blocked by the actual full completion gate, without waiving that gate.
+
+Historical focused checks from the 2026-10-18 slice: foundation gate **0 failures**; complete gate
 **1,044 failures**. Gate regressions **13**, CI-helper regressions **7**, and
-inventory tests **9** passed. Inventory coverage reports 837 units and
+inventory tests **9** passed. That snapshot reported 837 units and
 `deletion_ready: false`. The Pack-specific fixture assertion was moved out of
 host mechanism tests, and inventory/deletion validation now rejects stale
 completed-source digests, omitted current units, and escaping evidence/fixtures.

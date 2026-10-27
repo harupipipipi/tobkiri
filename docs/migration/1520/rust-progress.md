@@ -1,8 +1,21 @@
 # Issue 1520 progress
 
-Latest execution cutoff: **587**. See the [current boundary below](#current-execution-boundary-through-587). Earlier sections retain their historical source and execution boundaries. Current counts: 316 validation records, 16 focused FS records, 1/837 closed and 836 TODO. Later588+ executions are excluded.
+Current migration scope is recorded in [acceptance status](acceptance-status.md)
+and the [inventory](../../../migration/inventory.json): 840 rows, including all
+839 original units and the separated private record helper. One canonical unit
+is closed and 839 rows remain TODO. The complete issue, original GUI flow,
+1B/provider/API requirement and native Python/VM retirement remain incomplete.
+See [the native component boundary](native-harness-path-bridge.md) and
+[PR #1521](https://github.com/harupipipipi/tobkiri/pull/1521) for later source and
+CI evidence; source presence and provisional targets do not prove parity.
 
-Historical boundary through368 (the authoritative current boundary is587):
+The reports below are historical, receipt-bound snapshots. Their final numbered
+execution cutoff is **587**, with 316 validation records, 16 focused FS records
+and the then-current 1/837 closed / 836 TODO census. The exclusion of later
+588+ executions applies to those receipts, not to today's goal or inventory.
+The [587 heading](#current-execution-boundary-through-587) is retained for links.
+
+Historical boundary through368 (the detailed historical boundary continues through587):
 
 The goal remains active. This is a draft checkpoint for review.
 The finalized execution boundary is 368. Published HEAD remains the five-file
@@ -707,6 +720,9 @@ Required tooling fails 46 setup errors because the official fixture requires a c
 Actual census output has multiple correctness findings and is held from Main pending corrective code. Guest audit remains private virtual reconstruction;owned Phase2 is pending,not Main-applied/runtime-proved. Physical Proc/PTY stays Unavailable. Atomic binding,cleanup diagnosis,native Send/truthful Stop,Linux CI and later-source dedicated compiler/runtime acceptance remain open. Floor 5,905,580,032 bytes,1 GiB growth,170 seconds,jobs1 and serial capacity lease remain unchanged.
 
 ## Current execution boundary through 587
+
+This heading and its counts describe the historical 587 snapshot only. They do
+not state the current published source, inventory size or final acceptance.
 
 The goal remains active: **1/837 closed, 836 TODO**. Runtime migration is uncommitted WIP; published HEAD remains `62866f621`. This boundary adds 36 receipt-bound records to the [validation checkpoint](checkpoint-validation-20261015.json), for 316. All previous 280 objects retain their exact bytes, including 49/69/159/209 history. The [focused FS evidence](../../../crates/tobkiri-core/evidence/current-fs-20261015.json) remains 16 records; no new FS runtime scope is inferred. Later 588+ executions are excluded.
 

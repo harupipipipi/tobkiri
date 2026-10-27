@@ -74,6 +74,21 @@ def run() -> None:
     if plan_hash != control['plan_sha256']:
         raise ValueError('recorded component plan changed')
     dependencies = control.get('harness_native_dependencies')
+    thread_capability_diagnostic = control.get('native_thread_capabilities', False)
+    if type(thread_capability_diagnostic) is not bool:
+        raise ValueError('thread-capability diagnostic selection must be a boolean')
+    if thread_capability_diagnostic and (
+        dependencies is not None
+        or plan['entrypoint'] != 'app'
+        or plan['world'] != 'thread-capabilities'
+        or plan['outer_exports'] != [
+            'tobkiri-ui:thread-capabilities/probe@1.0.0'
+        ]
+        or plan['allowed_imports'] != [
+            'tobkiri-native:thread-capabilities/bindings@1.0.0'
+        ]
+    ):
+        raise ValueError('thread-capability diagnostic boundary changed')
     dependency_evidence = None
     if dependencies is not None:
         if (plan['world'] != 'harness-native'
@@ -176,6 +191,13 @@ def run() -> None:
         'world': plan['world'], 'imports': imports, 'exports': exports,
         'artifact_sha256': sdk.sha256(outer), 'artifact_bytes': len(outer),
     }
+    if thread_capability_diagnostic:
+        evidence.update(
+            diagnostic_only=True,
+            diagnostic_scope='CPython thread/context/termination capability probe',
+            whole_component_parity=False,
+            product_resident_concurrency_cancel_acceptance_claimed=False,
+        )
     if dependency_evidence is not None:
         evidence['harness_native_dependencies'] = dependency_evidence
     Path('/work/component.wasm').write_bytes(outer)

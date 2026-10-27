@@ -20,6 +20,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         harness_native: bool = False,
         native_input_stack: bool = False,
         native_input_stack_import_diagnostics: bool = False,
+        native_thread_capabilities: bool = False,
         schema_inputs: Path | None = None, stdlib: Path | None = None,
         rpds: Path | None = None) -> None:
     """Build each exact original Pack separately with no production activation."""
@@ -31,6 +32,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
             harness_native,
             native_input_stack,
             native_input_stack_import_diagnostics,
+            native_thread_capabilities,
     )) > 1:
         raise ValueError('component build selectors are separate build scopes')
     dependency_mode = harness_native_dependencies.selected(
@@ -90,7 +92,11 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
     recipe = destination / 'componentize.sh'
     recipe.write_text('set -eu\n/usr/bin/python3 -I -B /driver.py\n')
     identities[str(recipe)] = fingerprint(recipe)
-    if native_input_stack_import_diagnostics:
+    if native_thread_capabilities:
+        receipt_format = (
+            'tobkiri.python313-native-thread-capabilities-diagnostic-candidate/1'
+        )
+    elif native_input_stack_import_diagnostics:
         receipt_format = (
             'tobkiri.python313-native-input-stack-import-diagnostics-candidate/1'
         )
@@ -112,11 +118,20 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                'driver': identities[str(driver)], 'components': {},
                'guest_runtime_identity_verified': False, 'native_core_replay': False,
                'production_enabled': False, 'historical_binary_identity_claimed': False}
-    if native_input_stack_import_diagnostics:
+    if native_thread_capabilities:
+        receipt.update(
+            diagnostic_only=True,
+            diagnostic_scope='CPython thread/context/termination capability probe',
+            whole_component_parity=False,
+            product_resident_concurrency_cancel_acceptance_claimed=False,
+        )
+    elif native_input_stack_import_diagnostics:
         receipt['diagnostic_only'] = True
         receipt['diagnostic_outcome_must_fail'] = True
     receipt_path = destination / 'components-build.json'
-    if native_input_stack_import_diagnostics:
+    if native_thread_capabilities:
+        component_names = ('harness-thread-capabilities',)
+    elif native_input_stack_import_diagnostics:
         component_names = ('harness-input-stack-import-diagnostics',)
     elif native_input_stack:
         component_names = ('harness-input-stack',)
@@ -132,7 +147,9 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
             output.mkdir(mode=0o700)
             inputs = output / 'inputs'
             plan_receipt = (
-                component_inputs.stage_native_input_stack_import_diagnostics(
+                component_inputs.stage_native_thread_capabilities(repo, inputs)
+                if native_thread_capabilities
+                else component_inputs.stage_native_input_stack_import_diagnostics(
                     repo, inputs
                 )
                 if native_input_stack_import_diagnostics
@@ -157,9 +174,11 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                 'plan_sha256': plan_receipt['plan_sha256'],
                 'retain_generated_bindings': (
                     native_input_stack or native_input_stack_import_diagnostics
-                    or harness_native
+                    or native_thread_capabilities or harness_native
                 ),
             }
+            if native_thread_capabilities:
+                control_data['native_thread_capabilities'] = True
             if dependency_mode:
                 control_data['harness_native_dependencies'] = plan_receipt[
                     'harness_native_dependencies'
@@ -220,6 +239,7 @@ if __name__ == '__main__':
     mode.add_argument('--harness-native', action='store_true')
     mode.add_argument('--native-input-stack', action='store_true')
     mode.add_argument('--native-input-stack-import-diagnostics', action='store_true')
+    mode.add_argument('--native-thread-capabilities', action='store_true')
     for name in ('schema-inputs', 'stdlib', 'rpds'):
         parser.add_argument('--' + name, type=Path)
     for name in ('producer', 'validation', 'destination'):

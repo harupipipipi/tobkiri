@@ -36,7 +36,9 @@ operation. Each later inspection still needs its actual source capability,
 operation policy and physical cleanup. No guest
 Scope, source checksum, lexical path or transport ID supplies authority. Missing
 native imports do not fall back to ambient guest filesystem access or invented
-roots. Whole-component initialization and product integration remain incomplete.
+roots. Actual whole-component initialization and the first three original
+operations now pass as recorded below; the remaining operations and product
+integration are incomplete.
 
 The 8f72 actual component (24,837,771 bytes, SHA256
 `56146382ed1c42b19f720240e3bf0b72a37ad3339a5c7b7ca9e67269d0923604`)
@@ -107,9 +109,22 @@ persistent cache, unsafe deserialization or replacement execution interval.
 Two required Mac preparation tests cover rejected sources, original deadline,
 reservation release and retained source custody. Actual whole-component
 preparation, initialization and methods must still pass within the same limits;
-reduced compile time alone is not acceptance. The change remains unverified
-until that actual consumer runs, and the original production route is still
-unconnected.
+reduced compile time alone is not acceptance. The actual ced1c010f consumer
+([job 121923567223](https://github.com/harupipipipi/tobkiri/actions/runs/40423398577/job/121923567223))
+subsequently passed the entire job: metadata 5, preparation 2, policy 6, original
+init/method case 1 and native-owner transfer 2. The actual component was
+24,867,494 bytes, SHA256
+`89c06ac0ae65215127c299bf4b561e60e0f5ff7daf8335e0135f18d8e1e7e262`.
+Cold preparation took 20,681,046 microseconds with `None`; original init,
+Profile-id and both root getters finished within 22,849,776 microseconds total.
+Peak payload charge was 24,867,494 bytes and remaining fuel was 1,429,453,615.
+The original deadline was unchanged, all seven checkpoints and one inventory
+were validated, and physical cleanup passed. The getters caused two actual
+module resolutions. Their parent-target/final production branch checks are
+still unproved. This is three of the nineteen selected original operations,
+not all Setup methods or the original GUI; the production route is unconnected.
+The a550998 follow-up changes only the separate Desktop test fixture, leaving
+this native preparation/runtime source identical.
 
 Production singleton ownership also remains unresolved. The original callees
 retain issued-origin/class/exception identity, thread/ContextVar custody,

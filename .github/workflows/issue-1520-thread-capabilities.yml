@@ -1,0 +1,144 @@
+name: Issue 1520 diagnostic-only CPython thread and context capabilities
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core, codex/issue-1520-thread-capability-probe]
+    paths:
+      - '.github/workflows/issue-1520-thread-capabilities.yml'
+      - 'tools/python313-producer/harness_thread_capabilities/**'
+      - 'tools/python313-producer/thread_capabilities_ci_inputs.py'
+      - 'tools/python313-producer/build_components.py'
+      - 'tools/python313-producer/component_inputs.py'
+      - 'tools/python313-producer/component_driver.py'
+      - 'tobkiri_launcher/harness-native/**'
+      - 'crates/tobkiri-wasm/**'
+      - 'Cargo.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: issue-1520-thread-capabilities-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-diagnostic:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      PRODUCER_RUN: '39956025119'
+      PRODUCER_HEAD: ae7f83080a36e823ac330342584210243dc38050
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Verify diagnostic source pins and selector isolation
+        run: |
+          python3 -B tools/python313-producer/tests/test_build_components.py
+          python3 -B tools/python313-producer/tests/test_thread_capabilities_ci_inputs.py
+      - name: Authenticate the same successful interpreter producer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" > "$RUNNER_TEMP/thread-producer-run.json"
+          python3 -B - "$RUNNER_TEMP/thread-producer-run.json" "$PRODUCER_HEAD" <<'PY'
+          import json, sys
+          from pathlib import Path
+          run = json.loads(Path(sys.argv[1]).read_bytes())
+          if (run['head_sha'] != sys.argv[2] or run['status'] != 'completed'
+                  or run['conclusion'] != 'success'):
+              raise ValueError('original successful producer differs')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: python313-producer-cli
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PRODUCER_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/thread-producer
+      - name: Restore pinned validation tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          chmod 755 "$RUNNER_TEMP/thread-producer/work/target/release/componentize-py"
+          python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/thread-validation"
+      - name: Build the separate diagnostic with the unchanged runtime recipe
+        run: >-
+          python3 -B tools/python313-producer/build_components.py --native-thread-capabilities
+          --producer "$RUNNER_TEMP/thread-producer" --validation "$RUNNER_TEMP/thread-validation"
+          --destination "$RUNNER_TEMP/thread-candidate"
+      - name: Retain exact code and diagnostic-only receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: thread-capabilities-candidate
+          path: |
+            ${{ runner.temp }}/thread-producer-run.json
+            ${{ runner.temp }}/thread-candidate/components-build.json
+            ${{ runner.temp }}/thread-candidate/harness-thread-capabilities/inputs/
+            ${{ runner.temp }}/thread-candidate/harness-thread-capabilities/build/
+            ${{ runner.temp }}/thread-candidate/harness-thread-capabilities/work/component.wasm
+            ${{ runner.temp }}/thread-candidate/harness-thread-capabilities/work/component.build.json
+            ${{ runner.temp }}/thread-candidate/harness-thread-capabilities/work/generated-bindings/
+          if-no-files-found: error
+
+  actual-diagnostic:
+    needs: build-diagnostic
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-thread-diagnostic
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require the original supported physical owner platform
+        id: platform
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          device="$(df -P "$GITHUB_WORKSPACE" | awk 'NR == 2 {print $1}')"
+          diskutil info "$device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - uses: actions/download-artifact@v4
+        with:
+          name: thread-capabilities-candidate
+          path: ${{ runner.temp }}/thread-built
+      - name: Bind the actual code to its source, producer and WIT
+        run: >-
+          python3 -B tools/python313-producer/thread_capabilities_ci_inputs.py
+          --artifact "$RUNNER_TEMP/thread-built/thread-candidate/harness-thread-capabilities/work/component.wasm"
+          --receipt "$RUNNER_TEMP/thread-built/thread-candidate/components-build.json"
+          --proof "$RUNNER_TEMP/thread-built/thread-candidate/harness-thread-capabilities/work/component.build.json"
+          --plan "$RUNNER_TEMP/thread-built/thread-candidate/harness-thread-capabilities/inputs/plan.json"
+          --github-env "$GITHUB_ENV"
+      - name: Observe actual threads and contexts in separate bounded processes
+        env:
+          TOBKIRI_TEST_THREAD_EVIDENCE: ${{ runner.temp }}/thread-capabilities-observations.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/thread-capabilities.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          thread_capabilities_actual_ci::actual_thread_capabilities_in_isolated_processes
+          -- --exact --ignored --nocapture
+      - name: Retain observed limitations without claiming product acceptance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: actual-thread-capabilities-diagnostic
+          path: |
+            ${{ runner.temp }}/thread-capabilities-observations.json
+            ${{ runner.temp }}/thread-capabilities.log*
+          if-no-files-found: warn
