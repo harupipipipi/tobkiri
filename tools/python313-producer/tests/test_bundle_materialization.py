@@ -95,7 +95,7 @@ class BundleMaterializationTests(unittest.TestCase):
                 for n in ast.walk(run)
             )
         )
-        self.assertIn('captured["bundled-defaults/embedded.json"]', source)
+        self.assertIn('verify_members(proof, source, cases)', source)
         self.assertIn('source["original_bundle_cases"]', source)
 
 

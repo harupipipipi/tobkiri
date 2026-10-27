@@ -1,9 +1,7 @@
-"""Bounded DATA carrier for the original installed-defaults bundle loader."""
+"""Bounded immutable resources for the original installed-defaults reader."""
 
 from __future__ import annotations
 
-import base64
-import binascii
 from dataclasses import dataclass
 import hashlib
 import json
@@ -13,13 +11,11 @@ import sys
 from tobkiri_protocol.bundle_catalog import BundleIntegrityError, BundledCatalog
 from tobkiri_protocol.errors import SchemaValidationError
 
-MAX_CONFIG_BYTES = 4 * 1024 * 1024
+MAX_INDEX_BYTES = 4 * 1024 * 1024
 MAX_SOURCE_BYTES = 4 * 1024 * 1024
 MAX_RESULT_BYTES = 4 * 1024 * 1024
 
-_CONFIG_FIELDS = frozenset({"format", "lock_base64", "blobs", "reads"})
 _READ_FIELDS = frozenset({"index", "path", "reread", "blob"})
-_CONFIG_FORMAT = "tobkiri.bundle-defaults/2"
 
 
 class BundleCatalogError(RuntimeError):
@@ -96,101 +92,14 @@ def _parse_finite_float(token: str) -> float:
     return value
 
 
-def _decode_base64(value: str) -> bytes:
-    """Decode canonical standard Base64 without normalizing its input."""
-    try:
-        encoded = value.encode("ascii", errors="strict")
-        decoded = base64.b64decode(encoded, validate=True)
-    except (UnicodeError, ValueError, binascii.Error):
-        _invalid_request()
-    if base64.b64encode(decoded) != encoded:
-        _invalid_request()
-    return decoded
-
-
-def make_owner(config: str) -> BundleDefaultsOwner:
-    """Validate and retain the exact immutable installed-defaults carrier."""
-    if type(config) is not str:
-        _invalid_request()
-    try:
-        if len(config.encode("utf-8", errors="strict")) > MAX_CONFIG_BYTES:
-            _limit_exceeded("bundle defaults carrier exceeds four MiB")
-        value = json.loads(
-            config,
-            object_pairs_hook=_object_without_duplicates,
-            parse_constant=_reject_nonfinite_number,
-            parse_float=_parse_finite_float,
-        )
-    except BundleCatalogError:
-        raise
-    except (UnicodeError, ValueError, TypeError, OverflowError, RecursionError):
-        _invalid_request()
-
-    if type(value) is not dict or value.keys() != _CONFIG_FIELDS:
-        _invalid_request()
-    if value["format"] != _CONFIG_FORMAT or type(value["format"]) is not str:
-        _invalid_request()
-    if (
-        type(value["lock_base64"]) is not str
-        or type(value["blobs"]) is not list
-        or type(value["reads"]) is not list
-    ):
-        _invalid_request()
-
-    lock_bytes = _decode_base64(value["lock_base64"])
-    source_bytes = len(lock_bytes)
-    if source_bytes > MAX_SOURCE_BYTES:
-        _limit_exceeded("bundle defaults source bytes exceed four MiB")
-
-    blobs: list[bytes] = []
-    unique: set[bytes] = set()
-    for encoded in value["blobs"]:
-        if type(encoded) is not str:
-            _invalid_request()
-        raw = _decode_base64(encoded)
-        source_bytes += len(raw)
-        if source_bytes > MAX_SOURCE_BYTES:
-            _limit_exceeded("bundle defaults source bytes exceed four MiB")
-        if raw in unique:
-            _invalid_request()
-        unique.add(raw)
-        blobs.append(raw)
-
-    reads: list[BundleReadOccurrence] = []
-    referenced: set[int] = set()
-    logical_bytes = len(lock_bytes)
-    for item in value["reads"]:
-        if type(item) is not dict or item.keys() != _READ_FIELDS:
-            _invalid_request()
-        index = item["index"]
-        path = item["path"]
-        reread = item["reread"]
-        ordinal = item["blob"]
-        if (
-            type(index) is not int
-            or index < 0
-            or type(path) is not str
-            or type(reread) is not bool
-            or type(ordinal) is not int
-            or ordinal < 0
-            or ordinal >= len(blobs)
-        ):
-            _invalid_request()
-        raw_bytes = blobs[ordinal]
-        referenced.add(ordinal)
-        logical_bytes += len(raw_bytes)
-        if logical_bytes > MAX_SOURCE_BYTES:
-            _limit_exceeded("bundle defaults logical read bytes exceed four MiB")
-        reads.append(BundleReadOccurrence(index, path, reread, raw_bytes))
-
-    if len(referenced) != len(blobs):
-        _invalid_request()
-
-    return BundleDefaultsOwner(lock_bytes=lock_bytes, reads=tuple(reads))
-
-
 def source_identity(owner: BundleDefaultsOwner) -> dict[str, object]:
     """Describe actual retained source bytes, never authority or a parsed result."""
+    # Sharing is decided by exact bytes. Hash each actual unique byte string
+    # once in this observation; no domain validation result is cached.
+    hashes: dict[bytes, str] = {}
+    for row in owner.reads:
+        if row.raw_bytes not in hashes:
+            hashes[row.raw_bytes] = hashlib.sha256(row.raw_bytes).hexdigest()
     return {
         "format": "tobkiri.bundle-source-bytes/1",
         "lock": {
@@ -203,7 +112,7 @@ def source_identity(owner: BundleDefaultsOwner) -> dict[str, object]:
                 "path": row.path,
                 "reread": row.reread,
                 "bytes": len(row.raw_bytes),
-                "sha256": hashlib.sha256(row.raw_bytes).hexdigest(),
+                "sha256": hashes[row.raw_bytes],
             }
             for row in owner.reads
         ],
@@ -235,8 +144,8 @@ def embedded_owner() -> BundleDefaultsOwner:
         )
     try:
         resource = accessor(module)
-        raw = resource.read_bytes()
-        if len(raw) > MAX_CONFIG_BYTES:
+        raw = (resource / "index.json").read_bytes()
+        if len(raw) > MAX_INDEX_BYTES:
             _limit_exceeded("embedded bundle source exceeds four MiB")
         value = json.loads(
             raw.decode("utf-8", errors="strict"),
@@ -246,18 +155,91 @@ def embedded_owner() -> BundleDefaultsOwner:
         )
         if (
             type(value) is not dict
-            or set(value) != {"format", "carrier", "source_identity"}
-            or value["format"] != "tobkiri.embedded-bundle/1"
+            or set(value) != {"format", "lock", "blobs", "reads", "source_identity"}
+            or value["format"] != "tobkiri.embedded-bundle/2"
+            or type(value["blobs"]) is not list
+            or type(value["reads"]) is not list
         ):
             _invalid_request()
-        owner = make_owner(value["carrier"])
-        if identity_text(source_identity(owner)) != identity_text(
-            value["source_identity"]
-        ):
+
+        def read_member(name, expected):
+            if (
+                type(expected) is not dict
+                or set(expected) != {"bytes", "sha256"}
+                or type(expected["bytes"]) is not int
+                or not 0 <= expected["bytes"] <= MAX_SOURCE_BYTES
+                or type(expected["sha256"]) is not str
+                or len(expected["sha256"]) != 64
+                or any(c not in "0123456789abcdef" for c in expected["sha256"])
+            ):
+                _invalid_request()
+            member = (resource / name).read_bytes()
+            if (
+                len(member) != expected["bytes"]
+                or hashlib.sha256(member).hexdigest() != expected["sha256"]
+            ):
+                _invalid_request()
+            return member
+
+        lock = read_member("lock.json", value["lock"])
+        blobs = []
+        unique = set()
+        owned = len(lock)
+        for ordinal, expected in enumerate(value["blobs"]):
+            member = read_member(f"blobs/{ordinal}.json", expected)
+            owned += len(member)
+            if owned > MAX_SOURCE_BYTES:
+                _limit_exceeded("bundle defaults source bytes exceed four MiB")
+            if member in unique:
+                _invalid_request()
+            unique.add(member)
+            blobs.append(member)
+        reads = []
+        referenced = set()
+        logical = len(lock)
+        actual = []
+        for row in value["reads"]:
+            if (
+                type(row) is not dict
+                or row.keys() != _READ_FIELDS
+                or type(row["index"]) is not int
+                or row["index"] < 0
+                or type(row["path"]) is not str
+                or type(row["reread"]) is not bool
+                or type(row["blob"]) is not int
+                or not 0 <= row["blob"] < len(blobs)
+            ):
+                _invalid_request()
+            ordinal = row["blob"]
+            referenced.add(ordinal)
+            logical += len(blobs[ordinal])
+            if logical > MAX_SOURCE_BYTES:
+                _limit_exceeded("bundle defaults logical read bytes exceed four MiB")
+            reads.append(
+                BundleReadOccurrence(
+                    row["index"], row["path"], row["reread"], blobs[ordinal]
+                )
+            )
+            actual.append(
+                {
+                    "index": row["index"],
+                    "path": row["path"],
+                    "reread": row["reread"],
+                    **value["blobs"][ordinal],
+                }
+            )
+        if len(referenced) != len(blobs):
+            _invalid_request()
+        observed = {
+            "format": "tobkiri.bundle-source-bytes/1",
+            "lock": value["lock"],
+            "reads": actual,
+        }
+        if identity_text(observed) != identity_text(value["source_identity"]):
             raise BundleCatalogError(
                 "invalid-request", "embedded bundle source bytes changed"
             )
-        return BundleDefaultsOwner(owner.lock_bytes, owner.reads, resource)
+        return BundleDefaultsOwner(lock, tuple(reads), resource)
     except BundleCatalogError:
         raise
     except (

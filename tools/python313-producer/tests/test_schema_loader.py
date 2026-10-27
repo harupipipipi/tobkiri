@@ -48,13 +48,13 @@ class CapturedLoaderTests(unittest.TestCase):
     def test_fixed_bundle_source_requires_actual_module_and_same_tree(self):
         with captured({
             "bundle_catalog_adapter.py": b"LOADED = True\n",
-            "bundled-defaults/embedded.json": b'{"source_fixture":true}',
+            "bundled-defaults/index.json": b'{"source_fixture":true}',
         }) as finder:
             module = importlib.import_module("bundle_catalog_adapter")
             resource = module.__loader__._tobkiri_bundle_defaults(module)
             self.assertIs(resource.tree, finder.tree)
             with patch("builtins.open", side_effect=AssertionError("OS fallback")):
-                self.assertEqual(resource.read_bytes(), b'{"source_fixture":true}')
+                self.assertEqual((resource / "index.json").read_bytes(), b'{"source_fixture":true}')
             original = finder.tree
             finder.tree = loader.Tree(dict(original.files))
             with self.assertRaisesRegex(ImportError, "owner"):

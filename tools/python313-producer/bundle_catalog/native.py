@@ -8,7 +8,6 @@ from bundle_catalog_adapter import (
     BundleCatalogError,
     embedded_owner,
     identity_text,
-    make_owner,
     read_catalog,
     source_identity,
 )
@@ -16,11 +15,15 @@ from bundle_catalog_adapter import (
 
 class Projection(wit_world.exports.Projection):
     def project(self, payload: str) -> str:
-        """Read only the original catalog collections from supplied DATA."""
+        """Use the same fixed resource provider and reader as the ordinary Pack."""
         try:
             if payload == "tobkiri.embedded-bundle-identity/1":
                 return identity_text(source_identity(embedded_owner()))
-            return read_catalog(make_owner(payload))
+            if payload == "tobkiri.embedded-bundle-read/1":
+                return read_catalog(embedded_owner())
+            raise BundleCatalogError(
+                "invalid-request", "unknown bundle comparison command"
+            )
         except BundleCatalogError as error:
             code = (
                 ErrorCode.INVALID_REQUEST

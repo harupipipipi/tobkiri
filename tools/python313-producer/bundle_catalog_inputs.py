@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 from build_native import HERE
+from bundle_catalog_resources import resources
 from capability_projection_inputs import runtime_sources
 from fetch_sdk import inventory
 from harness_native_dependencies import MAX_FILE, MAX_TOTAL, _read, compress_sources
@@ -22,6 +23,7 @@ CORE_IMPORTS = [f"tobkiri:core/{name}@1.0.0" for name in
 NATIVE_EXPORT = "tobkiri-ui:capability-projection/projection@1.0.0"
 PACK_EXPORT = "local:harness-bundle-catalog-python/catalog@1.0.0"
 NATIVE_COMPONENT = "harness-bundle-catalog-native"
+DIAGNOSTIC_COMPONENT = "harness-bundle-catalog-reread-native"
 PACK_COMPONENT = "harness-bundle-catalog"
 MAX_SOURCE_FILE = MAX_FILE
 
@@ -57,10 +59,12 @@ def _original_schema_resources(repo: Path) -> tuple[dict[str, bytes], dict[str, 
 
 
 def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
-          stdlib: Path, rpds: Path, *, native: bool, bundle_cases: Path) -> dict:
+          stdlib: Path, rpds: Path, *, native: bool, bundle_cases: Path,
+          diagnostic_reread: bool = False) -> dict:
     """Stage actual source bytes, schemas, and dependencies for one world."""
     if (repo.resolve() != repo or destination.exists()
-            or type(native) is not bool):
+            or type(native) is not bool or type(diagnostic_reread) is not bool
+            or (diagnostic_reread and not native)):
         raise ValueError("new physical source stage and explicit world required")
 
     runtime_files, modules, namespaces = runtime_sources(repo, roots=ROOTS)
@@ -89,14 +93,9 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
             or type(cases.get("payload")) is not str
             or type(cases.get("source_identity")) is not dict):
         raise ValueError("independent pinned original bundle DATA required")
-    embedded = (json.dumps({"format": "tobkiri.embedded-bundle/1",
-                           "carrier": cases["payload"],
-                           "source_identity": cases["source_identity"]},
-                          sort_keys=True, ensure_ascii=False, allow_nan=False,
-                          separators=(",", ":")) + "\n").encode()
-    if len(embedded) > 4 * 1024 * 1024:
-        raise ValueError("embedded source member exceeds original resource bound")
-    add("bundled-defaults/embedded.json", embedded)
+    members, embedded_resources = resources(cases, diagnostic_reread=diagnostic_reread)
+    for name, raw in members.items():
+        add(name, raw)
     for pin in verified["inputs"]:
         native_wheel = pin["role"] == "native-oracle"
         root = schema_inputs / "packages" / (
@@ -149,13 +148,14 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
     ))
     add("app.py", _read_source(HERE / "bundle_catalog/entry.py"))
 
-    component_name = NATIVE_COMPONENT if native else PACK_COMPONENT
+    component_name = (DIAGNOSTIC_COMPONENT if diagnostic_reread
+                      else NATIVE_COMPONENT if native else PACK_COMPONENT)
     source_receipt = {
         "format": "tobkiri.bundle-catalog-source/1",
         "component_name": component_name,
         "original_modules": modules,
         "original_resources": original_resources,
-        "embedded_resource": {"bytes": len(embedded), "sha256": hashlib.sha256(embedded).hexdigest()},
+        "embedded_resources": embedded_resources,
         "embedded_carrier": {"bytes": len(cases["payload"].encode()), "sha256": hashlib.sha256(cases["payload"].encode()).hexdigest()},
         "original_bundle_cases": {"bytes": len(cases_raw), "sha256": hashlib.sha256(cases_raw).hexdigest()},
         "runtime_config_override_used": False,
@@ -239,7 +239,8 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
     }
 
 
-def verify_component(proof: dict, source: dict, *, native: bool) -> None:
+def verify_component(proof: dict, source: dict, *, native: bool,
+                     diagnostic_reread: bool = False) -> None:
     """Require the exact closed source manifest and typed component boundary."""
     expected = [
         {**item, "bytes": source["files"][item["source"]]["bytes"]}
@@ -249,7 +250,10 @@ def verify_component(proof: dict, source: dict, *, native: bool) -> None:
         "tobkiri:core/lifecycle@1.0.0", PACK_EXPORT
     ]
     imports = [] if native else CORE_IMPORTS
-    expected_name = NATIVE_COMPONENT if native else PACK_COMPONENT
+    if type(diagnostic_reread) is not bool or (diagnostic_reread and not native):
+        raise ValueError("explicit valid diagnostic world required")
+    expected_name = (DIAGNOSTIC_COMPONENT if diagnostic_reread
+                     else NATIVE_COMPONENT if native else PACK_COMPONENT)
     if (
         source.get("component_name") != expected_name
         or proof.get("source_manifest") != expected

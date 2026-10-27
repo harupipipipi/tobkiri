@@ -10,6 +10,8 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import bundle_catalog_inputs as inputs
+from bundle_catalog_resources import verify_members
+from test_bundle_catalog_resources import fixture
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -91,19 +93,17 @@ class BundleInputsTests(unittest.TestCase):
                 },
             }
             bundle_cases = root / "bundle-cases.json"
-            bundle_cases.write_text(
-                json.dumps(
-                    {
-                        "format": "tobkiri.bundle-catalog-comparison/1",
-                        "oracle_commit": "54e7da008997a3eb45876cbe18459dba9902cc9d",
-                        "payload": '{"source_only_inert_fixture":true}',
-                        "source_identity": {"source_only_inert_fixture": True},
-                    }
-                )
-            )
-            for native in (True, False):
-                with self.subTest(native=native):
-                    destination = root / ("native" if native else "ordinary")
+            cases = fixture()
+            bundle_cases.write_text(json.dumps(cases))
+            for native, diagnostic in ((True, False), (False, False), (True, True)):
+                with self.subTest(native=native, diagnostic=diagnostic):
+                    destination = root / (
+                        "diagnostic"
+                        if diagnostic
+                        else "native"
+                        if native
+                        else "ordinary"
+                    )
                     record = inputs.stage(
                         ROOT,
                         destination,
@@ -113,22 +113,24 @@ class BundleInputsTests(unittest.TestCase):
                         rpds,
                         native=native,
                         bundle_cases=bundle_cases,
+                        diagnostic_reread=diagnostic,
                     )
                     plan = json.loads((destination / "plan.json").read_bytes())
                     self.assertTrue(plan["stub_wasi"])
                     self.assertEqual(
                         plan["allowed_imports"], [] if native else inputs.CORE_IMPORTS
                     )
-                    embedded = (
-                        destination / "python/bundled-defaults/embedded.json"
-                    ).read_bytes()
-                    self.assertEqual(
-                        record["bundle_catalog"]["embedded_resource"],
-                        {
-                            "bytes": len(embedded),
-                            "sha256": hashlib.sha256(embedded).hexdigest(),
-                        },
-                    )
+                    for name, expected in record["bundle_catalog"][
+                        "embedded_resources"
+                    ]["members"].items():
+                        raw = (destination / "python" / name).read_bytes()
+                        self.assertEqual(
+                            expected,
+                            {
+                                "bytes": len(raw),
+                                "sha256": hashlib.sha256(raw).hexdigest(),
+                            },
+                        )
                     self.assertFalse(
                         record["bundle_catalog"]["runtime_config_override_used"]
                     )
@@ -156,15 +158,27 @@ class BundleInputsTests(unittest.TestCase):
                             "exports": sorted([*plan["outer_exports"], "exports"]),
                         },
                     }
-                    inputs.verify_component(proof, record, native=native)
+                    inputs.verify_component(
+                        proof, record, native=native, diagnostic_reread=diagnostic
+                    )
+                    verify_members(
+                        proof,
+                        record["bundle_catalog"],
+                        cases,
+                        diagnostic_reread=diagnostic,
+                    )
                     changed = copy.deepcopy(proof)
                     changed["source_manifest"][0]["sha256"] = "0" * 64
                     with self.assertRaises(ValueError):
-                        inputs.verify_component(changed, record, native=native)
+                        inputs.verify_component(
+                            changed, record, native=native, diagnostic_reread=diagnostic
+                        )
                     changed = copy.deepcopy(proof)
                     changed["imports"].append("unexpected:host/io@1.0.0")
                     with self.assertRaises(ValueError):
-                        inputs.verify_component(changed, record, native=native)
+                        inputs.verify_component(
+                            changed, record, native=native, diagnostic_reread=diagnostic
+                        )
 
 
 if __name__ == "__main__":

@@ -157,7 +157,8 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         receipt['diagnostic_outcome_must_fail'] = True
     receipt_path = destination / 'components-build.json'
     if bundle_catalog:
-        component_names = ('harness-bundle-catalog-native', 'harness-bundle-catalog')
+        component_names = ('harness-bundle-catalog-native', 'harness-bundle-catalog',
+                           'harness-bundle-catalog-reread-native')
     elif capability_projection:
         component_names = ('harness-capability-projection-native', 'harness-capability-projection')
     elif native_thread_capabilities:
@@ -178,11 +179,14 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
             output.mkdir(mode=0o700)
             inputs = output / 'inputs'
             projection_native = name == 'harness-capability-projection-native'
-            bundle_native = name == 'harness-bundle-catalog-native'
+            bundle_native = name in ('harness-bundle-catalog-native',
+                                    'harness-bundle-catalog-reread-native')
+            bundle_diagnostic = name == 'harness-bundle-catalog-reread-native'
             plan_receipt = (
                 bundle_catalog_inputs.stage(
                     repo, inputs, dependency_inputs, schema_inputs, stdlib, rpds,
                     native=bundle_native, bundle_cases=bundle_cases,
+                    diagnostic_reread=bundle_diagnostic,
                 )
                 if bundle_catalog
                 else capability_projection_inputs.stage(
@@ -251,6 +255,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
             if bundle_catalog:
                 bundle_catalog_inputs.verify_component(
                     proof, plan_receipt, native=bundle_native,
+                    diagnostic_reread=bundle_diagnostic,
                 )
             elif capability_projection:
                 capability_projection_inputs.verify_component(

@@ -13,6 +13,7 @@ from pathlib import Path
 
 from build_native import HERE, fingerprint
 import bundle_catalog_inputs as inputs
+from bundle_catalog_resources import verify_members
 from materialize_capability_projection import (
     canonical,
     identity,
@@ -80,12 +81,7 @@ def run(supplier: Path, input_component: Path, destination: Path) -> None:
     ):
         raise ValueError("embedded defaults differ from the independent original")
     captured = {row["destination"]: row for row in proof["source_manifest"]}
-    if {
-        k: captured["bundled-defaults/embedded.json"][k] for k in ("bytes", "sha256")
-    } != source["embedded_resource"]:
-        raise ValueError(
-            "actual compiled source does not contain the complete defaults"
-        )
+    verify_members(proof, source, cases)
     for member, actual in (
         ("wit/pack.wit", ROOT / inputs.PACK / "wit/pack.wit"),
         (

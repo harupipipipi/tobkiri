@@ -1,7 +1,7 @@
 //! Whole original bundle DATA comparison. No product/OS/Profile authority proof.
 use anyhow::{Context, Result, ensure};
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 use std::{fs::OpenOptions, io::Read, path::PathBuf, sync::Arc};
 use tobkiri_canon::{CoreBuffer, Digest};
 use tobkiri_gate::{CapacityLedger, CoreControl, GateError, NativeSetupLease};
@@ -24,7 +24,6 @@ impl NativeSetupLease for AllocationOnlyFixture {
 struct Original {
     format: String,
     oracle_commit: String,
-    payload: String,
     expected_sha256: String,
     source_identity_sha256: String,
     expected_bytes: usize,
@@ -34,8 +33,6 @@ struct Original {
 }
 #[derive(Deserialize)]
 struct Mutation {
-    occurrence: usize,
-    bytes_base64: String,
     expected_error: String,
 }
 
@@ -74,6 +71,11 @@ async fn native_bundle_catalog_comparison() -> Result<()> {
         "CI only"
     );
     let bytes = input("COMPONENT", 32 * 1024 * 1024)?;
+    let negative_bytes = input("NEGATIVE_COMPONENT", 32 * 1024 * 1024)?;
+    ensure!(
+        Digest::hash(&bytes) != Digest::hash(&negative_bytes),
+        "diagnostic artifact must have its own actual identity"
+    );
     let original: Original = serde_json::from_slice(&input("CASES", 4 * 1024 * 1024)?)?;
     ensure!(
         original.format == "tobkiri.bundle-catalog-comparison/1"
@@ -83,49 +85,30 @@ async fn native_bundle_catalog_comparison() -> Result<()> {
             && original.expected_bytes <= 4 * 1024 * 1024,
         "full pinned original comparison differs"
     );
-    let mut changed: Value = serde_json::from_str(&original.payload)?;
-    let blobs = changed["blobs"]
-        .as_array_mut()
-        .context("blob array missing")?;
-    let ordinal = match blobs
-        .iter()
-        .position(|v| v.as_str() == Some(original.reread_mutation.bytes_base64.as_str()))
-    {
-        Some(index) => index,
-        None => {
-            blobs.push(json!(original.reread_mutation.bytes_base64));
-            blobs.len() - 1
-        }
-    };
-    changed["reads"][original.reread_mutation.occurrence]["blob"] = json!(ordinal);
-    let mut invalid_ordinal: Value = serde_json::from_str(&original.payload)?;
-    invalid_ordinal["reads"][0]["blob"] = Value::Bool(true);
-    let mut unreferenced: Value = serde_json::from_str(&original.payload)?;
-    unreferenced["blobs"]
-        .as_array_mut()
-        .context("blob array missing")?
-        .push(json!("AA=="));
     let cases = [
         (
             "embedded-source-identity",
-            "tobkiri.embedded-bundle-identity/1".to_owned(),
+            "tobkiri.embedded-bundle-identity/1",
             None,
+            false,
         ),
-        ("full-original-bundle", original.payload.clone(), None),
+        (
+            "full-original-bundle",
+            "tobkiri.embedded-bundle-read/1",
+            None,
+            false,
+        ),
         (
             "different-executable-reread",
-            serde_json::to_string(&changed)?,
+            "tobkiri.embedded-bundle-read/1",
             Some(original.reread_mutation.expected_error.as_str()),
+            true,
         ),
         (
-            "non-integer-ordinal",
-            serde_json::to_string(&invalid_ordinal)?,
-            Some("invalid bundle defaults carrier"),
-        ),
-        (
-            "unreferenced-blob",
-            serde_json::to_string(&unreferenced)?,
-            Some("invalid bundle defaults carrier"),
+            "unknown-comparison-command",
+            "tobkiri.unknown-bundle-command/1",
+            Some("unknown bundle comparison command"),
+            false,
         ),
     ];
     let control = CoreControl::default();
@@ -133,11 +116,14 @@ async fn native_bundle_catalog_comparison() -> Result<()> {
     let account = ledger.native_setup_account(&control, || Ok(Arc::new(AllocationOnlyFixture)))?;
     let engine = WasmEngine::new_with_control(&control)?;
     let component = Component::new(engine.engine(), &bytes)?;
-    drop(bytes);
+    let negative_component = Component::new(engine.engine(), &negative_bytes)?;
+    let positive_sha256 = Digest::hash(&bytes);
+    let negative_sha256 = Digest::hash(&negative_bytes);
+    drop((bytes, negative_bytes));
     let mut observed = Vec::new();
     // Each independent input has a new actual invocation. No invocation's
     // deadline/fuel is replenished, including during Python initialization.
-    for (name, payload, expected_error) in cases {
+    for (name, payload, expected_error, diagnostic) in cases {
         eprintln!("bundle comparison: begin {name}");
         ensure!(
             payload.len() <= 4 * 1024 * 1024,
@@ -149,7 +135,11 @@ async fn native_bundle_catalog_comparison() -> Result<()> {
         let owners = store.allocation_owners().clone();
         let mut program = store
             .prepare_data_program(
-                &component,
+                if diagnostic {
+                    &negative_component
+                } else {
+                    &component
+                },
                 &[NativeDataBinding {
                     export: NativeDataExport::new(
                         Some("tobkiri-ui:capability-projection/projection@1.0.0"),
@@ -215,6 +205,11 @@ async fn native_bundle_catalog_comparison() -> Result<()> {
         observed.last_mut().unwrap()["fuel_after_prepare"] = json!(prepared_fuel);
         observed.last_mut().unwrap()["fuel_after_input_copy"] = json!(input_fuel);
         observed.last_mut().unwrap()["fuel_remaining"] = json!(fuel);
+        observed.last_mut().unwrap()["artifact_sha256"] = json!(if diagnostic {
+            negative_sha256.as_str()
+        } else {
+            positive_sha256.as_str()
+        });
         drop((input, program, owners));
         tobkiri_wasm::reap_allocation_owners()?;
         ensure!(

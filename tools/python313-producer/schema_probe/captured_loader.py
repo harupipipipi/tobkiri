@@ -357,8 +357,8 @@ class Loader(importlib.abc.InspectLoader):
         self._require_executed_owner(module)
         if self.name != "bundle_catalog_adapter" or self.source != "bundle_catalog_adapter.py":
             raise ImportError("captured bundle module owner is unavailable")
-        path = self._source_tree.path("bundled-defaults/embedded.json")
-        if not path.is_file():
+        path = self._source_tree.path("bundled-defaults")
+        if not path.is_dir() or not (path / "index.json").is_file():
             raise FileNotFoundError("captured immutable bundle defaults are missing")
         return path
 

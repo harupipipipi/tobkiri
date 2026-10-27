@@ -56,6 +56,7 @@ jobs:
         run: |
           python3 -B -m unittest discover -s tools/python313-producer/tests -p test_schema_loader.py
           python3 -B -m unittest discover -s tools/python313-producer/tests -p test_bundle_catalog_inputs.py
+          python3 -B -m unittest discover -s tools/python313-producer/tests -p test_bundle_catalog_resources.py
           python3 -B tobkiri_runtime/scripts/generator_source_manifest.py --check
           python3 -B -m unittest discover -s tools/python313-producer/tests -p test_build_components.py
       - name: Authenticate the existing successful custom producer
@@ -124,7 +125,7 @@ jobs:
                           '--source', str(Path(os.environ['GITHUB_WORKSPACE']) / 'oracle-original/tobkiri_runtime'),
                           '--output', str(root / 'schema-kernel-cases.json')], env=env, check=True)
           PYTHON
-      - name: Build identical App logic with Native comparison and ordinary Pack wrappers
+      - name: Build identical App logic and a separately identified reread diagnostic
         run: >-
           python3 -B tools/python313-producer/build_components.py --bundle-catalog
           --bundle-cases "$RUNNER_TEMP/bundle-cases.json"
@@ -184,6 +185,7 @@ jobs:
           from pathlib import Path
           sys.path.insert(0, 'tools/python313-producer')
           import bundle_catalog_inputs as inputs
+          from bundle_catalog_resources import verify_members
           from build_native import fingerprint
           root, env = map(Path, sys.argv[1:])
           report = json.loads((root / 'components-build.json').read_bytes())
@@ -193,13 +195,14 @@ jobs:
                   or report['production_enabled'] is not False):
               raise ValueError('actual two-world producer did not complete')
           adapters = []
-          for name, native in [('harness-bundle-catalog-native', True), ('harness-bundle-catalog', False)]:
+          for name, native, diagnostic in [('harness-bundle-catalog-native', True, False), ('harness-bundle-catalog', False, False), ('harness-bundle-catalog-reread-native', True, True)]:
               item = report['components'][name]
               actual = root / name / 'work/component.wasm'
               proof_path = root / name / 'work/component.build.json'
               if fingerprint(actual, 32*1024*1024) != item['artifact'] or fingerprint(proof_path) != item['build_receipt']:
                   raise ValueError('component or actual build receipt changed')
-              inputs.verify_component(json.loads(proof_path.read_bytes()), item['source'], native=native)
+              proof = json.loads(proof_path.read_bytes())
+              inputs.verify_component(proof, item['source'], native=native, diagnostic_reread=diagnostic)
               source = item['source']['bundle_catalog']
               if source['original_resources'] != original['schema_resources']:
                   raise ValueError('candidate schema bytes differ from the original native oracle')
@@ -208,8 +211,7 @@ jobs:
               if source['runtime_config_override_used'] is not False:
                   raise ValueError('runtime config cannot substitute for embedded source')
               captured = {row['destination']:row for row in json.loads(proof_path.read_bytes())['source_manifest']}
-              if {k:captured['bundled-defaults/embedded.json'][k] for k in ('bytes','sha256')} != source['embedded_resource']:
-                  raise ValueError('actual component source lacks its complete embedded defaults')
+              verify_members(proof, source, original, diagnostic_reread=diagnostic)
               for module in source['original_modules'].values():
                   if fingerprint(Path('tobkiri_runtime') / module['path']) != {k:module[k] for k in ('bytes','sha256')}:
                       raise ValueError('component original source differs from current checkout')
@@ -222,10 +224,12 @@ jobs:
               adapters.append(source['adapter_sha256'])
           if len(set(adapters)) != 1:
               raise ValueError('two worlds do not share the original adapter')
-          values = {'COMPONENT':root/'harness-bundle-catalog-native/work/component.wasm', 'CASES':root/'cases.json'}
+          values = {'COMPONENT':root/'harness-bundle-catalog-native/work/component.wasm',
+                    'NEGATIVE_COMPONENT':root/'harness-bundle-catalog-reread-native/work/component.wasm',
+                    'CASES':root/'cases.json'}
           with env.open('a') as output:
               for key, path in values.items():
-                  digest = fingerprint(path, 32*1024*1024 if key=='COMPONENT' else 4*1024*1024)
+                  digest = fingerprint(path, 32*1024*1024 if key.endswith('COMPONENT') else 4*1024*1024)
                   output.write(f'TOBKIRI_BUNDLE_{key}={path}\nTOBKIRI_BUNDLE_{key}_SHA256={digest["sha256"]}\n')
               output.write(f'TOBKIRI_BUNDLE_REPORT={root / "native-comparison.json"}\n')
           PYTHON
