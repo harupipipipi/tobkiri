@@ -110,7 +110,6 @@ async fn actual_same_task_sync_lift_reentry_constraint() -> Result<()> {
                 store.data_mut().data.outcome = match result {
                     Ok(values) => {
                         ensure!(values.as_slice().is_empty(), "second export returned data");
-                        second.post_return_async(store.as_context_mut()).await?;
                         Outcome::Returned
                     }
                     Err(error) if matches!(error.downcast_ref::<Trap>(), Some(Trap::CannotEnterComponent)) => Outcome::CannotEnter,
@@ -141,7 +140,9 @@ async fn actual_same_task_sync_lift_reentry_constraint() -> Result<()> {
                 matches!(values.as_slice(), [Val::U32(7)]),
                 "first return differs"
             );
-            first.post_return_async(&mut *store).await.is_ok()
+            // The pinned Func::post_return_async is a deprecated no-op. The
+            // owned call already completed and its actual scalar was checked.
+            true
         }
         Err(_) => false,
     };

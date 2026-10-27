@@ -462,6 +462,7 @@ class ImportDiagnosticsSourceTests(unittest.TestCase):
                 "--harness-native",
                 "--native-input-stack",
                 "--native-input-stack-import-diagnostics",
+                "--native-thread-capabilities",
             },
         )
 
