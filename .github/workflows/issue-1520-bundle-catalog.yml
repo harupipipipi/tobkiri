@@ -19,6 +19,7 @@ on:
       - 'tobkiri_runtime/tobkiri_protocol/schemas/**'
       - 'tools/python313-producer/schema_probe/captured_loader.py'
       - 'tools/python313-producer/capability_projection_inputs.py'
+      - 'tools/python313-producer/schema_kernel_oracle.py'
       - 'packs/local.harness-catalog-input/**'
       - 'packs/Cargo.toml'
       - 'packs/Cargo.lock'
@@ -119,6 +120,9 @@ jobs:
                           '--source', str(Path(os.environ['GITHUB_WORKSPACE']) / 'oracle-original/tobkiri_runtime'),
                           '--output', str(root / 'bundle-cases.json'),
                           '--profile-output', str(root / 'bundle-native-profile.json')], env=env, check=True)
+          subprocess.run([sys.executable, '-B', 'tools/python313-producer/schema_kernel_oracle.py',
+                          '--source', str(Path(os.environ['GITHUB_WORKSPACE']) / 'oracle-original/tobkiri_runtime'),
+                          '--output', str(root / 'schema-kernel-cases.json')], env=env, check=True)
           PYTHON
       - name: Build identical App logic with Native comparison and ordinary Pack wrappers
         run: >-
@@ -134,6 +138,7 @@ jobs:
         run: |
           cp "$RUNNER_TEMP/bundle-cases.json" "$RUNNER_TEMP/bundle/cases.json"
           cp "$RUNNER_TEMP/bundle-native-profile.json" "$RUNNER_TEMP/bundle/native-profile.json"
+          cp "$RUNNER_TEMP/schema-kernel-cases.json" "$RUNNER_TEMP/bundle/schema-kernel-cases.json"
       - name: Retain both real components and original comparison DATA
         if: always()
         uses: actions/upload-artifact@v4
@@ -148,6 +153,7 @@ jobs:
             ${{ runner.temp }}/bundle/harness-bundle-catalog*/inputs/provenance.json
             ${{ runner.temp }}/bundle/harness-bundle-catalog*/build.*
             ${{ runner.temp }}/bundle/native-profile.json
+            ${{ runner.temp }}/bundle/schema-kernel-cases.json
           retention-days: 7
 
   compare-original-data:
