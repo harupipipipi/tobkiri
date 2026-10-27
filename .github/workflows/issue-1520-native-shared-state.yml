@@ -64,6 +64,12 @@ jobs:
           --log "$RUNNER_TEMP/native-flight.log" --expected-passed 8 --
           cargo test --locked -p tobkiri-core --features native-shared-state
           --lib native_flight::tests:: -- --nocapture
+      - name: Exercise native job owner fence, work custody and retained results
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-job.log" --expected-passed 7 --
+          cargo test --locked -p tobkiri-core --features native-shared-state
+          --lib native_job::tests:: -- --nocapture
       - name: Check strict Rust lint for all three changed crates
         run: >-
           cargo clippy --locked -p tobkiri-gate -p tobkiri-store -p tobkiri-core
@@ -77,4 +83,5 @@ jobs:
             ${{ runner.temp }}/existing-native-capacity.log*
             ${{ runner.temp }}/shared-state-capacity.log*
             ${{ runner.temp }}/native-flight.log*
+            ${{ runner.temp }}/native-job.log*
           if-no-files-found: warn

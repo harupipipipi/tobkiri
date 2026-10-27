@@ -73,7 +73,7 @@ fn two_actual_operations_join_without_renewal_and_timeout_does_not_finish_work()
         NativeFlightObservation::TimedOut
     );
     assert!(!work.is_finished());
-    assert_eq!(held(&flights.0.get().registry).flights.len(), 1);
+    assert_eq!(held(&flights.0.get().registry).entries.len(), 1);
     let abandoned = waiter(flights.run_or_join(&second, b"opaque-key", || 99).unwrap());
     let observer = abandoned.flight.clone();
     drop(abandoned);
@@ -257,7 +257,7 @@ fn capacity_denial_does_not_publish_work_or_change_existing_registration() {
     assert!(!called.load(Ordering::Acquire));
     assert_eq!(account.snapshot().unwrap(), before);
     assert_eq!(control.usage().bytes, control_before);
-    assert_eq!(held(&flights.0.get().registry).flights.len(), 1);
+    assert_eq!(held(&flights.0.get().registry).entries.len(), 1);
     // An already-funded enrollment still works without allocating a new flight.
     let waiting = waiter(flights.run_or_join(&second, b"existing", || 99).unwrap());
     drop(waiting);
@@ -283,7 +283,7 @@ fn capacity_denial_does_not_publish_work_or_change_existing_registration() {
     assert_eq!(after.charged_bytes, before.charged_bytes);
     assert_eq!(after.reservations, before.reservations);
     assert_eq!(control.usage().bytes, control_before);
-    assert_eq!(held(&flights.0.get().registry).flights.capacity(), 1);
+    assert_eq!(held(&flights.0.get().registry).entries.capacity(), 1);
     drop(rest);
     finish.send(()).unwrap();
     assert!(matches!(
@@ -407,7 +407,7 @@ fn real_original_deadline_caps_wait_but_never_relabels_running_work_as_finished(
     assert_eq!(second.deadline().unwrap(), deadline);
     assert!(!work.is_finished());
     assert!(!held(&retained.get().state).completed);
-    assert_eq!(held(&flights.0.get().registry).flights.len(), 1);
+    assert_eq!(held(&flights.0.get().registry).entries.len(), 1);
     assert!(matches!(
         flights.run_or_join(&second, b"late", || 99),
         Err(GateError::Deadline)

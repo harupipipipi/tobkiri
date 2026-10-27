@@ -253,6 +253,83 @@ Sources: [original job/executor](../../../tobkiri_runtime/ecosystem/defaultspack
 This source check corrects the earlier ambiguous phrase "existing job reuse";
 implementing result/job memoization would change the original behavior.
 
+## First Host job implementation candidate
+
+The opt-in `NativeJobs<T>` mechanism now separates an actual owner, caller
+Future, non-cloneable queue/work ticket and immutable result view. Every submit
+creates a new physical job in the same account and retains the real operation
+and its original deadline. The admission maximum only restricts slots; it cannot
+increase the physical 64 MiB account. This candidate does not create a worker
+pool or report invented worker counts.
+
+An owner fence and submit share the registry lock. A private prepared-start
+boundary validates the actual root/operation, then arbitrates cancellation and
+Queued-to-Running under one job-state lock. A fence after preparation still
+prevents a queued callback from starting. Cancellation and result publication
+also have one winner under that same state lock; later cancellation never turns
+a completed result back into cancelled. Active caller cancellation releases no
+slot. A queued cancelled ticket skips its callback at processing. Only return
+or unwind after required actual work/Joins reaches Finish and removes that exact
+job once. Callback captures and discarded results are destroyed outside locks.
+Explicit unexecuted ticket discard is defined as queued cancellation/removal;
+matching the original pool's shutdown/queue-discard policy is still separate.
+
+Inline result `T` resides in an account-funded OnceLock inside the job. Result
+views retain the same actual job and borrow that same immutable value; no T
+clone or owned extraction is offered. Removing admission does not refund that
+storage while Future/result views retain it. Generic T cannot prove funding of
+nested heaps, callback captures, worker stacks or actual Python Context. The
+fixed production port still must bind its original per-submit callback/Context
+and enforce scope, funding and work/Join custody. These seven native fixture
+cases, including Rust panic and destructor instrumentation, are not Python Pack
+or complete executor evidence. They await actual CI.
+
+The shared registry helper is used by both candidates. It retains only native
+leased-reference carriers and prepays old and replacement vector storage at
+once, publishing only after new entry allocation also succeeds. This replaces
+two prospective independent implementations without introducing a new allocator
+allowance or authority path.
+
+## Confirmed production readers and actual translation scope
+
+The original class permits injected Python callbacks, but a constructor's
+capability alone does not establish a public production injection contract.
+The source audit found these concrete production suppliers:
+
+| Reader | Actual source boundary |
+|---|---|
+| snapshot | Fixed Host closure to `capture_active_profile`; [production supplier](../../../tobkiri_runtime/core_runtime/bootstrap/production_v4.py#L2144). |
+| catalog | HostProfileControl/CapturedPackControl closures to `host_profile_catalog`, including actual timing scope; [active supplier](../../../tobkiri_runtime/core_runtime/pack_control_v4.py#L489). |
+| readiness | Actual lifecycle bound method to provisioner readiness; [supplier](../../../tobkiri_runtime/core_runtime/packvm_lifecycle_v4.py#L430). This must become genuine replacement-runtime readiness when VM is retired. |
+| capability | [Host closure](../../../tobkiri_runtime/core_runtime/bootstrap/production_v4.py#L4682) invokes an Application-supplied factory through RuntimeCaptureInputs; [fixed Application implementation](../../../tobkiri_runtime/ecosystem/defaultspack/defaultspack/http_contract_composition.py#L20). |
+| user settings / clock | No production settings-reader override found; default monotonic clock. Arbitrary reader/clock injection occurs in tests. |
+
+Direct production constructors are the factory and the ProfileChangeService
+fallback. The normal factory passes its existing surface to ProfileChangeService;
+no normal fallback activation was found. Searches of canonical production,
+SDK and docs found no Normal Pack/extension injection route for arbitrary reader
+callables. Dynamic reflection and repository-external users remain unconfirmed.
+RuntimeCaptureInputs' actual docstring is "App-supplied immutable inputs"; the
+nearby "never supplied by HTTP or Pack input" comment applies specifically to
+the generation-budget field and must not be generalized as a trust proof.
+
+The confirmed fixed Host implementations can be translated to genuine Rust
+counterparts while preserving nested/fresh/cache restoration, aliases, scope,
+thread affinity where required, synchronization and typed outcomes. They do NOT
+all require literal Python object identity or Python Context execution. Real
+Python identity contracts remain only where Python execution actually observes
+them. Guest CPython Thread failure is not a reason to stop this Host translation.
+
+The capability seam is an operation-bound DATA conversion port. Host retains
+actual binding/session/catalog-reader custody and validates its original input;
+the fixed approved Application/Pack implementation computes its mapping and
+dynamic targets outside Core. Returned identities/digests/targets are DATA
+claims to validate against the actual pending call and existing Gate, never
+serialized success/scope authority. No Host object or arbitrary callable is
+exposed. The first parity comparison must use the same real binding/session/
+catalog and check output, refusals and typed failures against the original.
+This production port is not implemented by the lifecycle fixture above.
+
 ## Historical diagnostic scheduling
 
 The failure-only input-stack import audit and the diagnostic-only pre-init

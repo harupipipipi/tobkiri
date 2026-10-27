@@ -2,6 +2,7 @@
 //!
 //! This opt-in candidate is not a production realm binding or Pack adapter.
 //! Keys are complete opaque bytes, never interpreted or replaced by digests.
+use crate::native_state_registry::NativeRegistry;
 use std::sync::{Condvar, Mutex, MutexGuard};
 use std::time::Instant;
 use tobkiri_canon::LeasedShared;
@@ -26,12 +27,7 @@ struct State {
     membership: NativeSharedStateReservation,
     registry: Mutex<Registry>,
 }
-#[derive(Default)]
-struct Registry {
-    // Field order destroys the vector/storage before refunding its funding.
-    flights: Vec<FlightRef>,
-    funding: Option<NativeSharedStateReservation>,
-}
+type Registry = NativeRegistry<Flight>;
 struct Flight {
     key: Vec<u8>,
     state: Mutex<FlightState>,
@@ -114,7 +110,7 @@ impl NativeFlights {
         if Instant::now() >= operation.deadline()? {
             return Err(GateError::Deadline);
         }
-        if let Some(flight) = registry.flights.iter().find(|f| f.get().key == key) {
+        if let Some(flight) = registry.entries.iter().find(|f| f.get().key == key) {
             let mut status = held(&flight.get().state);
             status.waiters = status
                 .waiters
@@ -128,21 +124,12 @@ impl NativeFlights {
         }
         // Construct ALL pending allocations before publishing any registration.
         // A failed admission leaves the existing vector/records unchanged.
-        let pending_registry = if registry.flights.len() == registry.flights.capacity() {
-            Some(grow_registry(&state.account, &registry)?)
-        } else {
-            None
-        };
+        let pending_registry = registry.prepare_slot(&state.account)?;
         let flight = new_flight(&state.account, key)?;
         if Instant::now() >= operation.deadline()? {
             return Err(GateError::Deadline);
         }
-        if let Some((flights, funding)) = pending_registry {
-            let old = std::mem::replace(&mut registry.flights, flights);
-            drop(old);
-            registry.funding = Some(funding);
-        }
-        registry.flights.push(flight.clone());
+        registry.publish(flight.clone(), pending_registry);
         let completion = WorkCompletion {
             coordinator: self.clone(),
             flight,
@@ -154,34 +141,6 @@ impl NativeFlights {
         drop(completion);
         Ok(NativeFlightJoin::Leader(outcome))
     }
-}
-
-fn grow_registry(
-    account: &NativeSetupAccount,
-    registry: &Registry,
-) -> Result<(Vec<FlightRef>, NativeSharedStateReservation), GateError> {
-    let capacity = registry
-        .flights
-        .capacity()
-        .checked_mul(2)
-        .ok_or(GateError::Unavailable)?
-        .max(1);
-    let bytes = capacity
-        .checked_mul(size_of::<FlightRef>())
-        .and_then(|n| u64::try_from(n).ok())
-        .ok_or(GateError::Unavailable)?;
-    let funding = account.reserve_shared_state(CapacityKind::VfsBuffer, bytes)?;
-    let mut flights = Vec::new();
-    flights
-        .try_reserve_exact(capacity)
-        .map_err(|_| GateError::Unavailable)?;
-    // Same fail-closed exact-capacity contract as CoreBuffer. Unsupported
-    // allocator layouts never escape; storage dies before its prepaid owner.
-    if flights.capacity() != capacity {
-        return Err(GateError::Unavailable);
-    }
-    flights.extend(registry.flights.iter().cloned());
-    Ok((flights, funding))
 }
 
 fn new_flight(account: &NativeSetupAccount, key: &[u8]) -> Result<FlightRef, GateError> {
@@ -215,11 +174,7 @@ impl Drop for WorkCompletion {
     fn drop(&mut self) {
         let mut registry = held(&self.coordinator.0.get().registry);
         // Physical object identity prevents an old flight removing a new one.
-        let removed = registry
-            .flights
-            .iter()
-            .position(|other| std::ptr::eq(other.get(), self.flight.get()))
-            .map(|index| registry.flights.remove(index));
+        let removed = registry.remove(&self.flight);
         drop(registry);
         drop(removed);
         let mut status = held(&self.flight.get().state);

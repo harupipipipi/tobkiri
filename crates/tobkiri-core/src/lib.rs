@@ -42,7 +42,13 @@ mod native_declared_artifact;
 #[cfg(feature = "native-shared-state")]
 #[doc(hidden)]
 pub mod native_flight;
+/// Opt-in Host job-lifetime candidate; actual Pack callback binding is pending.
+#[cfg(feature = "native-shared-state")]
+#[doc(hidden)]
+pub mod native_job;
 mod native_profile_review;
+#[cfg(feature = "native-shared-state")]
+mod native_state_registry;
 mod outcomes;
 #[cfg(test)]
 mod policy_tests;
