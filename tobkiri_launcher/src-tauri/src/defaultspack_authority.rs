@@ -4410,6 +4410,41 @@ mod tests {
         target_os = "macos",
         target_arch = "aarch64"
     ))]
+    fn activate_fixture_profile(owner: &Path, config: &AppConfig) {
+        let python = verified_python();
+        let code = include_str!("../tests/support/activate_fixture_profile.py");
+        for action in ["stage", "activate"] {
+            let mut command = python.command().unwrap();
+            command
+                .env_clear()
+                .args(["-I", "-B", "-c", code, action])
+                .arg(owner.canonicalize().unwrap())
+                .arg(owner.join("authoritative-source/tobkiri_runtime"))
+                .arg(config.app_dir.canonicalize().unwrap())
+                .arg(&config.user_data_dir)
+                .current_dir(owner);
+            for key in ISOLATED_ENVIRONMENT_KEYS {
+                if let Some(value) = std::env::var_os(key) {
+                    command.env(key, value);
+                }
+            }
+            command.env("TMPDIR", owner.canonicalize().unwrap());
+            assert!(
+                command.status().unwrap().success(),
+                "fixture {action} failed"
+            );
+            crate::runtime_resource_integrity::verify(&config.app_dir)
+                .expect("fixture resources must pass the unchanged production verifier");
+        }
+        assert_clean_fixture_source(&owner.join("authoritative-source"));
+        assert!(read_active_profile_snapshot(config).unwrap().is_some());
+    }
+
+    #[cfg(all(
+        feature = "native-source-inspection",
+        target_os = "macos",
+        target_arch = "aarch64"
+    ))]
     #[tokio::test]
     async fn actual_resolved_source_reaches_core_worker_and_preserves_desktop_metadata() {
         use std::sync::Arc;
@@ -4447,7 +4482,35 @@ mod tests {
         }
 
         let (root, config) = fixture("actual-native-core-declared-artifacts");
+        let core = Arc::new(
+            Core::open(
+                CoreConfig::for_test_data_root(
+                    root.canonicalize().unwrap().join("native-core-data"),
+                ),
+                Arc::new(NoEffects),
+            )
+            .unwrap(),
+        );
+        assert!(core.profile_ids().unwrap().is_empty());
+        let bootstrap_error = crate::dock_registration::read_defaultspack_desktop_metadata(&config)
+            .err()
+            .expect("bootstrap metadata must not supply a launch identity");
+        assert!(bootstrap_error
+            .to_string()
+            .contains("active Profile revision"));
+        let bootstrap_core_error =
+            crate::dock_registration::read_defaultspack_desktop_metadata_with_core(&config, &core)
+                .await
+                .err()
+                .expect("Core metadata must not supply a bootstrap launch identity");
+        assert_eq!(
+            bootstrap_core_error.to_string(),
+            bootstrap_error.to_string()
+        );
+        assert!(core.profile_ids().unwrap().is_empty());
+        activate_fixture_profile(&root, &config);
         let sources = SignedApplicationResolver::resolve_sources(&config).unwrap();
+        let execution_identity = sources.authority().execution_identity().unwrap();
         assert!(sources
             .authority()
             .verified_artifacts
@@ -4461,16 +4524,6 @@ mod tests {
             .as_os_str()
             .as_encoded_bytes()
             .as_ptr();
-        let core = Arc::new(
-            Core::open(
-                CoreConfig::for_test_data_root(
-                    root.canonicalize().unwrap().join("native-core-data"),
-                ),
-                Arc::new(NoEffects),
-            )
-            .unwrap(),
-        );
-        assert!(core.profile_ids().unwrap().is_empty());
         let (sources, actual) =
             crate::native_declared_artifacts::collect_for_resolved_application(&core, sources)
                 .await
@@ -4492,6 +4545,8 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(through_core, original);
+        assert_eq!(original.execution_identity(), &execution_identity);
+        assert_eq!(through_core.execution_identity(), &execution_identity);
         assert!(core.profile_ids().unwrap().is_empty());
 
         // Mutate after the actual resolution: no second resolver or copied
