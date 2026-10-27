@@ -28,10 +28,10 @@ NATIVE_EXPORT = "tobkiri-ui:capability-projection/projection@1.0.0"
 PACK_EXPORT = "local:harness-capability-projection-python/projection@1.0.0"
 
 
-def runtime_sources(repo: Path) -> tuple[dict[str, bytes], dict, tuple[str, ...]]:
+def runtime_sources(repo: Path, *, roots: tuple[str, ...] = ROOTS) -> tuple[dict[str, bytes], dict, tuple[str, ...]]:
     """Capture complete genuine eager modules, including real package bodies."""
     root = repo / "tobkiri_runtime"
-    pending, modules, files, namespaces = list(ROOTS), {}, {}, set()
+    pending, modules, files, namespaces = list(roots), {}, {}, set()
 
     def source(name: str) -> Path | None:
         p = root.joinpath(*name.split("."))

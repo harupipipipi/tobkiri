@@ -18,7 +18,7 @@ spec.loader.exec_module(loader)
 
 
 @contextmanager
-def captured():
+def captured(extra_files=None):
     files = {
         "schema_fixture/__init__.py": b"INITIALIZED = 1\n",
         "schema_fixture/lazy.py": b"from . import INITIALIZED\nANSWER = INITIALIZED + 41\n",
@@ -26,6 +26,7 @@ def captured():
         "schema_fixture-1.0.dist-info/METADATA": b"Metadata-Version: 2.1\nName: schema-fixture\nVersion: 1.0\n\n",
         "schema_fixture-1.0.dist-info/RECORD": b"schema_fixture/data/value.json,,13\n",
     }
+    files.update(extra_files or {})
     before = sys.meta_path[:]
     paths = sys.path[:]
     finder = loader.install(
@@ -43,6 +44,43 @@ def captured():
 
 
 class CapturedLoaderTests(unittest.TestCase):
+    def test_schema_accessor_retains_actual_execution_and_resource_owner(self):
+        with captured({
+            "schema_fixture/validation.py": b"LOADED = True\n",
+            "schema_fixture/schemas/a.schema.json": b'{"type":"object"}',
+        }) as finder:
+            module = importlib.import_module("schema_fixture.validation")
+            root = module.__loader__._tobkiri_schema_resources(module)
+            self.assertIs(root.tree, finder.tree)
+            with patch("builtins.open", side_effect=AssertionError("OS fallback")):
+                self.assertEqual((root / "a.schema.json").read_bytes(), b'{"type":"object"}')
+            self.assertFalse(hasattr(root, "__fspath__"))
+
+    def test_schema_accessor_rejects_forged_module_and_removed_finder(self):
+        from types import ModuleType
+        with captured({
+            "schema_fixture/validation.py": b"LOADED = True\n",
+            "schema_fixture/schemas/a.schema.json": b"{}",
+        }) as finder:
+            module = importlib.import_module("schema_fixture.validation")
+            actual = module.__loader__
+            forged = ModuleType(module.__name__)
+            forged.__dict__.update(vars(module))
+            with self.assertRaisesRegex(ImportError, "owner"):
+                actual._tobkiri_schema_resources(forged)
+            sys.meta_path.remove(finder)
+            with self.assertRaisesRegex(ImportError, "owner"):
+                actual._tobkiri_schema_resources(module)
+
+    def test_schema_accessor_refuses_missing_resources_and_other_modules(self):
+        with captured({"schema_fixture/validation.py": b"LOADED = True\n"}):
+            module = importlib.import_module("schema_fixture.validation")
+            with self.assertRaisesRegex(FileNotFoundError, "schemas"):
+                module.__loader__._tobkiri_schema_resources(module)
+            other = importlib.import_module("schema_fixture.lazy")
+            with self.assertRaisesRegex(ImportError, "owner"):
+                other.__loader__._tobkiri_schema_resources(other)
+
     def test_explicit_original_namespaces_need_no_initializer_or_filesystem(self):
         files = {"namespace_fixture/domain/value.py": b"ANSWER = 42\n"}
         before, paths = sys.meta_path[:], sys.path[:]

@@ -10,6 +10,7 @@ from build_cli import RECIPE_SHA256 as CLI_RECIPE_SHA256
 from build_wasi import run_stage
 import component_inputs
 import capability_projection_inputs
+import bundle_catalog_inputs
 from fetch_sdk import inventory
 import fetch_validation_tools
 import harness_native_dependencies
@@ -23,6 +24,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         native_input_stack_import_diagnostics: bool = False,
         native_thread_capabilities: bool = False,
         capability_projection: bool = False,
+        bundle_catalog: bool = False,
         schema_inputs: Path | None = None, stdlib: Path | None = None,
         rpds: Path | None = None) -> None:
     """Build each exact original Pack separately with no production activation."""
@@ -36,11 +38,13 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
             native_input_stack_import_diagnostics,
             native_thread_capabilities,
             capability_projection,
+            bundle_catalog,
     )) > 1:
         raise ValueError('component build selectors are separate build scopes')
-    if capability_projection:
+    app_data_mode = capability_projection or bundle_catalog
+    if app_data_mode:
         if any(path is None for path in (schema_inputs, stdlib, rpds)):
-            raise ValueError('capability projection requires all locked schema inputs')
+            raise ValueError('App DATA component requires all locked schema inputs')
         dependency_mode = True
     else:
         dependency_mode = harness_native_dependencies.selected(
@@ -100,7 +104,9 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
     recipe = destination / 'componentize.sh'
     recipe.write_text('set -eu\n/usr/bin/python3 -I -B /driver.py\n')
     identities[str(recipe)] = fingerprint(recipe)
-    if capability_projection:
+    if bundle_catalog:
+        receipt_format = 'tobkiri.python313-bundle-catalog-candidates/1'
+    elif capability_projection:
         receipt_format = 'tobkiri.python313-capability-projection-candidates/1'
     elif native_thread_capabilities:
         receipt_format = (
@@ -128,7 +134,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                'driver': identities[str(driver)], 'components': {},
                'guest_runtime_identity_verified': False, 'native_core_replay': False,
                'production_enabled': False, 'historical_binary_identity_claimed': False}
-    if capability_projection:
+    if app_data_mode:
         receipt.update(
             same_app_adapter_two_worlds=True,
             native_scope='pure DATA comparison only; no authority or product parity',
@@ -145,7 +151,9 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         receipt['diagnostic_only'] = True
         receipt['diagnostic_outcome_must_fail'] = True
     receipt_path = destination / 'components-build.json'
-    if capability_projection:
+    if bundle_catalog:
+        component_names = ('harness-bundle-catalog-native', 'harness-bundle-catalog')
+    elif capability_projection:
         component_names = ('harness-capability-projection-native', 'harness-capability-projection')
     elif native_thread_capabilities:
         component_names = ('harness-thread-capabilities',)
@@ -165,8 +173,14 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
             output.mkdir(mode=0o700)
             inputs = output / 'inputs'
             projection_native = name == 'harness-capability-projection-native'
+            bundle_native = name == 'harness-bundle-catalog-native'
             plan_receipt = (
-                capability_projection_inputs.stage(
+                bundle_catalog_inputs.stage(
+                    repo, inputs, dependency_inputs, schema_inputs, stdlib, rpds,
+                    native=bundle_native,
+                )
+                if bundle_catalog
+                else capability_projection_inputs.stage(
                     repo, inputs, dependency_inputs, schema_inputs, stdlib, rpds,
                     native=projection_native,
                 )
@@ -185,7 +199,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                 if harness_setup
                 else component_inputs.stage(repo, name, inputs)
             )
-            if dependency_mode and not capability_projection:
+            if dependency_mode and not app_data_mode:
                 plan_receipt = harness_native_dependencies.stage(
                     inputs, plan_receipt, dependency_inputs,
                     schema_inputs, stdlib, rpds,
@@ -199,12 +213,12 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                 'retain_generated_bindings': (
                     native_input_stack or native_input_stack_import_diagnostics
                     or native_thread_capabilities or harness_native
-                    or capability_projection
+                    or app_data_mode
                 ),
             }
             if native_thread_capabilities:
                 control_data['native_thread_capabilities'] = True
-            if dependency_mode and not capability_projection:
+            if dependency_mode and not app_data_mode:
                 control_data['harness_native_dependencies'] = plan_receipt[
                     'harness_native_dependencies'
                 ]
@@ -229,7 +243,11 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                     or proof['build_plan_sha256'] != plan_receipt['plan_sha256']
                     or proof['compiler_executable_sha256'] != producer_report['binary']['sha256']):
                 raise ValueError('component output differs from its source and producer receipt')
-            if capability_projection:
+            if bundle_catalog:
+                bundle_catalog_inputs.verify_component(
+                    proof, plan_receipt, native=bundle_native,
+                )
+            elif capability_projection:
                 capability_projection_inputs.verify_component(
                     proof, plan_receipt, native=projection_native,
                 )
@@ -270,6 +288,7 @@ if __name__ == '__main__':
     mode.add_argument('--native-input-stack-import-diagnostics', action='store_true')
     mode.add_argument('--native-thread-capabilities', action='store_true')
     mode.add_argument('--capability-projection', action='store_true')
+    mode.add_argument('--bundle-catalog', action='store_true')
     for name in ('schema-inputs', 'stdlib', 'rpds'):
         parser.add_argument('--' + name, type=Path)
     for name in ('producer', 'validation', 'destination'):

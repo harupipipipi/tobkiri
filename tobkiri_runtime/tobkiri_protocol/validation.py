@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 from functools import lru_cache
 from pathlib import Path
+import sys
 from typing import Any, Iterable, Mapping
 
 from .canonical import canonical_digest, canonical_json, strict_loads
@@ -88,8 +89,34 @@ _FORBIDDEN_AUTHORITY_KEYS = {
 }
 
 
+def _captured_schema_resources() -> Any | None:
+    """Read only the immutable resources owned by this executed module's loader.
+
+    Native Path readers retain their original facade. A captured package with
+    an absent or broken owner cannot fall back to an operating-system path.
+    Resource ownership here proves source DATA custody, never IO authority.
+    """
+    module = sys.modules.get(__name__)
+    loader = globals().get("__loader__")
+    accessor = getattr(loader, "_tobkiri_schema_resources", None)
+    if accessor is not None:
+        try:
+            return accessor(module)
+        except (ImportError, OSError, TypeError, ValueError) as exc:
+            raise SchemaValidationError("captured schema resource owner is unavailable") from exc
+    parent = sys.modules.get(__package__)
+    reader_factory = getattr(getattr(parent, "__loader__", None), "get_resource_reader", None)
+    if reader_factory is not None:
+        reader = reader_factory(__package__)
+        if reader is not None and not isinstance(reader.files(), Path):
+            raise SchemaValidationError("captured schema resource accessor is unavailable")
+    return None
+
+
 def schema_path(schema_name: str) -> Path:
     """Resolve a schema alias or filename inside the protocol package."""
+    if _captured_schema_resources() is not None:
+        raise SchemaValidationError("native schema_path is unavailable for captured resources")
     filename = SCHEMA_ALIASES.get(schema_name, schema_name)
     path = SCHEMA_DIR / filename
     if path.suffix != ".json" or not path.is_file():
@@ -100,7 +127,18 @@ def schema_path(schema_name: str) -> Path:
 @lru_cache(maxsize=None)
 def load_schema(schema_name: str) -> dict[str, Any]:
     """Load and syntax-check one protocol schema."""
-    path = schema_path(schema_name)
+    resources = _captured_schema_resources()
+    if resources is None:
+        path = schema_path(schema_name)
+    else:
+        filename = SCHEMA_ALIASES.get(schema_name, schema_name)
+        try:
+            path = resources.joinpath(filename)
+        except (TypeError, ValueError) as exc:
+            raise SchemaValidationError(f"unknown protocol schema: {schema_name}") from exc
+        if (not path.name.endswith(".json") or path.name == ".json"
+                or not path.is_file()):
+            raise SchemaValidationError(f"unknown protocol schema: {schema_name}")
     try:
         payload = strict_loads(path.read_bytes())
     except (OSError, ProtocolError) as exc:
@@ -120,7 +158,16 @@ def load_schema(schema_name: str) -> dict[str, Any]:
 def _schema_store() -> dict[str, Any]:
     """Return absolute-ID schemas used by local JSON Schema references."""
     store: dict[str, Any] = {}
-    for path in sorted(SCHEMA_DIR.glob("*.schema.json")):
+    resources = _captured_schema_resources()
+    paths = (
+        sorted(SCHEMA_DIR.glob("*.schema.json"))
+        if resources is None
+        else sorted(
+            (path for path in resources.iterdir() if path.name.endswith(".schema.json")),
+            key=lambda path: path.name,
+        )
+    )
+    for path in paths:
         try:
             schema = load_schema(path.name)
         except SchemaValidationError:
