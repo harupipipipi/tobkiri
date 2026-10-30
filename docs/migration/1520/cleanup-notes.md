@@ -248,6 +248,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   fuel・deadline・capacity の維持と失効後の再利用拒否を、実 WAT component の 2 ケースへ追加。
   Sol の限定 source review は blocking issue なし。実 CI はこれからで、製品での
   artifact admission・App owner・Setup callsite を証明するものではない。
+- `ceb86ea2d` の実 macOS CI `41057779834` / job `124069547358` が成功。
+  preparation 4 件（追加した pure DATA の 2 件を含む）と library の strict Clippy が通った。
+  実 WAT component と controlled source custody の検証であり、製品 artifact の
+  read admission / digest の信頼元 / GUI owner が接続できた証拠にはしない。
 
 ## 007: CI の native compiler 依存を毎回 build し直す重複
 
