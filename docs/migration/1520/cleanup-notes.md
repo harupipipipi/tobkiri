@@ -162,6 +162,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   receipt に明記する。実 build / load / call の結果はまだなく、64 件や全 validator の
   成功に読み替えない。既存の memory / fuel / deadline / ABI / checksum 条件は維持。
 
+- 次の直接移植境界について Astra high に追加質問し、既存 Python Validator の公開 API /
+  実 class / instance を状態の所有者として残し、`iter_errors` / `descend` の内側へ
+  Rust の遅延 iterator と全 handler を移す設計回答を得た。`VALIDATORS` の差し替えだけで
+  Python traversal を残す方法や、別の validator / resolver / cache の二重実装は避ける。
+  `evolve` の結果も元 class の実 instance とし、元のクラス選択・引数継承・scope / cache
+  の共有と寿命を維持する。全 error の先行生成や元 traversal への自動 fallback はしない。
+  iterator 作成 / 最初の next / 途中終了、複数 iterator の交互実行と direct API 呼び出しの
+  時点・例外・短絡も観測対象。これは今後の実装境界の設計回答で、primitive の成功や
+  完成済み validator の証明ではない。
+
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 
 - 状態: **Core / native 承認部分を一部実装・CI 検証済み。既存 Setup 接続は未対応**。
