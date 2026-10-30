@@ -208,3 +208,12 @@ not reached. This localizes remaining work to schema validation, rather than onl
 preparation or the final API suite. It does not rank functions within that work.
 Native call profiling is the next supporting measurement; it must not be confused
 with actual Wasm fuel. Split execution remains incomplete and qualification=false.
+
+An explicit `native_profile_only=true` dispatch provides supporting call-path
+observations without repeating the Core/Wasm build. It profiles only the same
+64 actual `check_schema` calls, once each; metadata/observer work and later APIs
+are excluded. All native comparisons and 15 API groups remain required. The
+workflow visibly skips Core/Wasm in this mode and rejects simultaneous progress
+mode. Both diagnostic inputs default to false; ordinary qualification is intact.
+cProfile has different overhead for Python and C, so its times are not a speed
+benchmark or Wasm-fuel measurement. This new profile mode is not yet verified.

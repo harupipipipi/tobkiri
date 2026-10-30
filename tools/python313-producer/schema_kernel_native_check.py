@@ -141,11 +141,20 @@ def run(args, receipt):
         receipt["difference"] = difference
         raise ValueError("native meta registry/checker observation differs")
     known_nodes = meta_nodes()
+    profiler = None
+    if args.profile_calls:
+        import cProfile
+        profiler = cProfile.Profile()
     for index, case in enumerate(reference["cases"]):
         receipt.update(case_index=index, case_name=case["name"])
         schema = case["schema"]
         try:
-            Draft202012Validator.check_schema(schema)
+            if profiler is None:
+                Draft202012Validator.check_schema(schema)
+            else:
+                # Exactly the same actual call, once per case. Keep observer,
+                # metadata preparation and later API probes outside this scope.
+                profiler.runcall(Draft202012Validator.check_schema, schema)
         except exceptions.SchemaError as error:
             actual = {"valid": False, "error": observe(error, schema, known_nodes)}
         else:
@@ -154,6 +163,24 @@ def run(args, receipt):
         if difference is not None:
             receipt["difference"] = difference
             raise ValueError("native schema result differs from real original reference")
+    if profiler is not None:
+        import io
+        import pstats
+        text = io.StringIO()
+        stats = pstats.Stats(profiler, stream=text)
+        stats.sort_stats("cumulative").print_stats(35)
+        stats.sort_stats("time").print_stats(35)
+        report = text.getvalue()
+        if len(report.encode()) > 24 * 1024:
+            raise ValueError("bounded native call profile exceeded its text limit")
+        receipt["call_profile"] = {
+            "format": "tobkiri.schema-native-call-profile/1",
+            "scope": "only the original 64 check_schema calls; observer/API excluded",
+            "native_only": True, "wasm_fuel_measurement": False,
+            "benchmark_claim": False, "qualification": False,
+            "note": "cProfile overhead differs for Python and C; use call paths, not a speed claim",
+            "top_cumulative_and_self_time": report,
+        }
     api = exercise_api()
     if len(api) != 15 or not all(value is True for value in api.values()):
         raise ValueError("all fifteen actual API groups required")
@@ -174,6 +201,7 @@ def main():
             or sys.version_info[:3] != (3, 13, 16)):
         raise RuntimeError("native execution requires pinned Linux GitHub Actions")
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--profile-calls", action="store_true")
     for name in ("source", "vendor", "inputs", "reference", "cargo-home", "destination"):
         parser.add_argument("--" + name, type=Path, required=True)
     args = parser.parse_args()

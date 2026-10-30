@@ -452,3 +452,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - 次は native の呼出し profiling を補助測定として行い、検証中のどの Python 経路が
   残っているか絞る。native 時間は Wasm fuel の代用ではない。診断完了や一括合格を
   主張せず、変更後は同じ全 64 件・API と本来の一括 Wasm gate で再検証する。
+- 補助測定は明示 dispatch `native_profile_only=true` で選択する。通常 push / 手動 default
+  は元の全 gate を実行する。補助 mode は Core / Wasm を省略した事実を step に残し、
+  native 全 64 比較の check_schema 呼出しだけを cProfile で計測する。
+  観測 helper・metadata 準備・後続 API は計測外。元の全比較・15 API 群は必須のまま。
+  native 呼出し列の測定は Python / C で計測 overhead が異なるため benchmark・Wasm fuel・
+  一括合格とは扱わない。progress 診断との同時指定は拒否する。実行結果は未確認。

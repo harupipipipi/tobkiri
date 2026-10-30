@@ -21,11 +21,15 @@ name: Issue 1520 actual private schema kernel Wasm probe
         description: Same-Store progress diagnosis only; never one-shot qualification
         type: boolean
         default: false
+      native_profile_only:
+        description: Native call profile only; skips Core/Wasm, no qualification
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: issue-1520-schema-kernel-probe-${{ github.ref }}-${{ github.sha }}-${{ inputs.diagnostic_progress && 'progress' || 'qualification' }}
+  group: issue-1520-schema-kernel-probe-${{ github.ref }}-${{ github.sha }}-${{ inputs.native_profile_only && 'native-profile' || inputs.diagnostic_progress && 'progress' || 'qualification' }}
   cancel-in-progress: false
 jobs:
   actual-extension:
@@ -40,6 +44,12 @@ jobs:
       CARGO_INCREMENTAL: '0'
       CARGO_PROFILE_TEST_DEBUG: '0'
     steps:
+    - name: Keep explicit diagnosis modes separate
+      env:
+        CONFLICTING_MODES: ${{ inputs.native_profile_only && inputs.diagnostic_progress && '1' || '0' }}
+      run: |
+        set -euo pipefail
+        test "$CONFLICTING_MODES" = '0'
     - uses: actions/checkout@v4
       with:
         persist-credentials: false
@@ -148,11 +158,18 @@ jobs:
         restore_registry_vendor(Path('tools/python313-producer/schema_kernel').resolve(), root/'schema-archives', root/'schema-archive-vendor')
         PYVERIFY
     - name: Compare the actual native Rust extension before the Wasm budget probe
+      env:
+        NATIVE_PROFILE_ONLY: ${{ inputs.native_profile_only && '1' || '0' }}
       run: |
         set -euo pipefail
         export PYTHONHASHSEED=0
         export PYTHONPATH=''
+        profile_flags=()
+        if [ "$NATIVE_PROFILE_ONLY" = '1' ]; then
+          profile_flags+=(--profile-calls)
+        fi
         python3 -S -B tools/python313-producer/schema_kernel_native_check.py \
+          "${profile_flags[@]}" \
           --source "$GITHUB_WORKSPACE/tools/python313-producer/schema_kernel" \
           --vendor "$RUNNER_TEMP/schema-archive-vendor" \
           --inputs "$RUNNER_TEMP/schema-inputs" \
@@ -160,6 +177,7 @@ jobs:
           --cargo-home "$RUNNER_TEMP/schema-cargo-home" \
           --destination "$RUNNER_TEMP/schema-native"
     - name: Restore native compiler outputs on GitHub only
+      if: ${{ !inputs.native_profile_only }}
       id: native-rust-cache
       uses: actions/cache/restore@v5
       with:
@@ -170,6 +188,7 @@ jobs:
         key: issue1520-native-consumer-${{ runner.os }}-${{ runner.arch }}-rust194-testdebug0-${{ hashFiles('Cargo.lock',
           'Cargo.toml', 'crates/**/Cargo.toml') }}
     - name: Build the actual native64 DATA consumer from this source
+      if: ${{ !inputs.native_profile_only }}
       run: |
         cargo test --locked -p tobkiri-wasm --lib --no-run --message-format=json > "$RUNNER_TEMP/native-data-build.jsonl"
         python3 -B - <<'PY'
@@ -209,6 +228,7 @@ jobs:
           target
         key: ${{ steps.native-rust-cache.outputs.cache-primary-key }}
     - name: Build import and call the real private Wasm extension
+      if: ${{ !inputs.native_profile_only }}
       env:
         DIAGNOSTIC_PROGRESS: ${{ inputs.diagnostic_progress && '1' || '0' }}
       run: |
