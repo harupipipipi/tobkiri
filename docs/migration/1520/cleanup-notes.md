@@ -123,6 +123,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   証明できない。今後この経路を接続する前に、Core の完全な候補・全 item と実 native
   入力を同じ live review に結び付ける必要がある。個別 prompt への自動 fallback や
   renderer の承認フラグで代用しない。既定の legacy GUI が失敗したという証拠ではない。
+- 元の [専用承認ウィンドウ](../../../tobkiri_runtime/ecosystem/defaultspack/webapp/src/components/AuthorityApprovalWindow.tsx)
+  は `typed_confirmation_required` のとき確認文の一致も要求する。
+  「全承認は二択だから同じ一括ボタンにできる」と一般化しない。
+  各実要求でこの条件が適用されるか確認し、元の必要な同意を維持する。
+  Astra の一括 Approve / Deny 案は、選択済みの候補・二択の要求・全件 atomic 保存を
+  実ソースで確認できた場合だけの条件付き判断である。
 
 ## 新規項目のひな形
 
