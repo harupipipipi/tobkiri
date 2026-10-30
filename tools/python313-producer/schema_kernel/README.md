@@ -16,7 +16,14 @@ original helper body remains an independent oracle; first-import checks reject
 preloaded modules rather than reloading them. Native comparisons use an isolated
 fresh child so parent tooling cannot choose the module first. Required API group
 19 adds helper/shared-URL observations; the previous 18 groups remain required.
-Compilation, native parity and fuel benefit of this candidate are unproved.
+Source 7bb772eed passed actual native compilation, all64 comparisons and API19
+in normal CI41130856110 and diagnostic CI41130869823, with124,923 real coercion
+entries during comparison. Both then stopped at the guest first-import marker:
+the selected module lacked the derived marker (its origin was not logged). No
+component/Core invocation or fuel measurement was reached. The repair supplies
+only the two authenticated urllib modules before metadata tooling imports them,
+sharing source compile/execution with a private derived ordinary-loader copy.
+Its fresh-process selection and actual guest execution remain unverified.
 Source 63750e485 passed native64/required18 and all three implementation
 diagnostics, but its one-shot Wasm call exhausted 2B fuel. Its diagnostic
 contract_v4 cost, 1,146,973,884, is the comparison baseline for this candidate.

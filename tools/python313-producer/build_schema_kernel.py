@@ -32,18 +32,22 @@ if "urllib.parse" in sys.modules:
 import _tobkiri_schema_kernel as kernel
 if "urllib.parse" in sys.modules:
     raise ValueError("kernel import preloaded urllib.parse before translation")
+from wheel_data import FILES, DISTRIBUTIONS
+import schema_bootstrap_source as _bootstrap_source
+_BOOTSTRAP = _bootstrap_source.install(FILES, __file__.rsplit("/", 1)[0])
 import urllib.parse as _coerce_parse
 if getattr(_coerce_parse, "_tobkiri_translated_coerce_args", False) is not True:
-    raise ValueError("guest stdlib coercion was not translated before first import")
+    raise ValueError("guest stdlib coercion was not translated before first import: "
+                     + repr(getattr(_coerce_parse, "__file__", None)))
 import json
 import numbers
 import struct
 import sysconfig
 
 from captured_loader import install
-from wheel_data import FILES, DISTRIBUTIONS
 
 _FINDER = install(FILES, DISTRIBUTIONS, __file__.rsplit("/", 1)[0])
+_bootstrap_source.finish(_BOOTSTRAP, _FINDER)
 import jsonschema
 import jsonschema_specifications
 import wit_world.exports
@@ -651,7 +655,7 @@ def probe() -> None:
     keyword_translation = captured_overlay(stage)
     from schema_stdlib_translate import captured_overlay as stdlib_overlay
     stdlib_translation = stdlib_overlay(stage)
-    extra_sources = ("schema_adapter.py", "schema_kernel_observation.py", "schema_inputs.py", "schema_api_checks.py", "schema_urljoin_checks.py", "schema_descend_checks.py", "schema_callable_checks.py", "schema_coerce_checks.py")
+    extra_sources = ("schema_adapter.py", "schema_kernel_observation.py", "schema_inputs.py", "schema_api_checks.py", "schema_urljoin_checks.py", "schema_descend_checks.py", "schema_callable_checks.py", "schema_coerce_checks.py", "schema_bootstrap_source.py")
     for name in extra_sources:
         if (stage / name).exists():
             raise ValueError("schema kernel helper collides with captured source")
@@ -898,6 +902,11 @@ def run(
     (probe_source / "app.py").write_text(progress_app() if diagnostic_progress else APP)
     for name in ("probe.wit", "exercise.py", "captured_loader.py"):
         shutil.copyfile(HERE / "schema_probe" / name, probe_source / name)
+    from schema_stdlib_translate import loader_overlay
+    loader_path = probe_source / "captured_loader.py"
+    derived_loader, loader_translation = loader_overlay(loader_path.read_bytes())
+    loader_path.write_bytes(derived_loader)
+    shutil.copyfile(HERE / "schema_bootstrap_source.py", probe_source / "schema_bootstrap_source.py")
     shutil.copyfile(source / "adapter.py", probe_source / "schema_adapter.py")
     shutil.copyfile(HERE / "schema_kernel_api_checks.py", probe_source / "schema_api_checks.py")
     shutil.copyfile(HERE / "schema_urljoin_checks.py", probe_source / "schema_urljoin_checks.py")
@@ -945,6 +954,7 @@ def run(
                                 else "original-object-schema-selfcheck/1"),
         "implemented_handler_count": 36, "schema_validation_executed": False,
         "inputs": inputs, "configuration": private, "probe_source": probe_files,
+        "loader_translation": loader_translation,
         "target": "wasm32-wasip2", "feature": "pyo3/abi3-py313", "stages": [],
         "guest_executed": False, "original_64_cases_compared": False,
         "qualification": False,

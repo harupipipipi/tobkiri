@@ -663,7 +663,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 014: 共有 URL 引数 helper の短い Python frame を限定的に置換する
 
-- 状態: **実装・ソース確認済み、実 native / Wasm 検証待ち。製品未接続**。
+- 状態: **7bb版は実 native64/API19成功。guest生成の初回source選択で停止し修正中。製品未接続**。
 - 場所: `schema_kernel/src/coerce_args.rs`、`schema_stdlib_translate.py`、
   native checker / fresh worker。native profile の実124,923呼出しを根拠とする候補。
   URI parser、decoder、result coercer、標準 urlsplit cache は元実装を使い続ける。
@@ -693,3 +693,30 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - 同じ637の全5Pack再実行 `41128486562` は全215件を実行。元Python209一致、
   Rust212一致で既知の差が再現。共有code整合3件、ACK1件、supervisor2件、diagnostics2件、
   別のouter admission1件は成功。outer入力3件の差をguest一致に数えず、製品合格にしない。
+- `7bb772eed` の通常CI `41130856110` / job `124321074616` と累積CI
+  `41130869823` / job `124321129909` は、実native64/API19・追加診断に成功。
+  両方で比較中のnative coerce entryは124,923回。しかしguestの初回import先には派生
+  markerがなく検査で停止した。選ばれたoriginは旧ログに未記録。component生成前であり、
+  Core実行・燃料値はない。
+- Astra high の回答に従い、sys.pathだけの優先化ではなく、認証済みの2moduleを供給する
+  import-free bootstrap finderを追加。既ロードの親packageも拒否し、reloadはしない。
+  compile / exec / bookkeepingは既存loaderから最小共通helperへ切り出す。変更はprivate
+  kernel用の派生copyだけへ適用し、共通baseline loaderや他の実験の形を変更しない。
+  通常finderの設置後に同じsource/root/実loader ownerを確認してbootstrap finderを退役。
+  新しいfresh-process検査はambient pathと無関係のsource選択・相対import・metadata・
+  再import identity・reload/既ロード拒否をCIで確認する。新修正の実行結果は未取得。
+
+## 015: 推測移植を増やす前の実Wasm費用分類
+
+- 状態: **ソース上の計測点を確認。計測実装・実行は未実施**。
+- 場所: `crates/tobkiri-wasm/src/native_setup_store.rs` の既存epoch callback。
+  Astra high はnative CPUのcallee込み時間だけで次の移植を選ばず、実Wasmで費用分類を
+  先に行うよう回答。従来のreturn間fuel snapshotでは内部関数への配賦はできない。
+- Solの限定監査: callbackの同一thread / 排他的StoreContextMutで `get_fuel` と
+  `WasmBacktrace::capture` を使える。GuestProfiler / call-hook追加featureは不要。
+  元check_epochとYield(1)の結果をそのまま返し、既存の絶対Instant期限・fuelを変えない。
+- 次の実装候補はcfg(test)限定のbounded host sample。callbackで重い整形/I/Oをせず、
+  固定sample数・記録容量と所有fundingを守る。計測なしとの擾乱比較が前提。
+  Wasm framesからPython callframeは分からないため、その内訳は未分類とする。
+  sample間fuel差分は推定配賦であり厳密な関数別燃料とは呼ばない。
+  今回のsource選択修正とは混ぜず、coerce候補の実測を得てから判断する。

@@ -13,6 +13,43 @@ from schema_kernel_translate import require_ci
 ORIGINAL_SHA256 = "491b233e8d87a2ab73964afff029717177d53ad8def328ed9b00575db983da27"
 
 
+def loader_overlay(raw: bytes) -> tuple[bytes, dict]:
+    """Share only the existing loader's compile/execute steps in this probe."""
+    replacements = (
+        (
+            b'        return compile(\n'
+            b'            self._source_tree.files[self.source],\n'
+            b'            self.finder.root + "/" + self.source,\n'
+            b'            "exec",\n'
+            b'            dont_inherit=True,\n'
+            b'        )\n',
+            b'        from schema_bootstrap_source import compile_source\n'
+            b'        return compile_source(self._source_tree.files[self.source],\n'
+            b'                              self.finder.root + "/" + self.source)\n',
+        ),
+        (
+            b'        module.__file__ = self.finder.root + "/" + self.source\n'
+            b'        self.finder.loaded.append(self.name)\n'
+            b'        exec(self.get_code(self.name), module.__dict__)\n',
+            b'        from schema_bootstrap_source import execute_module\n'
+            b'        execute_module(self, module)\n',
+        ),
+    )
+    original = raw
+    for before, after in replacements:
+        if raw.count(before) != 1:
+            raise ValueError("ordinary captured loader source execution shape differs")
+        raw = raw.replace(before, after)
+    ast.parse(raw)
+    return raw, {
+        "format": "tobkiri.schema-bootstrap-loader-derivation/1",
+        "original_sha256": hashlib.sha256(original).hexdigest(),
+        "translated_sha256": hashlib.sha256(raw).hexdigest(),
+        "baseline_loader_unchanged": True,
+        "shared_steps": ["compile_source", "execute_module"],
+    }
+
+
 def translate(raw: bytes) -> tuple[bytes, dict]:
     """Keep the original helper as oracle and bind a native callable on import."""
     if hashlib.sha256(raw).hexdigest() != ORIGINAL_SHA256:
