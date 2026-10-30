@@ -18,13 +18,13 @@ pub struct ApprovalReviewItem<'a> {
     id: &'a ApprovalReviewItemId,
     prompt: &'a ApprovalPrompt,
 }
-impl ApprovalReviewItem<'_> {
+impl<'a> ApprovalReviewItem<'a> {
     /// Borrow the native correspondence for this exact original request.
     pub fn id(&self) -> &ApprovalReviewItemId {
         self.id
     }
     /// Borrow immutable display facts; these are never approval evidence.
-    pub fn prompt(&self) -> &ApprovalPrompt {
+    pub fn prompt(&self) -> &'a ApprovalPrompt {
         self.prompt
     }
 }

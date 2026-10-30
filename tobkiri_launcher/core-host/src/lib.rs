@@ -16,7 +16,8 @@ pub use isolation::{
 };
 pub use native_contract::{
     ShutdownCompletion, ShutdownObservation, TrustedReview, core_error, observe_shutdown,
-    preserve_primary_close, restore_primary, startup_ui_embedding, trusted_review,
+    preserve_primary_close, restore_primary, startup_ui_embedding, trusted_permission_review,
+    trusted_review,
 };
 pub use profile_inspection::{ProfileCandidateCheck, ProfileInspection};
 pub use runtime::{

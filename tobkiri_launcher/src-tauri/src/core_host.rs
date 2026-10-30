@@ -6,23 +6,23 @@ use std::{
     collections::BTreeMap,
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, AtomicU8, Ordering},
         Arc, Mutex,
+        atomic::{AtomicBool, AtomicU8, Ordering},
     },
     time::Duration,
 };
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 use tobkiri_launcher_core_host::{
-    copy_final_host_payload,
+    DebugScope, HostCaller, HostError, LauncherCore, PACK_UI_CSP, ShutdownCompletion,
+    ShutdownObservation, TRUSTED_HOST_RECEIVER, TransportTickets, UiFrame, UiOperationRegistration,
+    UiRoute, UiTransportResponse, UiTransportTicket, copy_final_host_payload,
     core::{
-        ids::{ProfileId, UiSessionId},
         AllocationBudget, ApprovalAnswer, ApprovalPrompt, CanonValue, CoreBuffer, HostIo,
         TrustedPrompt, UiEmbed,
+        ids::{ProfileId, UiSessionId},
     },
     observe_shutdown, preserve_primary_close, restore_primary, startup_ui_embedding,
-    trusted_host_origin, trusted_review, DebugScope, HostCaller, HostError, LauncherCore,
-    ShutdownCompletion, ShutdownObservation, TransportTickets, UiFrame, UiOperationRegistration,
-    UiRoute, UiTransportResponse, UiTransportTicket, PACK_UI_CSP, TRUSTED_HOST_RECEIVER,
+    trusted_host_origin, trusted_review,
 };
 
 #[derive(Clone, Serialize)]
@@ -285,6 +285,58 @@ impl Drop for TerminalLease<'_> {
 
 #[async_trait]
 impl TrustedPrompt for NativeHost {
+    async fn prompt_approval_review(
+        &self,
+        batch: &mut tobkiri_launcher_core_host::core::ApprovalReviewBatch<'_>,
+    ) -> Result<(), tobkiri_launcher_core_host::core::GateError> {
+        use tobkiri_launcher_core_host::core::GateError;
+        #[cfg(target_os = "macos")]
+        {
+            let window = self
+                .app
+                .get_webview_window("core-host")
+                .ok_or(GateError::Unavailable)?;
+            let review = tobkiri_launcher_core_host::trusted_permission_review(
+                batch.content(),
+                batch.items().map(|item| item.prompt()),
+            )
+            .map_err(|_| GateError::Unavailable)?;
+            let cancelled = Arc::new(AtomicBool::new(false));
+            let _lease = NativeCancellation(cancelled.clone());
+            let result = tauri::async_runtime::spawn_blocking(move || {
+                crate::native_plan_review::show_detail_cancellable_with_warning(
+                    &window,
+                    review.title,
+                    review.explanation,
+                    review.accept,
+                    &review.detail,
+                    cancelled,
+                    review.dangerous,
+                )
+            })
+            .await;
+            let answer = match result {
+                Ok(Ok(true)) => ApprovalAnswer::Approve,
+                Ok(Ok(false)) => ApprovalAnswer::Deny,
+                _ => return Err(GateError::Unavailable),
+            };
+            for index in 0..batch.items().len() {
+                let id = batch
+                    .item(index)
+                    .ok_or(GateError::Unavailable)?
+                    .id()
+                    .clone();
+                batch.answer(&id, answer.clone())?;
+            }
+            Ok(())
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = batch;
+            Err(GateError::Unavailable)
+        }
+    }
+
     async fn prompt_approval(&self, prompt: ApprovalPrompt) -> ApprovalAnswer {
         #[cfg(target_os = "macos")]
         {

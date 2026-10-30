@@ -144,6 +144,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   cross-profile storage の追加は Dangerous。既存 mediator の狭めた結果も保持する。
   一括 native 表示はこの完全な候補・実 prompt 全件・必要な警告を維持し、
   デバッグ用入力や別操作の確認文を通常 Setup に追加しない。
+- 実 `NativeHost` の grouped review 接続を実装。permission / user-permission のみを
+  受け付け、完全な候補と各実 prompt を既存 native detail window へ表示する。
+  実 native の一回の判断だけを同じ live batch の実 item ID に返し、cancel・失敗・
+  未対応 OS・未対応 effect・表示上限超過は拒否する。個別 prompt へ fallback しない。
+  危険な権限は警告を維持し、候補だけの確認も表示する。追加の確認文を通常起動へ作らない。
+  source review で見つかった prompt accessor の寿命指定を修正した。
+  現時点では source / format 確認まで。実 macOS compile・GUI 操作・初回 Setup の
+  fresh-ID / 一回の保存 / 同じ Session 起動は未検証・未接続で、項目全体は未完了。
 
 ## 新規項目のひな形
 

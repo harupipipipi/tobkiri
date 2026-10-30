@@ -124,6 +124,65 @@ pub fn trusted_review(prompt: &ApprovalPrompt) -> Result<TrustedReview, IoError>
     })
 }
 
+/// Present the exact Core candidate and every permission request together.
+/// Other effects retain their own consent workflows and are refused here.
+pub fn trusted_permission_review<'a>(
+    content: &[u8],
+    prompts: impl Iterator<Item = &'a ApprovalPrompt>,
+) -> Result<TrustedReview, IoError> {
+    const LIMIT: usize = 512 * 1024;
+    let content = std::str::from_utf8(content)
+        .map_err(|_| IoError("native candidate is not UTF-8".into()))?;
+    if content.is_empty() || content.len() > LIMIT - "Complete Core candidate:\n".len() {
+        return Err(IoError("native candidate exceeds its display limit".into()));
+    }
+    let mut detail = String::from("Complete Core candidate:\n");
+    detail.push_str(content);
+    let mut count = 0usize;
+    let mut dangerous = false;
+    for prompt in prompts {
+        if !matches!(
+            prompt.effect,
+            EffectRequest::Permissions { .. } | EffectRequest::UserPermissions { .. }
+        ) {
+            return Err(IoError("unsupported grouped consent workflow".into()));
+        }
+        let item = trusted_review(prompt)?;
+        let header = format!("\n\nExact permission request {}:\n", count + 1);
+        let length = detail
+            .len()
+            .checked_add(header.len())
+            .and_then(|n| n.checked_add(item.detail.len()))
+            .ok_or_else(|| IoError("native review size overflow".into()))?;
+        if length > LIMIT {
+            return Err(IoError("native review exceeds its display limit".into()));
+        }
+        detail.push_str(&header);
+        detail.push_str(&item.detail);
+        dangerous |= item.dangerous;
+        count += 1;
+    }
+    Ok(TrustedReview {
+        title: if dangerous {
+            "Dangerous Tobkiri permissions"
+        } else {
+            "Tobkiri permissions"
+        },
+        explanation: if dangerous {
+            "Special warning: these permissions can cause serious or lasting changes. Review the complete candidate and every request. Approval applies to all displayed requests for this exact candidate."
+        } else {
+            "Review the complete candidate and every permission request below. Approval applies to all displayed requests for this exact candidate."
+        },
+        accept: if dangerous {
+            "Approve all dangerous permissions"
+        } else {
+            "Approve all displayed permissions"
+        },
+        dangerous,
+        detail,
+    })
+}
+
 /// Serialize one already-trusted field for the display projection.
 fn review_field<T: serde::Serialize + ?Sized>(value: &T) -> Result<serde_json::Value, IoError> {
     serde_json::to_value(value).map_err(|_| IoError("native review unavailable".into()))
@@ -274,6 +333,46 @@ mod tests {
             "args_digest":format!("sha256:{}","a".repeat(64)), "security_epoch":7,
             "risk":risk, "summary":"Core trusted summary"
         })).unwrap()
+    }
+
+    #[test]
+    fn grouped_permissions_keep_complete_candidate_prompts_and_warning() {
+        let mut first = make_prompt("normal");
+        first.effect = serde_json::from_value(serde_json::json!({
+            "kind":"permissions", "pack":"local.first", "hash":format!("sha256:{}", "b".repeat(64))
+        }))
+        .unwrap();
+        let mut second = first.clone();
+        second.risk = Risk::Dangerous;
+        second.summary = "完整 second request".into();
+        let candidate = b"{\"exact_candidate\":true}";
+        let review = trusted_permission_review(candidate, [&first, &second].into_iter()).unwrap();
+        assert!(
+            review
+                .detail
+                .contains(std::str::from_utf8(candidate).unwrap())
+        );
+        assert!(
+            review
+                .detail
+                .contains(&trusted_review(&first).unwrap().detail)
+        );
+        assert!(
+            review
+                .detail
+                .contains(&trusted_review(&second).unwrap().detail)
+        );
+        assert!(review.dangerous);
+        assert!(review.explanation.starts_with("Special warning:"));
+    }
+
+    #[test]
+    fn grouped_permissions_refuse_other_consent_and_oversize_without_truncation() {
+        assert!(trusted_permission_review(b"{}", [&make_prompt("normal")].into_iter()).is_err());
+        assert!(trusted_permission_review(&vec![b'x'; 512 * 1024], std::iter::empty()).is_err());
+        assert!(trusted_permission_review(&[0xff], std::iter::empty()).is_err());
+        // A real candidate still receives its native review when no additions exist.
+        assert!(trusted_permission_review(b"{}", std::iter::empty()).is_ok());
     }
 
     #[test]

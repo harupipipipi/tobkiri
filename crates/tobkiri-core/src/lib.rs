@@ -6,8 +6,8 @@ pub use tobkiri_canon::{
 };
 pub use tobkiri_flow::{CoreStream, RunEvent, RunEventKind, RunHandle, StepError};
 pub use tobkiri_gate::{
-    ApprovalAnswer, ApprovalPrompt, EffectRequest, HostError, HostIo, NativeSetupInvocation,
-    PermissionSet, Risk, TrustedPrompt, UiEmbed,
+    ApprovalAnswer, ApprovalPrompt, ApprovalReviewBatch, EffectRequest, GateError, HostError,
+    HostIo, NativeSetupInvocation, PermissionSet, Risk, TrustedPrompt, UiEmbed,
 };
 pub use tobkiri_store::ProfileCommitProgress;
 /// Generic Pack authoring and verification functions exposed by Core.

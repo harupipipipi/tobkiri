@@ -1,0 +1,41 @@
+name: Issue 1520 actual native grouped review
+on:
+  push:
+    branches: [codex/issue-1520-native-shared-state]
+    paths:
+      - 'crates/tobkiri-gate/src/approval_review.rs'
+      - 'crates/tobkiri-core/src/lib.rs'
+      - 'tobkiri_launcher/core-host/src/native_contract.rs'
+      - 'tobkiri_launcher/src-tauri/src/core_host.rs'
+      - '.github/workflows/issue-1520-native-group-review.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: issue-1520-native-group-review-${{ github.sha }}
+  cancel-in-progress: false
+env:
+  CARGO_BUILD_JOBS: '1'
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+jobs:
+  portable-contract:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - run: cargo test --locked -p tobkiri-launcher-core-host --lib native_contract::tests
+      - run: cargo test --locked -p tobkiri-gate
+  actual-macos-host:
+    runs-on: macos-15
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - run: cargo check --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml --features core-host
