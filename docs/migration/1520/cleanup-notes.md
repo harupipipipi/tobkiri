@@ -163,6 +163,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   source review で見つかった prompt accessor の寿命指定を修正した。
   現時点では source / format 確認まで。実 macOS compile・GUI 操作・初回 Setup の
   fresh-ID / 一回の保存 / 同じ Session 起動は未検証・未接続で、項目全体は未完了。
+- `b01fce245` の CI `41051559344` / portable job `124048600707` が成功。
+  native 表示契約 7 件（追加した grouped の 2 件を含む）と Gate 76 件が通った。
+  macOS の実 Host compile と実 GUI 入力は別の証拠が必要で、ここには含めない。
+- 初回 Setup の接続では既存 `defaultsSetup.ts` の confirmation / activation 契約も維持する。
+  同コードは実 `defaults.activate`・Profile の `defaults`・catalog / profile / plan /
+  authority snapshot / confirmation の digest、epoch、activation、fencing、audit receipt の
+  対応を検査する。Core の新 Profile ID や structural review JSON をそのまま返して
+  同じ成功応答の代わりにしない。互換の表示・App ドメイン値と、実 Core の ID / 保存結果の
+  拘束を App 側で明示し、Host で固定成功応答や架空の activation / audit を作らない。
 
 ## 新規項目のひな形
 
