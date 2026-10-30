@@ -15,35 +15,13 @@ from pathlib import Path
 import sys
 
 from bundle_catalog_oracle import ORACLE_COMMIT, SOURCE_HASHES
+from schema_kernel_observation import encoded, meta_nodes, node_digest, observe
 
 MAX_BYTES = 4 * 1024 * 1024
 ORIGINAL_SCHEMA_COUNT = 42
 ORIGINAL_SCHEMA_INVENTORY_SHA256 = (
     "2311b39b1f946c1ba45a9d87d57fde15c28a6a79afef1a44a5b98f3603b63008"
 )
-
-
-def encoded(value: object, *, sort_keys: bool = False) -> bytes:
-    """Encode reference DATA without losing integer/float/bool distinctions."""
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        allow_nan=False,
-        sort_keys=sort_keys,
-        separators=(",", ":"),
-    ).encode()
-
-
-def node_digest(value: object) -> str:
-    """Fingerprint complete related values; this never grants authority."""
-    return hashlib.sha256(encoded(value, sort_keys=True)).hexdigest()
-
-
-def at(root: object, path: list) -> object:
-    """Follow an original error path through the actual original input."""
-    for key in path:
-        root = root[key]
-    return root
 
 
 def run(source: Path, output: Path) -> None:
@@ -85,63 +63,7 @@ def run(source: Path, output: Path) -> None:
     from jsonschema import Draft202012Validator, exceptions
     from jsonschema_specifications import REGISTRY
 
-    # Keep references to real meta-schema nodes. Values are not replaced by a
-    # copied registry or fabricated error objects during reference observation.
-    known_nodes: dict[int, list[dict]] = {}
-
-    def index(value: object, uri: str, path: list) -> None:
-        if isinstance(value, (dict, list)):
-            known_nodes.setdefault(id(value), []).append({"uri": uri, "path": path})
-            members = value.items() if isinstance(value, dict) else enumerate(value)
-            for key, child in members:
-                index(child, uri, [*path, key])
-
-    index(Draft202012Validator.META_SCHEMA, "original-class-meta-schema", [])
-    for uri in sorted(REGISTRY):
-        index(REGISTRY.contents(uri), uri, [])
-
-    def observe(error, original: object, depth: int = 0) -> dict:
-        if depth > 64:
-            raise ValueError("original context exceeds bounded reference observation")
-        path = list(error.path)
-        absolute = list(error.absolute_path)
-        record = {
-            "type": type(error).__module__ + "." + type(error).__qualname__,
-            "type_is_original": type(error)
-            in (exceptions.SchemaError, exceptions.ValidationError),
-            "message": error.message,
-            "verbose_sha256": hashlib.sha256(str(error).encode()).hexdigest(),
-            "path": path,
-            "absolute_path": absolute,
-            "schema_path": list(error.schema_path),
-            "absolute_schema_path": list(error.absolute_schema_path),
-            "validator": error.validator,
-            "validator_value": error.validator_value,
-            "validator_value_is_original_schema_child": (
-                error.schema.get(error.validator) is error.validator_value
-                if isinstance(error.schema, dict) and error.validator in error.schema
-                else None
-            ),
-            "instance_sha256": node_digest(error.instance),
-            "schema_sha256": node_digest(error.schema),
-            "instance_is_original_at_absolute_path": at(original, absolute)
-            is error.instance,
-            "schema_reference_locations": known_nodes.get(id(error.schema), []),
-            "children_point_to_original_parent": all(
-                child.parent is error for child in error.context
-            ),
-            "context": [observe(child, original, depth + 1) for child in error.context],
-        }
-        if error.cause is not None:
-            record["cause"] = {
-                "type": type(error.cause).__module__
-                + "."
-                + type(error.cause).__qualname__,
-                "message": str(error.cause),
-            }
-        else:
-            record["cause"] = None
-        return record
+    known_nodes = meta_nodes()
 
     cases = []
     originals = sorted((source / "tobkiri_protocol/schemas").glob("*.schema.json"))
@@ -201,7 +123,7 @@ def run(source: Path, output: Path) -> None:
         try:
             Draft202012Validator.check_schema(schema)
         except exceptions.SchemaError as error:
-            result = {"valid": False, "error": observe(error, schema)}
+            result = {"valid": False, "error": observe(error, schema, known_nodes)}
         else:
             result = {"valid": True, "error": None}
         cases.append(

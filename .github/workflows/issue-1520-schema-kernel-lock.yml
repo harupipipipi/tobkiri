@@ -39,8 +39,8 @@ jobs:
                   'version': '=0.30.1', 'default-features': False,
                   'features': ['macros', 'abi3-py313']}}:
               raise SystemExit('primitive port requires only the exact limited-ABI PyO3')
-          if manifest['package']['metadata']['tobkiri']['schema-engine'] != 'original-object-port-primitives':
-              raise SystemExit('primitive port scope differs')
+          if manifest['package']['metadata']['tobkiri']['schema-engine'] != 'original-object-port':
+              raise SystemExit('original-object port scope differs')
           if manifest['lib'].get('name') != '_tobkiri_schema_kernel':
               raise SystemExit('candidate extension name differs')
           if manifest['lib'].get('crate-type') != ['cdylib']:

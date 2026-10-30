@@ -181,6 +181,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   実残燃料値・OS owner / GUI・schema validation・全 36 handler・64 比較・full catalog の
   証明には数えず、製品にはまだ接続しない。
 
+- 原本 traversal と全 36 handler の Rust 初稿、実 class を保つ thin adapter を追加。
+  既存の 64 selfcheck reference は helper を共有する形で observer 本体を移し、
+  比較内容の AST 同等性を確認。期待結果や期待 registry は guest に入れず、元 schema 入力
+  だけを渡し、実 object 参照・parent / cause・順序・render hash を照合する CI 接続を追加。
+  全 64 件を同じ実 Core DATA 呼び出しの 64MiB / 2B / 元の絶対 30 秒で処理し、
+  callback の lazy / close / interleave / PEP479 など 7 API probe も加える。
+  現時点では構文・formatter・source review のみで、実 compile / 64 比較成功は未確認。
+  元 validator の製品経路や旧 Python 依存は削除・切替していない。
+
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 
 - 状態: **Core / native 承認部分を一部実装・CI 検証済み。既存 Setup 接続は未対応**。

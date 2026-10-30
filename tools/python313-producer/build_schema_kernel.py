@@ -1,6 +1,6 @@
 """Build and call the private schema extension only in supervised Linux CI.
 
-This smoke probe is not the 64-case oracle comparison or full catalog proof.
+The original 64-case selfcheck comparison is required; full catalog remains separate.
 Registry archives are supplied by the CI workflow; this script downloads none.
 """
 
@@ -32,8 +32,21 @@ import struct
 import sys
 import sysconfig
 
+from captured_loader import install
+from wheel_data import FILES, DISTRIBUTIONS
+
+_FINDER = install(FILES, DISTRIBUTIONS, __file__.rsplit("/", 1)[0])
 import _tobkiri_schema_kernel as kernel
+import jsonschema
+import jsonschema_specifications
 import wit_world.exports
+from schema_adapter import install_standard_classes
+from schema_inputs import CASES
+from schema_api_checks import exercise_api
+from schema_kernel_observation import meta_nodes, node_digest, observe
+
+install_standard_classes()
+_FINDER.seal()
 
 TARGET = {
     "python": list(sys.version_info[:3]),
@@ -83,18 +96,43 @@ class Probe(wit_world.exports.Probe):
         if (not schema_is_original or not instance_is_original
                 or not aliases_preserved or not unknown_rejected
                 or kernel.production_enabled is not False
-                or kernel.implemented_handler_count != 0):
+                or kernel.implemented_handler_count != 36):
             raise ValueError("actual primitive object observation differs")
+        if len(CASES) != 64:
+            raise ValueError("complete original schema comparison required")
+        known_nodes = meta_nodes()
+        selfchecks = []
+        for case in CASES:
+            schema = case["schema"]
+            try:
+                jsonschema.Draft202012Validator.check_schema(schema)
+            except jsonschema.exceptions.SchemaError as error:
+                actual_result = {
+                    "valid": False, "error": observe(error, schema, known_nodes)
+                }
+            else:
+                actual_result = {"valid": True, "error": None}
+            selfchecks.append({"name": case["name"], "actual": actual_result})
         return json.dumps({
             "target": TARGET,
-            "qualification_scope": "original-object-primitives/1",
+            "qualification_scope": "original-object-schema-selfcheck/1",
             "schema_is_original": schema_is_original,
             "instance_is_original": instance_is_original,
             "aliases_preserved": aliases_preserved,
             "type_cases_checked": len(cases),
             "unknown_private_type_rejected": unknown_rejected,
             "implemented_handler_count": kernel.implemented_handler_count,
-            "schema_validation_executed": False,
+            "schema_validation_executed": True,
+            "selfchecks": selfchecks,
+            "public_api_checks": exercise_api(),
+            "meta_schema_sha256": node_digest(jsonschema.Draft202012Validator.META_SCHEMA),
+            "meta_registry_sha256": {
+                uri: node_digest(jsonschema_specifications.REGISTRY.contents(uri))
+                for uri in sorted(jsonschema_specifications.REGISTRY)
+            },
+            "meta_format_checker_names": sorted(
+                jsonschema.Draft202012Validator.FORMAT_CHECKER.checkers
+            ),
             "production_enabled": False,
         }, sort_keys=True)
 
@@ -131,7 +169,7 @@ def packages(source: Path) -> list[dict]:
         }}
         or manifest["package"].get("metadata", {}).get("tobkiri", {}).get(
             "schema-engine"
-        ) != "original-object-port-primitives"
+        ) != "original-object-port"
     ):
         raise ValueError("private offline limited-ABI manifest differs")
     entries = tomllib.loads((source / "Cargo.lock").read_text())["package"]
@@ -249,9 +287,19 @@ def verify_registry(source: Path, vendor: Path, archives: Path) -> dict:
     return {"archives": identities, "vendor_files": expected}
 
 
+
+def fingerprint_and_read(path: Path, maximum: int) -> bytes:
+    """Read admitted source/test DATA, never execute its contents."""
+    from build_native import fingerprint
+
+    fingerprint(path, maximum)
+    return path.read_bytes()
+
+
 def verify_inputs(
     source: Path, vendor: Path, archives: Path, rust: Path, sdk: Path,
     producer: Path, validation: Path, native_data_consumer: Path,
+    schema_inputs: Path, stdlib: Path, rpds: Path, reference: Path,
 ) -> dict:
     """Reuse original producer/tool admission and bind every prototype source."""
     from build_native import fingerprint
@@ -268,11 +316,27 @@ def verify_inputs(
         raise ValueError("physical native DATA consumer required")
     source_files = fetch_sdk.inventory(source)
     if (
-        set(source_files) != {"Cargo.toml", "Cargo.lock", "README.md", "src/lib.rs"}
+        set(source_files) != {
+            "Cargo.toml", "Cargo.lock", "README.md", "COPYING.jsonschema", "adapter.py",
+            "src/lib.rs", "src/traversal.rs", "src/keywords.rs",
+        }
         or any("link" in item for item in source_files.values())
         or sum(item["bytes"] for item in source_files.values()) > MAX_SOURCE
     ):
         raise ValueError("schema kernel source closure differs")
+    import build_schema
+    original_dependencies = build_schema.verify_inputs(
+        schema_inputs, producer, rpds, validation, stdlib
+    )
+    reference_data = json.loads(fingerprint_and_read(reference, 4 * 1024 * 1024))
+    if (reference_data.get("format") != "tobkiri.schema-kernel-reference/1"
+            or reference_data.get("oracle_commit") != "54e7da008997a3eb45876cbe18459dba9902cc9d"
+            or reference_data.get("jsonschema_version") != "4.26.0"
+            or reference_data.get("original_schema_count") != 42
+            or reference_data.get("original_schema_inventory_sha256") !=
+                "2311b39b1f946c1ba45a9d87d57fde15c28a6a79afef1a44a5b98f3603b63008"
+            or len(reference_data.get("cases", [])) != 64):
+        raise ValueError("complete original 42+22 source reference differs")
     registry = verify_registry(source, vendor, archives)
     build_rpds.verify_rust(rust, runtime_inputs.report(rust / "rust-manifest.json"))
     manifest = sdk / "sdk-manifest.json"
@@ -299,6 +363,8 @@ def verify_inputs(
         "source_files": source_files,
         "registry": registry,
         "native_data_consumer": fingerprint(native_data_consumer),
+        "original_dependencies": original_dependencies,
+        "reference": fingerprint(reference, 4 * 1024 * 1024),
         "receipts": {
             str(path): fingerprint(path) for path in (
                 rust / "rust-manifest.json", manifest,
@@ -369,10 +435,19 @@ def probe() -> None:
             raise ValueError("actual extension Python/shared memory/table ABI missing")
     stage = work / "stage"
     stage.mkdir(mode=0o700)
-    for name in ("app.py", "probe.wit"):
+    control = json.loads(read(Path("/schema-control.json"), maximum=4 * 1024 * 1024))
+    reference = json.loads(read(Path("/schema-reference.json"), maximum=4 * 1024 * 1024))
+    original_capture = driver.stage_inputs(stage, control)
+    extra_sources = ("schema_adapter.py", "schema_kernel_observation.py", "schema_inputs.py", "schema_api_checks.py")
+    for name in extra_sources:
+        if (stage / name).exists():
+            raise ValueError("schema kernel helper collides with captured source")
         shutil.copyfile(Path("/probe-source") / name, stage / name)
     captured = stage / (EXTENSION + ".abi3.so")
     captured.write_bytes(extension)
+    captured_total = sum(path.stat().st_size for path in stage.rglob("*") if path.is_file())
+    if captured_total > 64 * 1024 * 1024:
+        raise ValueError("complete original schema/kernel capture exceeds 64 MiB")
     environment = {
         "PATH": "/usr/bin:/bin", "HOME": "/work/home", "TMPDIR": "/work/tmp",
         "VIRTUAL_ENV": "/empty-venv", "PYTHONDONTWRITEBYTECODE": "1",
@@ -386,7 +461,7 @@ def probe() -> None:
     ], cwd=stage, env=environment, check=True, timeout=600)
     if read(captured) != extension or any(
         read(stage / name) != read(Path("/probe-source") / name)
-        for name in ("app.py", "probe.wit")
+        for name in ("app.py", "probe.wit", "exercise.py", "captured_loader.py", *extra_sources)
     ):
         raise ValueError("captured kernel/probe source changed during preinit")
     inner_bytes = read(stage / "component.wasm")
@@ -418,17 +493,42 @@ def probe() -> None:
     result = (
         json.loads(report["value"]) if isinstance(report.get("value"), str) else None
     )
+    expected_selfchecks = [
+        {"name": case["name"], "actual": case["expected"]}
+        for case in reference["cases"]
+    ]
+    def digest(value: object) -> str:
+        return hashlib.sha256(json.dumps(
+            value, ensure_ascii=False, allow_nan=False, sort_keys=True,
+            separators=(",", ":"),
+        ).encode()).hexdigest()
+
     if (
         report.get("error") is not None or observed["post_return"] is not True
         or not isinstance(result, dict)
-        or result.get("qualification_scope") != "original-object-primitives/1"
+        or result.get("qualification_scope") != "original-object-schema-selfcheck/1"
         or result.get("schema_is_original") is not True
         or result.get("instance_is_original") is not True
         or result.get("aliases_preserved") is not True
         or result.get("type_cases_checked") != 21
         or result.get("unknown_private_type_rejected") is not True
-        or result.get("implemented_handler_count") != 0
-        or result.get("schema_validation_executed") is not False
+        or result.get("implemented_handler_count") != 36
+        or result.get("schema_validation_executed") is not True
+        or result.get("selfchecks") != expected_selfchecks
+        or result.get("public_api_checks") != {
+            "lazy_start_and_resume": True,
+            "actual_error_objects_and_references": True,
+            "outer_close_keeps_retained_callback_open": True,
+            "interleaved_iterators": True,
+            "pep479_and_failed_iterator_closed": True,
+            "false_descend_preserves_original_early_paths": True,
+            "evolve_preserves_actual_class_and_schema": True,
+        }
+        or result.get("meta_schema_sha256") != digest(reference["meta_schema"])
+        or result.get("meta_registry_sha256") != {
+            item["uri"]: digest(item["schema"]) for item in reference["meta_registry"]
+        }
+        or result.get("meta_format_checker_names") != reference["meta_format_checker_names"]
         or result.get("production_enabled") is not False
         or result.get("target", {}).get("python") != [3, 13, 16]
         or result["target"].get("pointer_bits") != 32
@@ -456,8 +556,8 @@ def probe() -> None:
         raise ValueError("real native DATA kernel call differs; inspect native report")
     (work / "probe.json").write_text(json.dumps({
         "format": "tobkiri.schema-kernel-probe/1", "passed": True,
-        "qualification_scope": "original-object-primitives/1",
-        "implemented_handler_count": 0, "schema_validation_executed": False,
+        "qualification_scope": "original-object-schema-selfcheck/1",
+        "implemented_handler_count": 36, "schema_validation_executed": True,
         "extension_sha256": hashlib.sha256(extension).hexdigest(),
         "component_sha256": component_identity,
         "actual_limited_api": True,
@@ -465,15 +565,29 @@ def probe() -> None:
         "cargo_artifact": artifacts[0], "custom_sections": sections,
         "extension_imports": imports, "extension_exports": exports,
         "composition": composition, "boundary": boundary,
+        "original_source_capture": original_capture,
+        "complete_capture_bytes": captured_total,
         "native_data_consumer_sha256": consumer_identity, "native_report": report,
-        "result": result, "original_64_cases_compared": False,
+        "result": result, "original_64_cases_compared": True,
         "full_catalog_executed": False, "production_enabled": False,
     }, indent=2) + "\n")
+
+    print(json.dumps({
+        "format": "tobkiri.schema-kernel-qualified/1",
+        "scope": "original-object-schema-selfcheck/1",
+        "original_64_cases_compared": True,
+        "type_cases": result["type_cases_checked"],
+        "fuel_remaining": report.get("fuel_remaining"),
+        "elapsed_seconds": report.get("elapsed_seconds"),
+        "component_sha256": component_identity,
+        "full_catalog_executed": False, "production_enabled": False,
+    }, sort_keys=True), flush=True)
 
 
 def run(
     source: Path, vendor: Path, archives: Path, rust: Path, sdk: Path,
     producer: Path, validation: Path, native_data_consumer: Path, destination: Path,
+    schema_inputs: Path, stdlib: Path, rpds: Path, reference: Path,
 ) -> None:
     """Verify source and tools, build offline, then run an actual bounded probe."""
     from build_native import GIB, HERE, fingerprint, sandbox_command
@@ -491,7 +605,7 @@ def run(
         raise ValueError("new physical destination and original disk floor required")
     arguments = (
         source, vendor, archives, rust, sdk, producer, validation,
-        native_data_consumer,
+        native_data_consumer, schema_inputs, stdlib, rpds, reference,
     )
     inputs = verify_inputs(*arguments)
     destination.mkdir(mode=0o700)
@@ -508,7 +622,26 @@ def run(
     probe_source = destination / "probe-source"
     probe_source.mkdir(mode=0o700)
     (probe_source / "app.py").write_text(APP)
-    shutil.copyfile(HERE / "schema_probe/probe.wit", probe_source / "probe.wit")
+    for name in ("probe.wit", "exercise.py", "captured_loader.py"):
+        shutil.copyfile(HERE / "schema_probe" / name, probe_source / name)
+    shutil.copyfile(source / "adapter.py", probe_source / "schema_adapter.py")
+    shutil.copyfile(HERE / "schema_kernel_api_checks.py", probe_source / "schema_api_checks.py")
+    shutil.copyfile(HERE / "schema_kernel_observation.py", probe_source / "schema_kernel_observation.py")
+    reference_data = json.loads(fingerprint_and_read(reference, 4 * 1024 * 1024))
+    # Test inputs only. Expected results and expected registry objects are never
+    # captured in the guest or substituted for its genuine registry/schema.
+    case_inputs = [{"name": case["name"], "schema": case["schema"]}
+                   for case in reference_data["cases"]]
+    (probe_source / "schema_inputs.py").write_text("CASES = " + repr(case_inputs) + "\n")
+    import build_schema
+    import runtime_inputs
+    records = runtime_inputs.report(schema_inputs / "schema-inputs.json")["inputs"]
+    control = destination / "schema-control.json"
+    control.write_text(json.dumps({
+        "inputs": records, "extension_sha256": build_schema.EXTENSION_SHA256,
+        "input_limit": 64 * 1024 * 1024,
+        "stdlib": runtime_inputs.report(stdlib / "stdlib-inputs.json"),
+    }, sort_keys=True) + "\n")
     replay = destination / "probe.sh"
     replay.write_text("set -eu\n/usr/bin/python3 -I -B /kernel-driver.py --probe\n")
     helpers = (
@@ -519,14 +652,14 @@ def run(
         (HERE.parents[1] / "sdk/python/composition.py", "/composition.py"),
     )
     private = {str(path): fingerprint(path) for path in (
-        recipe, replay, config / "cargo.toml", config / "pyo3-config.txt",
+        recipe, replay, control, config / "cargo.toml", config / "pyo3-config.txt",
         *(path for path, _ in helpers),
     )}
     probe_files = fetch_sdk.inventory(probe_source)
     receipt = {
         "format": "tobkiri.schema-kernel-build/1", "outcome": "pending",
-        "qualification_scope": "original-object-primitives/1",
-        "implemented_handler_count": 0, "schema_validation_executed": False,
+        "qualification_scope": "original-object-schema-selfcheck/1",
+        "implemented_handler_count": 36, "schema_validation_executed": False,
         "inputs": inputs, "configuration": private, "probe_source": probe_files,
         "target": "wasm32-wasip2", "feature": "pyo3/abi3-py313", "stages": [],
         "guest_executed": False, "original_64_cases_compared": False,
@@ -544,6 +677,9 @@ def run(
         ))
         command = sandbox_command(None, work, replay, (
             *helpers, (probe_source, "/probe-source"),
+            (schema_inputs, "/inputs"), (stdlib, "/stdlib"),
+            (control, "/schema-control.json"), (reference, "/schema-reference.json"),
+            (rpds / "work/stage/rpds.abi3.so", "/rpds.abi3.so"),
             (validation / "wasmtime", "/validation-deps"),
             (validation / "wac-cli", "/wac"),
             (producer / "work/target/release/componentize-py", "/producer"),
@@ -558,9 +694,10 @@ def run(
         if (
             observation.get("passed") is not True
             or observation.get("actual_limited_api") is not True
-            or observation.get("qualification_scope") != "original-object-primitives/1"
-            or observation.get("implemented_handler_count") != 0
-            or observation.get("schema_validation_executed") is not False
+            or observation.get("qualification_scope") != "original-object-schema-selfcheck/1"
+            or observation.get("implemented_handler_count") != 36
+            or observation.get("schema_validation_executed") is not True
+            or observation.get("original_64_cases_compared") is not True
             or observation.get("native_data_consumer_sha256")
             != inputs["native_data_consumer"]["sha256"]
             or verify_inputs(*arguments) != inputs
@@ -569,6 +706,8 @@ def run(
         ):
             raise ValueError("actual observation or readonly input identity differs")
         receipt.update(outcome="success", guest_executed=True,
+                       schema_validation_executed=True, implemented_handler_count=36,
+                       original_64_cases_compared=True,
                        observation=fingerprint(work / "probe.json"),
                        extension_sha256=observation["extension_sha256"])
     except BaseException:
@@ -587,7 +726,7 @@ if __name__ == "__main__":
         parser = argparse.ArgumentParser()
         for name in (
             "source", "vendor", "archives", "rust", "sdk", "producer", "validation",
-            "native-data-consumer", "destination",
+            "native-data-consumer", "destination", "schema-inputs", "stdlib", "rpds", "reference",
         ):
             parser.add_argument("--" + name, type=Path, required=True)
         run(**vars(parser.parse_args()))

@@ -19,6 +19,8 @@ jobs:
     env:
       PRODUCER_RUN: '39956025119'
       PRODUCER_HEAD: ae7f83080a36e823ac330342584210243dc38050
+      RPDS_RUN: '40182231971'
+      RPDS_HEAD: 53163ed815c62c4853bbed3d8a082c0764e3084f
       CARGO_BUILD_JOBS: '1'
       CARGO_INCREMENTAL: '0'
       CARGO_PROFILE_TEST_DEBUG: '0'
@@ -43,6 +45,14 @@ jobs:
         assert v['head_sha']==os.environ['PRODUCER_HEAD']
         assert v['status']=='completed' and v['conclusion']=='success'
         PYAUTH
+        gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RPDS_RUN" > "$RUNNER_TEMP/schema-rpds-run.json"
+        python3 -B - <<'PYRPDS'
+        import json, os
+        from pathlib import Path
+        v=json.loads((Path(os.environ['RUNNER_TEMP'])/'schema-rpds-run.json').read_bytes())
+        assert v['head_sha']==os.environ['RPDS_HEAD']
+        assert v['status']=='completed' and v['conclusion']=='success'
+        PYRPDS
     - uses: actions/download-artifact@v4
       with:
         name: python313-producer-cli
@@ -50,6 +60,18 @@ jobs:
         run-id: ${{ env.PRODUCER_RUN }}
         github-token: ${{ github.token }}
         path: ${{ runner.temp }}/schema-producer
+    - uses: actions/download-artifact@v4
+      with:
+        name: ui-rpds-inactive-component
+        repository: ${{ github.repository }}
+        run-id: ${{ env.RPDS_RUN }}
+        github-token: ${{ github.token }}
+        path: ${{ runner.temp }}/schema-rpds
+    - uses: actions/checkout@v4
+      with:
+        ref: 54e7da008997a3eb45876cbe18459dba9902cc9d
+        path: schema-oracle-original
+        persist-credentials: false
     - name: Restore checksum-bound compiler SDK and validation tools
       run: |
         set -euo pipefail
@@ -58,6 +80,8 @@ jobs:
         chmod 755 "$RUNNER_TEMP/schema-producer/work/target/release/componentize-py"
         python3 -B tools/python313-producer/fetch_toolchain.py --destination "$RUNNER_TEMP/schema-rust"
         python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/schema-validation"
+        python3 -B tools/python313-producer/fetch_schema.py --destination "$RUNNER_TEMP/schema-inputs"
+        python3 -B tools/python313-producer/fetch_schema_stdlib.py --destination "$RUNNER_TEMP/schema-stdlib"
         python3 -B - <<'PYSDK'
         from pathlib import Path
         import os, sys
@@ -65,6 +89,19 @@ jobs:
         from fetch_sdk import acquire
         acquire(Path(os.environ['RUNNER_TEMP'])/'schema-sdk')
         PYSDK
+    - name: Observe all 64 actual original selfchecks before the Rust comparison
+      run: |
+        set -euo pipefail
+        python3 -B - <<'PYORACLE'
+        import os, subprocess, sys
+        from pathlib import Path
+        root = Path(os.environ['RUNNER_TEMP'])
+        packages = root / 'schema-inputs/packages'
+        env = {**os.environ, 'PYTHONPATH': os.pathsep.join(str(p) for p in sorted(packages.iterdir()) if p.is_dir())}
+        subprocess.run([sys.executable, '-S', '-B', 'tools/python313-producer/schema_kernel_oracle.py',
+                        '--source', str(Path(os.environ['GITHUB_WORKSPACE']) / 'schema-oracle-original/tobkiri_runtime'),
+                        '--output', str(root / 'schema-kernel-reference.json')], env=env, check=True)
+        PYORACLE
     - name: Fetch locked registry archives on CI only
       run: |
         set -euo pipefail
@@ -153,6 +190,10 @@ jobs:
           --producer "$RUNNER_TEMP/schema-producer" \
           --validation "$RUNNER_TEMP/schema-validation" \
           --native-data-consumer "$RUNNER_TEMP/native-data-consumer" \
+          --schema-inputs "$RUNNER_TEMP/schema-inputs" \
+          --stdlib "$RUNNER_TEMP/schema-stdlib" \
+          --rpds "$RUNNER_TEMP/schema-rpds" \
+          --reference "$RUNNER_TEMP/schema-kernel-reference.json" \
           --destination "$RUNNER_TEMP/schema-candidate"
     - name: Retain actual build and bounded execution evidence
       if: always()
@@ -167,5 +208,6 @@ jobs:
           ${{ runner.temp }}/schema-candidate/work/native-data-observation.json
           ${{ runner.temp }}/schema-candidate/work/native-data-observation.log
           ${{ runner.temp }}/native-data-consumer-build.json
+          ${{ runner.temp }}/schema-kernel-reference.json
         if-no-files-found: warn
         retention-days: 14

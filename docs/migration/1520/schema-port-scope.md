@@ -1,7 +1,8 @@
 # Private schema engine の移植境界
 
 2026-10-30 の source inventory。実行・互換性・性能の証拠ではない。
-候補 library の smoke と 64 ケースの比較後に使う直接移植の範囲を記録する。
+候補 library は実呼び出し時の trap と参照の構造的な問題で不採用。
+以下は着手した直接移植の対象範囲で、source 実装と実検証の完了は別に扱う。
 製品 validator は置換していない。
 
 ## 固定された原本

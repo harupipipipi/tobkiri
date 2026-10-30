@@ -1,57 +1,67 @@
-# Original Python-object schema port: primitive stage
+# Private original-object Rust schema port
 
-This is an incomplete, private Rust/PyO3 building block. It is not a validator
-or product replacement. No schema handler or error graph is implemented yet.
-The original Python product validator remains unchanged.
+This is an experimental Rust/PyO3 port of jsonschema 4.26.0 traversal and all
+36 Draft 2020-12 keyword handlers. It is not connected to product Setup or the
+product validator. Current engine code has not yet passed compilation/parity;
+source completion is not a successful runtime observation.
 
-The previous jsonschema 0.60.2 candidate is rejected. Actual CI 41058189370
-built/imported the extension and entered Rust through the real NativeData
-consumer, but registry initialization called unavailable WASI randomness and
-trapped. Its separate serde schema/error-reference and ordering gaps also
-prevented parity. The 64 rich-error comparisons were NOT run. No fixed entropy,
-preinitialized registry or extra authority was introduced to force it to pass.
+## Boundary
 
-## Current primitives
+`adapter.py` retains the real Python Validator classes and their public state,
+VALIDATORS dictionaries, type/format checkers, evolve, registry/resolver and error
+constructors. It captures each original traversal closure's actual applicable
+selector/specification rather than recomputing it from mutable class metadata.
+Thin generator methods delegate to the Rust lazy traversal. Rust dispatches the
+36 original builtin callables by actual identity; explicit extension and older
+draft-specific callables retain their normal dispatch inside the same Wasm
+budget. A failed native builtin is never retried through the old Python handler.
+No standalone validator class, serde values, reconstructed references or parallel
+resolver/cache is introduced. Regex, Python arithmetic/Fraction, original errors
+and evaluated-member helpers remain genuine Python operations inside Wasm.
 
-- `retain_objects(schema, instance)` returns a Python dictionary retaining the
-  actual two objects, without serialization, copies or path reconstruction.
-- `is_original_json_type(instance, kind)` implements default JSON primitive type
-  predicates from pinned jsonschema 4.26.0 / Draft 2020-12: seven JSON types,
-  bool excluded from integer/number, integral floats accepted as integer, and
-  the actual Python `numbers.Number` ABC. It converts no bigint to a float.
-  Unknown names raise ValueError in this private helper; this is not the full
-  original TypeChecker API or its UndefinedTypeCheck exception contract.
-- Module markers are `production_enabled=False`, `implemented_handler_count=0`.
+The Rust iterators start work on first next, preserve branch consumption/order,
+close after errors, expose GC traversal/clear and release retained references on
+completion/close. All public API/lifetime equivalence remains to be verified.
 
-The package has only exact PyO3 0.30.1 with macros and abi3-py313. The rejected
-Rust registry, serde conversions and their dependencies are removed. A new
-source lock was resolved by CI 41065264251 at source e04117faa and authenticated
-against its actual source/manifest/lock receipt. It is consumed frozen and offline
-by the original Wasm producer. This proves dependency provenance only. Local
-dependency downloads, compilation and guest execution are not part of this work.
+## Required actual qualification
 
-The build script now qualifies only `original-object-primitives/1`: actual root
-and nested reference identity, mutation aliases, 21 type cases and the private
-unknown-type ValueError. `numbers` is imported during module initialization;
-object creation and primitive observations run only in the actual DATA request.
-The receipt explicitly records zero implemented handlers and no schema validation.
-Actual CI 41065687808 / job 124096340005 succeeded at source e436a6d5f:
-extension build, limited-API/dynamic-link inspection, original producer import
-and component generation, then the real Core NativeData call with these checks.
-This proves only the primitive scope under the unchanged 64 MiB / 2-billion fuel /
-original 30-second deadline. A primitive success must never be reported as full
-validator, OS-owner/GUI proof or 64-case parity.
+The CI probe uses the original pinned wheel/CPython resource capture and actual
+successful rpds extension. The original 54e7da008997a3eb45876cbe18459dba9902cc9d
+source produces the unchanged 64-case reference: 42 original schema files and
+22 boundary inputs. Only case names/schemas enter the guest. Expected results and
+expected meta-registry objects stay outside the guest; it uses its genuine
+original classes and registry. Its 64 actual selfchecks run in one real Core
+NativeData invocation under unchanged 64 MiB / 2-billion fuel / original absolute
+30-second limits. Compare first errors, ordered context, actual references,
+parent/cause, paths and complete rendering hashes, plus the real meta-registry
+and class format-checker membership. Seven additional actual public API probes
+cover lazy resume/close, interleaving, PEP479, false-schema early paths and evolve.
+These checks are prepared but have not passed for this new source.
 
-## Remaining qualification
+This is not the full 45-cold-call / 305-entry / 453-read catalog or ordinary Flow,
+real OS owner, original GUI, 1B conversation or product parity proof. Per-handler
+execution coverage and remaining supported API contracts still require evidence.
+No cap or acceptance condition is waived. No schema/result cache is warmed in
+producer preinitialization; only genuine modules and callable metadata initialize.
 
-First run real build/load/call for this new source and its object/type primitive
-scope. Then implement original traversal and every reachable handler, preserving
-actual schema/instance/registry objects and original Python error constructors,
-regex/numeric/resolver behavior inside the budgeted Wasm guest. All 64 rich-error
-cases, full 45 cold schema calls, 305 entries / 453 reads, original cache lifetime,
-ordinary Flow and real product behavior remain required. No cap or acceptance
-condition is waived by this primitive stage.
+## Earlier actual evidence and rejected dependency
 
-[Full original scope](../../../docs/migration/1520/schema-port-scope.md).
+The prior primitives-only source e436a6d5f passed CI 41065687808 / job
+124096340005: actual extension build, limited-API inspection, original producer
+import/component generation and real Core call with actual root/nested identity,
+mutation aliases and 21 default type cases. This did not run schema validation.
+`retain_objects` and `is_original_json_type` remain private building blocks.
+Unknown type names raise private ValueError; they are not the full TypeChecker
+exception API, which the port retains through the real Validator.is_type.
+
+The earlier jsonschema 0.60.2 library candidate was rejected: CI 41058189370
+entered Rust but trapped on unavailable WASI randomness; known serde reference/
+ordering losses were separate structural gaps. Its 64 comparisons were not run.
+No entropy forwarding, fixed seed or preinitialized registry rescued it.
+Only exact PyO3 0.30.1 remains. The 15-package source lock was authenticated by
+CI 41065264251, then consumed frozen/offline; no local dependency downloads or
+compilation are part of this workflow. Upstream-derived code retains the license
+in [COPYING.jsonschema](COPYING.jsonschema).
+
+[Original scope](../../../docs/migration/1520/schema-port-scope.md).
 [Cleanup notes](../../../docs/migration/1520/cleanup-notes.md).
-[Original type source](https://github.com/python-jsonschema/jsonschema/blob/v4.26.0/jsonschema/_types.py).
