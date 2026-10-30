@@ -493,3 +493,31 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   schema に入れた文字列 object は共有対象から除く。元 keyword の実 kind literal と
   custom callback / schema error の caller object identity を追加で確認する。
   この追加分の実 CI と燃料効果は未確認。
+
+- source `0e2dfed1a` は実 native 全 64 比較・15 API 群に成功。通常 CI
+  `41100329636` / job `124216396038` は一括 2B fuel で失敗したが、累積診断
+  `41100353558` / job `124216453220` は 9 件完了、次の executable_catalog_v4
+  で停止した。同じ contract_v4 まで 1,243,994,756 fuel（元の診断から約 22.2% 減）。
+  一括・全 catalog・製品の合格ではない。
+
+## 010: 残存する URI 結合の Python 制御フロー
+
+- 状態: **urljoin 本体だけを Rust 移植、実 CI は未確認**。
+- native profile の 18,123 lookup / 15,840 urljoin が次候補の根拠。Astra high の
+  質問回答に従い、まず実 CPython 3.13.16 urljoin の body のみを移し、型変換・
+  parse / unparse・本来の cache・Resolver / Resource / Registry は元の実処理を使う。
+- 元 function の globals / cached builtins / literal object を保持し、実 referencing
+  alias のみ薄く包む。stdlib 関数は比較原本のまま残す。通常の positional str/bytes
+  を native に渡し、custom 入力・引数 binding・元 code の変更は Rust 前に元 dispatch。
+  元 defaults 変更を反映し、native 失敗からの再試行は追加しない。
+- original slice の None field と二つの slice object、unpack の timing、例外 target と
+  context、callback が書き換えた次の global helper、rich comparison を保つ。
+  PyO3 の便宜的 eq/ne の identity 短絡を避け、元の比較式には rich_compare を使う。
+- 16 件目の API 群で URI 境界、実 callback、source 定数の identity、変更される helper /
+  config、実 cache と Registry の関連 object を比較する。64 件の直後の native
+  urljoin attempt count も正である必要がある。全 stdlib API・細かな frame/refcount /
+  finalization / peak memory の完全同値は未証明。元の一括 Wasm gate は必須。
+- licensing: CPython v3.13.16 の実 LICENSE 13,809 byte を COPYING.python に保持。
+  SHA-256 78b12c3a81360b357002334f0e70ea0e92eebf7a9b358805c03c48484945f3bb。
+  法的 notice のみ追加し、依存 source tree・ZIP・binary はローカルに保存しない。
+  source admission はこの notice と新 Rust module を含む閉じた 10 file に更新する。

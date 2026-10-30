@@ -134,6 +134,7 @@ class Probe(wit_world.exports.Probe):
             else:
                 actual_result = {"valid": True, "error": None}
             selfchecks.append({"name": case["name"], "actual": actual_result})
+        urljoin_schema_calls = kernel.urljoin_calls()
         return json.dumps({
             "target": TARGET,
             "qualification_scope": "original-object-schema-selfcheck/1",
@@ -145,6 +146,7 @@ class Probe(wit_world.exports.Probe):
             "implemented_handler_count": kernel.implemented_handler_count,
             "schema_validation_executed": True,
             "selfchecks": selfchecks,
+            "urljoin_schema_calls": urljoin_schema_calls,
             "public_api_checks": exercise_api(),
             "type_dispatch_counts": kernel.type_dispatch_counts(),
             "meta_schema_sha256": node_digest(jsonschema.Draft202012Validator.META_SCHEMA),
@@ -293,7 +295,7 @@ def summarize_progress(records: list[dict], component: str, reference: dict) -> 
                 item["case"] = case["name"]
             elif expected_phase == "api":
                 checks = payload.get("checks")
-                if (not isinstance(checks, dict) or len(checks) != 15
+                if (not isinstance(checks, dict) or len(checks) != 16
                         or any(value is not True for value in checks.values())):
                     raise ValueError("diagnostic actual API observations differ")
             complete = expected_phase == "complete"
@@ -366,7 +368,7 @@ def packages(source: Path) -> list[dict]:
         raise ValueError("schema kernel root closure differs")
     if (sum(p["name"] == "pyo3" and p["version"] == "0.30.1"
             for p in result) != 1 or any(p["name"] == "jsonschema" for p in result)):
-        raise ValueError("primitive-only dependency closure differs")
+        raise ValueError("private schema-port dependency closure differs")
     return result
 
 
@@ -486,8 +488,8 @@ def verify_inputs(
     source_files = fetch_sdk.inventory(source)
     if (
         set(source_files) != {
-            "Cargo.toml", "Cargo.lock", "README.md", "COPYING.jsonschema", "adapter.py",
-            "src/lib.rs", "src/traversal.rs", "src/keywords.rs",
+            "Cargo.toml", "Cargo.lock", "README.md", "COPYING.jsonschema", "COPYING.python", "adapter.py",
+            "src/lib.rs", "src/traversal.rs", "src/keywords.rs", "src/url_join.rs",
         }
         or any("link" in item for item in source_files.values())
         or sum(item["bytes"] for item in source_files.values()) > MAX_SOURCE
@@ -608,7 +610,7 @@ def probe() -> None:
     control = json.loads(read(Path("/schema-control.json"), maximum=4 * 1024 * 1024))
     reference = json.loads(read(Path("/schema-reference.json"), maximum=4 * 1024 * 1024))
     original_capture = driver.stage_inputs(stage, control)
-    extra_sources = ("schema_adapter.py", "schema_kernel_observation.py", "schema_inputs.py", "schema_api_checks.py")
+    extra_sources = ("schema_adapter.py", "schema_kernel_observation.py", "schema_inputs.py", "schema_api_checks.py", "schema_urljoin_checks.py")
     for name in extra_sources:
         if (stage / name).exists():
             raise ValueError("schema kernel helper collides with captured source")
@@ -712,6 +714,8 @@ def probe() -> None:
         or result.get("implemented_handler_count") != 36
         or result.get("schema_validation_executed") is not True
         or first_difference(expected_selfchecks, result.get("selfchecks")) is not None
+        or type(result.get("urljoin_schema_calls")) is not int
+        or result["urljoin_schema_calls"] <= 0
         or result.get("public_api_checks") != {
             "lazy_start_and_resume": True,
             "actual_error_objects_and_references": True,
@@ -728,6 +732,7 @@ def probe() -> None:
             "default_type_dispatch_matches_original": True,
             "evolve_order_live_aliases_and_name_resolution": True,
             "post_init_order_live_callbacks_and_state": True,
+            "urljoin_actual_helpers_callbacks_and_registry": True,
         }
         or type(result.get("type_dispatch_counts", {}).get("native_default")) is not int
         or result["type_dispatch_counts"]["native_default"] <= 0
@@ -848,6 +853,7 @@ def run(
         shutil.copyfile(HERE / "schema_probe" / name, probe_source / name)
     shutil.copyfile(source / "adapter.py", probe_source / "schema_adapter.py")
     shutil.copyfile(HERE / "schema_kernel_api_checks.py", probe_source / "schema_api_checks.py")
+    shutil.copyfile(HERE / "schema_urljoin_checks.py", probe_source / "schema_urljoin_checks.py")
     shutil.copyfile(HERE / "schema_kernel_observation.py", probe_source / "schema_kernel_observation.py")
     reference_data = json.loads(fingerprint_and_read(reference, 4 * 1024 * 1024))
     # Test inputs only. Expected results and expected registry objects are never

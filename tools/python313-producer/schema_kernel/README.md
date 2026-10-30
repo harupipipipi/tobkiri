@@ -248,4 +248,38 @@ original fixed kind literals, while actual schema-supplied type objects remain
 untouched. Comparison order and original unknown/surrogate/custom dispatch remain
 in place. Additional actual callbacks compare original fixed kind identity and
 preserve a dynamically created schema type string in both callback and error.
-This extension has not yet passed CI; no further fuel improvement is claimed.
+At source 0e2dfed1a, native 64-case / 15-group comparison passed. Normal CI
+41100329636 / job 124216396038 still exhausted the one-shot 2B fuel. Explicit
+progress CI 41100353558 / job 124216453220 recorded nine returned cases, then
+trapped inside executable_catalog_v4. Through contract_v4, diagnostic fuel use
+was 1,243,994,756 versus the original 1,599,163,709 (about 22.2% less in this
+protocol). Full one-shot, catalog and product acceptance remain incomplete.
+
+
+## Next original urljoin body port
+
+The next source ports only the CPython 3.13.16 `urllib.parse.urljoin` control flow
+to Rust/PyO3, retaining its actual function globals/builtins/literal objects.
+Original `_coerce_args`, `urlparse`, `urlunparse`, genuine parse-result classes,
+configuration lists and `urlsplit` LRU remain in use. There is no new URL parser,
+normalization library, resolver or result cache. Original PSF/CPython notices are
+in COPYING.python (13,809 bytes, SHA-256
+78b12c3a81360b357002334f0e70ea0e92eebf7a9b358805c03c48484945f3bb).
+
+Only the actual original `referencing._core.urljoin` alias is wrapped; the stdlib
+function remains the independent oracle. Standard positional str/bytes calls
+enter Rust. Arbitrary input protocols, keyword/argument-binding shapes and changed
+original code take explicit original dispatch before the new Rust boundary.
+Current original defaults are respected. A native failure is never retried.
+All actual helper/config lookups and overloaded comparisons retain original order.
+Original slice fields/objects, tuple unpacking, scope of caught exceptions and
+function locals/callable lifetimes are carried through rather than flattening
+Python values into Rust URL strings. Detailed frame/refcount/finalization/peak
+memory equivalence and full stdlib API coverage remain unproved.
+
+The new sixteenth API group differentially checks RFC-style joins, bytes/mixed
+inputs, aliases/early returns, real callbacks, live helper/config rebinding,
+overloaded self-comparison, actual cache hits and genuine Registry resolution.
+An actual native-entry counter must already be positive after the original 64
+schema comparisons, before the API group. Compilation, native parity and Wasm
+fuel benefit of this source are pending. Original one-shot limits stay fixed.

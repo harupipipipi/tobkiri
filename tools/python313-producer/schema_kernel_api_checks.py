@@ -1,5 +1,7 @@
 """Actual guest observations for the port's lazy public API, not product setup."""
 
+from schema_urljoin_checks import exercise_urljoin
+
 
 def exercise_api():
     """Exercise real validators/callbacks and retain their original objects."""
@@ -141,6 +143,7 @@ def exercise_api():
     exercise_types()
     exercise_evolve()
     exercise_post_init()
+    urljoin_checks = exercise_urljoin()
     return {
         "lazy_start_and_resume": True,
         "actual_error_objects_and_references": True,
@@ -157,6 +160,7 @@ def exercise_api():
         "default_type_dispatch_matches_original": True,
         "evolve_order_live_aliases_and_name_resolution": True,
         "post_init_order_live_callbacks_and_state": True,
+        **urljoin_checks,
     }
 
 
