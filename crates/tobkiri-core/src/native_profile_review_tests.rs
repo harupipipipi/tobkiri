@@ -155,6 +155,69 @@ fn no_authority(core: &Core, profile: &Profile) {
 }
 
 #[tokio::test]
+async fn fresh_native_creation_reviews_once_without_reusing_the_source_identity() {
+    let (core, host, profile, _dir) = reviewed_fixture(Reply::Approve);
+    let old_head = core.save_profile(profile.clone(), None).await.unwrap();
+    host.inner.prompts.lock().unwrap().clear();
+    let id = core
+        .create_profile_with_native_review(
+            &serde_json::to_vec(&profile).unwrap(),
+            "Fresh Harness".into(),
+        )
+        .await
+        .unwrap();
+    assert_ne!(id, profile.id);
+    assert_eq!(host.calls.load(Ordering::SeqCst), 1);
+    assert!(host.inner.prompts.lock().unwrap().is_empty());
+    assert_eq!(core.profiles.head(&profile.id).unwrap(), Some(old_head));
+    let contents = host.contents.lock().unwrap();
+    let shown = &contents[0];
+    assert_eq!(shown["definition"]["id"], id.as_str());
+    assert_eq!(shown["definition"]["name"], "Fresh Harness");
+    assert_eq!(shown["precondition"]["head"], serde_json::Value::Null);
+    let (head, epoch) = core.profiles.root.profile_head_snapshot(&id).unwrap();
+    assert_eq!(
+        head.as_str(),
+        shown["structural"]["candidate"]["revision"]
+            .as_str()
+            .unwrap()
+    );
+    let plan = Digest::parse(shown["plan_digest"].as_str().unwrap()).unwrap();
+    let approvals = Approvals::open(&core.profiles.root, &id).unwrap();
+    assert_eq!(
+        approvals
+            .user_permissions(&id, &head, &plan, epoch)
+            .unwrap(),
+        profile.user_permissions
+    );
+}
+
+#[tokio::test]
+async fn fresh_native_creation_denial_saves_no_revision_or_authority() {
+    let (core, host, profile, _dir) = reviewed_fixture(Reply::DenyLast);
+    assert!(
+        core.create_profile_with_native_review(
+            &serde_json::to_vec(&profile).unwrap(),
+            "Denied Harness".into(),
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(host.calls.load(Ordering::SeqCst), 1);
+    assert!(host.inner.prompts.lock().unwrap().is_empty());
+    let mut candidate = profile.clone();
+    candidate.id = ProfileId::new(
+        host.contents.lock().unwrap()[0]["definition"]["id"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_ne!(candidate.id, profile.id);
+    no_authority(&core, &candidate);
+    assert!(core.profiles.head(&profile.id).unwrap().is_none());
+}
+
+#[tokio::test]
 async fn native_profile_review_commits_exact_candidate_in_one_interaction_without_single_prompts() {
     let (core, host, profile, _dir) = reviewed_fixture(Reply::Approve);
     let precondition = core.profile_save_precondition(&profile.id).unwrap();

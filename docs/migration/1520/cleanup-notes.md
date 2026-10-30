@@ -177,6 +177,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   対応を検査する。Core の新 Profile ID や structural review JSON をそのまま返して
   同じ成功応答の代わりにしない。互換の表示・App ドメイン値と、実 Core の ID / 保存結果の
   拘束を App 側で明示し、Host で固定成功応答や架空の activation / audit を作らない。
+- Core に `create_profile_with_native_review` を追加。既存 create と fresh-ID / parse を
+  一つの private helper で共有し、元の構造定義・公開定義の受理順序を維持する。
+  新入口は実 fresh ID / head / epoch から一度だけ native review と保存を行い、
+  通常保存を先に呼ばない。既存 head または非ゼロ epoch の target は拒否する。
+  元 Profile の保存状態を維持したまま別 ID を一回の承認で作るケースと、
+  拒否時に新 revision / 権限を残さないケースを実 Core テストへ追加。
+  ローカルでは format / source 確認のみ。CI と Setup からの接続は未確認。
 
 ## 新規項目のひな形
 

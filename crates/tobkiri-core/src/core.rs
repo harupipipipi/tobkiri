@@ -649,18 +649,43 @@ impl Core {
     /// Create a fresh Profile from a structural definition, with no inherited
     /// authority or data even if the definition contains a previous identity.
     pub async fn create_profile(&self, bytes: &[u8], name: String) -> Result<ProfileId, CoreError> {
+        let profile = Self::fresh_profile_definition(bytes, name)?;
+        let id = profile.id.clone();
+        self.save_profile(profile, None).await?;
+        Ok(id)
+    }
+
+    /// Create a fresh identity through one bound native review and one save.
+    /// The incoming definition never transfers its previous authority or data.
+    /// A failed or uncertain save is not a successful creation or Session start.
+    pub async fn create_profile_with_native_review(
+        &self,
+        bytes: &[u8],
+        name: String,
+    ) -> Result<ProfileId, CoreError> {
+        let profile = Self::fresh_profile_definition(bytes, name)?;
+        let id = profile.id.clone();
+        let precondition = self.profile_save_precondition(&id)?;
+        if precondition.head.is_some() || precondition.security_epoch != 0 {
+            return Err(CoreError::Invalid(
+                "fresh Profile target already exists".into(),
+            ));
+        }
+        self.save_profile_with_native_review(profile, precondition)
+            .await?;
+        Ok(id)
+    }
+
+    fn fresh_profile_definition(bytes: &[u8], name: String) -> Result<Profile, CoreError> {
         let id = ProfileId::new(format!("prof_{}", ulid::Ulid::new()))?;
-        let mut profile = match tobkiri_profile::parse_profile(bytes) {
+        Ok(match tobkiri_profile::parse_profile(bytes) {
             Ok(mut profile) => {
-                profile.id = id.clone();
+                profile.id = id;
                 profile.name = name;
                 profile
             }
-            Err(_) => published(bytes)?.to_profile(id.clone(), name),
-        };
-        profile.id = id.clone();
-        self.save_profile(profile, None).await?;
-        Ok(id)
+            Err(_) => published(bytes)?.to_profile(id, name),
+        })
     }
 
     /// Add or update an independently verified artifact pin. Conflict checking
