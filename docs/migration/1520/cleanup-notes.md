@@ -786,7 +786,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 016: App schema呼出し契約を先に固定する
 
-- 状態: **source監査済み、追加native differential oracleを作成中。置換実装・CI実行は未完**。
+- 状態: **追加native differential oracleの実CI一致。置換実装・Wasm/GUI検証は未完**。
 - 場所: `tobkiri_protocol/validation.py:128-177`、詳細は
   [App schema caller contract](app-schema-call-contract.md)。
 - Astra highはWasm frameだけでPython handler費用が分からないため、追加stack実装より
@@ -800,3 +800,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   owner/実Wasm予算/GUI/OS承認の証明ではない。短いApp用checker・META compiled planは
   まだ実装しない。将来重複を減らす場合も元dispatch/constructor/例外/可変objectを守り、
   plan作成費用を元invocation予算に含める。native Python削除の前提は移植後の全機能同等性。
+
+- `54a85d415` の追加CI `41145870815` / job `124370717563` は成功。
+  元54e/currentのfresh native laneで全37case・42resource・全305entry/453readが一致。
+  実schema cacheは45miss/302hit/45retained。5collectionは153packs/1base/2shells/
+  1profile/148executable catalogs。37件には追加のparse故障・失敗後retryを含む。
+  artifact13019919970（26,083 bytes）をRAMだけで検査し、bounded JSON receiptのみ保存。
+  新checker/compiled plan、captured-ownerや実Wasm上限、GUI合格へは読み替えない。

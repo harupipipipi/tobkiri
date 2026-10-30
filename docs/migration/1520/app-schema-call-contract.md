@@ -141,3 +141,10 @@ Captured-resource ownership and Wasm budget/GUI/OS integration are explicitly
 outside this first native reference slice. The original 64-vector probe and all
 completion gates remain unchanged. No META_SCHEMA compiled plan or new App
 checker is implemented by this slice.
+
+
+CI `41145870815` / job `124370717563`, source `54a85d415`, executed both native
+lanes and matched all37 cases,42 resources and the full305-entry/453-read
+catalog. Actual schema-cache counts were45 misses,302 hits and45 retained
+objects. This is reference validation, not replacement implementation or Wasm
+qualification. The old standalone one-shot budget failure remains open.
