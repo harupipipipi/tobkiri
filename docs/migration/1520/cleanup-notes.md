@@ -80,6 +80,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - 注意: 現候補ライブラリの schema / error は `serde_json` の値になる部分があり、
   元 Python object の参照保持は未証明。参照解決や error 情報を復元できない場合は、
   巨大な補正レイヤーを積む前に原本 engine の直接移植へ切り替える。
+- 2026-10-30: 比較候補の依存を CI 上だけで解決する
+  [source lock workflow](../../../.github/workflows/issue-1520-schema-kernel-lock.yml)
+  を追加。実 registry checksum と manifest / lock の SHA を記録し、source lock
+  だけを保存する。候補 manifest の追加・更新時に実行し、手動起動も用意する。
+  ローカルで依存を取得せず、未生成の lock や未実行の build / load / parity を
+  成功扱いしない。これは製品への採用や Python 依存の削除を意味しない。
 
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 

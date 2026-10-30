@@ -1,0 +1,93 @@
+name: Issue 1520 schema kernel source lock
+
+on:
+  push:
+    branches: [codex/issue-1520-native-shared-state]
+    paths:
+      - 'tools/python313-producer/schema_kernel/Cargo.toml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-1520-schema-kernel-lock-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  resolve-source-lock:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Resolve actual registry dependencies without compiling the candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.94.0 --profile minimal
+          cargo +1.94.0 generate-lockfile --manifest-path tools/python313-producer/schema_kernel/Cargo.toml
+          cargo +1.94.0 metadata --locked --offline --no-deps --format-version 1 --manifest-path tools/python313-producer/schema_kernel/Cargo.toml > "$RUNNER_TEMP/schema-kernel-metadata.json"
+      - name: Bind source manifest and registry checksums to this source revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import tomllib
+
+          root = Path('tools/python313-producer/schema_kernel')
+          manifest = (root / 'Cargo.toml').read_bytes()
+          lock = (root / 'Cargo.lock').read_bytes()
+          if len(lock) > 262144:
+              raise SystemExit('source lock exceeds receipt bound')
+          packages = tomllib.loads(lock.decode())['package']
+          local = []
+          registry = []
+          for package in packages:
+              if 'source' not in package:
+                  local.append((package['name'], package['version']))
+                  continue
+              if package['source'] != 'registry+https://github.com/rust-lang/crates.io-index':
+                  raise SystemExit('non-registry dependency in candidate lock')
+              checksum = package.get('checksum', '')
+              if len(checksum) != 64 or any(c not in '0123456789abcdef' for c in checksum):
+                  raise SystemExit('registry dependency lacks an actual checksum')
+              registry.append({key: package[key] for key in ('name', 'version', 'checksum')})
+          if local != [('tobkiri-schema-kernel', '0.1.0')]:
+              raise SystemExit('unexpected local package closure')
+          if sum(p['name'] == 'jsonschema' and p['version'] == '0.60.2' for p in registry) != 1:
+              raise SystemExit('exact candidate engine version absent')
+          receipt = {
+              'format': 'tobkiri.schema-kernel-source-lock/1',
+              'head': os.environ['GITHUB_SHA'],
+              'manifest_sha256': hashlib.sha256(manifest).hexdigest(),
+              'lock_sha256': hashlib.sha256(lock).hexdigest(),
+              'lock_bytes': len(lock),
+              'packages': registry,
+              'compiled': False,
+              'loaded': False,
+              'parity_proved': False,
+          }
+          (root / 'source-lock.json').write_text(json.dumps(receipt, sort_keys=True) + '\n')
+          print(json.dumps({k: v for k, v in receipt.items() if k != 'packages'}, sort_keys=True))
+          print('SCHEMA_KERNEL_SOURCE_LOCK_BEGIN')
+          print(lock.decode(), end='')
+          print('SCHEMA_KERNEL_SOURCE_LOCK_END')
+          PY
+      - name: Retain bounded source lock and provenance only
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-kernel-source-lock
+          path: |
+            tools/python313-producer/schema_kernel/Cargo.lock
+            tools/python313-producer/schema_kernel/source-lock.json
+          if-no-files-found: error
+          retention-days: 14
