@@ -37,8 +37,8 @@ def run(args, receipt):
     builder.packages(args.source)
     fetch_schema.verify(args.inputs)
     source = fetch_sdk.inventory(args.source)
-    if (set(source) != {"Cargo.toml", "Cargo.lock", "README.md", "COPYING.jsonschema", "COPYING.python",
-                        "adapter.py", "src/lib.rs", "src/traversal.rs", "src/keywords.rs", "src/url_join.rs"}
+    if (set(source) != {"Cargo.toml", "Cargo.lock", "README.md", "COPYING.jsonschema",
+                        "adapter.py", "src/lib.rs", "src/traversal.rs", "src/keywords.rs"}
             or any("link" in item for item in source.values())
             or sum(item["bytes"] for item in source.values()) > builder.MAX_SOURCE):
         raise ValueError("native kernel source closure differs")
@@ -181,9 +181,6 @@ def run(args, receipt):
             "note": "cProfile overhead differs for Python and C; use call paths, not a speed claim",
             "top_cumulative_and_self_time": report,
         }
-    urljoin_schema_calls = kernel.urljoin_calls()
-    if type(urljoin_schema_calls) is not int or urljoin_schema_calls <= 0:
-        raise ValueError("actual schema comparisons did not enter native urljoin")
     api = exercise_api()
     if len(api) != 16 or not all(value is True for value in api.values()):
         raise ValueError("all sixteen actual API groups required")
@@ -196,7 +193,6 @@ def run(args, receipt):
         raise ValueError("native kernel source changed during comparison")
     receipt.update(outcome="success", native_64_success=True, api_16_success=True,
                    api_checks=api, unsupported_native=unsupported, type_dispatch_counts=counts,
-                   urljoin_schema_calls=urljoin_schema_calls,
                    pointer_bits=struct.calcsize("P") * 8)
 
 

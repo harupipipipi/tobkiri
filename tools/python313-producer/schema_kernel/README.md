@@ -256,38 +256,27 @@ was 1,243,994,756 versus the original 1,599,163,709 (about 22.2% less in this
 protocol). Full one-shot, catalog and product acceptance remain incomplete.
 
 
-## Next original urljoin body port
+## Rejected standalone urljoin body port
 
-The next source ports only the CPython 3.13.16 `urllib.parse.urljoin` control flow
-to Rust/PyO3, retaining its actual function globals/builtins/literal objects.
-Original `_coerce_args`, `urlparse`, `urlunparse`, genuine parse-result classes,
-configuration lists and `urlsplit` LRU remain in use. There is no new URL parser,
-normalization library, resolver or result cache. Original PSF/CPython notices are
-in COPYING.python (13,809 bytes, SHA-256
-78b12c3a81360b357002334f0e70ea0e92eebf7a9b358805c03c48484945f3bb).
+The experimental CPython 3.13.16 `urllib.parse.urljoin` body port at
+97eb93207 / 72fa58ca0 retained genuine helpers, configuration, parse results,
+cache and Registry objects. Native compilation and all 64 comparisons / 16 API
+groups passed, including the added original slash-constant identity and slice
+field observations at 72fa58ca0 (CI 41108293467 / job 124243776309).
+The original schema comparisons entered native urljoin 15,840 times before API
+checks. The normal one-shot Wasm call still exhausted the unchanged 2B fuel.
 
-Only the actual original `referencing._core.urljoin` alias is wrapped; the stdlib
-function remains the independent oracle. Standard positional str/bytes calls
-enter Rust. Arbitrary input protocols, keyword/argument-binding shapes and changed
-original code take explicit original dispatch before the new Rust boundary.
-Current original defaults are respected. A native failure is never retried.
-All actual helper/config lookups and overloaded comparisons retain original order.
-Original slice fields/objects, tuple unpacking, scope of caught exceptions and
-function locals/callable lifetimes are carried through rather than flattening
-Python values into Rust URL strings. Detailed frame/refcount/finalization/peak
-memory equivalence and full stdlib API coverage remain unproved.
+Explicit progress CI 41108401129 / job 124244170322 showed a regression:
+through the same contract_v4 checkpoint it consumed 1,280,400,271 fuel versus
+1,243,994,756 at 0e2dfed1a (about 2.93% more). Eight cases returned versus nine
+at 0e2dfed1a; distribution_v1 was interrupted. These split-call diagnostics
+are not one-shot qualification, an upper bound or product acceptance.
 
-The new sixteenth API group differentially checks RFC-style joins, bytes/mixed
-inputs, aliases/early returns, real callbacks, live helper/config rebinding,
-overloaded self-comparison, actual cache hits and genuine Registry resolution.
-An actual native-entry counter must already be positive after the original 64
-schema comparisons, before the API group. Source 97eb93207 passed actual native
-compilation, all 64 comparisons and 16 API groups in CI 41106604032 / job
-124237968178; 15,840 actual native urljoin entries occurred before the API group.
-The actual native extension was 895,232 bytes with SHA-256
-cb48685361ca9ecc09f24fd77970fe9bfa71d644652218f02e496f4f4052c864.
-Core/component builds passed, but the actual one-shot Wasm call again exhausted
-2B fuel (0 remaining, 1.419555938 seconds, original deadline preserved, no deadline
-or unreachable trap). URI fuel benefit is still unmeasured. Additional actual
-source-slash identity and slice-field callback observations were added after this
-run and await CI. Original one-shot limits stay fixed.
+The active Rust engine and adapter are restored to 0e2dfed1a. The unused URI
+module, wrapper, native counter requirements and its CPython notice are removed
+from the active eight-file source closure. The complete prototype and legal
+notice remain together in Git history. The sixteenth differential API group
+stays as coverage of the original Python URI path; it no longer proves native
+URI entry. Restoration must pass fresh native/API and Wasm CI before any further
+optimization is measured. Original fuel, memory, output and deadline limits stay
+fixed; product integration remains incomplete.

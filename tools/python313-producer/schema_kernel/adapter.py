@@ -9,7 +9,6 @@ import builtins  # noqa: F401 - genuine module initialization for Rust helpers
 import fractions  # noqa: F401
 import re  # noqa: F401
 import weakref
-import urllib.parse as _urlparse
 from functools import wraps
 
 import _tobkiri_schema_kernel as kernel
@@ -64,12 +63,6 @@ _BUILTINS = {
 }
 _INSTALLED = weakref.WeakSet()
 _ORIGINAL_CREATE = None
-_ORIGINAL_URLJOIN = None
-_EXACT_TYPE = type
-_EXACT_LEN = len
-_STRING_TYPES = (str, bytes)
-_TUPLE_TYPE = tuple
-_DEFAULT_URLJOIN = _urlparse.urljoin
 
 
 def _closure(function):
@@ -178,42 +171,6 @@ def install_standard_classes():
         jsonschema.Draft202012Validator,
     ):
         install(validator_class)
-
-    # Only the original referencing alias is translated. The stdlib function
-    # stays available as the independent oracle; no resolver/cache is replaced.
-    global _ORIGINAL_URLJOIN
-    if _ORIGINAL_URLJOIN is None:
-        from urllib import parse
-        from referencing import _core
-
-        original_join = _DEFAULT_URLJOIN
-        if _core.urljoin is original_join and parse.urljoin is original_join:
-            join_context = kernel.make_urljoin_context(original_join)
-            join_code = original_join.__code__
-
-            @wraps(original_join)
-            def urljoin(*args, **kwargs):
-                # Keep arbitrary input protocols/exceptions before the added
-                # Rust C boundary. The real function still owns argument binding
-                # and changed code/defaults; standard positional URIs are native.
-                if (kwargs or _EXACT_LEN(args) not in (2, 3)
-                        or original_join.__code__ is not join_code):
-                    return original_join(*args, **kwargs)
-                base, url = args[:2]
-                if (_EXACT_TYPE(base) not in _STRING_TYPES
-                        or _EXACT_TYPE(url) not in _STRING_TYPES):
-                    return original_join(*args)
-                if _EXACT_LEN(args) == 3:
-                    allow_fragments = args[2]
-                else:
-                    defaults = original_join.__defaults__
-                    if _EXACT_TYPE(defaults) is not _TUPLE_TYPE or not defaults:
-                        return original_join(*args)
-                    allow_fragments = defaults[-1]
-                return kernel.urljoin(base, url, allow_fragments, join_context)
-
-            _core.urljoin = urljoin
-            _ORIGINAL_URLJOIN = original_join
 
     # create()/extend() may introduce classes after module initialization. Keep
     # their genuine factory/registration behavior and install the same traversal

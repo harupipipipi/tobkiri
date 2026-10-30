@@ -134,7 +134,6 @@ class Probe(wit_world.exports.Probe):
             else:
                 actual_result = {"valid": True, "error": None}
             selfchecks.append({"name": case["name"], "actual": actual_result})
-        urljoin_schema_calls = kernel.urljoin_calls()
         return json.dumps({
             "target": TARGET,
             "qualification_scope": "original-object-schema-selfcheck/1",
@@ -146,7 +145,6 @@ class Probe(wit_world.exports.Probe):
             "implemented_handler_count": kernel.implemented_handler_count,
             "schema_validation_executed": True,
             "selfchecks": selfchecks,
-            "urljoin_schema_calls": urljoin_schema_calls,
             "public_api_checks": exercise_api(),
             "type_dispatch_counts": kernel.type_dispatch_counts(),
             "meta_schema_sha256": node_digest(jsonschema.Draft202012Validator.META_SCHEMA),
@@ -488,8 +486,8 @@ def verify_inputs(
     source_files = fetch_sdk.inventory(source)
     if (
         set(source_files) != {
-            "Cargo.toml", "Cargo.lock", "README.md", "COPYING.jsonschema", "COPYING.python", "adapter.py",
-            "src/lib.rs", "src/traversal.rs", "src/keywords.rs", "src/url_join.rs",
+            "Cargo.toml", "Cargo.lock", "README.md", "COPYING.jsonschema", "adapter.py",
+            "src/lib.rs", "src/traversal.rs", "src/keywords.rs",
         }
         or any("link" in item for item in source_files.values())
         or sum(item["bytes"] for item in source_files.values()) > MAX_SOURCE
@@ -714,8 +712,6 @@ def probe() -> None:
         or result.get("implemented_handler_count") != 36
         or result.get("schema_validation_executed") is not True
         or first_difference(expected_selfchecks, result.get("selfchecks")) is not None
-        or type(result.get("urljoin_schema_calls")) is not int
-        or result["urljoin_schema_calls"] <= 0
         or result.get("public_api_checks") != {
             "lazy_start_and_resume": True,
             "actual_error_objects_and_references": True,

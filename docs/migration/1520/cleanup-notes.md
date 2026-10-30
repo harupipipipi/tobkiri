@@ -502,7 +502,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 010: 残存する URI 結合の Python 制御フロー
 
-- 状態: **urljoin 本体の実 native 全 64 比較・16 API 群に成功。Wasm は未完走**。
+- 状態: **実 native 比較は成功したが、累積燃料が約 2.93% 増えたため不採用。速かった 0e へ復帰中**。
+- 以下の移植内容・10 file / native counter / licensing 条件は不採用 prototype の履歴。
+  現行 source の条件は末尾の復帰記録（8 file・元 Python URI 経路）に従う。
 - native profile の 18,123 lookup / 15,840 urljoin が次候補の根拠。Astra high の
   質問回答に従い、まず実 CPython 3.13.16 urljoin の body のみを移し、型変換・
   parse / unparse・本来の cache・Resolver / Resource / Registry は元の実処理を使う。
@@ -528,3 +530,27 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   元 deadline は保持され、期限超過・unreachable はない。燃料改善は未測定。
 - 元 '/' constant object と実 slice field を callback で直接比較する追加観測を、
   97 の run 後に加えた。この追加分と累積診断の実 CI はまだ未確認。
+
+- source `72fa58ca0` の通常 CI `41108293467` / job `124243776309` は追加の
+  slash identity / slice field 観測を含む実 native 全 64 比較・16 API 群に成功。
+  一括 Wasm は元の 2B fuel で停止。累積診断 `41108401129` / job `124244170322`
+  は同じ contract_v4 まで 1,280,400,271 fuel を消費し、0e の 1,243,994,756
+  より約 2.93% 増加、完了件数も 9 → 8。診断の実測に基づき単独 URI 移植は不採用。
+- Astra high の回答に従い、active engine / adapter を `0e2dfed1a` に戻し、
+  未使用 URI module / wrapper / native counter 条件と対応 notice を active source
+  から削除する。prototype と license は Git history に一緒に残す。閉じた source
+  admission は 8 file に戻す。16 件目の API 群は元 Python URI 経路の比較として保持。
+  既存の 64 比較・API 群・元一括 gate は弱めず、復帰 source の新 CI で再確認する。
+
+## 011: descend 呼び出しの一時 kwargs dictionary
+
+- 状態: **案。未実装・未測定**。
+- 場所: `tools/python313-producer/schema_kernel/src/keywords.rs` の descend helper。
+- 整理候補: 実 default bound method を同じ時点で一度取得し、既知の元 code / signature /
+  self と連続した位置引数 prefix の場合だけ `.call1` で呼ぶ。一時 kwargs dict を省く。
+  実 Python generator と body / globals / closure / defaults はそのまま実行する。
+- 保持条件: 省略と明示 None を区別。hole / custom descriptor・method・callable /
+  code 変更は元 kwargs 経路。取得した同じ method を呼び、失敗時の再試行をしない。
+  getter 回数・defaults 変更・生成前後と resume 前の副作用・close / GC を比較する。
+- 採用条件: 復帰 baseline を先に実測し、実 native / 元一括 Wasm gate と同一診断で
+  比較する。燃料改善がなければ採用しない。generator / cursor の別実装には迂回しない。

@@ -2,7 +2,6 @@
 
 mod keywords;
 mod traversal;
-mod url_join;
 
 use pyo3::{
     exceptions::PyValueError,
@@ -171,7 +170,6 @@ fn _tobkiri_schema_kernel(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(type_dispatch_counts, module)?)?;
     keywords::register(module)?;
     traversal::register(module)?;
-    url_join::register(module)?;
     module.add("production_enabled", false)?;
     module.add("implemented_handler_count", 36)?;
     Ok(())
