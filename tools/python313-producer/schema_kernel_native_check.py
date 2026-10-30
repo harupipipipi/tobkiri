@@ -102,6 +102,14 @@ def run(args, receipt):
     ) for row in inputs]
     if len(package_paths) != 6:
         raise ValueError("complete checksum-verified native wheel selection required")
+    from schema_kernel_translate import native_overlay
+    selected = [path for path, row in zip(package_paths, inputs)
+                if row["distribution"] == "jsonschema"]
+    if len(selected) != 1:
+        raise ValueError("one authenticated original jsonschema package required")
+    overlay = destination / "translated-jsonschema"
+    receipt["keyword_translation"] = native_overlay(selected[0], overlay)
+    package_paths = [overlay if path == selected[0] else path for path in package_paths]
     config = sysconfig.get_paths()
     stdlib = [config["stdlib"], config["platstdlib"], sysconfig.get_config_var("DESTSHARED")]
     sys.path[:] = list(dict.fromkeys([str(HERE), str(module_dir),
@@ -114,7 +122,9 @@ def run(args, receipt):
             or kernel.production_enabled is not False
             or kernel.implemented_handler_count != 36):
         raise ValueError("actual source-built private extension import differs")
-    from jsonschema import Draft202012Validator, exceptions
+    from jsonschema import Draft202012Validator, exceptions, _keywords
+    if getattr(_keywords, "_tobkiri_translated_keywords", False) is not True:
+        raise ValueError("public keyword definitions were not translated before import")
     from jsonschema_specifications import REGISTRY
     from schema_kernel_api_checks import exercise_api, exercise_unsupported_native
     from schema_kernel_observation import meta_nodes, node_digest, observe
@@ -181,18 +191,20 @@ def run(args, receipt):
             "note": "cProfile overhead differs for Python and C; use call paths, not a speed claim",
             "top_cumulative_and_self_time": report,
         }
+    schema_entries = kernel.keyword_entry_count()
+    if type(schema_entries) is not int or schema_entries <= 0:
+        raise ValueError("original 64 schema calls did not enter public Rust definitions")
     api = exercise_api()
-    if len(api) != 17 or not all(value is True for value in api.values()):
-        raise ValueError("all seventeen actual API groups required")
+    if len(api) != 18 or not all(value is True for value in api.values()):
+        raise ValueError("all eighteen actual API groups required")
     unsupported = exercise_unsupported_native()
-    counts = kernel.type_dispatch_counts()
-    if any(type(counts.get(key)) is not int or counts[key] <= 0
-           for key in ("native_default", "explicit_original")):
-        raise ValueError("both actual type dispatch paths must execute")
+    entries = kernel.keyword_entry_count()
+    if type(entries) is not int or entries <= 0:
+        raise ValueError("actual public keyword definitions did not enter Rust")
     if fetch_sdk.inventory(args.source) != source:
         raise ValueError("native kernel source changed during comparison")
-    receipt.update(outcome="success", native_64_success=True, api_17_success=True,
-                   api_checks=api, unsupported_native=unsupported, type_dispatch_counts=counts,
+    receipt.update(outcome="success", native_64_success=True, api_18_success=True,
+                   api_checks=api, unsupported_native=unsupported, keyword_entries=entries, schema_keyword_entries=schema_entries,
                    pointer_bits=struct.calcsize("P") * 8)
 
 

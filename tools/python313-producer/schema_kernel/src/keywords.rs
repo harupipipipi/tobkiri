@@ -16,6 +16,10 @@ use pyo3::{
     types::{PyBool, PyDict, PyIterator, PyList, PyString, PyTuple},
 };
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static KEYWORD_ENTRIES: AtomicUsize = AtomicUsize::new(0);
+
 type Object = Py<PyAny>;
 type Cursor = Py<PyIterator>;
 
@@ -24,7 +28,7 @@ struct Inputs {
     value: Object,
     instance: Object,
     schema: Object,
-    descend_names: Py<PyTuple>,
+    descend_names: Py<KeywordNames>,
 }
 
 struct Context<'py> {
@@ -32,7 +36,7 @@ struct Context<'py> {
     value: Bound<'py, PyAny>,
     instance: Bound<'py, PyAny>,
     schema: Bound<'py, PyAny>,
-    descend_names: Bound<'py, PyTuple>,
+    descend_names: Bound<'py, KeywordNames>,
 }
 
 impl Inputs {
@@ -820,7 +824,14 @@ fn descend<'py>(
     let index = usize::from(keyword_arguments) * 4
         + usize::from(path.is_some()) * 2
         + usize::from(schema_path.is_some());
-    let names = context.descend_names.get_item(index)?;
+    let names = context
+        .descend_names
+        .borrow()
+        .rows
+        .get(index)
+        .ok_or_else(|| PyRuntimeError::new_err("keyword name metadata was cleared"))?
+        .clone_ref(py);
+    let names = names.bind(py);
     let mut arguments = [std::ptr::null_mut(); 4];
     arguments[0] = instance.as_ptr();
     arguments[1] = schema.as_ptr();
@@ -1318,14 +1329,14 @@ fn scalar<'py>(
 
 /// Retain the four actual inputs and finite keyword-name metadata.
 /// No Python lookup, type check, iteration or validator call occurs here.
-pub(crate) fn iterator<'py>(
+fn iterator<'py>(
     py: Python<'py>,
     keyword: &str,
     validator: &Bound<'py, PyAny>,
     value: &Bound<'py, PyAny>,
     instance: &Bound<'py, PyAny>,
     schema: &Bound<'py, PyAny>,
-    descend_names: &Bound<'py, PyTuple>,
+    descend_names: &Bound<'py, KeywordNames>,
 ) -> PyResult<Bound<'py, PyAny>> {
     Ok(Py::new(
         py,
@@ -1347,7 +1358,83 @@ pub(crate) fn iterator<'py>(
     .into_any())
 }
 
+/// Opaque metadata: Python callers cannot replace rows or supply forged tuples.
+#[pyclass(module = "_tobkiri_schema_kernel")]
+struct KeywordNames {
+    rows: Vec<Py<PyTuple>>,
+}
+
+#[pymethods]
+impl KeywordNames {
+    fn __traverse__(&self, visit: PyVisit<'_>) -> Result<(), PyTraverseError> {
+        for row in &self.rows {
+            visit.call(row)?;
+        }
+        Ok(())
+    }
+
+    fn __clear__(&mut self) {
+        self.rows.clear();
+    }
+}
+
+/// Finite original keyword names, created once when the translated module loads.
+#[pyfunction]
+fn keyword_names(py: Python<'_>) -> PyResult<KeywordNames> {
+    // Fixed keyword spellings/order from the original keyword calls. No caller
+    // values, callables or results are retained in this per-Store metadata.
+    let names: [&[&str]; 8] = [
+        &[],
+        &["schema_path"],
+        &["path"],
+        &["path", "schema_path"],
+        &["instance", "schema"],
+        &["instance", "schema", "schema_path"],
+        &["instance", "schema", "path"],
+        &["instance", "schema", "schema_path", "path"],
+    ];
+    let mut keywords = Vec::with_capacity(names.len());
+    for names in names {
+        let values = names.iter().map(|name| match *name {
+            "instance" => pyo3::intern!(py, "instance"),
+            "schema" => pyo3::intern!(py, "schema"),
+            "path" => pyo3::intern!(py, "path"),
+            "schema_path" => pyo3::intern!(py, "schema_path"),
+            _ => unreachable!("fixed keyword name"),
+        });
+        keywords.push(PyTuple::new(py, values)?);
+    }
+    Ok(KeywordNames {
+        rows: keywords.into_iter().map(Bound::unbind).collect(),
+    })
+}
+
+/// Enter the Rust body from the actual public Python generator's first resume.
+#[pyfunction]
+fn keyword_iter<'py>(
+    py: Python<'py>,
+    keyword: &str,
+    validator: &Bound<'py, PyAny>,
+    value: &Bound<'py, PyAny>,
+    instance: &Bound<'py, PyAny>,
+    schema: &Bound<'py, PyAny>,
+    names: &Bound<'py, KeywordNames>,
+) -> PyResult<Bound<'py, PyAny>> {
+    KEYWORD_ENTRIES.fetch_add(1, Ordering::Relaxed);
+    iterator(py, keyword, validator, value, instance, schema, names)
+}
+
+/// Entries from public translated definitions; never cached validation results.
+#[pyfunction]
+fn keyword_entry_count() -> usize {
+    KEYWORD_ENTRIES.load(Ordering::Relaxed)
+}
+
 /// Register the Rust iterator type without loading the Python support modules.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_class::<KeywordNames>()?;
+    module.add_function(wrap_pyfunction!(keyword_names, module)?)?;
+    module.add_function(wrap_pyfunction!(keyword_entry_count, module)?)?;
+    module.add_function(wrap_pyfunction!(keyword_iter, module)?)?;
     module.add_class::<OriginalKeywordIterator>()
 }

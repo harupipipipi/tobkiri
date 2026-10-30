@@ -7,7 +7,32 @@ product validator. Source 23400a4a7 passed actual native compilation and its
 call still exhausted the unchanged fuel limit; native parity is not Wasm or
 product acceptance.
 
-## Boundary
+## Current candidate boundary
+
+The current unverified source translates the pinned `_keywords.py` definitions
+at build time, before the first jsonschema import. All 36 public signatures,
+parameter names, docstrings and generator status are preserved. Normal module
+execution connects the real class mappings to those public definitions. Traversal
+always executes the selected actual callable, so same-object code changes, saved
+aliases, existing validators and suspended generators use ordinary Python rules.
+No live module reload, function-code rewrite or code-identity audit guard is used.
+
+The authenticated original source remains unchanged in the input package and is
+also executed as an independent original-keyword oracle module for boundary
+comparisons. Both native and guest captures record original/derived source hashes;
+no schema, validation result or resolver state is prepared by this translation.
+The guest capture still checks its original 64MiB total after adding the oracle.
+This is a derived experimental source artifact, not an unchanged upstream wheel.
+Full package-metadata/resource, frame/refcount and product parity remain unproved.
+
+The default type bypass is removed; real checker and predicate callables execute
+normally. Previous type-shortcut fuel results do not qualify this new structure.
+API18 adds same-function keyword/checker/predicate code changes, preselected and
+saved handlers, started generators, replacement mappings, exception identity and
+runtime audit observations. FFI keyword names are now opaque Rust metadata;
+forged Python tuples cannot reach the four-pointer vectorcall stack.
+
+## Historical boundary and experiments
 
 `adapter.py` retains the real Python Validator classes and their public state,
 VALIDATORS dictionaries, type/format checkers, evolve, registry/resolver and error
@@ -322,3 +347,28 @@ returned nine cases, then exhausted fuel in executable_catalog_v4. Its measured
 contract_v4 checkpoint used 1,244,463,543 fuel. This fresh restoration measurement,
 including the retained URI API helper, is the comparison baseline; it is not
 one-shot or product acceptance.
+
+## Open callable-mutation parity gap
+
+Source review identified an additional unverified contract: keyword dispatch
+selects Rust by original function identity, and default type dispatch guards the
+checker method by identity. Mutating the same function's code can keep these
+identities while changing its real Python body. Current tests cover callable
+replacement and descend code mutation, not these two cases. This is a static
+finding, not a reproduced runtime failure; native 64/API17 evidence cannot prove
+this missing coverage. The kernel remains disconnected from product Setup.
+
+Before product use, actual selected callables must execute normally, with public
+thin wrappers entering Rust bodies rather than identity-based bypass. Saved
+aliases, preexisting validators, started generators, new calls, custom replacement
+and audit events require comparisons. Added code getters or direct internal links
+must not bypass mutable callables. More crossings may cost fuel; that would mean
+compatibility and the unchanged budget are not yet jointly achieved.
+
+Source fbe042701 passed native 64/API17 in CI 41114239126 / job 124264147903.
+Its original one-shot Wasm call still exhausted 2B fuel with the deadline preserved.
+Progress CI 41114246891 / job 124264186051 used 1,242,952,199 fuel through
+contract_v4 versus restoration 811cb8bca's 1,244,463,543 (about 0.12% less).
+Nine cases returned; executable_catalog_v4 was interrupted. This small diagnostic
+change does not establish a route to the budget or product acceptance. The new
+public-callable structure requires fresh native/API18 and Wasm measurements.

@@ -13,6 +13,8 @@ name: Issue 1520 actual private schema kernel Wasm probe
     - tools/python313-producer/schema_kernel_api_checks.py
     - tools/python313-producer/schema_urljoin_checks.py
     - tools/python313-producer/schema_descend_checks.py
+    - tools/python313-producer/schema_callable_checks.py
+    - tools/python313-producer/schema_kernel_translate.py
     - tools/python313-producer/schema_kernel_oracle.py
     - tools/python313-producer/schema_kernel_native_check.py
     - crates/tobkiri-wasm/src/native_data_schema_probe.rs

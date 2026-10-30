@@ -578,3 +578,60 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   累積 CI `41112803950` / job `124259239999` は 9 件完了、次 executable_catalog_v4
   で停止。同じ contract_v4 まで 1,244,463,543 fuel。この新しい復帰版実測を比較基準に
   使う。URI API helper の metadata も冷間費用に含む。元一括・製品 gate は未合格。
+
+## 012: function identity による body 迂回と同じ function の code 変更
+
+- 状態: **source 修正と API18 を実装。実 compile / 回帰 / 燃料の CI は未実施**。
+- 場所: `schema_kernel/src/traversal.rs` の builtin handler identity dispatch と
+  `schema_kernel/src/lib.rs` の default TypeChecker method identity guard。
+- 原本と同じ function object でも `__code__` は変更可能。現在の keyword dispatch は
+  function identity が一致すると実 callable を呼ばず Rust body を選ぶ。type guard も
+  checker method identity が変わらない code 変更を検出しない。既存比較は callable
+  の置換や descend の code 変更を扱うが、この二つの same-object 変更は未検証。
+  64 比較 / API17 合格が得られても、この契約の全体 parity を証明したことにはならない。
+- Astra high の回答: 公開 callable の本体を薄い Python wrapper + Rust body に接続し、
+  traversal は原本と同じ時点で選ばれた実 callable を必ず呼ぶ。wrapper の code 変更や
+  descriptor / custom replacement は通常 dispatch に任せる。code getter を guard に
+  追加したり、identity だけで Rust body に直接接続して override を迂回しない。
+- 既存参照: module alias や VALIDATORS の値を置換するだけでは、作成済み Validator の
+  選択済み handler や保存済み alias は更新されない。各実 alias を実行した結果・副作用を
+  比較し、未接続経路を native 化済みと報告しない。元 Python alias は失敗後の retry に
+  使わず、その alias の通常実行経路として保持する。
+- 必要な比較: 同じ builtin / checker function の code 変更、変更前に保存した alias、
+  作成済み Validator、開始済み generator と変更後の新規 call、custom replacement、
+  audit event 列。開始済み generator を新しい code に切り替えてはいけない。
+- 実験 kernel は製品に接続されていない。現在実行中の vectorcall CI は既存範囲の
+  native 比較・元予算測定であり、この未検証契約の修正や製品合格ではない。
+  crossing 費用が増えても製品採用前の修正は必要。性能未達を理由に gap を採用しない。
+- 参照解決 body 移植でも同じ原則を用い、actual `_validate_reference` → lookup /
+  _evolve は通常の実 method 呼出しを保つ。直接 Rust-to-Rust 接続案は採用しない。
+
+- source `fbe042701` は実 native 全 64 比較・API17 に成功（通常 CI `41114239126` /
+  job `124264147903`）。一括は元 2B fuel で停止し deadline は保持。累積診断
+  `41114246891` / job `124264186051` は同じ contract_v4 まで 1,242,952,199 fuel、
+  復帰版の 1,244,463,543 から約 0.12% 減、9 件完了のまま。効果は小さく、新構成の
+  成果に引き継がない。API17 成功も今回の code 変更契約を証明するものではない。
+- Astra high に設置方法を確認し、C: build 時の既知 source 翻訳を選択。runtime の
+  module alias / VALIDATORS 差替えは install 前の code 変更を上書きし得るため不採用。
+  function.__code__ の書換えも新 audit / 保存 alias の動作変更を生むので不採用。
+- `schema_kernel_translate.py` は元 v4.26.0 `_keywords.py` の SHA-256
+  afcfc3aea01f9fa40bc109e65c4820bde89253e51a20bda9da7b8f20d7a57c57 と全 36 定義・
+  signature・generator の閉じた形を build 時に確認し、body だけを公開 generator の
+  Rust 接続へ変換する。元 14,949 bytes → 7,022 bytes（AST/data 確認のみ）。
+  元 package は書き換えず native candidate copy / guest capture を派生させ、完全な
+  元 source を独立 oracle module として残す。guest に増えた code / data index も
+  元の 64MiB capture bound に含める。原本と派生 source の hash を receipt に分ける。
+- traversal の handler identity table / delegate / class ごとの keyword 名 table と、
+  lib の fast_is_type / type counter / adapter wrapper を削除。選択済み実 callable を
+  常に呼び、Rust body は公開関数が自ら呼ぶ。標準 class / VALIDATORS は通常 import で
+  公開定義を参照する。default checker / predicate は元実 callable を実行する。
+- source review で、新たな公開 table 引数を任意 tuple にすると C vectorcall の
+  kwnames / stack 長を偽造できることを検出。opaque KeywordNames Rust class に変更し、
+  Python から constructor / fields / subclass を公開しない。GC に rows を含め、実 tuple
+  を clone して borrow を解放してから callback を呼ぶ。API18 で偽 tuple を拒否する。
+- 独立 oracle import の ImportError を候補側へ fallback すると自己比較になり得るため、
+  translated marker がある場合は oracle import を必須にした。元の単独 oracle 実行だけ
+  は元 module を使う。元 17 群を残した上で第 18 群を追加し、64 比較後・API 前の実
+  public Rust body entry count も正であることを要求する。
+- 現時点は AST / rustfmt / source review のみ。新構成の実 compile・全 64 / API18・
+  一括 Wasm・燃料・全 catalog・製品の合格は未確認。元予算や機能を変更しない。

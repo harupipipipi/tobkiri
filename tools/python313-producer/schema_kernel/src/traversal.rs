@@ -11,12 +11,9 @@ use pyo3::{
 struct ContextState {
     applicable: Py<PyAny>,
     specification: Py<PyAny>,
-    delegate: Py<PyAny>,
-    descend_names: Py<PyTuple>,
     evolve_fields: Py<PyAny>,
     evolve_globals: Option<Py<PyDict>>,
     evolve_builtins: Option<Py<PyDict>>,
-    handlers: Vec<(String, Py<PyAny>)>,
 }
 
 /// Captured original closure objects and builtin callable identities, not schemas.
@@ -31,17 +28,12 @@ impl KernelContext {
         if let Some(state) = &self.state {
             visit.call(&state.applicable)?;
             visit.call(&state.specification)?;
-            visit.call(&state.delegate)?;
-            visit.call(&state.descend_names)?;
             visit.call(&state.evolve_fields)?;
             if let Some(value) = &state.evolve_globals {
                 visit.call(value)?;
             }
             if let Some(value) = &state.evolve_builtins {
                 visit.call(value)?;
-            }
-            for (_, callable) in &state.handlers {
-                visit.call(callable)?;
             }
         }
         Ok(())
@@ -56,47 +48,14 @@ impl KernelContext {
 fn make_context(
     applicable: &Bound<'_, PyAny>,
     specification: &Bound<'_, PyAny>,
-    handlers: &Bound<'_, PyDict>,
-    delegate: &Bound<'_, PyAny>,
     evolve_fields: &Bound<'_, PyAny>,
     evolve_globals: &Bound<'_, PyAny>,
     evolve_builtins: &Bound<'_, PyAny>,
 ) -> PyResult<KernelContext> {
-    let mut aliases = Vec::with_capacity(handlers.len());
-    for (keyword, callable) in handlers {
-        aliases.push((keyword.extract::<String>()?, callable.unbind()));
-    }
-    // Fixed keyword spellings/order from the original keyword calls. No caller
-    // values, callables or results are retained in this per-Store metadata.
-    let names: [&[&str]; 8] = [
-        &[],
-        &["schema_path"],
-        &["path"],
-        &["path", "schema_path"],
-        &["instance", "schema"],
-        &["instance", "schema", "schema_path"],
-        &["instance", "schema", "path"],
-        &["instance", "schema", "schema_path", "path"],
-    ];
-    let py = applicable.py();
-    let mut keywords = Vec::with_capacity(names.len());
-    for names in names {
-        let values = names.iter().map(|name| match *name {
-            "instance" => pyo3::intern!(py, "instance"),
-            "schema" => pyo3::intern!(py, "schema"),
-            "path" => pyo3::intern!(py, "path"),
-            "schema_path" => pyo3::intern!(py, "schema_path"),
-            _ => unreachable!("fixed keyword name"),
-        });
-        keywords.push(PyTuple::new(py, values)?);
-    }
-    let descend_names = PyTuple::new(py, keywords)?;
     Ok(KernelContext {
         state: Some(ContextState {
             applicable: applicable.clone().unbind(),
             specification: specification.clone().unbind(),
-            delegate: delegate.clone().unbind(),
-            descend_names: descend_names.unbind(),
             evolve_fields: evolve_fields.clone().unbind(),
             evolve_globals: if evolve_globals.is_none() {
                 None
@@ -108,7 +67,6 @@ fn make_context(
             } else {
                 Some(evolve_builtins.cast::<PyDict>()?.clone().unbind())
             },
-            handlers: aliases,
         }),
     })
 }
@@ -536,36 +494,14 @@ impl Traversal {
                 value: value.unbind(),
             });
             let current = self.current.as_ref().expect("selected handler");
-            let context = self.context.borrow(py);
-            let context = context
-                .state
-                .as_ref()
-                .ok_or_else(|| PyRuntimeError::new_err("schema kernel context was cleared"))?;
-            let native = context
-                .handlers
-                .iter()
-                .find(|(_, original)| original.bind(py).is(current.callable.bind(py)));
-            let errors = if let Some((keyword, _)) = native {
-                let iterator = crate::keywords::iterator(
-                    py,
-                    keyword,
-                    validator,
-                    current.value.bind(py),
-                    self.instance.bind(py),
-                    schema,
-                    context.descend_names.bind(py),
-                )?;
-                context.delegate.bind(py).call1((iterator,))?
-            } else {
-                // Explicit custom/other-draft callable dispatch, not retrying a
-                // failed native builtin or deciding validity in Python first.
-                current.callable.bind(py).call1((
-                    validator,
-                    current.value.bind(py),
-                    self.instance.bind(py),
-                    schema,
-                ))?
-            };
+            // Always execute the selected actual callable. Public translated
+            // definitions enter Rust themselves; identity is not a code guard.
+            let errors = current.callable.bind(py).call1((
+                validator,
+                current.value.bind(py),
+                self.instance.bind(py),
+                schema,
+            ))?;
             let errors = if errors.is_truthy()? {
                 errors
             } else {

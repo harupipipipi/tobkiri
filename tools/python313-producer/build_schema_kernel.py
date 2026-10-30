@@ -145,8 +145,9 @@ class Probe(wit_world.exports.Probe):
             "implemented_handler_count": kernel.implemented_handler_count,
             "schema_validation_executed": True,
             "selfchecks": selfchecks,
+            "schema_keyword_entries": kernel.keyword_entry_count(),
             "public_api_checks": exercise_api(),
-            "type_dispatch_counts": kernel.type_dispatch_counts(),
+            "keyword_entries": kernel.keyword_entry_count(),
             "meta_schema_sha256": node_digest(jsonschema.Draft202012Validator.META_SCHEMA),
             "meta_registry_sha256": {
                 uri: node_digest(jsonschema_specifications.REGISTRY.contents(uri))
@@ -293,7 +294,7 @@ def summarize_progress(records: list[dict], component: str, reference: dict) -> 
                 item["case"] = case["name"]
             elif expected_phase == "api":
                 checks = payload.get("checks")
-                if (not isinstance(checks, dict) or len(checks) != 17
+                if (not isinstance(checks, dict) or len(checks) != 18
                         or any(value is not True for value in checks.values())):
                     raise ValueError("diagnostic actual API observations differ")
             complete = expected_phase == "complete"
@@ -608,7 +609,9 @@ def probe() -> None:
     control = json.loads(read(Path("/schema-control.json"), maximum=4 * 1024 * 1024))
     reference = json.loads(read(Path("/schema-reference.json"), maximum=4 * 1024 * 1024))
     original_capture = driver.stage_inputs(stage, control)
-    extra_sources = ("schema_adapter.py", "schema_kernel_observation.py", "schema_inputs.py", "schema_api_checks.py", "schema_urljoin_checks.py", "schema_descend_checks.py")
+    from schema_kernel_translate import captured_overlay
+    keyword_translation = captured_overlay(stage)
+    extra_sources = ("schema_adapter.py", "schema_kernel_observation.py", "schema_inputs.py", "schema_api_checks.py", "schema_urljoin_checks.py", "schema_descend_checks.py", "schema_callable_checks.py")
     for name in extra_sources:
         if (stage / name).exists():
             raise ValueError("schema kernel helper collides with captured source")
@@ -730,11 +733,12 @@ def probe() -> None:
             "post_init_order_live_callbacks_and_state": True,
             "urljoin_actual_helpers_callbacks_and_registry": True,
             "descend_keyword_binding_and_generator_protocol": True,
+            "live_keyword_and_checker_code_changes": True,
         }
-        or type(result.get("type_dispatch_counts", {}).get("native_default")) is not int
-        or result["type_dispatch_counts"]["native_default"] <= 0
-        or type(result["type_dispatch_counts"].get("explicit_original")) is not int
-        or result["type_dispatch_counts"]["explicit_original"] <= 0
+        or type(result.get("schema_keyword_entries")) is not int
+        or result["schema_keyword_entries"] <= 0
+        or type(result.get("keyword_entries")) is not int
+        or result["keyword_entries"] <= 0
         or result.get("meta_schema_sha256") != digest(reference["meta_schema"])
         or result.get("meta_registry_sha256") != {
             item["uri"]: digest(item["schema"]) for item in reference["meta_registry"]
@@ -789,6 +793,7 @@ def probe() -> None:
         "extension_imports": imports, "extension_exports": exports,
         "composition": composition, "boundary": boundary,
         "original_source_capture": original_capture,
+        "keyword_translation": keyword_translation,
         "complete_capture_bytes": captured_total,
         "native_data_consumer_sha256": consumer_identity, "native_report": report,
         "result": result, "original_64_cases_compared": True,
@@ -852,6 +857,7 @@ def run(
     shutil.copyfile(HERE / "schema_kernel_api_checks.py", probe_source / "schema_api_checks.py")
     shutil.copyfile(HERE / "schema_urljoin_checks.py", probe_source / "schema_urljoin_checks.py")
     shutil.copyfile(HERE / "schema_descend_checks.py", probe_source / "schema_descend_checks.py")
+    shutil.copyfile(HERE / "schema_callable_checks.py", probe_source / "schema_callable_checks.py")
     shutil.copyfile(HERE / "schema_kernel_observation.py", probe_source / "schema_kernel_observation.py")
     reference_data = json.loads(fingerprint_and_read(reference, 4 * 1024 * 1024))
     # Test inputs only. Expected results and expected registry objects are never
@@ -872,9 +878,10 @@ def run(
         "stdlib": runtime_inputs.report(stdlib / "stdlib-inputs.json"),
     }, sort_keys=True) + "\n")
     replay = destination / "probe.sh"
-    replay.write_text("set -eu\n/usr/bin/python3 -I -B /kernel-driver.py --probe\n")
+    replay.write_text("set -eu\nexport GITHUB_ACTIONS=true\n/usr/bin/python3 -I -B /kernel-driver.py --probe\n")
     helpers = (
         (Path(__file__).resolve(), "/kernel-driver.py"),
+        (HERE / "schema_kernel_translate.py", "/schema_kernel_translate.py"),
         (HERE / "rpds_probe/driver.py", "/rpds_driver.py"),
         (HERE / "schema_probe/driver.py", "/driver.py"),
         (HERE / "schema_probe/native_driver.py", "/native_driver.py"),

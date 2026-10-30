@@ -1,6 +1,14 @@
 """Bounded observations of the original keyword-to-descend Python boundary."""
 
 
+from jsonschema import _keywords
+
+if getattr(_keywords, "_tobkiri_translated_keywords", False):
+    from jsonschema import _tobkiri_original_keywords as _original_keywords
+else:
+    _original_keywords = _keywords
+
+
 def exercise_descend() -> dict[str, bool]:
     """Compare real original handlers with the installed keyword traversal."""
     import sys
@@ -56,7 +64,7 @@ def exercise_descend() -> dict[str, bool]:
         name, value, instance, schema, validator = case
         if native:
             return validator.iter_errors(instance)
-        return getattr(_keywords, name)(validator, value, instance, schema)
+        return getattr(_original_keywords, name)(validator, value, instance, schema)
 
     def same_calls(left: list, right: list) -> None:
         assert len(left) == len(right)

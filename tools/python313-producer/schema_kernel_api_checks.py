@@ -1,7 +1,8 @@
 """Actual guest observations for the port's lazy public API, not product setup."""
 
 from schema_urljoin_checks import exercise_urljoin
-from schema_descend_checks import exercise_descend
+from schema_descend_checks import exercise_descend, _original_keywords
+from schema_callable_checks import exercise_callable_changes
 
 
 def exercise_api():
@@ -146,6 +147,7 @@ def exercise_api():
     exercise_post_init()
     urljoin_checks = exercise_urljoin()
     descend_checks = exercise_descend()
+    callable_checks = exercise_callable_changes()
     return {
         "lazy_start_and_resume": True,
         "actual_error_objects_and_references": True,
@@ -164,6 +166,7 @@ def exercise_api():
         "post_init_order_live_callbacks_and_state": True,
         **urljoin_checks,
         **descend_checks,
+        **callable_checks,
     }
 
 
@@ -354,7 +357,7 @@ def exercise_types():
         ("properties", {}, {}, "object"), ("items", {}, [], "array"),
         ("minimum", 0, 1, "number"), ("minLength", 0, "x", "string"),
     ):
-        original_keyword = getattr(_keywords, name)
+        original_keyword = getattr(_original_keywords, name)
         kind = next(item for item in original_keyword.__code__.co_consts
                     if type(item) is str and item == kind_name)
         schema = {name: keyword_value}
