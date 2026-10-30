@@ -126,6 +126,39 @@ def packages(source: Path) -> list[dict]:
     return result
 
 
+def restore_registry_vendor(source: Path, archives: Path, destination: Path) -> None:
+    """Restore complete crate sources; Cargo vendor filters archive members."""
+    from build_native import fingerprint
+    import build_rpds
+    import fetch_registry
+    import fetch_rpds
+
+    if sys.platform != "linux" or os.environ.get("GITHUB_ACTIONS") != "true":
+        raise ValueError("registry restoration is restricted to Linux CI")
+    build_rpds.physical(source)
+    build_rpds.physical(archives)
+    build_rpds.physical(destination.parent)
+    if not destination.is_absolute() or destination.exists():
+        raise ValueError("new physical registry destination required")
+    pins = packages(source)
+    size = sum(fingerprint(archives / (p["name"] + "-" + p["version"] + ".crate"),
+                           fetch_rpds.MAX_CRATE_ARCHIVE)["bytes"] for p in pins)
+    if size > MAX_ARCHIVES:
+        raise ValueError("registry archive closure exceeds its bound")
+    destination.mkdir(mode=0o700)
+    totals = {"bytes": 0, "members": 0}
+    for pin in pins:
+        stem = pin["name"] + "-" + pin["version"]
+        # The existing bounded extractor verifies the lock checksum first and
+        # retains every member, including files Cargo vendor elects to omit.
+        record = fetch_registry.unpack(archives / (stem + ".crate"),
+                                       destination / stem, pin, totals)
+        checksum = destination / stem / ".cargo-checksum.json"
+        checksum.write_bytes(fetch_rpds.checksum_bytes(pin, record["files"]))
+        checksum.chmod(0o644)
+    verify_registry(source, destination, archives)
+
+
 def verify_registry(source: Path, vendor: Path, archives: Path) -> dict:
     """Derive vendored bytes from original lock-checksummed crate archives."""
     from build_native import fingerprint

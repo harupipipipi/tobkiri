@@ -101,6 +101,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   vendor の自己申告 checksum だけでなく元 `.crate` archive と照合する。
   build script の追加時に起動する。現時点では接続手順の構文確認までで、
   実 build / import / call の成功は未確認。
+- 実 CI `41049965671` / 診断 CI `41051424994` は build 前の vendor 照合で停止。
+  `ahash-0.8.12` の package checksum は一致し、Cargo vendor が `.gitignore` を
+  除外していた。照合を弱めず、CI の `cargo fetch --locked` で得た元 `.crate` を
+  既存の bounded extractor で全件展開し、全ファイル・mode・checksum を再照合する。
+  使わない Cargo vendor tree / config の生成も除き、表現の違う二重の供給経路を減らす。
+  修正後の実 CI はこれからで、kernel の compile / import / call は未証明。
 
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 

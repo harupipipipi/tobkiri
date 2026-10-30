@@ -65,11 +65,11 @@ jobs:
         from fetch_sdk import acquire
         acquire(Path(os.environ['RUNNER_TEMP'])/'schema-sdk')
         PYSDK
-    - name: Vendor the committed source lock on CI only
+    - name: Fetch locked registry archives on CI only
       run: |
         set -euo pipefail
         export CARGO_HOME="$RUNNER_TEMP/schema-cargo-home"
-        cargo vendor --locked --versioned-dirs --manifest-path tools/python313-producer/schema_kernel/Cargo.toml "$RUNNER_TEMP/schema-vendor" > "$RUNNER_TEMP/schema-vendor-config.toml"
+        cargo fetch --locked --manifest-path tools/python313-producer/schema_kernel/Cargo.toml
         mkdir "$RUNNER_TEMP/schema-archives"
         python3 -B - <<'PYCRATES'
         from pathlib import Path
@@ -88,9 +88,9 @@ jobs:
         from pathlib import Path
         import os, sys
         sys.path.insert(0, 'tools/python313-producer')
-        from build_schema_kernel import verify_registry
+        from build_schema_kernel import restore_registry_vendor
         root = Path(os.environ['RUNNER_TEMP'])
-        verify_registry(Path('tools/python313-producer/schema_kernel'), root/'schema-vendor', root/'schema-archives')
+        restore_registry_vendor(Path('tools/python313-producer/schema_kernel').resolve(), root/'schema-archives', root/'schema-archive-vendor')
         PYVERIFY
     - name: Build the actual native64 DATA consumer from this source
       run: |
@@ -126,7 +126,7 @@ jobs:
         set -euo pipefail
         python3 -B tools/python313-producer/build_schema_kernel.py \
           --source "$GITHUB_WORKSPACE/tools/python313-producer/schema_kernel" \
-          --vendor "$RUNNER_TEMP/schema-vendor" \
+          --vendor "$RUNNER_TEMP/schema-archive-vendor" \
           --archives "$RUNNER_TEMP/schema-archives" \
           --rust "$RUNNER_TEMP/schema-rust" \
           --sdk "$RUNNER_TEMP/schema-sdk" \
