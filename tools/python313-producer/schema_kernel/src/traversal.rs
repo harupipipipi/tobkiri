@@ -12,6 +12,7 @@ struct ContextState {
     applicable: Py<PyAny>,
     specification: Py<PyAny>,
     delegate: Py<PyAny>,
+    descend_names: Py<PyTuple>,
     evolve_fields: Py<PyAny>,
     evolve_globals: Option<Py<PyDict>>,
     evolve_builtins: Option<Py<PyDict>>,
@@ -31,6 +32,7 @@ impl KernelContext {
             visit.call(&state.applicable)?;
             visit.call(&state.specification)?;
             visit.call(&state.delegate)?;
+            visit.call(&state.descend_names)?;
             visit.call(&state.evolve_fields)?;
             if let Some(value) = &state.evolve_globals {
                 visit.call(value)?;
@@ -64,11 +66,37 @@ fn make_context(
     for (keyword, callable) in handlers {
         aliases.push((keyword.extract::<String>()?, callable.unbind()));
     }
+    // Fixed keyword spellings/order from the original keyword calls. No caller
+    // values, callables or results are retained in this per-Store metadata.
+    let names: [&[&str]; 8] = [
+        &[],
+        &["schema_path"],
+        &["path"],
+        &["path", "schema_path"],
+        &["instance", "schema"],
+        &["instance", "schema", "schema_path"],
+        &["instance", "schema", "path"],
+        &["instance", "schema", "schema_path", "path"],
+    ];
+    let py = applicable.py();
+    let mut keywords = Vec::with_capacity(names.len());
+    for names in names {
+        let values = names.iter().map(|name| match *name {
+            "instance" => pyo3::intern!(py, "instance"),
+            "schema" => pyo3::intern!(py, "schema"),
+            "path" => pyo3::intern!(py, "path"),
+            "schema_path" => pyo3::intern!(py, "schema_path"),
+            _ => unreachable!("fixed keyword name"),
+        });
+        keywords.push(PyTuple::new(py, values)?);
+    }
+    let descend_names = PyTuple::new(py, keywords)?;
     Ok(KernelContext {
         state: Some(ContextState {
             applicable: applicable.clone().unbind(),
             specification: specification.clone().unbind(),
             delegate: delegate.clone().unbind(),
+            descend_names: descend_names.unbind(),
             evolve_fields: evolve_fields.clone().unbind(),
             evolve_globals: if evolve_globals.is_none() {
                 None
@@ -525,6 +553,7 @@ impl Traversal {
                     current.value.bind(py),
                     self.instance.bind(py),
                     schema,
+                    context.descend_names.bind(py),
                 )?;
                 context.delegate.bind(py).call1((iterator,))?
             } else {

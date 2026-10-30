@@ -280,3 +280,45 @@ stays as coverage of the original Python URI path; it no longer proves native
 URI entry. Restoration must pass fresh native/API and Wasm CI before any further
 optimization is measured. Original fuel, memory, output and deadline limits stay
 fixed; product integration remains incomplete.
+
+## Rejected positional binding candidate
+
+A source-only candidate attempted to remove temporary descend kwargs dictionaries
+by checking exact bound-method/function types and known thin-wrapper code identity,
+then calling the same genuine generator positionally. It was rejected before
+compilation or execution: reading even an exact Python function's `__code__`
+introduces an `object.__getattr__` audit callback at each descent. Such a callback
+can raise or mutate state, so exact types do not make the guard observationally
+neutral. Function identity alone cannot guard against mutable code. The direct
+PyFunction_GetCode API is outside this extension's required Limited API boundary.
+
+The candidate, counters, metadata and incomplete dedicated test helper are removed.
+No new audit event or non-Limited API dependency is admitted. The active engine
+remains the restored 0e implementation. A larger contiguous reference-resolution
+body port needs separate design and parity evidence; local micro-optimizations
+have not established a route to the unchanged one-shot budget.
+
+## Experimental keyword-preserving vectorcall
+
+A separate candidate keeps all original positional/keyword arguments and their
+insertion order, including omitted versus explicit None. It uses the Stable ABI
+PyObject_Vectorcall entry (available since Python 3.12) to call the same resolved
+method once without first constructing a temporary kwargs dictionary. Arbitrary
+callables retain normal interpreter dispatch. No code/type guard, extra code
+attribute read, native-error retry or replacement generator is added.
+
+Eight immutable keyword-name tuples are finite per-context metadata charged to
+the cold budget and visited by GC. A synchronous four-pointer borrowed stack is
+bounded by the original signature; no vectorcall offset flag is used. The real
+callable and all actual inputs remain owned across callbacks. API17 adds original
+handler comparisons for arity, keyword order/object identity, descriptor access,
+custom callables/code changes, lazy generators and absence of new code-read audit
+events. This is source-only until fresh compilation/native/Wasm CI completes.
+
+Restoration 811cb8bca passed native 64 comparisons / API16 in normal CI
+41112798825 / job 124259214054; its original one-shot call still exhausted 2B
+fuel with the deadline preserved. Progress CI 41112803950 / job 124259239999
+returned nine cases, then exhausted fuel in executable_catalog_v4. Its measured
+contract_v4 checkpoint used 1,244,463,543 fuel. This fresh restoration measurement,
+including the retained URI API helper, is the comparison baseline; it is not
+one-shot or product acceptance.

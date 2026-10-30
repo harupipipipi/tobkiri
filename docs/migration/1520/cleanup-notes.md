@@ -544,13 +544,37 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 011: descend 呼び出しの一時 kwargs dictionary
 
-- 状態: **案。未実装・未測定**。
+- 状態: **source review で不採用。実 compile / 実行前に候補を撤去**。
 - 場所: `tools/python313-producer/schema_kernel/src/keywords.rs` の descend helper。
-- 整理候補: 実 default bound method を同じ時点で一度取得し、既知の元 code / signature /
-  self と連続した位置引数 prefix の場合だけ `.call1` で呼ぶ。一時 kwargs dict を省く。
-  実 Python generator と body / globals / closure / defaults はそのまま実行する。
-- 保持条件: 省略と明示 None を区別。hole / custom descriptor・method・callable /
-  code 変更は元 kwargs 経路。取得した同じ method を呼び、失敗時の再試行をしない。
-  getter 回数・defaults 変更・生成前後と resume 前の副作用・close / GC を比較する。
-- 採用条件: 復帰 baseline を先に実測し、実 native / 元一括 Wasm gate と同一診断で
-  比較する。燃料改善がなければ採用しない。generator / cursor の別実装には迂回しない。
+- 整理案は、実 bound method を一度取得し、exact MethodType / FunctionType / 既知 code /
+  同じ self と連続した引数 prefix の時だけ実 generator を positional で呼ぶものだった。
+  body / live defaults / globals / closure は変更しない案でも、guard 自体に問題がある。
+- Sol の source review により、exact function の `__code__` 取得も CPython の
+  `object.__getattr__` audit event を発行することを確認。監査 hook は例外や状態変更を
+  起こせるため、元呼出しにない event を追加できない。function identity のみでは
+  変更可能な code を guard できず、PyFunction_GetCode は必要な Limited API の外。
+- root は未コミット候補の metadata / counter / API17 integration / 未完 helper を撤去。
+  active engine は復帰版 `811cb8bca` のまま。実行前の棄却であり、燃料改善や実 parity の
+  成果は主張しない。既存 API16 と元 budget / ABI / 監査観測の条件を保持する。
+- 次候補は `_validate_reference` → actual Resolver.lookup / _evolve の連続した body
+  移植。actual Resource / Registry / Resolver / Resolved、取得 callback / scope /
+  constructor / errors / lazy descend を保持し、urljoin は元 Python のままにする。
+  既知 method の direct dispatch にも今回と同じ監査 event 問題がないか先に検討する。
+  この構造的候補でも大幅削減が出なければ、現在の境界で元予算に到達する経路は未立証。
+
+- 別案として、引数を positional に変更せず keyword 名・元の順序を保ったまま
+  Stable ABI（3.12 以降）の PyObject_Vectorcall で実 method を一回呼ぶ候補を実装。
+  PyO3 の公開 PyCallArgs は sealed で keyword 名 tuple を受け取れないため、最小の
+  FFI 境界を使う。code guard / audit event / retry / 新 generator は追加しない。
+  8 個の固定 keyword tuple は guest context の metadata のみで GC に含め、入力の
+  4 pointer は同期呼出し中の実 owner から借用する。offset flag は使用しない。
+- source review では pointer owner / reentrancy / 全呼出し順に blocking finding はない。
+  専用 API17 は実元 handler との kwargs 順・arity・identity・descriptor・custom callable /
+  code 変更・generator lifecycle・追加 code audit event がないことを比較する。
+  prefixItems の元順は instance / schema / schema_path / path。元 v4.26.0 の実 source
+  を RAM で確認し、候補とテスト期待値を揃えた。依存 source は filesystem 保存しない。
+- 復帰版 `811cb8bca` 通常 CI `41112798825` / job `124259214054` は実 native
+  全 64 比較・API16 に成功。一括 Wasm は元 2B fuel で停止し、deadline は保持。
+  累積 CI `41112803950` / job `124259239999` は 9 件完了、次 executable_catalog_v4
+  で停止。同じ contract_v4 まで 1,244,463,543 fuel。この新しい復帰版実測を比較基準に
+  使う。URI API helper の metadata も冷間費用に含む。元一括・製品 gate は未合格。

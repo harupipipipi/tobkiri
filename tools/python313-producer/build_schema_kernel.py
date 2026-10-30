@@ -293,7 +293,7 @@ def summarize_progress(records: list[dict], component: str, reference: dict) -> 
                 item["case"] = case["name"]
             elif expected_phase == "api":
                 checks = payload.get("checks")
-                if (not isinstance(checks, dict) or len(checks) != 16
+                if (not isinstance(checks, dict) or len(checks) != 17
                         or any(value is not True for value in checks.values())):
                     raise ValueError("diagnostic actual API observations differ")
             complete = expected_phase == "complete"
@@ -608,7 +608,7 @@ def probe() -> None:
     control = json.loads(read(Path("/schema-control.json"), maximum=4 * 1024 * 1024))
     reference = json.loads(read(Path("/schema-reference.json"), maximum=4 * 1024 * 1024))
     original_capture = driver.stage_inputs(stage, control)
-    extra_sources = ("schema_adapter.py", "schema_kernel_observation.py", "schema_inputs.py", "schema_api_checks.py", "schema_urljoin_checks.py")
+    extra_sources = ("schema_adapter.py", "schema_kernel_observation.py", "schema_inputs.py", "schema_api_checks.py", "schema_urljoin_checks.py", "schema_descend_checks.py")
     for name in extra_sources:
         if (stage / name).exists():
             raise ValueError("schema kernel helper collides with captured source")
@@ -729,6 +729,7 @@ def probe() -> None:
             "evolve_order_live_aliases_and_name_resolution": True,
             "post_init_order_live_callbacks_and_state": True,
             "urljoin_actual_helpers_callbacks_and_registry": True,
+            "descend_keyword_binding_and_generator_protocol": True,
         }
         or type(result.get("type_dispatch_counts", {}).get("native_default")) is not int
         or result["type_dispatch_counts"]["native_default"] <= 0
@@ -850,6 +851,7 @@ def run(
     shutil.copyfile(source / "adapter.py", probe_source / "schema_adapter.py")
     shutil.copyfile(HERE / "schema_kernel_api_checks.py", probe_source / "schema_api_checks.py")
     shutil.copyfile(HERE / "schema_urljoin_checks.py", probe_source / "schema_urljoin_checks.py")
+    shutil.copyfile(HERE / "schema_descend_checks.py", probe_source / "schema_descend_checks.py")
     shutil.copyfile(HERE / "schema_kernel_observation.py", probe_source / "schema_kernel_observation.py")
     reference_data = json.loads(fingerprint_and_read(reference, 4 * 1024 * 1024))
     # Test inputs only. Expected results and expected registry objects are never

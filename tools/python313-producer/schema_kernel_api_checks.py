@@ -1,6 +1,7 @@
 """Actual guest observations for the port's lazy public API, not product setup."""
 
 from schema_urljoin_checks import exercise_urljoin
+from schema_descend_checks import exercise_descend
 
 
 def exercise_api():
@@ -144,6 +145,7 @@ def exercise_api():
     exercise_evolve()
     exercise_post_init()
     urljoin_checks = exercise_urljoin()
+    descend_checks = exercise_descend()
     return {
         "lazy_start_and_resume": True,
         "actual_error_objects_and_references": True,
@@ -161,6 +163,7 @@ def exercise_api():
         "evolve_order_live_aliases_and_name_resolution": True,
         "post_init_order_live_callbacks_and_state": True,
         **urljoin_checks,
+        **descend_checks,
     }
 
 

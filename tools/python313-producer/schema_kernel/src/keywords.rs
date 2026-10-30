@@ -10,6 +10,7 @@ use pyo3::{
         PyOverflowError, PyRuntimeError, PyStopIteration, PyTypeError, PyUnboundLocalError,
         PyValueError,
     },
+    ffi,
     prelude::*,
     pyclass::CompareOp,
     types::{PyBool, PyDict, PyIterator, PyList, PyString, PyTuple},
@@ -23,6 +24,7 @@ struct Inputs {
     value: Object,
     instance: Object,
     schema: Object,
+    descend_names: Py<PyTuple>,
 }
 
 struct Context<'py> {
@@ -30,6 +32,7 @@ struct Context<'py> {
     value: Bound<'py, PyAny>,
     instance: Bound<'py, PyAny>,
     schema: Bound<'py, PyAny>,
+    descend_names: Bound<'py, PyTuple>,
 }
 
 impl Inputs {
@@ -39,6 +42,7 @@ impl Inputs {
             value: self.value.bind(py).clone(),
             instance: self.instance.bind(py).clone(),
             schema: self.schema.bind(py).clone(),
+            descend_names: self.descend_names.bind(py).clone(),
         }
     }
 
@@ -46,7 +50,8 @@ impl Inputs {
         visit.call(&self.validator)?;
         visit.call(&self.value)?;
         visit.call(&self.instance)?;
-        visit.call(&self.schema)
+        visit.call(&self.schema)?;
+        visit.call(&self.descend_names)
     }
 }
 
@@ -272,7 +277,7 @@ impl OriginalKeywordIterator {
                             if matched {
                                 let child = descend(
                                     py,
-                                    &context.validator,
+                                    &context,
                                     &value,
                                     subschema.as_ref().expect("active subschema").bind(py),
                                     Some(&key),
@@ -398,7 +403,7 @@ impl OriginalKeywordIterator {
                 if instance.contains(&property)? {
                     self.delegate(descend(
                         py,
-                        validator,
+                        context,
                         &instance.get_item(&property)?,
                         &subschema,
                         Some(&property),
@@ -408,12 +413,12 @@ impl OriginalKeywordIterator {
                 }
             }
             ForKind::PropertyNames => {
-                self.delegate(descend(py, validator, &item, value, None, None, true)?)?;
+                self.delegate(descend(py, context, &item, value, None, None, true)?)?;
             }
             ForKind::AdditionalProperties => {
                 self.delegate(descend(
                     py,
-                    validator,
+                    context,
                     &instance.get_item(&item)?,
                     value,
                     Some(&item),
@@ -435,7 +440,7 @@ impl OriginalKeywordIterator {
                 if instance.contains(&property)? {
                     self.delegate(descend(
                         py,
-                        validator,
+                        context,
                         instance,
                         &dependency,
                         None,
@@ -448,7 +453,7 @@ impl OriginalKeywordIterator {
                 let (index, subschema) = pair(py, &item)?;
                 self.delegate(descend(
                     py,
-                    validator,
+                    context,
                     instance,
                     &subschema,
                     None,
@@ -461,7 +466,7 @@ impl OriginalKeywordIterator {
                 let (index, instance) = pair(py, &enumerated)?;
                 self.delegate(descend(
                     py,
-                    validator,
+                    context,
                     &instance,
                     &subschema,
                     Some(&index),
@@ -472,7 +477,7 @@ impl OriginalKeywordIterator {
             ForKind::Items => {
                 self.delegate(descend(
                     py,
-                    validator,
+                    context,
                     &instance.get_item(&item)?,
                     value,
                     Some(&item),
@@ -656,7 +661,7 @@ impl OriginalKeywordIterator {
                 if schema.contains(selected)? {
                     self.delegate(descend(
                         py,
-                        validator,
+                        context,
                         instance,
                         &schema.get_item(selected)?,
                         None,
@@ -673,15 +678,8 @@ impl OriginalKeywordIterator {
                 let errors = PyList::empty(py);
                 while let Some(item) = next(py, &cursor)? {
                     let (index, subschema) = pair(py, &item)?;
-                    let branch = descend(
-                        py,
-                        validator,
-                        instance,
-                        &subschema,
-                        None,
-                        Some(&index),
-                        false,
-                    )?;
+                    let branch =
+                        descend(py, context, instance, &subschema, None, Some(&index), false)?;
                     // list(...) is deliberate in the original handler.
                     let found = builtin(py, "list")?.call1((branch,))?;
                     if !found.is_truthy()? {
@@ -812,35 +810,51 @@ fn validation_error<'py>(
 
 fn descend<'py>(
     py: Python<'py>,
-    validator: &Bound<'py, PyAny>,
+    context: &Context<'py>,
     instance: &Bound<'py, PyAny>,
     schema: &Bound<'py, PyAny>,
     path: Option<&Bound<'py, PyAny>>,
     schema_path: Option<&Bound<'py, PyAny>>,
     keyword_arguments: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let kwargs = PyDict::new(py);
-    if keyword_arguments {
-        kwargs.set_item(pyo3::intern!(py, "instance"), instance)?;
-        kwargs.set_item(pyo3::intern!(py, "schema"), schema)?;
-        if let Some(path) = schema_path {
-            kwargs.set_item(pyo3::intern!(py, "schema_path"), path)?;
-        }
-        if let Some(path) = path {
-            kwargs.set_item(pyo3::intern!(py, "path"), path)?;
-        }
-        validator.call_method(pyo3::intern!(py, "descend"), (), Some(&kwargs))
+    let index = usize::from(keyword_arguments) * 4
+        + usize::from(path.is_some()) * 2
+        + usize::from(schema_path.is_some());
+    let names = context.descend_names.get_item(index)?;
+    let mut arguments = [std::ptr::null_mut(); 4];
+    arguments[0] = instance.as_ptr();
+    arguments[1] = schema.as_ptr();
+    let mut length = 2;
+    // Keep the original kwargs insertion order, including schema_path before
+    // path for the all-keyword callers. Omitted arguments remain omitted.
+    let optional = if keyword_arguments {
+        [schema_path, path]
     } else {
-        if let Some(path) = path {
-            kwargs.set_item(pyo3::intern!(py, "path"), path)?;
-        }
-        if let Some(path) = schema_path {
-            kwargs.set_item(pyo3::intern!(py, "schema_path"), path)?;
-        }
-        validator.call_method(
-            pyo3::intern!(py, "descend"),
-            (instance, schema),
-            Some(&kwargs),
+        [path, schema_path]
+    };
+    for value in optional.into_iter().flatten() {
+        arguments[length] = value.as_ptr();
+        length += 1;
+    }
+    let method = context.validator.getattr(pyo3::intern!(py, "descend"))?;
+    // PyObject_Vectorcall is Stable ABI since 3.12. Unlike PyVectorcall_Call it
+    // supports arbitrary callables and performs their ordinary tp_call dispatch.
+    // https://docs.python.org/3.13/c-api/call.html#c.PyObject_Vectorcall
+    // SAFETY: the synchronous call borrows all input Bound objects and method;
+    // their owners live through this call, including callbacks/GC. The stack
+    // holds exactly nargs + len(kwnames) live pointers (at most four). kwnames
+    // comes from our immutable eight-row table of unique exact Unicode names.
+    // No offset flag is used; the callee cannot write before this array. NULL
+    // is propagated once as the original Python exception, with no retry.
+    unsafe {
+        Bound::from_owned_ptr_or_err(
+            py,
+            ffi::PyObject_Vectorcall(
+                method.as_ptr(),
+                arguments.as_ptr(),
+                if keyword_arguments { 0 } else { 2 },
+                names.as_ptr(),
+            ),
         )
     }
 }
@@ -1040,7 +1054,7 @@ fn unevaluated_properties<'py>(
         if !evaluated.contains(&property)? {
             let errors = descend(
                 py,
-                &context.validator,
+                context,
                 &context.instance.get_item(&property)?,
                 &context.value,
                 Some(&property),
@@ -1302,7 +1316,7 @@ fn scalar<'py>(
     Ok(Some(validation_error(py, message, None)?))
 }
 
-/// Construct a suspended iterator by retaining the four actual Python inputs.
+/// Retain the four actual inputs and finite keyword-name metadata.
 /// No Python lookup, type check, iteration or validator call occurs here.
 pub(crate) fn iterator<'py>(
     py: Python<'py>,
@@ -1311,6 +1325,7 @@ pub(crate) fn iterator<'py>(
     value: &Bound<'py, PyAny>,
     instance: &Bound<'py, PyAny>,
     schema: &Bound<'py, PyAny>,
+    descend_names: &Bound<'py, PyTuple>,
 ) -> PyResult<Bound<'py, PyAny>> {
     Ok(Py::new(
         py,
@@ -1321,6 +1336,7 @@ pub(crate) fn iterator<'py>(
                 value: value.clone().unbind(),
                 instance: instance.clone().unbind(),
                 schema: schema.clone().unbind(),
+                descend_names: descend_names.clone().unbind(),
             }),
             state: State::Start,
             child: None,
