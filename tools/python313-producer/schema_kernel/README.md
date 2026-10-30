@@ -11,7 +11,11 @@ source completion is not a successful runtime observation.
 VALIDATORS dictionaries, type/format checkers, evolve, registry/resolver and error
 constructors. It captures each original traversal closure's actual applicable
 selector/specification rather than recomputing it from mutable class metadata.
-Thin generator methods delegate to the Rust lazy traversal. Rust dispatches the
+Thin generator methods delegate to the Rust lazy traversal. Module create/extend
+factory results are installed without replacing the genuine generated class;
+installation metadata uses a WeakSet. Previously acquired factory references and
+all remaining API routes still require coverage; this wrapper alone is not proof
+that every subsequently created class executes the Rust path. Rust dispatches the
 36 original builtin callables by actual identity; explicit extension and older
 draft-specific callables retain their normal dispatch inside the same Wasm
 budget. A failed native builtin is never retried through the old Python handler.
@@ -34,9 +38,15 @@ original classes and registry. Its 64 actual selfchecks run in one real Core
 NativeData invocation under unchanged 64 MiB / 2-billion fuel / original absolute
 30-second limits. Compare first errors, ordered context, actual references,
 parent/cause, paths and complete rendering hashes, plus the real meta-registry
-and class format-checker membership. Seven additional actual public API probes
-cover lazy resume/close, interleaving, PEP479, false-schema early paths and evolve.
-These checks are prepared but have not passed for this new source.
+and class format-checker membership. Eight additional actual public API probes
+cover lazy resume/close, interleaving, PEP479, false-schema early paths, evolve
+and unregistered extension-class reclamation.
+At source 638bf7489, CI 41070883433 passed the actual Rust extension build and
+ABI checks and entered original producer preinitialization. It stopped because
+the test App sealed its loader before sysconfig initialized its original config
+module. The order is corrected to match the original probe: target module/config
+initialization, then seal. No Core call or 64-case result was reached at that
+source. The corrected checks have not yet passed.
 
 This is not the full 45-cold-call / 305-entry / 453-read catalog or ordinary Flow,
 real OS owner, original GUI, 1B conversation or product parity proof. Per-handler

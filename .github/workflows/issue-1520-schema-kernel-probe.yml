@@ -5,6 +5,14 @@ name: Issue 1520 actual private schema kernel Wasm probe
     - codex/issue-1520-native-shared-state
     paths:
     - tools/python313-producer/build_schema_kernel.py
+    - tools/python313-producer/schema_kernel/src/**
+    - tools/python313-producer/schema_kernel/adapter.py
+    - tools/python313-producer/schema_kernel/Cargo.toml
+    - tools/python313-producer/schema_kernel/Cargo.lock
+    - tools/python313-producer/schema_kernel_observation.py
+    - tools/python313-producer/schema_kernel_api_checks.py
+    - tools/python313-producer/schema_kernel_oracle.py
+    - .github/workflows/issue-1520-schema-kernel-probe.yml
   workflow_dispatch: null
 permissions:
   contents: read

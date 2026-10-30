@@ -4,7 +4,6 @@
 def exercise_api():
     """Exercise real validators/callbacks and retain their original objects."""
     from jsonschema import Draft202012Validator, exceptions, validators
-    from schema_adapter import install
 
     events = []
     children = []
@@ -24,7 +23,6 @@ def exercise_api():
         return child
 
     extended = validators.extend(Draft202012Validator, {"native-test": callback})
-    install(extended)
     schema, instance = {"native-test": True}, {"actual": []}
     validator = extended(schema)
     cursor = validator.iter_errors(instance)
@@ -71,7 +69,6 @@ def exercise_api():
         raise StopIteration("callback exception")
 
     exceptional = validators.extend(Draft202012Validator, {"native-stop": stopped})
-    install(exceptional)
     cursor = exceptional({"native-stop": True}).iter_errors(instance)
     try:
         next(cursor)
@@ -95,6 +92,15 @@ def exercise_api():
     evolved = validator.evolve(schema=evolved_schema)
     assert type(evolved) is extended and evolved.schema is evolved_schema
 
+    import gc
+    import weakref
+
+    ephemeral = validators.extend(Draft202012Validator, {})
+    original_class = weakref.ref(ephemeral)
+    del ephemeral
+    gc.collect()
+    assert original_class() is None
+
     return {
         "lazy_start_and_resume": True,
         "actual_error_objects_and_references": True,
@@ -103,4 +109,5 @@ def exercise_api():
         "pep479_and_failed_iterator_closed": True,
         "false_descend_preserves_original_early_paths": True,
         "evolve_preserves_actual_class_and_schema": True,
+        "unregistered_extension_class_not_cached": True,
     }

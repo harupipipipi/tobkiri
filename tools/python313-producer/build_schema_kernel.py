@@ -46,7 +46,6 @@ from schema_api_checks import exercise_api
 from schema_kernel_observation import meta_nodes, node_digest, observe
 
 install_standard_classes()
-_FINDER.seal()
 
 TARGET = {
     "python": list(sys.version_info[:3]),
@@ -54,10 +53,31 @@ TARGET = {
     "soabi": sysconfig.get_config_var("SOABI"),
     "extension_file": kernel.__file__,
 }
+_FINDER.seal()
 
 
 class Probe(wit_world.exports.Probe):
     def run(self) -> str:
+        try:
+            return self.observe()
+        except Exception as error:
+            frames, current = [], error.__traceback__
+            while current is not None and len(frames) < 32:
+                frames.append({
+                    "module": current.tb_frame.f_globals.get("__name__"),
+                    "function": current.tb_frame.f_code.co_name,
+                    "line": current.tb_lineno,
+                })
+                current = current.tb_next
+            return json.dumps({
+                "unexpected_exception": {
+                    "type": type(error).__module__ + "." + type(error).__qualname__,
+                    "message": str(error), "frames": frames,
+                },
+                "production_enabled": False,
+            }, sort_keys=True)
+
+    def observe(self) -> str:
         schema = {"type": "object", "properties": {"value": {"type": "string"}}}
         actual = {"value": []}
         retained = kernel.retain_objects(schema, actual)
@@ -523,6 +543,7 @@ def probe() -> None:
             "pep479_and_failed_iterator_closed": True,
             "false_descend_preserves_original_early_paths": True,
             "evolve_preserves_actual_class_and_schema": True,
+            "unregistered_extension_class_not_cached": True,
         }
         or result.get("meta_schema_sha256") != digest(reference["meta_schema"])
         or result.get("meta_registry_sha256") != {
@@ -540,6 +561,18 @@ def probe() -> None:
         )
         or "sha256:" + hashlib.sha256(read(component)).hexdigest() != component_identity
     ):
+        if isinstance(result, dict) and isinstance(result.get("selfchecks"), list):
+            actual_checks = result["selfchecks"]
+            for index, expected in enumerate(expected_selfchecks):
+                actual = actual_checks[index] if index < len(actual_checks) else None
+                if actual != expected:
+                    difference = json.dumps({
+                        "format": "tobkiri.schema-kernel-first-difference/1",
+                        "index": index, "expected": expected, "actual": actual,
+                    }, sort_keys=True)
+                    if len(difference.encode()) <= 16 * 1024:
+                        print(difference, flush=True)
+                    break
         diagnostic = json.dumps({
             "format": "tobkiri.schema-kernel-smoke-failure/1",
             "native_report": report,

@@ -190,6 +190,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   現時点では構文・formatter・source review のみで、実 compile / 64 比較成功は未確認。
   元 validator の製品経路や旧 Python 依存は削除・切替していない。
 
+- 実 CI `41070883433` / job `124114339579`（source `638bf7489`）で原本 64 reference
+  （187,923 bytes）の生成、Rust 拡張 build・ABI 検査は成功。producer の初期化で
+  test App が sysconfig の config module 読み込み前に loader を seal し停止した。
+  原本 probe と同じく設定 module の genuine import 後に seal する順へ修正。
+  まだ実 Core call / 64 比較には到達していない。
+- 接続漏れ・追加 cache の整理: 以降の公開 create / extend factory の実 class にも
+  同じ traversal を install し、登録済み class の追加 strong set を WeakSet へ変更。
+  実 class の弱参照解放を 8 件目の API probe で確認する。Astra high は、実 identity で
+  事前選択する custom / 旧 draft の明示 dispatch を native 失敗後の fallback と区別して
+  R11.2 へ適合と回答。ただし既取得 factory 参照・残り API 経路や他 closure からの
+  strong retain は未検証で、全 draft native 化や全 API の完了を主張しない。
+
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 
 - 状態: **Core / native 承認部分を一部実装・CI 検証済み。既存 Setup 接続は未対応**。

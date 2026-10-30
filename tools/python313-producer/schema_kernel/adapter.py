@@ -8,6 +8,8 @@ Install explicitly in the experimental Wasm App before running its comparisons.
 import builtins  # noqa: F401 - genuine module initialization for Rust helpers
 import fractions  # noqa: F401
 import re  # noqa: F401
+import weakref
+from functools import wraps
 
 import _tobkiri_schema_kernel as kernel
 import jsonschema
@@ -52,7 +54,8 @@ _BUILTINS = {
     "unevaluatedItems": _keywords.unevaluatedItems,
     "unevaluatedProperties": _keywords.unevaluatedProperties,
 }
-_INSTALLED = set()
+_INSTALLED = weakref.WeakSet()
+_ORIGINAL_CREATE = None
 
 
 def _closure(function):
@@ -103,3 +106,21 @@ def install_standard_classes():
         jsonschema.Draft202012Validator,
     ):
         install(validator_class)
+
+    # create()/extend() may introduce classes after module initialization. Keep
+    # their genuine factory/registration behavior and install the same traversal
+    # on its actual result. Do not retain those classes in a new strong cache.
+    global _ORIGINAL_CREATE
+    if _ORIGINAL_CREATE is None:
+        from jsonschema import validators
+
+        original_create = validators.create
+
+        @wraps(original_create)
+        def create(*args, **kwargs):
+            validator_class = original_create(*args, **kwargs)
+            install(validator_class)
+            return validator_class
+
+        _ORIGINAL_CREATE = original_create
+        validators.create = create
