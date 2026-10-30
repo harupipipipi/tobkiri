@@ -314,9 +314,14 @@ def probe() -> None:
     ) if "cargo:rustc-cfg=Py_LIMITED_API" in read(path, maximum=1024 * 1024).decode()]
     if "dylink.0" not in sections or not limited:
         raise ValueError("actual extension lacks dynamic or limited-API evidence")
-    config = Config()
-    config.parallel_compilation = False
-    with Engine(config) as engine, Module(engine, extension) as module:
+    def inspection_engine() -> Engine:
+        # Engine consumes Config. Each static ABI/boundary inspection needs
+        # its own config; these engines never execute the guest request.
+        config = Config()
+        config.parallel_compilation = False
+        return Engine(config)
+
+    with inspection_engine() as engine, Module(engine, extension) as module:
         imports = [{"module": item.module, "name": item.name}
                    for item in module.imports]
         exports = [item.name for item in module.exports]
@@ -349,14 +354,14 @@ def probe() -> None:
     ):
         raise ValueError("captured kernel/probe source changed during preinit")
     inner_bytes = read(stage / "component.wasm")
-    with Engine(config) as engine, Component(engine, inner_bytes) as inner:
+    with inspection_engine() as engine, Component(engine, inner_bytes) as inner:
         driver.boundary(inner, engine, inner=True)
     del inner_bytes
     composition = compose(Path("/wac"), stage / "component.wasm", stage, stage,
                           "ui-schema-probe", [INTERFACE], environment)
     component = stage / "outer.wasm"
     component_identity = "sha256:" + hashlib.sha256(read(component)).hexdigest()
-    with Engine(config) as engine, Component(engine, read(component)) as outer:
+    with inspection_engine() as engine, Component(engine, read(component)) as outer:
         boundary = driver.boundary(outer, engine, inner=False)
     output = work / "native-data-observation.json"
     consumer_identity = hashlib.sha256(read(

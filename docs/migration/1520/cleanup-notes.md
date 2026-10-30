@@ -117,6 +117,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   top-level import が原因だった。lock parser 内へ import を移し、実際に必要な環境でだけ
   読み込む。上記の重複 checksum 再書き込みも除去し、元 extractor の出力を全件検証する。
   実 ABI 検査・producer import・Core 呼び出しは未完了。修正後の CI で確認する。
+- 次の実 CI `41053629100` / job `124055556831` では extension の build・静的 ABI 検査後、
+  元 producer が `Component built successfully` まで進んだ。次の component 境界検査が
+  Wasmtime Engine に消費済みの Config を再利用して停止したため、静的検査ごとに
+  Config を作る形へ修正。実要求の Store / fuel / deadline は作り直さない。
+  Core による実呼び出し・64 ケース・full catalog の成功はまだ証明していない。
 - Astra high の追加設計回答: smoke が実際に通った後、64 ケースで参照・順序などの
   不一致を具体化して現 library candidate の不採用を判断し、巨大な補正層を作らない。
   次候補は元 validator の走査・handler 順序・短絡・branch / evaluated bookkeeping を
@@ -209,6 +214,28 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   macOS job `124054783273` で実 frontend build と Tauri / core-host compile も通った。
   mock input を使う Core テストは native GUI 入力の証拠にはしない。
   初回 Setup の候補生成・実 GUI 操作・Session 起動・既存データ移行は未完了。
+
+## 006: 初回 Setup のための並列 Core / 不要な snapshot 機構を増やさない
+
+- 状態: **source 調査済み。製品接続は未対応**。
+- 場所: Core の `begin_native_setup`、Gate の `NativeSetupInvocation::control`、
+  [component preparation](../../../tobkiri_launcher/harness-native/src/preparation.rs)、
+  [既存 bootstrap composition](../../../tobkiri_launcher/src-tauri/src/native_harness_bootstrap.rs)。
+- 問題: legacy 側の別 Core や仮想的な Root controller を新設すると、実製品の root・
+  account・deadline と分岐し、所有・終了処理が二重になる。
+- 整理案: 実 core-host の同じ `Arc<Core>.begin_native_setup()` と、その invocation の
+  実 `CoreControl` を既存 preparation へ渡す。カタログは原本 305 件を compiled resource に
+  持つ自己完結 component なので、この呼び出しのための外部 file snapshot / private root
+  lease bridge は不要。初期化・catalog 呼び出し・破棄まで元 invocation の予算を保持する。
+- 維持・条件: `compile(File, expected Digest)` は bounded read / 実 SHA / 長さを検査するが、
+  File の取得・path の許可・expected digest の信頼元を証明しない。
+  `OriginalBootstrapInputs` は実 AppHandle / AppConfig / ShutdownState の生存確認で、
+  artifact admission の代用ではない。metadata root を bytes 読み取り権限へ変えない。
+  実 artifact の正規取得と digest provenance、実 Host の owner state、同じ engine / invocation /
+  source owner を保持する consuming generic data-program handoff が未接続。
+  App の catalog メソッドを Core の固定 NativeBootstrap binding 表へ追加しない。
+- 根拠: Sol の限定 source 調査。既存 bootstrap は File を開かず caller から受け取る。
+  実機・GUI・この製品 callsite の実行証拠は未取得。
 
 ## 新規項目のひな形
 
