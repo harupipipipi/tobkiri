@@ -186,6 +186,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   別 statement で取得してから各実 ID へ回答する形へ修正。Tauri の実 frontendDist
   も未生成だったため、CI に既存 `build:core-host` を追加した。
   placeholder の画面で compile を通さず、正規の画面を生成する。修正後の検証はこれから。
+- 修正 `c2d9feef2` の CI `41052938514` は両 job が成功。
+  macOS job `124053223264` で正規 core-host frontend の build と実 Tauri / native Host の
+  `cargo check --locked --features core-host` が通った。portable job `124053222710` も成功。
+  実 native 入力・キャンセルの GUI 操作や初回 Setup 全体はまだ証明していない。
 - 初回 Setup の接続では既存 `defaultsSetup.ts` の confirmation / activation 契約も維持する。
   同コードは実 `defaults.activate`・Profile の `defaults`・catalog / profile / plan /
   authority snapshot / confirmation の digest、epoch、activation、fencing、audit receipt の
