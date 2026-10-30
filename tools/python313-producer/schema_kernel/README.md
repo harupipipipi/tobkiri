@@ -106,3 +106,21 @@ in [COPYING.jsonschema](COPYING.jsonschema).
 
 [Original scope](../../../docs/migration/1520/schema-port-scope.md).
 [Cleanup notes](../../../docs/migration/1520/cleanup-notes.md).
+
+## Native functional precheck and invalid type-name keys
+
+CI 41080438535 at ea0e6160a stopped in the original native API fixture before
+building the optimized candidate: original rpds lookup raised BaseException-based
+PanicException for a non-str type-name key. The documented parameter is str.
+The typed API suite retains its string/subclass comparisons; None/list/bytes
+parameter-violation cases remain in a separate native comparison that observes
+the original actual exception or panic. Non-plain-str public calls dispatch in
+Python before entering the new Rust type helper, preserving that boundary.
+An independent original/candidate Wasm negative-trap comparison is still unproved;
+these native observations do not establish full API or denial parity.
+
+The new CI-only native precheck compiles the same source/PyO3 ABI as a real native
+extension, compares all 64 cases with strict bool/int/float distinctions, checks
+all 13 API groups and the separate invalid-key outcomes before the expensive Core
+consumer build. It records no Wasm execution/budget/GUI/product acceptance. The
+subsequent unchanged Wasm gate remains mandatory. This precheck is not shipped.

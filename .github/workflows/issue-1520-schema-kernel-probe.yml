@@ -12,6 +12,7 @@ name: Issue 1520 actual private schema kernel Wasm probe
     - tools/python313-producer/schema_kernel_observation.py
     - tools/python313-producer/schema_kernel_api_checks.py
     - tools/python313-producer/schema_kernel_oracle.py
+    - tools/python313-producer/schema_kernel_native_check.py
     - .github/workflows/issue-1520-schema-kernel-probe.yml
   workflow_dispatch: null
 permissions:
@@ -140,6 +141,18 @@ jobs:
         root = Path(os.environ['RUNNER_TEMP'])
         restore_registry_vendor(Path('tools/python313-producer/schema_kernel').resolve(), root/'schema-archives', root/'schema-archive-vendor')
         PYVERIFY
+    - name: Compare the actual native Rust extension before the Wasm budget probe
+      run: |
+        set -euo pipefail
+        export PYTHONHASHSEED=0
+        export PYTHONPATH=''
+        python3 -S -B tools/python313-producer/schema_kernel_native_check.py \
+          --source "$GITHUB_WORKSPACE/tools/python313-producer/schema_kernel" \
+          --vendor "$RUNNER_TEMP/schema-archive-vendor" \
+          --inputs "$RUNNER_TEMP/schema-inputs" \
+          --reference "$RUNNER_TEMP/schema-kernel-reference.json" \
+          --cargo-home "$RUNNER_TEMP/schema-cargo-home" \
+          --destination "$RUNNER_TEMP/schema-native"
     - name: Restore native compiler outputs on GitHub only
       id: native-rust-cache
       uses: actions/cache/restore@v5
@@ -220,5 +233,8 @@ jobs:
           ${{ runner.temp }}/schema-candidate/work/native-data-observation.log
           ${{ runner.temp }}/native-data-consumer-build.json
           ${{ runner.temp }}/schema-kernel-reference.json
+          ${{ runner.temp }}/schema-native/schema-kernel-native-check.json
+          ${{ runner.temp }}/schema-native/cargo.jsonl
+          ${{ runner.temp }}/schema-native/cargo.log
         if-no-files-found: warn
         retention-days: 14

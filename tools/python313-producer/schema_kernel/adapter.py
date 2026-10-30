@@ -100,6 +100,11 @@ def install(validator_class):
 
     @wraps(original_is_type)
     def is_type(self, instance, type):
+        # Some out-of-contract keys make the original rpds lookup raise its
+        # BaseException-derived PanicException. Preserve this Python boundary
+        # instead of transporting that panic through another Rust extension.
+        if builtins.type(type) is not builtins.str:
+            return original_is_type(self, instance, type)
         return kernel.fast_is_type(
             self, instance, type, _DEFAULT_CLASS, _DEFAULT_CHECKER, _DEFAULT_LOOKUP,
             _DEFAULT_METHOD, original_is_type,

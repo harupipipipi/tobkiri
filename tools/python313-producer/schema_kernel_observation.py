@@ -97,3 +97,30 @@ def observe(error, original: object, known_nodes: dict, depth: int = 0) -> dict:
         record["cause"] = None
     return record
 
+
+
+def first_difference(expected, actual, path=()):
+    """Compare observed JSON recursively without conflating bool/int/float."""
+    def difference():
+        return {"path": list(path), "expected": repr(expected)[:220],
+                "actual": repr(actual)[:220]}
+
+    if type(expected) is not type(actual):
+        return difference()
+    if isinstance(expected, dict):
+        if expected.keys() != actual.keys():
+            return difference()
+        for key in expected:
+            found = first_difference(expected[key], actual[key], (*path, key))
+            if found is not None:
+                return found
+    elif isinstance(expected, list):
+        if len(expected) != len(actual):
+            return difference()
+        for index, (left, right) in enumerate(zip(expected, actual)):
+            found = first_difference(left, right, (*path, index))
+            if found is not None:
+                return found
+    elif expected != actual:
+        return difference()
+    return None

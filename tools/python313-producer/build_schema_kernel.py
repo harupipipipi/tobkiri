@@ -404,6 +404,7 @@ def probe() -> None:
     from composition import compose
     import driver
     from native_driver import TEST, validate_report
+    from schema_kernel_observation import first_difference
     from rpds_driver import custom_sections, read
     from wasmtime import Config, Engine, MemoryType, Module, TableType
     from wasmtime.component import Component
@@ -554,7 +555,7 @@ def probe() -> None:
         or result.get("unknown_private_type_rejected") is not True
         or result.get("implemented_handler_count") != 36
         or result.get("schema_validation_executed") is not True
-        or result.get("selfchecks") != expected_selfchecks
+        or first_difference(expected_selfchecks, result.get("selfchecks")) is not None
         or result.get("public_api_checks") != {
             "lazy_start_and_resume": True,
             "actual_error_objects_and_references": True,
@@ -594,7 +595,7 @@ def probe() -> None:
             actual_checks = result["selfchecks"]
             for index, expected in enumerate(expected_selfchecks):
                 actual = actual_checks[index] if index < len(actual_checks) else None
-                if actual != expected:
+                if first_difference(expected, actual) is not None:
                     difference = json.dumps({
                         "format": "tobkiri.schema-kernel-first-difference/1",
                         "index": index, "expected": expected, "actual": actual,

@@ -241,6 +241,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   引き続き外側に置く。元 input 値・順序・全 64 比較を維持し、予算外での入力解析を
   認めない。旧 0 fuel は不完走の記録として残し、cold-path 合格とは扱わない。
 
+- 実 CI `41080438535` / job `124147774991`（source `ea0e6160a`）は原本 native の
+  追加 API 比較で停止し、最適化候補の build / 燃料測定には未到達。元 rpds が
+  non-str 型名 key の比較で BaseException 系 PanicException を出した。文字列型の
+  API 比較と、None / list / bytes という契約外引数の実例外・panic 比較を分離し、
+  どの入力も削除しない。公開 method の non-plain-str は追加 Rust 境界へ入る前に
+  元 Python method に渡す。独立した original / candidate Wasm の異常終了比較は未証明。
+- 機能差を先に発見する CI-only native precheck を追加。既存 source / wheel admission を
+  再利用して frozen vendor から実拡張を build し、genuine 元 class / registry / errors で
+  全 64 件・13 API 群・契約外引数を照合する。Wasm budget / OS owner / 製品の証明には
+  数えず、後段の同じ 64MiB / 2B / 元 deadline の実 Wasm gate は必須のまま。
+  strict JSON 差分 helper は共有して bool / int / float の等値混同を防ぎ、同じ observer
+  と source admission の二重実装を減らした。新経路の実行結果はまだ未確認。
+
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 
 - 状態: **Core / native 承認部分を一部実装・CI 検証済み。既存 Setup 接続は未対応**。

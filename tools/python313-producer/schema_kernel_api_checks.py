@@ -230,7 +230,7 @@ def exercise_types():
             return type(error), str(error), error.__suppress_context__
         return result
 
-    for kind in ("unknown", "\ud800", None, [], b"integer", StrSubclass("integer")):
+    for kind in ("unknown", "\ud800", StrSubclass("integer")):
         assert outcome(validator.is_type, kind) == outcome(
             lambda value, name: original(validator, value, name), kind
         )
@@ -336,6 +336,43 @@ def exercise_types():
         assert other.is_type(1.0, "integer") is reference(other, 1.0, "integer")
 
 
+def exercise_unsupported_native():
+    """Observe out-of-contract non-str keys separately from guest APIs.
+
+    The declared type-name parameter is str. Original rpds panics for this
+    key collisions; an uncatchable Wasm trap cannot be placed in the same
+    successful return as the normal API suite. No schema case is removed.
+    """
+    import sys
+    from jsonschema import Draft202012Validator
+
+    if sys.platform != "linux":
+        raise RuntimeError("native unsupported-key observation requires Linux CI")
+    validator = Draft202012Validator({})
+    original = getattr(Draft202012Validator.is_type, "__wrapped__", Draft202012Validator.is_type)
+    cases = []
+    for kind in (None, [], b"integer"):
+        outcomes = []
+        for check in (validator.is_type, lambda value, kind: original(validator, value, kind)):
+            try:
+                check(1, kind)
+            except BaseException as error:
+                name = type(error).__module__ + "." + type(error).__qualname__
+                if not isinstance(error, Exception) and name != "pyo3_runtime.PanicException":
+                    raise
+                outcomes.append({"type": name, "message": str(error),
+                                 "suppress_context": error.__suppress_context__})
+            else:
+                raise AssertionError("original unsupported-key failure disappeared")
+        assert outcomes[0] == outcomes[1]
+        cases.append({"kind": repr(kind), "outcome": outcomes[0]})
+    return {
+        "same_original_outcome": True,
+        "cases": cases,
+        "scope": "out-of-contract native non-str keys only; no Wasm negative-probe proof",
+    }
+
+
 if __name__ == "__main__":
     import json
     import os
@@ -347,5 +384,10 @@ if __name__ == "__main__":
     print(json.dumps({
         "format": "tobkiri.schema-port-original-api/1",
         "checks": exercise_api(),
+        "wasm_executed": False, "production_enabled": False,
+    }, sort_keys=True))
+    print(json.dumps({
+        "format": "tobkiri.schema-port-original-unsupported/1",
+        "observation": exercise_unsupported_native(),
         "wasm_executed": False, "production_enabled": False,
     }, sort_keys=True))
