@@ -9,6 +9,18 @@ product acceptance.
 
 ## Current candidate boundary
 
+The next bounded experiment translates only CPython 3.13.16
+`urllib.parse._coerce_args` to a GC-visible native callable. Actual URL parsers,
+decoding/result callables, objects and caches remain Python operations. The
+original helper body remains an independent oracle; first-import checks reject
+preloaded modules rather than reloading them. Native comparisons use an isolated
+fresh child so parent tooling cannot choose the module first. Required API group
+19 adds helper/shared-URL observations; the previous 18 groups remain required.
+Compilation, native parity and fuel benefit of this candidate are unproved.
+Source 63750e485 passed native64/required18 and all three implementation
+diagnostics, but its one-shot Wasm call exhausted 2B fuel. Its diagnostic
+contract_v4 cost, 1,146,973,884, is the comparison baseline for this candidate.
+
 The current unverified source translates the pinned `_keywords.py` definitions
 at build time, before the first jsonschema import. All 36 public signatures,
 parameter names, docstrings and generator status are preserved. Normal module

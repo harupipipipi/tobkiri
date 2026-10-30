@@ -19,6 +19,8 @@ SECONDS = 30
 OUTPUT_LIMIT = 4 * 1024 * 1024
 CACHE_RESERVED_BYTES = 8 * 1024 * 1024
 STDLIB_FILES = {
+    "urllib/__init__.py",
+    "urllib/parse.py",
     "_colorize.py",
     "linecache.py",
     "logging/__init__.py",

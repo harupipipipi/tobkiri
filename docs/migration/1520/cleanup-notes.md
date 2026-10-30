@@ -660,3 +660,36 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   同じcontract_v4まで1,142,086,379 fuel（直前から約3.45%減）。native-only profileでは
   _coerce_argsが124,923回。次の候補はその短いbodyのみで、lookup helper抽出は保留。
   実constructor / URI parser / caches / decode helper は使い続け、新候補の性能は未証明。
+
+## 014: 共有 URL 引数 helper の短い Python frame を限定的に置換する
+
+- 状態: **実装・ソース確認済み、実 native / Wasm 検証待ち。製品未接続**。
+- 場所: `schema_kernel/src/coerce_args.rs`、`schema_stdlib_translate.py`、
+  native checker / fresh worker。native profile の実124,923呼出しを根拠とする候補。
+  URI parser、decoder、result coercer、標準 urlsplit cache は元実装を使い続ける。
+- CPython3.13.16 `urllib/parse.py` 全体の既知 hash と元 helper 形を照合し、最初の
+  import 前にだけ source を派生させる。元 helper body と alias は独立比較用に保持。
+  引数・戻り値の実 object、globals と function が捕捉した builtins、truth / 比較の順、
+  decoder callback 後の encoder lookup を保持する。引数なし / keyword は評価前に
+  元 helper へ通常 dispatch し、native error 後の retry は行わない。GC が捕捉参照を辿る。
+- 元 Python helper と6個の共有 URL API、bytes / 混合型 / falsey / str subclass /
+  callback / exception / cache identity を第19群で比較する。既存64件・18群は残す。
+  private function reflection や traceback frame の完全一致は別の未立証範囲であり、
+  native callable を Python function と偽装しない。
+- native parent の Path / tooling import が先に urllib.parse を読む可能性を避け、
+  `-I -S -B` の新規 child で extension 認証・import と sys.modules の実不在を確認。
+  guest も kernel 前後で不在を検査し、loader / tooling より先に派生 module を普通に
+  import する。既ロード module の reload / 上書きで検査を通さない。
+- ソース監査で capture 一覧に urllib source がないことを発見し、認証済み CPython
+  archive から `urllib/__init__.py` と `urllib/parse.py` を両方の閉じた一覧へ追加。
+  元4MiB stdlib選択 / 64MiB全capture / 2B fuel / 30秒 / 4MiB envelopeは増やさない。
+  COPYING.python のみを復元し、却下済み URL parser Rust module は復元しない。
+- 簡素化候補: stdlib translator と keyword translator の literal index 読書きが重複。
+  実 capture 検証後に閉じた小 helper を共有可能。現段階で orchestration は広く変更しない。
+- 実測比較基準は `63750e485`。native64 / 必須18群 / 追加3診断は成功、一括Wasmは
+  元2B fuelで失敗。累積診断の同じ contract_v4 は1,146,973,884 fuel、10件完了。
+  直前534より約0.43%増えており、古い1,142,086,379を今回の基準に使わない。
+  新候補も一括 / 全catalog / 製品gateを通るまで移植完了にはしない。
+- 同じ637の全5Pack再実行 `41128486562` は全215件を実行。元Python209一致、
+  Rust212一致で既知の差が再現。共有code整合3件、ACK1件、supervisor2件、diagnostics2件、
+  別のouter admission1件は成功。outer入力3件の差をguest一致に数えず、製品合格にしない。

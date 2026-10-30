@@ -26,17 +26,24 @@ MAX_ARCHIVES = 128 * 1024 * 1024
 # Only module imports happen during producer preinitialization. All object/type
 # observations happen when the actual native DATA runner invokes run.
 APP = '''"""One actual private-extension call after producer snapshotting."""
+import sys
+if "urllib.parse" in sys.modules:
+    raise ValueError("urllib.parse was imported before guest bootstrap")
+import _tobkiri_schema_kernel as kernel
+if "urllib.parse" in sys.modules:
+    raise ValueError("kernel import preloaded urllib.parse before translation")
+import urllib.parse as _coerce_parse
+if getattr(_coerce_parse, "_tobkiri_translated_coerce_args", False) is not True:
+    raise ValueError("guest stdlib coercion was not translated before first import")
 import json
 import numbers
 import struct
-import sys
 import sysconfig
 
 from captured_loader import install
 from wheel_data import FILES, DISTRIBUTIONS
 
 _FINDER = install(FILES, DISTRIBUTIONS, __file__.rsplit("/", 1)[0])
-import _tobkiri_schema_kernel as kernel
 import jsonschema
 import jsonschema_specifications
 import wit_world.exports
@@ -123,6 +130,7 @@ class Probe(wit_world.exports.Probe):
             raise ValueError("complete original schema comparison required")
         known_nodes = meta_nodes()
         selfchecks = []
+        coerce_before = kernel.coerce_args_calls()
         for case in case_inputs:
             schema = case["schema"]
             try:
@@ -145,6 +153,7 @@ class Probe(wit_world.exports.Probe):
             "implemented_handler_count": kernel.implemented_handler_count,
             "schema_validation_executed": True,
             "selfchecks": selfchecks,
+            "coerce_comparison_entries": kernel.coerce_args_calls() - coerce_before,
             "schema_keyword_entries": kernel.keyword_entry_count(),
             "public_api_checks": exercise_api(),
             "implementation_diagnostics": exercise_implementation_diagnostics(),
@@ -321,7 +330,7 @@ def summarize_progress(records: list[dict], component: str, reference: dict) -> 
                 item["case"] = case["name"]
             elif expected_phase == "api":
                 checks = payload.get("checks")
-                if (not isinstance(checks, dict) or len(checks) != 18
+                if (not isinstance(checks, dict) or len(checks) != 19
                         or any(value is not True for value in checks.values())):
                     raise ValueError("diagnostic actual API observations differ")
                 item["implementation_diagnostics"] = validate_implementation_diagnostics(
@@ -516,8 +525,8 @@ def verify_inputs(
     source_files = fetch_sdk.inventory(source)
     if (
         set(source_files) != {
-            "Cargo.toml", "Cargo.lock", "README.md", "COPYING.jsonschema", "adapter.py",
-            "src/lib.rs", "src/traversal.rs", "src/keywords.rs",
+            "Cargo.toml", "Cargo.lock", "README.md", "COPYING.jsonschema", "COPYING.python", "adapter.py",
+            "src/lib.rs", "src/traversal.rs", "src/keywords.rs", "src/coerce_args.rs",
         }
         or any("link" in item for item in source_files.values())
         or sum(item["bytes"] for item in source_files.values()) > MAX_SOURCE
@@ -640,7 +649,9 @@ def probe() -> None:
     original_capture = driver.stage_inputs(stage, control)
     from schema_kernel_translate import captured_overlay
     keyword_translation = captured_overlay(stage)
-    extra_sources = ("schema_adapter.py", "schema_kernel_observation.py", "schema_inputs.py", "schema_api_checks.py", "schema_urljoin_checks.py", "schema_descend_checks.py", "schema_callable_checks.py")
+    from schema_stdlib_translate import captured_overlay as stdlib_overlay
+    stdlib_translation = stdlib_overlay(stage)
+    extra_sources = ("schema_adapter.py", "schema_kernel_observation.py", "schema_inputs.py", "schema_api_checks.py", "schema_urljoin_checks.py", "schema_descend_checks.py", "schema_callable_checks.py", "schema_coerce_checks.py")
     for name in extra_sources:
         if (stage / name).exists():
             raise ValueError("schema kernel helper collides with captured source")
@@ -763,7 +774,10 @@ def probe() -> None:
             "urljoin_actual_helpers_callbacks_and_registry": True,
             "descend_keyword_binding_and_generator_protocol": True,
             "callable_delegation_and_ffi_metadata_safety": True,
+            "coerce_args_original_objects_and_shared_urllib_apis": True,
         }
+        or type(result.get("coerce_comparison_entries")) is not int
+        or result["coerce_comparison_entries"] <= 0
         or type(result.get("schema_keyword_entries")) is not int
         or result["schema_keyword_entries"] <= 0
         or type(result.get("keyword_entries")) is not int
@@ -824,6 +838,7 @@ def probe() -> None:
         "composition": composition, "boundary": boundary,
         "original_source_capture": original_capture,
         "keyword_translation": keyword_translation,
+        "stdlib_translation": stdlib_translation,
         "complete_capture_bytes": captured_total,
         "native_data_consumer_sha256": consumer_identity, "native_report": report,
         "result": result, "original_64_cases_compared": True,
@@ -888,6 +903,7 @@ def run(
     shutil.copyfile(HERE / "schema_urljoin_checks.py", probe_source / "schema_urljoin_checks.py")
     shutil.copyfile(HERE / "schema_descend_checks.py", probe_source / "schema_descend_checks.py")
     shutil.copyfile(HERE / "schema_callable_checks.py", probe_source / "schema_callable_checks.py")
+    shutil.copyfile(HERE / "schema_coerce_checks.py", probe_source / "schema_coerce_checks.py")
     shutil.copyfile(HERE / "schema_kernel_observation.py", probe_source / "schema_kernel_observation.py")
     reference_data = json.loads(fingerprint_and_read(reference, 4 * 1024 * 1024))
     # Test inputs only. Expected results and expected registry objects are never
@@ -912,6 +928,7 @@ def run(
     helpers = (
         (Path(__file__).resolve(), "/kernel-driver.py"),
         (HERE / "schema_kernel_translate.py", "/schema_kernel_translate.py"),
+        (HERE / "schema_stdlib_translate.py", "/schema_stdlib_translate.py"),
         (HERE / "rpds_probe/driver.py", "/rpds_driver.py"),
         (HERE / "schema_probe/driver.py", "/driver.py"),
         (HERE / "schema_probe/native_driver.py", "/native_driver.py"),

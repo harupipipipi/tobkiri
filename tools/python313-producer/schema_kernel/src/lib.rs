@@ -1,5 +1,6 @@
 //! Experimental original-object schema traversal and keyword port.
 
+mod coerce_args;
 mod keywords;
 mod traversal;
 
@@ -63,6 +64,7 @@ fn is_original_json_type(instance: &Bound<'_, PyAny>, kind: &str) -> PyResult<bo
 fn _tobkiri_schema_kernel(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(retain_objects, module)?)?;
     module.add_function(wrap_pyfunction!(is_original_json_type, module)?)?;
+    coerce_args::register(module)?;
     keywords::register(module)?;
     traversal::register(module)?;
     module.add("production_enabled", false)?;

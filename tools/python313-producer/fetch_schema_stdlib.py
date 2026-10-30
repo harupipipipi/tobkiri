@@ -35,6 +35,9 @@ DISK_FLOOR = 8 * 1024**3
 FORMAT = "tobkiri.python313-stdlib-inputs/1"
 
 SELECTED_FILES = (
+    # The private coercion experiment derives this authenticated definition.
+    "urllib/__init__.py",
+    "urllib/parse.py",
     "logging/__init__.py",
     "logging/config.py",
     "logging/handlers.py",

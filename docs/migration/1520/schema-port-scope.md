@@ -109,7 +109,7 @@ callable の 4 引数、既存 callable への委譲、type / format checker の
 と属性を定義する。この契約から Python function 固有の内部構造すべてを保存すべきとは
 直ちに推論しない。一方、文書に記載がないことだけで既存 caller の動作を除外もしない。
 
-### 現在の 18 API 群の要求対応（暫定）
+### 既存 18 API 群の要求対応（暫定）
 
 「回帰」は既存の挙動を守る追加検査。「仮説」は private 実装への追加互換性観測。
 混在した旧第18群を assertion 単位で分け、公開 callback / 委譲 / FFI 安全性を必須の
@@ -200,3 +200,12 @@ lookup 18,123回、_coerce_args 124,923回、evolve 39,112回、descend 39,853�
 制御フローだけに絞る。urljoin / parse / decode helper / cache / 実返却値は置換しない。
 初回import前の source翻訳・実globals/builtins参照・GC・引数bindingを確認し、改善が
 再現しなければ戻す。native self時間が全体の一部であることから、大幅改善は約束しない。
+
+この候補では既存18群に第19群
+`coerce_args_original_objects_and_shared_urllib_apis` を追加する。元 helper との直接比較と
+6個の共有URL APIについて、実tuple/結果/decoderのidentity、混合型・bytes decodeエラー、
+falsey/str subclass/callbackの順序、decoder後のencoder差替え、元urlsplit cacheのtyped設定・
+同一結果・cache hitでhelperを呼ばないことを検査する。任意個数の位置引数・keyword拒否も
+残す。原本helperのbodyを変更せずaliasで保持し、markerがあるのにaliasがなければ失敗する。
+派生sourceと実native callableの完全なreflection/frame parityは未立証であり、これを製品
+合格へ拡張しない。新19群の実行結果はCI待ちである。
