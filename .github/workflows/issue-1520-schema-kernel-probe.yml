@@ -30,35 +30,6 @@ jobs:
       with:
         python-version: 3.13.16
     - uses: dtolnay/rust-toolchain@1.94.0
-    - name: Build the actual native64 DATA consumer from this source
-      run: |
-        cargo test --locked -p tobkiri-wasm --lib --no-run --message-format=json > "$RUNNER_TEMP/native-data-build.jsonl"
-        python3 -B - <<'PY'
-        import hashlib, json, os, shutil
-        from pathlib import Path
-        root = Path(os.environ['RUNNER_TEMP'])
-        rows = [json.loads(line) for line in (root / 'native-data-build.jsonl').read_text().splitlines()]
-        artifacts = [row['executable'] for row in rows
-                     if row.get('reason') == 'compiler-artifact'
-                     and row.get('target', {}).get('name') == 'tobkiri_wasm'
-                     and row.get('profile', {}).get('test') is True and row.get('executable')]
-        if len(artifacts) != 1:
-            raise ValueError('exactly one actual library test consumer required')
-        destination = root / 'native-data-consumer'
-        shutil.copyfile(artifacts[0], destination)
-        destination.chmod(0o500)
-        digest = hashlib.sha256()
-        with destination.open('rb') as source:
-            for block in iter(lambda: source.read(262144), b''):
-                digest.update(block)
-        (root / 'native-data-consumer-build.json').write_text(json.dumps({
-            'format': 'tobkiri.native-data-consumer-build/1',
-            'source_head': os.environ['GITHUB_SHA'], 'sha256': digest.hexdigest(),
-            'memory_bytes': 64 * 1024 * 1024,
-            'test': 'native_setup_store::entry::schema_probe::native_schema_component',
-            'portable_owner_fixture': True, 'actual_os_owner_proof': False,
-            'production_enabled': False}, indent=2) + '\n')
-        PY
     - name: Authenticate the saved producer before restoring it
       env:
         GH_TOKEN: ${{ github.token }}
@@ -110,6 +81,46 @@ jobs:
                 raise ValueError('ambiguous registry archive name')
             shutil.copyfile(p,target)
         PYCRATES
+    - name: Verify archive-derived vendor inputs before compiling Core
+      run: |
+        set -euo pipefail
+        python3 -B - <<'PYVERIFY'
+        from pathlib import Path
+        import os, sys
+        sys.path.insert(0, 'tools/python313-producer')
+        from build_schema_kernel import verify_registry
+        root = Path(os.environ['RUNNER_TEMP'])
+        verify_registry(Path('tools/python313-producer/schema_kernel'), root/'schema-vendor', root/'schema-archives')
+        PYVERIFY
+    - name: Build the actual native64 DATA consumer from this source
+      run: |
+        cargo test --locked -p tobkiri-wasm --lib --no-run --message-format=json > "$RUNNER_TEMP/native-data-build.jsonl"
+        python3 -B - <<'PY'
+        import hashlib, json, os, shutil
+        from pathlib import Path
+        root = Path(os.environ['RUNNER_TEMP'])
+        rows = [json.loads(line) for line in (root / 'native-data-build.jsonl').read_text().splitlines()]
+        artifacts = [row['executable'] for row in rows
+                     if row.get('reason') == 'compiler-artifact'
+                     and row.get('target', {}).get('name') == 'tobkiri_wasm'
+                     and row.get('profile', {}).get('test') is True and row.get('executable')]
+        if len(artifacts) != 1:
+            raise ValueError('exactly one actual library test consumer required')
+        destination = root / 'native-data-consumer'
+        shutil.copyfile(artifacts[0], destination)
+        destination.chmod(0o500)
+        digest = hashlib.sha256()
+        with destination.open('rb') as source:
+            for block in iter(lambda: source.read(262144), b''):
+                digest.update(block)
+        (root / 'native-data-consumer-build.json').write_text(json.dumps({
+            'format': 'tobkiri.native-data-consumer-build/1',
+            'source_head': os.environ['GITHUB_SHA'], 'sha256': digest.hexdigest(),
+            'memory_bytes': 64 * 1024 * 1024,
+            'test': 'native_setup_store::entry::schema_probe::native_schema_component',
+            'portable_owner_fixture': True, 'actual_os_owner_proof': False,
+            'production_enabled': False}, indent=2) + '\n')
+        PY
     - name: Build import and call the real private Wasm extension
       run: |
         set -euo pipefail

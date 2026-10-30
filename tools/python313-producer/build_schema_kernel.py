@@ -146,11 +146,29 @@ def verify_registry(source: Path, vendor: Path, archives: Path) -> dict:
         checksum = vendor / stem / ".cargo-checksum.json"
         checksum_identity = fingerprint(checksum, MAX_SOURCE)
         checksums = json.loads(checksum.read_bytes())
-        if checksums != {
+        expected_checksums = {
             "package": pin["sha256"],
             "files": {name: entry["sha256"] for name, entry in files.items()},
-        }:
-            raise ValueError("vendored registry checksum derivation differs")
+        }
+        if checksums != expected_checksums:
+            actual_files = checksums.get("files", {})
+            expected_files = expected_checksums["files"]
+            if not isinstance(actual_files, dict):
+                raise ValueError("vendored registry checksum files is not an object")
+            difference = {
+                "crate": stem,
+                "package_checksum_matches": checksums.get("package") == pin["sha256"],
+                "missing": sorted(expected_files.keys() - actual_files.keys())[:10],
+                "extra": sorted(actual_files.keys() - expected_files.keys())[:10],
+                "changed": [
+                    {"path": name, "archive": expected_files[name],
+                     "vendor": actual_files[name]}
+                    for name in sorted(expected_files.keys() & actual_files.keys())
+                    if expected_files[name] != actual_files[name]
+                ][:10],
+            }
+            raise ValueError("vendored registry checksum derivation differs: "
+                             + json.dumps(difference, sort_keys=True))
         expected.update({stem + "/" + name: entry for name, entry in files.items()})
         expected[stem + "/.cargo-checksum.json"] = {
             **checksum_identity,
