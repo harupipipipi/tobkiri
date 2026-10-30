@@ -35,13 +35,14 @@ adds no Rust finalizer. All public API/lifetime equivalence remains to be verifi
 The CI probe uses the original pinned wheel/CPython resource capture and actual
 successful rpds extension. The original 54e7da008997a3eb45876cbe18459dba9902cc9d
 source produces the unchanged 64-case reference: 42 original schema files and
-22 boundary inputs. Only case names/schemas enter the guest. Expected results and
+22 boundary inputs. Only raw JSON bytes of case names/schemas enter the guest;
+input objects are materialized inside the actual request, before checking them. Expected results and
 expected meta-registry objects stay outside the guest; it uses its genuine
 original classes and registry. Its 64 actual selfchecks run in one real Core
 NativeData invocation under unchanged 64 MiB / 2-billion fuel / original absolute
 30-second limits. Compare first errors, ordered context, actual references,
 parent/cause, paths and complete rendering hashes, plus the real meta-registry
-and class format-checker membership. Twelve additional actual public API probes
+and class format-checker membership. Thirteen additional actual public API probes
 cover lazy resume/close, interleaving, PEP479, false-schema early paths, evolve
 and unregistered extension-class reclamation, unstarted cursors, final reference
 release and cyclic GC with an externally retained delegated child. The same
@@ -56,7 +57,27 @@ reached the actual Core call, then failed the positive remaining-fuel lifetime
 condition. Its numeric remaining fuel/trap was not printed before validation;
 full bounded diagnostics are now retained before that validation can raise.
 No returned 64-case result or numeric fuel measurement is claimed for that run.
-The corrected checks have not yet passed.
+CI 41074411036 at f4f95793b then confirmed the actual failure: all 2 billion
+fuel consumed, remaining fuel 0, elapsed 1.311426821 seconds, original deadline
+preserved, no deadline/unreachable trap. The original native 12 API checks passed;
+the guest returned no 64-case result and did not reach its API suite.
+
+The next source adds narrow default-type dispatch to the already qualified Rust
+primitives: exact original Draft202012 class, actual unchanged default checker,
+plain str among seven names, and ordinary default attribute/method metadata.
+The guard reads class dictionaries rather than evaluating a TYPE_CHECKER
+descriptor twice. Custom attribute accessors/checker methods also keep original
+dispatch. Integer additionally requires an exact builtin
+int/bool/float to preserve arbitrary float-subclass return objects. Other classes,
+custom checkers/redefinitions, unknown/nonstandard names and subclasses requiring
+original behavior dispatch to the actual original method before any evaluation.
+Native failures are not retried. Real numbers.Number ABC registration/cache
+behavior remains in Python inside Wasm. Actual execution counters retain no type
+or validation results. Added comparisons include non-finite floats, bigint,
+subclasses/overridden methods and exceptions, Number ABC registration/cache clear,
+unknown/surrogate/nonstandard names, checker changes and method overrides.
+The optimized source has not yet passed compilation/parity or improved the actual
+fuel measurement. The full 64-case and cold catalog gates remain required.
 
 This is not the full 45-cold-call / 305-entry / 453-read catalog or ordinary Flow,
 real OS owner, original GUI, 1B conversation or product parity proof. Per-handler

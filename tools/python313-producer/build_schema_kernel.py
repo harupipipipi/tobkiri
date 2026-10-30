@@ -41,7 +41,7 @@ import jsonschema
 import jsonschema_specifications
 import wit_world.exports
 from schema_adapter import install_standard_classes
-from schema_inputs import CASES
+from schema_inputs import CASES_JSON
 from schema_api_checks import exercise_api
 from schema_kernel_observation import meta_nodes, node_digest, observe
 
@@ -118,11 +118,12 @@ class Probe(wit_world.exports.Probe):
                 or kernel.production_enabled is not False
                 or kernel.implemented_handler_count != 36):
             raise ValueError("actual primitive object observation differs")
-        if len(CASES) != 64:
+        case_inputs = json.loads(CASES_JSON)
+        if len(case_inputs) != 64:
             raise ValueError("complete original schema comparison required")
         known_nodes = meta_nodes()
         selfchecks = []
-        for case in CASES:
+        for case in case_inputs:
             schema = case["schema"]
             try:
                 jsonschema.Draft202012Validator.check_schema(schema)
@@ -145,6 +146,7 @@ class Probe(wit_world.exports.Probe):
             "schema_validation_executed": True,
             "selfchecks": selfchecks,
             "public_api_checks": exercise_api(),
+            "type_dispatch_counts": kernel.type_dispatch_counts(),
             "meta_schema_sha256": node_digest(jsonschema.Draft202012Validator.META_SCHEMA),
             "meta_registry_sha256": {
                 uri: node_digest(jsonschema_specifications.REGISTRY.contents(uri))
@@ -566,7 +568,12 @@ def probe() -> None:
             "keyword_deallocation_closes_retained_child": True,
             "keyword_cycle_collection_closes_retained_child": True,
             "unstarted_keyword_does_not_acquire_child": True,
+            "default_type_dispatch_matches_original": True,
         }
+        or type(result.get("type_dispatch_counts", {}).get("native_default")) is not int
+        or result["type_dispatch_counts"]["native_default"] <= 0
+        or type(result["type_dispatch_counts"].get("explicit_original")) is not int
+        or result["type_dispatch_counts"]["explicit_original"] <= 0
         or result.get("meta_schema_sha256") != digest(reference["meta_schema"])
         or result.get("meta_registry_sha256") != {
             item["uri"]: digest(item["schema"]) for item in reference["meta_registry"]
@@ -687,7 +694,9 @@ def run(
     # captured in the guest or substituted for its genuine registry/schema.
     case_inputs = [{"name": case["name"], "schema": case["schema"]}
                    for case in reference_data["cases"]]
-    (probe_source / "schema_inputs.py").write_text("CASES = " + repr(case_inputs) + "\n")
+    case_bytes = json.dumps(case_inputs, ensure_ascii=False, allow_nan=False,
+                            separators=(",", ":")).encode()
+    (probe_source / "schema_inputs.py").write_text("CASES_JSON = " + repr(case_bytes) + "\n")
     import build_schema
     import runtime_inputs
     records = runtime_inputs.report(schema_inputs / "schema-inputs.json")["inputs"]

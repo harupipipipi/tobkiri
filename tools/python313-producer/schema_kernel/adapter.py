@@ -13,7 +13,12 @@ from functools import wraps
 
 import _tobkiri_schema_kernel as kernel
 import jsonschema
-from jsonschema import _keywords, _utils, exceptions  # noqa: F401
+from jsonschema import _keywords, _types, _utils, exceptions  # noqa: F401
+
+_DEFAULT_CLASS = jsonschema.validators.Draft202012Validator
+_DEFAULT_CHECKER = _types.draft202012_type_checker
+_DEFAULT_LOOKUP = object.__getattribute__
+_DEFAULT_METHOD = _types.TypeChecker.is_type
 
 
 _BUILTINS = {
@@ -91,8 +96,18 @@ def install(validator_class):
             self, instance, schema, path, schema_path, resolver, context
         )
 
+    original_is_type = validator_class.is_type
+
+    @wraps(original_is_type)
+    def is_type(self, instance, type):
+        return kernel.fast_is_type(
+            self, instance, type, _DEFAULT_CLASS, _DEFAULT_CHECKER, _DEFAULT_LOOKUP,
+            _DEFAULT_METHOD, original_is_type,
+        )
+
     validator_class.iter_errors = iter_errors
     validator_class.descend = descend
+    validator_class.is_type = is_type
     _INSTALLED.add(validator_class)
 
 

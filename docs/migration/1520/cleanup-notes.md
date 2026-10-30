@@ -65,7 +65,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 004: スキーマ処理の Rust 化後の実装・依存整理
 
-- 状態: **ライブラリ候補は不採用。原本 object を保つ Rust primitive を実装中。製品の置換・削除は未実施**。
+- 状態: **ライブラリ候補は不採用。原本 36 handler と走査の Rust 初稿を実検証中。元の予算での完走・製品置換は未達**。
 - 場所: [validation.py](../../../tobkiri_runtime/tobkiri_protocol/validation.py) の
   `load_schema` / `_schema_store` / `validate_document` と、Pack 内の schema 依存一式。
 - 問題: 元のスキーマ検証が Wasm の燃料上限を超える。
@@ -214,6 +214,32 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   解放する実 dealloc テスト・未開始・通常終了・循環 GC の区別を要求した。
   これらを含む 12 API 観測を原本 native と移植 guest の両方で実行する接続を追加。
   現時点でこの修正版の実行成功は未確認。
+
+- 実 CI `41074411036` / job `124126643885`（source `f4f95793b`）で原本 native の
+  12 API 観測は実際に成功。移植 guest は残燃料 **0**、全 **2,000,000,000 fuel** を
+  消費し、約 **1.311426821 秒**で停止した。元 deadline は維持され、期限超過・
+  unreachable trap ではない。64 比較や guest API の完了は証明できていない。
+- 次の整理は既定型判定の入口: exact 元 Draft202012 class + 同一 default checker +
+  素の str の既定 7 名だけを既存 Rust primitive へ移す。integer は exact int / bool /
+  float に限り、float subclass の任意返却 object・例外を元 method に保持する。
+  custom / redefine / 他 draft / 未知名・非標準引数は実行前に元 method へ明示 dispatch し、
+  native 失敗を再試行しない。実 numbers.Number の ABC 登録・cache は元 object のまま。
+  Astra high はこの条件付き境界を支持し、まず生 report を確認して同じ入力で前後比較を
+  要求した。上記 raw 0 fuel を baseline とし、追加の非有限 float・bigint・subclass・
+  実例外・ABC 変更・checker 変更・method override の比較と実行回数を準備。
+  新しい型判定結果 cache は加えず、今は実 compile / parity / fuel 改善は未確認。
+
+- Source review で、非既定 checker を guard と元 method で二重に読むと属性 getter の
+  副作用・例外が変わることを発見。guard は exact class の raw class dictionary と
+  元 accessor / checker method metadata を検査する形にし、descriptor や独自 getter は
+  元 method へ送って実属性を一回だけ読む。TYPE_CHECKER descriptor の実呼出し数・
+  同じ例外 object、checker method 上書きも 13 件目の比較群へ追加。実行結果はまだない。
+
+- 比較入力の事前 materialize を除去: 旧実験では schema_inputs module が 64 schema を
+  parsed Python literal として snapshot に保持していた。新実験は入力の raw JSON bytes
+  だけを capture し、同じ実 Core 呼び出しの中で parse してから検証する。期待結果は
+  引き続き外側に置く。元 input 値・順序・全 64 比較を維持し、予算外での入力解析を
+  認めない。旧 0 fuel は不完走の記録として残し、cold-path 合格とは扱わない。
 
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 

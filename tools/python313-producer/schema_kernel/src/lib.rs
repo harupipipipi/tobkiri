@@ -3,7 +3,15 @@
 mod keywords;
 mod traversal;
 
-use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
+use pyo3::{
+    exceptions::PyValueError,
+    prelude::*,
+    types::{PyBool, PyDict, PyFloat, PyInt, PyString, PyType},
+};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static FAST_TYPES: AtomicUsize = AtomicUsize::new(0);
+static ORIGINAL_TYPES: AtomicUsize = AtomicUsize::new(0);
 
 /// Retain the actual Python objects, without copying or serializing them.
 #[pyfunction]
@@ -57,10 +65,88 @@ fn is_original_json_type(instance: &Bound<'_, PyAny>, kind: &str) -> PyResult<bo
     }
 }
 
+/// Dispatch before evaluation; native errors are never retried in Python.
+#[pyfunction]
+fn fast_is_type<'py>(
+    validator: &Bound<'py, PyAny>,
+    instance: &Bound<'py, PyAny>,
+    kind: &Bound<'py, PyAny>,
+    default_class: &Bound<'py, PyAny>,
+    default_checker: &Bound<'py, PyAny>,
+    default_lookup: &Bound<'py, PyAny>,
+    default_method: &Bound<'py, PyAny>,
+    original: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let py = validator.py();
+    let class = validator.get_type();
+    let checker_class = default_checker.get_type();
+    let object = py.get_type::<PyAny>();
+    if class.as_any().is(default_class)
+        && class.get_type().is(&py.get_type::<PyType>())
+        && kind.is_exact_instance_of::<PyString>()
+        && class.getattr("__base__")?.is(&object)
+        && checker_class.get_type().is(&py.get_type::<PyType>())
+        && checker_class.getattr("__base__")?.is(&object)
+        && !checker_class.getattr("__dict__")?.contains("__get__")?
+    {
+        let attributes = class.getattr("__dict__")?;
+        let checker_attributes = checker_class.getattr("__dict__")?;
+        let lookup = attributes.call_method1("get", ("__getattribute__", default_lookup))?;
+        let checker = attributes.call_method1("get", ("TYPE_CHECKER",))?;
+        let checker_lookup =
+            checker_attributes.call_method1("get", ("__getattribute__", default_lookup))?;
+        let checker_method = checker_attributes.call_method1("get", ("is_type",))?;
+        if !lookup.is(default_lookup)
+            || !checker.is(default_checker)
+            || !checker_lookup.is(default_lookup)
+            || !checker_method.is(default_method)
+        {
+            ORIGINAL_TYPES.fetch_add(1, Ordering::Relaxed);
+            return original.call1((validator, instance, kind));
+        }
+        // Compare actual Unicode strings rather than UTF-8-converting an
+        // unknown name (surrogates must take the original exception path).
+        for name in [
+            "object", "string", "array", "boolean", "null", "integer", "number",
+        ] {
+            if !kind.eq(name)? {
+                continue;
+            }
+            // A float subclass may override is_integer and return an arbitrary
+            // object. Preserve its original return value/exception by dispatch.
+            if name == "integer"
+                && !instance.is_exact_instance_of::<PyInt>()
+                && !instance.is_exact_instance_of::<PyBool>()
+                && !instance.is_exact_instance_of::<PyFloat>()
+            {
+                break;
+            }
+            FAST_TYPES.fetch_add(1, Ordering::Relaxed);
+            return Ok(is_original_json_type(instance, name)?
+                .into_pyobject(py)?
+                .to_owned()
+                .into_any());
+        }
+    }
+    ORIGINAL_TYPES.fetch_add(1, Ordering::Relaxed);
+    original.call1((validator, instance, kind))
+}
+
+/// Diagnostics only: execution counts, never cached type/validation results.
+#[pyfunction]
+fn type_dispatch_counts(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+    let counts = PyDict::new(py);
+    counts.set_item("native_default", FAST_TYPES.load(Ordering::Relaxed))?;
+    counts.set_item("explicit_original", ORIGINAL_TYPES.load(Ordering::Relaxed))?;
+    Ok(counts)
+}
+
 #[pymodule]
 fn _tobkiri_schema_kernel(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(retain_objects, module)?)?;
     module.add_function(wrap_pyfunction!(is_original_json_type, module)?)?;
+    module.add_function(wrap_pyfunction!(fast_is_type, module)?)?;
+    module.add_function(wrap_pyfunction!(type_dispatch_counts, module)?)?;
     keywords::register(module)?;
     traversal::register(module)?;
     module.add("production_enabled", false)?;
