@@ -61,6 +61,16 @@ struct ProgressReport<'a> {
     upper_bound_claim: bool,
 }
 
+#[derive(Serialize)]
+struct EpochObservationReport<'a> {
+    format: &'static str,
+    component_sha256: &'a str,
+    original_deadline_preserved: bool,
+    qualification: bool,
+    production_enabled: bool,
+    observation: &'a crate::native_setup_store::epoch_observation::EpochObservation,
+}
+
 // This adds observation boundaries to the same retained DATA entry. Those
 // boundaries vary guest GC/cache/lifetime behavior; they prove neither a
 // one-shot upper bound nor parity with the one-shot observer. File writes are
@@ -170,6 +180,15 @@ async fn native_schema_component() -> Result<()> {
     }
     let argument = std::env::var("TOBKIRI_NATIVE_ARGUMENT").ok();
     let progress = std::env::var("TOBKIRI_NATIVE_SCHEMA_PROGRESS").as_deref() == Ok("1");
+    let epoch_observation = match std::env::var("TOBKIRI_NATIVE_SCHEMA_EPOCH_OBSERVATION") {
+        Err(std::env::VarError::NotPresent) => false,
+        Ok(value) if value == "0" => false,
+        Ok(value) if value == "1" => true,
+        _ => bail!("unknown schema epoch observation mode"),
+    };
+    if epoch_observation && !progress {
+        bail!("epoch observation is restricted to explicit progress diagnosis");
+    }
     if progress && (operation != "run" || std::env::var_os("TOBKIRI_NATIVE_ARGUMENT").is_some()) {
         bail!("schema progress requires run without an argument");
     }
@@ -202,7 +221,10 @@ async fn native_schema_component() -> Result<()> {
     let started = Instant::now();
     let invocation = account.begin()?;
     let deadline = invocation.deadline()?;
-    let store = engine.native_setup_store(invocation, ())?;
+    let mut store = engine.native_setup_store(invocation, ())?;
+    let epoch_observation = epoch_observation
+        .then(|| store.enable_epoch_observation())
+        .transpose()?;
     let input = argument
         .as_ref()
         .map(|text| CoreBuffer::copy_from(text.as_bytes(), store.allocation_owners().graph()))
@@ -224,11 +246,32 @@ async fn native_schema_component() -> Result<()> {
         )
         .await;
         entry.retire();
-        assert_eq!(entry.original_deadline(), deadline);
+        let entry_deadline_preserved = entry.original_deadline() == deadline;
+        assert!(entry_deadline_preserved);
         drop(input);
         drop(entry);
         crate::reap_allocation_owners()?;
         assert_eq!(account.snapshot()?.charged_bytes, 0);
+        if let Some(observation) = &epoch_observation {
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(output_path.with_extension("epochs.json"))?;
+            // The fixed numerical table remains funded through serialization;
+            // this contains no guest stack, payload or configuration values.
+            serde_json::to_writer(
+                &mut file,
+                &EpochObservationReport {
+                    format: "tobkiri.schema-native-epoch-observation/1",
+                    component_sha256: identity.as_str(),
+                    original_deadline_preserved: entry_deadline_preserved,
+                    qualification: false,
+                    production_enabled: false,
+                    observation,
+                },
+            )?;
+            std::io::Write::write_all(&mut file, b"\n")?;
+        }
         return result;
     }
     let result = entry.invoke(input.as_ref()).await;

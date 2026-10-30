@@ -720,10 +720,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Git履歴へ残す。共通baseline loaderは元から無変更。API19は元標準helperのcoverage
   として残し、native化の証拠とは呼ばない。元637と新19群harnessの違いを明示する。
   削除を完了判定や、未合格の一括/全catalog gateの代わりにしない。
+- 復帰 `545c94848` の通常CI `41134448985` / job `124333302161` は実native64/API19と
+  追加診断に成功。一括は元2Bで停止（1.469427295秒、絶対期限保持）。累積CI
+  `41134467895` / job `124333375439` は10件完了、同じcontract_v4まで1,145,428,872 fuel。
+  extension SHAは637と同じ4304343c…2e53。元637をengine性能参照とし、新19群harnessの
+  cold metadata差は別に記録する。これをengineの性能改善と数えない。
 
 ## 015: 推測移植を増やす前の実Wasm費用分類
 
-- 状態: **ソース上の計測点を確認。計測実装・実行は未実施**。
+- 状態: **暫定fuel/time-only観測をcfg(test)で実装。実compile・観測はCI待ち。stack採取なし**。
 - 場所: `crates/tobkiri-wasm/src/native_setup_store.rs` の既存epoch callback。
   Astra high はnative CPUのcallee込み時間だけで次の移植を選ばず、実Wasmで費用分類を
   先に行うよう回答。従来のreturn間fuel snapshotでは内部関数への配賦はできない。
@@ -741,3 +746,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   symbol展開量の上限が必要。Astra highは未立証の4MiB定数等で進めず、暫定的に
   backtraceなしのfuel/time固定容量記録でepoch観測費用を確認してもよいと回答。
   その暫定記録は関数分類の代わりにはならない。現時点でfull captureは実装しない。
+- 暫定実装: `native_epoch_observation.rs` はactual CoreControlへ固定128件の数値表と
+  serialization allowanceを前払いし、最後のhandle破棄まで保持する。actual Storeの
+  既存epoch callbackがget_fuel/timeを記録してから元check_epochをそのまま返す。
+  fuel補充・新Store・追加guest call・追加import・絶対期限更新は行わない。
+  scopeはbindingからStore退役まで（prepareを含む）。通常製品にはコンパイルされない。
+- explicit progress診断だけがopt-inでき、普通の一括は無変更。Storeをtrap後に破棄しても
+  observer cloneが元fundingを保持し、借用serialize後に返す。overflow・fuel欠落/増加・
+  deadline変更・poisonを明示し、閉じた型/件数/単調性検査が不正な記録を拒否する。
+  helperの6件とmetadata拒否4件をCIで実行し、同headの観測なし/ありのcheckpointと
+  component identityを比較する。関数分類や燃料上限合格へ読み替えない。
+- full stackの限定ソース調査: 表示上限20の前のraw frame Vecとname複製は既存Store
+  予約に自動で含まれない。単一activationはこの引数なし/string結果/4同期clockのみの
+  schema経路に限り説明できる。512KiB設定にはslopがあり、実fiber範囲、Vec倍増時の
+  old/new重複、名前上限、DWARF無効化、保持表とserializationの合計を別に証明する必要が
+  ある。8MiB等は条件付き案であり未実装・未立証。IO/custom imports/resourcesへ一般化しない。

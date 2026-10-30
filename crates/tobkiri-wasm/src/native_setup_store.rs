@@ -26,6 +26,10 @@ mod sync_reentry_ci;
 #[path = "native_setup_store_tests.rs"]
 mod tests;
 
+#[cfg(test)]
+#[path = "native_epoch_observation.rs"]
+pub(crate) mod epoch_observation;
+
 #[path = "native_setup_entry.rs"]
 mod entry;
 #[path = "native_fixed_import.rs"]
@@ -128,6 +132,10 @@ struct NativeState<T: 'static> {
     import_trace: Option<entry::import_trace::NativeImportTrace>,
     #[cfg(test)]
     import_trace_claimed: bool,
+    #[cfg(test)]
+    epoch_observation: Option<epoch_observation::EpochObservation>,
+    #[cfg(test)]
+    epoch_observation_claimed: bool,
     clock_observation: NativeDataObservation,
     limits: AggregateLimits,
     deadline: Instant,
@@ -208,6 +216,10 @@ impl WasmEngine {
             import_trace: None,
             #[cfg(test)]
             import_trace_claimed: false,
+            #[cfg(test)]
+            epoch_observation: None,
+            #[cfg(test)]
+            epoch_observation_claimed: false,
             clock_observation: NativeDataObservation::default(),
             limits: AggregateLimits {
                 memory_cap: usize::try_from(NATIVE_SETUP_MEMORY_BYTES)?,
@@ -236,6 +248,16 @@ impl WasmEngine {
         store.fuel_async_yield_interval(Some(10_000))?;
         store.set_epoch_deadline(1);
         store.epoch_deadline_callback(|mut store| {
+            #[cfg(test)]
+            if store.data().epoch_observation.is_some() {
+                let fuel = store.get_fuel().ok();
+                let state = store.data();
+                if let Some(observation) = &state.epoch_observation {
+                    observation.record(fuel, state.deadline);
+                }
+            }
+            // Keep the original lifetime decision AFTER observation, so its
+            // elapsed host time also counts against the absolute deadline.
             let state = store.data_mut();
             check_epoch(
                 state.deadline,
@@ -252,6 +274,20 @@ impl WasmEngine {
     }
 }
 impl<T: 'static> NativeSetupStore<T> {
+    #[cfg(test)]
+    pub(crate) fn enable_epoch_observation(
+        &mut self,
+    ) -> Result<epoch_observation::EpochObservation> {
+        let state = self.store.as_mut().expect("live native Store").data_mut();
+        if state.epoch_observation_claimed {
+            bail!("test epoch observation binding already claimed");
+        }
+        state.epoch_observation_claimed = true;
+        let observation =
+            epoch_observation::EpochObservation::new(state.invocation.control(), state.deadline)?;
+        state.epoch_observation = Some(observation.clone());
+        Ok(observation)
+    }
     fn import_contract(&self) -> Option<&dyn imports::Contract> {
         self.store
             .as_ref()?

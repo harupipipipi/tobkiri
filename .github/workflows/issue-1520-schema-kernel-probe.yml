@@ -15,15 +15,22 @@ name: Issue 1520 actual private schema kernel Wasm probe
     - tools/python313-producer/schema_descend_checks.py
     - tools/python313-producer/schema_callable_checks.py
     - tools/python313-producer/schema_coerce_checks.py
+    - tools/python313-producer/tests/test_schema_epoch_observation.py
     - tools/python313-producer/schema_kernel_translate.py
     - tools/python313-producer/schema_kernel_oracle.py
     - tools/python313-producer/schema_kernel_native_check.py
     - crates/tobkiri-wasm/src/native_data_schema_probe.rs
+    - crates/tobkiri-wasm/src/native_setup_store.rs
+    - crates/tobkiri-wasm/src/native_epoch_observation.rs
     - .github/workflows/issue-1520-schema-kernel-probe.yml
   workflow_dispatch:
     inputs:
       diagnostic_progress:
         description: Same-Store progress diagnosis only; never one-shot qualification
+        type: boolean
+        default: false
+      epoch_observation:
+        description: Bounded fuel/time epoch observation only; requires progress diagnosis
         type: boolean
         default: false
       native_profile_only:
@@ -34,7 +41,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: issue-1520-schema-kernel-probe-${{ github.ref }}-${{ github.sha }}-${{ inputs.native_profile_only && 'native-profile' || inputs.diagnostic_progress && 'progress' || 'qualification' }}
+  group: issue-1520-schema-kernel-probe-${{ github.ref }}-${{ github.sha }}-${{ inputs.epoch_observation && 'epoch-fuel-time' || inputs.native_profile_only && 'native-profile' || inputs.diagnostic_progress && 'progress' || 'qualification' }}
   cancel-in-progress: false
 jobs:
   actual-extension:
@@ -52,9 +59,14 @@ jobs:
     - name: Keep explicit diagnosis modes separate
       env:
         CONFLICTING_MODES: ${{ inputs.native_profile_only && inputs.diagnostic_progress && '1' || '0' }}
+        EPOCH_OBSERVATION: ${{ inputs.epoch_observation && '1' || '0' }}
+        DIAGNOSTIC_PROGRESS: ${{ inputs.diagnostic_progress && '1' || '0' }}
       run: |
         set -euo pipefail
         test "$CONFLICTING_MODES" = '0'
+        if [ "$EPOCH_OBSERVATION" = '1' ]; then
+          test "$DIAGNOSTIC_PROGRESS" = '1'
+        fi
     - uses: actions/checkout@v4
       with:
         persist-credentials: false
@@ -62,6 +74,8 @@ jobs:
       with:
         python-version: 3.13.16
     - uses: dtolnay/rust-toolchain@1.94.0
+    - name: Reject malformed epoch observation metadata
+      run: python3 -B tools/python313-producer/tests/test_schema_epoch_observation.py
     - name: Authenticate the saved producer before restoring it
       env:
         GH_TOKEN: ${{ github.token }}
@@ -232,15 +246,26 @@ jobs:
           ~/.cargo/git
           target
         key: ${{ steps.native-rust-cache.outputs.cache-primary-key }}
+    - name: Verify fixed epoch observer capacity and refund
+      if: ${{ !inputs.native_profile_only }}
+      run: |
+        python3 -B tools/quality/issue_1520_ci.py cargo-test \
+          --log "$RUNNER_TEMP/schema-epoch-unit.log" --expected-passed 6 -- \
+          cargo test --locked -p tobkiri-wasm --lib \
+          native_setup_store::epoch_observation::tests -- --test-threads=1
     - name: Build import and call the real private Wasm extension
       if: ${{ !inputs.native_profile_only }}
       env:
         DIAGNOSTIC_PROGRESS: ${{ inputs.diagnostic_progress && '1' || '0' }}
+        EPOCH_OBSERVATION: ${{ inputs.epoch_observation && '1' || '0' }}
       run: |
         set -euo pipefail
         mode_flags=()
         if [ "$DIAGNOSTIC_PROGRESS" = '1' ]; then
           mode_flags+=(--diagnostic-progress)
+        fi
+        if [ "$EPOCH_OBSERVATION" = '1' ]; then
+          mode_flags+=(--diagnostic-epoch-observation)
         fi
         python3 -B tools/python313-producer/build_schema_kernel.py \
           "${mode_flags[@]}" \
@@ -269,8 +294,11 @@ jobs:
           ${{ runner.temp }}/schema-candidate/work/probe.json
           ${{ runner.temp }}/schema-candidate/work/progress-summary.json
           ${{ runner.temp }}/schema-candidate/work/native-data-observation.json
+          ${{ runner.temp }}/schema-candidate/work/native-data-observation.epochs.json
           ${{ runner.temp }}/schema-candidate/work/native-data-observation.log
           ${{ runner.temp }}/native-data-consumer-build.json
+          ${{ runner.temp }}/schema-epoch-unit.log
+          ${{ runner.temp }}/schema-epoch-unit.receipt.json
           ${{ runner.temp }}/schema-kernel-reference.json
           ${{ runner.temp }}/schema-native/schema-kernel-native-check.json
           ${{ runner.temp }}/schema-native/cargo.jsonl

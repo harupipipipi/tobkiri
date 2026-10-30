@@ -346,6 +346,52 @@ def summarize_progress(records: list[dict], component: str, reference: dict) -> 
     }
 
 
+def validate_epoch_observation(report: dict, component: str) -> dict:
+    """Require bounded actual fuel/time observations; no function-cost claim."""
+    if (type(report) is not dict or set(report) != {
+        "format", "component_sha256", "original_deadline_preserved",
+        "qualification", "production_enabled", "observation",
+    } or report["format"] != "tobkiri.schema-native-epoch-observation/1"
+            or report["component_sha256"] != component
+            or report["original_deadline_preserved"] is not True
+            or report["qualification"] is not False
+            or report["production_enabled"] is not False):
+        raise ValueError("actual epoch observation identity/lifetime differs")
+    value = report["observation"]
+    if (type(value) is not dict or set(value) != {
+        "format", "diagnostic_only", "qualification", "captures_backtrace",
+        "function_costs_classified", "max_records", "seen", "recorded",
+        "overflow", "fuel_missing", "fuel_increased", "deadline_changed",
+        "poisoned", "records",
+    } or value["format"] != "tobkiri.native-epoch-observation/1"
+            or value["diagnostic_only"] is not True
+            or any(value[key] is not False for key in (
+                "qualification", "captures_backtrace", "function_costs_classified",
+                "fuel_missing", "fuel_increased", "deadline_changed", "poisoned"))
+            or type(value["max_records"]) is not int or value["max_records"] != 128
+            or type(value["recorded"]) is not int
+            or not 1 <= value["recorded"] <= 128
+            or type(value["seen"]) is not int
+            or not value["recorded"] <= value["seen"] <= (1 << 64) - 1
+            or type(value["overflow"]) is not bool
+            or value["overflow"] != (value["seen"] > 128)
+            or value["recorded"] != min(value["seen"], 128)
+            or type(value["records"]) is not list
+            or len(value["records"]) != value["recorded"]):
+        raise ValueError("bounded epoch observation shape/flags differ")
+    previous_time, previous_fuel = 0, 2_000_000_000
+    for row in value["records"]:
+        if (type(row) is not dict
+                or set(row) != {"time_since_binding_ns", "fuel_remaining"}
+                or type(row["time_since_binding_ns"]) is not int
+                or not previous_time <= row["time_since_binding_ns"] <= (1 << 64) - 1
+                or type(row["fuel_remaining"]) is not int
+                or not 0 <= row["fuel_remaining"] <= previous_fuel):
+            raise ValueError("actual epoch fuel/time sequence differs")
+        previous_time, previous_fuel = row["time_since_binding_ns"], row["fuel_remaining"]
+    return report
+
+
 def packages(source: Path) -> list[dict]:
     """Admit the actual source lock and only its checksum-bound registry graph."""
     import tomllib
@@ -690,12 +736,19 @@ def probe() -> None:
             "TOBKIRI_NATIVE_COMPONENT_SHA256": component_identity,
             "TOBKIRI_NATIVE_OPERATION": "run", "TOBKIRI_NATIVE_REPORT": str(output),
             "TOBKIRI_NATIVE_SCHEMA_PROGRESS": "1" if control.get("diagnostic_progress") else "0",
+            "TOBKIRI_NATIVE_SCHEMA_EPOCH_OBSERVATION": "1" if control.get("diagnostic_epoch_observation") else "0",
         }, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=180)
     if control.get("diagnostic_progress"):
         records = [json.loads(line) for line in read(output, maximum=4 * 1024 * 1024).splitlines()]
         summary = summarize_progress(records, component_identity, reference)
         summary.update(extension_sha256=hashlib.sha256(extension).hexdigest(),
                        native_data_consumer_sha256=consumer_identity)
+        epoch_path = output.with_suffix(".epochs.json")
+        if control.get("diagnostic_epoch_observation"):
+            summary["epoch_observation"] = validate_epoch_observation(
+                json.loads(read(epoch_path, maximum=32 * 1024)), component_identity)
+        elif epoch_path.exists():
+            raise ValueError("epoch observation was not requested")
         (work / "progress-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
         print(json.dumps(summary, sort_keys=True), flush=True)
         return
@@ -848,6 +901,7 @@ def run(
     producer: Path, validation: Path, native_data_consumer: Path, destination: Path,
     schema_inputs: Path, stdlib: Path, rpds: Path, reference: Path,
     diagnostic_progress: bool = False,
+    diagnostic_epoch_observation: bool = False,
 ) -> None:
     """Verify source and tools, build offline, then run an actual bounded probe."""
     from build_native import GIB, HERE, fingerprint, sandbox_command
@@ -857,6 +911,8 @@ def run(
 
     if sys.platform != "linux" or os.environ.get("GITHUB_ACTIONS") != "true":
         raise ValueError("schema kernel build and execution are restricted to Linux CI")
+    if diagnostic_epoch_observation and not diagnostic_progress:
+        raise ValueError("epoch observation requires explicit progress diagnosis")
     if (
         not destination.is_absolute() or not destination.parent.is_dir()
         or destination.parent.resolve(strict=True) != destination.parent
@@ -907,6 +963,7 @@ def run(
         "inputs": records, "extension_sha256": build_schema.EXTENSION_SHA256,
         "input_limit": 64 * 1024 * 1024,
         "diagnostic_progress": diagnostic_progress,
+        "diagnostic_epoch_observation": diagnostic_epoch_observation,
         "stdlib": runtime_inputs.report(stdlib / "stdlib-inputs.json"),
     }, sort_keys=True) + "\n")
     replay = destination / "probe.sh"
@@ -932,6 +989,7 @@ def run(
         "inputs": inputs, "configuration": private, "probe_source": probe_files,
         "target": "wasm32-wasip2", "feature": "pyo3/abi3-py313", "stages": [],
         "guest_executed": False, "original_64_cases_compared": False,
+        "diagnostic_epoch_observation": diagnostic_epoch_observation,
         "qualification": False,
         "full_catalog_executed": False, "production_enabled": False,
     }
@@ -1010,6 +1068,7 @@ if __name__ == "__main__":
     else:
         parser = argparse.ArgumentParser()
         parser.add_argument("--diagnostic-progress", action="store_true")
+        parser.add_argument("--diagnostic-epoch-observation", action="store_true")
         for name in (
             "source", "vendor", "archives", "rust", "sdk", "producer", "validation",
             "native-data-consumer", "destination", "schema-inputs", "stdlib", "rpds", "reference",
