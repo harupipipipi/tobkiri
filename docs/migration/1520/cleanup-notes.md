@@ -136,6 +136,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   bool / int / 1.0 / bigint、unevaluated の branch bookkeeping、cache の所有・破棄も維持する。
   64 件だけでなく supported API から到達する元 handler 全件の同等性が条件。
   これは設計判断で、直接移植の実装・性能・製品採用を証明するものではない。
+- [原本 scope inventory](schema-port-scope.md) に固定版の全 36 handler と entry / cache /
+  resolver / error graph を記録。selfcheck の class checker と document の generic checker、
+  legacy RefResolver と evaluated helper の Registry lookup を共有化で潰さない。
+  実 guest の format 登録集合と handler coverage は未観測で、64 ケースだけで全件を
+  検証できたとは扱わない。元の helper を再利用し、同じ機能の別実装を増やす前に比較する。
 
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 
