@@ -96,6 +96,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   （20,394 bytes、87 packages、SHA-256
   `7bd7deb115b32dc7012b44a960efc45d6591ac148fa5a0466c1741a523d9b065`）。
   保存後は自動で再解決せず `--locked` を使う。これは build / load / parity の証拠ではない。
+- 実拡張の [CI 接続](../../../.github/workflows/issue-1520-schema-kernel-probe.yml)
+  を準備。既存 rpds の固定 toolchain / SDK / producer、Core の実 DATA consumer を使い、
+  vendor の自己申告 checksum だけでなく元 `.crate` archive と照合する。
+  build script の追加時に起動する。現時点では接続手順の構文確認までで、
+  実 build / import / call の成功は未確認。
 
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 

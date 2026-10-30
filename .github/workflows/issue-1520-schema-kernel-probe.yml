@@ -1,0 +1,138 @@
+name: Issue 1520 actual private schema kernel Wasm probe
+'on':
+  push:
+    branches:
+    - codex/issue-1520-native-shared-state
+    paths:
+    - tools/python313-producer/build_schema_kernel.py
+  workflow_dispatch: null
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: issue-1520-schema-kernel-probe-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  actual-extension:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      PRODUCER_RUN: '39956025119'
+      PRODUCER_HEAD: ae7f83080a36e823ac330342584210243dc38050
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@v5
+      with:
+        python-version: 3.13.16
+    - uses: dtolnay/rust-toolchain@1.94.0
+    - name: Build the actual native64 DATA consumer from this source
+      run: |
+        cargo test --locked -p tobkiri-wasm --lib --no-run --message-format=json > "$RUNNER_TEMP/native-data-build.jsonl"
+        python3 -B - <<'PY'
+        import hashlib, json, os, shutil
+        from pathlib import Path
+        root = Path(os.environ['RUNNER_TEMP'])
+        rows = [json.loads(line) for line in (root / 'native-data-build.jsonl').read_text().splitlines()]
+        artifacts = [row['executable'] for row in rows
+                     if row.get('reason') == 'compiler-artifact'
+                     and row.get('target', {}).get('name') == 'tobkiri_wasm'
+                     and row.get('profile', {}).get('test') is True and row.get('executable')]
+        if len(artifacts) != 1:
+            raise ValueError('exactly one actual library test consumer required')
+        destination = root / 'native-data-consumer'
+        shutil.copyfile(artifacts[0], destination)
+        destination.chmod(0o500)
+        digest = hashlib.sha256()
+        with destination.open('rb') as source:
+            for block in iter(lambda: source.read(262144), b''):
+                digest.update(block)
+        (root / 'native-data-consumer-build.json').write_text(json.dumps({
+            'format': 'tobkiri.native-data-consumer-build/1',
+            'source_head': os.environ['GITHUB_SHA'], 'sha256': digest.hexdigest(),
+            'memory_bytes': 64 * 1024 * 1024,
+            'test': 'native_setup_store::entry::schema_probe::native_schema_component',
+            'portable_owner_fixture': True, 'actual_os_owner_proof': False,
+            'production_enabled': False}, indent=2) + '\n')
+        PY
+    - name: Authenticate the saved producer before restoring it
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" > "$RUNNER_TEMP/schema-producer-run.json"
+        python3 -B - <<'PYAUTH'
+        import json, os
+        from pathlib import Path
+        v=json.loads((Path(os.environ['RUNNER_TEMP'])/'schema-producer-run.json').read_bytes())
+        assert v['head_sha']==os.environ['PRODUCER_HEAD']
+        assert v['status']=='completed' and v['conclusion']=='success'
+        PYAUTH
+    - uses: actions/download-artifact@v4
+      with:
+        name: python313-producer-cli
+        repository: ${{ github.repository }}
+        run-id: ${{ env.PRODUCER_RUN }}
+        github-token: ${{ github.token }}
+        path: ${{ runner.temp }}/schema-producer
+    - name: Restore checksum-bound compiler SDK and validation tools
+      run: |
+        set -euo pipefail
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends bubblewrap
+        chmod 755 "$RUNNER_TEMP/schema-producer/work/target/release/componentize-py"
+        python3 -B tools/python313-producer/fetch_toolchain.py --destination "$RUNNER_TEMP/schema-rust"
+        python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/schema-validation"
+        python3 -B - <<'PYSDK'
+        from pathlib import Path
+        import os, sys
+        sys.path.insert(0, 'tools/python313-producer')
+        from fetch_sdk import acquire
+        acquire(Path(os.environ['RUNNER_TEMP'])/'schema-sdk')
+        PYSDK
+    - name: Vendor the committed source lock on CI only
+      run: |
+        set -euo pipefail
+        export CARGO_HOME="$RUNNER_TEMP/schema-cargo-home"
+        cargo vendor --locked --versioned-dirs --manifest-path tools/python313-producer/schema_kernel/Cargo.toml "$RUNNER_TEMP/schema-vendor" > "$RUNNER_TEMP/schema-vendor-config.toml"
+        mkdir "$RUNNER_TEMP/schema-archives"
+        python3 -B - <<'PYCRATES'
+        from pathlib import Path
+        import os, shutil
+        root=Path(os.environ['RUNNER_TEMP'])
+        for p in (root/'schema-cargo-home/registry/cache').glob('*/*.crate'):
+            target=root/'schema-archives'/p.name
+            if target.exists():
+                raise ValueError('ambiguous registry archive name')
+            shutil.copyfile(p,target)
+        PYCRATES
+    - name: Build import and call the real private Wasm extension
+      run: |
+        set -euo pipefail
+        python3 -B tools/python313-producer/build_schema_kernel.py \
+          --source "$GITHUB_WORKSPACE/tools/python313-producer/schema_kernel" \
+          --vendor "$RUNNER_TEMP/schema-vendor" \
+          --archives "$RUNNER_TEMP/schema-archives" \
+          --rust "$RUNNER_TEMP/schema-rust" \
+          --sdk "$RUNNER_TEMP/schema-sdk" \
+          --producer "$RUNNER_TEMP/schema-producer" \
+          --validation "$RUNNER_TEMP/schema-validation" \
+          --native-data-consumer "$RUNNER_TEMP/native-data-consumer" \
+          --destination "$RUNNER_TEMP/schema-candidate"
+    - name: Retain actual build and bounded execution evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: schema-kernel-build-evidence
+        path: |
+          ${{ runner.temp }}/schema-candidate/schema-kernel-build.json
+          ${{ runner.temp }}/schema-candidate/build/
+          ${{ runner.temp }}/schema-candidate/probe/
+          ${{ runner.temp }}/schema-candidate/work/probe.json
+          ${{ runner.temp }}/native-data-consumer-build.json
+        if-no-files-found: warn
+        retention-days: 14
