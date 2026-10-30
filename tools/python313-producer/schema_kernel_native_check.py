@@ -155,8 +155,8 @@ def run(args, receipt):
             receipt["difference"] = difference
             raise ValueError("native schema result differs from real original reference")
     api = exercise_api()
-    if len(api) != 13 or not all(value is True for value in api.values()):
-        raise ValueError("all thirteen actual API groups required")
+    if len(api) != 14 or not all(value is True for value in api.values()):
+        raise ValueError("all fourteen actual API groups required")
     unsupported = exercise_unsupported_native()
     counts = kernel.type_dispatch_counts()
     if any(type(counts.get(key)) is not int or counts[key] <= 0
@@ -164,7 +164,7 @@ def run(args, receipt):
         raise ValueError("both actual type dispatch paths must execute")
     if fetch_sdk.inventory(args.source) != source:
         raise ValueError("native kernel source changed during comparison")
-    receipt.update(outcome="success", native_64_success=True, api_13_success=True,
+    receipt.update(outcome="success", native_64_success=True, api_14_success=True,
                    api_checks=api, unsupported_native=unsupported, type_dispatch_counts=counts,
                    pointer_bits=struct.calcsize("P") * 8)
 

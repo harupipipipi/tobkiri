@@ -124,3 +124,24 @@ extension, compares all 64 cases with strict bool/int/float distinctions, checks
 all 13 API groups and the separate invalid-key outcomes before the expensive Core
 consumer build. It records no Wasm execution/budget/GUI/product acceptance. The
 subsequent unchanged Wasm gate remains mandatory. This precheck is not shipped.
+
+## Actual 2f comparison and next evolve port
+
+CI 41086108540 / job 124167563976 at 2f853413f passed the native Rust extension
+comparison: all 64 original cases and all 13 API groups, plus actual None/list/
+bytes argument-violation outcomes matching the original. Native type dispatch
+counts were 38,308 guarded defaults / 32 explicit originals. The Wasm call still
+exhausted 2 billion fuel (remaining 0, elapsed 2.028240556 seconds, no deadline or
+unreachable trap). No Wasm comparison passed and no fuel improvement is claimed.
+
+The next source ports the original evolve inheritance loop into Rust. It retains
+the actual original closure list, globals and Function.__builtins__ dictionary;
+it does not freeze an iteration snapshot. Only the matching original method code
+is replaced; custom/subclass evolve methods keep their own behavior. Schema is
+read even when supplied, the current selector/global-builtin lookup is respected,
+missing aliases read actual attributes in original order, and the selected actual
+constructor is called with original object references. The fourteenth API group
+compares getter order, live field-list mutation, explicit None, namespace changes,
+NameError.name, constructor failures, draft switching and overrides. Context GC
+visits the added actual references. Compilation, native/Wasm parity and fuel
+improvement for this new evolve source remain unverified.

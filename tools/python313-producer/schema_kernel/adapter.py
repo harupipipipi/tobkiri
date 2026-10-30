@@ -19,6 +19,7 @@ _DEFAULT_CLASS = jsonschema.validators.Draft202012Validator
 _DEFAULT_CHECKER = _types.draft202012_type_checker
 _DEFAULT_LOOKUP = object.__getattribute__
 _DEFAULT_METHOD = _types.TypeChecker.is_type
+_EVOLVE_CODE = _DEFAULT_CLASS.evolve.__code__
 
 
 _BUILTINS = {
@@ -64,9 +65,12 @@ _ORIGINAL_CREATE = None
 
 
 def _closure(function):
+    code = getattr(function, "__code__", None)
+    if code is None:
+        return {}
     return {
         name: cell.cell_contents
-        for name, cell in zip(function.__code__.co_freevars, function.__closure__ or ())
+        for name, cell in zip(code.co_freevars, function.__closure__ or ())
     }
 
 
@@ -81,11 +85,17 @@ def install(validator_class):
     if validator_class in _INSTALLED:
         return
     original = _closure(validator_class.descend)
+    original_evolve = validator_class.evolve
+    native_evolve = getattr(original_evolve, "__code__", None) is _EVOLVE_CODE
+    evolve_fields = _closure(original_evolve).get("evolve_fields") if native_evolve else None
     # These are the actual original create() closure objects. Recomputing the
     # specification from mutable class metadata would change original behavior.
     context = kernel.make_context(
         original["applicable_validators"], original["specification"], _BUILTINS,
         _delegate,
+        evolve_fields,
+        original_evolve.__globals__ if native_evolve else None,
+        original_evolve.__builtins__ if native_evolve else None,
     )
 
     def iter_errors(self, instance, _schema=None):
@@ -110,9 +120,15 @@ def install(validator_class):
             _DEFAULT_METHOD, original_is_type,
         )
 
+    @wraps(original_evolve)
+    def evolve(self, **changes):
+        return kernel.evolve(self, changes, context)
+
     validator_class.iter_errors = iter_errors
     validator_class.descend = descend
     validator_class.is_type = is_type
+    if native_evolve and evolve_fields is not None:
+        validator_class.evolve = evolve
     _INSTALLED.add(validator_class)
 
 

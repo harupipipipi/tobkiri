@@ -254,6 +254,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   strict JSON 差分 helper は共有して bool / int / float の等値混同を防ぎ、同じ observer
   と source admission の二重実装を減らした。新経路の実行結果はまだ未確認。
 
+- 実 CI `41086108540` / job `124167563976`（source `2f853413f`）で native Rust
+  拡張の全 64 比較・13 API 群・別枠の契約外引数が成功。実 type dispatch は
+  guarded default 38,308 回 / explicit original 32 回。契約外 None は UnknownType、
+  list は TypeError、bytes は元と同じ PanicException を実際に観測した。
+  しかし Wasm 実 Core call は残燃料 0 / 2B、約 2.028240556 秒で停止。期限超過・
+  unreachable はなく、Wasm 比較・燃料改善は未証明。
+- 次は元 evolve の引継ぎ loop を Rust 化。対応する元 code object の一致を確認し、
+  actual closure list / globals / Function.__builtins__ を保持する。実 schema を常に評価し、
+  現在の validator_for を選択、missing alias のみ元順で属性取得、実 constructor を呼ぶ。
+  中途 list 変更を snapshot 化せず、global / builtin の差替え・欠落 NameError.name・
+  明示 None・属性取得順・class 遷移・constructor 例外・override を 14 件目の群で比較。
+  Astra high の回答に従い元 class / resolver / registry の owner を増殖させず、GC 対象の
+  実参照を追加。新 loop の実 compile / parity / 同じ cold 入力での fuel 改善は未検証。
+
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 
 - 状態: **Core / native 承認部分を一部実装・CI 検証済み。既存 Setup 接続は未対応**。

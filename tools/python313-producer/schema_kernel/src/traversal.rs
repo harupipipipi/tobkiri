@@ -12,6 +12,9 @@ struct ContextState {
     applicable: Py<PyAny>,
     specification: Py<PyAny>,
     delegate: Py<PyAny>,
+    evolve_fields: Py<PyAny>,
+    evolve_globals: Option<Py<PyDict>>,
+    evolve_builtins: Option<Py<PyDict>>,
     handlers: Vec<(String, Py<PyAny>)>,
 }
 
@@ -28,6 +31,13 @@ impl KernelContext {
             visit.call(&state.applicable)?;
             visit.call(&state.specification)?;
             visit.call(&state.delegate)?;
+            visit.call(&state.evolve_fields)?;
+            if let Some(value) = &state.evolve_globals {
+                visit.call(value)?;
+            }
+            if let Some(value) = &state.evolve_builtins {
+                visit.call(value)?;
+            }
             for (_, callable) in &state.handlers {
                 visit.call(callable)?;
             }
@@ -46,6 +56,9 @@ fn make_context(
     specification: &Bound<'_, PyAny>,
     handlers: &Bound<'_, PyDict>,
     delegate: &Bound<'_, PyAny>,
+    evolve_fields: &Bound<'_, PyAny>,
+    evolve_globals: &Bound<'_, PyAny>,
+    evolve_builtins: &Bound<'_, PyAny>,
 ) -> PyResult<KernelContext> {
     let mut aliases = Vec::with_capacity(handlers.len());
     for (keyword, callable) in handlers {
@@ -56,9 +69,96 @@ fn make_context(
             applicable: applicable.clone().unbind(),
             specification: specification.clone().unbind(),
             delegate: delegate.clone().unbind(),
+            evolve_fields: evolve_fields.clone().unbind(),
+            evolve_globals: if evolve_globals.is_none() {
+                None
+            } else {
+                Some(evolve_globals.cast::<PyDict>()?.clone().unbind())
+            },
+            evolve_builtins: if evolve_builtins.is_none() {
+                None
+            } else {
+                Some(evolve_builtins.cast::<PyDict>()?.clone().unbind())
+            },
             handlers: aliases,
         }),
     })
+}
+
+fn global_name<'py>(
+    state: &ContextState,
+    py: Python<'py>,
+    name: &str,
+) -> PyResult<Bound<'py, PyAny>> {
+    let globals = state
+        .evolve_globals
+        .as_ref()
+        .ok_or_else(|| PyRuntimeError::new_err("native evolve context is unavailable"))?;
+    let builtins = state
+        .evolve_builtins
+        .as_ref()
+        .ok_or_else(|| PyRuntimeError::new_err("native evolve builtins are unavailable"))?;
+    if let Some(value) = globals.bind(py).get_item(name)? {
+        return Ok(value);
+    }
+    if let Some(value) = builtins.bind(py).get_item(name)? {
+        return Ok(value);
+    }
+    let error = pyo3::exceptions::PyNameError::new_err(format!("name '{name}' is not defined"));
+    error.value(py).setattr("name", name)?;
+    Err(error)
+}
+
+fn field_pair<'py>(field: &Bound<'py, PyAny>) -> PyResult<(Bound<'py, PyAny>, Bound<'py, PyAny>)> {
+    if field.is_exact_instance_of::<PyTuple>() && field.len()? == 2 {
+        return Ok((field.get_item(0)?, field.get_item(1)?));
+    }
+    let mut fields = field.try_iter()?;
+    let mut next = |count| {
+        fields.next().transpose()?.ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(format!(
+                "not enough values to unpack (expected 2, got {count})"
+            ))
+        })
+    };
+    let first = next(0)?;
+    let second = next(1)?;
+    if fields.next().transpose()?.is_some() {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "too many values to unpack (expected 2)",
+        ));
+    }
+    Ok((first, second))
+}
+
+#[pyfunction]
+fn evolve<'py>(
+    validator: &Bound<'py, PyAny>,
+    changes: &Bound<'py, PyDict>,
+    context: Py<KernelContext>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let py = validator.py();
+    let context = context.borrow(py);
+    let state = context
+        .state
+        .as_ref()
+        .ok_or_else(|| PyRuntimeError::new_err("schema kernel context was cleared"))?;
+    // The default argument is evaluated even when schema already exists.
+    let previous_schema = validator.getattr("schema")?;
+    let schema = changes.call_method1("setdefault", ("schema", previous_schema))?;
+    let selector = global_name(state, py, "validator_for")?;
+    let options = PyDict::new(py);
+    options.set_item("default", validator.getattr("__class__")?)?;
+    let selected = selector.call((schema,), Some(&options))?;
+    // Iterate the actual closure list live; callbacks can mutate it mid-call.
+    for field in state.evolve_fields.bind(py).try_iter()? {
+        let (attribute, argument) = field_pair(&field?)?;
+        if !changes.contains(&argument)? {
+            let value = global_name(state, py, "getattr")?.call1((validator, attribute))?;
+            changes.set_item(argument, value)?;
+        }
+    }
+    selected.call((), Some(changes))
 }
 
 #[derive(Clone, Copy)]
@@ -473,5 +573,6 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(make_context, module)?)?;
     module.add_function(wrap_pyfunction!(iter_errors, module)?)?;
     module.add_function(wrap_pyfunction!(descend, module)?)?;
+    module.add_function(wrap_pyfunction!(evolve, module)?)?;
     Ok(())
 }

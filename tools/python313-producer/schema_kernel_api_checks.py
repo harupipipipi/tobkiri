@@ -139,6 +139,7 @@ def exercise_api():
     assert original_class() is None
 
     exercise_types()
+    exercise_evolve()
     return {
         "lazy_start_and_resume": True,
         "actual_error_objects_and_references": True,
@@ -153,6 +154,7 @@ def exercise_api():
         "keyword_cycle_collection_closes_retained_child": True,
         "unstarted_keyword_does_not_acquire_child": True,
         "default_type_dispatch_matches_original": True,
+        "evolve_order_live_aliases_and_name_resolution": True,
     }
 
 
@@ -334,6 +336,159 @@ def exercise_types():
         other = cls({})
         reference = getattr(cls.is_type, "__wrapped__", cls.is_type)
         assert other.is_type(1.0, "integer") is reference(other, 1.0, "integer")
+
+
+def exercise_evolve():
+    """Compare the original method's actual alias/namespace/evaluation contract."""
+    import builtins
+    import jsonschema
+    from jsonschema import Draft202012Validator, FormatChecker, validators
+
+    method = Draft202012Validator.evolve
+    original = getattr(method, "__wrapped__", method)
+    closure = dict(zip(original.__code__.co_freevars, original.__closure__ or ()))
+    fields = closure["evolve_fields"].cell_contents
+    saved_fields = fields[:]
+    namespace, builtin_names = original.__globals__, original.__builtins__
+    missing = object()
+    saved_selector = namespace.get("validator_for", missing)
+    saved_getattr = namespace.get("getattr", missing)
+    saved_builtins = namespace.get("__builtins__", missing)
+    saved_builtin_selector = builtin_names.get("validator_for", missing)
+    lookup_missing = "__getattribute__" not in Draft202012Validator.__dict__
+    saved_lookup = Draft202012Validator.__getattribute__
+    checker = FormatChecker()
+    validator = Draft202012Validator({"type": "object"}, format_checker=checker)
+    actual_schema = {"type": "integer"}
+    events, mutate = [], [False]
+    watched = {"schema", "__class__", "_ref_resolver", "format_checker", "_registry", "_resolver"}
+
+    def lookup(self, name):
+        if name in watched:
+            events.append(name)
+        if name == "_ref_resolver" and mutate[0]:
+            mutate[0] = False
+            fields.append(("schema", "extra_schema"))
+        return saved_lookup(self, name)
+
+    def constructor(**changes):
+        events.append("constructor")
+        return changes
+
+    def selector(schema, *, default):
+        assert schema is actual_schema and default is Draft202012Validator
+        events.append("selector")
+        return constructor
+
+    def compare(changes, mutation=False):
+        observations = []
+        for function in (original, method):
+            fields[:] = saved_fields
+            events.clear()
+            mutate[0] = mutation
+            result = function(validator, **changes)
+            observations.append((result, events[:]))
+        left, right = observations
+        assert list(left[0]) == list(right[0])
+        assert all(value is right[0][key] for key, value in left[0].items())
+        assert left[1] == right[1]
+        assert left[1][:3] == ["schema", "__class__", "selector"]
+        assert left[1][-1] == "constructor"
+        return right
+
+    def restore(mapping, key, value):
+        if value is missing:
+            mapping.pop(key, None)
+        else:
+            mapping[key] = value
+
+    Draft202012Validator.__getattribute__ = lookup
+    namespace["validator_for"] = selector
+    try:
+        result, reads = compare({"schema": actual_schema, "format_checker": None})
+        assert result["format_checker"] is None and "format_checker" not in reads
+        result, reads = compare({"schema": actual_schema}, mutation=True)
+        assert result["extra_schema"] is saved_lookup(validator, "schema")
+        assert reads.count("schema") == 2
+
+        def tracked_getattr(obj, attribute):
+            events.append("global_getattr:" + attribute)
+            return builtins.getattr(obj, attribute)
+
+        namespace["getattr"] = tracked_getattr
+        compare({"schema": actual_schema})
+        namespace.pop("getattr", None)
+        # Function.__builtins__ remains the actual captured dictionary even if
+        # the module later rebinds its __builtins__ entry.
+        namespace["__builtins__"] = {"getattr": lambda *_: missing}
+        compare({"schema": actual_schema})
+        namespace.pop("validator_for")
+        builtin_names["validator_for"] = selector
+        compare({"schema": actual_schema})
+        builtin_names.pop("validator_for", None)
+        for function in (original, method):
+            events.clear()
+            try:
+                function(validator, schema=actual_schema)
+            except NameError as error:
+                assert error.name == "validator_for"
+                assert str(error) == "name 'validator_for' is not defined"
+            else:
+                raise AssertionError("missing original name was invented")
+            assert events == ["schema"]
+
+        raised = ValueError("selected constructor")
+
+        def failing_constructor(**changes):
+            raise raised
+
+        namespace["validator_for"] = lambda schema, *, default: failing_constructor
+        for function in (original, method):
+            fields[:] = saved_fields
+            try:
+                function(validator, schema=actual_schema)
+            except ValueError as error:
+                assert error is raised
+            else:
+                raise AssertionError("constructor exception disappeared")
+    finally:
+        fields[:] = saved_fields
+        restore(namespace, "validator_for", saved_selector)
+        restore(namespace, "getattr", saved_getattr)
+        restore(namespace, "__builtins__", saved_builtins)
+        restore(builtin_names, "validator_for", saved_builtin_selector)
+        if lookup_missing:
+            del Draft202012Validator.__getattribute__
+        else:
+            Draft202012Validator.__getattribute__ = saved_lookup
+
+    result = validator.evolve(schema=actual_schema)
+    assert type(result) is Draft202012Validator and result.schema is actual_schema
+    assert result.format_checker is checker
+    assert result._registry is validator._registry and result._resolver is validator._resolver
+    assert result._ref_resolver is validator._ref_resolver
+    other_schema = {"$schema": "http://json-schema.org/draft-07/schema#", "type": "integer"}
+    assert type(validator.evolve(schema=other_schema)) is jsonschema.Draft7Validator
+    custom = validators.extend(Draft202012Validator, {})
+    marker = object()
+    custom.evolve = lambda self, **changes: marker
+    assert custom({}).evolve(schema={}) is marker
+    original_factory = getattr(validators.create, "__wrapped__", validators.create)
+    uninstalled = original_factory(Draft202012Validator.META_SCHEMA,
+                                  validators=Draft202012Validator.VALIDATORS)
+
+    class CallableEvolve:
+        def __call__(self, **changes):
+            return marker
+
+    callable_evolve = CallableEvolve()
+    uninstalled.evolve = callable_evolve
+    import sys
+
+    if "schema_adapter" in sys.modules:
+        sys.modules["schema_adapter"].install(uninstalled)
+    assert uninstalled.evolve is callable_evolve
+    assert uninstalled({}).evolve(schema={}) is marker
 
 
 def exercise_unsupported_native():

@@ -570,6 +570,7 @@ def probe() -> None:
             "keyword_cycle_collection_closes_retained_child": True,
             "unstarted_keyword_does_not_acquire_child": True,
             "default_type_dispatch_matches_original": True,
+            "evolve_order_live_aliases_and_name_resolution": True,
         }
         or type(result.get("type_dispatch_counts", {}).get("native_default")) is not int
         or result["type_dispatch_counts"]["native_default"] <= 0
