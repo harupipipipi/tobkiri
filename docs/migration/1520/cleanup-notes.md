@@ -116,6 +116,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   元 Setup と専用 GUI 承認の順序・操作回数を維持する。commit 不明時は起動成功へ進めない。
   App の意味や新しい WIT・権限を Core に追加しない。
 - 根拠: 実 callsite の source 調査と Astra high の設計回答。実装・動作検証は未実施。
+- 2026-10-30 の追加確認: 実 `core_host.rs` の `NativeHost` は individual の
+  `prompt_approval` だけを実装し、grouped `prompt_approval_review` は未実装。
+  [TrustedPrompt の既定実装](../../../crates/tobkiri-gate/src/protocol.rs) は
+  `Unavailable` を返す。したがって保存 API の存在だけでは初回 GUI Setup の接続を
+  証明できない。今後この経路を接続する前に、Core の完全な候補・全 item と実 native
+  入力を同じ live review に結び付ける必要がある。個別 prompt への自動 fallback や
+  renderer の承認フラグで代用しない。既定の legacy GUI が失敗したという証拠ではない。
 
 ## 新規項目のひな形
 
