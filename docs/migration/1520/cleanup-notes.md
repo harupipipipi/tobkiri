@@ -137,6 +137,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   これらの条件を通常の Profile 初回承認へ一律追加しない。逆に、通常起動が二択でも
   特殊な既存操作の入力要件まで削除しない。実 core-host の現 `trusted_review` は
   Risk による警告表示だけで、上記の入力条件を移植できた証拠にはならない。
+- 経路を混同しない。App の `blocks/coding/pack_approval_request.py` は明示的に
+  active Launcher debug lease を要求する再承認用で、通常初回 Setup の証拠には使わない。
+  Rust の実 Profile 保存は Gate `review_pack_permissions` で、実 revision の最大権限と
+  旧承認の差分を実 digest / reservation / summary に拘束する。native または
+  cross-profile storage の追加は Dangerous。既存 mediator の狭めた結果も保持する。
+  一括 native 表示はこの完全な候補・実 prompt 全件・必要な警告を維持し、
+  デバッグ用入力や別操作の確認文を通常 Setup に追加しない。
 
 ## 新規項目のひな形
 
