@@ -295,6 +295,8 @@ jobs:
           ${{ runner.temp }}/schema-candidate/work/progress-summary.json
           ${{ runner.temp }}/schema-candidate/work/native-data-observation.json
           ${{ runner.temp }}/schema-candidate/work/native-data-observation.epochs.json
+          ${{ runner.temp }}/schema-candidate/work/native-data-control.json
+          ${{ runner.temp }}/schema-candidate/work/native-data-control.log
           ${{ runner.temp }}/schema-candidate/work/native-data-observation.log
           ${{ runner.temp }}/native-data-consumer-build.json
           ${{ runner.temp }}/schema-epoch-unit.log

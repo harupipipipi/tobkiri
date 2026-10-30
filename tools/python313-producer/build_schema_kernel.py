@@ -726,18 +726,34 @@ def probe() -> None:
     consumer_identity = hashlib.sha256(read(
         Path("/native-data-consumer"), maximum=1024 * 1024 * 1024
     )).hexdigest()
-    with (work / "native-data-observation.log").open("xb") as log:
-        subprocess.run([
-            "/native-data-consumer", "--exact", TEST, "--ignored", "--nocapture",
-            "--test-threads=1",
-        ], env={
-            **environment, "TOBKIRI_NATIVE_DATA_CI": "1",
-            "TOBKIRI_NATIVE_COMPONENT": str(component),
-            "TOBKIRI_NATIVE_COMPONENT_SHA256": component_identity,
-            "TOBKIRI_NATIVE_OPERATION": "run", "TOBKIRI_NATIVE_REPORT": str(output),
-            "TOBKIRI_NATIVE_SCHEMA_PROGRESS": "1" if control.get("diagnostic_progress") else "0",
-            "TOBKIRI_NATIVE_SCHEMA_EPOCH_OBSERVATION": "1" if control.get("diagnostic_epoch_observation") else "0",
-        }, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=180)
+    def run_consumer(report_path: Path, observe_epochs: bool) -> None:
+        # Each process owns a fresh independent invocation. Never reuse/reset a
+        # trapped Store or combine the control/observed budgets into a pass.
+        with report_path.with_suffix(".log").open("xb") as log:
+            subprocess.run([
+                "/native-data-consumer", "--exact", TEST, "--ignored", "--nocapture",
+                "--test-threads=1",
+            ], env={
+                **environment, "TOBKIRI_NATIVE_DATA_CI": "1",
+                "TOBKIRI_NATIVE_COMPONENT": str(component),
+                "TOBKIRI_NATIVE_COMPONENT_SHA256": component_identity,
+                "TOBKIRI_NATIVE_OPERATION": "run", "TOBKIRI_NATIVE_REPORT": str(report_path),
+                "TOBKIRI_NATIVE_SCHEMA_PROGRESS": "1" if control.get("diagnostic_progress") else "0",
+                "TOBKIRI_NATIVE_SCHEMA_EPOCH_OBSERVATION": "1" if observe_epochs else "0",
+            }, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=180)
+
+    control_summary = None
+    if control.get("diagnostic_epoch_observation"):
+        # Build ONCE: separate producer snapshots were observed to differ even
+        # at the same commit, so they cannot calibrate observer perturbation.
+        control_output = work / "native-data-control.json"
+        run_consumer(control_output, False)
+        control_records = [json.loads(line) for line in read(
+            control_output, maximum=4 * 1024 * 1024).splitlines()]
+        control_summary = summarize_progress(control_records, component_identity, reference)
+        if control_output.with_suffix(".epochs.json").exists():
+            raise ValueError("independent control unexpectedly enabled observation")
+    run_consumer(output, bool(control.get("diagnostic_epoch_observation")))
     if control.get("diagnostic_progress"):
         records = [json.loads(line) for line in read(output, maximum=4 * 1024 * 1024).splitlines()]
         summary = summarize_progress(records, component_identity, reference)
@@ -747,6 +763,24 @@ def probe() -> None:
         if control.get("diagnostic_epoch_observation"):
             summary["epoch_observation"] = validate_epoch_observation(
                 json.loads(read(epoch_path, maximum=32 * 1024)), component_identity)
+            if (control_summary is None
+                    or "sha256:" + hashlib.sha256(read(component)).hexdigest() != component_identity
+                    or hashlib.sha256(read(Path("/native-data-consumer"),
+                                           maximum=1024 * 1024 * 1024)).hexdigest()
+                    != consumer_identity):
+                raise ValueError("same-artifact observation pair changed inputs")
+            summary["paired_control"] = control_summary
+            summary["pair"] = {
+                "format": "tobkiri.schema-epoch-control-pair/1",
+                "component_sha256": component_identity,
+                "native_data_consumer_sha256": consumer_identity,
+                "order": ["control", "observed"],
+                "independent_invocations": True, "shared_budget_claim": False,
+                "planned_calls_per_invocation": 67,
+                "actual_control_calls": len(control_records),
+                "actual_observed_calls": len(records),
+                "qualification": False, "causal_overhead_claim": False,
+            }
         elif epoch_path.exists():
             raise ValueError("epoch observation was not requested")
         (work / "progress-summary.json").write_text(json.dumps(summary, indent=2) + "\n")

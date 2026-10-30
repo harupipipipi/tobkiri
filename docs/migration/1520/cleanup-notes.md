@@ -728,7 +728,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 015: 推測移植を増やす前の実Wasm費用分類
 
-- 状態: **暫定fuel/time-only観測をcfg(test)で実装。実compile・観測はCI待ち。stack採取なし**。
+- 状態: **実compile・6件/4件の検査と実Wasm数値観測に成功。同生成物の対照へ修正中。stack採取なし**。
 - 場所: `crates/tobkiri-wasm/src/native_setup_store.rs` の既存epoch callback。
   Astra high はnative CPUのcallee込み時間だけで次の移植を選ばず、実Wasmで費用分類を
   先に行うよう回答。従来のreturn間fuel snapshotでは内部関数への配賦はできない。
@@ -761,3 +761,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   schema経路に限り説明できる。512KiB設定にはslopがあり、実fiber範囲、Vec倍増時の
   old/new重複、名前上限、DWARF無効化、保持表とserializationの合計を別に証明する必要が
   ある。8MiB等は条件付き案であり未実装・未立証。IO/custom imports/resourcesへ一般化しない。
+- `be52c13dc` は実compile・funding/cap/refundの6件・metadata拒否4件に成功。
+  通常CI `41135847546` / job `124337969991` はnative64/API19成功後、一括が元2Bで
+  停止（2.102424309秒、絶対期限保持）。無観測累積 `41135860522` / job `124338027636`
+  と観測累積 `41135864278` / job `124338033712` は両方10件完了。観測は173ticks中
+  128件を保持しoverflow=true、記録時のfuel欠落/増加・deadline変更・poisonはfalse。
+  これはtick間や未保持の数値列の完全な証明ではなく、関数分類でもない。
+- この2実行はconsumer SHAは同じだが、別々に生成したcomponent SHAが異なった。
+  contract_v4の1,144,652,688と1,148,013,732の差をobserver costとは扱わない。
+  Astra highの回答に従い、観測モードはcomponentを一度だけ生成し、同じconsumer・
+  VM設定・入力/順序で独立control/observed legを実行する形へ修正。各leg内はfreshな
+  Core/account/Store一つと元予算一回だけで、trap後に続けない。予定67callと実完了数を
+  分け、独立receiptを保存する。2legを一回の資格試験や共通予算とは呼ばない。
+  同artifactでもhost温存状態・順序等の差は残り、単一ペアの差を因果的費用と断定しない。

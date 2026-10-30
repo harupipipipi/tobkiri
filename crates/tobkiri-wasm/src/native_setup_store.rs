@@ -274,6 +274,8 @@ impl WasmEngine {
     }
 }
 impl<T: 'static> NativeSetupStore<T> {
+    /// Bind one funded numerical test observer to this actual Store. Rebinding
+    /// cannot replace its retained record or restart the observation interval.
     #[cfg(test)]
     pub(crate) fn enable_epoch_observation(
         &mut self,
