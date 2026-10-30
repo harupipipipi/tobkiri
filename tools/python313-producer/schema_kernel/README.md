@@ -2,10 +2,10 @@
 
 This is an experimental Rust/PyO3 port of jsonschema 4.26.0 traversal and all
 36 Draft 2020-12 keyword handlers. It is not connected to product Setup or the
-product validator. Source 34994f41b passed actual native compilation and its
-64-case / 14-group functional comparison in CI 41090025133. Its actual Wasm
+product validator. Source 23400a4a7 passed actual native compilation and its
+64-case / 15-group functional comparison in CI 41092195794. Its actual Wasm
 call still exhausted the unchanged fuel limit; native parity is not Wasm or
-product acceptance. The next post-init source below has not yet been verified.
+product acceptance.
 
 ## Boundary
 
@@ -161,5 +161,14 @@ class, field initialization, registry/resource/resolver and custom method overri
 remain in place. Original closure callables and function namespaces are retained.
 Resolver creation, boolean short-circuit attribute reads, live keyword selection,
 commit-after-comprehension behavior and legacy scope callbacks keep their original
-order. Its new fifteenth API group and actual compilation/native/Wasm comparison
-are pending; this is source work only.
+order. CI 41092195794 / job 124188678135 at 23400a4a7 passed actual native
+compilation, all 64 comparisons and all 15 API groups (including repeated calls
+and partial failure state). The actual extension was 813,072 bytes with SHA-256
+fa836ad19b0453bb721d757340483c22bacf9afaa708003465b64dbe9691c455.
+Core/component builds passed, but the actual Wasm invocation again consumed all
+2 billion fuel after 2.059816844 seconds, retaining the original deadline without
+deadline/unreachable traps. It returned no 64-case result; overall CI failed.
+The stack was inside a Python method call from the Rust keyword iterator. This
+does not identify its total cost or prove fuel improvement. Remaining hot work
+needs measured cost before further speculative ports; original limits stay fixed.
+Detailed temporary-object/finalization parity and full API coverage remain open.

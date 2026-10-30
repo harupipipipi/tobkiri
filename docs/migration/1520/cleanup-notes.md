@@ -275,7 +275,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   class・field initialization は保持し、元 code object が一致する body のみ Rust へ移す。
   実 registry / resource / resolver と closure / namespaces を引き継ぎ、boolean 属性取得の
   short-circuit・live keyword 選択・list 完成後の一度の保存・legacy scope callback の
-  順序と失敗を 15 件目の API 群で比較する。新 source の実 compile / parity は未検証。
+  順序と失敗を 15 件目の API 群で比較する。
+- 実 CI `41092195794` / job `124188678135`（source `23400a4a7`）は実 native
+  compile・全 64 比較・15 API 群（繰り返し・途中失敗の状態も含む）に成功した。
+  Core / component build 後の Wasm は残燃料 0 / 2B、約 2.059816844 秒で停止し、
+  期限超過や unreachable はなし。Wasm 比較・燃料改善は未証明。停止 stack だけを
+  全コストの根拠にせず、残存処理を計測して次の移植対象を絞る。細かな一時 object の
+  finalization・全 API coverage は未証明。
 
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 
