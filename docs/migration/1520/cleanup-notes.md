@@ -249,6 +249,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Sol の限定 source review は blocking issue なし。実 CI はこれからで、製品での
   artifact admission・App owner・Setup callsite を証明するものではない。
 
+## 007: CI の native compiler 依存を毎回 build し直す重複
+
+- 状態: **GitHub 上の cache 手順を追加。cache hit と短縮量は未測定**。
+- 場所: [private kernel probe workflow](../../../.github/workflows/issue-1520-schema-kernel-probe.yml)。
+- 問題: Guest の差分調査ごとに同じ Core consumer と依存を最初から compile していた。
+- 整理: Rust 1.94・OS・architecture・lock / manifest に拘束した native build cache を
+  GitHub 内で復元し、成功した native build の直後に保存する。
+  後続の Guest 検証が失敗しても、成功済みの compiler 出力を再利用できる。
+- 維持: 毎回 `cargo test --locked --no-run` の実 artifact を選択し、実 binary の SHA と
+  現 source head を記録する。Guest の instantiation / schema / 出力・実行結果は保存対象にせず、
+  元の cold 実行・fuel・deadline・memory・smoke 条件を維持する。
+  ローカルに target / registry cache を増やさない。
+- 根拠: [公式 restore](https://github.com/actions/cache/blob/main/restore/README.md) /
+  [save](https://github.com/actions/cache/blob/main/save/README.md) の別 step を使用。
+  workflow の source 検査のみ。実 cache 再利用や性能改善の成功とは数えない。
+
 ## 新規項目のひな形
 
 ### NNN: 整理したい処理

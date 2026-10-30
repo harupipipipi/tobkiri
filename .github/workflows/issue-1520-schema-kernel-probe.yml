@@ -92,6 +92,16 @@ jobs:
         root = Path(os.environ['RUNNER_TEMP'])
         restore_registry_vendor(Path('tools/python313-producer/schema_kernel').resolve(), root/'schema-archives', root/'schema-archive-vendor')
         PYVERIFY
+    - name: Restore native compiler outputs on GitHub only
+      id: native-rust-cache
+      uses: actions/cache/restore@v5
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: issue1520-native-consumer-${{ runner.os }}-${{ runner.arch }}-rust194-testdebug0-${{ hashFiles('Cargo.lock',
+          'Cargo.toml', 'crates/**/Cargo.toml') }}
     - name: Build the actual native64 DATA consumer from this source
       run: |
         cargo test --locked -p tobkiri-wasm --lib --no-run --message-format=json > "$RUNNER_TEMP/native-data-build.jsonl"
@@ -121,6 +131,16 @@ jobs:
             'portable_owner_fixture': True, 'actual_os_owner_proof': False,
             'production_enabled': False}, indent=2) + '\n')
         PY
+      id: native-consumer
+    - name: Retain successful native build before the guest probe
+      if: steps.native-consumer.outcome == 'success' && steps.native-rust-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ steps.native-rust-cache.outputs.cache-primary-key }}
     - name: Build import and call the real private Wasm extension
       run: |
         set -euo pipefail
