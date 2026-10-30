@@ -25,7 +25,10 @@ and evaluated-member helpers remain genuine Python operations inside Wasm.
 
 The Rust iterators start work on first next, preserve branch consumption/order,
 close after errors, expose GC traversal/clear and release retained references on
-completion/close. All public API/lifetime equivalence remains to be verified.
+completion/close. A genuine thin Python generator surrounds each Rust builtin
+iterator so finalization delegates close to an externally retained child, as in
+the original generator. This delegate performs no validation of its own and
+adds no Rust finalizer. All public API/lifetime equivalence remains to be verified.
 
 ## Required actual qualification
 
@@ -38,15 +41,22 @@ original classes and registry. Its 64 actual selfchecks run in one real Core
 NativeData invocation under unchanged 64 MiB / 2-billion fuel / original absolute
 30-second limits. Compare first errors, ordered context, actual references,
 parent/cause, paths and complete rendering hashes, plus the real meta-registry
-and class format-checker membership. Eight additional actual public API probes
+and class format-checker membership. Twelve additional actual public API probes
 cover lazy resume/close, interleaving, PEP479, false-schema early paths, evolve
-and unregistered extension-class reclamation.
+and unregistered extension-class reclamation, unstarted cursors, final reference
+release and cyclic GC with an externally retained delegated child. The same
+checks also run against the actual original native classes before the guest test.
 At source 638bf7489, CI 41070883433 passed the actual Rust extension build and
 ABI checks and entered original producer preinitialization. It stopped because
 the test App sealed its loader before sysconfig initialized its original config
 module. The order is corrected to match the original probe: target module/config
 initialization, then seal. No Core call or 64-case result was reached at that
-source. The corrected checks have not yet passed.
+source. The next CI 41071710332 at source 70c926adb generated the component and
+reached the actual Core call, then failed the positive remaining-fuel lifetime
+condition. Its numeric remaining fuel/trap was not printed before validation;
+full bounded diagnostics are now retained before that validation can raise.
+No returned 64-case result or numeric fuel measurement is claimed for that run.
+The corrected checks have not yet passed.
 
 This is not the full 45-cold-call / 305-entry / 453-read catalog or ordinary Flow,
 real OS owner, original GUI, 1B conversation or product parity proof. Per-handler

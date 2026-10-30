@@ -11,6 +11,7 @@ use pyo3::{
 struct ContextState {
     applicable: Py<PyAny>,
     specification: Py<PyAny>,
+    delegate: Py<PyAny>,
     handlers: Vec<(String, Py<PyAny>)>,
 }
 
@@ -26,6 +27,7 @@ impl KernelContext {
         if let Some(state) = &self.state {
             visit.call(&state.applicable)?;
             visit.call(&state.specification)?;
+            visit.call(&state.delegate)?;
             for (_, callable) in &state.handlers {
                 visit.call(callable)?;
             }
@@ -43,6 +45,7 @@ fn make_context(
     applicable: &Bound<'_, PyAny>,
     specification: &Bound<'_, PyAny>,
     handlers: &Bound<'_, PyDict>,
+    delegate: &Bound<'_, PyAny>,
 ) -> PyResult<KernelContext> {
     let mut aliases = Vec::with_capacity(handlers.len());
     for (keyword, callable) in handlers {
@@ -52,6 +55,7 @@ fn make_context(
         state: Some(ContextState {
             applicable: applicable.clone().unbind(),
             specification: specification.clone().unbind(),
+            delegate: delegate.clone().unbind(),
             handlers: aliases,
         }),
     })
@@ -277,14 +281,15 @@ impl Traversal {
                 .iter()
                 .find(|(_, original)| original.bind(py).is(current.callable.bind(py)));
             let errors = if let Some((keyword, _)) = native {
-                crate::keywords::iterator(
+                let iterator = crate::keywords::iterator(
                     py,
                     keyword,
                     validator,
                     current.value.bind(py),
                     self.instance.bind(py),
                     schema,
-                )?
+                )?;
+                context.delegate.bind(py).call1((iterator,))?
             } else {
                 // Explicit custom/other-draft callable dispatch, not retrying a
                 // failed native builtin or deciding validity in Python first.

@@ -509,7 +509,25 @@ def probe() -> None:
             "TOBKIRI_NATIVE_OPERATION": "run", "TOBKIRI_NATIVE_REPORT": str(output),
         }, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=180)
     report = json.loads(read(output))
-    observed = validate_report(report, component_identity, "run")
+    try:
+        observed = validate_report(report, component_identity, "run")
+    except (ValueError, KeyError):
+        diagnostic = json.dumps({
+            "format": "tobkiri.schema-kernel-native-lifetime-failure/1",
+            "native_report": report,
+        }, sort_keys=True)
+        if len(diagnostic.encode()) <= 16 * 1024:
+            print(diagnostic, flush=True)
+        else:
+            print(json.dumps({
+                "format": "tobkiri.schema-kernel-native-lifetime-failure/1",
+                "report_artifact": output.name,
+                "elapsed_seconds": report.get("elapsed_seconds"),
+                "observation": report.get("observation"),
+                "bytes": len(diagnostic.encode()),
+                "sha256": hashlib.sha256(diagnostic.encode()).hexdigest(),
+            }, sort_keys=True), flush=True)
+        raise
     result = (
         json.loads(report["value"]) if isinstance(report.get("value"), str) else None
     )
@@ -544,6 +562,10 @@ def probe() -> None:
             "false_descend_preserves_original_early_paths": True,
             "evolve_preserves_actual_class_and_schema": True,
             "unregistered_extension_class_not_cached": True,
+            "keyword_delegation_closes_retained_child": True,
+            "keyword_deallocation_closes_retained_child": True,
+            "keyword_cycle_collection_closes_retained_child": True,
+            "unstarted_keyword_does_not_acquire_child": True,
         }
         or result.get("meta_schema_sha256") != digest(reference["meta_schema"])
         or result.get("meta_registry_sha256") != {
@@ -610,7 +632,7 @@ def probe() -> None:
         "scope": "original-object-schema-selfcheck/1",
         "original_64_cases_compared": True,
         "type_cases": result["type_cases_checked"],
-        "fuel_remaining": report.get("fuel_remaining"),
+        "fuel_remaining": observed.get("fuel_remaining"),
         "elapsed_seconds": report.get("elapsed_seconds"),
         "component_sha256": component_identity,
         "full_catalog_executed": False, "production_enabled": False,

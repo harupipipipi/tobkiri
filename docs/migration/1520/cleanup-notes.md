@@ -202,6 +202,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   R11.2 へ適合と回答。ただし既取得 factory 参照・残り API 経路や他 closure からの
   strong retain は未検証で、全 draft native 化や全 API の完了を主張しない。
 
+- 次の実 CI `41071710332` / job `124117409348`（source `70c926adb`）は component
+  生成と実 Core call に到達し、正の remaining fuel の lifetime 条件で停止。生の
+  fuel 値・型・trap がログに出ていないため、現時点で数値や原因は断定しない。
+  条件を変えず、validate_report が raise する前にも bounded 実 report を残す。
+- generator 後始末の具体差を整理: Rust keyword iterator の通常 dealloc は、
+  外部で retain された yield-from child を閉じない。各 builtin iterator を薄い本物
+  Python generator で包み、原本の finalization / GeneratorExit を再利用する。
+  handler 本体は Rust のまま同じ予算で動き、元検証へ戻す fallback や独自 tp_finalize は
+  加えない。Astra high がこの境界を支持し、明示 close だけでなく最後の outer 参照を
+  解放する実 dealloc テスト・未開始・通常終了・循環 GC の区別を要求した。
+  これらを含む 12 API 観測を原本 native と移植 guest の両方で実行する接続を追加。
+  現時点でこの修正版の実行成功は未確認。
+
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 
 - 状態: **Core / native 承認部分を一部実装・CI 検証済み。既存 Setup 接続は未対応**。

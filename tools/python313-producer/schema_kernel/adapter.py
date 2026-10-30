@@ -65,6 +65,12 @@ def _closure(function):
     }
 
 
+def _delegate(iterator):
+    # Keep CPython's genuine generator finalization/GeneratorExit protocol. The
+    # delegated validation work remains entirely in the Rust keyword iterator.
+    yield from iterator
+
+
 def install(validator_class):
     """Keep the real class/state and replace only its traversal method bodies."""
     if validator_class in _INSTALLED:
@@ -73,7 +79,8 @@ def install(validator_class):
     # These are the actual original create() closure objects. Recomputing the
     # specification from mutable class metadata would change original behavior.
     context = kernel.make_context(
-        original["applicable_validators"], original["specification"], _BUILTINS
+        original["applicable_validators"], original["specification"], _BUILTINS,
+        _delegate,
     )
 
     def iter_errors(self, instance, _schema=None):

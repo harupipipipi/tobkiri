@@ -65,6 +65,46 @@ def exercise_api():
     for child in children:
         child.close()
 
+    import gc
+    import weakref
+
+    delegated = []
+    custom = validators.extend(Draft202012Validator, {})
+    original_descend = custom.descend
+
+    def retain_descend(self, *args, **kwargs):
+        child = original_descend(self, *args, **kwargs)
+        delegated.append(child)
+        return child
+
+    custom.descend = retain_descend
+    cursor = custom({"properties": {"x": {"type": "integer"}}}).iter_errors({"x": "bad"})
+    del cursor
+    assert delegated == []
+    cursor = custom({"properties": {"x": {"type": "integer"}}}).iter_errors({"x": "bad"})
+    next(cursor)
+    assert len(delegated) == 1 and delegated[0].gi_frame is not None
+    cursor.close()
+    assert delegated[0].gi_frame is None
+
+    cursor = custom({"properties": {"x": {"type": "integer"}}}).iter_errors({"x": "bad"})
+    next(cursor)
+    retained_child = delegated[-1]
+    del cursor
+    assert retained_child.gi_frame is None
+
+    cyclic_instance = {"x": "bad"}
+    cursor = custom({"properties": {"x": {"type": "integer"}}}).iter_errors(cyclic_instance)
+    next(cursor)
+    retained_child = delegated[-1]
+    cyclic_instance["cycle"] = cursor
+    del cyclic_instance, cursor
+    gc.collect()
+    assert retained_child.gi_frame is None
+
+    list(custom({"properties": {"x": {"type": "integer"}}}).iter_errors({"x": "bad"}))
+    assert delegated[-1].gi_frame is None
+
     def stopped(validator, value, instance, schema):
         raise StopIteration("callback exception")
 
@@ -92,9 +132,6 @@ def exercise_api():
     evolved = validator.evolve(schema=evolved_schema)
     assert type(evolved) is extended and evolved.schema is evolved_schema
 
-    import gc
-    import weakref
-
     ephemeral = validators.extend(Draft202012Validator, {})
     original_class = weakref.ref(ephemeral)
     del ephemeral
@@ -110,4 +147,23 @@ def exercise_api():
         "false_descend_preserves_original_early_paths": True,
         "evolve_preserves_actual_class_and_schema": True,
         "unregistered_extension_class_not_cached": True,
+        "keyword_delegation_closes_retained_child": True,
+        "keyword_deallocation_closes_retained_child": True,
+        "keyword_cycle_collection_closes_retained_child": True,
+        "unstarted_keyword_does_not_acquire_child": True,
     }
+
+
+if __name__ == "__main__":
+    import json
+    import os
+    import sys
+
+    if (sys.platform != "linux" or os.environ.get("GITHUB_ACTIONS") != "true"
+            or sys.version_info[:3] != (3, 13, 16)):
+        raise RuntimeError("actual original API execution is restricted to pinned Linux CI")
+    print(json.dumps({
+        "format": "tobkiri.schema-port-original-api/1",
+        "checks": exercise_api(),
+        "wasm_executed": False, "production_enabled": False,
+    }, sort_keys=True))

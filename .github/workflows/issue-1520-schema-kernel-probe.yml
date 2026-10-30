@@ -105,10 +105,13 @@ jobs:
         from pathlib import Path
         root = Path(os.environ['RUNNER_TEMP'])
         packages = root / 'schema-inputs/packages'
-        env = {**os.environ, 'PYTHONPATH': os.pathsep.join(str(p) for p in sorted(packages.iterdir()) if p.is_dir())}
+        env = {**os.environ, 'PYTHONHASHSEED': '0',
+               'PYTHONPATH': os.pathsep.join(str(p) for p in sorted(packages.iterdir()) if p.is_dir())}
         subprocess.run([sys.executable, '-S', '-B', 'tools/python313-producer/schema_kernel_oracle.py',
                         '--source', str(Path(os.environ['GITHUB_WORKSPACE']) / 'schema-oracle-original/tobkiri_runtime'),
                         '--output', str(root / 'schema-kernel-reference.json')], env=env, check=True)
+        subprocess.run([sys.executable, '-S', '-B', 'tools/python313-producer/schema_kernel_api_checks.py'],
+                       env=env, check=True)
         PYORACLE
     - name: Fetch locked registry archives on CI only
       run: |
