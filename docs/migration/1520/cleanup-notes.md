@@ -122,6 +122,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Wasmtime Engine に消費済みの Config を再利用して停止したため、静的検査ごとに
   Config を作る形へ修正。実要求の Store / fuel / deadline は作り直さない。
   Core による実呼び出し・64 ケース・full catalog の成功はまだ証明していない。
+- 修正後の `41055703104` / job `124062569122` は、実 Core consumer の実行と
+  report 読み取りまで進み、smoke の期待条件の不一致で停止した。
+  元の条件は維持し、失敗時の実 report を bounded log と text artifact に保存する。
+  失敗した呼び出しを成功や互換性の証拠に数えず、次の実レポートで差分を特定する。
 - Astra high の追加設計回答: smoke が実際に通った後、64 ケースで参照・順序などの
   不一致を具体化して現 library candidate の不採用を判断し、巨大な補正層を作らない。
   次候補は元 validator の走査・handler 順序・短絡・branch / evaluated bookkeeping を

@@ -400,6 +400,19 @@ def probe() -> None:
         )
         or "sha256:" + hashlib.sha256(read(component)).hexdigest() != component_identity
     ):
+        diagnostic = json.dumps({
+            "format": "tobkiri.schema-kernel-smoke-failure/1",
+            "native_report": report,
+        }, sort_keys=True)
+        if len(diagnostic.encode()) <= 16 * 1024:
+            print(diagnostic, flush=True)
+        else:
+            print(json.dumps({
+                "format": "tobkiri.schema-kernel-smoke-failure/1",
+                "report_artifact": output.name,
+                "bytes": len(diagnostic.encode()),
+                "sha256": hashlib.sha256(diagnostic.encode()).hexdigest(),
+            }), flush=True)
         raise ValueError("real native DATA kernel call differs; inspect native report")
     (work / "probe.json").write_text(json.dumps({
         "format": "tobkiri.schema-kernel-probe/1", "passed": True,

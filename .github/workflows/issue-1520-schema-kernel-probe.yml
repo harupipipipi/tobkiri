@@ -144,6 +144,8 @@ jobs:
           ${{ runner.temp }}/schema-candidate/build/
           ${{ runner.temp }}/schema-candidate/probe/
           ${{ runner.temp }}/schema-candidate/work/probe.json
+          ${{ runner.temp }}/schema-candidate/work/native-data-observation.json
+          ${{ runner.temp }}/schema-candidate/work/native-data-observation.log
           ${{ runner.temp }}/native-data-consumer-build.json
         if-no-files-found: warn
         retention-days: 14
