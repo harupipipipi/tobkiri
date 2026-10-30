@@ -1,0 +1,81 @@
+name: Issue 1520 actual App schema caller reference
+'on':
+  push:
+    branches: [codex/issue-1520-native-shared-state]
+    paths:
+      - tools/python313-producer/app_schema_oracle.py
+      - tools/python313-producer/schema_kernel_oracle.py
+      - tools/python313-producer/fetch_schema.py
+      - tobkiri_runtime/tobkiri_protocol/**
+      - .github/workflows/issue-1520-app-schema-caller.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: issue-1520-app-schema-caller-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  native-caller-contract:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.13.16
+      - uses: actions/checkout@v4
+        with:
+          ref: 54e7da008997a3eb45876cbe18459dba9902cc9d
+          path: app-schema-original
+          persist-credentials: false
+      - name: Restore checksum-bound real library inputs
+        run: >-
+          python3 -B tools/python313-producer/fetch_schema.py
+          --destination "$RUNNER_TEMP/app-schema-inputs"
+      - name: Prepare shared real-file caller fixtures
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/app-schema-caller"
+          python3 -B tools/python313-producer/app_schema_oracle.py prepare \
+            "$RUNNER_TEMP/app-schema-caller/fixtures"
+      - name: Record the actual pinned original caller
+        run: |
+          set -euo pipefail
+          python3 -S -B tools/python313-producer/app_schema_oracle.py run \
+            --source-kind original \
+            --source "$GITHUB_WORKSPACE/app-schema-original/tobkiri_runtime" \
+            --inputs "$RUNNER_TEMP/app-schema-inputs" \
+            --fixtures "$RUNNER_TEMP/app-schema-caller/fixtures" \
+            --bundle-source "$GITHUB_WORKSPACE/app-schema-original/tobkiri_runtime" \
+            --output "$RUNNER_TEMP/app-schema-caller/original.json"
+      - name: Record the actual current caller
+        run: |
+          set -euo pipefail
+          python3 -S -B tools/python313-producer/app_schema_oracle.py run \
+            --source-kind current \
+            --source "$GITHUB_WORKSPACE/tobkiri_runtime" \
+            --inputs "$RUNNER_TEMP/app-schema-inputs" \
+            --fixtures "$RUNNER_TEMP/app-schema-caller/fixtures" \
+            --bundle-source "$GITHUB_WORKSPACE/app-schema-original/tobkiri_runtime" \
+            --output "$RUNNER_TEMP/app-schema-caller/current.json"
+      - name: Compare the complete recorded caller contract
+        run: |
+          set -euo pipefail
+          python3 -B tools/python313-producer/app_schema_oracle.py compare \
+            --original "$RUNNER_TEMP/app-schema-caller/original.json" \
+            --current "$RUNNER_TEMP/app-schema-caller/current.json" \
+            --output "$RUNNER_TEMP/app-schema-caller/comparison.json"
+      - name: Retain bounded reference metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-schema-caller-reference
+          path: |
+            ${{ runner.temp }}/app-schema-caller/original.json
+            ${{ runner.temp }}/app-schema-caller/current.json
+            ${{ runner.temp }}/app-schema-caller/comparison.json
+            ${{ runner.temp }}/app-schema-caller/fixtures/fixture-index.json
+          retention-days: 14
+          if-no-files-found: warn

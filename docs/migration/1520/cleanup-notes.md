@@ -728,7 +728,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 015: 推測移植を増やす前の実Wasm費用分類
 
-- 状態: **実compile・6件/4件の検査と実Wasm数値観測に成功。同生成物の対照へ修正中。stack採取なし**。
+- 状態: **同生成物の対照・6件/4件の検査に成功。全12checkpointのfuel一致。stack採取なし**。
 - 場所: `crates/tobkiri-wasm/src/native_setup_store.rs` の既存epoch callback。
   Astra high はnative CPUのcallee込み時間だけで次の移植を選ばず、実Wasmで費用分類を
   先に行うよう回答。従来のreturn間fuel snapshotでは内部関数への配賦はできない。
@@ -774,3 +774,29 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Core/account/Store一つと元予算一回だけで、trap後に続けない。予定67callと実完了数を
   分け、独立receiptを保存する。2legを一回の資格試験や共通予算とは呼ばない。
   同artifactでもhost温存状態・順序等の差は残り、単一ペアの差を因果的費用と断定しない。
+
+- 同生成物pair修正 `6356ef6af` のCI `41137708044` / job `124344148871` は成功。
+  component 3daac2ef…c19 / consumer 8e641c0f…26e9 が両legで同一、全12の
+  phase/case/fuel tupleが一致。prepared 53,630,028、contract_v4 1,144,124,292、
+  完了10件・次のexternal_normal_pack_catalogで元2B停止。観測は210ticks中128件保持、
+  overflow=true、fuel欠落/増加・deadline変更・poison=false。保持外の詳細や関数内訳は
+  分からない。実時間差は因果的なobserver overhead/高速化と呼ばない。
+  通常CI `41137697573` / job `124344108862` もnative64/API19成功後、元2Bで停止
+  （1.337424751秒、残0、絶対期限保持）。全catalog/一括の上限合格は未達。
+
+## 016: App schema呼出し契約を先に固定する
+
+- 状態: **source監査済み、追加native differential oracleを作成中。置換実装・CI実行は未完**。
+- 場所: `tobkiri_protocol/validation.py:128-177`、詳細は
+  [App schema caller contract](app-schema-call-contract.md)。
+- Astra highはWasm frameだけでPython handler費用が分からないため、追加stack実装より
+  actual load_schema→live selected check_schemaの契約を先に観測するよう回答。
+  META_SCHEMAのidentityだけで不変扱いするcompiled planやdispatch省略は承認されていない。
+- 追加oracleはpinned original/currentを別fresh processで動かし、同じ実file fixture、
+  実305entry/453read/45cold call、42resource、strict parse・選択callback・例外cause、
+  mutable identity・alias/filename/keyword cache・独立storeを比較する。戻り値の再帰的な
+  key順と実parser例外のcause identityも保持する。checkerの戻り値は捨てる元挙動を検査。
+- 元64 library vector/一括gateは別のまま。新oracleはnative caller契約だけで、captured
+  owner/実Wasm予算/GUI/OS承認の証明ではない。短いApp用checker・META compiled planは
+  まだ実装しない。将来重複を減らす場合も元dispatch/constructor/例外/可変objectを守り、
+  plan作成費用を元invocation予算に含める。native Python削除の前提は移植後の全機能同等性。
