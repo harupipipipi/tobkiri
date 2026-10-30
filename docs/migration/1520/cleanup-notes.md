@@ -91,6 +91,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   serde clone で、元 schema 参照・順序・parent / cause は保たれない。
   元 root を別途保持しても error node 参照の同等性には数えない。
   現時点では formatter とソース確認のみ。製品の validator は置換していない。
+- 依存の実固定は [CI 41049191953](https://github.com/harupipipipi/tobkiri/actions/runs/41049191953)
+  で成功。revision `40fa84327` の実ログと receipt に拘束した Cargo.lock を保存した
+  （20,394 bytes、87 packages、SHA-256
+  `7bd7deb115b32dc7012b44a960efc45d6591ac148fa5a0466c1741a523d9b065`）。
+  保存後は自動で再解決せず `--locked` を使う。これは build / load / parity の証拠ではない。
 
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 
