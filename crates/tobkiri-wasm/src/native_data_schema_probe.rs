@@ -3,7 +3,7 @@ use super::*;
 use serde::Serialize;
 use std::fmt::Write;
 use std::fs::OpenOptions;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tobkiri_canon::Digest;
 use tobkiri_gate::{CapacityLedger, CoreControl, GateError, NativeSetupLease};
@@ -51,6 +51,107 @@ struct Report<'a> {
     production_enabled: bool,
 }
 
+#[derive(Serialize)]
+struct ProgressReport<'a> {
+    #[serde(flatten)]
+    report: Report<'a>,
+    step: usize,
+    qualification: bool,
+    one_shot_parity_claim: bool,
+    upper_bound_claim: bool,
+}
+
+// This adds observation boundaries to the same retained DATA entry. Those
+// boundaries vary guest GC/cache/lifetime behavior; they prove neither a
+// one-shot upper bound nor parity with the one-shot observer. File writes are
+// observer metadata, not a guest or product file capability, and the original
+// absolute deadline continues to elapse during every write.
+async fn observe_progress(
+    entry: &mut NativeDataEntry<()>,
+    output_path: &Path,
+    identity: &Digest,
+    operation: &str,
+    deadline: Instant,
+    started: Instant,
+) -> Result<()> {
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(output_path)?;
+    let mut previous_fuel = entry.fuel_remaining()?;
+    // prepare + 64 corpus cases + APIs + exact completion, all in this Store.
+    for step in 0..67 {
+        assert_eq!(entry.original_deadline(), deadline);
+        let result = entry.invoke(None).await;
+        assert_eq!(entry.original_deadline(), deadline);
+        // invoke() samples after canonical post-return, including its fuel.
+        let mut observation = entry.observation();
+        let remaining = observation
+            .fuel_remaining
+            .context("progress call did not preserve a fuel observation")?;
+        assert!(remaining <= previous_fuel);
+        previous_fuel = remaining;
+        let (output, failure) = match result {
+            Ok(output) => {
+                assert!(observation.post_return);
+                assert_eq!(entry.fuel_remaining()?, remaining);
+                (Some(output), None)
+            }
+            Err(error) => (None, Some(error)),
+        };
+        let value = output.as_ref().map(CoreBuffer::as_str).transpose()?;
+        let complete = value == Some(r#"{"phase":"complete"}"#);
+        let failed = value == Some(r#"{"phase":"failed"}"#);
+        let stop = complete || failed || failure.is_some();
+        let mut trace = Trace(String::with_capacity(4096));
+        if let Some(error) = &failure {
+            write!(&mut trace, "{error:?}")?;
+        }
+        if stop || step == 66 {
+            entry.retire();
+            observation = entry.observation();
+            assert!(observation.store_retired);
+            assert!(
+                observation
+                    .fuel_remaining
+                    .is_some_and(|fuel| fuel <= remaining)
+            );
+        }
+        let report = ProgressReport {
+            report: Report {
+                format: "tobkiri.native-data-schema-progress/1",
+                component_sha256: identity.as_str(),
+                operation,
+                value,
+                error: failure.as_ref().map(|_| trace.0.as_str()),
+                genuine_unreachable: observation.unreachable_trap,
+                observation,
+                original_deadline_preserved: entry.original_deadline() == deadline,
+                elapsed_seconds: started.elapsed().as_secs_f64(),
+                memory_limit_bytes: tobkiri_gate::NATIVE_SETUP_MEMORY_BYTES,
+                fuel_limit: super::super::FUEL,
+                wall_seconds: 30,
+                portable_owner_fixture: true,
+                actual_os_owner_proof: false,
+                production_enabled: false,
+            },
+            step,
+            qualification: false,
+            one_shot_parity_claim: false,
+            upper_bound_claim: false,
+        };
+        // Serialize while the original output remains funded. No owned guest
+        // String/Vec or output from an earlier step survives this boundary.
+        serde_json::to_writer(&mut file, &report)?;
+        std::io::Write::write_all(&mut file, b"\n")?;
+        drop(output);
+        if stop {
+            return Ok(());
+        }
+    }
+    bail!("schema progress did not return exact completion within 67 calls")
+}
+
 #[tokio::test]
 #[ignore = "external real component; Linux CI diagnostic only"]
 async fn native_schema_component() -> Result<()> {
@@ -68,6 +169,10 @@ async fn native_schema_component() -> Result<()> {
         bail!("unknown schema observation operation");
     }
     let argument = std::env::var("TOBKIRI_NATIVE_ARGUMENT").ok();
+    let progress = std::env::var("TOBKIRI_NATIVE_SCHEMA_PROGRESS").as_deref() == Ok("1");
+    if progress && (operation != "run" || std::env::var_os("TOBKIRI_NATIVE_ARGUMENT").is_some()) {
+        bail!("schema progress requires run without an argument");
+    }
     if (operation == "probe-denied-io") != argument.is_some()
         || argument
             .as_deref()
@@ -108,6 +213,24 @@ async fn native_schema_component() -> Result<()> {
             NativeDataExport::new(Some("tobkiri-ui:schema-probe/probe@1.0.0"), &operation),
         )
         .await?;
+    if progress {
+        let result = observe_progress(
+            &mut entry,
+            &output_path,
+            &identity,
+            &operation,
+            deadline,
+            started,
+        )
+        .await;
+        entry.retire();
+        assert_eq!(entry.original_deadline(), deadline);
+        drop(input);
+        drop(entry);
+        crate::reap_allocation_owners()?;
+        assert_eq!(account.snapshot()?.charged_bytes, 0);
+        return result;
+    }
     let result = entry.invoke(input.as_ref()).await;
     let deadline_preserved = entry.original_deadline() == deadline;
     let elapsed = started.elapsed().as_secs_f64();

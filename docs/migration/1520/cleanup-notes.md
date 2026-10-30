@@ -425,3 +425,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - 整理案・減らせる実装:
 - 維持する動作・着手／削除条件:
 - 根拠・コミット・検証結果:
+
+## 008: schema の停止 stack だけで次の移植対象を推測する重複
+
+- 状態: **累積診断を追加、実 CI の結果は未確認**。
+- 場所: private schema builder と CI-only native DATA observer。
+- 問題: 2f / 349 / 234 の機能比較は成功しても、Wasm は同じ 2B 上限で停止した。
+  停止時の stack はその時点の位置であり、全体コストや改善幅の証明にならない。
+- 整理: 明示 dispatch の診断 component のみ、同じ Store / account / component を
+  保って準備・各 case・API・完了の最大 67 return 直後を観測する。元の累積 fuel・
+  64MiB・最初の絶対 30 秒を更新しない。実 funded output は記録後、次 call 前に解放し、
+  trap / 明示 failure 後は再開しない。cleanup の charged bytes 0 も必要。
+- 原本の一括 App source は変更しない。通常 CI の完全 64 比較と API gate は必須。
+  診断は別 component SHA / `qualification=false` で、最後に完了した case と次に実行中
+  だった case を区別する。snapshot 時に schema / result を用意しない。
+- 注意: 分割境界で参照寿命・GC・cache が変わるため、一括実行の上限値とも合格とも
+  扱わない。Astra high の質問回答でこの境界と制約を確認した。実装対象の特定後は
+  この一時診断が必要か再評価し、製品の起動フローや権限 API へ流用しない。

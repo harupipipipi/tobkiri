@@ -168,6 +168,153 @@ class Probe(wit_world.exports.Probe):
         raise RuntimeError("outside the private kernel smoke scope")
 '''
 
+# This separate source is only a perturbed same-Store diagnostic. The normal APP
+# above remains the mandatory one-shot qualification; split completion never
+# establishes its parity or budget. No schema/input objects exist before run().
+PROGRESS_SUFFIX = '''
+_PROGRESS_STATE = None
+
+
+def _advance_progress():
+    state = _PROGRESS_STATE
+    index = state["index"]
+    if index < len(state["cases"]):
+        case = state["cases"][index]
+        schema = case["schema"]
+        try:
+            jsonschema.Draft202012Validator.check_schema(schema)
+        except jsonschema.exceptions.SchemaError as error:
+            result = {"valid": False, "error": observe(error, schema, state["nodes"])}
+        else:
+            result = {"valid": True, "error": None}
+        state["index"] += 1
+        return json.dumps({"phase": "case", "index": index,
+                           "name": case["name"], "actual": result},
+                          sort_keys=True, separators=(",", ":"))
+    if index == len(state["cases"]):
+        checks = exercise_api()
+        state["index"] += 1
+        return json.dumps({"phase": "api", "checks": checks},
+                          sort_keys=True, separators=(",", ":"))
+    return '{"phase":"complete"}'
+
+
+_OneShotProbe = Probe
+
+
+class Probe(_OneShotProbe):
+    def run(self) -> str:
+        try:
+            return self.observe()
+        except Exception:
+            # Stop on the first unexpected guest failure, never retry its case.
+            # The controller rejects this marker and retains its exact position.
+            return '{"phase":"failed"}'
+'''
+
+
+def progress_app() -> str:
+    """Retain original preparation order, then return diagnostic checkpoints."""
+    start = '    def observe(self) -> str:\n'
+    checkpoint = '        selfchecks = []\n'
+    if APP.count(start) != 1 or APP.count(checkpoint) != 1:
+        raise ValueError("original one-shot diagnostic anchors differ")
+    app = APP.replace(start, start + '''        global _PROGRESS_STATE
+        if _PROGRESS_STATE is not None:
+            return _advance_progress()
+''')
+    app = app.replace(checkpoint, '''        _PROGRESS_STATE = {"cases": case_inputs, "nodes": known_nodes, "index": 0}
+        return '{"phase":"prepared"}'
+        selfchecks = []
+''')
+    return app + PROGRESS_SUFFIX
+
+
+def summarize_progress(records: list[dict], component: str, reference: dict) -> dict:
+    """Check diagnostic continuity without treating split results as acceptance."""
+    import math
+    from schema_kernel_observation import first_difference
+
+    if not 1 <= len(records) <= 67:
+        raise ValueError("bounded same-entry progress records required")
+    previous_fuel, previous_elapsed = 2_000_000_000, 0.0
+    measurements = []
+    completed_cases = 0
+    complete = False
+    for index, row in enumerate(records):
+        observation = row.get("observation", {})
+        fuel = observation.get("fuel_remaining")
+        elapsed = row.get("elapsed_seconds")
+        if (
+            row.get("format") != "tobkiri.native-data-schema-progress/1"
+            or row.get("component_sha256") != component
+            or row.get("operation") != "run" or row.get("step") != index
+            or row.get("qualification") is not False
+            or row.get("one_shot_parity_claim") is not False
+            or row.get("upper_bound_claim") is not False
+            or row.get("original_deadline_preserved") is not True
+            or row.get("memory_limit_bytes") != 64 * 1024 * 1024
+            or row.get("fuel_limit") != 2_000_000_000
+            or row.get("wall_seconds") != 30
+            or row.get("production_enabled") is not False
+            or row.get("actual_os_owner_proof") is not False
+            or type(fuel) is not int or not 0 <= fuel <= previous_fuel
+            or type(elapsed) not in (int, float) or not math.isfinite(elapsed)
+            or elapsed < previous_elapsed
+        ):
+            raise ValueError("same-entry diagnostic identity/budget continuity differs")
+        item = {"step": index, "fuel_remaining": fuel,
+                "fuel_since_previous_return": previous_fuel - fuel,
+                "elapsed_seconds": elapsed}
+        if row.get("error") is not None:
+            if index != len(records) - 1 or row.get("value") is not None:
+                raise ValueError("diagnostic resumed after an actual failure")
+            if observation.get("store_retired") is not True:
+                raise ValueError("failed diagnostic Store was not retired")
+            item.update(phase="failure", error=row["error"][:4096],
+                        deadline_exceeded=observation.get("deadline_exceeded"),
+                        next_case=(reference["cases"][index - 1]["name"]
+                                   if 1 <= index <= 64 else None))
+        else:
+            if observation.get("post_return") is not True:
+                raise ValueError("diagnostic call did not finish post-return")
+            payload = json.loads(row["value"])
+            expected_phase = ("prepared" if index == 0 else "case" if index <= 64
+                              else "api" if index == 65 else "complete")
+            if payload.get("phase") != expected_phase:
+                raise ValueError("diagnostic phase order differs")
+            item["phase"] = expected_phase
+            if expected_phase == "case":
+                case = reference["cases"][index - 1]
+                if (payload.get("index") != index - 1 or payload.get("name") != case["name"]
+                        or first_difference(case["expected"], payload.get("actual")) is not None):
+                    raise ValueError("diagnostic case differs from actual original reference")
+                completed_cases += 1
+                item["case"] = case["name"]
+            elif expected_phase == "api":
+                checks = payload.get("checks")
+                if (not isinstance(checks, dict) or len(checks) != 15
+                        or any(value is not True for value in checks.values())):
+                    raise ValueError("diagnostic actual API observations differ")
+            complete = expected_phase == "complete"
+            if complete != (index == 66 and index == len(records) - 1):
+                raise ValueError("diagnostic completion position differs")
+            if observation.get("store_retired") is not complete:
+                raise ValueError("diagnostic Store retired before its terminal checkpoint")
+        measurements.append(item)
+        previous_fuel, previous_elapsed = fuel, elapsed
+    if not complete and records[-1].get("error") is None:
+        raise ValueError("diagnostic stopped without completion or a recorded failure")
+    return {
+        "format": "tobkiri.schema-kernel-progress-summary/1",
+        "component_sha256": component, "qualification": False,
+        "one_shot_parity_claim": False, "upper_bound_claim": False,
+        "split_execution_complete": complete, "completed_cases": completed_cases,
+        "last_completed_case": (reference["cases"][completed_cases - 1]["name"]
+                                if completed_cases else None),
+        "measurements": measurements, "production_enabled": False,
+    }
+
 
 def packages(source: Path) -> list[dict]:
     """Admit the actual source lock and only its checksum-bound registry graph."""
@@ -510,7 +657,16 @@ def probe() -> None:
             "TOBKIRI_NATIVE_COMPONENT": str(component),
             "TOBKIRI_NATIVE_COMPONENT_SHA256": component_identity,
             "TOBKIRI_NATIVE_OPERATION": "run", "TOBKIRI_NATIVE_REPORT": str(output),
+            "TOBKIRI_NATIVE_SCHEMA_PROGRESS": "1" if control.get("diagnostic_progress") else "0",
         }, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=180)
+    if control.get("diagnostic_progress"):
+        records = [json.loads(line) for line in read(output, maximum=4 * 1024 * 1024).splitlines()]
+        summary = summarize_progress(records, component_identity, reference)
+        summary.update(extension_sha256=hashlib.sha256(extension).hexdigest(),
+                       native_data_consumer_sha256=consumer_identity)
+        (work / "progress-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+        print(json.dumps(summary, sort_keys=True), flush=True)
+        return
     report = json.loads(read(output))
     try:
         observed = validate_report(report, component_identity, "run")
@@ -653,6 +809,7 @@ def run(
     source: Path, vendor: Path, archives: Path, rust: Path, sdk: Path,
     producer: Path, validation: Path, native_data_consumer: Path, destination: Path,
     schema_inputs: Path, stdlib: Path, rpds: Path, reference: Path,
+    diagnostic_progress: bool = False,
 ) -> None:
     """Verify source and tools, build offline, then run an actual bounded probe."""
     from build_native import GIB, HERE, fingerprint, sandbox_command
@@ -686,7 +843,7 @@ def run(
     recipe.write_text(build_rpds.RECIPE.replace("cd /rpds\n", "cd /kernel\n"))
     probe_source = destination / "probe-source"
     probe_source.mkdir(mode=0o700)
-    (probe_source / "app.py").write_text(APP)
+    (probe_source / "app.py").write_text(progress_app() if diagnostic_progress else APP)
     for name in ("probe.wit", "exercise.py", "captured_loader.py"):
         shutil.copyfile(HERE / "schema_probe" / name, probe_source / name)
     shutil.copyfile(source / "adapter.py", probe_source / "schema_adapter.py")
@@ -707,6 +864,7 @@ def run(
     control.write_text(json.dumps({
         "inputs": records, "extension_sha256": build_schema.EXTENSION_SHA256,
         "input_limit": 64 * 1024 * 1024,
+        "diagnostic_progress": diagnostic_progress,
         "stdlib": runtime_inputs.report(stdlib / "stdlib-inputs.json"),
     }, sort_keys=True) + "\n")
     replay = destination / "probe.sh"
@@ -725,11 +883,13 @@ def run(
     probe_files = fetch_sdk.inventory(probe_source)
     receipt = {
         "format": "tobkiri.schema-kernel-build/1", "outcome": "pending",
-        "qualification_scope": "original-object-schema-selfcheck/1",
+        "qualification_scope": ("same-store-progress-diagnostic/1" if diagnostic_progress
+                                else "original-object-schema-selfcheck/1"),
         "implemented_handler_count": 36, "schema_validation_executed": False,
         "inputs": inputs, "configuration": private, "probe_source": probe_files,
         "target": "wasm32-wasip2", "feature": "pyo3/abi3-py313", "stages": [],
         "guest_executed": False, "original_64_cases_compared": False,
+        "qualification": False,
         "full_catalog_executed": False, "production_enabled": False,
     }
     output = destination / "schema-kernel-build.json"
@@ -757,6 +917,21 @@ def run(
             "schema-kernel-original-producer-native-data", command, work,
             destination / "probe",
         ))
+        if diagnostic_progress:
+            observation = json.loads((work / "progress-summary.json").read_bytes())
+            if (observation.get("format") != "tobkiri.schema-kernel-progress-summary/1"
+                    or observation.get("qualification") is not False
+                    or observation.get("one_shot_parity_claim") is not False
+                    or observation.get("native_data_consumer_sha256")
+                    != inputs["native_data_consumer"]["sha256"]
+                    or verify_inputs(*arguments) != inputs
+                    or any(fingerprint(Path(path)) != pin for path, pin in private.items())
+                    or fetch_sdk.inventory(probe_source) != probe_files):
+                raise ValueError("actual progress observation or readonly inputs differ")
+            receipt.update(outcome="diagnostic-recorded", guest_executed=True,
+                           qualification_scope="same-store-progress-diagnostic/1",
+                           observation=fingerprint(work / "progress-summary.json"))
+            return
         observation = json.loads((work / "probe.json").read_bytes())
         if (
             observation.get("passed") is not True
@@ -772,7 +947,7 @@ def run(
             or fetch_sdk.inventory(probe_source) != probe_files
         ):
             raise ValueError("actual observation or readonly input identity differs")
-        receipt.update(outcome="success", guest_executed=True,
+        receipt.update(outcome="success", guest_executed=True, qualification=True,
                        schema_validation_executed=True, implemented_handler_count=36,
                        original_64_cases_compared=True,
                        observation=fingerprint(work / "probe.json"),
@@ -791,6 +966,7 @@ if __name__ == "__main__":
         probe()
     else:
         parser = argparse.ArgumentParser()
+        parser.add_argument("--diagnostic-progress", action="store_true")
         for name in (
             "source", "vendor", "archives", "rust", "sdk", "producer", "validation",
             "native-data-consumer", "destination", "schema-inputs", "stdlib", "rpds", "reference",

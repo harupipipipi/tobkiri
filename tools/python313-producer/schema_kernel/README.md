@@ -172,3 +172,24 @@ The stack was inside a Python method call from the Rust keyword iterator. This
 does not identify its total cost or prove fuel improvement. Remaining hot work
 needs measured cost before further speculative ports; original limits stay fixed.
 Detailed temporary-object/finalization parity and full API coverage remain open.
+
+## Same-Store progress diagnosis
+
+The workflow's explicit `diagnostic_progress=true` dispatch builds a separately
+identified diagnostic component. Default push/manual runs still use the unchanged
+one-shot App and its complete 64-case/API gate. Diagnosis returns preparation,
+individual actual case observations, APIs and completion through at most 67 calls
+on the same retained native DATA entry/Store/account/component. The original
+cumulative 2B fuel, 64MiB and first absolute 30-second deadline are never renewed.
+Each post-return observation is recorded while its actual output remains funded;
+the output is dropped before the next call. A trap or explicit failure stops and
+retires immediately. Final cleanup still requires zero charged bytes.
+
+The first actual call performs original preparation/input creation; no schema or
+result is prepared during snapshotting. Original case outcomes are checked outside
+the guest. Progress records distinguish the last completed case and the next case
+interrupted by a trap. Split return boundaries change reference lifetimes, GC and
+cache behavior: these measurements are neither an upper bound nor one-shot parity
+or budget acceptance. Every diagnostic receipt has `qualification=false`; the
+normal one-shot gate and product acceptance remain mandatory. Actual diagnostic
+compilation/execution has not yet been verified.

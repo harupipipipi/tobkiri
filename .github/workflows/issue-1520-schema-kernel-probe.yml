@@ -13,13 +13,19 @@ name: Issue 1520 actual private schema kernel Wasm probe
     - tools/python313-producer/schema_kernel_api_checks.py
     - tools/python313-producer/schema_kernel_oracle.py
     - tools/python313-producer/schema_kernel_native_check.py
+    - crates/tobkiri-wasm/src/native_data_schema_probe.rs
     - .github/workflows/issue-1520-schema-kernel-probe.yml
-  workflow_dispatch: null
+  workflow_dispatch:
+    inputs:
+      diagnostic_progress:
+        description: Same-Store progress diagnosis only; never one-shot qualification
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: issue-1520-schema-kernel-probe-${{ github.ref }}-${{ github.sha }}
+  group: issue-1520-schema-kernel-probe-${{ github.ref }}-${{ github.sha }}-${{ inputs.diagnostic_progress && 'progress' || 'qualification' }}
   cancel-in-progress: false
 jobs:
   actual-extension:
@@ -203,9 +209,16 @@ jobs:
           target
         key: ${{ steps.native-rust-cache.outputs.cache-primary-key }}
     - name: Build import and call the real private Wasm extension
+      env:
+        DIAGNOSTIC_PROGRESS: ${{ inputs.diagnostic_progress && '1' || '0' }}
       run: |
         set -euo pipefail
+        mode_flags=()
+        if [ "$DIAGNOSTIC_PROGRESS" = '1' ]; then
+          mode_flags+=(--diagnostic-progress)
+        fi
         python3 -B tools/python313-producer/build_schema_kernel.py \
+          "${mode_flags[@]}" \
           --source "$GITHUB_WORKSPACE/tools/python313-producer/schema_kernel" \
           --vendor "$RUNNER_TEMP/schema-archive-vendor" \
           --archives "$RUNNER_TEMP/schema-archives" \
@@ -229,6 +242,7 @@ jobs:
           ${{ runner.temp }}/schema-candidate/build/
           ${{ runner.temp }}/schema-candidate/probe/
           ${{ runner.temp }}/schema-candidate/work/probe.json
+          ${{ runner.temp }}/schema-candidate/work/progress-summary.json
           ${{ runner.temp }}/schema-candidate/work/native-data-observation.json
           ${{ runner.temp }}/schema-candidate/work/native-data-observation.log
           ${{ runner.temp }}/native-data-consumer-build.json
