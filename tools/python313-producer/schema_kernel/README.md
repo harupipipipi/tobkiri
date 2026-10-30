@@ -9,7 +9,16 @@ product acceptance.
 
 ## Current candidate boundary
 
-The next bounded experiment translates only CPython 3.13.16
+The engine source is restored to63750e485. The native coercion, derived stdlib,
+special bootstrap loader and fresh comparison worker are removed. API19 retains
+original Python helper/shared-URL regression coverage only; it is not native
+coercion proof. This larger test harness is distinct from the exact637 measured
+component. Keep637 as the performance reference and measure any new harness
+checkpoint separately. No production validator is changed.
+
+### Rejected coercion experiment
+
+The rejected bounded experiment translated only CPython 3.13.16
 `urllib.parse._coerce_args` to a GC-visible native callable. Actual URL parsers,
 decoding/result callables, objects and caches remain Python operations. The
 original helper body remains an independent oracle; first-import checks reject
@@ -23,12 +32,24 @@ the selected module lacked the derived marker (its origin was not logged). No
 component/Core invocation or fuel measurement was reached. The repair supplies
 only the two authenticated urllib modules before metadata tooling imports them,
 sharing source compile/execution with a private derived ordinary-loader copy.
-Its fresh-process selection and actual guest execution remain unverified.
+Repair934d745e6 passed the fresh-process selection check and native64/API19,
+then built the guest and reached actual Core execution. Normal CI41132421203
+still exhausted the original2B fuel, with the original deadline preserved.
+Diagnostic CI41132437439 returned10 cases and recorded1,138,176,725 fuel through
+contract_v4 versus1,146,973,884 at637 (about0.77% less). This includes cold source/
+helper metadata and proves neither the body-only speedup nor full-catalog bounds.
+Wasm API19 was not reached. Further speculative ports await real-Wasm cost
+classification; this candidate remains disconnected from product validation.
+On Astra high's review, the roughly0.77% total diagnostic difference does not
+justify the additional implementation/loader complexity or prove a body-only
+benefit. The candidate and its measured evidence remain in Git history.
 Source 63750e485 passed native64/required18 and all three implementation
 diagnostics, but its one-shot Wasm call exhausted 2B fuel. Its diagnostic
 contract_v4 cost, 1,146,973,884, is the comparison baseline for this candidate.
 
-The current unverified source translates the pinned `_keywords.py` definitions
+### Retained public-definition baseline
+
+The experiment translates the pinned `_keywords.py` definitions
 at build time, before the first jsonschema import. All 36 public signatures,
 parameter names, docstrings and generator status are preserved. Normal module
 execution connects the real class mappings to those public definitions. Traversal
@@ -46,9 +67,11 @@ Full package-metadata/resource, frame/refcount and product parity remain unprove
 
 The default type bypass is removed; real checker and predicate callables execute
 normally. Previous type-shortcut fuel results do not qualify this new structure.
-API18 adds same-function keyword/checker/predicate code changes, preselected and
-saved handlers, started generators, replacement mappings, exception identity and
-runtime audit observations. FFI keyword names are now opaque Rust metadata;
+Required API18 covers actual delegation, saved/selected handlers and opaque
+metadata rejection. Same-function keyword/checker/predicate code changes and
+runtime audit observations remain three separately recorded implementation
+diagnostics; they are not silently counted as passing for non-Python callables.
+FFI keyword names are opaque Rust metadata;
 forged Python tuples cannot reach the four-pointer vectorcall stack.
 
 ## Historical boundary and experiments

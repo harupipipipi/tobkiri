@@ -26,28 +26,17 @@ MAX_ARCHIVES = 128 * 1024 * 1024
 # Only module imports happen during producer preinitialization. All object/type
 # observations happen when the actual native DATA runner invokes run.
 APP = '''"""One actual private-extension call after producer snapshotting."""
-import sys
-if "urllib.parse" in sys.modules:
-    raise ValueError("urllib.parse was imported before guest bootstrap")
-import _tobkiri_schema_kernel as kernel
-if "urllib.parse" in sys.modules:
-    raise ValueError("kernel import preloaded urllib.parse before translation")
-from wheel_data import FILES, DISTRIBUTIONS
-import schema_bootstrap_source as _bootstrap_source
-_BOOTSTRAP = _bootstrap_source.install(FILES, __file__.rsplit("/", 1)[0])
-import urllib.parse as _coerce_parse
-if getattr(_coerce_parse, "_tobkiri_translated_coerce_args", False) is not True:
-    raise ValueError("guest stdlib coercion was not translated before first import: "
-                     + repr(getattr(_coerce_parse, "__file__", None)))
 import json
 import numbers
 import struct
+import sys
 import sysconfig
 
 from captured_loader import install
+from wheel_data import FILES, DISTRIBUTIONS
 
 _FINDER = install(FILES, DISTRIBUTIONS, __file__.rsplit("/", 1)[0])
-_bootstrap_source.finish(_BOOTSTRAP, _FINDER)
+import _tobkiri_schema_kernel as kernel
 import jsonschema
 import jsonschema_specifications
 import wit_world.exports
@@ -134,7 +123,6 @@ class Probe(wit_world.exports.Probe):
             raise ValueError("complete original schema comparison required")
         known_nodes = meta_nodes()
         selfchecks = []
-        coerce_before = kernel.coerce_args_calls()
         for case in case_inputs:
             schema = case["schema"]
             try:
@@ -157,7 +145,6 @@ class Probe(wit_world.exports.Probe):
             "implemented_handler_count": kernel.implemented_handler_count,
             "schema_validation_executed": True,
             "selfchecks": selfchecks,
-            "coerce_comparison_entries": kernel.coerce_args_calls() - coerce_before,
             "schema_keyword_entries": kernel.keyword_entry_count(),
             "public_api_checks": exercise_api(),
             "implementation_diagnostics": exercise_implementation_diagnostics(),
@@ -529,8 +516,8 @@ def verify_inputs(
     source_files = fetch_sdk.inventory(source)
     if (
         set(source_files) != {
-            "Cargo.toml", "Cargo.lock", "README.md", "COPYING.jsonschema", "COPYING.python", "adapter.py",
-            "src/lib.rs", "src/traversal.rs", "src/keywords.rs", "src/coerce_args.rs",
+            "Cargo.toml", "Cargo.lock", "README.md", "COPYING.jsonschema", "adapter.py",
+            "src/lib.rs", "src/traversal.rs", "src/keywords.rs",
         }
         or any("link" in item for item in source_files.values())
         or sum(item["bytes"] for item in source_files.values()) > MAX_SOURCE
@@ -653,9 +640,7 @@ def probe() -> None:
     original_capture = driver.stage_inputs(stage, control)
     from schema_kernel_translate import captured_overlay
     keyword_translation = captured_overlay(stage)
-    from schema_stdlib_translate import captured_overlay as stdlib_overlay
-    stdlib_translation = stdlib_overlay(stage)
-    extra_sources = ("schema_adapter.py", "schema_kernel_observation.py", "schema_inputs.py", "schema_api_checks.py", "schema_urljoin_checks.py", "schema_descend_checks.py", "schema_callable_checks.py", "schema_coerce_checks.py", "schema_bootstrap_source.py")
+    extra_sources = ("schema_adapter.py", "schema_kernel_observation.py", "schema_inputs.py", "schema_api_checks.py", "schema_urljoin_checks.py", "schema_descend_checks.py", "schema_callable_checks.py", "schema_coerce_checks.py")
     for name in extra_sources:
         if (stage / name).exists():
             raise ValueError("schema kernel helper collides with captured source")
@@ -780,8 +765,6 @@ def probe() -> None:
             "callable_delegation_and_ffi_metadata_safety": True,
             "coerce_args_original_objects_and_shared_urllib_apis": True,
         }
-        or type(result.get("coerce_comparison_entries")) is not int
-        or result["coerce_comparison_entries"] <= 0
         or type(result.get("schema_keyword_entries")) is not int
         or result["schema_keyword_entries"] <= 0
         or type(result.get("keyword_entries")) is not int
@@ -842,7 +825,6 @@ def probe() -> None:
         "composition": composition, "boundary": boundary,
         "original_source_capture": original_capture,
         "keyword_translation": keyword_translation,
-        "stdlib_translation": stdlib_translation,
         "complete_capture_bytes": captured_total,
         "native_data_consumer_sha256": consumer_identity, "native_report": report,
         "result": result, "original_64_cases_compared": True,
@@ -902,11 +884,6 @@ def run(
     (probe_source / "app.py").write_text(progress_app() if diagnostic_progress else APP)
     for name in ("probe.wit", "exercise.py", "captured_loader.py"):
         shutil.copyfile(HERE / "schema_probe" / name, probe_source / name)
-    from schema_stdlib_translate import loader_overlay
-    loader_path = probe_source / "captured_loader.py"
-    derived_loader, loader_translation = loader_overlay(loader_path.read_bytes())
-    loader_path.write_bytes(derived_loader)
-    shutil.copyfile(HERE / "schema_bootstrap_source.py", probe_source / "schema_bootstrap_source.py")
     shutil.copyfile(source / "adapter.py", probe_source / "schema_adapter.py")
     shutil.copyfile(HERE / "schema_kernel_api_checks.py", probe_source / "schema_api_checks.py")
     shutil.copyfile(HERE / "schema_urljoin_checks.py", probe_source / "schema_urljoin_checks.py")
@@ -937,7 +914,6 @@ def run(
     helpers = (
         (Path(__file__).resolve(), "/kernel-driver.py"),
         (HERE / "schema_kernel_translate.py", "/schema_kernel_translate.py"),
-        (HERE / "schema_stdlib_translate.py", "/schema_stdlib_translate.py"),
         (HERE / "rpds_probe/driver.py", "/rpds_driver.py"),
         (HERE / "schema_probe/driver.py", "/driver.py"),
         (HERE / "schema_probe/native_driver.py", "/native_driver.py"),
@@ -954,7 +930,6 @@ def run(
                                 else "original-object-schema-selfcheck/1"),
         "implemented_handler_count": 36, "schema_validation_executed": False,
         "inputs": inputs, "configuration": private, "probe_source": probe_files,
-        "loader_translation": loader_translation,
         "target": "wasm32-wasip2", "feature": "pyo3/abi3-py313", "stages": [],
         "guest_executed": False, "original_64_cases_compared": False,
         "qualification": False,

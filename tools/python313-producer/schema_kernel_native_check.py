@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import struct
 import sys
 import sysconfig
 
@@ -22,6 +24,7 @@ def run(args, receipt):
     import fetch_schema
     import fetch_sdk
     from build_native import fingerprint
+    from schema_kernel_observation import first_difference
 
     for path in (args.source, args.vendor, args.inputs, args.cargo_home):
         build_rpds.physical(path)
@@ -35,16 +38,13 @@ def run(args, receipt):
     fetch_schema.verify(args.inputs)
     source = fetch_sdk.inventory(args.source)
     if (set(source) != {"Cargo.toml", "Cargo.lock", "README.md", "COPYING.jsonschema",
-                        "COPYING.python", "adapter.py", "src/lib.rs",
-                        "src/traversal.rs", "src/keywords.rs", "src/coerce_args.rs"}
+                        "adapter.py", "src/lib.rs", "src/traversal.rs", "src/keywords.rs"}
             or any("link" in item for item in source.values())
             or sum(item["bytes"] for item in source.values()) > builder.MAX_SOURCE):
         raise ValueError("native kernel source closure differs")
-    reference = json.loads(builder.fingerprint_and_read(
-        args.reference, 4 * 1024 * 1024))
+    reference = json.loads(builder.fingerprint_and_read(args.reference, 4 * 1024 * 1024))
     if (reference.get("format") != "tobkiri.schema-kernel-reference/1"
-            or reference.get("oracle_commit")
-            != "54e7da008997a3eb45876cbe18459dba9902cc9d"
+            or reference.get("oracle_commit") != "54e7da008997a3eb45876cbe18459dba9902cc9d"
             or reference.get("original_schema_count") != 42
             or len(reference.get("cases", [])) != 64):
         raise ValueError("complete original 42+22 reference required")
@@ -61,8 +61,7 @@ def run(args, receipt):
                "--manifest-path", str(args.source / "Cargo.toml"),
                "--target-dir", str(target), "--message-format=json",
                "--config", 'source.crates-io.replace-with="schema-vendor"',
-               "--config", 'source.schema-vendor.directory='
-               + json.dumps(str(args.vendor))]
+               "--config", 'source.schema-vendor.directory=' + json.dumps(str(args.vendor))]
     receipt["stage"] = "native-build"
     stdout, stderr = destination / "cargo.jsonl", destination / "cargo.log"
     with stdout.open("xb") as out, stderr.open("xb") as err:
@@ -111,94 +110,106 @@ def run(args, receipt):
     overlay = destination / "translated-jsonschema"
     receipt["keyword_translation"] = native_overlay(selected[0], overlay)
     package_paths = [overlay if path == selected[0] else path for path in package_paths]
-    from schema_stdlib_translate import native_overlay as stdlib_native_overlay
     config = sysconfig.get_paths()
-    stdlib_overlay = destination / "translated-stdlib"
-    receipt["stdlib_translation"] = stdlib_native_overlay(
-        Path(config["stdlib"]), stdlib_overlay
-    )
-    stdlib = [config["stdlib"], config["platstdlib"],
-              sysconfig.get_config_var("DESTSHARED")]
-    control = {
-        "source": str(args.source), "inputs": str(args.inputs),
-        "reference": str(args.reference), "extension": str(extension),
-        "module_dir": str(module_dir),
-        "package_paths": [str(path) for path in package_paths],
-        "stdlib_paths": [path for path in stdlib if isinstance(path, str)],
-        "stdlib_overlay": str(stdlib_overlay), "profile_calls": args.profile_calls,
-        "extension_identity": artifact_identity,
-        "output": str(destination / "native-worker-result.json"),
+    stdlib = [config["stdlib"], config["platstdlib"], sysconfig.get_config_var("DESTSHARED")]
+    sys.path[:] = list(dict.fromkeys([str(HERE), str(module_dir),
+                                     *(str(p) for p in package_paths),
+                                     *(p for p in stdlib if isinstance(p, str))]))
+    # The workflow invokes -S -B with an empty PYTHONPATH; no ambient site imports.
+    receipt["stage"] = "native-comparison"
+    import _tobkiri_schema_kernel as kernel
+    if (Path(kernel.__file__).resolve(strict=True) != extension
+            or kernel.production_enabled is not False
+            or kernel.implemented_handler_count != 36):
+        raise ValueError("actual source-built private extension import differs")
+    from jsonschema import Draft202012Validator, exceptions, _keywords
+    if getattr(_keywords, "_tobkiri_translated_keywords", False) is not True:
+        raise ValueError("public keyword definitions were not translated before import")
+    from jsonschema_specifications import REGISTRY
+    from schema_kernel_api_checks import (exercise_api, exercise_unsupported_native,
+                                          exercise_implementation_diagnostics)
+    from schema_kernel_observation import meta_nodes, node_digest, observe
+
+    spec = importlib.util.spec_from_file_location("schema_adapter", args.source / "adapter.py")
+    if spec is None or spec.loader is None:
+        raise ValueError("actual native adapter source unavailable")
+    adapter = importlib.util.module_from_spec(spec)
+    sys.modules["schema_adapter"] = adapter
+    spec.loader.exec_module(adapter)
+    adapter.install_standard_classes()
+    actual_metadata = {
+        "schema": node_digest(Draft202012Validator.META_SCHEMA),
+        "registry": {uri: node_digest(REGISTRY.contents(uri)) for uri in sorted(REGISTRY)},
+        "formats": sorted(Draft202012Validator.FORMAT_CHECKER.checkers),
     }
-    _run_comparison_worker(control, destination, receipt, builder)
-    receipt["stage"] = "native-source-recheck"
-    if fetch_sdk.inventory(args.source) != source:
-        receipt["outcome"] = "failure"
-        raise ValueError("native kernel source changed during comparison")
-    receipt.update(stage="native-comparison", outcome="success")
-
-
-def _run_comparison_worker(control, destination, receipt, builder):
-    """Require an isolated first import; retain the child's actual failure record."""
-    control_path = destination / "native-worker-control.json"
-    encoded = (json.dumps(control, sort_keys=True) + "\n").encode()
-    if len(encoded) > 4 * 1024 * 1024:
-        raise ValueError("bounded native worker control exceeded")
-    descriptor = os.open(control_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(descriptor, "wb") as stream:
-        stream.write(encoded)
-    command = [sys.executable, "-I", "-S", "-B",
-               str(HERE / "schema_kernel_native_worker.py"), str(control_path)]
-    environment = {name: os.environ[name] for name in (
-        "GITHUB_ACTIONS", "LD_LIBRARY_PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ"
-    ) if name in os.environ}
-    stdout = destination / "native-worker.stdout"
-    stderr = destination / "native-worker.stderr"
-    receipt["stage"] = "native-comparison-child"
-    timed_out, returncode = False, None
-    with stdout.open("xb") as out, stderr.open("xb") as err:
+    expected_metadata = {
+        "schema": node_digest(reference["meta_schema"]),
+        "registry": {row["uri"]: node_digest(row["schema"]) for row in reference["meta_registry"]},
+        "formats": reference["meta_format_checker_names"],
+    }
+    difference = first_difference(expected_metadata, actual_metadata)
+    if difference is not None:
+        receipt["difference"] = difference
+        raise ValueError("native meta registry/checker observation differs")
+    known_nodes = meta_nodes()
+    profiler = None
+    if args.profile_calls:
+        import cProfile
+        profiler = cProfile.Profile()
+    for index, case in enumerate(reference["cases"]):
+        receipt.update(case_index=index, case_name=case["name"])
+        schema = case["schema"]
         try:
-            result = subprocess.run(command, cwd=destination, env=environment,
-                                    stdout=out, stderr=err, timeout=600, check=False)
-            returncode = result.returncode
-        except subprocess.TimeoutExpired:
-            timed_out = True
-    child = None
-    output = Path(control["output"])
-    receipt["comparison_worker"] = {
-        "format": "tobkiri.schema-kernel-native-worker/1",
-        "isolated": True, "no_site": True, "no_bytecode": True,
-        "timeout_seconds": 600, "timed_out": timed_out, "returncode": returncode,
-        "outcome": "missing-receipt",
-    }
-    try:
-        if output.exists():
-            child = json.loads(builder.fingerprint_and_read(output, 4 * 1024 * 1024))
-            if (type(child) is not dict
-                    or child.get("format") != "tobkiri.schema-kernel-native-worker/1"
-                    or child.get("outcome") not in {"success", "failure"}):
-                raise ValueError("native comparison worker receipt differs")
-            receipt.update({key: value for key, value in child.items()
-                            if key not in {"format", "outcome"}})
-            receipt["comparison_worker"]["outcome"] = child["outcome"]
-        if (timed_out or returncode != 0 or child is None
-                or child["outcome"] != "success"):
-            receipt["outcome"] = "failure"
-            if child is None:
-                receipt["stage"] = ("native-comparison-child-timeout" if timed_out
-                                    else "native-comparison-child-no-receipt")
-            receipt.setdefault("error", {
-                "type": ("subprocess.TimeoutExpired" if timed_out
-                         else "builtins.RuntimeError"),
-                "message": ("native comparison worker timed out" if timed_out
-                            else "native comparison worker did not exit successfully"),
-            })
-            raise ValueError("isolated native comparison worker failed")
-    except BaseException:
-        for path in (stdout, stderr):
-            with path.open("rb") as stream:
-                stream.seek(max(0, path.stat().st_size - 3000))
-                print(stream.read().decode(errors="replace"), flush=True)
-        raise
+            if profiler is None:
+                Draft202012Validator.check_schema(schema)
+            else:
+                # Exactly the same actual call, once per case. Keep observer,
+                # metadata preparation and later API probes outside this scope.
+                profiler.runcall(Draft202012Validator.check_schema, schema)
+        except exceptions.SchemaError as error:
+            actual = {"valid": False, "error": observe(error, schema, known_nodes)}
+        else:
+            actual = {"valid": True, "error": None}
+        difference = first_difference(case["expected"], actual)
+        if difference is not None:
+            receipt["difference"] = difference
+            raise ValueError("native schema result differs from real original reference")
+    if profiler is not None:
+        import io
+        import pstats
+        text = io.StringIO()
+        stats = pstats.Stats(profiler, stream=text)
+        stats.sort_stats("cumulative").print_stats(35)
+        stats.sort_stats("time").print_stats(35)
+        report = text.getvalue()
+        if len(report.encode()) > 24 * 1024:
+            raise ValueError("bounded native call profile exceeded its text limit")
+        receipt["call_profile"] = {
+            "format": "tobkiri.schema-native-call-profile/1",
+            "scope": "only the original 64 check_schema calls; observer/API excluded",
+            "native_only": True, "wasm_fuel_measurement": False,
+            "benchmark_claim": False, "qualification": False,
+            "note": "cProfile overhead differs for Python and C; use call paths, not a speed claim",
+            "top_cumulative_and_self_time": report,
+        }
+    schema_entries = kernel.keyword_entry_count()
+    if type(schema_entries) is not int or schema_entries <= 0:
+        raise ValueError("original 64 schema calls did not enter public Rust definitions")
+    api = exercise_api()
+    if len(api) != 19 or not all(value is True for value in api.values()):
+        raise ValueError("all nineteen actual API groups required")
+    implementation_diagnostics = builder.validate_implementation_diagnostics(
+        exercise_implementation_diagnostics())
+    unsupported = exercise_unsupported_native()
+    entries = kernel.keyword_entry_count()
+    if type(entries) is not int or entries <= 0:
+        raise ValueError("actual public keyword definitions did not enter Rust")
+    if fetch_sdk.inventory(args.source) != source:
+        raise ValueError("native kernel source changed during comparison")
+    receipt.update(outcome="success", native_64_success=True, api_19_success=True,
+                   api_checks=api, implementation_diagnostics=implementation_diagnostics,
+                   unsupported_native=unsupported, keyword_entries=entries, schema_keyword_entries=schema_entries,
+                   pointer_bits=struct.calcsize("P") * 8)
 
 
 def main():
@@ -207,8 +218,7 @@ def main():
         raise RuntimeError("native execution requires pinned Linux GitHub Actions")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile-calls", action="store_true")
-    for name in ("source", "vendor", "inputs", "reference", "cargo-home",
-                 "destination"):
+    for name in ("source", "vendor", "inputs", "reference", "cargo-home", "destination"):
         parser.add_argument("--" + name, type=Path, required=True)
     args = parser.parse_args()
     receipt = {"format": FORMAT, "outcome": "failure", "wasm_executed": False,
@@ -220,17 +230,15 @@ def main():
         name = type(error).__module__ + "." + type(error).__qualname__
         if not isinstance(error, Exception) and name != "pyo3_runtime.PanicException":
             raise
-        receipt.setdefault("error", {"type": name, "message": str(error)[:1500]})
+        receipt["error"] = {"type": name, "message": str(error)[:1500]}
         raise
     finally:
         created = receipt.pop("_destination_created", False)
         if created and args.destination.is_dir():
-            output = args.destination / "schema-kernel-native-check.json"
-            with output.open("x") as stream:
+            with (args.destination / "schema-kernel-native-check.json").open("x") as stream:
                 stream.write(json.dumps(receipt, sort_keys=True, indent=2) + "\n")
-        public_receipt = {key: value for key, value in receipt.items()
-                          if key != "source_files"}
-        print(json.dumps(public_receipt, sort_keys=True), flush=True)
+        print(json.dumps({key: value for key, value in receipt.items() if key != "source_files"},
+                         sort_keys=True), flush=True)
 
 
 if __name__ == "__main__":

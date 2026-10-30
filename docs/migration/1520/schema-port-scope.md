@@ -208,4 +208,15 @@ falsey/str subclass/callbackの順序、decoder後のencoder差替え、元urlsp
 同一結果・cache hitでhelperを呼ばないことを検査する。任意個数の位置引数・keyword拒否も
 残す。原本helperのbodyを変更せずaliasで保持し、markerがあるのにaliasがなければ失敗する。
 派生sourceと実native callableの完全なreflection/frame parityは未立証であり、これを製品
-合格へ拡張しない。新19群の実行結果はCI待ちである。
+合格へ拡張しない。
+
+`934d745e6` は実native64/API19と追加3診断、およびfresh-process source選択検査に成功。
+通常CI `41132421203` / job `124326400604` はguest生成・実Core呼出しに進んだが、一括は
+元2B fuelで停止した。累積CI `41132437439` / job `124326464149` は10件完了、
+contract_v4まで1,138,176,725 fuel（637の1,146,973,884より約0.77%減）を記録。
+Wasm API段階は未到達、診断qualification=falseであり、全catalog/製品の合格ではない。
+
+Astra highは約0.77%の小幅総差では追加実装・loaderの保守負担を正当化できないと回答し、
+coerce候補を却下した。engineは637へ戻す。API19は元Python helper/shared-URL APIの
+回帰coverageとして残し、native coerceの証拠とはしない。計測上の参照は元637に固定し、
+追加19群のharnessや今後の診断変更の費用を混ぜず別に記録する。

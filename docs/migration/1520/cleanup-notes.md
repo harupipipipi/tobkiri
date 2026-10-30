@@ -663,7 +663,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 014: 共有 URL 引数 helper の短い Python frame を限定的に置換する
 
-- 状態: **7bb版は実 native64/API19成功。guest生成の初回source選択で停止し修正中。製品未接続**。
+- 状態: **候補却下。637 engineへ復帰し、元Python helperのAPI19回帰検査だけを残す**。
 - 場所: `schema_kernel/src/coerce_args.rs`、`schema_stdlib_translate.py`、
   native checker / fresh worker。native profile の実124,923呼出しを根拠とする候補。
   URI parser、decoder、result coercer、標準 urlsplit cache は元実装を使い続ける。
@@ -705,6 +705,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   通常finderの設置後に同じsource/root/実loader ownerを確認してbootstrap finderを退役。
   新しいfresh-process検査はambient pathと無関係のsource選択・相対import・metadata・
   再import identity・reload/既ロード拒否をCIで確認する。新修正の実行結果は未取得。
+- 修正 `934d745e6` の通常CI `41132421203` / job `124326400604` はfresh-process
+  source検査・実native64/API19・guest生成を通過し、実Core呼出しに到達した。一括は
+  元2B fuelを消費して停止（残0、0.813519294秒、絶対期限保持、deadline/unreachableなし）。
+  Nativeの実coerce entryは124,923回。Wasm API19段階にはまだ到達していない。
+- 同sourceの累積CI `41132437439` / job `124326464149` は診断記録に成功。完了10件、
+  次のexternal_normal_pack_catalog_v4で停止。同じcontract_v4まで1,138,176,725 fuel、
+  637の1,146,973,884より約0.77%減。preparedは48,704,484。helper/source選択修正の
+  cold metadataも含む小さい差であり、coerce body単独の速度や全catalog上限の証明ではない。
+  qualification=falseを保持し、この小幅改善だけで次の推測移植へ進まない。
+- Astra high は約0.77%のcold metadata込み総差・完了件数不変では追加コードの保守負担を
+  正当化できないと回答。Rust coerce、stdlib派生/専用bootstrap、fresh childを撤去し、
+  engine・adapter・source一覧を637へ戻す。不要になったPython noticeも実装と一緒に
+  Git履歴へ残す。共通baseline loaderは元から無変更。API19は元標準helperのcoverage
+  として残し、native化の証拠とは呼ばない。元637と新19群harnessの違いを明示する。
+  削除を完了判定や、未合格の一括/全catalog gateの代わりにしない。
 
 ## 015: 推測移植を増やす前の実Wasm費用分類
 
@@ -720,3 +735,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Wasm framesからPython callframeは分からないため、その内訳は未分類とする。
   sample間fuel差分は推定配賦であり厳密な関数別燃料とは呼ばない。
   今回のsource選択修正とは混ぜず、coerce候補の実測を得てから判断する。
+- 上記実測後は637 engineへ復帰。次の計測を先行する。公開backtrace APIは表示上限20の
+  前に全runtime frameをVecへ集め、関数名/DWARF文字列も複製するため、出力上限128件
+  だけでは一時領域を制限できないことを確認。sourceに基づくstack/activation/Vec成長/
+  symbol展開量の上限が必要。Astra highは未立証の4MiB定数等で進めず、暫定的に
+  backtraceなしのfuel/time固定容量記録でepoch観測費用を確認してもよいと回答。
+  その暫定記録は関数分類の代わりにはならない。現時点でfull captureは実装しない。

@@ -14,16 +14,10 @@ name: Issue 1520 actual private schema kernel Wasm probe
     - tools/python313-producer/schema_urljoin_checks.py
     - tools/python313-producer/schema_descend_checks.py
     - tools/python313-producer/schema_callable_checks.py
+    - tools/python313-producer/schema_coerce_checks.py
     - tools/python313-producer/schema_kernel_translate.py
     - tools/python313-producer/schema_kernel_oracle.py
     - tools/python313-producer/schema_kernel_native_check.py
-    - tools/python313-producer/schema_kernel_native_worker.py
-    - tools/python313-producer/schema_stdlib_translate.py
-    - tools/python313-producer/schema_coerce_checks.py
-    - tools/python313-producer/schema_bootstrap_source.py
-    - tools/python313-producer/tests/test_schema_bootstrap_source.py
-    - tools/python313-producer/fetch_schema_stdlib.py
-    - tools/python313-producer/schema_probe/driver.py
     - crates/tobkiri-wasm/src/native_data_schema_probe.rs
     - .github/workflows/issue-1520-schema-kernel-probe.yml
   workflow_dispatch:
@@ -68,8 +62,6 @@ jobs:
       with:
         python-version: 3.13.16
     - uses: dtolnay/rust-toolchain@1.94.0
-    - name: Check closed first-import source selection in a fresh interpreter
-      run: python3 -B tools/python313-producer/tests/test_schema_bootstrap_source.py
     - name: Authenticate the saved producer before restoring it
       env:
         GH_TOKEN: ${{ github.token }}
