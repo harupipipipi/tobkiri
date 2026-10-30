@@ -172,6 +172,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   時点・例外・短絡も観測対象。これは今後の実装境界の設計回答で、primitive の成功や
   完成済み validator の証明ではない。
 
+- 新 primitive の実 [CI 41065687808](https://github.com/harupipipipi/tobkiri/actions/runs/41065687808) /
+  job `124096340005` が source `e436a6d5f` で成功。実 extension build / limited-ABI 検査 /
+  原本 producer import / component 生成と、実 Core NativeData の参照・mutation alias・
+  21 型判定チェックまで通った。これにより上記の primitive build / load / call 未検証は解消。
+  64MiB / 2B fuel / 元の絶対 30 秒を維持。根拠は当該 source の strict builder gate と
+  成功した実 CI step で、raw child JSON は CI のみに保存しローカルへ取得していない。
+  実残燃料値・OS owner / GUI・schema validation・全 36 handler・64 比較・full catalog の
+  証明には数えず、製品にはまだ接続しない。
+
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 
 - 状態: **Core / native 承認部分を一部実装・CI 検証済み。既存 Setup 接続は未対応**。

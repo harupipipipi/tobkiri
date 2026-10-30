@@ -35,8 +35,12 @@ and nested reference identity, mutation aliases, 21 type cases and the private
 unknown-type ValueError. `numbers` is imported during module initialization;
 object creation and primitive observations run only in the actual DATA request.
 The receipt explicitly records zero implemented handlers and no schema validation.
-The new build/load/call has not yet succeeded; a primitive success must never be
-reported as full validator or 64-case parity.
+Actual CI 41065687808 / job 124096340005 succeeded at source e436a6d5f:
+extension build, limited-API/dynamic-link inspection, original producer import
+and component generation, then the real Core NativeData call with these checks.
+This proves only the primitive scope under the unchanged 64 MiB / 2-billion fuel /
+original 30-second deadline. A primitive success must never be reported as full
+validator, OS-owner/GUI proof or 64-case parity.
 
 ## Remaining qualification
 
