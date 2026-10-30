@@ -216,4 +216,20 @@ are excluded. All native comparisons and 15 API groups remain required. The
 workflow visibly skips Core/Wasm in this mode and rejects simultaneous progress
 mode. Both diagnostic inputs default to false; ordinary qualification is intact.
 cProfile has different overhead for Python and C, so its times are not a speed
-benchmark or Wasm-fuel measurement. This new profile mode is not yet verified.
+benchmark or Wasm-fuel measurement. Explicit CI 41096568179 / job 124203753335
+at 486190619 passed all native comparisons and 15 API groups, then visibly skipped
+Core/Wasm. Its profile observed 2,062,841 calls, including 18,123 reference lookups,
+39,112 evolves and 38,182 type calls. The instrumented 2.117-second total and nested
+cumulative times are not additive or an uninstrumented benchmark. Normal same-source
+CI 41096555198 / job 124203703948 kept profiling disabled and again exhausted the
+one-shot 2B fuel after native parity; the original deadline was preserved.
+
+The next bounded change interns only fixed attribute/method names and keyword
+argument keys in the Rust port. PyO3 documents this to avoid repeated temporary
+Unicode allocation. Actual lookups, callables, classes, errors, getter order and
+explicit custom dispatch remain in place; schema/URI/caller names are not interned.
+The finite metadata references live inside each guest Store, not a Host cache of
+guest objects, and initialization is charged to its original cold budget.
+Existing API groups additionally check actual original LOAD_ATTR name identity,
+legacy push_scope literal identity and evolve keyword-key identity. This source
+change has not yet passed actual compilation/parity or demonstrated fuel savings.

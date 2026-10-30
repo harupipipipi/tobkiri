@@ -457,4 +457,28 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   native 全 64 比較の check_schema 呼出しだけを cProfile で計測する。
   観測 helper・metadata 準備・後続 API は計測外。元の全比較・15 API 群は必須のまま。
   native 呼出し列の測定は Python / C で計測 overhead が異なるため benchmark・Wasm fuel・
-  一括合格とは扱わない。progress 診断との同時指定は拒否する。実行結果は未確認。
+  一括合格とは扱わない。progress 診断との同時指定は拒否する。
+- 補助 CI `41096568179` / job `124203753335`（source `486190619`）は native
+  全 64 比較・15 API 群に成功し、Core / Wasm step を実際に skipped とした。
+  64 check_schema の profile は 2,062,841 calls、参照 lookup 18,123 回・evolve
+  39,112 回・type 38,182 回を観測した。計測下の合計 2.117 秒と入れ子の時間を
+  足し合わせたり、Wasm 削減・計測なし benchmark として扱わない。
+  同じ source の通常 CI `41096555198` は profile を無効に保ち、native 比較後に
+  元の一括 Wasm 2B fuel で停止した。
+
+## 009: Rust 移植時の固定属性名・引数名の反復文字列 allocation
+
+- 状態: **有限の固定 metadata 名を整理、実 CI は未確認**。
+- 場所: private schema kernel の lib / traversal / keywords。
+- 原本 Python の LOAD_ATTR / keyword 名は code metadata として共有される一方、
+  Rust から毎回 &str を渡すと PyO3 は一時 Python Unicode を生成する。native profile
+  で多数回呼ばれる evolve / type / post-init と traversal の補助処理にこの重複がある。
+- 整理: 110 箇所の固定 identifier 名に PyO3 の intern! を使い、実 lookup / callable /
+  class / error / 順序は変更しない。schema・URI・caller 由来の文字列や判定結果は
+  対象外。metadata は guest Store の memory 内に置き、Host 側で guest 参照を共有せず、
+  初期化費用も元の冷間 fuel / memory / deadline に含める。
+- identity は観測可能なため、元 post-init の co_names と push_scope literal、
+  evolve の kwargs keys の実 object identity を既存 API 群に追加する。
+  Astra high の回答に従い、単に同値だから完全互換とは扱わない。
+- 削除・完了条件: 全 64 比較・15 API 群・元の一括 Wasm gate と分離した累積診断で
+  実 compile / parity / fuel を測定する。改善がない場合は結果を記録して対象を見直す。

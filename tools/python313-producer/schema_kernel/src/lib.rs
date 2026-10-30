@@ -31,7 +31,7 @@ fn retain_objects<'py>(
 fn is_original_json_type(instance: &Bound<'_, PyAny>, kind: &str) -> PyResult<bool> {
     let py = instance.py();
     let builtins = py.import("builtins")?;
-    let isinstance = builtins.getattr("isinstance")?;
+    let isinstance = builtins.getattr(pyo3::intern!(py, "isinstance"))?;
     let is_type = |type_name: &str| -> PyResult<bool> {
         isinstance
             .call1((instance, builtins.getattr(type_name)?))?
@@ -49,7 +49,9 @@ fn is_original_json_type(instance: &Bound<'_, PyAny>, kind: &str) -> PyResult<bo
             if !is_type("bool")? && is_type("int")? {
                 Ok(true)
             } else if is_type("float")? {
-                instance.call_method0("is_integer")?.is_truthy()
+                instance
+                    .call_method0(pyo3::intern!(py, "is_integer"))?
+                    .is_truthy()
             } else {
                 Ok(false)
             }
@@ -58,7 +60,7 @@ fn is_original_json_type(instance: &Bound<'_, PyAny>, kind: &str) -> PyResult<bo
             if is_type("bool")? {
                 return Ok(false);
             }
-            let number = py.import("numbers")?.getattr("Number")?;
+            let number = py.import("numbers")?.getattr(pyo3::intern!(py, "Number"))?;
             isinstance.call1((instance, number))?.extract()
         }
         _ => Err(PyValueError::new_err(format!("unknown JSON type: {kind}"))),
@@ -84,18 +86,28 @@ fn fast_is_type<'py>(
     if class.as_any().is(default_class)
         && class.get_type().is(&py.get_type::<PyType>())
         && kind.is_exact_instance_of::<PyString>()
-        && class.getattr("__base__")?.is(&object)
+        && class.getattr(pyo3::intern!(py, "__base__"))?.is(&object)
         && checker_class.get_type().is(&py.get_type::<PyType>())
-        && checker_class.getattr("__base__")?.is(&object)
-        && !checker_class.getattr("__dict__")?.contains("__get__")?
+        && checker_class
+            .getattr(pyo3::intern!(py, "__base__"))?
+            .is(&object)
+        && !checker_class
+            .getattr(pyo3::intern!(py, "__dict__"))?
+            .contains("__get__")?
     {
-        let attributes = class.getattr("__dict__")?;
-        let checker_attributes = checker_class.getattr("__dict__")?;
-        let lookup = attributes.call_method1("get", ("__getattribute__", default_lookup))?;
-        let checker = attributes.call_method1("get", ("TYPE_CHECKER",))?;
-        let checker_lookup =
-            checker_attributes.call_method1("get", ("__getattribute__", default_lookup))?;
-        let checker_method = checker_attributes.call_method1("get", ("is_type",))?;
+        let attributes = class.getattr(pyo3::intern!(py, "__dict__"))?;
+        let checker_attributes = checker_class.getattr(pyo3::intern!(py, "__dict__"))?;
+        let lookup = attributes.call_method1(
+            pyo3::intern!(py, "get"),
+            ("__getattribute__", default_lookup),
+        )?;
+        let checker = attributes.call_method1(pyo3::intern!(py, "get"), ("TYPE_CHECKER",))?;
+        let checker_lookup = checker_attributes.call_method1(
+            pyo3::intern!(py, "get"),
+            ("__getattribute__", default_lookup),
+        )?;
+        let checker_method =
+            checker_attributes.call_method1(pyo3::intern!(py, "get"), ("is_type",))?;
         if !lookup.is(default_lookup)
             || !checker.is(default_checker)
             || !checker_lookup.is(default_lookup)

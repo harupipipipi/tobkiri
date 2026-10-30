@@ -294,7 +294,13 @@ impl OriginalKeywordIterator {
                         return Ok(None);
                     };
                     let (selected, schema) = pair(py, &item)?;
-                    inner = Some(context.instance.call_method0("items")?.try_iter()?.unbind());
+                    inner = Some(
+                        context
+                            .instance
+                            .call_method0(pyo3::intern!(py, "items"))?
+                            .try_iter()?
+                            .unbind(),
+                    );
                     pattern = Some(selected.unbind());
                     subschema = Some(schema.unbind());
                     self.state = State::Patterns {
@@ -491,7 +497,10 @@ impl OriginalKeywordIterator {
             "patternProperties" => {
                 if is_type(validator, instance, "object")? {
                     self.state = State::Patterns {
-                        outer: value.call_method0("items")?.try_iter()?.unbind(),
+                        outer: value
+                            .call_method0(pyo3::intern!(py, "items"))?
+                            .try_iter()?
+                            .unbind(),
                         inner: None,
                         pattern: None,
                         subschema: None,
@@ -502,9 +511,15 @@ impl OriginalKeywordIterator {
                 if is_type(validator, instance, "object")? {
                     let (iterable, kind) = match self.keyword.as_str() {
                         "propertyNames" => (instance.clone(), ForKind::PropertyNames),
-                        "properties" => (value.call_method0("items")?, ForKind::Properties),
+                        "properties" => (
+                            value.call_method0(pyo3::intern!(py, "items"))?,
+                            ForKind::Properties,
+                        ),
                         "required" => (value.clone(), ForKind::Required),
-                        _ => (value.call_method0("items")?, ForKind::DependentSchemas),
+                        _ => (
+                            value.call_method0(pyo3::intern!(py, "items"))?,
+                            ForKind::DependentSchemas,
+                        ),
                     };
                     self.state = State::For {
                         cursor: iterable.try_iter()?.unbind(),
@@ -515,7 +530,10 @@ impl OriginalKeywordIterator {
             "dependentRequired" => {
                 if is_type(validator, instance, "object")? {
                     self.state = State::Dependencies {
-                        outer: value.call_method0("items")?.try_iter()?.unbind(),
+                        outer: value
+                            .call_method0(pyo3::intern!(py, "items"))?
+                            .try_iter()?
+                            .unbind(),
                         inner: None,
                         property: None,
                     };
@@ -561,7 +579,7 @@ impl OriginalKeywordIterator {
                     return Ok(None);
                 }
                 let prefix = schema
-                    .call_method1("get", ("prefixItems", PyList::empty(py)))?
+                    .call_method1(pyo3::intern!(py, "get"), ("prefixItems", PyList::empty(py)))?
                     .len()?;
                 let total = instance.len()?;
                 if total <= prefix {
@@ -621,9 +639,13 @@ impl OriginalKeywordIterator {
             }
             "$ref" | "$dynamicRef" => {
                 let kwargs = PyDict::new(py);
-                kwargs.set_item("ref", value)?;
-                kwargs.set_item("instance", instance)?;
-                self.delegate(validator.call_method("_validate_reference", (), Some(&kwargs))?)?;
+                kwargs.set_item(pyo3::intern!(py, "ref"), value)?;
+                kwargs.set_item(pyo3::intern!(py, "instance"), instance)?;
+                self.delegate(validator.call_method(
+                    pyo3::intern!(py, "_validate_reference"),
+                    (),
+                    Some(&kwargs),
+                )?)?;
             }
             "if" => {
                 let selected = if evolved_is_valid(py, validator, value, instance)? {
@@ -673,7 +695,7 @@ impl OriginalKeywordIterator {
                         }
                         return Ok(None);
                     }
-                    errors.call_method1("extend", (found,))?;
+                    errors.call_method1(pyo3::intern!(py, "extend"), (found,))?;
                 }
                 self.retained.push(errors.clone().into_any().unbind());
                 if self.keyword == "oneOf" {
@@ -685,7 +707,7 @@ impl OriginalKeywordIterator {
                     };
                 }
                 let kwargs = PyDict::new(py);
-                kwargs.set_item("context", &errors)?;
+                kwargs.set_item(pyo3::intern!(py, "context"), &errors)?;
                 return Ok(Some(validation_error(
                     py,
                     format(
@@ -754,8 +776,9 @@ fn is_type(
     instance: &Bound<'_, PyAny>,
     kind: &str,
 ) -> PyResult<bool> {
+    let py = validator.py();
     validator
-        .call_method1("is_type", (instance, kind))?
+        .call_method1(pyo3::intern!(py, "is_type"), (instance, kind))?
         .is_truthy()
 }
 
@@ -766,7 +789,7 @@ fn format<'py>(
 ) -> PyResult<Bound<'py, PyAny>> {
     let arguments = PyTuple::new(py, values.iter())?;
     PyString::new(py, template)
-        .getattr("format")?
+        .getattr(pyo3::intern!(py, "format"))?
         .call(&arguments, None)
 }
 
@@ -789,23 +812,27 @@ fn descend<'py>(
 ) -> PyResult<Bound<'py, PyAny>> {
     let kwargs = PyDict::new(py);
     if keyword_arguments {
-        kwargs.set_item("instance", instance)?;
-        kwargs.set_item("schema", schema)?;
+        kwargs.set_item(pyo3::intern!(py, "instance"), instance)?;
+        kwargs.set_item(pyo3::intern!(py, "schema"), schema)?;
         if let Some(path) = schema_path {
-            kwargs.set_item("schema_path", path)?;
+            kwargs.set_item(pyo3::intern!(py, "schema_path"), path)?;
         }
         if let Some(path) = path {
-            kwargs.set_item("path", path)?;
+            kwargs.set_item(pyo3::intern!(py, "path"), path)?;
         }
-        validator.call_method("descend", (), Some(&kwargs))
+        validator.call_method(pyo3::intern!(py, "descend"), (), Some(&kwargs))
     } else {
         if let Some(path) = path {
-            kwargs.set_item("path", path)?;
+            kwargs.set_item(pyo3::intern!(py, "path"), path)?;
         }
         if let Some(path) = schema_path {
-            kwargs.set_item("schema_path", path)?;
+            kwargs.set_item(pyo3::intern!(py, "schema_path"), path)?;
         }
-        validator.call_method("descend", (instance, schema), Some(&kwargs))
+        validator.call_method(
+            pyo3::intern!(py, "descend"),
+            (instance, schema),
+            Some(&kwargs),
+        )
     }
 }
 
@@ -815,8 +842,8 @@ fn evolve<'py>(
     schema: &Bound<'py, PyAny>,
 ) -> PyResult<Bound<'py, PyAny>> {
     let kwargs = PyDict::new(py);
-    kwargs.set_item("schema", schema)?;
-    validator.call_method("evolve", (), Some(&kwargs))
+    kwargs.set_item(pyo3::intern!(py, "schema"), schema)?;
+    validator.call_method(pyo3::intern!(py, "evolve"), (), Some(&kwargs))
 }
 
 fn evolved_is_valid(
@@ -826,7 +853,7 @@ fn evolved_is_valid(
     instance: &Bound<'_, PyAny>,
 ) -> PyResult<bool> {
     evolve(py, validator, schema)?
-        .call_method1("is_valid", (instance,))?
+        .call_method1(pyo3::intern!(py, "is_valid"), (instance,))?
         .is_truthy()
 }
 
@@ -837,7 +864,7 @@ fn sorted<'py>(
 ) -> PyResult<Bound<'py, PyAny>> {
     let kwargs = PyDict::new(py);
     if key_str {
-        kwargs.set_item("key", builtin(py, "str")?)?;
+        kwargs.set_item(pyo3::intern!(py, "key"), builtin(py, "str")?)?;
     }
     builtin(py, "sorted")?.call((values,), Some(&kwargs))
 }
@@ -847,7 +874,7 @@ fn reprs_joined<'py>(py: Python<'py>, values: &Bound<'py, PyAny>) -> PyResult<Bo
     for value in values.try_iter()? {
         reprs.append(value?.repr()?)?;
     }
-    PyString::new(py, ", ").call_method1("join", (reprs,))
+    PyString::new(py, ", ").call_method1(pyo3::intern!(py, "join"), (reprs,))
 }
 
 fn extras_message<'py>(
@@ -864,18 +891,24 @@ fn contains<'py>(py: Python<'py>, context: &Context<'py>) -> PyResult<Option<Bou
         return Ok(None);
     }
     let mut matches = integer(py, 0);
-    let minimum = context.schema.call_method1("get", ("minContains", 1))?;
-    let maximum = context
+    let minimum = context
         .schema
-        .call_method1("get", ("maxContains", context.instance.len()?))?;
+        .call_method1(pyo3::intern!(py, "get"), ("minContains", 1))?;
+    let maximum = context.schema.call_method1(
+        pyo3::intern!(py, "get"),
+        ("maxContains", context.instance.len()?),
+    )?;
     let validator = evolve(py, &context.validator, &context.value)?;
     for each in context.instance.try_iter()? {
-        if validator.call_method1("is_valid", (each?,))?.is_truthy()? {
+        if validator
+            .call_method1(pyo3::intern!(py, "is_valid"), (each?,))?
+            .is_truthy()?
+        {
             matches = matches.add(1)?;
             if matches.gt(&maximum)? {
                 let kwargs = PyDict::new(py);
-                kwargs.set_item("validator", "maxContains")?;
-                kwargs.set_item("validator_value", &maximum)?;
+                kwargs.set_item(pyo3::intern!(py, "validator"), "maxContains")?;
+                kwargs.set_item(pyo3::intern!(py, "validator_value"), &maximum)?;
                 return Ok(Some(validation_error(
                     py,
                     format(
@@ -901,8 +934,8 @@ fn contains<'py>(py: Python<'py>, context: &Context<'py>) -> PyResult<Option<Bou
             )?));
         }
         let kwargs = PyDict::new(py);
-        kwargs.set_item("validator", "minContains")?;
-        kwargs.set_item("validator_value", &minimum)?;
+        kwargs.set_item(pyo3::intern!(py, "validator"), "minContains")?;
+        kwargs.set_item(pyo3::intern!(py, "validator_value"), &minimum)?;
         return Ok(Some(validation_error(
             py,
             format(
@@ -1068,7 +1101,7 @@ fn scalar<'py>(
             let types = utility(py, "ensure_list")?.call1((value,))?;
             for kind in types.try_iter()? {
                 if validator
-                    .call_method1("is_type", (instance, kind?))?
+                    .call_method1(pyo3::intern!(py, "is_type"), (instance, kind?))?
                     .is_truthy()?
                 {
                     return Ok(None);
@@ -1123,7 +1156,7 @@ fn scalar<'py>(
                         fraction
                             .call1((instance,))?
                             .div(fraction.call1((value,))?)?
-                            .getattr("denominator")?
+                            .getattr(pyo3::intern!(py, "denominator"))?
                             .rich_compare(1, CompareOp::Ne)?
                     }
                     Err(error) => return Err(error),
@@ -1208,12 +1241,15 @@ fn scalar<'py>(
             )?
         }
         "format" => {
-            if validator.getattr("format_checker")?.is_none() {
+            if validator
+                .getattr(pyo3::intern!(py, "format_checker"))?
+                .is_none()
+            {
                 return Ok(None);
             }
             match validator
-                .getattr("format_checker")?
-                .call_method1("check", (instance, value))
+                .getattr(pyo3::intern!(py, "format_checker"))?
+                .call_method1(pyo3::intern!(py, "check"), (instance, value))
             {
                 Ok(_) => return Ok(None),
                 Err(error) => {
@@ -1226,10 +1262,13 @@ fn scalar<'py>(
                         return Err(error);
                     }
                     let kwargs = PyDict::new(py);
-                    kwargs.set_item("cause", exception.getattr("cause")?)?;
+                    kwargs.set_item(
+                        pyo3::intern!(py, "cause"),
+                        exception.getattr(pyo3::intern!(py, "cause"))?,
+                    )?;
                     return Ok(Some(validation_error(
                         py,
-                        exception.getattr("message")?,
+                        exception.getattr(pyo3::intern!(py, "message"))?,
                         Some(&kwargs),
                     )?));
                 }

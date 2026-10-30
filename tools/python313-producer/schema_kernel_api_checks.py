@@ -392,6 +392,7 @@ def exercise_evolve():
             observations.append((result, events[:]))
         left, right = observations
         assert list(left[0]) == list(right[0])
+        assert all(left_key is right_key for left_key, right_key in zip(left[0], right[0]))
         assert all(value is right[0][key] for key, value in left[0].items())
         assert left[1] == right[1]
         assert left[1][:3] == ["schema", "__class__", "selector"]
@@ -564,9 +565,14 @@ def exercise_post_init():
     saved_scopes = legacy._scopes_stack[:]
     legacy_type, saved_push = type(legacy), type(legacy).push_scope
     watched = {"_resolver", "_registry", "schema", "VALIDATORS", "_ref_resolver"}
+    # Compare actual original LOAD_ATTR names, not merely equal replacements.
+    original_names = {name: name for name in original.__code__.co_names}
+    push_scope_name = next(value for value in original.__code__.co_consts
+                           if type(value) is str and value == "push_scope")
 
     def lookup(self, name):
         if self is state.get("target") and name in watched:
+            assert type(name) is str and name is original_names[name]
             events.append(name)
             if name == "VALIDATORS":
                 state["validator_reads"] += 1
@@ -607,6 +613,7 @@ def exercise_post_init():
 
     def tracked_getattr(obj, name, *defaults):
         if name == "push_scope":
+            assert type(name) is str and name is push_scope_name
             assert defaults == (None,)
             events.append(("getattr", obj, name, defaults[0]))
             if state.get("fail") == "getattr":

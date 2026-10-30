@@ -114,7 +114,7 @@ fn lookup_name<'py>(
         return Ok(value);
     }
     let error = pyo3::exceptions::PyNameError::new_err(format!("name '{name}' is not defined"));
-    error.value(py).setattr("name", name)?;
+    error.value(py).setattr(pyo3::intern!(py, "name"), name)?;
     Err(error)
 }
 
@@ -144,51 +144,66 @@ fn post_init<'py>(
         push_scope: None,
         id: None,
     };
-    if validator.getattr("_resolver")?.is_none() {
-        locals.registry = Some(validator.getattr("_registry")?);
+    if validator.getattr(pyo3::intern!(py, "_resolver"))?.is_none() {
+        locals.registry = Some(validator.getattr(pyo3::intern!(py, "_registry"))?);
         if !locals.registry.as_ref().unwrap().is(&lookup_name(
             globals,
             builtins,
             "_REMOTE_WARNING_REGISTRY",
         )?) {
             locals.registry = Some(
-                lookup_name(globals, builtins, "SPECIFICATIONS")?
-                    .call_method1("combine", (locals.registry.as_ref().unwrap(),))?,
+                lookup_name(globals, builtins, "SPECIFICATIONS")?.call_method1(
+                    pyo3::intern!(py, "combine"),
+                    (locals.registry.as_ref().unwrap(),),
+                )?,
             );
         }
-        let create_resource = specification.getattr("create_resource")?;
-        locals.resource = Some(create_resource.call1((validator.getattr("schema")?,))?);
+        let create_resource = specification.getattr(pyo3::intern!(py, "create_resource"))?;
+        locals.resource =
+            Some(create_resource.call1((validator.getattr(pyo3::intern!(py, "schema"))?,))?);
         drop(create_resource);
-        let resolver = locals
-            .registry
-            .as_ref()
-            .unwrap()
-            .call_method1("resolver_with_root", (locals.resource.as_ref().unwrap(),))?;
-        validator.setattr("_resolver", resolver)?;
+        let resolver = locals.registry.as_ref().unwrap().call_method1(
+            pyo3::intern!(py, "resolver_with_root"),
+            (locals.resource.as_ref().unwrap(),),
+        )?;
+        validator.setattr(pyo3::intern!(py, "_resolver"), resolver)?;
     }
     // Attribute reads and short-circuit order match the original Python body.
-    let is_true = validator.getattr("schema")?.is(&true.into_pyobject(py)?);
-    let is_false = !is_true && validator.getattr("schema")?.is(&false.into_pyobject(py)?);
+    let is_true = validator
+        .getattr(pyo3::intern!(py, "schema"))?
+        .is(&true.into_pyobject(py)?);
+    let is_false = !is_true
+        && validator
+            .getattr(pyo3::intern!(py, "schema"))?
+            .is(&false.into_pyobject(py)?);
     let selected = PyList::empty(py);
     if !is_true && !is_false {
         let pairs = applicable
-            .call1((validator.getattr("schema")?,))?
+            .call1((validator.getattr(pyo3::intern!(py, "schema"))?,))?
             .try_iter()?;
         for pair in pairs {
             let (keyword, value) = field_pair(&pair?)?;
-            if validator.getattr("VALIDATORS")?.contains(&keyword)? {
-                let callable = validator.getattr("VALIDATORS")?.get_item(&keyword)?;
+            if validator
+                .getattr(pyo3::intern!(py, "VALIDATORS"))?
+                .contains(&keyword)?
+            {
+                let callable = validator
+                    .getattr(pyo3::intern!(py, "VALIDATORS"))?
+                    .get_item(&keyword)?;
                 selected.append((callable, keyword, value))?;
             }
         }
     }
-    validator.setattr("_validators", selected)?;
+    validator.setattr(pyo3::intern!(py, "_validators"), selected)?;
     let getattr = lookup_name(globals, builtins, "getattr")?;
-    locals.push_scope =
-        Some(getattr.call1((validator.getattr("_ref_resolver")?, "push_scope", py.None()))?);
+    locals.push_scope = Some(getattr.call1((
+        validator.getattr(pyo3::intern!(py, "_ref_resolver"))?,
+        pyo3::intern!(py, "push_scope"),
+        py.None(),
+    ))?);
     drop(getattr);
     if !locals.push_scope.as_ref().unwrap().is_none() {
-        locals.id = Some(id_of.call1((validator.getattr("schema")?,))?);
+        locals.id = Some(id_of.call1((validator.getattr(pyo3::intern!(py, "schema"))?,))?);
         if !locals.id.as_ref().unwrap().is_none() {
             locals
                 .push_scope
@@ -235,11 +250,17 @@ fn evolve<'py>(
         .as_ref()
         .ok_or_else(|| PyRuntimeError::new_err("schema kernel context was cleared"))?;
     // The default argument is evaluated even when schema already exists.
-    let previous_schema = validator.getattr("schema")?;
-    let schema = changes.call_method1("setdefault", ("schema", previous_schema))?;
+    let previous_schema = validator.getattr(pyo3::intern!(py, "schema"))?;
+    let schema = changes.call_method1(
+        pyo3::intern!(py, "setdefault"),
+        (pyo3::intern!(py, "schema"), previous_schema),
+    )?;
     let selector = global_name(state, py, "validator_for")?;
     let options = PyDict::new(py);
-    options.set_item("default", validator.getattr("__class__")?)?;
+    options.set_item(
+        pyo3::intern!(py, "default"),
+        validator.getattr(pyo3::intern!(py, "__class__"))?,
+    )?;
     let selected = selector.call((schema,), Some(&options))?;
     // Iterate the actual closure list live; callbacks can mutate it mid-call.
     for field in state.evolve_fields.bind(py).try_iter()? {
@@ -298,11 +319,11 @@ impl Traversal {
         if matches!(self.mode, Mode::Root) {
             if !self.schema.bind(py).is_none() {
                 let kwargs = PyDict::new(py);
-                kwargs.set_item("stacklevel", 2)?;
-                py.import("warnings")?.getattr("warn")?.call(
+                kwargs.set_item(pyo3::intern!(py, "stacklevel"), 2)?;
+                py.import("warnings")?.getattr(pyo3::intern!(py, "warn"))?.call(
                     (
                         "Passing a schema to Validator.iter_errors is deprecated and will be removed in a future release. Call validator.evolve(schema=new_schema).iter_errors(...) instead.",
-                        py.import("builtins")?.getattr("DeprecationWarning")?,
+                        py.import("builtins")?.getattr(pyo3::intern!(py, "DeprecationWarning"))?,
                     ),
                     Some(&kwargs),
                 )?;
@@ -316,9 +337,14 @@ impl Traversal {
                 for entry in entries.try_iter()? {
                     let entry = entry?;
                     let key = entry.get_item(0)?;
-                    if validator.getattr("VALIDATORS")?.contains(&key)? {
+                    if validator
+                        .getattr(pyo3::intern!(py, "VALIDATORS"))?
+                        .contains(&key)?
+                    {
                         selected.append((
-                            validator.getattr("VALIDATORS")?.get_item(&key)?,
+                            validator
+                                .getattr(pyo3::intern!(py, "VALIDATORS"))?
+                                .get_item(&key)?,
                             key,
                             entry.get_item(1)?,
                         ))?;
@@ -326,8 +352,13 @@ impl Traversal {
                 }
                 self.validators = Some(selected.try_iter()?.unbind());
             } else {
-                self.schema = validator.getattr("schema")?.unbind();
-                self.validators = Some(validator.getattr("_validators")?.try_iter()?.unbind());
+                self.schema = validator.getattr(pyo3::intern!(py, "schema"))?.unbind();
+                self.validators = Some(
+                    validator
+                        .getattr(pyo3::intern!(py, "_validators"))?
+                        .try_iter()?
+                        .unbind(),
+                );
             }
         } else {
             let schema = self.schema.bind(py);
@@ -336,8 +367,11 @@ impl Traversal {
                 return Ok(());
             }
             let kwargs = PyDict::new(py);
-            kwargs.set_item("schema", schema)?;
-            if validator.getattr("_ref_resolver")?.is_none() {
+            kwargs.set_item(pyo3::intern!(py, "schema"), schema)?;
+            if validator
+                .getattr(pyo3::intern!(py, "_ref_resolver"))?
+                .is_none()
+            {
                 if self.resolver.bind(py).is_none() {
                     let context = self.context.borrow(py);
                     let context = context.state.as_ref().ok_or_else(|| {
@@ -346,15 +380,19 @@ impl Traversal {
                     let resource = context
                         .specification
                         .bind(py)
-                        .call_method1("create_resource", (schema,))?;
+                        .call_method1(pyo3::intern!(py, "create_resource"), (schema,))?;
                     self.resolver = validator
-                        .getattr("_resolver")?
-                        .call_method1("in_subresource", (resource,))?
+                        .getattr(pyo3::intern!(py, "_resolver"))?
+                        .call_method1(pyo3::intern!(py, "in_subresource"), (resource,))?
                         .unbind();
                 }
-                kwargs.set_item("_resolver", self.resolver.bind(py))?;
+                kwargs.set_item(pyo3::intern!(py, "_resolver"), self.resolver.bind(py))?;
             }
-            self.evolved = Some(validator.call_method("evolve", (), Some(&kwargs))?.unbind());
+            self.evolved = Some(
+                validator
+                    .call_method(pyo3::intern!(py, "evolve"), (), Some(&kwargs))?
+                    .unbind(),
+            );
             let context = self.context.borrow(py);
             let context = context
                 .state
@@ -383,17 +421,17 @@ impl Traversal {
         }
         if schema.is(&false.into_pyobject(py)?) {
             let kwargs = PyDict::new(py);
-            kwargs.set_item("validator", py.None())?;
-            kwargs.set_item("validator_value", py.None())?;
-            kwargs.set_item("instance", self.instance.bind(py))?;
-            kwargs.set_item("schema", schema)?;
+            kwargs.set_item(pyo3::intern!(py, "validator"), py.None())?;
+            kwargs.set_item(pyo3::intern!(py, "validator_value"), py.None())?;
+            kwargs.set_item(pyo3::intern!(py, "instance"), self.instance.bind(py))?;
+            kwargs.set_item(pyo3::intern!(py, "schema"), schema)?;
             let message = format!(
                 "False schema does not allow {}",
                 self.instance.bind(py).repr()?.to_str()?
             );
             let error = py
                 .import("jsonschema.exceptions")?
-                .getattr("ValidationError")?
+                .getattr(pyo3::intern!(py, "ValidationError"))?
                 .call((message,), Some(&kwargs))?
                 .unbind();
             self.false_yielded = true;
@@ -408,29 +446,37 @@ impl Traversal {
                     let current = self.current.as_ref().expect("active handler");
                     let validator = self.evolved.as_ref().unwrap_or(&self.validator).bind(py);
                     let kwargs = PyDict::new(py);
-                    kwargs.set_item("validator", current.keyword.bind(py))?;
-                    kwargs.set_item("validator_value", current.value.bind(py))?;
-                    kwargs.set_item("instance", self.instance.bind(py))?;
-                    kwargs.set_item("schema", schema)?;
-                    kwargs.set_item("type_checker", validator.getattr("TYPE_CHECKER")?)?;
+                    kwargs.set_item(pyo3::intern!(py, "validator"), current.keyword.bind(py))?;
+                    kwargs
+                        .set_item(pyo3::intern!(py, "validator_value"), current.value.bind(py))?;
+                    kwargs.set_item(pyo3::intern!(py, "instance"), self.instance.bind(py))?;
+                    kwargs.set_item(pyo3::intern!(py, "schema"), schema)?;
+                    kwargs.set_item(
+                        pyo3::intern!(py, "type_checker"),
+                        validator.getattr(pyo3::intern!(py, "TYPE_CHECKER"))?,
+                    )?;
                     let bound = error.bind(py);
-                    bound.call_method("_set", (), Some(&kwargs))?;
+                    bound.call_method(pyo3::intern!(py, "_set"), (), Some(&kwargs))?;
                     let key = current.keyword.bind(py);
                     if !key.eq("if")? && !key.eq("$ref")? {
                         bound
-                            .getattr("schema_path")?
-                            .call_method1("appendleft", (key,))?;
+                            .getattr(pyo3::intern!(py, "schema_path"))?
+                            .call_method1(pyo3::intern!(py, "appendleft"), (key,))?;
                     }
                     if matches!(self.mode, Mode::Descend) {
                         if !self.path.bind(py).is_none() {
-                            bound
-                                .getattr("path")?
-                                .call_method1("appendleft", (self.path.bind(py),))?;
+                            bound.getattr(pyo3::intern!(py, "path"))?.call_method1(
+                                pyo3::intern!(py, "appendleft"),
+                                (self.path.bind(py),),
+                            )?;
                         }
                         if !self.schema_path.bind(py).is_none() {
                             bound
-                                .getattr("schema_path")?
-                                .call_method1("appendleft", (self.schema_path.bind(py),))?;
+                                .getattr(pyo3::intern!(py, "schema_path"))?
+                                .call_method1(
+                                    pyo3::intern!(py, "appendleft"),
+                                    (self.schema_path.bind(py),),
+                                )?;
                         }
                     }
                     return Ok(Some(error));
@@ -448,8 +494,8 @@ impl Traversal {
                 Mode::Descend => {
                     let key = entry.get_item(0)?;
                     let callable = validator
-                        .getattr("VALIDATORS")?
-                        .call_method1("get", (&key,))?;
+                        .getattr(pyo3::intern!(py, "VALIDATORS"))?
+                        .call_method1(pyo3::intern!(py, "get"), (&key,))?;
                     if callable.is_none() {
                         continue;
                     }
@@ -559,7 +605,10 @@ impl ValidationErrors {
         .map_err(|error| {
             if error.is_instance_of::<pyo3::exceptions::PyStopIteration>(py) {
                 let wrapped = PyRuntimeError::new_err("generator raised StopIteration");
-                if let Err(failure) = wrapped.value(py).setattr("__context__", error.value(py)) {
+                if let Err(failure) = wrapped
+                    .value(py)
+                    .setattr(pyo3::intern!(py, "__context__"), error.value(py))
+                {
                     return failure;
                 }
                 wrapped.set_cause(py, Some(error));
