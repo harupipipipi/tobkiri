@@ -332,6 +332,40 @@ def exercise_types():
 
     import jsonschema
 
+    # Fixed builtin kind literals must retain their actual original identity;
+    # actual schema-supplied type strings must remain the caller's objects.
+    from jsonschema import _keywords, validators
+    literal_class = validators.extend(Draft202012Validator, {})
+    literal_calls = []
+
+    def inspect_kind(self, value, kind):
+        literal_calls.append(kind)
+        return False
+
+    literal_class.is_type = inspect_kind
+    for name, keyword_value, value, kind_name in (
+        ("properties", {}, {}, "object"), ("items", {}, [], "array"),
+        ("minimum", 0, 1, "number"), ("minLength", 0, "x", "string"),
+    ):
+        original_keyword = getattr(_keywords, name)
+        kind = next(item for item in original_keyword.__code__.co_consts
+                    if type(item) is str and item == kind_name)
+        schema = {name: keyword_value}
+        actual_validator = literal_class(schema)
+        literal_calls.clear()
+        assert list(original_keyword(actual_validator, keyword_value, value, schema)) == []
+        assert len(literal_calls) == 1 and literal_calls[0] is kind
+        literal_calls.clear()
+        assert list(actual_validator.iter_errors(value)) == []
+        assert len(literal_calls) == 1 and literal_calls[0] is kind
+    supplied_kind = "".join(["str", "ing"])
+    supplied_schema = {"type": supplied_kind}
+    literal_calls.clear()
+    errors = list(literal_class(supplied_schema).iter_errors(1))
+    assert len(errors) == 1 and type(errors[0]) is exceptions.ValidationError
+    assert errors[0].schema is supplied_schema and errors[0].validator_value is supplied_kind
+    assert len(literal_calls) == 1 and literal_calls[0] is supplied_kind
+
     for cls in (jsonschema.Draft3Validator, jsonschema.Draft4Validator,
                 jsonschema.Draft6Validator, jsonschema.Draft7Validator,
                 jsonschema.Draft201909Validator):

@@ -468,7 +468,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 009: Rust 移植時の固定属性名・引数名の反復文字列 allocation
 
-- 状態: **有限の固定 metadata 名を整理、実 CI は未確認**。
+- 状態: **固定属性名版の native 比較に成功。累積診断の同じ地点まで約 20.2% 減**。
 - 場所: private schema kernel の lib / traversal / keywords。
 - 原本 Python の LOAD_ATTR / keyword 名は code metadata として共有される一方、
   Rust から毎回 &str を渡すと PyO3 は一時 Python Unicode を生成する。native profile
@@ -482,3 +482,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Astra high の回答に従い、単に同値だから完全互換とは扱わない。
 - 削除・完了条件: 全 64 比較・15 API 群・元の一括 Wasm gate と分離した累積診断で
   実 compile / parity / fuel を測定する。改善がない場合は結果を記録して対象を見直す。
+
+- source `45b1c4147` の通常 CI `41098227240` / job `124209443526` は実 compile・
+  全 64 比較・15 API 群（文字列 identity 追加分を含む）に成功し、一括 Wasm は依然
+  2B fuel で停止した。実累積診断 `41098272613` / job `124209608899` は 8 件完了、
+  `distribution_v1` の途中で停止。同じ `contract_v4` return までの累積消費が
+  1,599,163,709 → 1,276,375,494（約 20.2% 減）。一括合格・全体の進捗率ではない。
+- 次の同型重複は type 比較 loop の 7 固定名と guard の 5 固定 key、private keyword
+  helper の 4 固定 kind。比較順と未知・surrogate・custom dispatch を保ち、caller が
+  schema に入れた文字列 object は共有対象から除く。元 keyword の実 kind literal と
+  custom callback / schema error の caller object identity を追加で確認する。
+  この追加分の実 CI と燃料効果は未確認。

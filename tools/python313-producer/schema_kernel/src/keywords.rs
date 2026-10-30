@@ -777,8 +777,17 @@ fn is_type(
     kind: &str,
 ) -> PyResult<bool> {
     let py = validator.py();
+    // These four names come from this module's fixed builtin handlers, not the
+    // schema's actual type values (which keep their original Python objects).
+    let literal = match kind {
+        "object" => pyo3::intern!(py, "object").clone(),
+        "array" => pyo3::intern!(py, "array").clone(),
+        "number" => pyo3::intern!(py, "number").clone(),
+        "string" => pyo3::intern!(py, "string").clone(),
+        _ => PyString::new(py, kind),
+    };
     validator
-        .call_method1(pyo3::intern!(py, "is_type"), (instance, kind))?
+        .call_method1(pyo3::intern!(py, "is_type"), (instance, literal))?
         .is_truthy()
 }
 

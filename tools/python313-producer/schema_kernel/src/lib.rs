@@ -93,21 +93,24 @@ fn fast_is_type<'py>(
             .is(&object)
         && !checker_class
             .getattr(pyo3::intern!(py, "__dict__"))?
-            .contains("__get__")?
+            .contains(pyo3::intern!(py, "__get__"))?
     {
         let attributes = class.getattr(pyo3::intern!(py, "__dict__"))?;
         let checker_attributes = checker_class.getattr(pyo3::intern!(py, "__dict__"))?;
         let lookup = attributes.call_method1(
             pyo3::intern!(py, "get"),
-            ("__getattribute__", default_lookup),
+            (pyo3::intern!(py, "__getattribute__"), default_lookup),
         )?;
-        let checker = attributes.call_method1(pyo3::intern!(py, "get"), ("TYPE_CHECKER",))?;
+        let checker = attributes.call_method1(
+            pyo3::intern!(py, "get"),
+            (pyo3::intern!(py, "TYPE_CHECKER"),),
+        )?;
         let checker_lookup = checker_attributes.call_method1(
             pyo3::intern!(py, "get"),
-            ("__getattribute__", default_lookup),
+            (pyo3::intern!(py, "__getattribute__"), default_lookup),
         )?;
-        let checker_method =
-            checker_attributes.call_method1(pyo3::intern!(py, "get"), ("is_type",))?;
+        let checker_method = checker_attributes
+            .call_method1(pyo3::intern!(py, "get"), (pyo3::intern!(py, "is_type"),))?;
         if !lookup.is(default_lookup)
             || !checker.is(default_checker)
             || !checker_lookup.is(default_lookup)
@@ -118,10 +121,16 @@ fn fast_is_type<'py>(
         }
         // Compare actual Unicode strings rather than UTF-8-converting an
         // unknown name (surrogates must take the original exception path).
-        for name in [
-            "object", "string", "array", "boolean", "null", "integer", "number",
+        for (name, identifier) in [
+            ("object", pyo3::intern!(py, "object")),
+            ("string", pyo3::intern!(py, "string")),
+            ("array", pyo3::intern!(py, "array")),
+            ("boolean", pyo3::intern!(py, "boolean")),
+            ("null", pyo3::intern!(py, "null")),
+            ("integer", pyo3::intern!(py, "integer")),
+            ("number", pyo3::intern!(py, "number")),
         ] {
-            if !kind.eq(name)? {
+            if !kind.eq(identifier)? {
                 continue;
             }
             // A float subclass may override is_integer and return an arbitrary

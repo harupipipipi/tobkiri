@@ -232,4 +232,20 @@ The finite metadata references live inside each guest Store, not a Host cache of
 guest objects, and initialization is charged to its original cold budget.
 Existing API groups additionally check actual original LOAD_ATTR name identity,
 legacy push_scope literal identity and evolve keyword-key identity. This source
-change has not yet passed actual compilation/parity or demonstrated fuel savings.
+change at 45b1c4147 passed actual native compilation and all 64 cases / 15 API
+groups, including the name/key identity observations. Normal CI 41098227240 / job
+124209443526 still exhausted the one-shot 2B fuel (0 remaining, 0.850197199 seconds,
+original deadline preserved). Explicit progress CI 41098272613 / job 124209608899
+recorded eight returned cases; defaults_setup_v4 completed and distribution_v1
+was interrupted. Through the same contract_v4 checkpoint, measured diagnostic fuel
+use declined from 1,599,163,709 to 1,276,375,494 (about 20.2%). This is an actual
+reduction within the same diagnostic protocol, not one-shot or product acceptance.
+The separate new diagnostic component was a80f9356681c824c56cad6c0ef058418f90e06936d1101a002071677398a7565.
+
+A further narrow change reuses the seven fixed type-comparison names and five
+metadata guard keys. The private builtin keyword helper also shares its four
+original fixed kind literals, while actual schema-supplied type objects remain
+untouched. Comparison order and original unknown/surrogate/custom dispatch remain
+in place. Additional actual callbacks compare original fixed kind identity and
+preserve a dynamically created schema type string in both callback and error.
+This extension has not yet passed CI; no further fuel improvement is claimed.
