@@ -112,6 +112,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   追加整理候補: `fetch_registry.unpack` 自体が checksum ファイルを生成するため、
   wrapper の直後の再書き込みは重複している。canonical bytes と mode の維持を確認して
   次の実 build 修正時にまとめて除く候補とする。今の CI の検証対象は変更していない。
+- 同 run はその後、Wasm extension build 段階を完了し、次の probe 起動時に停止。
+  sandbox の `/usr/bin/python3` に `tomllib` がなく、probe が使わない lock parser の
+  top-level import が原因だった。lock parser 内へ import を移し、実際に必要な環境でだけ
+  読み込む。上記の重複 checksum 再書き込みも除去し、元 extractor の出力を全件検証する。
+  実 ABI 検査・producer import・Core 呼び出しは未完了。修正後の CI で確認する。
 
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 

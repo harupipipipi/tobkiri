@@ -15,7 +15,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tomllib
 
 LOCK_SHA256 = "7bd7deb115b32dc7012b44a960efc45d6591ac148fa5a0466c1741a523d9b065"
 REGISTRY = "registry+https://github.com/rust-lang/crates.io-index"
@@ -82,6 +81,8 @@ class Probe(wit_world.exports.Probe):
 
 def packages(source: Path) -> list[dict]:
     """Admit the actual source lock and only its checksum-bound registry graph."""
+    import tomllib
+
     from build_native import fingerprint
 
     if fingerprint(source / "Cargo.lock", 256 * 1024)["sha256"] != LOCK_SHA256:
@@ -151,11 +152,8 @@ def restore_registry_vendor(source: Path, archives: Path, destination: Path) -> 
         stem = pin["name"] + "-" + pin["version"]
         # The existing bounded extractor verifies the lock checksum first and
         # retains every member, including files Cargo vendor elects to omit.
-        record = fetch_registry.unpack(archives / (stem + ".crate"),
-                                       destination / stem, pin, totals)
-        checksum = destination / stem / ".cargo-checksum.json"
-        checksum.write_bytes(fetch_rpds.checksum_bytes(pin, record["files"]))
-        checksum.chmod(0o644)
+        fetch_registry.unpack(archives / (stem + ".crate"),
+                              destination / stem, pin, totals)
     verify_registry(source, destination, archives)
 
 
