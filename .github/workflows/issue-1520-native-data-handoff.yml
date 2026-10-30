@@ -1,0 +1,34 @@
+name: Issue 1520 pure native DATA handoff
+on:
+  push:
+    branches: [codex/issue-1520-native-shared-state]
+    paths:
+      - 'tobkiri_launcher/harness-native/src/preparation.rs'
+      - 'tobkiri_launcher/harness-native/src/lib.rs'
+      - '.github/workflows/issue-1520-native-data-handoff.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: issue-1520-native-data-handoff-${{ github.sha }}
+  cancel-in-progress: false
+env:
+  CARGO_BUILD_JOBS: '1'
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+jobs:
+  same-invocation:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          components: clippy
+      - name: Actual prepared component and original-owner DATA regressions
+        run: cargo test --locked -p tobkiri-harness-native --lib preparation::tests -- --test-threads=1
+      - name: Strict library validation
+        run: cargo clippy --locked -p tobkiri-harness-native --lib -- -D warnings

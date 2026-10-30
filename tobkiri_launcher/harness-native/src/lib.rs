@@ -27,7 +27,8 @@ pub use bootstrap_runtime::{BootstrapCleanupFailure, NativeBootstrap};
 pub use init_diagnostic::OriginalInitializationFailure;
 pub use init_trace::{InitializationRejection, InitializationTrace};
 pub use preparation::{
-    NativeComponentPreparation, NativePreparationObservation, PreparedNativeComponent,
+    NativeComponentOwner, NativeComponentPreparation, NativePreparationObservation,
+    PreparedNativeComponent, PreparedNativeDataProgram,
 };
 pub use source_metadata::{ModuleMetadataPolicy, ORIGINAL_PROFILE_SOURCE_METADATA};
 pub use wasmtime::component::Component as NativeHarnessComponent;

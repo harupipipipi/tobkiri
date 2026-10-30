@@ -236,6 +236,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   App の catalog メソッドを Core の固定 NativeBootstrap binding 表へ追加しない。
 - 根拠: Sol の限定 source 調査。既存 bootstrap は File を開かず caller から受け取る。
   実機・GUI・この製品 callsite の実行証拠は未取得。
+- consuming `prepare_data_program` を既存 preparation へ追加。初期化専用の metadata root
+  trait から owner の生存確認だけを抽出し、既存 bootstrap owner はそのまま利用する。
+  新しい pure DATA handoff では root provider を要求せず、同じ engine / component /
+  invocation から IO import のない一つの Store を作る。source owner を破棄する前に
+  Store を retire し、呼び出し前後の失効は出力を返さず Store を恒久 retire する。
+  fuel・deadline・capacity の維持と失効後の再利用拒否を、実 WAT component の 2 ケースへ追加。
+  Sol の限定 source review は blocking issue なし。実 CI はこれからで、製品での
+  artifact admission・App owner・Setup callsite を証明するものではない。
 
 ## 新規項目のひな形
 

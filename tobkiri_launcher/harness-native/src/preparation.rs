@@ -4,9 +4,12 @@
 use crate::{BootstrapInputOwner, BootstrapModuleIndex, NativeBootstrap};
 use anyhow::{Result, ensure};
 use std::{fs::File, io::Read, time::Instant};
-use tobkiri_canon::Digest;
+use tobkiri_canon::{CoreBuffer, Digest};
 use tobkiri_gate::{CapacityKind, ControlKind, NativeSetupInvocation};
-use tobkiri_wasm::{NativeDataError, WasmEngine};
+use tobkiri_wasm::{
+    NativeDataBinding, NativeDataError, NativeDataIoError, NativeDataObservation,
+    NativeDataProgram, NativeDataValue, WasmEngine,
+};
 use wasmtime::{OptLevel, component::Component};
 
 /// Actual cold preparation values. These do not claim compiler heap/RSS or
@@ -27,7 +30,7 @@ pub struct NativePreparationObservation {
 
 /// Actual source owner and operation, before the single cold compile attempt.
 /// There is no begin/retry/reset API and no caller-selected policy override.
-pub struct NativeComponentPreparation<S: BootstrapInputOwner> {
+pub struct NativeComponentPreparation<S: NativeComponentOwner> {
     source: S,
     invocation: NativeSetupInvocation,
     engine: WasmEngine,
@@ -35,18 +38,31 @@ pub struct NativeComponentPreparation<S: BootstrapInputOwner> {
 }
 
 /// The same Engine, component, source owner and original operation after compile.
-pub struct PreparedNativeComponent<S: BootstrapInputOwner> {
+pub struct PreparedNativeComponent<S: NativeComponentOwner> {
     preparation: NativeComponentPreparation<S>,
     component: Component,
     observation: NativePreparationObservation,
 }
 
-impl<S: BootstrapInputOwner> NativeComponentPreparation<S> {
+/// Retain an actual native caller's liveness through preparation and cleanup.
+/// This is neither artifact admission nor permission to read any path.
+pub trait NativeComponentOwner: Send + Sync + 'static {
+    /// Validate the same retained native owner without selecting roots or IO.
+    fn check_component_live(&self) -> std::result::Result<(), NativeDataIoError>;
+}
+
+impl<S: BootstrapInputOwner> NativeComponentOwner for S {
+    fn check_component_live(&self) -> std::result::Result<(), NativeDataIoError> {
+        BootstrapInputOwner::check_live(self)
+    }
+}
+
+impl<S: NativeComponentOwner> NativeComponentPreparation<S> {
     /// The caller must begin the real operation BEFORE entering this function.
     /// Both the actual app adapter and CI use this same composition choice.
     pub fn new(invocation: NativeSetupInvocation, source: S) -> Result<Self> {
         let deadline = invocation.deadline()?;
-        source.check_live()?;
+        source.check_component_live()?;
         ensure!(
             Instant::now() < deadline,
             "original native preparation deadline expired"
@@ -64,7 +80,7 @@ impl<S: BootstrapInputOwner> NativeComponentPreparation<S> {
     }
 
     fn check_live(&self) -> Result<()> {
-        self.source.check_live()?;
+        self.source.check_component_live()?;
         ensure!(
             self.invocation.deadline()? == self.deadline && Instant::now() < self.deadline,
             "original native deadline exhausted during component preparation"
@@ -131,7 +147,7 @@ impl<S: BootstrapInputOwner> NativeComponentPreparation<S> {
     }
 }
 
-impl<S: BootstrapInputOwner> PreparedNativeComponent<S> {
+impl<S: NativeComponentOwner> PreparedNativeComponent<S> {
     #[cfg(all(
         test,
         feature = "thread-capabilities-ci",
@@ -155,12 +171,41 @@ impl<S: BootstrapInputOwner> PreparedNativeComponent<S> {
         self.observation
     }
 
+    /// Consume this preparation into one pure DATA program with no IO imports.
+    /// The caller supplies fixed typed exports; no App operation enters Core's
+    /// bootstrap binding table. Artifact admission remains the caller's duty.
+    pub async fn prepare_data_program(
+        self,
+        bindings: &[NativeDataBinding<'_>],
+    ) -> Result<PreparedNativeDataProgram<S>> {
+        self.preparation.check_live()?;
+        let preparation = self.preparation;
+        let store = preparation
+            .engine
+            .native_setup_store(preparation.invocation, ())?;
+        let program = store
+            .prepare_data_program(&self.component, bindings)
+            .await?;
+        preparation.source.check_component_live()?;
+        ensure!(
+            Instant::now() < program.original_deadline(),
+            "original preparation deadline expired"
+        );
+        Ok(PreparedNativeDataProgram {
+            program,
+            source: preparation.source,
+        })
+    }
+
     /// Initialize using the SAME original operation and input owner. Store
     /// ownership retains the actual Engine/ticker through its physical lifetime.
     pub async fn initialize(
         self,
         index: &'static BootstrapModuleIndex,
-    ) -> Result<std::result::Result<NativeBootstrap<S>, NativeDataError>> {
+    ) -> Result<std::result::Result<NativeBootstrap<S>, NativeDataError>>
+    where
+        S: BootstrapInputOwner,
+    {
         self.preparation.check_live()?;
         NativeBootstrap::prepare(
             &self.preparation.engine,
@@ -170,6 +215,57 @@ impl<S: BootstrapInputOwner> PreparedNativeComponent<S> {
             index,
         )
         .await
+    }
+}
+
+/// One original Store and its actual source owner; no metadata roots required.
+/// Store retirement precedes source-owner destruction, including cancellation.
+pub struct PreparedNativeDataProgram<S: NativeComponentOwner> {
+    program: NativeDataProgram<()>,
+    source: S,
+}
+
+impl<S: NativeComponentOwner> PreparedNativeDataProgram<S> {
+    /// Invoke a previously bound slot without resetting the original account.
+    pub async fn invoke(
+        &mut self,
+        slot: usize,
+        input: Option<&CoreBuffer>,
+    ) -> Result<std::result::Result<NativeDataValue, NativeDataError>> {
+        if let Err(error) = self.source.check_component_live() {
+            self.program.retire();
+            return Err(error.into());
+        }
+        let result = self.program.invoke(slot, input).await;
+        if let Err(error) = self.source.check_component_live() {
+            drop(result);
+            self.program.retire();
+            return Err(error.into());
+        }
+        result
+    }
+
+    /// Original preparation deadline, including all prior calls.
+    pub fn original_deadline(&self) -> Instant {
+        self.program.original_deadline()
+    }
+    /// Actual remaining fuel in that same Store.
+    pub fn fuel_remaining(&self) -> Result<u64> {
+        self.program.fuel_remaining()
+    }
+    /// Actual last-call observations, never approval or readiness evidence.
+    pub fn observation(&self) -> NativeDataObservation {
+        self.program.observation()
+    }
+    /// Physically retire the Store; there are no imported IO workers to await.
+    pub fn retire(&mut self) {
+        self.program.retire();
+    }
+}
+
+impl<S: NativeComponentOwner> Drop for PreparedNativeDataProgram<S> {
+    fn drop(&mut self) {
+        self.program.retire();
     }
 }
 
@@ -303,6 +399,127 @@ mod tests {
         assert_eq!(Arc::strong_count(&retired), 2);
         drop(prepared);
         assert_eq!(Arc::strong_count(&retired), 1);
+        Ok(())
+    }
+
+    // Controlled owner of the selected test artifact, deliberately no roots API.
+    // This fixture proves DATA custody, not product artifact admission or GUI IO.
+    struct DataSource {
+        retired: Arc<AtomicBool>,
+        _directory: File,
+    }
+    impl NativeComponentOwner for DataSource {
+        fn check_component_live(&self) -> std::result::Result<(), NativeDataIoError> {
+            if self.retired.load(Ordering::Acquire) {
+                Err(NativeDataIoError::Retired)
+            } else {
+                Ok(())
+            }
+        }
+    }
+    fn data_component() -> Result<Vec<u8>> {
+        Ok(wat::parse_str(
+            r#"(component
+            (core module $m
+                (memory (export "memory") 1)
+                (data (i32.const 32) "x")
+                (func (export "realloc") (param i32 i32 i32 i32) (result i32) i32.const 64)
+                (func (export "view") (result i32)
+                    i32.const 0 i32.const 32 i32.store
+                    i32.const 4 i32.const 1 i32.store i32.const 0)
+                (func (export "post") (param i32)))
+            (core instance $i (instantiate $m))
+            (alias core export $i "memory" (core memory $memory))
+            (alias core export $i "realloc" (core func $realloc))
+            (alias core export $i "view" (core func $view))
+            (alias core export $i "post" (core func $post))
+            (func (export "view") (result string)
+                (canon lift (core func $view) (memory $memory)
+                    (realloc $realloc) (post-return $post))))"#,
+        )?)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn pure_data_handoff_keeps_one_account_deadline_fuel_and_owner() -> Result<()> {
+        let temporary = tempfile::tempdir()?;
+        let root = temporary.path().canonicalize()?;
+        let owner = RuntimeOwner::open(root.join("data"))?;
+        let retired = Arc::new(AtomicBool::new(false));
+        let bytes = data_component()?;
+        let path = root.join("data.wasm");
+        File::create(&path)?.write_all(&bytes)?;
+        let invocation = owner.begin_native_setup()?;
+        let deadline = invocation.deadline()?;
+        let prepared = NativeComponentPreparation::new(
+            invocation.clone(),
+            DataSource {
+                retired: retired.clone(),
+                _directory: File::open(&root)?,
+            },
+        )?
+        .compile(File::open(path)?, &Digest::hash(&bytes))?;
+        let binding = [NativeDataBinding {
+            export: tobkiri_wasm::NativeDataExport::new(None, "view"),
+            result: None,
+        }];
+        let mut program = prepared.prepare_data_program(&binding).await?;
+        let mut fuel = program.fuel_remaining()?;
+        assert!(fuel > 0 && fuel <= 2_000_000_000);
+        assert!(invocation.capacity_snapshot()?.charged_bytes > 0);
+        for _ in 0..2 {
+            let reply = program
+                .invoke(0, None)
+                .await?
+                .map_err(|_| anyhow::anyhow!("unexpected domain error"))?;
+            let NativeDataValue::String(text) = reply else {
+                anyhow::bail!("expected DATA string");
+            };
+            assert_eq!(text.as_str()?, "x");
+            assert!(program.fuel_remaining()? < fuel);
+            fuel = program.fuel_remaining()?;
+            assert_eq!(program.original_deadline(), deadline);
+        }
+        assert_eq!(Arc::strong_count(&retired), 2);
+        program.retire();
+        assert!(program.observation().store_retired);
+        drop(program);
+        tobkiri_wasm::reap_allocation_owners()?;
+        assert_eq!(Arc::strong_count(&retired), 1);
+        assert_eq!(invocation.capacity_snapshot()?.charged_bytes, 0);
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn pure_data_owner_revocation_retires_the_same_store_permanently() -> Result<()> {
+        let temporary = tempfile::tempdir()?;
+        let root = temporary.path().canonicalize()?;
+        let owner = RuntimeOwner::open(root.join("data"))?;
+        let retired = Arc::new(AtomicBool::new(false));
+        let bytes = data_component()?;
+        let path = root.join("revoked.wasm");
+        File::create(&path)?.write_all(&bytes)?;
+        let invocation = owner.begin_native_setup()?;
+        let prepared = NativeComponentPreparation::new(
+            invocation.clone(),
+            DataSource {
+                retired: retired.clone(),
+                _directory: File::open(&root)?,
+            },
+        )?
+        .compile(File::open(path)?, &Digest::hash(&bytes))?;
+        let binding = [NativeDataBinding {
+            export: tobkiri_wasm::NativeDataExport::new(None, "view"),
+            result: None,
+        }];
+        let mut program = prepared.prepare_data_program(&binding).await?;
+        retired.store(true, Ordering::Release);
+        assert!(program.invoke(0, None).await.is_err());
+        assert!(program.observation().store_retired);
+        retired.store(false, Ordering::Release);
+        assert!(program.invoke(0, None).await.is_err());
+        drop(program);
+        tobkiri_wasm::reap_allocation_owners()?;
+        assert_eq!(invocation.capacity_snapshot()?.charged_bytes, 0);
         Ok(())
     }
 }
