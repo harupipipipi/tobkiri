@@ -281,5 +281,13 @@ The new sixteenth API group differentially checks RFC-style joins, bytes/mixed
 inputs, aliases/early returns, real callbacks, live helper/config rebinding,
 overloaded self-comparison, actual cache hits and genuine Registry resolution.
 An actual native-entry counter must already be positive after the original 64
-schema comparisons, before the API group. Compilation, native parity and Wasm
-fuel benefit of this source are pending. Original one-shot limits stay fixed.
+schema comparisons, before the API group. Source 97eb93207 passed actual native
+compilation, all 64 comparisons and 16 API groups in CI 41106604032 / job
+124237968178; 15,840 actual native urljoin entries occurred before the API group.
+The actual native extension was 895,232 bytes with SHA-256
+cb48685361ca9ecc09f24fd77970fe9bfa71d644652218f02e496f4f4052c864.
+Core/component builds passed, but the actual one-shot Wasm call again exhausted
+2B fuel (0 remaining, 1.419555938 seconds, original deadline preserved, no deadline
+or unreachable trap). URI fuel benefit is still unmeasured. Additional actual
+source-slash identity and slice-field callback observations were added after this
+run and await CI. Original one-shot limits stay fixed.

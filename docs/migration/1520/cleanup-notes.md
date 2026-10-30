@@ -502,7 +502,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 010: 残存する URI 結合の Python 制御フロー
 
-- 状態: **urljoin 本体だけを Rust 移植、実 CI は未確認**。
+- 状態: **urljoin 本体の実 native 全 64 比較・16 API 群に成功。Wasm は未完走**。
 - native profile の 18,123 lookup / 15,840 urljoin が次候補の根拠。Astra high の
   質問回答に従い、まず実 CPython 3.13.16 urljoin の body のみを移し、型変換・
   parse / unparse・本来の cache・Resolver / Resource / Registry は元の実処理を使う。
@@ -521,3 +521,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   SHA-256 78b12c3a81360b357002334f0e70ea0e92eebf7a9b358805c03c48484945f3bb。
   法的 notice のみ追加し、依存 source tree・ZIP・binary はローカルに保存しない。
   source admission はこの notice と新 Rust module を含む閉じた 10 file に更新する。
+
+- 実 CI `41106604032` / job `124237968178`（source `97eb93207`）は compile・
+  全 64 比較・16 API 群に成功した。API 前の実 native urljoin は 15,840 回。
+  Core / component build 後の一括 Wasm は残燃料 0 / 2B、約 1.419555938 秒で停止。
+  元 deadline は保持され、期限超過・unreachable はない。燃料改善は未測定。
+- 元 '/' constant object と実 slice field を callback で直接比較する追加観測を、
+  97 の run 後に加えた。この追加分と累積診断の実 CI はまだ未確認。

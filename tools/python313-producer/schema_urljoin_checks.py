@@ -151,6 +151,28 @@ def exercise_urljoin() -> dict[str, bool]:
             return result[0], events[:]
 
         assert live(candidate) == live(original)
+        slash = next(value for value in original.__code__.co_consts
+                     if type(value) is str and value == "/")
+
+        class ObservedPath(str):
+            def split(self, separator: object) -> list:
+                assert separator is slash
+                events.append("original-slash")
+                return super().split(separator)
+
+            def __getitem__(self, key: object) -> object:
+                if isinstance(key, slice):
+                    events.append(("slice", key.start, key.stop, key.step))
+                return super().__getitem__(key)
+
+        def with_observed_path(*args: object, **kwargs: object) -> object:
+            parsed = helpers["urlparse"](*args, **kwargs)
+            return parsed._replace(path=ObservedPath(parsed.path))
+
+        globals_["urlparse"] = with_observed_path
+        globals_["urlunparse"] = helpers["urlunparse"]
+        compare("http://host/a/b", "../c/d")
+        assert "original-slash" in events and ("slice", None, 1, None) in events
         globals_.update(helpers)
 
         class Scheme(str):
