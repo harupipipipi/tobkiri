@@ -372,3 +372,13 @@ contract_v4 versus restoration 811cb8bca's 1,244,463,543 (about 0.12% less).
 Nine cases returned; executable_catalog_v4 was interrupted. This small diagnostic
 change does not establish a route to the budget or product acceptance. The new
 public-callable structure requires fresh native/API18 and Wasm measurements.
+
+The 1cbd05f75 public-definition structure passed actual native 64/API18 in normal
+CI 41117640666 / job 124275891668. The original one-shot call still exhausted 2B
+fuel with the deadline preserved. Progress CI 41117649051 / job 124275924360 used
+1,182,899,525 fuel through contract_v4 (about 4.8% less than fbe042701), returned
+nine cases and stopped in executable_catalog_v4. This does not qualify one-shot
+or product use. The next narrow source change reuses only four fixed global-name
+metadata strings in live traversal lookups; actual namespace/builtin values,
+lookup order, exceptions and callbacks remain uncached. Its compile/parity/fuel
+measurements are pending.

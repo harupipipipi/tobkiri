@@ -1,6 +1,6 @@
 # Issue #1520 acceptance status
 
-Scope rechecked: 2026-10-27. The 20 items below still follow the full acceptance
+Scope rechecked: 2026-10-31. The 20 items below still follow the full acceptance
 list in [issue #1520](https://github.com/harupipipipi/tobkiri/issues/1520).
 The issue is normative; [resource boundaries](resource-boundaries.md)
 record the later implementation decisions. This is a checklist, not a new
@@ -562,3 +562,18 @@ contexts. Sharing an interpreter service Pack would change the CodeOwner.
 The original 32 MiB per-component and 64 MiB catalog limits remain unchanged;
 the five original components are still not admitted. The complete five-source
 closure, transformation, loader and runtime parity remain open.
+
+
+## Original-object schema candidate checkpoint, 2026-10-31
+
+[Normal CI 41117640666](https://github.com/harupipipipi/tobkiri/actions/runs/41117640666)
+at source `1cbd05f75` passed actual native compilation, all 64 schema comparisons
+and 18 additional API groups. Its original one-shot Wasm call still exhausted
+2B fuel, preserving the deadline. The separately identified progress diagnostic
+returned nine cases and remained incomplete. These are experimental engine
+observations; no product validator or acceptance checkbox is replaced by them.
+
+The [scope map](schema-port-scope.md) now distinguishes actual caller/SDK
+contracts from additional private-implementation hypotheses in the new API
+checks. It keeps all current gates unchanged. These additional groups do not
+replace the original 839 migration units or the full 20 acceptance conditions.

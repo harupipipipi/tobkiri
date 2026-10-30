@@ -5,7 +5,7 @@ use pyo3::{
     exceptions::PyRuntimeError,
     gc::{PyTraverseError, PyVisit},
     prelude::*,
-    types::{PyDict, PyIterator, PyList, PyTuple},
+    types::{PyDict, PyIterator, PyList, PyString, PyTuple},
 };
 
 struct ContextState {
@@ -93,14 +93,25 @@ fn lookup_name<'py>(
     name: &str,
 ) -> PyResult<Bound<'py, PyAny>> {
     let py = globals.py();
-    if let Some(value) = globals.get_item(name)? {
+    // Original LOAD_GLOBAL names are finite code metadata, not caller strings.
+    // Keep live dict/builtin resolution while avoiding a new Unicode per read.
+    let identifier = match name {
+        "_REMOTE_WARNING_REGISTRY" => pyo3::intern!(py, "_REMOTE_WARNING_REGISTRY").clone(),
+        "SPECIFICATIONS" => pyo3::intern!(py, "SPECIFICATIONS").clone(),
+        "getattr" => pyo3::intern!(py, "getattr").clone(),
+        "validator_for" => pyo3::intern!(py, "validator_for").clone(),
+        _ => PyString::new(py, name),
+    };
+    if let Some(value) = globals.get_item(&identifier)? {
         return Ok(value);
     }
-    if let Some(value) = builtins.get_item(name)? {
+    if let Some(value) = builtins.get_item(&identifier)? {
         return Ok(value);
     }
     let error = pyo3::exceptions::PyNameError::new_err(format!("name '{name}' is not defined"));
-    error.value(py).setattr(pyo3::intern!(py, "name"), name)?;
+    error
+        .value(py)
+        .setattr(pyo3::intern!(py, "name"), identifier)?;
     Err(error)
 }
 

@@ -581,7 +581,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 012: function identity による body 迂回と同じ function の code 変更
 
-- 状態: **source 修正と API18 を実装。実 compile / 回帰 / 燃料の CI は未実施**。
+- 状態: **公開定義版は実 native 64 / API18 に成功。一括 fuel は未達。固定 global 名の追加は CI 未確認**。
 - 場所: `schema_kernel/src/traversal.rs` の builtin handler identity dispatch と
   `schema_kernel/src/lib.rs` の default TypeChecker method identity guard。
 - 原本と同じ function object でも `__code__` は変更可能。現在の keyword dispatch は
@@ -635,3 +635,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   public Rust body entry count も正であることを要求する。
 - 現時点は AST / rustfmt / source review のみ。新構成の実 compile・全 64 / API18・
   一括 Wasm・燃料・全 catalog・製品の合格は未確認。元予算や機能を変更しない。
+
+- 次の限定的な allocation 重複は traversal の live global / builtins lookup に残る
+  4 個の固定名。`_REMOTE_WARNING_REGISTRY` / `SPECIFICATIONS` / `getattr` /
+  `validator_for` を元 LOAD_GLOBAL の有限 code metadata として共有する。辞書の実値や
+  constructor / checker / resolver を cache せず、globals → captured builtins の順、
+  missing NameError と実 `.name` を保持する。caller / schema 文字列は intern しない。
+  既存 API18 の live namespace / builtin fallback / NameError / callback 比較を残し、
+  新しい private 反射を必須条件へ追加しない。この変更の compile / 効果は未確認。
