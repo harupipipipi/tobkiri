@@ -117,6 +117,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   top-level import が原因だった。lock parser 内へ import を移し、実際に必要な環境でだけ
   読み込む。上記の重複 checksum 再書き込みも除去し、元 extractor の出力を全件検証する。
   実 ABI 検査・producer import・Core 呼び出しは未完了。修正後の CI で確認する。
+- Astra high の追加設計回答: smoke が実際に通った後、64 ケースで参照・順序などの
+  不一致を具体化して現 library candidate の不採用を判断し、巨大な補正層を作らない。
+  次候補は元 validator の走査・handler 順序・短絡・branch / evaluated bookkeeping を
+  狭い private Rust / PyO3 境界へ直接移す。元 Python error class の軽量な組立て、
+  regex / 数値 primitive、registry / resolver は Wasm 内で実 object を保って再利用できる。
+  constructor 内で validation を再実行せず、serde clone や path からの参照再構成は使わない。
+  lazy error、context の順序・parent と child の同一性、実 cause、dynamic ref の scope、
+  bool / int / 1.0 / bigint、unevaluated の branch bookkeeping、cache の所有・破棄も維持する。
+  64 件だけでなく supported API から到達する元 handler 全件の同等性が条件。
+  これは設計判断で、直接移植の実装・性能・製品採用を証明するものではない。
 
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 
