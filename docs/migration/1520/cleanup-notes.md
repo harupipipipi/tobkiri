@@ -86,6 +86,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   だけを保存する。候補 manifest の追加・更新時に実行し、手動起動も用意する。
   ローカルで依存を取得せず、未生成の lock や未実行の build / load / parity を
   成功扱いしない。これは製品への採用や Python 依存の削除を意味しない。
+- 同日、[比較専用 kernel](../../../tools/python313-producer/schema_kernel/README.md)
+  のソースを追加。Python instance の直接読み取り API はあるが、error の instance は
+  serde clone で、元 schema 参照・順序・parent / cause は保たれない。
+  元 root を別途保持しても error node 参照の同等性には数えない。
+  現時点では formatter とソース確認のみ。製品の validator は置換していない。
 
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 
