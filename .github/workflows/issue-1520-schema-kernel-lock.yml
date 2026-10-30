@@ -29,6 +29,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 -B - <<'PY'
+          from pathlib import Path
+          import tomllib
+
+          path = Path('tools/python313-producer/schema_kernel/Cargo.toml')
+          manifest = tomllib.loads(path.read_text())
+          engine = manifest['dependencies']['jsonschema']
+          if (engine.get('version') != '=0.60.2'
+                  or engine.get('default-features') is not False
+                  or engine.get('features') != ['pyo3']):
+              raise SystemExit('candidate requires the exact offline Python-view engine')
+          if manifest['lib'].get('name') != '_tobkiri_schema_kernel':
+              raise SystemExit('candidate extension name differs')
+          if manifest['lib'].get('crate-type') != ['cdylib']:
+              raise SystemExit('candidate must be a standalone extension')
+          PY
           rustup toolchain install 1.94.0 --profile minimal
           cargo +1.94.0 generate-lockfile --manifest-path tools/python313-producer/schema_kernel/Cargo.toml
           cargo +1.94.0 metadata --locked --offline --no-deps --format-version 1 --manifest-path tools/python313-producer/schema_kernel/Cargo.toml > "$RUNNER_TEMP/schema-kernel-metadata.json"
