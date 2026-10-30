@@ -191,5 +191,20 @@ the guest. Progress records distinguish the last completed case and the next cas
 interrupted by a trap. Split return boundaries change reference lifetimes, GC and
 cache behavior: these measurements are neither an upper bound nor one-shot parity
 or budget acceptance. Every diagnostic receipt has `qualification=false`; the
-normal one-shot gate and product acceptance remain mandatory. Actual diagnostic
-compilation/execution has not yet been verified.
+normal one-shot gate and product acceptance remain mandatory.
+
+At source 2418b8edb, normal CI 41094612644 / job 124197028502 again passed
+native 64-case / 15-group comparison and actual Core/component builds, then
+exhausted the one-shot 2B fuel (remaining 0, elapsed 1.0004439 seconds, original
+deadline preserved, no deadline/unreachable trap). No improvement is claimed.
+Explicit diagnostic CI 41094625731 / job 124197075079 successfully recorded
+actual same-Store progress and cleanup. Its separately identified component was
+c8a48cb24131e7cea8298f4922b50af79faef0f24be5281a73ad0d702649a1d6.
+Preparation consumed 53,122,419 fuel; the next seven actual cases returned matching
+original observations. After contract_v4.schema.json, 400,836,291 fuel remained.
+The next case, defaults_setup_v4.schema.json, exhausted the cumulative remainder
+after 1.411181439 seconds overall; no deadline trap occurred. Its API phase was
+not reached. This localizes remaining work to schema validation, rather than only
+preparation or the final API suite. It does not rank functions within that work.
+Native call profiling is the next supporting measurement; it must not be confused
+with actual Wasm fuel. Split execution remains incomplete and qualification=false.
