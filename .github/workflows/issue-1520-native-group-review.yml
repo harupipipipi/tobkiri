@@ -38,4 +38,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@1.94.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+      - name: Build the actual Core host frontend used by Tauri context
+        working-directory: tobkiri_launcher/frontend
+        run: |
+          npm ci
+          npm run build:core-host
       - run: cargo check --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml --features core-host

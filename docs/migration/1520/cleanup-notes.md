@@ -166,6 +166,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - `b01fce245` の CI `41051559344` / portable job `124048600707` が成功。
   native 表示契約 7 件（追加した grouped の 2 件を含む）と Gate 76 件が通った。
   macOS の実 Host compile と実 GUI 入力は別の証拠が必要で、ここには含めない。
+- 同 run の macOS job `124048600442` は実コンパイルで停止した。
+  `for ... batch.items().len()` の一時 iterator が borrow を保持するため、件数を
+  別 statement で取得してから各実 ID へ回答する形へ修正。Tauri の実 frontendDist
+  も未生成だったため、CI に既存 `build:core-host` を追加した。
+  placeholder の画面で compile を通さず、正規の画面を生成する。修正後の検証はこれから。
 - 初回 Setup の接続では既存 `defaultsSetup.ts` の confirmation / activation 契約も維持する。
   同コードは実 `defaults.activate`・Profile の `defaults`・catalog / profile / plan /
   authority snapshot / confirmation の digest、epoch、activation、fencing、audit receipt の

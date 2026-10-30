@@ -320,7 +320,8 @@ impl TrustedPrompt for NativeHost {
                 Ok(Ok(false)) => ApprovalAnswer::Deny,
                 _ => return Err(GateError::Unavailable),
             };
-            for index in 0..batch.items().len() {
+            let count = batch.items().len();
+            for index in 0..count {
                 let id = batch
                     .item(index)
                     .ok_or(GateError::Unavailable)?
