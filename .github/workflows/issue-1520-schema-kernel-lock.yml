@@ -35,11 +35,12 @@ jobs:
 
           path = Path('tools/python313-producer/schema_kernel/Cargo.toml')
           manifest = tomllib.loads(path.read_text())
-          engine = manifest['dependencies']['jsonschema']
-          if (engine.get('version') != '=0.60.2'
-                  or engine.get('default-features') is not False
-                  or engine.get('features') != ['pyo3']):
-              raise SystemExit('candidate requires the exact offline Python-view engine')
+          if manifest['dependencies'] != {'pyo3': {
+                  'version': '=0.30.1', 'default-features': False,
+                  'features': ['macros', 'abi3-py313']}}:
+              raise SystemExit('primitive port requires only the exact limited-ABI PyO3')
+          if manifest['package']['metadata']['tobkiri']['schema-engine'] != 'original-object-port-primitives':
+              raise SystemExit('primitive port scope differs')
           if manifest['lib'].get('name') != '_tobkiri_schema_kernel':
               raise SystemExit('candidate extension name differs')
           if manifest['lib'].get('crate-type') != ['cdylib']:
@@ -81,8 +82,10 @@ jobs:
               registry.append({key: package[key] for key in ('name', 'version', 'checksum')})
           if local != [('tobkiri-schema-kernel', '0.1.0')]:
               raise SystemExit('unexpected local package closure')
-          if sum(p['name'] == 'jsonschema' and p['version'] == '0.60.2' for p in registry) != 1:
-              raise SystemExit('exact candidate engine version absent')
+          if sum(p['name'] == 'pyo3' and p['version'] == '0.30.1' for p in registry) != 1:
+              raise SystemExit('exact limited-ABI version absent')
+          if any(p['name'] == 'jsonschema' for p in registry):
+              raise SystemExit('rejected registry engine remains in primitive port')
           receipt = {
               'format': 'tobkiri.schema-kernel-source-lock/1',
               'head': os.environ['GITHUB_SHA'],

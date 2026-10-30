@@ -65,7 +65,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 004: スキーマ処理の Rust 化後の実装・依存整理
 
-- 状態: **比較実装を検証中。製品の置換・削除は未実施**。
+- 状態: **ライブラリ候補は不採用。原本 object を保つ Rust primitive を実装中。製品の置換・削除は未実施**。
 - 場所: [validation.py](../../../tobkiri_runtime/tobkiri_protocol/validation.py) の
   `load_schema` / `_schema_store` / `validate_document` と、Pack 内の schema 依存一式。
 - 問題: 元のスキーマ検証が Wasm の燃料上限を超える。
@@ -141,6 +141,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   legacy RefResolver と evaluated helper の Registry lookup を共有化で潰さない。
   実 guest の format 登録集合と handler coverage は未観測で、64 ケースだけで全件を
   検証できたとは扱わない。元の helper を再利用し、同じ機能の別実装を増やす前に比較する。
+
+- 実 CI `41058189370` / job `124070924951` は build・import・component 生成後、
+  Core の実呼び出しが `referencing::Registry::new` 内の WASI random で unreachable trap。
+  実行時間約 0.040 秒、残燃料 1,988,319,617 / 2,000,000,000 で、容量・燃料超過ではない。
+  返却値はなく、64 ケースは **未実行**。既知の serde 参照・順序の不一致と合わせて、
+  Astra high の追加回答に従い、この候補を不採用とした。固定乱数や追加の Host 権限で救済しない。
+- 原本 object の直接移植に着手。現在は実 schema / instance の参照保持と既定 7 型の
+  primitive のみで、handler 実装数は **0**。実 error graph・validator API・全 36 handler は未実装。
+  PyO3 以外の依存と旧 lock を除き、新しい実 source lock を CI で解決する。
+  旧 builder の library smoke は未対応のため、この段階では起動しない。
+  新 primitive 自体の build / load / call もまだ未検証で、製品置換や全件互換性に数えない。
 
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 
