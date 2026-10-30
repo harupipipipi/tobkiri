@@ -65,7 +65,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 004: スキーマ処理の Rust 化後の実装・依存整理
 
-- 状態: **比較実装を準備中。製品の置換・削除は未実施**。
+- 状態: **比較実装を検証中。製品の置換・削除は未実施**。
 - 場所: [validation.py](../../../tobkiri_runtime/tobkiri_protocol/validation.py) の
   `load_schema` / `_schema_store` / `validate_document` と、Pack 内の schema 依存一式。
 - 問題: 元のスキーマ検証が Wasm の燃料上限を超える。
@@ -130,7 +130,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 
-- 状態: **提案。既存 Setup 接続時に実装する**。
+- 状態: **Core / native 承認部分を一部実装・CI 検証済み。既存 Setup 接続は未対応**。
 - 場所: [Core の Profile 管理](../../../crates/tobkiri-core/src/core.rs) の
   `create_profile` / `import_profile` / `save_profile_with_native_review`。
 - 問題: Session 前の Profile 作成 API はあるが、元 Setup からの接続がない。
@@ -203,6 +203,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   元 Profile の保存状態を維持したまま別 ID を一回の承認で作るケースと、
   拒否時に新 revision / 権限を残さないケースを実 Core テストへ追加。
   ローカルでは format / source 確認のみ。CI と Setup からの接続は未確認。
+- `bc1b9957e` の CI `41053399646` は両 job が成功。
+  portable job `124054783704` で native 表示契約 7 件、Gate 76 件、実 Core の
+  native review 12 件（上記 fresh creation の成功・拒否を含む）が通った。
+  macOS job `124054783273` で実 frontend build と Tauri / core-host compile も通った。
+  mock input を使う Core テストは native GUI 入力の証拠にはしない。
+  初回 Setup の候補生成・実 GUI 操作・Session 起動・既存データ移行は未完了。
 
 ## 新規項目のひな形
 
