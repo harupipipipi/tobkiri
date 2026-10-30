@@ -153,6 +153,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   旧 builder の library smoke は未対応のため、この段階では起動しない。
   新 primitive 自体の build / load / call もまだ未検証で、製品置換や全件互換性に数えない。
 
+- 新 primitive の依存固定は CI `41065264251` / job `124094688838` で成功。
+  source `e04117faa` の manifest と実ログ・receipt を照合して source lock のみ回収した
+  （15 packages / 3,395 bytes、SHA-256
+  `222ef5c4c4b48fbad400c604b0135efe9a56d7ecd1c9cec90ef1021d639b93d6`）。
+  builder も `original-object-primitives/1` の狭い検証へ変更。元 object の identity と
+  mutation alias、型 21 例だけを対象とし、schema validation 未実行・handler 数 0 を
+  receipt に明記する。実 build / load / call の結果はまだなく、64 件や全 validator の
+  成功に読み替えない。既存の memory / fuel / deadline / ABI / checksum 条件は維持。
+
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 
 - 状態: **Core / native 承認部分を一部実装・CI 検証済み。既存 Setup 接続は未対応**。

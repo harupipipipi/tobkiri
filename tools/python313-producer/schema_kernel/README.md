@@ -25,13 +25,18 @@ preinitialized registry or extra authority was introduced to force it to pass.
 
 The package has only exact PyO3 0.30.1 with macros and abi3-py313. The rejected
 Rust registry, serde conversions and their dependencies are removed. A new
-source lock must be resolved and authenticated on CI, then consumed frozen and
-offline by the original Wasm producer. Local dependency downloads, compilation
-and guest execution are not part of this work.
+source lock was resolved by CI 41065264251 at source e04117faa and authenticated
+against its actual source/manifest/lock receipt. It is consumed frozen and offline
+by the original Wasm producer. This proves dependency provenance only. Local
+dependency downloads, compilation and guest execution are not part of this work.
 
-The previous build script's library inspection smoke has NOT yet been adapted
-to this primitive stage. Do not run that stale smoke or call its expected
-library results proof of this port. The source-lock workflow runs first.
+The build script now qualifies only `original-object-primitives/1`: actual root
+and nested reference identity, mutation aliases, 21 type cases and the private
+unknown-type ValueError. `numbers` is imported during module initialization;
+object creation and primitive observations run only in the actual DATA request.
+The receipt explicitly records zero implemented handlers and no schema validation.
+The new build/load/call has not yet succeeded; a primitive success must never be
+reported as full validator or 64-case parity.
 
 ## Remaining qualification
 

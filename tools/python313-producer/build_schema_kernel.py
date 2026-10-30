@@ -16,17 +16,18 @@ import shutil
 import subprocess
 import sys
 
-LOCK_SHA256 = "7bd7deb115b32dc7012b44a960efc45d6591ac148fa5a0466c1741a523d9b065"
+LOCK_SHA256 = "222ef5c4c4b48fbad400c604b0135efe9a56d7ecd1c9cec90ef1021d639b93d6"
 REGISTRY = "registry+https://github.com/rust-lang/crates.io-index"
 EXTENSION = "_tobkiri_schema_kernel"
 INTERFACE = "tobkiri-ui:schema-probe/probe@1.0.0"
 MAX_SOURCE = 4 * 1024 * 1024
 MAX_ARCHIVES = 128 * 1024 * 1024
 
-# Import happens during producer preinitialization; inspect happens only when
-# the actual native DATA runner invokes the captured component's run export.
+# Only module imports happen during producer preinitialization. All object/type
+# observations happen when the actual native DATA runner invokes run.
 APP = '''"""One actual private-extension call after producer snapshotting."""
 import json
+import numbers
 import struct
 import sys
 import sysconfig
@@ -44,27 +45,56 @@ TARGET = {
 
 class Probe(wit_world.exports.Probe):
     def run(self) -> str:
+        schema = {"type": "object", "properties": {"value": {"type": "string"}}}
         actual = {"value": []}
-        report = kernel.inspect(
-            '{"type":"object","properties":{"value":{"type":"string"}}}',
-            actual,
+        retained = kernel.retain_objects(schema, actual)
+        schema_is_original = retained["schema"] is schema
+        instance_is_original = retained["instance"] is actual
+        actual["value"].append("mutation")
+        schema["properties"]["value"]["title"] = "same object"
+        aliases_preserved = (
+            retained["instance"]["value"] is actual["value"]
+            and retained["instance"]["value"] == ["mutation"]
+            and retained["schema"]["properties"]["value"]
+                is schema["properties"]["value"]
+            and retained["schema"]["properties"]["value"]["title"] == "same object"
         )
-        root_is_original = report.pop("original_instance_root") is actual
-        errors = report["errors"]
-        if (not root_is_original or report["compiled"] is not True
-                or report["valid"] is not False or len(errors) != 1
-                or errors[0]["keyword"] != "type"
-                or errors[0]["instance_path"] != "/value"
-                or errors[0]["instance_clone"] != []
-                or report["production_enabled"] is not False):
-            raise ValueError("actual kernel observation differs")
+        cases = [
+            ([], "array", True), ((), "array", False),
+            ({}, "object", True), ([], "object", False),
+            ("x", "string", True), (1, "string", False),
+            (True, "boolean", True), (1, "boolean", False),
+            (None, "null", True), (False, "null", False),
+            (1, "integer", True), (True, "integer", False),
+            (1.0, "integer", True), (1.2, "integer", False),
+            (10 ** 80, "integer", True),
+            (1, "number", True), (1.2, "number", True),
+            (10 ** 80, "number", True), (True, "number", False),
+            ("1", "number", False), (complex(1, 2), "number", True),
+        ]
+        for instance, kind, expected in cases:
+            if kernel.is_original_json_type(instance, kind) is not expected:
+                raise ValueError("actual primitive type observation differs: " + kind)
+        unknown_rejected = False
+        try:
+            kernel.is_original_json_type(None, "unknown-private-type")
+        except ValueError:
+            unknown_rejected = True
+        if (not schema_is_original or not instance_is_original
+                or not aliases_preserved or not unknown_rejected
+                or kernel.production_enabled is not False
+                or kernel.implemented_handler_count != 0):
+            raise ValueError("actual primitive object observation differs")
         return json.dumps({
             "target": TARGET,
-            "report": report,
-            "input_root_is_original": root_is_original,
-            "error_instance_is_original": (
-                errors[0]["instance_clone"] is actual["value"]
-            ),
+            "qualification_scope": "original-object-primitives/1",
+            "schema_is_original": schema_is_original,
+            "instance_is_original": instance_is_original,
+            "aliases_preserved": aliases_preserved,
+            "type_cases_checked": len(cases),
+            "unknown_private_type_rejected": unknown_rejected,
+            "implemented_handler_count": kernel.implemented_handler_count,
+            "schema_validation_executed": False,
             "production_enabled": False,
         }, sort_keys=True)
 
@@ -95,10 +125,13 @@ def packages(source: Path) -> list[dict]:
         or manifest["package"].get("publish") is not False
         or manifest.get("workspace") != {}
         or manifest["lib"] != {"name": EXTENSION, "crate-type": ["cdylib"]}
-        or dependencies["jsonschema"]
-        != {"version": "=0.60.2", "default-features": False, "features": ["pyo3"]}
-        or dependencies["pyo3"].get("version") != "=0.30.1"
-        or "abi3-py313" not in dependencies["pyo3"].get("features", [])
+        or dependencies != {"pyo3": {
+            "version": "=0.30.1", "default-features": False,
+            "features": ["macros", "abi3-py313"],
+        }}
+        or manifest["package"].get("metadata", {}).get("tobkiri", {}).get(
+            "schema-engine"
+        ) != "original-object-port-primitives"
     ):
         raise ValueError("private offline limited-ABI manifest differs")
     entries = tomllib.loads((source / "Cargo.lock").read_text())["package"]
@@ -124,6 +157,9 @@ def packages(source: Path) -> list[dict]:
             raise ValueError("unrecorded schema kernel dependency source")
     if roots != [("tobkiri-schema-kernel", "0.1.0")] or not result:
         raise ValueError("schema kernel root closure differs")
+    if (sum(p["name"] == "pyo3" and p["version"] == "0.30.1"
+            for p in result) != 1 or any(p["name"] == "jsonschema" for p in result)):
+        raise ValueError("primitive-only dependency closure differs")
     return result
 
 
@@ -385,11 +421,15 @@ def probe() -> None:
     if (
         report.get("error") is not None or observed["post_return"] is not True
         or not isinstance(result, dict)
-        or result.get("input_root_is_original") is not True
-        or result.get("error_instance_is_original") is not False
+        or result.get("qualification_scope") != "original-object-primitives/1"
+        or result.get("schema_is_original") is not True
+        or result.get("instance_is_original") is not True
+        or result.get("aliases_preserved") is not True
+        or result.get("type_cases_checked") != 21
+        or result.get("unknown_private_type_rejected") is not True
+        or result.get("implemented_handler_count") != 0
+        or result.get("schema_validation_executed") is not False
         or result.get("production_enabled") is not False
-        or result.get("report", {}).get("compiled") is not True
-        or result["report"].get("valid") is not False
         or result.get("target", {}).get("python") != [3, 13, 16]
         or result["target"].get("pointer_bits") != 32
         or not isinstance(result["target"].get("soabi"), str)
@@ -416,6 +456,8 @@ def probe() -> None:
         raise ValueError("real native DATA kernel call differs; inspect native report")
     (work / "probe.json").write_text(json.dumps({
         "format": "tobkiri.schema-kernel-probe/1", "passed": True,
+        "qualification_scope": "original-object-primitives/1",
+        "implemented_handler_count": 0, "schema_validation_executed": False,
         "extension_sha256": hashlib.sha256(extension).hexdigest(),
         "component_sha256": component_identity,
         "actual_limited_api": True,
@@ -483,6 +525,8 @@ def run(
     probe_files = fetch_sdk.inventory(probe_source)
     receipt = {
         "format": "tobkiri.schema-kernel-build/1", "outcome": "pending",
+        "qualification_scope": "original-object-primitives/1",
+        "implemented_handler_count": 0, "schema_validation_executed": False,
         "inputs": inputs, "configuration": private, "probe_source": probe_files,
         "target": "wasm32-wasip2", "feature": "pyo3/abi3-py313", "stages": [],
         "guest_executed": False, "original_64_cases_compared": False,
@@ -514,6 +558,9 @@ def run(
         if (
             observation.get("passed") is not True
             or observation.get("actual_limited_api") is not True
+            or observation.get("qualification_scope") != "original-object-primitives/1"
+            or observation.get("implemented_handler_count") != 0
+            or observation.get("schema_validation_executed") is not False
             or observation.get("native_data_consumer_sha256")
             != inputs["native_data_consumer"]["sha256"]
             or verify_inputs(*arguments) != inputs
