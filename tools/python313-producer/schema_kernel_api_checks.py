@@ -140,6 +140,7 @@ def exercise_api():
 
     exercise_types()
     exercise_evolve()
+    exercise_post_init()
     return {
         "lazy_start_and_resume": True,
         "actual_error_objects_and_references": True,
@@ -155,6 +156,7 @@ def exercise_api():
         "unstarted_keyword_does_not_acquire_child": True,
         "default_type_dispatch_matches_original": True,
         "evolve_order_live_aliases_and_name_resolution": True,
+        "post_init_order_live_callbacks_and_state": True,
     }
 
 
@@ -489,6 +491,275 @@ def exercise_evolve():
         sys.modules["schema_adapter"].install(uninstalled)
     assert uninstalled.evolve is callable_evolve
     assert uninstalled({}).evolve(schema={}) is marker
+
+
+def exercise_post_init():
+    """Compare genuine post-init objects, getter order, and partial writes."""
+    import sys
+    from jsonschema import Draft202012Validator, validators
+    from referencing import Registry
+
+    events, state = [], {"active": False}
+    raised = ValueError("post-init callback")
+    first, second, ignored = object(), object(), object()
+    original_id_of = Draft202012Validator.ID_OF
+
+    def handler_a(*args):
+        return ()
+
+    def handler_b(*args):
+        return ()
+
+    def applicable(schema):
+        events.append(("applicable", schema))
+        for key, value in schema.items():
+            events.append(("yield", key))
+            yield key, value
+            if state.get("fail") == "applicable":
+                raise raised
+            if state.get("live") and key == "first":
+                cls.VALIDATORS["second"] = handler_b
+                events.append("replace_second")
+
+    def id_of(schema):
+        if not state["active"]:
+            return original_id_of(schema)
+        events.append(("id_of", schema))
+        if state.get("fail") == "id_of":
+            raise raised
+        return state.get("id")
+
+    # Supply callbacks to the actual factory before the adapter captures their
+    # closure values. No replacement class, resource, or registry implements the
+    # behavior under comparison.
+    cls = validators.create(
+        Draft202012Validator.META_SCHEMA,
+        validators={"first": handler_a, "second": handler_a},
+        id_of=id_of, applicable_validators=applicable,
+    )
+    if "schema_adapter" in sys.modules:
+        sys.modules["schema_adapter"].install(cls)
+    method = cls.__attrs_post_init__
+    original = getattr(method, "__wrapped__", method)
+    closure = dict(zip(original.__code__.co_freevars, original.__closure__ or ()))
+    specification = closure["specification"].cell_contents
+    assert closure["applicable_validators"].cell_contents is applicable
+    assert closure["id_of"].cell_contents is id_of
+    namespace, builtin_names = original.__globals__, original.__builtins__
+    missing = object()
+    saved_getattr = namespace.get("getattr", missing)
+    saved_builtins = namespace.get("__builtins__", missing)
+    saved_builtin_getattr = builtin_names["getattr"]
+    saved_specifications = namespace["SPECIFICATIONS"]
+    saved_remote = namespace["_REMOTE_WARNING_REGISTRY"]
+    lookup_missing = "__getattribute__" not in cls.__dict__
+    saved_lookup, saved_validators = cls.__getattribute__, cls.VALIDATORS
+    registry_type, specification_type = type(saved_specifications), type(specification)
+    saved_combine = registry_type.combine
+    saved_resource = specification_type.create_resource
+    saved_resolver = registry_type.resolver_with_root
+    custom_registry = Registry()
+    preset = custom_registry.resolver()
+    legacy = validators._RefResolver.from_schema({})
+    saved_scopes = legacy._scopes_stack[:]
+    legacy_type, saved_push = type(legacy), type(legacy).push_scope
+    watched = {"_resolver", "_registry", "schema", "VALIDATORS", "_ref_resolver"}
+
+    def lookup(self, name):
+        if self is state.get("target") and name in watched:
+            events.append(name)
+            if name == "VALIDATORS":
+                state["validator_reads"] += 1
+                if state.get("fresh") and state["validator_reads"] == 2:
+                    cls.VALIDATORS["first"] = handler_b
+                    events.append("replace_first")
+        return saved_lookup(self, name)
+
+    def combine(self, *registries):
+        events.append(("combine", self, registries))
+        if state.get("fail") == "combine":
+            raise raised
+        return saved_combine(self, *registries)
+
+    def create_resource(self, contents):
+        assert self is specification
+        events.append(("resource", contents))
+        if state.get("fail") == "resource":
+            raise raised
+        resource = saved_resource(self, contents)
+        assert resource.contents is contents
+        return resource
+
+    def resolver_with_root(self, resource):
+        events.append(("resolver", resource.contents))
+        if state.get("fail") == "resolver":
+            raise raised
+        result = saved_resolver(self, resource)
+        state["created_resolver"] = result
+        return result
+
+    def push_scope(self, scope):
+        assert self is legacy
+        events.append(("push_scope", scope))
+        if state.get("fail") == "push_scope":
+            raise raised
+        return saved_push(self, scope)
+
+    def tracked_getattr(obj, name, *defaults):
+        if name == "push_scope":
+            assert defaults == (None,)
+            events.append(("getattr", obj, name, defaults[0]))
+            if state.get("fail") == "getattr":
+                raise raised
+        return saved_builtin_getattr(obj, name, *defaults)
+
+    def compare(schema, resolver=preset, registry=custom_registry, ref=None, **controls):
+        observations = []
+        for function in (original, method):
+            validator = object.__new__(cls)
+            old_validators = [(handler_a, "old", ignored)]
+            for name, value in (("schema", schema), ("_resolver", resolver),
+                                ("_registry", registry), ("_ref_resolver", ref),
+                                ("_validators", old_validators)):
+                object.__setattr__(validator, name, value)
+            cls.VALIDATORS = saved_validators.copy()
+            legacy._scopes_stack[:] = saved_scopes
+            state.clear()
+            state.update(active=True, target=validator, validator_reads=0, **controls)
+            events.clear()
+            failure = None
+            try:
+                for _ in range(controls.get("repeat", 1)):
+                    assert function(validator) is None
+            except ValueError as error:
+                assert error is raised
+                failure = error
+            actual_resolver = saved_lookup(validator, "_resolver")
+            if "created_resolver" in state:
+                assert actual_resolver is state["created_resolver"]
+            else:
+                assert actual_resolver is resolver
+            actual_validators = saved_lookup(validator, "_validators")
+            observations.append((events[:], actual_validators,
+                                 actual_validators is old_validators,
+                                 actual_resolver is resolver,
+                                 legacy._scopes_stack[:], failure))
+            state["active"] = False
+        assert observations[0] == observations[1]
+        # Tuple members must retain the actual callbacks and original schema
+        # values, including after a live VALIDATORS replacement.
+        assert all(all(a is b for a, b in zip(left, right))
+                   for left, right in zip(observations[0][1], observations[1][1]))
+        return observations[1]
+
+    def restore(mapping, name, value):
+        if value is missing:
+            mapping.pop(name, None)
+        else:
+            mapping[name] = value
+
+    cls.__getattribute__ = lookup
+    registry_type.combine = combine
+    specification_type.create_resource = create_resource
+    registry_type.resolver_with_root = resolver_with_root
+    legacy_type.push_scope = push_scope
+    namespace["getattr"] = tracked_getattr
+    schema = {"first": first, "missing": ignored, "second": second}
+    try:
+        reads, values, old, retained, _, failure = compare(schema, fresh=True, live=True)
+        assert not old and retained and failure is None
+        assert values == [(handler_b, "first", first), (handler_b, "second", second)]
+        assert reads == ["_resolver", "schema", "schema", "schema", ("applicable", schema),
+                         ("yield", "first"), "VALIDATORS", "VALIDATORS", "replace_first",
+                         "replace_second", ("yield", "missing"), "VALIDATORS",
+                         ("yield", "second"), "VALIDATORS", "VALIDATORS", "_ref_resolver",
+                         ("getattr", None, "push_scope", None)]
+        # A preset resolver prevents every registry/resource operation.
+        assert compare(schema, fail="resource")[-1] is None
+        for boolean, schema_reads in ((True, 1), (False, 2)):
+            reads, values, old, _, _, failure = compare(boolean)
+            assert values == [] and not old and failure is None
+            assert reads == ["_resolver"] + ["schema"] * schema_reads + [
+                "_ref_resolver", ("getattr", None, "push_scope", None)]
+            compare(boolean, resolver=None)
+
+        reads = compare(schema, resolver=None)[0]
+        assert reads[:6] == ["_resolver", "_registry",
+                             ("combine", saved_specifications, (custom_registry,)),
+                             "schema", ("resource", schema), ("resolver", schema)]
+        reads = compare(schema, resolver=None, registry=saved_remote)[0]
+        assert reads[:5] == ["_resolver", "_registry", "schema",
+                             ("resource", schema), ("resolver", schema)]
+        reads = compare(schema, resolver=None, repeat=2)[0]
+        assert sum(event == ("resource", schema) for event in reads) == 1
+        assert sum(event == ("applicable", schema) for event in reads) == 2
+        for stage in ("combine", "resource", "resolver"):
+            _, _, old, retained, _, failure = compare(schema, resolver=None, fail=stage)
+            assert old and retained and failure is raised
+        # Resolver assignment precedes keyword evaluation; a failed list
+        # comprehension leaves the old _validators but keeps the new resolver.
+        _, _, old, retained, _, failure = compare(schema, resolver=None, fail="applicable")
+        assert old and not retained and failure is raised
+
+        for scope in (None, "", "nested"):
+            reads, _, old, _, scopes, failure = compare(schema, ref=legacy, id=scope)
+            assert not old and failure is None
+            assert reads[-(1 if scope is None else 2):] == (
+                [("id_of", schema)] if scope is None else
+                [("id_of", schema), ("push_scope", scope)])
+            assert len(scopes) == len(saved_scopes) + (scope is not None)
+        for stage in ("getattr", "id_of", "push_scope"):
+            _, _, old, _, scopes, failure = compare(schema, ref=legacy, id="nested", fail=stage)
+            assert not old and scopes == saved_scopes and failure is raised
+        legacy_type.push_scope = None
+        reads = compare(schema, ref=legacy, fail="id_of")[0]
+        assert reads[-1] == ("getattr", legacy, "push_scope", None)
+        legacy_type.push_scope = push_scope
+
+        # Resolve globals and the function's captured builtins dictionary at
+        # call time, while retaining its actual specification closure object.
+        namespace["SPECIFICATIONS"] = custom_registry
+        reads = compare(schema, resolver=None)[0]
+        assert reads[2] == ("combine", custom_registry, (custom_registry,))
+        namespace["_REMOTE_WARNING_REGISTRY"] = custom_registry
+        assert compare(schema, resolver=None)[0][2] == "schema"
+        namespace.pop("getattr", None)
+        namespace["__builtins__"] = {}
+        builtin_names["getattr"] = tracked_getattr
+        compare(schema, ref=legacy, id="nested")
+    finally:
+        state["active"] = False
+        cls.VALIDATORS = saved_validators
+        if lookup_missing:
+            del cls.__getattribute__
+        else:
+            cls.__getattribute__ = saved_lookup
+        registry_type.combine = saved_combine
+        specification_type.create_resource = saved_resource
+        registry_type.resolver_with_root = saved_resolver
+        legacy_type.push_scope = saved_push
+        legacy._scopes_stack[:] = saved_scopes
+        namespace["SPECIFICATIONS"] = saved_specifications
+        namespace["_REMOTE_WARNING_REGISTRY"] = saved_remote
+        restore(namespace, "getattr", saved_getattr)
+        restore(namespace, "__builtins__", saved_builtins)
+        builtin_names["getattr"] = saved_builtin_getattr
+
+    original_factory = getattr(validators.create, "__wrapped__", validators.create)
+    uninstalled = original_factory(Draft202012Validator.META_SCHEMA)
+    marker, calls = object(), []
+
+    class CallablePostInit:
+        def __call__(self):
+            calls.append(marker)
+            return marker
+
+    custom = CallablePostInit()
+    uninstalled.__attrs_post_init__ = custom
+    if "schema_adapter" in sys.modules:
+        sys.modules["schema_adapter"].install(uninstalled)
+    assert uninstalled.__attrs_post_init__ is custom
+    assert type(uninstalled({})) is uninstalled and calls == [marker]
 
 
 def exercise_unsupported_native():

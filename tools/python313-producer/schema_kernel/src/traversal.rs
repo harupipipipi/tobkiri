@@ -98,15 +98,106 @@ fn global_name<'py>(
         .evolve_builtins
         .as_ref()
         .ok_or_else(|| PyRuntimeError::new_err("native evolve builtins are unavailable"))?;
-    if let Some(value) = globals.bind(py).get_item(name)? {
+    lookup_name(globals.bind(py), builtins.bind(py), name)
+}
+
+fn lookup_name<'py>(
+    globals: &Bound<'py, PyDict>,
+    builtins: &Bound<'py, PyDict>,
+    name: &str,
+) -> PyResult<Bound<'py, PyAny>> {
+    let py = globals.py();
+    if let Some(value) = globals.get_item(name)? {
         return Ok(value);
     }
-    if let Some(value) = builtins.bind(py).get_item(name)? {
+    if let Some(value) = builtins.get_item(name)? {
         return Ok(value);
     }
     let error = pyo3::exceptions::PyNameError::new_err(format!("name '{name}' is not defined"));
     error.value(py).setattr("name", name)?;
     Err(error)
+}
+
+/// Original attrs post-init body; the genuine generated constructor still runs.
+// Keep original Python locals alive through subsequent callbacks. Struct fields
+// drop in declaration order, matching the original fast-local declaration order.
+struct PostInitLocals<'py> {
+    registry: Option<Bound<'py, PyAny>>,
+    resource: Option<Bound<'py, PyAny>>,
+    push_scope: Option<Bound<'py, PyAny>>,
+    id: Option<Bound<'py, PyAny>>,
+}
+
+#[pyfunction]
+fn post_init<'py>(
+    validator: &Bound<'py, PyAny>,
+    applicable: &Bound<'py, PyAny>,
+    specification: &Bound<'py, PyAny>,
+    id_of: &Bound<'py, PyAny>,
+    globals: &Bound<'py, PyDict>,
+    builtins: &Bound<'py, PyDict>,
+) -> PyResult<()> {
+    let py = validator.py();
+    let mut locals = PostInitLocals {
+        registry: None,
+        resource: None,
+        push_scope: None,
+        id: None,
+    };
+    if validator.getattr("_resolver")?.is_none() {
+        locals.registry = Some(validator.getattr("_registry")?);
+        if !locals.registry.as_ref().unwrap().is(&lookup_name(
+            globals,
+            builtins,
+            "_REMOTE_WARNING_REGISTRY",
+        )?) {
+            locals.registry = Some(
+                lookup_name(globals, builtins, "SPECIFICATIONS")?
+                    .call_method1("combine", (locals.registry.as_ref().unwrap(),))?,
+            );
+        }
+        let create_resource = specification.getattr("create_resource")?;
+        locals.resource = Some(create_resource.call1((validator.getattr("schema")?,))?);
+        drop(create_resource);
+        let resolver = locals
+            .registry
+            .as_ref()
+            .unwrap()
+            .call_method1("resolver_with_root", (locals.resource.as_ref().unwrap(),))?;
+        validator.setattr("_resolver", resolver)?;
+    }
+    // Attribute reads and short-circuit order match the original Python body.
+    let is_true = validator.getattr("schema")?.is(&true.into_pyobject(py)?);
+    let is_false = !is_true && validator.getattr("schema")?.is(&false.into_pyobject(py)?);
+    let selected = PyList::empty(py);
+    if !is_true && !is_false {
+        let pairs = applicable
+            .call1((validator.getattr("schema")?,))?
+            .try_iter()?;
+        for pair in pairs {
+            let (keyword, value) = field_pair(&pair?)?;
+            if validator.getattr("VALIDATORS")?.contains(&keyword)? {
+                let callable = validator.getattr("VALIDATORS")?.get_item(&keyword)?;
+                selected.append((callable, keyword, value))?;
+            }
+        }
+    }
+    validator.setattr("_validators", selected)?;
+    let getattr = lookup_name(globals, builtins, "getattr")?;
+    locals.push_scope =
+        Some(getattr.call1((validator.getattr("_ref_resolver")?, "push_scope", py.None()))?);
+    drop(getattr);
+    if !locals.push_scope.as_ref().unwrap().is_none() {
+        locals.id = Some(id_of.call1((validator.getattr("schema")?,))?);
+        if !locals.id.as_ref().unwrap().is_none() {
+            locals
+                .push_scope
+                .as_ref()
+                .unwrap()
+                .call1((locals.id.as_ref().unwrap(),))?;
+        }
+    }
+    Ok(())
 }
 
 fn field_pair<'py>(field: &Bound<'py, PyAny>) -> PyResult<(Bound<'py, PyAny>, Bound<'py, PyAny>)> {
@@ -574,5 +665,6 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(iter_errors, module)?)?;
     module.add_function(wrap_pyfunction!(descend, module)?)?;
     module.add_function(wrap_pyfunction!(evolve, module)?)?;
+    module.add_function(wrap_pyfunction!(post_init, module)?)?;
     Ok(())
 }

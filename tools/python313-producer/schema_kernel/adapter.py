@@ -20,6 +20,7 @@ _DEFAULT_CHECKER = _types.draft202012_type_checker
 _DEFAULT_LOOKUP = object.__getattribute__
 _DEFAULT_METHOD = _types.TypeChecker.is_type
 _EVOLVE_CODE = _DEFAULT_CLASS.evolve.__code__
+_POST_INIT_CODE = _DEFAULT_CLASS.__attrs_post_init__.__code__
 
 
 _BUILTINS = {
@@ -86,6 +87,9 @@ def install(validator_class):
         return
     original = _closure(validator_class.descend)
     original_evolve = validator_class.evolve
+    original_post_init = validator_class.__attrs_post_init__
+    native_post_init = getattr(original_post_init, "__code__", None) is _POST_INIT_CODE
+    post_fields = _closure(original_post_init) if native_post_init else None
     native_evolve = getattr(original_evolve, "__code__", None) is _EVOLVE_CODE
     evolve_fields = _closure(original_evolve).get("evolve_fields") if native_evolve else None
     # These are the actual original create() closure objects. Recomputing the
@@ -123,6 +127,24 @@ def install(validator_class):
     @wraps(original_evolve)
     def evolve(self, **changes):
         return kernel.evolve(self, changes, context)
+
+    if native_post_init:
+        # Keep the original generated attrs constructor and its call/field order.
+        # These are live original closure/namespace references, not rebuilt state.
+        post_applicable = post_fields["applicable_validators"]
+        post_specification = post_fields["specification"]
+        post_id_of = post_fields["id_of"]
+        post_globals = original_post_init.__globals__
+        post_builtins = original_post_init.__builtins__
+
+        @wraps(original_post_init)
+        def __attrs_post_init__(self):
+            return kernel.post_init(
+                self, post_applicable, post_specification, post_id_of,
+                post_globals, post_builtins,
+            )
+
+        validator_class.__attrs_post_init__ = __attrs_post_init__
 
     validator_class.iter_errors = iter_errors
     validator_class.descend = descend

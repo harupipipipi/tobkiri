@@ -2,8 +2,10 @@
 
 This is an experimental Rust/PyO3 port of jsonschema 4.26.0 traversal and all
 36 Draft 2020-12 keyword handlers. It is not connected to product Setup or the
-product validator. Current engine code has not yet passed compilation/parity;
-source completion is not a successful runtime observation.
+product validator. Source 34994f41b passed actual native compilation and its
+64-case / 14-group functional comparison in CI 41090025133. Its actual Wasm
+call still exhausted the unchanged fuel limit; native parity is not Wasm or
+product acceptance. The next post-init source below has not yet been verified.
 
 ## Boundary
 
@@ -42,7 +44,7 @@ original classes and registry. Its 64 actual selfchecks run in one real Core
 NativeData invocation under unchanged 64 MiB / 2-billion fuel / original absolute
 30-second limits. Compare first errors, ordered context, actual references,
 parent/cause, paths and complete rendering hashes, plus the real meta-registry
-and class format-checker membership. Thirteen additional actual public API probes
+and class format-checker membership. Fifteen additional actual public API groups
 cover lazy resume/close, interleaving, PEP479, false-schema early paths, evolve
 and unregistered extension-class reclamation, unstarted cursors, final reference
 release and cyclic GC with an externally retained delegated child. The same
@@ -76,8 +78,9 @@ behavior remains in Python inside Wasm. Actual execution counters retain no type
 or validation results. Added comparisons include non-finite floats, bigint,
 subclasses/overridden methods and exceptions, Number ABC registration/cache clear,
 unknown/surrogate/nonstandard names, checker changes and method overrides.
-The optimized source has not yet passed compilation/parity or improved the actual
-fuel measurement. The full 64-case and cold catalog gates remain required.
+The optimized source passed native compilation/parity at 2f853413f; its Wasm
+call still exhausted the original fuel, as recorded below. The complete Wasm
+64-case and cold catalog gates remain required.
 
 This is not the full 45-cold-call / 305-entry / 453-read catalog or ordinary Flow,
 real OS owner, original GUI, 1B conversation or product parity proof. Per-handler
@@ -121,7 +124,7 @@ these native observations do not establish full API or denial parity.
 
 The new CI-only native precheck compiles the same source/PyO3 ABI as a real native
 extension, compares all 64 cases with strict bool/int/float distinctions, checks
-all 13 API groups and the separate invalid-key outcomes before the expensive Core
+all 15 API groups and the separate invalid-key outcomes before the expensive Core
 consumer build. It records no Wasm execution/budget/GUI/product acceptance. The
 subsequent unchanged Wasm gate remains mandatory. This precheck is not shipped.
 
@@ -143,5 +146,20 @@ missing aliases read actual attributes in original order, and the selected actua
 constructor is called with original object references. The fourteenth API group
 compares getter order, live field-list mutation, explicit None, namespace changes,
 NameError.name, constructor failures, draft switching and overrides. Context GC
-visits the added actual references. Compilation, native/Wasm parity and fuel
-improvement for this new evolve source remain unverified.
+visits the added actual references. At source 34994f41b, CI 41090025133 / job
+124181172734 passed the original reference/API step and the actual native Rust
+comparison step, including all 64 cases and 14 API groups. The same job built
+the actual native Core consumer and component, but its Core/Wasm call exhausted
+all 2 billion fuel after 2.049135565 seconds, with the original deadline preserved
+and no deadline/unreachable trap. It returned no 64-case result. Overall CI failed;
+no fuel improvement is claimed. The stack includes genuine generated-constructor
+initialization under the Rust keyword iterator, not proof of its whole cost.
+
+The next narrow port replaces only the original `__attrs_post_init__` body with
+Rust, guarded by actual original code identity. The genuine attrs constructor,
+class, field initialization, registry/resource/resolver and custom method overrides
+remain in place. Original closure callables and function namespaces are retained.
+Resolver creation, boolean short-circuit attribute reads, live keyword selection,
+commit-after-comprehension behavior and legacy scope callbacks keep their original
+order. Its new fifteenth API group and actual compilation/native/Wasm comparison
+are pending; this is source work only.

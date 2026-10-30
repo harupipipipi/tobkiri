@@ -266,7 +266,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   中途 list 変更を snapshot 化せず、global / builtin の差替え・欠落 NameError.name・
   明示 None・属性取得順・class 遷移・constructor 例外・override を 14 件目の群で比較。
   Astra high の回答に従い元 class / resolver / registry の owner を増殖させず、GC 対象の
-  実参照を追加。新 loop の実 compile / parity / 同じ cold 入力での fuel 改善は未検証。
+  実参照を追加。source `34994f41b` の CI `41090025133` / job `124181172734` は
+  元 reference / API と実 native Rust 比較（全 64 件・14 API 群）の段階に成功。
+  同じ job の実 Core consumer / component build も成功したが、Wasm 実行は
+  残燃料 0 / 2B、約 2.049135565 秒で停止。元 deadline は保持、期限超過や
+  unreachable はなし。run 全体は失敗、Wasm parity・燃料改善は未証明。
+- 次の整理対象は元 `__attrs_post_init__` の body。元 generated attrs constructor・
+  class・field initialization は保持し、元 code object が一致する body のみ Rust へ移す。
+  実 registry / resource / resolver と closure / namespaces を引き継ぎ、boolean 属性取得の
+  short-circuit・live keyword 選択・list 完成後の一度の保存・legacy scope callback の
+  順序と失敗を 15 件目の API 群で比較する。新 source の実 compile / parity は未検証。
 
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 

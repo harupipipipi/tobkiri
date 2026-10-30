@@ -571,6 +571,7 @@ def probe() -> None:
             "unstarted_keyword_does_not_acquire_child": True,
             "default_type_dispatch_matches_original": True,
             "evolve_order_live_aliases_and_name_resolution": True,
+            "post_init_order_live_callbacks_and_state": True,
         }
         or type(result.get("type_dispatch_counts", {}).get("native_default")) is not int
         or result["type_dispatch_counts"]["native_default"] <= 0
