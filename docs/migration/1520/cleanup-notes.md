@@ -643,3 +643,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   missing NameError と実 `.name` を保持する。caller / schema 文字列は intern しない。
   既存 API18 の live namespace / builtin fallback / NameError / callback 比較を残し、
   新しい private 反射を必須条件へ追加しない。この変更の compile / 効果は未確認。
+
+
+## 013: 追加した private 反射仮説を元の製品要件へ拡大しない
+
+- 状態: **出荷 caller / SDK / issue と18群の対応を整理し、実装前に検査を分離中**。
+- 根拠: `schema-port-scope.md` の具体的な呼出し元、公式4.26 protocol、現在の原本unit
+  inventory。839はunit数でありtest件数ではない。限定検索の未発見だけで除外はしない。
+- Astra high はprivate builtin のPython function内部構造を一律MUSTとした前提を修正。
+  公開 callable / callback / checker / resolver / errors / generator の機能契約は残す。
+- 必須第18群は callback delegation / 保存alias / handler選択 / opaque FFI拒否を検査。
+  元の code改変 / metadata / audit観測は3件の独立diagnosticとしてすべて保持し、結果・理由を
+  出す。非Python callable を passed と偽らない。復旧失敗・未知BaseExceptionはfatal。
+  record欠落を拒否し、同じinvocation内で計測。元64 / 必須18 / 全catalog / 予算は維持。
+- source `534b2619a` は実native64/API18成功。一括Wasmは元2Bで停止。累積診断は10件完了、
+  同じcontract_v4まで1,142,086,379 fuel（直前から約3.45%減）。native-only profileでは
+  _coerce_argsが124,923回。次の候補はその短いbodyのみで、lookup helper抽出は保留。
+  実constructor / URI parser / caches / decode helper は使い続け、新候補の性能は未証明。

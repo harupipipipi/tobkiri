@@ -2,7 +2,8 @@
 
 from schema_urljoin_checks import exercise_urljoin
 from schema_descend_checks import exercise_descend, _original_keywords
-from schema_callable_checks import exercise_callable_changes
+from schema_callable_checks import (exercise_callable_contracts,
+                                    exercise_callable_diagnostics)
 
 
 def exercise_api():
@@ -147,7 +148,7 @@ def exercise_api():
     exercise_post_init()
     urljoin_checks = exercise_urljoin()
     descend_checks = exercise_descend()
-    callable_checks = exercise_callable_changes()
+    callable_checks = exercise_callable_contracts()
     return {
         "lazy_start_and_resume": True,
         "actual_error_objects_and_references": True,
@@ -167,6 +168,15 @@ def exercise_api():
         **urljoin_checks,
         **descend_checks,
         **callable_checks,
+    }
+
+
+def exercise_implementation_diagnostics():
+    """Record additional Python-function hypotheses outside product requirements."""
+    return {
+        "scope": "additional private Python-function compatibility hypotheses",
+        "required_contract_checks": False,
+        "observations": exercise_callable_diagnostics(),
     }
 
 
@@ -861,6 +871,7 @@ if __name__ == "__main__":
     print(json.dumps({
         "format": "tobkiri.schema-port-original-api/1",
         "checks": exercise_api(),
+        "implementation_diagnostics": exercise_implementation_diagnostics(),
         "wasm_executed": False, "production_enabled": False,
     }, sort_keys=True))
     print(json.dumps({

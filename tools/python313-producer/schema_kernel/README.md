@@ -382,3 +382,21 @@ or product use. The next narrow source change reuses only four fixed global-name
 metadata strings in live traversal lookups; actual namespace/builtin values,
 lookup order, exceptions and callbacks remain uncached. Its compile/parity/fuel
 measurements are pending.
+
+At source 534b2619a, actual native 64/API18 passed (normal CI 41119565303 /
+job 124282530066), while the original one-shot Wasm call still exhausted 2B.
+Progress CI 41119575922 / job 124282573742 returned ten cases and stopped in
+external_normal_pack_catalog_v4; contract_v4 used 1,142,086,379 fuel, about 3.45%
+less than 1cbd05f75. Separate native-only profile 41120886325 / job 124286847964
+observed 124,923 coerce_args calls among the same original 64 check_schema calls;
+its instrumented native times are not Wasm measurements or benchmark claims.
+
+The required eighteenth group now covers documented parent-callable delegation,
+saved aliases/handler selection and all opaque-metadata rejection inputs. Private
+Python-function code/reflection hypotheses remain three independently reported
+implementation diagnostics. Missing records or failed state restoration stop
+verification; not-python-function is explicit and never reported as passed.
+This classification is based on original caller/SDK contracts before any native
+C-callable implementation, not on a failed test. All observations still execute
+within the original invocation and budget. The new separation requires fresh CI;
+no budget or original product gate is waived.

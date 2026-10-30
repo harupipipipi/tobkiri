@@ -42,7 +42,7 @@ import jsonschema_specifications
 import wit_world.exports
 from schema_adapter import install_standard_classes
 from schema_inputs import CASES_JSON
-from schema_api_checks import exercise_api
+from schema_api_checks import exercise_api, exercise_implementation_diagnostics
 from schema_kernel_observation import meta_nodes, node_digest, observe
 
 install_standard_classes()
@@ -147,6 +147,7 @@ class Probe(wit_world.exports.Probe):
             "selfchecks": selfchecks,
             "schema_keyword_entries": kernel.keyword_entry_count(),
             "public_api_checks": exercise_api(),
+            "implementation_diagnostics": exercise_implementation_diagnostics(),
             "keyword_entries": kernel.keyword_entry_count(),
             "meta_schema_sha256": node_digest(jsonschema.Draft202012Validator.META_SCHEMA),
             "meta_registry_sha256": {
@@ -195,7 +196,9 @@ def _advance_progress():
     if index == len(state["cases"]):
         checks = exercise_api()
         state["index"] += 1
-        return json.dumps({"phase": "api", "checks": checks},
+        diagnostics = exercise_implementation_diagnostics()
+        return json.dumps({"phase": "api", "checks": checks,
+                           "implementation_diagnostics": diagnostics},
                           sort_keys=True, separators=(",", ":"))
     return '{"phase":"complete"}'
 
@@ -229,6 +232,30 @@ def progress_app() -> str:
         selfchecks = []
 ''')
     return app + PROGRESS_SUFFIX
+
+
+
+def validate_implementation_diagnostics(value: object) -> dict:
+    """Require explicit records without treating implementation hypotheses as gates."""
+    if (type(value) is not dict
+            or value.get("required_contract_checks") is not False
+            or value.get("scope") != "additional private Python-function compatibility hypotheses"
+            or type(value.get("observations")) is not dict
+            or set(value["observations"]) != {"properties", "type_checker", "object_predicate"}):
+        raise ValueError("additional implementation diagnostic records are missing")
+    for record in value["observations"].values():
+        if (type(record) is not dict
+                or record.get("status") not in {"passed", "failed", "not-python-function"}
+                or type(record.get("reason")) is not str or not record["reason"]):
+            raise ValueError("additional implementation diagnostic status is invalid")
+        if record["status"] == "failed" and (
+                type(record.get("exception_class")) is not str
+                or type(record.get("message")) is not str):
+            raise ValueError("failed diagnostic must retain actual exception details")
+        if (record["status"] == "not-python-function"
+                and type(record.get("callable_type")) is not str):
+            raise ValueError("non-Python diagnostic must name the actual callable type")
+    return value
 
 
 def summarize_progress(records: list[dict], component: str, reference: dict) -> dict:
@@ -297,6 +324,8 @@ def summarize_progress(records: list[dict], component: str, reference: dict) -> 
                 if (not isinstance(checks, dict) or len(checks) != 18
                         or any(value is not True for value in checks.values())):
                     raise ValueError("diagnostic actual API observations differ")
+                item["implementation_diagnostics"] = validate_implementation_diagnostics(
+                    payload.get("implementation_diagnostics"))
             complete = expected_phase == "complete"
             if complete != (index == 66 and index == len(records) - 1):
                 raise ValueError("diagnostic completion position differs")
@@ -733,7 +762,7 @@ def probe() -> None:
             "post_init_order_live_callbacks_and_state": True,
             "urljoin_actual_helpers_callbacks_and_registry": True,
             "descend_keyword_binding_and_generator_protocol": True,
-            "live_keyword_and_checker_code_changes": True,
+            "callable_delegation_and_ffi_metadata_safety": True,
         }
         or type(result.get("schema_keyword_entries")) is not int
         or result["schema_keyword_entries"] <= 0
@@ -781,6 +810,7 @@ def probe() -> None:
                 "sha256": hashlib.sha256(diagnostic.encode()).hexdigest(),
             }), flush=True)
         raise ValueError("real native DATA kernel call differs; inspect native report")
+    validate_implementation_diagnostics(result.get("implementation_diagnostics"))
     (work / "probe.json").write_text(json.dumps({
         "format": "tobkiri.schema-kernel-probe/1", "passed": True,
         "qualification_scope": "original-object-schema-selfcheck/1",

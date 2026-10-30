@@ -126,7 +126,8 @@ def run(args, receipt):
     if getattr(_keywords, "_tobkiri_translated_keywords", False) is not True:
         raise ValueError("public keyword definitions were not translated before import")
     from jsonschema_specifications import REGISTRY
-    from schema_kernel_api_checks import exercise_api, exercise_unsupported_native
+    from schema_kernel_api_checks import (exercise_api, exercise_unsupported_native,
+                                          exercise_implementation_diagnostics)
     from schema_kernel_observation import meta_nodes, node_digest, observe
 
     spec = importlib.util.spec_from_file_location("schema_adapter", args.source / "adapter.py")
@@ -197,6 +198,8 @@ def run(args, receipt):
     api = exercise_api()
     if len(api) != 18 or not all(value is True for value in api.values()):
         raise ValueError("all eighteen actual API groups required")
+    implementation_diagnostics = builder.validate_implementation_diagnostics(
+        exercise_implementation_diagnostics())
     unsupported = exercise_unsupported_native()
     entries = kernel.keyword_entry_count()
     if type(entries) is not int or entries <= 0:
@@ -204,7 +207,8 @@ def run(args, receipt):
     if fetch_sdk.inventory(args.source) != source:
         raise ValueError("native kernel source changed during comparison")
     receipt.update(outcome="success", native_64_success=True, api_18_success=True,
-                   api_checks=api, unsupported_native=unsupported, keyword_entries=entries, schema_keyword_entries=schema_entries,
+                   api_checks=api, implementation_diagnostics=implementation_diagnostics,
+                   unsupported_native=unsupported, keyword_entries=entries, schema_keyword_entries=schema_entries,
                    pointer_bits=struct.calcsize("P") * 8)
 
 

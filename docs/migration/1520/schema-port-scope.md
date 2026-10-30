@@ -112,7 +112,9 @@ callable の 4 引数、既存 callable への委譲、type / format checker の
 ### 現在の 18 API 群の要求対応（暫定）
 
 「回帰」は既存の挙動を守る追加検査。「仮説」は private 実装への追加互換性観測。
-混在する群は、将来判断する場合も部分ごとに扱う。**現在の gate / 18 群は変更しない。**
+混在した旧第18群を assertion 単位で分け、公開 callback / 委譲 / FFI 安全性を必須の
+第18群へ残した。private code 改変は3件の独立診断へ保持する。元64比較、必須18群、
+全catalog / 原本unit / 2B・64MiB・30秒は維持する。
 
 | 群 | 主な根拠・分類 |
 | --- | --- |
@@ -133,7 +135,7 @@ callable の 4 引数、既存 callable への委譲、type / format checker の
 | post_init_order_live_callbacks_and_state | 実 constructor / registry / callback / error の回帰。内部の詳細観測は別途対応が必要 |
 | urljoin_actual_helpers_callbacks_and_registry | 実 URI / registry 解決。private helper / cache 改変等は追加仮説 |
 | descend_keyword_binding_and_generator_protocol | callback の引数 / error / lazy 境界。private descriptor / code 観測も含む |
-| live_keyword_and_checker_code_changes | private 同一 function の code 改変は追加仮説。偽 metadata による FFI 越境拒否は安全性上必須 |
+| callable_delegation_and_ffi_metadata_safety | 公開 callback の委譲・保存 alias・既存/新規 handler 選択、偽 metadata の FFI 越境拒否が必須 |
 
 current product/runtime/tests、SDK、docs を producer と移植用 probe から分けて検索した範囲で、
 jsonschema private function の `__code__` 改変・function 型判別・`__globals__` 参照を要求する
@@ -156,3 +158,45 @@ source `1cbd05f75` の通常 CI `41117640666` / job `124275891668` は実 compil
 executable_catalog_v4 で停止した。これは同じ診断 protocol 内の実測で、一括合格、
 上限推定、全 catalog / 製品の合格ではない。今回 API18 は合格しており、上の暫定分類は
 失敗した検査を除外するための判断ではない。
+
+### 診断の記録境界（新しい native callable 実装より先に適用）
+
+Astra high は、上記の出荷 caller / SDK / 公式 protocol の根拠に基づく分類に同意した。
+private builtin の `__code__` 改変や FunctionType 判別は追加仮説として記録する。
+引数を渡した時の binding 契約と、inspect.signature 等による反射を同一視しない。
+公開 callback の通常 dispatch / 委譲、TypeChecker.redefine、実 resolver / registry、
+typed error、evolve、iterator の順序・遅延・終了処理は引き続き必須である。
+
+properties / type_checker / object_predicate の診断はそれぞれ独立に実行し、passed /
+failed（実 exception class / message）/ not-python-function（実 callable type と理由）を
+残す。C callable のため Python code を変更できない場合を passed と報告しない。
+診断 record の欠落・不正形式は拒否する。実 mutable code / globals の復旧失敗と未知の
+BaseException は診断失敗として握り潰さず、検証を停止する。
+
+必須第18群は documented validators.extend による builtin parent への委譲も追加で検査し、
+opaque metadata の3入力をすべて拒否する。診断自体は元と同じ cold invocation 内、API
+phase 内で実行する。別 invocation に逃がしたり、元予算を緩めたりはしない。
+
+この分類時点で直前構成の全18群は既に native で合格している。性能不合格後のテスト削除
+ではなく、新しい native callable を設計する前に根拠を整理したもの。新しい callable
+実装の class/instance binding、override、引数エラー、実 predicate dispatch、参照寿命の
+同等性を認定したわけではない。追加診断に failed が出た場合も、実要件への影響を確認する。
+
+## 固定 global 名と現在の native call profile
+
+source `534b2619a` の通常 CI `41119565303` / job `124282530066` は実 native 全64 / API18
+に成功。一括 Wasm は元2B fuelで停止し deadline を保持。累積診断 `41119575922` /
+job `124282573742` は10件完了、次 external_normal_pack_catalog_v4 で停止。同じ
+contract_v4 まで1,142,086,379 fuel、直前の1,182,899,525から約3.45%減だった。
+一括・全catalog・製品の合格ではない。
+
+別の native-only profile `41120886325` / job `124286847964` は、同じ元64 check_schema
+呼出しだけを計測し、observer / APIを計測範囲から除いた。2,199,547 calls、
+lookup 18,123回、_coerce_args 124,923回、evolve 39,112回、descend 39,853回を観測。
+1.029秒は cProfile 下の native CPU 値であり、別 runner の旧値との速度比較やWasm燃料
+削減には使わない。Core / Wasm steps は明示的に skipped の native-only 計測である。
+
+この実際の頻度とAstra high の回答を根拠に、次の候補を短い `_coerce_args(*args)` の
+制御フローだけに絞る。urljoin / parse / decode helper / cache / 実返却値は置換しない。
+初回import前の source翻訳・実globals/builtins参照・GC・引数bindingを確認し、改善が
+再現しなければ戻す。native self時間が全体の一部であることから、大幅改善は約束しない。
