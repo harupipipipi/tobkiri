@@ -107,6 +107,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   既存の bounded extractor で全件展開し、全ファイル・mode・checksum を再照合する。
   使わない Cargo vendor tree / config の生成も除き、表現の違う二重の供給経路を減らす。
   修正後の実 CI はこれからで、kernel の compile / import / call は未証明。
+- 修正後の CI `41051810304` / job `124049453850` で、全 archive 展開後の vendor
+  照合が実際に成功した。現在は Core consumer の build 中で、kernel の成功とは別。
+  追加整理候補: `fetch_registry.unpack` 自体が checksum ファイルを生成するため、
+  wrapper の直後の再書き込みは重複している。canonical bytes と mode の維持を確認して
+  次の実 build 修正時にまとめて除く候補とする。今の CI の検証対象は変更していない。
 
 ## 005: 初回 Profile の生成・承認・保存を一経路にする
 
