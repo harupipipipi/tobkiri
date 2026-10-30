@@ -129,6 +129,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   各実要求でこの条件が適用されるか確認し、元の必要な同意を維持する。
   Astra の一括 Approve / Deny 案は、選択済みの候補・二択の要求・全件 atomic 保存を
   実ソースで確認できた場合だけの条件付き判断である。
+- 条件の供給元も区別する。元 `tobkiri_host/authority_v4.py` は実 request の
+  `typed_confirmation_digest` の有無を UI の required に投影し、表示 phrase との
+  一致も検査する。別の旧 `core_runtime/authority/service.py` は critical risk・
+  `host.process.exec_guarded`・resource / permission 定義から判定する。
+  action のモード選択では `SELECT ...`、実行操作では `EXECUTE` を使う箇所もある。
+  これらの条件を通常の Profile 初回承認へ一律追加しない。逆に、通常起動が二択でも
+  特殊な既存操作の入力要件まで削除しない。実 core-host の現 `trusted_review` は
+  Risk による警告表示だけで、上記の入力条件を移植できた証拠にはならない。
 
 ## 新規項目のひな形
 
