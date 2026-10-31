@@ -1395,3 +1395,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Root監査でsingle kindのreprがstr subclassを返す場合のjoin正規化漏れを修正し、余分な
   __format__呼出を防いだ。Source AST3/rustfmt/diffのみ成功、実native/guest CIは未実施。
   4counter形状とsource inventory14件を維持。燃料削減と全製品の同等性は未測定。
+
+- scalar family 2c1238151 native CI41184395732は成功。新scalar12群/193対に加え、
+  control18/value16/既存全generic・API・backend・reference・fragment・callout・ownership、
+  App37/42/full305-entry453-read比較が一致。extension1,042,408B/
+  SHA ebb3d632cf6fe77ee27ea44b68f2a1e4067754bc0dacc2d1e32df9f739d47e96。
+  RAM artifact13036462026/65,925B、必要JSONのみ41,428B保存。
+- 同じ64件限定のnative Python call profileは27行で60行の保存上限未満。共有libraryの
+  ensure_list行はなく、equalは908回（旧25cの19,020/6,651から変化）。App-own foreign
+  helperを含む全Python呼出数やWasm fuel比率はこのfilterで測っていない。実64件のnative
+  型38,182/数値335、Python value境界0は維持。全体の改善は実guest結果で判定する。
+- 同じ2c123でWasm cold/full41184568625と累積診断41184572912を各1回起動、実行中。
+  元one-Store/2B/64MiB/絶対30秒を維持。最新実guest完走frontierはまだ25cの19件で、
+  このsliceによる全体完走・製品採用・Python/VM廃止は未証明。

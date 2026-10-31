@@ -314,7 +314,7 @@ and physical payload0 passed. Neither the unchanged19-schema frontier nor the
 native comparisons qualify one-shot completion or final product adoption.
 
 
-## App scalar constraint family (implemented; CI pending)
+## App scalar constraint family (native parity; guest pending)
 
 The next source slice owns type, const/enum, six length constraints and the four
 existing numeric bounds in the App value engine. Those operations no longer use
@@ -333,5 +333,10 @@ type checks. Public errors and selected TypePolicy stay at their existing points
 
 Sol6.1 xhigh implemented the important Rust engine and12 groups/193 differential
 pairs. Root integrated the foreign boundaries and CI and corrected single-kind
-repr normalization before f-string formatting. AST/rustfmt checks passed; actual
-native/guest results, budget qualification and product adoption remain pending.
+repr normalization before f-string formatting. Native CI41184395732 at2c1238151
+passed the12 groups/193 pairs and all prior groups, including complete App
+comparisons. The bounded64-case native call profile contains no shared-library
+ensure_list call and908 equal calls; this is neither total Python work nor fuel
+attribution. Same-source Wasm cold/full41184568625 and cumulative41184572912 are
+in progress under the unchanged limits. Budget qualification and final product
+adoption remain pending.
