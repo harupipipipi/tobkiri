@@ -1068,3 +1068,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   coldの現在stackはPython slice/item処理→実Rust Frame.poll、fullはPy_DecRef→Frame.poll。
   現在位置を全費用の説明にはせず、Astraへ次の実移植範囲と診断要否を照会する。
   同ソースの再実行や上限緩和・wholeRuntime/product採用は行わない。
+- Astra highの次の指示は追加のURI/Registry移植ではなく、実Appのschema単位の累積診断。
+  実load_schemaの名前・引数形式・順序・owner/resources/parser/provider/既存cacheを使い、
+  一つのStore/accountで準備から全checkpointまで元の累積2B/64MiB/絶対30秒を保つ。
+  最後に開始したschemaと各完了点の残fuel/cache miss・hitを別診断artifact/receiptへ記録。
+  trap後は続行せず、呼出し分割の擾乱を明記する。元cold/full一括gateは独立して維持する。
+  関数別fuel比率ではなくschemaごとの費用/進行を得て、次のApp内部Rust接続を一箇所選ぶ。
+  診断コードは未実装。小C API移植の反復やnative呼出し数だけでURI移植へ戻らない。
