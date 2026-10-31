@@ -1094,3 +1094,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Defaults Setup270,603,967fuel/2,416frames、Pack manifest212,489,788/1,936等。
   これは分割呼出しのparser/境界/観測等も含むschema単位の比で、関数別費用ではない。
   original cold/full一括gateは未達のまま。次の実移植箇所をAstraへこの実測で照会する。
+- 次はAstraの指示で、取得後のfragment→実contents/次scopeまでをRust frameへ接続する。
+  URI処理/Registry全体/META iteratorを混ぜず、実Registry.get_or_retrieve/anchorは保持する。
+  最初はproviderの既知source初回ロードで明示所有したbuiltin META Resourceだけを対象にし、
+  実Resource参照で所有を記録する。URI名やcontentsの類似で推定せず、外部retrieveが返した
+  正規型Resourceもopaqueのまま。これは解決結果cacheではなく適用範囲の記録。
+  型/specと、操作時に一度取得した実bound methodのfunction/receiverが既定policyに合う
+  場合だけnative処理する。不一致なら取得済みcallableをそのまま呼び、再取得/retryしない。
+  内部spec/helperの動的dispatchも原本の時点で保ち、途中のcallback変更も無視しない。
+  必須比較はpointer escape/index/不正token/欠落/実参照、途中$id/dynamic scope、anchor競合/
+  外部跨ぎ、class patch/format中patch/descriptor/helper変更/所有contents変更/typed cause。
+  fragment移植は未実装。実到達・adapter生成数と同じ累積診断/元cold/fullで採否を決める。
