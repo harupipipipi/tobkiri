@@ -1655,3 +1655,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   compare/truthの順序は確認した。一方、原本Python frame用再帰counterとStable ABIの
   `Py_EnterRecursiveCall`は別counterであり、cycle/deepをRust stack＋固定limitへ置換
   できない。再帰契約が閉じるまで実装を開始せず、Astra highへ次の最小scopeを質問した。
+- 撤去/catch保持`ecae315bc`の[native CI41208526034](https://github.com/harupipipipi/tobkiri/actions/runs/41208526034)
+  は全成功。fragment18群と全既存比較を維持し、extension1,050,496B/SHA
+  cdfaebcf32646aba98ffca5b006c18296e61ecde4e731543e30e96981fee0ad3。
+  RAM artifact13045437918/66,578Bから必要JSON43,214Bだけ保存した。
+  同じecaeで[cold/full41208732791](https://github.com/harupipipipi/tobkiri/actions/runs/41208732791)と
+  [累積41208734734](https://github.com/harupipipipi/tobkiri/actions/runs/41208734734)を各1回開始し、
+  撤去後の元予算での実結果を確認する。まだ未完走であり、改善を先に主張しない。
+- 再帰counter差の一次sourceを受け、Astra highはcontainer equalityも今回は延期とした。
+  元Python再帰frame/genexprを残す内部往復には、まとまった削減がまだ示されていない。
+  次はApp-owned pattern/format familyの実generic carrier往復だけを確認する。実regexと
+  FormatChecker.check内部はそのまま使い、型確認・選択・呼出し・error変換をApp Frameへ
+  接続する。callback/checkerのlive変更・例外/causeと先行したcatch・PEP479境界を維持し、
+  既に直接実行済みの箇所は再包装しない。Sol6.1 xhighがsource gateを監査中。
