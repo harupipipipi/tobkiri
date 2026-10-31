@@ -150,6 +150,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   実行し、中間reference/fundingを内部保持する。任意Fは内部/testへ閉じ、未bound操作は
   実行前のintegration failureにする。元source/WITは現在runtime19＋init/transport7で、
   capture・binding・実検証を分けて記録する。19/7全対応やSetup採用は未完のまま。
+- 有限dispatcherのsource実装が完了。通常入口は3 getterの単体選択と同Store内の実describe。
+  actual getter resultのscope/rootを元CoreValue codecで接続し、descriptionを1回だけ
+  元accountで予約してcopyし、String/Valueへmoveする。再import・外部rawref・slot・F入力を
+  除去し、固定3列はtest限定にした。F廃止で不要になったWorkerFailure/SourceError/worker
+  projection scaffoldを削除し、init Domainはdomain_dataへ直接集約した。
+  追加9件/10回の小component実行とunbound22件の事前拒否を検査するsourceを用意した。
+  Source parse/format/diff確認は成功、型・ABI・実行はCI未検証。cancelは完了descriptionの
+  late publication拒否でありVMのcancel trapではなく、finish faultはSource destructor panic
+  であり実IO故障ではない。元Python/GUI/全19＋7の資格確認へ読み替えない。
+  テスト用watはroot lockの既知1.252.0を使い、独立lockへ既知checksumの3packageのみ追加、
+  旧version/checksumは保持した。実`--locked` resolver確認は次のLauncher CIで行う。
 
 - 条件: 旧 Profile・データ・秘密情報・復旧の実移行、実候補と承認の拘束、
   Stop / Quit の終了・失効まで確認する。空の新 root を既存環境の代用にしない。

@@ -6,15 +6,12 @@ use crate::native_harness_host_inputs::{with_original_host_inputs, NativeHostSou
 use crate::native_runtime_jobs::{
     Finalization, JobTicket, Jobs, LifecycleError, SourceCustody, WorkerExit,
 };
-use crate::native_worker_failure::{
-    Condition, DetachedFailure, Detachment, Outcome, SourceError, Stage, WorkerFailure,
-};
+use crate::native_worker_failure::{Condition, DetachedFailure, Detachment, Outcome, Stage};
 use anyhow::{bail, Result};
 use std::{
     fs::File,
     future::{poll_fn, Future},
     panic::{catch_unwind, AssertUnwindSafe},
-    pin::Pin,
     sync::{atomic::AtomicBool, Arc, Mutex},
     task::Poll,
     time::Instant,
@@ -26,6 +23,11 @@ use tobkiri_harness_native::{
     NativeBootstrap, NativeComponentPreparation, ORIGINAL_PROFILE_SOURCE_METADATA,
 };
 use tobkiri_wasm::NativeDataIoError;
+
+#[path = "native_harness_dispatch.rs"]
+mod dispatch;
+pub(crate) use crate::native_worker_failure::UnboundOperation;
+pub(crate) use dispatch::{OriginalGetter, OriginalOperation};
 
 enum OwnedRuntime {
     Unopened,
@@ -160,14 +162,6 @@ impl BootstrapInputOwner for OriginalBootstrapInputs {
     }
 }
 
-/// The native-only constructor for an already admitted component/index. The
-/// selected roots remain metadata. Init permits only bounded observations;
-/// later original getters require the exact explicit module metadata policy.
-/// No frame or path value can enable general FS, approval or effect authority.
-pub(crate) type OriginalJobFuture<'a> = Pin<
-    Box<dyn Future<Output = std::result::Result<serde_json::Value, WorkerFailure>> + Send + 'a>,
->;
-
 /// Only detached DATA leaves the owning worker. Dropping this waiter never
 /// unregisters the worker, cancels its Join, or transfers its Bootstrap/Store.
 pub(crate) struct OriginalComponentJob {
@@ -184,18 +178,18 @@ impl OriginalComponentJob {
     }
 }
 
-pub(crate) fn prepare_original_component<F>(
+/// Execute only the current closed bound subset. No caller receives Bootstrap,
+/// its DATA budget, a funded buffer, or a function argument borrowing them.
+pub(crate) fn prepare_original_component(
     app: AppHandle,
     artifact: File,
     expected: Digest,
     index: &'static BootstrapModuleIndex,
-    operation: F,
-) -> std::result::Result<OriginalComponentJob, DetachedFailure>
-where
-    F: for<'a> FnOnce(&'a mut NativeBootstrap<OriginalBootstrapInputs>) -> OriginalJobFuture<'a>
-        + Send
-        + 'static,
-{
+    operation: OriginalOperation,
+) -> std::result::Result<OriginalComponentJob, DetachedFailure> {
+    // An unbound operation is an integration failure before owner/Engine/IO,
+    // not a fabricated domain denial or a partial successful execution.
+    let operation = operation.admit()?;
     let state = app
         .try_state::<NativeRuntimeState>()
         .ok_or_else(|| {
@@ -249,18 +243,15 @@ pub(super) async fn caught<F: Future>(future: F) -> std::result::Result<F::Outpu
     .await
 }
 
-async fn run_original_job<F>(
+async fn run_original_job(
     runtime: NativeRuntimeState,
     app: AppHandle,
     job: JobTicket,
     artifact: File,
     expected: Digest,
     index: &'static BootstrapModuleIndex,
-    operation: F,
-) -> (Outcome, bool)
-where
-    F: for<'a> FnOnce(&'a mut NativeBootstrap<OriginalBootstrapInputs>) -> OriginalJobFuture<'a>,
-{
+    operation: dispatch::AdmittedOperation,
+) -> (Outcome, bool) {
     // No Store/IO exists during these synchronous stages. Owner creation is
     // already represented by the registered worker before reaching this code.
     let mut stage = Stage::Owner;
@@ -290,12 +281,11 @@ where
             );
         }
     };
-    let mut runner = match caught(prepared.initialize(index)).await {
+    let runner = match caught(prepared.initialize(index)).await {
         Ok(Ok(Ok(runner))) => runner,
         Ok(Ok(Err(domain))) => {
-            let original = WorkerFailure::Domain(domain);
-            let detached = detachment.worker(&original);
-            drop(original);
+            let detached = detachment.domain_data(&domain);
+            drop(domain);
             return (Err(detached), true);
         }
         Ok(Err(error)) => {
@@ -314,20 +304,31 @@ where
             )
         }
     };
-    // Keep Bootstrap outside the panic boundary. Even a panic while building
-    // or polling the borrowed operation cannot move it out of this worker.
-    // Defer construction into the caught poll too; no borrowed future escapes
-    // an unwind closure and Bootstrap itself remains outside that future.
-    let result = caught(async { operation(&mut runner).await })
+    let output = finish_bound_job(runner, operation, &job, &runtime.0.jobs, &mut detachment).await;
+    drop(detachment);
+    output
+}
+
+/// Same owning worker in production and component tests. This function takes
+/// a finite admitted operation, never arbitrary callback code.
+async fn finish_bound_job<S: BootstrapInputOwner>(
+    mut runner: NativeBootstrap<S>,
+    operation: dispatch::AdmittedOperation,
+    job: &JobTicket,
+    jobs: &Jobs,
+    detachment: &mut Detachment,
+) -> (Outcome, bool) {
+    // Bootstrap stays outside the caught future and is always consumed by
+    // actual finish, even when dispatch polling panics or returns an error.
+    let result = caught(dispatch::execute(&mut runner, operation))
         .await
-        .map_err(|_| WorkerFailure::Execution {
-            stage: Stage::Operation,
-            source: SourceError::Condition(Condition::NativePanic),
-        })
-        .and_then(|value| value);
+        .unwrap_or_else(|_| Err(dispatch::Failed::panic()));
     // Keep actual errors/buffers live during detachment and finish. Only the
     // closed DATA projection can outlive this worker and original account.
-    let detached_error = result.as_ref().err().map(|error| detachment.worker(error));
+    let original = match &result {
+        Ok(observations) => observations.detach(detachment),
+        Err(error) => Err(error.detach(detachment)),
+    };
     let cleanup = caught(runner.finish()).await;
     let cleanup_error = match &cleanup {
         Ok(Ok(())) => None,
@@ -337,18 +338,13 @@ where
             Condition::NativePanic,
         )),
     };
-    let original = match result {
-        Ok(value) => Ok(value),
-        Err(error) => {
-            drop(error);
-            Err(detached_error.expect("detached original failure"))
-        }
-    };
+    // Actual funded observations/errors are destroyed after physical finish,
+    // before the worker publishes the detached result or its Join receipt.
+    drop(result);
     drop(cleanup);
-    let permitted = original.is_err() || job.ensure_accepting(&runtime.0.jobs).is_ok();
+    let permitted = original.is_err() || job.ensure_accepting(jobs).is_ok();
     let clean = cleanup_error.is_none();
     let output = crate::native_worker_failure::complete(original, cleanup_error, permitted);
-    drop(detachment);
     (output, clean)
 }
 

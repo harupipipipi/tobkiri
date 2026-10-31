@@ -349,6 +349,12 @@ jobs:
             pack-shell -> target
             tobkiri_launcher/src-tauri -> target
 
+      - name: Verify the standalone Launcher dependency lock
+        working-directory: tobkiri_launcher/src-tauri
+        run: >-
+          cargo metadata --locked --format-version 1
+          > "$RUNNER_TEMP/launcher-dependency-metadata.json"
+
       # This is the no-image direct-VZ seam: it exercises the native helper's
       # authenticated protocol and launch-asset validation on macOS arm64.
       # A real guest boot is a separate acceptance environment because it needs

@@ -31,10 +31,13 @@ The current [captured method list](../../../tools/python313-producer/harness_nat
 | Worker lifecycle | Native Rust mechanism | Tracked worker, cancellation, finish, actual Join and original exit paths | Library mechanism CI is separate from original Launcher and GUI qualification. |
 
 The [native runner](../../../tobkiri_launcher/harness-native/src/bootstrap_runtime.rs)
-binds those actual methods. An arbitrary callback can still clone owned budget
-or result handles despite its HRTB borrow; a detached result channel alone is
-not a lease non-escape proof. The next finite-dispatcher slice covers only these
-current bindings, with all intermediate references internal to one worker/Store.
+binds those actual methods. The earlier arbitrary callback could clone owned
+budget/result handles despite its HRTB borrow; a detached channel alone was not
+a lease non-escape proof. The new finite application entry accepts only the
+three current getter choices followed by actual description. It keeps all
+intermediate references inside one worker/Store and rejects unbound choices
+before owner/Engine creation. The fixed multi-getter sequence exists only in
+tests; it defines no new Setup sequence. Its new regression sources await CI.
 Unbound operations must fail explicitly before execution; neither a stub nor
 the presence of a WIT declaration counts as original behavior. The original
 GUI and full 19/7 qualification remain required before adoption.

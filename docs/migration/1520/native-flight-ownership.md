@@ -68,16 +68,20 @@ remain explicitly unsupported; unknown initialization cleanup and the existing
 context-wrapped late-init-cancel path conservatively remain Stopping. This is
 not complete error parity or a qualified original-Setup adoption.
 
-The callback API is still trusted internal code. Its HRTB limits the Bootstrap
+The preceding callback API was trusted internal code. Its HRTB limited the Bootstrap
 borrow, but does not stop a callback from cloning `data_budget()` or sending an
 owned funded result through a captured channel. A detached return type alone
 therefore proves neither global lease non-escape nor destruction of every owner
 reference. The current proof covers resources held by the worker itself and its
-actual Join. Before production adoption, replace the caller-supplied callback
-entry with a finite operation dispatcher, keeping intermediate references and
-funding inside the same worker/Store. The first slice covers the three currently
-bound runtime methods and `describe_value`; it does not pretend missing methods
-are implemented. Arbitrary callbacks remain private internal/test machinery.
+actual Join. The new source replaces the caller-supplied callback entry with a
+finite operation dispatcher. It executes one of the three currently bound
+runtime getters and its actual `describe_value` in the same worker/Store, keeping
+intermediate scope, references and funding internal. It returns the exact
+description text as detached DATA, without re-importing descriptions as objects.
+Unbound operations fail before owner/Engine creation. The fixed three-getter
+sequence is test-only and is not the original Setup control flow. Nine new
+small-component/worker regression sources await CI; no new GUI or original
+Python qualification follows from source review alone.
 
 Current source coverage is **runtime 19 plus init / transport 7**, rather than
 the older 17/6 description. Capture and WIT declarations do not establish runner

@@ -2,7 +2,7 @@
 //! No arbitrary error chain, Debug text, VM handle or original lease is returned.
 use crate::native_runtime_jobs::LifecycleError;
 use std::{error::Error as StdError, io, time::Instant};
-use tobkiri_core::{CoreError, NativeSetupInvocation};
+use tobkiri_core::{AllocationError, CoreBuffer, CoreError, NativeSetupInvocation};
 use tobkiri_gate::{
     CapacityKind, CoreControlError, GateError, IntegrityFaultCode, NativeSetupReservation,
     NativeSetupSnapshot,
@@ -43,20 +43,41 @@ pub(crate) enum Unsupported {
     CoreProfile,
 }
 
-/// Operation adapters must explicitly select one supported source variant.
-/// There is deliberately no From<anyhow::Error> or unknown formatting fallback.
-pub(crate) enum SourceError {
-    NativeIo(NativeDataIoError),
-    Gate(GateError),
-    Control(CoreControlError),
-    Core(CoreError),
-    Io(io::Error),
-    Condition(Condition),
+/// These exports exist in the guest world, but have no current runner binding.
+/// Listing them here supplies a precise integration failure, never dispatch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum UnboundOperation {
+    SetupProfilePreview,
+    Confirmation,
+    BootstrapConfirmation,
+    ProfileConfirmation,
+    SetupListing,
+    SetupPreview,
+    SetupActivationDecision,
+    SetupActivationSuccess,
+    SetupActivationFailure,
+    RetiredSetupResponse,
+    LoadCatalog,
+    CatalogWithPacks,
+    CatalogWithProfiles,
+    ResolveProfile,
+    DynamicProfileEdges,
+    Denied,
+    ImportValues,
+    CopyDataDictionary,
+    ReleaseValues,
+    AppendDataItem,
+    SetDataItem,
+    NativeInputs,
 }
-pub(crate) enum WorkerFailure {
-    Domain(NativeDataError),
-    Execution { stage: Stage, source: SourceError },
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum IntegrationFailure {
+    OperationNotBound(UnboundOperation),
+    InvalidValueResult,
+    Codec(AllocationError),
 }
+
 pub(crate) type Outcome = std::result::Result<serde_json::Value, DetachedFailure>;
 
 #[derive(Debug)]
@@ -67,6 +88,7 @@ pub(crate) enum SourceRecord {
     NativeIo(NativeDataIoError),
     Control(CoreControlError),
     Condition(Condition),
+    Integration(IntegrationFailure),
     Io {
         kind: io::ErrorKind,
         raw_os_error: Option<i32>,
@@ -96,6 +118,7 @@ pub(crate) enum DetachmentIssue {
     ReservationRejected { code: &'static str },
     Allocation,
     Depth,
+    Encoding,
 }
 #[derive(Debug)]
 pub(crate) enum DetachedFailure {
@@ -135,6 +158,12 @@ impl DetachedFailure {
         Self::Execution {
             stage,
             source: SourceRecord::Condition(condition),
+        }
+    }
+    pub(crate) fn integration(failure: IntegrationFailure) -> Self {
+        Self::Execution {
+            stage: Stage::Operation,
+            source: SourceRecord::Integration(failure),
         }
     }
 }
@@ -180,6 +209,17 @@ impl Detachment {
             reservations: Vec::new(),
         }
     }
+    /// Preserve the original UTF-8 description as DATA, without interpreting
+    /// it as a value graph or issuing a new reference. The copy retains the
+    /// same invocation reservation until the worker's physical finish.
+    pub(crate) fn description(&mut self, input: &CoreBuffer) -> Result<String, DetachedFailure> {
+        self.bytes(input.as_bytes())
+            .and_then(|bytes| String::from_utf8(bytes).map_err(|_| DetachmentIssue::Encoding))
+            .map_err(|issue| DetachedFailure::Detachment {
+                stage: Stage::Operation,
+                issue,
+            })
+    }
     fn bytes(&mut self, input: &[u8]) -> Result<Vec<u8>, DetachmentIssue> {
         let invocation = self
             .invocation
@@ -221,6 +261,13 @@ impl Detachment {
                 .map(|value| self.bytes(value.as_bytes()))
                 .transpose()?,
         })
+    }
+    pub(crate) fn domain_data(&mut self, error: &NativeDataError) -> DetachedFailure {
+        self.domain(error)
+            .unwrap_or_else(|issue| DetachedFailure::Detachment {
+                stage: Stage::Operation,
+                issue,
+            })
     }
     fn gate(&mut self, error: &GateError, depth: usize) -> Result<SourceRecord, DetachmentIssue> {
         Self::depth(depth)?;
@@ -307,30 +354,6 @@ impl Detachment {
             source,
         })
     }
-    pub(crate) fn worker(&mut self, error: &WorkerFailure) -> DetachedFailure {
-        let stage = match error {
-            WorkerFailure::Domain(_) => Stage::Operation,
-            WorkerFailure::Execution { stage, .. } => *stage,
-        };
-        let result = match error {
-            WorkerFailure::Domain(value) => self.domain(value),
-            WorkerFailure::Execution { stage, source } => {
-                let source = match source {
-                    SourceError::NativeIo(value) => Ok(SourceRecord::NativeIo(*value)),
-                    SourceError::Gate(value) => self.gate(value, 0),
-                    SourceError::Control(value) => Ok(SourceRecord::Control(*value)),
-                    SourceError::Core(value) => self.core(value, 0),
-                    SourceError::Io(value) => Ok(Self::io(value)),
-                    SourceError::Condition(value) => Ok(SourceRecord::Condition(*value)),
-                };
-                source.map(|source| DetachedFailure::Execution {
-                    stage: *stage,
-                    source,
-                })
-            }
-        };
-        result.unwrap_or_else(|issue| DetachedFailure::Detachment { stage, issue })
-    }
     /// Only this worker's known native capture sites use exact outer concrete
     /// checks. StdError::downcast_ref does not search anyhow context/source chains.
     pub(crate) fn native(&mut self, error: &anyhow::Error, stage: Stage) -> DetachedFailure {
@@ -345,9 +368,14 @@ impl Detachment {
     ) -> Result<DetachedFailure, DetachmentIssue> {
         Self::depth(depth)?;
         let outer: &(dyn StdError + 'static) = error.as_ref();
-        if matches!(stage, Stage::Initialize | Stage::Finish) {
+        if matches!(stage, Stage::Initialize | Stage::Operation | Stage::Finish) {
             if let Some(value) = outer.downcast_ref::<BootstrapCleanupFailure>() {
-                let original = self.native_inner(&value.original, Stage::Initialize, depth + 1)?;
+                let original_stage = if stage == Stage::Operation {
+                    Stage::Operation
+                } else {
+                    Stage::Initialize
+                };
+                let original = self.native_inner(&value.original, original_stage, depth + 1)?;
                 let cleanup = self.native_inner(&value.cleanup, Stage::Finish, depth + 1)?;
                 return Ok(DetachedFailure::Cleanup {
                     original: Box::new(Err(original)),
