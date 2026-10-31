@@ -175,6 +175,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - `38f856e6a`の[lock専用CI41197126669](https://github.com/harupipipipi/tobkiri/actions/runs/41197126669)
   は成功し、実macOS dependency graphの`--locked`解決と両lockの不変を確認した。
   これは有限dispatcherのコンパイル・ABI・実行を検証した結果ではない。
+- 次の有限操作は全ABI wrapperの先行追加ではなく、元Setup callerの一単位を選ぶ
+  （Astra high回答）。Rootが元`_setup_listing`/`prepare_bootstrap_profile_review`/
+  resolution/recovery/candidate selectorを確認し、同じcatalog/resolved/confirmationの
+  実object受渡し、追加source/active closure/predecessor、kwargs順を責任mapへ記録した。
+  review前のpublication recoveryには実書込みがあり、単なる表示計算としてRustへ
+  移してはいけない。元の権限・currentness・native IO境界を閉じるまでは新しい操作列や
+  外部description再importで代替しない。実Setup採用と元guest2B内の完走は依然未達。
 
 - 条件: 旧 Profile・データ・秘密情報・復旧の実移行、実候補と承認の拘束、
   Stop / Quit の終了・失効まで確認する。空の新 root を既存環境の代用にしない。
@@ -1561,3 +1568,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   af7b9913d1168ac2bc8627dac2252ea9c3d89afb6271328f5086bbe5c6755030を確認。
   RAM artifact13037467805/245,073B・13038101591/246,317Bの必要JSONのみ保存。
   完走・元GUI採用・全839/20受け入れ・1B/API・Python/VM廃止は未達。
+- 次のRegistry sliceは、上のpost-hoc binding-view案と分け、Appが生成する実bindingの
+  一次状態をRustへ移す（Astra highの回答、Sol6.1 xhigh実装中）。元sourceの
+  `DefinitionModel`初期insert、crawlの各insert、combine update、root派生を対象にし、
+  実Resource/Registry/RPDS mapを保持する。実mapの走査による所有判定、同じmapへの
+  二度目のcrawl、callback由来unknown mapの昇格、結果cacheは追加しない。
+  実insert地点でnative bindingを更新し、combineは実updateを一回だけ行い、成功時だけ
+  追跡済み入力を同じ優先順位でmergeする。内側items/view/iterator等のslotが未確認の
+  枝は元処理を続けopaqueにする。native lookupが省略するのはRPDS.getだけで、実
+  Retrieved constructor・実field取得・例外順を保つ。Resource/Specification全体の
+  guardを増やさず、既知mapと最小の取得経路だけを確認する。
+  原本比較にはdefault rootの実native到達と、unknown/custom slot・callback順・供給例外・
+  combine優先順位を必須にする。Rootは3producerの閉じたsource inventoryとCI接続を
+  担当。source完成後のnative全比較、同じ元2B/64MiB/30秒のcold/full・累積検証で採否を
+  決める。まだsource作業中で、燃料改善・guest完走・製品採用は未証明。

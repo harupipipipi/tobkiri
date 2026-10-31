@@ -90,6 +90,46 @@ Current source coverage is **runtime 19 plus init / transport 7**, rather than
 the older 17/6 description. Capture and WIT declarations do not establish runner
 binding or complete execution. See the [current coverage table](native-setup-boundary.md#current-source-coverage-2026-10-31).
 
+### Next finite operation must follow the actual Setup caller
+
+Astra high recommends extending one source-confirmed original Setup unit,
+rather than binding every ABI wrapper first. The actual
+[`_setup_listing`](../../../tobkiri_runtime/core_runtime/api/setup_handlers.py#L60)
+calls `prepare_bootstrap_profile_review` before `runtime.setup_listing`; the
+compatibility preview then calls `runtime.setup_preview` and copies its outer
+mapping. These calls do not establish a new three-getter Setup sequence.
+
+[`prepare_bootstrap_profile_review`](../../../tobkiri_runtime/core_runtime/bootstrap/profile_capture.py#L766)
+first performs publication recovery, captures one candidate, resolves that same
+candidate, and calls `catalog_with_profiles` using the actual resolved Profile
+before returning that catalog and confirmation together. The
+[`resolution`](../../../tobkiri_runtime/core_runtime/bootstrap/profile_capture.py#L523)
+retains the actual Authority snapshot/epoch, optional additional Pack IDs,
+artifact inventory and predecessor bindings. Its bootstrap-confirmation kwargs
+retain their insertion order, including the conditionally present Pack-pin
+predecessor. `catalog_with_profiles` makes a fresh outer Profile mapping while
+retaining the original catalog's other objects. Describing those objects and
+re-importing descriptions cannot substitute for this transfer.
+
+The entire review caller is not a pure display projection:
+[`publication recovery`](../../../tobkiri_runtime/core_runtime/bootstrap/profile_capture.py#L1175)
+may clear its journal or publish a previously confirmed, still-authorized
+candidate. The
+[`candidate selector`](../../../tobkiri_runtime/core_runtime/bootstrap/profile_registry.py#L28)
+also preserves the verified active definition, external Pack closure, source
+additions and predecessor checks. Keep these operations with their real native
+owner and currentness checks; do not synthesize a new Authority snapshot or use
+the bundled baseline in place of an existing selection.
+
+Before implementing that finite unit, close the actual captured-input/native
+IO and typed-error boundaries for every required call. The currently bound
+root-metadata phases and three getter descriptions do not supply those inputs.
+Then retain all intermediate objects inside the same tracked worker/Store and
+bind only the needed runtime/transport exports. Other operations stay Unbound.
+Small-component ABI/custody/cancel/finish/Join tests remain distinct from the
+original guest's execution under 2B fuel, and neither permits enabling Setup
+or bypassing its existing GUI confirmation and approval flow.
+
 ## Execution evidence which constrains this boundary
 
 The `48ab3ee5` diagnostic used the declared pre-initialized stdlib configuration.
