@@ -1336,3 +1336,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   その実iteratorへもう一度GET_ITERする。rootだけこの2段を再現し、live cursorは1回を
   維持する。2回目__iter__の実供給例外比較も追加、12群/26対。AST/rustfmtのみ成功、
   修正後の実native CI待ち。テストの期待値や既存caseは変更しない。
+
+- 修正1ebc977d1 native CI41182341650は成功。control12群/26差分対と従来generic64/
+  API19/backend64+11/reference29/fragment14/default-callout5/ownership4/value16、
+  App37/42/full305-entry453-read全比較が一致。extension1,033,744B/
+  SHA a194ae77c6433c952248dc7045e1667c1e27bee1d7bcd41f676fe9a714603f00。
+  RAM artifact13035258263/65,551B、必要JSONのみ40,390B保存。Wasmはまだ未起動。
+- 同じcontrol境界のselected callback例外契約を追加実装（Astra high判断、Sol担当）。
+  root constructorのStopIterationは直接伝播、descendant準備/keyword generatorからの
+  未捕捉StopIterationだけRuntimeErrorへ変換し、実例外をcause/contextへ残す。実nextの
+  通常Stop終端や元のcatchを先に適用し、既変換例外を再変換しない。全体catchによる
+  root constructorの誤変換を避ける。18群/48対（従来12群/26対維持）へ追加。constructor
+  items/id、descendant items/id、型/format、捕捉済Stop、allOf/not/not内constructor、
+  Stop subclassの正常終端を含む。source AST/rustfmt確認のみで、新native CIが必要。
+  現native成功からこの追加の同等性は推定しない。

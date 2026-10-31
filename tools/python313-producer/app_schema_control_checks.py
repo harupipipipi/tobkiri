@@ -38,7 +38,8 @@ def control_checks(provider, kernel) -> dict[str, bool]:
                 return {"ref": seen[id(error)]}
             seen[id(error)] = len(seen)
             return {"type": type(error).__module__ + "." + type(error).__qualname__,
-                    "message": str(error), "is_supplied": error is state.get("fault"),
+                    "message": str(error),
+                    "is_supplied": error is state.get("fault", state.get("stop")),
                     "suppressed": error.__suppress_context__,
                     "cause": graph(error.__cause__, seen),
                     "context": graph(error.__context__, seen)}
@@ -61,9 +62,11 @@ def control_checks(provider, kernel) -> dict[str, bool]:
         index(actual, "actual")
         for label, value in state.get("refs", {}).items():
             index(value, "retained/" + label)
-        saved = selected.META_SCHEMA
+        saved = selected.META_SCHEMA, selected.TYPE_CHECKER
         before = kernel.app_schema_entry_count()
         selected.META_SCHEMA = meta
+        if "type_checker" in state:
+            selected.TYPE_CHECKER = state["type_checker"]
         try:
             try:
                 selected.check_schema(actual, format_checker=state.get("checker"))
@@ -78,14 +81,25 @@ def control_checks(provider, kernel) -> dict[str, bool]:
                 if state.get("shared_index"):
                     assert error.path[0] is error.schema_path[1]
                     assert error.path[0] == 300
+                if state.get("caught_stop"):
+                    assert error.cause is state["stop"]
             except Exception as error:
                 outcome = {"kind": "exception", "error": graph(error)}
                 if "fault" in state:
                     assert error is state["fault"]
+                if "stop" in state:
+                    if state.get("wrapped_stop"):
+                        assert type(error) is RuntimeError
+                        assert str(error) == "generator raised StopIteration"
+                        assert error.__cause__ is state["stop"]
+                        assert error.__context__ is state["stop"]
+                        assert error.__suppress_context__
+                    else:
+                        assert error is state["stop"]
             else:
                 outcome = {"kind": "valid"}
         finally:
-            selected.META_SCHEMA = saved
+            selected.META_SCHEMA, selected.TYPE_CHECKER = saved
         assert kernel.app_schema_entry_count() - before == (selected is provider)
         if "fault" in state:
             assert outcome["kind"] == "exception"
@@ -93,6 +107,12 @@ def control_checks(provider, kernel) -> dict[str, bool]:
             assert not any(event == "hint" for event in events)
         if state.get("early_abort"):
             assert outcome["kind"] == "schema-error" and "later" not in events
+        if state.get("caught_stop"):
+            assert outcome["kind"] == "schema-error"
+        elif "stop" in state:
+            assert outcome["kind"] == "exception"
+        if state.get("normal_stop"):
+            assert outcome["kind"] == "valid" and "normal-stop" in events
         return {"outcome": outcome, "events": events,
                 "meta": describe(meta), "actual": describe(actual)}
 
@@ -372,5 +392,106 @@ def control_checks(provider, kernel) -> dict[str, bool]:
         assert all(reference() is None for reference in retained[-2:])
     assert first_difference(*outcomes) is None
     checks["early_abort_releases_actual_input_and_pending_schema_handles"] = True
-    assert len(checks) == 12 and all(value is True for value in checks.values())
+    class CallbackStop(StopIteration):
+        pass
+
+    def stop_boundary(stage, stop_type):
+        events = []
+        stop = stop_type("actual selected callback stop")
+        stop.__cause__ = ValueError("supplied stop cause")
+
+        class Schema(dict):
+            def items(self):
+                if stage.endswith("items"):
+                    events.append(stage)
+                    raise stop
+                return dict.items(self)
+
+            def get(self, key, *default):
+                if stage.endswith("id") and key == "$id":
+                    events.append(stage)
+                    raise stop
+                return dict.get(self, key, *default)
+
+        def change(value):
+            events.append({"selected-callback": value == 0})
+            raise stop
+
+        checker = FormatChecker(formats=[])
+        checker.checks("change", raises=StopIteration if stage == "caught" else ())(change)
+        if stage.startswith("root-"):
+            meta = Schema(type="integer")
+            actual = 0
+        elif stage.startswith("child-"):
+            meta = {"properties": {"value": Schema(type="integer")}}
+            actual = {"value": 0}
+        elif stage == "not-items":
+            meta, actual = {"not": Schema(type="integer")}, 0
+        else:
+            meta, actual = {"format": "change"}, 0
+            if stage == "allOf":
+                meta = {"allOf": [meta]}
+            elif stage == "not":
+                meta = {"not": meta}
+        state = {"meta": meta, "actual": actual, "checker": checker, "events": events,
+                 "stop": stop, "wrapped_stop": not stage.startswith("root-"),
+                 "caught_stop": stage == "caught"}
+        if stage == "type":
+            class Checker:
+                def is_type(self, value, kind):
+                    events.append({"selected-type": value == 0, "kind": kind})
+                    raise stop
+            state.update(meta={"type": "integer"}, type_checker=Checker())
+        return state
+
+    for stage in ("root-items", "root-id"):
+        for stop_type in (StopIteration, CallbackStop):
+            compare(lambda: stop_boundary(stage, stop_type))
+    checks["root_constructor_stop_iteration_remains_direct"] = True
+    for stage in ("child-items", "child-id"):
+        for stop_type in (StopIteration, CallbackStop):
+            compare(lambda: stop_boundary(stage, stop_type))
+    checks["descendant_preparation_stop_preserves_generator_context"] = True
+    for stage in ("type", "format"):
+        for stop_type in (StopIteration, CallbackStop):
+            compare(lambda: stop_boundary(stage, stop_type))
+    checks["selected_type_and_format_stop_preserve_generator_context"] = True
+    for stop_type in (StopIteration, CallbackStop):
+        compare(lambda: stop_boundary("caught", stop_type))
+    checks["caught_format_stop_keeps_genuine_schema_error_cause"] = True
+    for stage in ("allOf", "not", "not-items"):
+        for stop_type in (StopIteration, CallbackStop):
+            compare(lambda: stop_boundary(stage, stop_type))
+    checks["ancestor_propagation_does_not_wrap_runtime_error_twice"] = True
+
+    def normal_iterator_stop(stop_type):
+        events = []
+        stop = stop_type("actual iterator termination")
+
+        class Iterator:
+            def __init__(self):
+                self.started = False
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                if not self.started:
+                    self.started = True
+                    events.append("item")
+                    return {"type": "integer"}
+                events.append("normal-stop")
+                raise stop
+
+        class Branches(list):
+            def __iter__(self):
+                return Iterator()
+
+        return {"meta": {"allOf": Branches()}, "actual": 0,
+                "events": events, "normal_stop": True}
+
+    for stop_type in (StopIteration, CallbackStop):
+        compare(lambda: normal_iterator_stop(stop_type))
+    checks["actual_iterator_stop_subclasses_remain_normal_termination"] = True
+    assert len(checks) == 18 and all(value is True for value in checks.values())
     return checks

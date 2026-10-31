@@ -283,7 +283,7 @@ value reach and valid observation handling, not sequence completion, one-shot
 parity, performance improvement or final product qualification.
 
 
-## App execution-control slice (implemented; CI pending)
+## App execution-control slice (native parity; guest pending)
 
 Astra's next selected boundary is the App frame's own control state: frozen root
 keyword work rows, enumerate counters, fixed ranges and prefix zip coordination.
@@ -294,5 +294,13 @@ points stay observable; this is neither a builtin-reference cache nor a schema
 plan/result cache. The original root comprehension unpacks/selects each pair
 while collecting; it does not call a foreign length hint through list(pairs).
 Foreign error keys retain actual set-membership/hash operations at the original
-decoration point. Source AST/rustfmt checks passed; actual native/guest CI is
-still required. No fuel improvement or final qualification is claimed.
+decoration point. Native CI41182341650 at1ebc977d1 passed all12 groups/26 pairs and every prior
+comparison, including complete App37/42/full305-entry453-read. The initial
+foreign-root iterator-acquisition difference was corrected without relaxing its
+case. Actual guest CI remains pending; no fuel improvement or final product
+qualification is claimed. A subsequent selected-callback StopIteration boundary
+correction is implemented: root construction stays outside the generator
+boundary; descendant preparation and keyword execution wrap only unhandled
+StopIteration, retaining its actual cause/context. Normal iterator termination
+and prior catches run first. The extended18 groups/48 pairs retain every prior
+case; this new source requires its own native proof.

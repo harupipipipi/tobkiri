@@ -6,7 +6,7 @@
 //! their identities. No validation results or schema decisions are cached.
 use crate::keywords::{self, builtin, format, module_member, validation_error};
 use pyo3::{
-    exceptions::{PyMemoryError, PyNotImplementedError, PyRuntimeError},
+    exceptions::{PyMemoryError, PyNotImplementedError, PyRuntimeError, PyStopIteration},
     prelude::*,
     types::{PyBool, PyDict, PyList, PyString},
 };
@@ -187,6 +187,30 @@ impl Frame {
     }
 
     fn poll(
+        &mut self,
+        py: Python<'_>,
+        env: &Rc<Environment>,
+        signal: Option<Signal>,
+    ) -> PyResult<Action> {
+        // The root work snapshot belongs to ordinary Validator construction,
+        // outside iter_errors' generator. Descendant preparation and every
+        // keyword body execute inside a generator, including the root body.
+        if self.root && !self.started {
+            self.start(py, env)?;
+        }
+        self.poll_generator(py, env, signal).map_err(|error| {
+            if error.is_instance_of::<PyStopIteration>(py) {
+                let wrapped = PyRuntimeError::new_err("generator raised StopIteration");
+                wrapped.set_context(py, Some(error.clone_ref(py)));
+                wrapped.set_cause(py, Some(error));
+                wrapped
+            } else {
+                error
+            }
+        })
+    }
+
+    fn poll_generator(
         &mut self,
         py: Python<'_>,
         env: &Rc<Environment>,
