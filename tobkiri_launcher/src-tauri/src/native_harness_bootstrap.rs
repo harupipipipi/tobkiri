@@ -138,9 +138,43 @@ impl NativeRuntimeState {
 /// Actual AppHandle owns the original managed config and shutdown state through
 /// worker completion. No serialized roots or cloned configuration replace it.
 pub(crate) struct OriginalBootstrapInputs {
+    owner: tobkiri_harness_native::OriginalSourceHandle<OriginalBootstrapOwner>,
+}
+struct OriginalBootstrapOwner {
     app: AppHandle,
     // Field order releases the actual AppHandle before publishing its receipt.
     _custody: SourceCustody,
+}
+impl Clone for OriginalBootstrapInputs {
+    fn clone(&self) -> Self {
+        Self {
+            owner: self.owner.clone(),
+        }
+    }
+}
+impl OriginalBootstrapInputs {
+    fn new(
+        app: AppHandle,
+        custody: SourceCustody,
+        invocation: &NativeSetupInvocation,
+    ) -> Result<Self> {
+        let bytes =
+            tobkiri_harness_native::OriginalSourceHandle::<OriginalBootstrapOwner>::storage_bytes::<
+                tobkiri_gate::ControlReservation,
+            >();
+        let funding = invocation
+            .control()
+            .reserve(tobkiri_gate::ControlKind::Frame, bytes as u64)?;
+        Ok(Self {
+            owner: tobkiri_harness_native::OriginalSourceHandle::try_new_precharged(
+                OriginalBootstrapOwner {
+                    app,
+                    _custody: custody,
+                },
+                funding,
+            )?,
+        })
+    }
 }
 impl BootstrapInputOwner for OriginalBootstrapInputs {
     fn original_module_metadata_policy(&self) -> Option<&'static ModuleMetadataPolicy> {
@@ -152,7 +186,7 @@ impl BootstrapInputOwner for OriginalBootstrapInputs {
         &self,
         use_roots: impl for<'a> FnOnce(BootstrapRoots<'a>) -> R,
     ) -> std::result::Result<R, NativeDataIoError> {
-        with_original_host_inputs(&self.app, |inputs| {
+        with_original_host_inputs(&self.owner.get().app, |inputs| {
             use_roots(BootstrapRoots {
                 runtime: inputs
                     .root(NativeHostSourceRole::Runtime)
@@ -167,7 +201,8 @@ impl BootstrapInputOwner for OriginalBootstrapInputs {
     }
 
     fn check_live(&self) -> std::result::Result<(), NativeDataIoError> {
-        with_original_host_inputs(&self.app, |_| ()).map_err(|_| NativeDataIoError::Retired)
+        with_original_host_inputs(&self.owner.get().app, |_| ())
+            .map_err(|_| NativeDataIoError::Retired)
     }
 }
 
@@ -178,14 +213,27 @@ impl OriginalAuthorityOwner for OriginalBootstrapInputs {
         &self,
         operation: impl FnOnce(&std::path::Path) -> R,
     ) -> std::result::Result<R, OriginalAuthorityError> {
-        crate::native_harness_host_inputs::with_original_authority_source(&self.app, |inputs| {
-            operation(inputs.internal_runtime_storage_parent())
-        })
+        crate::native_harness_host_inputs::with_original_authority_source(
+            &self.owner.get().app,
+            |inputs| operation(inputs.internal_runtime_storage_parent()),
+        )
         .map_err(|_| OriginalAuthorityError::unavailable())
     }
     fn check_original_owner(&self) -> std::result::Result<(), OriginalAuthorityError> {
-        with_original_host_inputs(&self.app, |_| ())
+        with_original_host_inputs(&self.owner.get().app, |_| ())
             .map_err(|_| OriginalAuthorityError::unavailable())
+    }
+}
+impl tobkiri_harness_native::BootstrapReviewOwner for OriginalBootstrapInputs {
+    fn with_original_review_user_data<R>(
+        &self,
+        use_root: impl FnOnce(&std::path::Path) -> R,
+    ) -> std::result::Result<R, OriginalAuthorityError> {
+        crate::native_harness_host_inputs::with_original_review_source(
+            &self.owner.get().app,
+            |inputs| use_root(inputs.internal_runtime_storage_parent()),
+        )
+        .map_err(|_| OriginalAuthorityError::unavailable())
     }
 }
 
@@ -282,16 +330,29 @@ async fn run_original_job(
     // No Store/IO exists during these synchronous stages. Owner creation is
     // already represented by the registered worker before reaching this code.
     let mut stage = Stage::Owner;
+    let review = matches!(&operation, dispatch::AdmittedOperation::ReviewListing(_));
     let prepared = catch_unwind(AssertUnwindSafe(|| -> Result<_> {
         let invocation = runtime.begin(&app, &job)?;
         let parent = job.attach_invocation(&invocation)?;
-        let source = OriginalBootstrapInputs {
-            app,
-            _custody: job.source_custody()?,
+        let source = OriginalBootstrapInputs::new(app, job.source_custody()?, &invocation)?;
+        // Pre-admit the existing uncertain-IO ledger record before old-state
+        // IO. Only actual source/unfinished IO can move into that ledger.
+        let retention = if review {
+            Some(invocation.control().reserve(
+                tobkiri_gate::ControlKind::Registration,
+                (2 * std::mem::size_of::<authority::Retained>() + 1024) as u64,
+            )?)
+        } else {
+            None
         };
         stage = Stage::EngineCompile;
-        NativeComponentPreparation::new_with_cancellation_parent(invocation, source, &parent)?
-            .compile(artifact, &expected)
+        let prepared = NativeComponentPreparation::new_with_cancellation_parent(
+            invocation.clone(),
+            source.clone(),
+            &parent,
+        )?
+        .compile(artifact, &expected)?;
+        Ok((prepared, source, invocation, parent, retention))
     }));
     let mut detachment = Detachment::new(job.invocation());
     let prepared = match prepared {
@@ -308,6 +369,7 @@ async fn run_original_job(
             );
         }
     };
+    let (prepared, source, invocation, cancellation, retention) = prepared;
     let runner = match caught(prepared.initialize(index)).await {
         Ok(Ok(Ok(runner))) => runner,
         Ok(Ok(Err(domain))) => {
@@ -331,31 +393,89 @@ async fn run_original_job(
             );
         }
     };
-    let output = finish_bound_job(runner, operation, &job, &runtime.0.jobs, &mut detachment).await;
+    let (outcome, clean, uncertain) = finish_bound_job(
+        runner,
+        operation,
+        &job,
+        &runtime.0.jobs,
+        &mut detachment,
+        #[cfg(test)]
+        None,
+    )
+    .await;
+    if let Some(cleanup) = uncertain {
+        runtime
+            .0
+            .retained_authority
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push(authority::Retained::new(
+                cleanup,
+                source,
+                invocation,
+                cancellation,
+                retention.expect("review IO retention was pre-admitted"),
+            ));
+    }
     drop(detachment);
-    output
+    (outcome, clean)
+}
+
+// The result and its optional test signal have a single destruction order.
+struct DispatchResult {
+    result: std::result::Result<dispatch::Observations, dispatch::Failed>,
+    // Field order makes this signal follow destruction of the actual result,
+    // including every owned cause/context, rather than merely marking a branch.
+    #[cfg(test)]
+    _drop_probe: Option<DispatchResultDropProbe>,
+}
+#[cfg(test)]
+struct DispatchResultDropProbe(Arc<AtomicBool>);
+#[cfg(test)]
+impl Drop for DispatchResultDropProbe {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::Release);
+    }
 }
 
 /// Same owning worker in production and component tests. This function takes
 /// a finite admitted operation, never arbitrary callback code.
-async fn finish_bound_job<S: BootstrapInputOwner>(
+async fn finish_bound_job<S: BootstrapInputOwner + tobkiri_harness_native::BootstrapReviewOwner>(
     mut runner: NativeBootstrap<S>,
     operation: dispatch::AdmittedOperation,
     job: &JobTicket,
     jobs: &Jobs,
     detachment: &mut Detachment,
-) -> (Outcome, bool) {
+    #[cfg(test)] result_dropped: Option<Arc<AtomicBool>>,
+) -> (
+    Outcome,
+    bool,
+    Option<tobkiri_harness_native::OriginalAuthorityCleanup>,
+) {
     // Bootstrap stays outside the caught future and is always consumed by
     // actual finish, even when dispatch polling panics or returns an error.
-    let result = caught(dispatch::execute(&mut runner, operation))
-        .await
-        .unwrap_or_else(|_| Err(dispatch::Failed::panic()));
-    // Keep actual errors/buffers live during detachment and finish. Only the
-    // closed DATA projection can outlive this worker and original account.
-    let original = match &result {
+    let mut result = Some(DispatchResult {
+        result: caught(dispatch::execute(&mut runner, operation))
+            .await
+            .unwrap_or_else(|_| Err(dispatch::Failed::panic())),
+        #[cfg(test)]
+        _drop_probe: result_dropped.map(DispatchResultDropProbe),
+    });
+    let actual = &result.as_ref().expect("live dispatch result").result;
+    let release_review = matches!(actual, Err(error) if error.owns_review_diagnostics());
+    // Detachment owns every projected byte; it leaves no borrowed message,
+    // cause or context, including when projection itself fails partway.
+    let original = match actual {
         Ok(observations) => observations.detach(detachment),
         Err(error) => Err(error.detach(detachment)),
     };
+    if release_review {
+        // Review's diagnostic reservation belongs to runner.review. Destroy
+        // its owned diagnostics BEFORE finish consumes that reservation. FD,
+        // source, close receipt and uncertain cleanup remain solely in runner.
+        drop(result.take());
+    }
+    let uncertain = runner.original_review_uncertain_cleanup();
     let cleanup = caught(runner.finish()).await;
     let cleanup_error = match &cleanup {
         Ok(Ok(())) => None,
@@ -365,14 +485,14 @@ async fn finish_bound_job<S: BootstrapInputOwner>(
             Condition::NativePanic,
         )),
     };
-    // Actual funded observations/errors are destroyed after physical finish,
-    // before the worker publishes the detached result or its Join receipt.
+    // Getter/CoreBuffer results keep their own funding through physical finish.
+    // The owned Review diagnostics have already died under their live Read.
     drop(result);
     drop(cleanup);
     let permitted = original.is_err() || job.ensure_accepting(jobs).is_ok();
     let clean = cleanup_error.is_none();
     let output = crate::native_worker_failure::complete(original, cleanup_error, permitted);
-    (output, clean)
+    (output, clean, uncertain)
 }
 
 #[cfg(all(test, target_os = "macos"))]

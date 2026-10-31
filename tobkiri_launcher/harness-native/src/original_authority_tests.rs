@@ -219,7 +219,7 @@ fn cause(value: &OriginalAuthorityCause, next: &mut usize) -> Value {
     };
     json!({"id":id,"type":class,"message":message,"suppressed":suppressed,"cause":source,"context":context})
 }
-fn graph(value: &OriginalAuthorityError, next: &mut usize) -> Value {
+pub(super) fn graph(value: &OriginalAuthorityError, next: &mut usize) -> Value {
     let id = *next;
     *next += 1;
     let source = value.cause.as_ref().map(|value| cause(value, next));
@@ -234,7 +234,7 @@ fn graph(value: &OriginalAuthorityError, next: &mut usize) -> Value {
 
 // Native gaps are not original exceptions. Keep every case observable, then
 // let the unchanged strict comparison fail on the different outcome kind.
-fn native_issue(
+pub(super) fn native_issue(
     value: &OriginalAuthorityError,
     depth: usize,
 ) -> Option<(OriginalAuthorityStage, &'static str)> {
@@ -282,7 +282,7 @@ fn native_issue(
                 .and_then(|value| native_issue(value, depth + 1))
         })
 }
-fn stage_name(value: OriginalAuthorityStage) -> &'static str {
+pub(super) fn stage_name(value: OriginalAuthorityStage) -> &'static str {
     match value {
         OriginalAuthorityStage::Source => "source",
         OriginalAuthorityStage::Process => "process",

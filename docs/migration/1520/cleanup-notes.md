@@ -232,6 +232,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   して渡すが、実製品factory/GUI接続を証明したとはしない。この観測境界は後半recoveryや
   実review/listing成功ではなく、48件の実結果/native比較は未確認。
   DB/key/fixture/ZIP/binaryはartifactに含めない。
+  `f47315637`の[CI41244202116](https://github.com/harupipipipi/tobkiri/actions/runs/41244202116)
+  は原本48件が両OS成功。nested Unicode/quoted punctuationのHMACも元pointer境界へ到達し、
+  必要JSON179,410Bだけ保存した。重要Sol6.1 xhighは実ReviewListing入口と元journalの
+  最初のnative bodyを実装してsource freeze。metadataとは別のreview能力、同Store cancel、
+  同AppHandle/source/controlを使い、結果prefetchやnew begin/予算変更は追加しない。
+  不確実IOだけを実source付き既存ledgerへ移し、純DATAのためWork/guest graphを保持しない。
+  NoJournal/NoIntentは元2呼出し後CatalogNotBound、認証済intentはVerifiedPointerNotBoundと
+  して明示拒否する。後半recovery/listing/製品factory/Unicode predecessorのNFC等は未完。
+  旧JSON arenaのstrict専用入口とHMAC空白変換は局所化し、legacy overwrite入口は保持する。
+  Root統合レビューでowned Review診断がReadのprepaid reservationより長生存する順序を
+  発見。Astra high確認後、Solがfunded detachment後・runner.finish前に元owned診断を破棄
+  するよう修正。投影失敗にも同じ順を使い、FD/source/cleanupはrunnerに残す。getterの
+  CoreBufferは従来のfinish後破棄を保持。実destructor probeの回帰3件を追加しfiniteは
+  9→12件。Root fresh driverは独立したOS lock再取得・close receipt・容量0・owner再open、
+  元typed結果/state/keyを検査する。Source/rustfmt/ASTのみ確認済みで、実native48比較、
+  既存93回帰、strict ClippyとTauri compileは次CIで確認する。
   JSON/surrogate/depth・不正leaseの例外投影、同時key作成/複合I/O/close、Linux process情報
   read内部close receipt等は未閉鎖。全Open同等・既存DB採用・GUI接続の完了とはしない。
 - cryptoの余分なowned key配列copyをZeroizing先作成へ整理した。Fernetは既存RustCryptoの

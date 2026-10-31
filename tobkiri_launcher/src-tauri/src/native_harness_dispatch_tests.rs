@@ -37,6 +37,8 @@ struct Controls {
     pause_after: AtomicUsize,
     release_panics: AtomicBool,
     released: AtomicBool,
+    result_dropped: Arc<AtomicBool>,
+    review_diagnostics: bool,
     entered: mpsc::Sender<()>,
     resume: Mutex<mpsc::Receiver<()>>,
 }
@@ -44,6 +46,11 @@ struct Release(Arc<Controls>);
 impl Drop for Release {
     fn drop(&mut self) {
         self.0.released.store(true, Ordering::Release);
+        assert_eq!(
+            self.0.result_dropped.load(Ordering::Acquire),
+            self.0.review_diagnostics,
+            "owned Review diagnostics must die before the source/Read; getter buffers must survive finish"
+        );
         assert!(
             !self.0.release_panics.load(Ordering::Acquire),
             "supplied source destruction panic"
@@ -83,6 +90,25 @@ impl BootstrapInputOwner for Source {
         Ok(())
     }
 }
+impl OriginalAuthorityOwner for Source {
+    fn with_original_user_data<R>(
+        &self,
+        use_root: impl FnOnce(&std::path::Path) -> R,
+    ) -> std::result::Result<R, OriginalAuthorityError> {
+        Ok(use_root(&self.root))
+    }
+    fn check_original_owner(&self) -> std::result::Result<(), OriginalAuthorityError> {
+        Ok(())
+    }
+}
+impl tobkiri_harness_native::BootstrapReviewOwner for Source {
+    fn with_original_review_user_data<R>(
+        &self,
+        use_root: impl FnOnce(&std::path::Path) -> R,
+    ) -> std::result::Result<R, OriginalAuthorityError> {
+        Ok(use_root(&self.root))
+    }
+}
 static INDEX: BootstrapModuleIndex = BootstrapModuleIndex {
     sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     modules: &[BootstrapModule {
@@ -107,6 +133,7 @@ fn expected_getters(operation: OriginalOperation) -> Vec<OriginalGetter> {
             OriginalGetter::BundledProfileRoot,
         ],
         OriginalOperation::Unbound(_) => panic!("unbound fixture must not compile"),
+        OriginalOperation::ReviewListing(_) => vec![],
     }
 }
 fn scope(invocation: &NativeSetupInvocation) -> serde_json::Value {
@@ -321,6 +348,15 @@ fn launch(
     pause_after: usize,
     cleanup_panic: bool,
 ) -> Running {
+    launch_with_detachment(operation, scenario, pause_after, cleanup_panic, false)
+}
+fn launch_with_detachment(
+    operation: OriginalOperation,
+    scenario: Scenario,
+    pause_after: usize,
+    cleanup_panic: bool,
+    omit_detachment_invocation: bool,
+) -> Running {
     let root = Root::new();
     let path = root.0.clone();
     let jobs = Jobs::new(Arc::new(AtomicBool::new(false)));
@@ -330,6 +366,8 @@ fn launch(
         pause_after: AtomicUsize::new(0),
         release_panics: AtomicBool::new(false),
         released: AtomicBool::new(false),
+        result_dropped: Arc::new(AtomicBool::new(false)),
+        review_diagnostics: matches!(&operation, OriginalOperation::ReviewListing(_)),
         entered,
         resume: Mutex::new(resuming),
     });
@@ -340,6 +378,7 @@ fn launch(
     let lifecycle = jobs.clone();
     let worker_jobs = jobs.clone();
     let admitted = operation
+        .clone()
         .admit()
         .unwrap_or_else(|_| panic!("unbound operation admitted"));
     jobs.spawn(move |job| {
@@ -372,15 +411,21 @@ fn launch(
             source_controls
                 .pause_after
                 .store(pause_after, Ordering::Release);
-            let mut detachment = Detachment::new(Some(invocation));
-            let (outcome, clean) = super::super::finish_bound_job(
+            let mut detachment = Detachment::new(if omit_detachment_invocation {
+                None
+            } else {
+                Some(invocation)
+            });
+            let (outcome, clean, uncertain) = super::super::finish_bound_job(
                 runner,
                 admitted,
                 &job,
                 &worker_jobs,
                 &mut detachment,
+                Some(source_controls.result_dropped.clone()),
             )
             .await;
+            assert!(uncertain.is_none());
             drop(detachment);
             if !clean {
                 lifecycle.cleanup_failed();
@@ -415,10 +460,11 @@ fn drain(jobs: &Jobs, controls: &Controls, invocation: &NativeSetupInvocation, c
         assert!(jobs.mark_closed().is_err());
     }
     assert!(controls.released.load(Ordering::Acquire));
+    assert!(controls.result_dropped.load(Ordering::Acquire));
     assert_eq!(invocation.capacity_snapshot().unwrap().charged_bytes, 0);
 }
 fn outcome(operation: OriginalOperation, scenario: Scenario) -> serde_json::Value {
-    let running = launch(operation, scenario, 0, false);
+    let running = launch(operation.clone(), scenario, 0, false);
     let invocation = receive(&running.ready);
     let result = tauri::async_runtime::block_on(running.waiter.result()).unwrap();
     assert_eq!(receive(&running.published), (true, true));
@@ -432,6 +478,106 @@ fn outcome(operation: OriginalOperation, scenario: Scenario) -> serde_json::Valu
     assert_eq!(result, serde_json::json!({"observations":expected}));
     // The actual result still exists here, after Store/Source release and Join.
     result
+}
+
+#[test]
+fn finite_review_enters_the_original_no_journal_prefix_on_its_same_store() {
+    let running = launch(
+        OriginalOperation::ReviewListing(Default::default()),
+        Scenario::Normal,
+        0,
+        false,
+    );
+    let invocation = receive(&running.ready);
+    let deadline = invocation.deadline().unwrap();
+    let output = tauri::async_runtime::block_on(running.waiter.result());
+    assert!(matches!(
+        output,
+        Err(DetachedFailure::Execution {
+            stage: Stage::Review,
+            source: SourceRecord::Integration(
+                crate::native_worker_failure::IntegrationFailure::ReviewNotBound(
+                    tobkiri_harness_native::BootstrapReviewReachpoint::CatalogNotBound
+                )
+            ),
+        })
+    ));
+    assert_eq!(invocation.deadline().unwrap(), deadline);
+    assert!(!running._root.0.join("profiles").exists());
+    assert!(!running._root.0.join("authority").exists());
+    assert_eq!(receive(&running.published), (true, true));
+    drain(&running.jobs, &running.controls, &invocation, true);
+}
+
+#[test]
+fn finite_review_preserves_the_original_journal_key_failure_then_finishes() {
+    review_missing_key(false);
+}
+
+#[test]
+fn finite_review_detachment_failure_drops_owned_diagnostics_before_finish() {
+    review_missing_key(true);
+}
+
+fn review_missing_key(omit_detachment_invocation: bool) {
+    let options = tobkiri_harness_native::BootstrapReviewOptions {
+        include_source_additions: true,
+        active: true,
+        activation_denied: true,
+        denial_diagnostic: Some("original Host diagnostic".into()),
+    };
+    let running = launch_with_detachment(
+        OriginalOperation::ReviewListing(options),
+        Scenario::Normal,
+        1,
+        false,
+        omit_detachment_invocation,
+    );
+    let invocation = receive(&running.ready);
+    receive(&running.entered);
+    let profiles = running._root.0.join("profiles");
+    fs::create_dir(&profiles).unwrap();
+    fs::write(profiles.join("bootstrap-publication.json"), b"[]").unwrap();
+    running.resume.send(()).unwrap();
+    let output = tauri::async_runtime::block_on(running.waiter.result());
+    match output {
+        Err(DetachedFailure::Detachment {
+            stage: Stage::Operation,
+            issue: crate::native_worker_failure::DetachmentIssue::NoInvocation,
+        }) if omit_detachment_invocation => {}
+        Err(DetachedFailure::Execution {
+            stage: Stage::Review,
+            source:
+                SourceRecord::Review(
+                    crate::native_worker_failure::ReviewSourceRecord::ResolutionDenied {
+                        message,
+                        cause,
+                    },
+                ),
+        }) if !omit_detachment_invocation => {
+            assert_eq!(message, "Profile publication recovery failed closed");
+            match cause {
+                tobkiri_harness_native::OriginalAuthorityCause::Python {
+                    class,
+                    message,
+                    cause,
+                    context,
+                    suppressed,
+                } => {
+                    assert_eq!(class, "builtins.ValueError");
+                    assert_eq!(message, "Profile publication signing key is unavailable");
+                    assert!(cause.is_none() && context.is_none() && !suppressed);
+                }
+                other => panic!("unexpected original journal cause: {other:?}"),
+            }
+        }
+        other => panic!("unexpected finite review failure: {other:?}"),
+    }
+    assert!(!profiles.join(".publication-key").exists());
+    assert!(!running._root.0.join("authority").exists());
+    assert!(profiles.join(".bootstrap-publication.lock").is_file());
+    assert_eq!(receive(&running.published), (true, true));
+    drain(&running.jobs, &running.controls, &invocation, true);
 }
 
 #[test]

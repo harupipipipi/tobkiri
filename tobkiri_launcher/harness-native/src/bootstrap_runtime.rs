@@ -30,6 +30,7 @@ const READY: u8 = 2;
 const HOST_ROOT: u8 = 3;
 const BUNDLE_ROOT: u8 = 4;
 const CLOSED: u8 = 5;
+const REVIEW: u8 = 6;
 const INTERFACE: &str = "tobkiri-native:harness/bindings@1.0.0";
 const RUNTIME: &str = "tobkiri-ui:harness-native/runtime@1.0.0";
 const TRANSPORT: &str = "tobkiri-ui:harness-native/transport@1.0.0";
@@ -375,6 +376,8 @@ pub struct NativeBootstrap<S: BootstrapInputOwner> {
     io: NativeDataIo,
     call: CoreBuffer,
     input_budget: Arc<dyn AllocationBudget>,
+    cancellation: CoreCancellation,
+    review: Option<crate::bootstrap_review::Review>,
 }
 
 impl<S: BootstrapInputOwner> NativeBootstrap<S> {
@@ -455,6 +458,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             .native_data_io()
             .context("native bootstrap IO was not bound")?
             .clone();
+        let cancellation = store.cancellation().clone();
         let scope = Scope::original(&invocation);
         let budget = store.allocation_owners().graph().clone();
         let selected = work
@@ -510,6 +514,8 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             io,
             call,
             input_budget: budget,
+            cancellation,
+            review: None,
         };
         runner
             .work
@@ -734,6 +740,64 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         &self.input_budget
     }
 
+    /// Enter the actual original review continuation on this same Store. The
+    /// current prefix always refuses its next unbound reachpoint explicitly.
+    /// No guest inspection import or independent begin/prefetch is involved.
+    pub async fn setup_review_listing(
+        &mut self,
+        options: &crate::BootstrapReviewOptions,
+    ) -> Result<std::result::Result<CoreBuffer, crate::BootstrapReviewFailure>>
+    where
+        S: crate::BootstrapReviewOwner,
+    {
+        if self.work.get().phase.load(Ordering::Acquire) != READY {
+            bail!("native bootstrap review is not initialized");
+        }
+        if self.review.is_some() {
+            return Ok(Err(crate::BootstrapReviewFailure::Admission(
+                crate::OriginalAuthorityAdmission::AlreadyAttempted,
+            )));
+        }
+        let diagnostic = options
+            .denial_diagnostic
+            .as_ref()
+            .map(|text| self.copy_input(text.as_bytes()))
+            .transpose()?;
+        let review = match crate::bootstrap_review::Review::new(
+            &self.work.get().invocation,
+            options,
+            diagnostic,
+        ) {
+            Ok(review) => review,
+            Err(error) => return Ok(Err(error)),
+        };
+        // The carrier remains in self, outside dispatch's caught future, even
+        // if a source callback panics during its real persistence operation.
+        self.review = Some(review);
+        let mut guard = RootCallGuard {
+            work: self.work.clone(),
+            io: self.io.clone(),
+            completed: false,
+        };
+        self.work.get().phase.store(REVIEW, Ordering::Release);
+        let result = self
+            .review
+            .as_mut()
+            .expect("admitted review")
+            .run(&self.work.get().source, &self.cancellation);
+        self.work.get().phase.store(READY, Ordering::Release);
+        guard.completed = true;
+        Ok(result)
+    }
+
+    /// Only physically uncertain original IO may retain source custody in the
+    /// native coordinator. This contains no success DATA or source permission.
+    pub fn original_review_uncertain_cleanup(&self) -> Option<crate::OriginalAuthorityCleanup> {
+        self.review
+            .as_ref()
+            .and_then(|review| review.uncertain_cleanup())
+    }
+
     /// Retire the actual Store and await original native physical cleanup.
     pub async fn finish(mut self) -> Result<()> {
         self.work.get().phase.store(CLOSED, Ordering::Release);
@@ -741,6 +805,12 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             program.retire();
         }
         self.io.retire_and_wait().await?;
+        if let Some(review) = &self.review {
+            let receipt = review.receipt();
+            if !receipt.verified() {
+                return Err(crate::BootstrapReviewCleanupFailure { receipt }.into());
+            }
+        }
         Ok(())
     }
 }

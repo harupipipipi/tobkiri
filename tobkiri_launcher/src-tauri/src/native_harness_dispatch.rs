@@ -3,8 +3,11 @@
 //! Descriptions are observations, not reconstructed original objects. The
 //! verification sequence is not the original Setup control flow or adoption.
 use super::*;
-use crate::native_worker_failure::{IntegrationFailure, UnboundOperation};
+use crate::native_worker_failure::{
+    IntegrationFailure, ReviewSourceRecord, SourceRecord, UnboundOperation,
+};
 use tobkiri_core::{CoreBuffer, CoreValue};
+use tobkiri_harness_native::{BootstrapReviewFailure, BootstrapReviewOptions};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum OriginalGetter {
@@ -22,10 +25,11 @@ impl OriginalGetter {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum OriginalOperation {
     /// Execute this no-argument getter, then describe its actual issued value.
     Observe(OriginalGetter),
+    ReviewListing(BootstrapReviewOptions),
     /// Internal binding verification only: Profile id, host root, bundled root,
     /// each immediately followed by description in the same original Store.
     #[cfg(test)]
@@ -36,6 +40,7 @@ pub(crate) enum OriginalOperation {
 
 pub(super) enum AdmittedOperation {
     Observe(OriginalGetter),
+    ReviewListing(BootstrapReviewOptions),
     #[cfg(test)]
     VerifyBoundGetters,
 }
@@ -43,6 +48,18 @@ impl OriginalOperation {
     pub(super) fn admit(self) -> std::result::Result<AdmittedOperation, DetachedFailure> {
         match self {
             Self::Observe(getter) => Ok(AdmittedOperation::Observe(getter)),
+            Self::ReviewListing(options) => {
+                if options
+                    .denial_diagnostic
+                    .as_ref()
+                    .is_some_and(|text| text.len() > tobkiri_core::MAX_BYTES)
+                {
+                    return Err(DetachedFailure::integration(IntegrationFailure::Codec(
+                        tobkiri_core::AllocationError::Limit,
+                    )));
+                }
+                Ok(AdmittedOperation::ReviewListing(options))
+            }
             #[cfg(test)]
             Self::VerifyBoundGetters => Ok(AdmittedOperation::VerifyBoundGetters),
             Self::Unbound(operation) => Err(DetachedFailure::integration(
@@ -57,6 +74,7 @@ enum Failure {
     Native(anyhow::Error),
     Integration(IntegrationFailure),
     Panic,
+    Review(BootstrapReviewFailure),
 }
 impl Failure {
     fn detach(&self, detachment: &mut Detachment) -> DetachedFailure {
@@ -69,6 +87,41 @@ impl Failure {
             Self::Native(error) => detachment.native(error, Stage::Operation),
             Self::Integration(error) => DetachedFailure::integration(*error),
             Self::Panic => DetachedFailure::condition(Stage::Operation, Condition::NativePanic),
+            Self::Review(error) => {
+                let source = match error {
+                    BootstrapReviewFailure::NotBound(point) => {
+                        SourceRecord::Integration(IntegrationFailure::ReviewNotBound(*point))
+                    }
+                    BootstrapReviewFailure::Admission(error) => {
+                        SourceRecord::Integration(IntegrationFailure::ReviewAdmission(*error))
+                    }
+                    BootstrapReviewFailure::Original(error) => {
+                        match super::authority::detach_error(detachment, error, 0) {
+                            Ok(error) => SourceRecord::Review(ReviewSourceRecord::Original(error)),
+                            Err(error) => return error,
+                        }
+                    }
+                    BootstrapReviewFailure::ResolutionDenied { message, cause } => {
+                        let message = match detachment.authority_text(message) {
+                            Ok(message) => message,
+                            Err(error) => return error,
+                        };
+                        match super::authority::detach_cause(detachment, cause, 0) {
+                            Ok(cause) => {
+                                SourceRecord::Review(ReviewSourceRecord::ResolutionDenied {
+                                    message,
+                                    cause,
+                                })
+                            }
+                            Err(error) => return error,
+                        }
+                    }
+                };
+                DetachedFailure::Execution {
+                    stage: Stage::Review,
+                    source,
+                }
+            }
         }
     }
 }
@@ -123,15 +176,35 @@ impl Failed {
     pub(super) fn detach(&self, detachment: &mut Detachment) -> DetachedFailure {
         self.failure.detach(detachment)
     }
+    /// These owned strings/causes borrow Review's prepaid diagnostic allowance.
+    /// They own no IO, source or CoreBuffer; that custody stays in the runner.
+    pub(super) fn owns_review_diagnostics(&self) -> bool {
+        matches!(&self.failure, Failure::Review(_)) && self._completed.0.iter().all(Option::is_none)
+    }
 }
 
 /// Called only from the parent's owning worker. The generic owner is internal;
 /// no production caller can supply code receiving Bootstrap or its budget.
-pub(super) async fn execute<S: BootstrapInputOwner>(
+pub(super) async fn execute<
+    S: BootstrapInputOwner + tobkiri_harness_native::BootstrapReviewOwner,
+>(
     runner: &mut NativeBootstrap<S>,
     operation: AdmittedOperation,
 ) -> std::result::Result<Observations, Failed> {
     let getters = match operation {
+        AdmittedOperation::ReviewListing(options) => {
+            let result = runner.setup_review_listing(&options).await;
+            return Err(Failed {
+                failure: match result {
+                    Ok(Err(error)) => Failure::Review(error),
+                    Err(error) => Failure::Native(error),
+                    // The current native prefix cannot produce a listing. Refuse
+                    // an accidental success instead of publishing partial DATA.
+                    Ok(Ok(_)) => Failure::Integration(IntegrationFailure::InvalidValueResult),
+                },
+                _completed: Observations([None, None, None]),
+            });
+        }
         AdmittedOperation::Observe(getter) => [Some(getter), None, None],
         #[cfg(test)]
         AdmittedOperation::VerifyBoundGetters => [

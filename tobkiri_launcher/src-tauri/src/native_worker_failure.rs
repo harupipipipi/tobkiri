@@ -20,6 +20,7 @@ pub(crate) enum Stage {
     EngineCompile,
     Initialize,
     Operation,
+    Review,
     Finish,
     Publication,
 }
@@ -76,6 +77,17 @@ pub(crate) enum IntegrationFailure {
     OperationNotBound(UnboundOperation),
     InvalidValueResult,
     Codec(AllocationError),
+    ReviewNotBound(tobkiri_harness_native::BootstrapReviewReachpoint),
+    ReviewAdmission(tobkiri_harness_native::OriginalAuthorityAdmission),
+}
+
+#[derive(Debug)]
+pub(crate) enum ReviewSourceRecord {
+    Original(tobkiri_harness_native::OriginalAuthorityError),
+    ResolutionDenied {
+        message: String,
+        cause: tobkiri_harness_native::OriginalAuthorityCause,
+    },
 }
 
 pub(crate) type Outcome = std::result::Result<serde_json::Value, DetachedFailure>;
@@ -89,6 +101,8 @@ pub(crate) enum SourceRecord {
     Control(CoreControlError),
     Condition(Condition),
     Integration(IntegrationFailure),
+    Review(ReviewSourceRecord),
+    ReviewCleanup(tobkiri_harness_native::OriginalAuthorityCloseReceipt),
     Io {
         kind: io::ErrorKind,
         raw_os_error: Option<i32>,
@@ -343,20 +357,20 @@ impl Detachment {
                 return Ok(SourceRecord::CoreCleanup {
                     original: Box::new(self.core(original, depth + 1)?),
                     cleanup: Box::new(self.core(cleanup, depth + 1)?),
-                })
+                });
             }
             CoreError::Conflicts(_) => {
-                return Ok(SourceRecord::Unsupported(Unsupported::CoreConflicts))
+                return Ok(SourceRecord::Unsupported(Unsupported::CoreConflicts));
             }
             CoreError::Step(_) => return Ok(SourceRecord::Unsupported(Unsupported::CoreStep)),
             CoreError::Json(_) => return Ok(SourceRecord::Unsupported(Unsupported::CoreJson)),
             CoreError::Canon(_) => return Ok(SourceRecord::Unsupported(Unsupported::CoreCanon)),
             CoreError::Store(_) => return Ok(SourceRecord::Unsupported(Unsupported::CoreStore)),
             CoreError::Manifest(_) => {
-                return Ok(SourceRecord::Unsupported(Unsupported::CoreManifest))
+                return Ok(SourceRecord::Unsupported(Unsupported::CoreManifest));
             }
             CoreError::Profile(_) => {
-                return Ok(SourceRecord::Unsupported(Unsupported::CoreProfile))
+                return Ok(SourceRecord::Unsupported(Unsupported::CoreProfile));
             }
         };
         Ok(SourceRecord::Core {
@@ -379,6 +393,14 @@ impl Detachment {
     ) -> Result<DetachedFailure, DetachmentIssue> {
         Self::depth(depth)?;
         let outer: &(dyn StdError + 'static) = error.as_ref();
+        if let Some(value) =
+            outer.downcast_ref::<tobkiri_harness_native::BootstrapReviewCleanupFailure>()
+        {
+            return Ok(DetachedFailure::Execution {
+                stage,
+                source: SourceRecord::ReviewCleanup(value.receipt),
+            });
+        }
         if matches!(stage, Stage::Initialize | Stage::Operation | Stage::Finish) {
             if let Some(value) = outer.downcast_ref::<BootstrapCleanupFailure>() {
                 let original_stage = if stage == Stage::Operation {

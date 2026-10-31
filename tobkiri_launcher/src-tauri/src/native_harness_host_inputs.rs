@@ -78,6 +78,24 @@ pub(crate) fn with_original_authority_source<T>(
     app: &AppHandle,
     operation: impl for<'host> FnOnce(NativeHostSourceInputs<'host>) -> T,
 ) -> Result<T, NativeHostInputsUnavailable> {
+    with_original_persistence_source(app, operation)
+}
+
+/// Fixed original review dispatcher only. Metadata policy and serialized roots
+/// cannot call this selected-owner borrow or authorize publication-state IO.
+#[cfg(feature = "native-harness-bootstrap")]
+pub(crate) fn with_original_review_source<T>(
+    app: &AppHandle,
+    operation: impl for<'host> FnOnce(NativeHostSourceInputs<'host>) -> T,
+) -> Result<T, NativeHostInputsUnavailable> {
+    with_original_persistence_source(app, operation)
+}
+
+#[cfg(feature = "native-harness-bootstrap")]
+fn with_original_persistence_source<T>(
+    app: &AppHandle,
+    operation: impl for<'host> FnOnce(NativeHostSourceInputs<'host>) -> T,
+) -> Result<T, NativeHostInputsUnavailable> {
     let shutdown = app
         .try_state::<ShutdownState>()
         .ok_or(NativeHostInputsUnavailable::ShutdownStateMissing)?;

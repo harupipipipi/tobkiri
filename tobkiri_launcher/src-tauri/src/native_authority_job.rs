@@ -53,6 +53,23 @@ pub(super) struct Retained {
     _cancellation: CoreCancellation,
     _control: tobkiri_gate::ControlReservation,
 }
+impl Retained {
+    pub(super) fn new(
+        cleanup: OriginalAuthorityCleanup,
+        source: OriginalBootstrapInputs,
+        invocation: NativeSetupInvocation,
+        cancellation: CoreCancellation,
+        control: tobkiri_gate::ControlReservation,
+    ) -> Self {
+        Self {
+            _cleanup: cleanup,
+            _source: source,
+            _invocation: invocation,
+            _cancellation: cancellation,
+            _control: control,
+        }
+    }
+}
 
 pub(crate) fn read_original_authority_snapshot(
     app: AppHandle,
@@ -81,15 +98,18 @@ pub(crate) fn read_original_authority_snapshot(
                         Detachment::new(Some(invocation.clone())).native(&error, Stage::Admission),
                     )
                 })?;
-                let source = OriginalBootstrapInputs {
-                    app,
-                    _custody: job.source_custody().map_err(|error| {
+                let custody = job.source_custody().map_err(|error| {
+                    OriginalAuthorityJobFailure::Worker(
+                        Detachment::new(Some(invocation.clone())).native(&error, Stage::Admission),
+                    )
+                })?;
+                let source =
+                    OriginalBootstrapInputs::new(app, custody, &invocation).map_err(|error| {
                         OriginalAuthorityJobFailure::Worker(
                             Detachment::new(Some(invocation.clone()))
                                 .native(&error, Stage::Admission),
                         )
-                    })?,
-                };
+                    })?;
                 // Reserve possible uncertain-IO ledger custody BEFORE any old DB
                 // IO. The same original control account has at most 256 default
                 // Registration records (and 256 admitted Tasks); every retained
@@ -241,7 +261,7 @@ fn depth(value: usize) -> std::result::Result<(), DetachedFailure> {
         Ok(())
     }
 }
-fn detach_cause(
+pub(super) fn detach_cause(
     copy: &mut Detachment,
     value: &OriginalAuthorityCause,
     level: usize,
@@ -309,7 +329,7 @@ fn detach_cause(
         },
     })
 }
-fn detach_error(
+pub(super) fn detach_error(
     copy: &mut Detachment,
     value: &OriginalAuthorityError,
     level: usize,

@@ -5,7 +5,12 @@
 //! must pass parity before the product default changes.
 
 mod bootstrap_metadata;
+mod bootstrap_review;
 mod bootstrap_runtime;
+pub use bootstrap_review::{
+    BootstrapReviewCleanupFailure, BootstrapReviewFailure, BootstrapReviewOptions,
+    BootstrapReviewOwner, BootstrapReviewReachpoint,
+};
 mod exception_graph;
 mod init_diagnostic;
 mod init_trace;
@@ -41,6 +46,7 @@ pub use preparation::{
     PreparedNativeComponent, PreparedNativeDataProgram,
 };
 pub use source_metadata::{ModuleMetadataPolicy, ORIGINAL_PROFILE_SOURCE_METADATA};
+pub use tobkiri_canon::ControlHandle as OriginalSourceHandle;
 pub use wasmtime::component::Component as NativeHarnessComponent;
 #[cfg(unix)]
 mod fd_protocol;

@@ -97,11 +97,33 @@ struct Decoder<'a, 'op, 'inv, S> {
     doc: Document,
     frames: Vec<Frame>,
     ticks: usize,
+    strict: bool,
     operation: &'op Operation<'inv, S>,
 }
 pub(super) fn decode<S: OriginalAuthorityOwner>(
     input: &[u8],
     op: &Operation<'_, S>,
+) -> Result<Funded<Document>> {
+    decode_inner(input, op, false)
+}
+
+/// Publication uses strict_loads; legacy Authority JSON keeps its overwrite rule.
+pub(super) fn decode_strict<S: OriginalAuthorityOwner>(
+    input: &[u8],
+    op: &Operation<'_, S>,
+) -> Result<Funded<Document>> {
+    if input.len() > tobkiri_canon::MAX_BYTES {
+        return Err(strict_error("json input exceeds size limit"));
+    }
+    let doc = decode_inner(input, op, true).map_err(strict_parse_error)?;
+    validate_strict(&doc, op)?;
+    Ok(doc)
+}
+
+fn decode_inner<S: OriginalAuthorityOwner>(
+    input: &[u8],
+    op: &Operation<'_, S>,
+    strict: bool,
 ) -> Result<Funded<Document>> {
     let source = std::str::from_utf8(input).map_err(|error| utf8_error(input, error))?;
     if source.starts_with('\u{feff}') {
@@ -142,6 +164,7 @@ pub(super) fn decode<S: OriginalAuthorityOwner>(
         },
         frames: Vec::new(),
         ticks: 0,
+        strict,
         operation: op,
     };
     decoder.space();
@@ -200,6 +223,7 @@ pub(super) fn decode<S: OriginalAuthorityOwner>(
             State::ObjectKey(first) => {
                 decoder.space();
                 if first && decoder.byte() == Some(b'}') {
+                    decoder.finish_object(id)?;
                     decoder.at += 1;
                     continue;
                 }
@@ -225,7 +249,9 @@ pub(super) fn decode<S: OriginalAuthorityOwner>(
                 let Node::Object(items) = &mut decoder.doc.nodes[id] else {
                     unreachable!("object frame");
                 };
-                if let Some((_, old)) = items.iter_mut().find(|(key, _)| *key == name) {
+                if strict {
+                    items.push((name, child));
+                } else if let Some((_, old)) = items.iter_mut().find(|(key, _)| *key == name) {
                     *old = child;
                 } else {
                     items.push((name, child));
@@ -241,6 +267,7 @@ pub(super) fn decode<S: OriginalAuthorityOwner>(
             State::ObjectAfter => {
                 decoder.space();
                 if decoder.byte() == Some(b'}') {
+                    decoder.finish_object(id)?;
                     decoder.at += 1;
                     continue;
                 }
@@ -275,6 +302,21 @@ pub(super) fn decode<S: OriginalAuthorityOwner>(
     })
 }
 impl<S: OriginalAuthorityOwner> Decoder<'_, '_, '_, S> {
+    fn finish_object(&self, id: usize) -> Result<()> {
+        if self.strict {
+            let pairs = self.doc.entries(id).expect("object frame");
+            for (index, (key, _)) in pairs.iter().enumerate() {
+                self.operation.check(OriginalAuthorityStage::Audit)?;
+                if pairs[..index].iter().any(|(previous, _)| previous == key) {
+                    return Err(strict_error(format!(
+                        "duplicate JSON object key: {}",
+                        repr_text(key)
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
     fn byte(&self) -> Option<u8> {
         self.source.as_bytes().get(self.at).copied()
     }
@@ -344,16 +386,25 @@ impl<S: OriginalAuthorityOwner> Decoder<'_, '_, '_, S> {
                 Ok((id, None))
             }
             Some(b'N') if self.source[self.at..].starts_with("NaN") => {
+                if self.strict {
+                    return Err(strict_error("non-finite JSON number: NaN"));
+                }
                 self.at += 3;
                 let id = self.push(Node::Scalar(CanonValue::Float(f64::NAN)));
                 Ok((id, None))
             }
             Some(b'I') if self.source[self.at..].starts_with("Infinity") => {
+                if self.strict {
+                    return Err(strict_error("non-finite JSON number: Infinity"));
+                }
                 self.at += 8;
                 let id = self.push(Node::Scalar(CanonValue::Float(f64::INFINITY)));
                 Ok((id, None))
             }
             Some(b'-') if self.source[self.at..].starts_with("-Infinity") => {
+                if self.strict {
+                    return Err(strict_error("non-finite JSON number: -Infinity"));
+                }
                 self.at += 9;
                 let id = self.push(Node::Scalar(CanonValue::Float(f64::NEG_INFINITY)));
                 Ok((id, None))
@@ -598,6 +649,174 @@ pub(super) fn raw_error(class: &'static str, message: impl Into<String>) -> Orig
         context: None,
         suppressed: false,
     }
+}
+
+pub(super) fn strict_error(message: impl Into<String>) -> OriginalAuthorityError {
+    raw_error("tobkiri_protocol.errors.CanonicalizationError", message)
+}
+
+fn strict_parse_error(mut error: OriginalAuthorityError) -> OriginalAuthorityError {
+    let Some(OriginalAuthorityCause::Python { class, message, .. }) = error.cause.as_ref() else {
+        return error;
+    };
+    let text = match *class {
+        "builtins.UnicodeDecodeError" => "json input is not valid UTF-8".into(),
+        "json.decoder.JSONDecodeError" => format!("invalid JSON: {message}"),
+        _ => return error,
+    };
+    let cause = error.cause.take();
+    let mut outer = strict_error(text);
+    outer.cause = cause;
+    outer.suppressed = true;
+    outer
+}
+
+pub(super) fn repr_text(text: &Text) -> String {
+    let quote = if text.0.contains(&39) && !text.0.contains(&34) {
+        '"'
+    } else {
+        '\''
+    };
+    let mut out = String::new();
+    out.push(quote);
+    for &point in &text.0 {
+        use std::fmt::Write;
+        match point {
+            92 => out.push_str("\\\\"),
+            10 => out.push_str("\\n"),
+            13 => out.push_str("\\r"),
+            9 => out.push_str("\\t"),
+            value if value == u32::from(quote) => {
+                out.push('\\');
+                out.push(quote);
+            }
+            0..=31 | 127..=159 => {
+                let _ = write!(out, "\\x{point:02x}");
+            }
+            0xd800..=0xdfff => {
+                let _ = write!(out, "\\u{point:04x}");
+            }
+            value
+                if char::from_u32(value)
+                    .is_some_and(|ch| ch.is_control() || (python_space(ch) && ch != ' ')) =>
+            {
+                if value < 256 {
+                    let _ = write!(out, "\\x{value:02x}");
+                } else if value < 65536 {
+                    let _ = write!(out, "\\u{value:04x}");
+                } else {
+                    let _ = write!(out, "\\U{value:08x}");
+                }
+            }
+            value => out.push(char::from_u32(value).expect("decoded codepoint")),
+        }
+    }
+    out.push(quote);
+    out
+}
+
+fn strict_text(text: &Text) -> Result<()> {
+    if let Some(start) = text
+        .0
+        .iter()
+        .position(|point| (0xd800..=0xdfff).contains(point))
+    {
+        let mut end = start + 1;
+        while text
+            .0
+            .get(end)
+            .is_some_and(|point| (0xd800..=0xdfff).contains(point))
+        {
+            end += 1;
+        }
+        let point = text.0[start];
+        let message = if end == start + 1 {
+            format!(
+                "'utf-8' codec can't encode character '\\u{point:04x}' in position {start}: surrogates not allowed"
+            )
+        } else {
+            format!(
+                "'utf-8' codec can't encode characters in position {start}-{}: surrogates not allowed",
+                end - 1
+            )
+        };
+        let mut error = strict_error("json string contains invalid Unicode");
+        error.cause = Some(python_error("builtins.UnicodeEncodeError", message));
+        error.suppressed = true;
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn validate_strict<S: OriginalAuthorityOwner>(doc: &Document, op: &Operation<'_, S>) -> Result<()> {
+    enum Check<'a> {
+        Value(usize, usize),
+        Key(&'a Text, usize),
+    }
+    let count = doc
+        .node_count()
+        .checked_mul(2)
+        .and_then(|n| n.checked_add(1))
+        .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
+    let _capacity = op.reserve(
+        OriginalAuthorityStage::Audit,
+        count
+            .checked_mul(std::mem::size_of::<Check<'_>>())
+            .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?,
+    )?;
+    let mut work = Vec::new();
+    work.try_reserve_exact(count)
+        .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
+    work.push(Check::Value(doc.root, 0));
+    while let Some(check) = work.pop() {
+        op.check(OriginalAuthorityStage::Audit)?;
+        let (id, depth) = match check {
+            Check::Key(text, depth) => {
+                if depth > 64 {
+                    return Err(strict_error("json nesting exceeds depth limit"));
+                }
+                strict_text(text)?;
+                continue;
+            }
+            Check::Value(id, depth) => (id, depth),
+        };
+        if depth > 64 {
+            return Err(strict_error("json nesting exceeds depth limit"));
+        }
+        match doc.node(id) {
+            Node::String(text) => strict_text(text)?,
+            Node::Scalar(CanonValue::Float(_)) => {
+                return Err(strict_error(
+                    "floating point values are not permitted; use an exact string or integer",
+                ));
+            }
+            Node::Scalar(CanonValue::BigInt(_)) => {
+                return Err(strict_error(
+                    "integer exceeds I-JSON safe range; use a canonical decimal string",
+                ));
+            }
+            Node::Scalar(CanonValue::Int(value))
+                if value.unsigned_abs() > tobkiri_canon::MAX_SAFE_INTEGER =>
+            {
+                return Err(strict_error(
+                    "integer exceeds I-JSON safe range; use a canonical decimal string",
+                ));
+            }
+            Node::Array(items) => {
+                for &id in items.iter().rev() {
+                    work.push(Check::Value(id, depth + 1));
+                }
+            }
+            Node::Object(items) => {
+                for (key, id) in items.iter().rev() {
+                    work.push(Check::Value(*id, depth + 1));
+                    work.push(Check::Key(key, depth));
+                }
+            }
+            Node::Scalar(_) => {}
+        }
+    }
+    Ok(())
 }
 
 pub(super) struct Audit<'a> {

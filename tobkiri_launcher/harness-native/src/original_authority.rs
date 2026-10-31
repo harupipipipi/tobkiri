@@ -11,10 +11,14 @@ use tobkiri_gate::{CapacityKind, CoreCancellation, NativeSetupInvocation, Native
 mod crypto;
 #[path = "original_authority_io.rs"]
 mod io;
+pub(crate) use io::publication::{Prefix as PublicationPrefix, PublicationRead};
 #[path = "original_authority_json.rs"]
 mod json;
 #[path = "original_authority_lease.rs"]
 mod lease;
+#[cfg(test)]
+#[path = "original_profile_publication_tests.rs"]
+mod publication_tests;
 #[path = "original_authority_schema.rs"]
 mod schema;
 #[path = "original_authority_snapshot.rs"]

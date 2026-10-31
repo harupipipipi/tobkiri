@@ -28,6 +28,9 @@ use std::{
 };
 use tobkiri_gate::{ControlKind, ControlReservation, CoreControl};
 
+#[path = "original_profile_publication.rs"]
+pub(crate) mod publication;
+
 #[derive(Default)]
 pub(super) struct CleanupState {
     files: AtomicUsize,
@@ -59,6 +62,7 @@ impl CleanupState {
 struct TrackedFile {
     value: ManuallyDrop<File>,
     state: Arc<CleanupState>,
+    closed: bool,
 }
 #[cfg(unix)]
 impl TrackedFile {
@@ -67,10 +71,27 @@ impl TrackedFile {
         Self {
             value: ManuallyDrop::new(value),
             state,
+            closed: false,
         }
     }
     fn try_clone(&self) -> std::io::Result<Self> {
         Ok(Self::new(self.value.try_clone()?, self.state.clone()))
+    }
+    fn close(mut self) -> std::io::Result<()> {
+        self.close_inner()
+    }
+    fn close_inner(&mut self) -> std::io::Result<()> {
+        if self.closed {
+            return Ok(());
+        }
+        self.closed = true;
+        if unsafe { libc::close(self.value.as_raw_fd()) } == 0 {
+            self.state.files.fetch_sub(1, Ordering::AcqRel);
+            Ok(())
+        } else {
+            self.state.uncertain.store(true, Ordering::Release);
+            Err(std::io::Error::last_os_error())
+        }
     }
 }
 #[cfg(unix)]
@@ -91,11 +112,7 @@ impl Drop for TrackedFile {
     fn drop(&mut self) {
         // close exactly once. EINTR/other close failure is physically unknown;
         // retrying an fd number can close another thread's newly reused fd.
-        if unsafe { libc::close(self.value.as_raw_fd()) } == 0 {
-            self.state.files.fetch_sub(1, Ordering::AcqRel);
-        } else {
-            self.state.uncertain.store(true, Ordering::Release);
-        }
+        let _ = self.close_inner();
     }
 }
 #[cfg(unix)]
