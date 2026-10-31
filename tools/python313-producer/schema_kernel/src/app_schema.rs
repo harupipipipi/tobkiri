@@ -20,6 +20,7 @@ static ENTRIES: AtomicUsize = AtomicUsize::new(0);
 static FRAMES: AtomicUsize = AtomicUsize::new(0);
 
 mod cursor;
+mod object;
 mod references;
 mod value;
 use cursor::{Cursor, Entry, Keyword as Selected, Keywords, Pair};
@@ -38,8 +39,6 @@ struct Environment {
 
 #[derive(Clone, Copy)]
 enum ChildKind {
-    Properties,
-    Additional,
     PropertyNames,
     Items,
     PrefixItems,
@@ -62,6 +61,10 @@ struct Alternatives {
 
 enum Handler {
     Children(Children),
+    Object {
+        cursor: object::State,
+        live: bool,
+    },
     Reference {
         pending: Option<Box<Frame>>,
         live: bool,
@@ -246,6 +249,39 @@ impl Frame {
         loop {
             if let Some(mut handler) = self.handler.take() {
                 let outcome = match &mut handler {
+                    Handler::Object { cursor, live } => {
+                        if *live {
+                            match signal.take() {
+                                Some(Signal::Error(error)) => {
+                                    self.handler = Some(handler);
+                                    return self.decorate(py, env, error);
+                                }
+                                Some(Signal::Done) => *live = false,
+                                None => {
+                                    self.handler = Some(handler);
+                                    return Ok(Action::Resume);
+                                }
+                            }
+                        }
+                        let value = self
+                            .selected
+                            .as_ref()
+                            .expect("selected rule")
+                            .value
+                            .bind(py);
+                        if let Some(child) = cursor.next(py, self.instance.bind(py), value)? {
+                            *live = true;
+                            Some(Action::Push(self.child(
+                                py,
+                                child.schema.into_bound(py),
+                                child.instance.into_bound(py),
+                                Some(child.path.into_bound(py)),
+                                child.schema_path.map(|value| value.into_bound(py)),
+                            )))
+                        } else {
+                            None
+                        }
+                    }
                     Handler::Children(children) => {
                         if children.live {
                             match signal.take() {
@@ -267,30 +303,6 @@ impl Frame {
                                 let value = selected.value.bind(py);
                                 let instance = self.instance.bind(py);
                                 let child = match (children.kind, item) {
-                                    (
-                                        ChildKind::Properties,
-                                        Entry::Pair(Pair { key, value: schema }),
-                                    ) => {
-                                        let key = key.bind(py);
-                                        if !instance.contains(key)? {
-                                            self.handler = Some(handler);
-                                            continue;
-                                        }
-                                        self.child(
-                                            py,
-                                            schema.bind(py).clone(),
-                                            instance.get_item(key)?,
-                                            Some(key.clone()),
-                                            Some(key.clone()),
-                                        )
-                                    }
-                                    (ChildKind::Additional, Entry::Value(item)) => self.child(
-                                        py,
-                                        value.clone(),
-                                        instance.get_item(item.bind(py))?,
-                                        Some(item.into_bound(py)),
-                                        None,
-                                    ),
                                     (ChildKind::PropertyNames, Entry::Value(item)) => self.child(
                                         py,
                                         value.clone(),
@@ -464,10 +476,24 @@ impl Frame {
                 }));
             };
             match name.as_str() {
-                "properties" if json_type(env, instance, "object", schema)? => children(
-                    ChildKind::Properties,
-                    Cursor::pairs(&value.call_method0("items")?)?,
-                ),
+                "properties" | "patternProperties" | "additionalProperties" => {
+                    match object::start(py, &env.value_policy, &name, &value, instance, schema)? {
+                        object::Start::Skip => {}
+                        object::Start::Cursor(cursor) => {
+                            self.handler = Some(Handler::Object {
+                                cursor,
+                                live: false,
+                            })
+                        }
+                        object::Start::Error { error, state } => {
+                            self.handler = Some(Handler::Object {
+                                cursor: state,
+                                live: false,
+                            });
+                            return self.decorate(py, env, error);
+                        }
+                    }
+                }
                 "propertyNames" if json_type(env, instance, "object", schema)? => {
                     children(ChildKind::PropertyNames, Cursor::values(instance)?)
                 }
@@ -475,47 +501,6 @@ impl Frame {
                     ChildKind::DependentSchemas,
                     Cursor::pairs(&value.call_method0("items")?)?,
                 ),
-                "additionalProperties" if json_type(env, instance, "object", schema)? => {
-                    // Preserve the original extras iterator/set ordering and live
-                    // dictionary values; this helper performs no validation.
-                    let extras = keywords::utility(py, "find_additional_properties")?
-                        .call1((instance, schema))?;
-                    let extras = builtin(py, "set")?.call1((extras,))?;
-                    if json_type(env, &value, "object", schema)? {
-                        children(ChildKind::Additional, Cursor::values(&extras)?);
-                    } else if !value.is_truthy()? && extras.is_truthy()? {
-                        let message = if schema.contains("patternProperties")? {
-                            let verb = if extras.len()? == 1 { "does" } else { "do" };
-                            format(
-                                py,
-                                "{0} {1} not match any of the regexes: {2}",
-                                &[
-                                    keywords::reprs_joined(
-                                        py,
-                                        &keywords::sorted(py, &extras, false)?,
-                                    )?,
-                                    PyString::new(py, verb).into_any(),
-                                    keywords::reprs_joined(
-                                        py,
-                                        &keywords::sorted(
-                                            py,
-                                            &schema.get_item("patternProperties")?,
-                                            false,
-                                        )?,
-                                    )?,
-                                ],
-                            )?
-                        } else {
-                            keywords::extras_message(
-                                py,
-                                "Additional properties are not allowed (%s %s unexpected)",
-                                &keywords::sorted(py, &extras, true)?,
-                            )?
-                        };
-                        let error = validation_error(py, message, None)?.unbind();
-                        return self.decorate(py, env, error);
-                    }
-                }
                 "items" if json_type(env, instance, "array", schema)? => {
                     let prefix = schema
                         .call_method1("get", ("prefixItems", PyList::empty(py)))?
@@ -592,12 +577,7 @@ impl Frame {
                         live: false,
                     });
                 }
-                "properties"
-                | "propertyNames"
-                | "dependentSchemas"
-                | "additionalProperties"
-                | "items"
-                | "prefixItems" => {}
+                "propertyNames" | "dependentSchemas" | "items" | "prefixItems" => {}
                 "type" | "const" | "enum" | "minItems" | "maxItems" | "minLength" | "maxLength"
                 | "minProperties" | "maxProperties" | "minimum" | "maximum"
                 | "exclusiveMinimum" | "exclusiveMaximum" => {
@@ -639,8 +619,7 @@ impl Frame {
                 }
                 // Annotation keywords are ignored as in the original. Known
                 // unimplemented evaluators refuse rather than trust or retry.
-                "patternProperties"
-                | "required"
+                "required"
                 | "dependentRequired"
                 | "contains"
                 | "oneOf"

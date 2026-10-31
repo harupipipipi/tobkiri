@@ -347,13 +347,15 @@ This is a cumulative schema count, not completion of the issue's20 acceptance
 conditions. One-shot42/full, all839 units and final product adoption remain open.
 
 
-## Reference binding order (source fix; CI pending)
+## Reference binding order (native parity)
 
 The dynamic-anchor loop now binds the actual registry.anchor descriptor before
 reading the actual name and calls that retained callable once. It preserves the
 original NoSuchAnchor catch scope. Three new comparisons use actual selected
 owned anchors, retaining all14 earlier groups, for17 groups/23 pairs on the
-current inventory. Native CI is still required.
+current inventory. Native CI41186476354 at2a265369a passed all17 fragment groups
+and every prior comparison, including complete App comparisons. This isolated
+source fix has no separate Wasm-budget qualification.
 
 The proposed registry binding-view optimization is deferred. An outer canonical
 root method and exact return type do not establish registry ownership; unknown
@@ -361,3 +363,22 @@ rpds maps cannot be scanned as a pure eligibility check. No unknown-registry
 admission, unused fast path, probe retry or result cache was introduced. Astra's
 next selected implementation boundary is the App object constraint family,
 preserving separate keyword passes and existing reference algorithms.
+
+
+## App object constraint family (implemented; CI pending)
+
+Sol6.1 xhigh implemented independent properties, patternProperties and
+additionalProperties cursors. Rules remain separate and keep their original
+keyword order, actual iterators, child binding points and callback-visible live
+reads. Combined additional-property regex is joined once at classification;
+individual pattern passes keep their own actual regex operations. Additional
+keys use the real Python set, preserving hash/equality/deduplication/order.
+Classification locals close before the additional-schema type callback, while
+rejected-error state retains extras through error decoration.
+
+Root integrated the owned error-message boundary, source inventory15 and CI.
+The16 groups/67 differential pairs cover overlap, combined regex, key mutations,
+foreign iteration/regex/truth/errors, bound-child identity, contexts and handle
+release. AST/rustfmt checks passed. Actual native/guest CI remains required;
+registry/Resource/URI/pointer/dynamic algorithms, generic API and all earlier
+comparison groups remain unchanged. No product/default switch is made.

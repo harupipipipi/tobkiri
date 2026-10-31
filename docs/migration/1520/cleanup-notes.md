@@ -1442,4 +1442,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - 次のまとまったsliceはAstra指示のApp object family properties/patternProperties/
   additionalProperties。三ruleを融合せず実順序・child binding/live変更・combined regex
   の意味を保ち、generic findAdditionalPropertiesへの委譲を外す。registry/URI/resource/
-  pointer/dynamic算法は変更しない。まだ実装前。
+  pointer/dynamic算法は変更しない。Solがobject.rs/stateとFrame接続、新object16群/67対を
+  実装済み。三ruleの順序を保ち、pattern/subschema/k/vの既bound参照はouter移行でも
+  保持する。extrasは実PySetでhash/eq/dedup/orderを保ち、分類Cursorで旧foreign keyを
+  次nextまで保持。分類localsはAP TypePolicy前に解放し、false AP errorではextrasを
+  error decoration中も保持する。Rootはmessage helper・CI・source inventory15を統合。
+  複合regex、foreign items/unpack/hint、regex/truth/供給例外、dict変更、binding・live値、
+  AP分類前後・error context/refs・実set順・weakrefを比較。AST6/rustfmt/diffのみ成功、
+  実native/guestは未実施。generic API・既存全groupsと4counter形状は維持。
+
+- 独立anchor修正2a265369a native CI41186476354は成功。fragment17群/現23対、
+  scalar12/193・control18/48・value16と全既存generic/API/backend/reference29/callout/
+  ownership/App37/42/full305-entry453-readを維持。extension1,043,096B/
+  SHA d4605b886f330df56d0ddc37269967f16dda437bcccb7f61065ee6b85209e39d。
+  RAM artifact13036129128/65,985B、必要JSON41,685B保存。2aだけのWasm再実行は
+  行わず、次object sliceのnative成功後、同じ最新sourceで両guest gateを測る。

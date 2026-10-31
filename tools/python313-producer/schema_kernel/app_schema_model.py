@@ -171,3 +171,19 @@ def type_error(instance, types, single):
     else:
         reprs = ", ".join(repr(kind) for kind in types)
     return exceptions.ValidationError(f"{instance!r} is not of type {reprs}")
+
+
+def additional_properties_error(extras, schema):
+    """Build the error using live schema and the source operation order."""
+    if "patternProperties" in schema:
+        verb = "does" if len(extras) == 1 else "do"
+        joined = ", ".join(repr(each) for each in sorted(extras))
+        patterns = ", ".join(repr(each) for each in sorted(schema["patternProperties"]))
+        error = f"{joined} {verb} not match any of the regexes: {patterns}"
+        return exceptions.ValidationError(error)
+    error = "Additional properties are not allowed (%s %s unexpected)"
+    constructor = exceptions.ValidationError
+    ordered = sorted(extras, key=str)
+    verb = "was" if len(ordered) == 1 else "were"
+    joined = ", ".join(repr(extra) for extra in ordered)
+    return constructor(error % (joined, verb))
