@@ -97,6 +97,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   source保持・physical drop後payload0を確認。証明はlibrary/機構の範囲であり、元製品の
   owner一組化・GUI Setup・全終了や全20条件の達成に広げない。
 
+- 元launcherの終了接続を追加実装中（Astra high設計、Sol6.1 xhigh担当）。現stateは
+  prepare/adoptのproduction callerがなくjob/cancel/Joinを保持しない。既存owner時も
+  ShutdownFlagを確認し、owner生成中からjobを登録、同invocation由来のcancelをEngine前に
+  登録する。workerがcompile/init/実処理/finish/actualJoinまで所有し、外へはdetached data
+  のみ返す。caller dropでも追跡を残す。stopはadmission閉鎖→cancel→lock外でfinish/Join→
+  実Sessionがあれば既存close→owner解放/Closed。timeoutはStoppingとowner/Joinを保持し、
+  元signal/requestExit/setupFailure/Exitfallbackへ接続し、強制終了を正常完了と記録しない。
+  RuntimeOwner.close/Core.closeは存在せず仮定しない。実Setup・qualified artifact・GUI
+  採用は別途未完で、このlifecycle sliceを全体完成へ読み替えない。
+
 - 条件: 旧 Profile・データ・秘密情報・復旧の実移行、実候補と承認の拘束、
   Stop / Quit の終了・失効まで確認する。空の新 root を既存環境の代用にしない。
   最初の Profile を CLI で作らせる暫定画面も、元 Setup に戻すまで未完了とする。
@@ -1468,3 +1478,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - 同じ207e6でWasm cold/full41187640127と累積41187645274を各1回起動、実行中。
   元one-Store/2B/64MiB/絶対30秒のまま同一runを追跡する。現時点でこのsliceのguest
   完走/全製品資格は未証明。最新terminal guestは2cの累積20schema、one-shot両方未達。
+
+- object207実Wasm終了。cold/full CI41187640127は元2Bで両方停止。component
+  2ec4b2a3…5f3ce9、prepare後1,979,501,139→0、cold約1.999秒/full約1.786秒。
+  元30秒deadline維持・期限超過/unreachableなし、Store退役・physical payload0。
+- 累積CI41187645274は整合性のみ成功、完了20件のまま21件目profile_lock_v5で燃料0。
+  component e13373a9…42f24b、prepare後1,979,540,439、19件後194,460,126、20件後
+  125,031,749残。20件後18,106frames/型17,348/数値77/Python0/pointer962/dynamic891/
+  adapter0/cache0hit20miss。one-Store/account/予算更新0/64MiB30秒/cold-zero/各件到達/
+  単調性/index20/退役/payload0を確認。2cの20件後117,706,594とはaggregateで数値が
+  変わったがfrontierは20のまま。関数fuel帰属やone-shot成功の主張には使わない。
+- 両mode実extension557,164B/SHA
+  af7b9913d1168ac2bc8627dac2252ea9c3d89afb6271328f5086bbe5c6755030を確認。
+  RAM artifact13037467805/245,073B・13038101591/246,317Bの必要JSONのみ保存。
+  完走・元GUI採用・全839/20受け入れ・1B/API・Python/VM廃止は未達。

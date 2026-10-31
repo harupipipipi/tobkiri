@@ -365,7 +365,7 @@ next selected implementation boundary is the App object constraint family,
 preserving separate keyword passes and existing reference algorithms.
 
 
-## App object constraint family (native parity; guest pending)
+## App object constraint family (native parity; guest frontier20, budget unmet)
 
 Sol6.1 xhigh implemented independent properties, patternProperties and
 additionalProperties cursors. Rules remain separate and keep their original
@@ -383,6 +383,10 @@ release. Native CI41187452493 at207e6e82e passed those16 groups/67 pairs and all
 prior comparisons, including full App37/42/full305-entry453-read. The bounded
 64-case native profile has no find_additional_properties calls among all26
 matching rows; this is not total Python work or fuel attribution. Same-source
-Wasm cold/full41187640127 and cumulative41187645274 are in progress under the
-original limits. Registry/Resource/URI/pointer/dynamic algorithms, generic API
-and all earlier groups remain unchanged. No product/default switch is made.
+Wasm cold/full41187640127 both exhausted the original2B fuel. Cumulative
+41187645274 passed diagnostic integrity only and completed20 schemas before21st
+profile_lock_v5 exhausted fuel. After20,125,031,749 fuel remained; all original
+one-Store/account/64MiB/30s, retirement and payload0 checks held. This unchanged
+frontier does not qualify one-shot completion. Registry/Resource/URI/pointer/
+dynamic algorithms, generic API and earlier groups remain unchanged. No
+product/default switch is made.
