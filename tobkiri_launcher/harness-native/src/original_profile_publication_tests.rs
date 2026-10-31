@@ -1,4 +1,4 @@
-//! Fresh CI comparison of the real native publication prefix, not full Setup.
+//! Fresh CI comparison of finite native publication recovery, not full Setup.
 //! The original application's denied factory is a finite fixture binding here;
 //! this does not prove that the product factory or original GUI is connected.
 use super::*;
@@ -53,12 +53,14 @@ fn bind_error(value: &mut Value, root: &str, denial_class: &str) {
             if values.get("type").and_then(Value::as_str) == Some(crate::bootstrap_review::DENIED) {
                 values.insert("type".into(), Value::String(denial_class.into()));
             }
-            // The source-defined persistence exception subclasses OSError with
-            // no errno or filename. This projects that fixed source type; it
-            // does not turn a native-only condition into a source exception.
-            if values.get("type").and_then(Value::as_str)
-                == Some("tobkiri_protocol.secure_persistence.SecurePersistenceError")
-            {
+            // These fixed source exception types include synthetic OSErrors
+            // constructed without errno/filename. Preserve fields already set
+            // by actual OS errors, including the suppressed stat-error context.
+            if matches!(
+                values.get("type").and_then(Value::as_str),
+                Some("tobkiri_protocol.secure_persistence.SecurePersistenceError")
+                    | Some("builtins.FileNotFoundError")
+            ) {
                 values.entry("errno").or_insert(Value::Null);
                 values.entry("filename").or_insert(Value::Null);
             }
@@ -102,7 +104,7 @@ fn original_reference_driver() -> anyhow::Result<()> {
     let bytes = std::fs::read(&manifest)?;
     anyhow::ensure!(bytes.len() <= 2 * 1024 * 1024);
     let fixtures: Value = serde_json::from_slice(&bytes)?;
-    anyhow::ensure!(fixtures["format"] == "io.tobkiri.original-publication-prelude-fixtures.v1");
+    anyhow::ensure!(fixtures["format"] == "io.tobkiri.original-publication-recovery-fixtures.v2");
     anyhow::ensure!(fixtures["original_head"] == "1cf025f1eeab31a3daa2861b1f26a025c6954b6e");
     anyhow::ensure!(fixtures["python"] == "3.13.16");
     anyhow::ensure!(fixtures["reference_checks_passed"] == true);
@@ -115,12 +117,12 @@ fn original_reference_driver() -> anyhow::Result<()> {
     let cases = fixtures["cases"]
         .as_array()
         .ok_or_else(|| anyhow::anyhow!("original publication cases required"))?;
-    anyhow::ensure!(cases.len() == 48);
+    anyhow::ensure!(cases.len() == 77);
     let unique = cases
         .iter()
         .map(|case| case["name"].as_str())
         .collect::<BTreeSet<_>>();
-    anyhow::ensure!(unique.len() == 48 && !unique.contains(&None));
+    anyhow::ensure!(unique.len() == 77 && !unique.contains(&None));
     let storage = tempfile::tempdir()?;
     let storage = storage.path().canonicalize()?;
     let mut observations = Vec::new();
@@ -158,16 +160,31 @@ fn original_reference_driver() -> anyhow::Result<()> {
         let mut actual = read.run(&source, &cancellation, true);
         if matches!(
             actual,
-            Ok(PublicationPrefix::NoJournal | PublicationPrefix::NoIntent)
+            Ok(PublicationPrefix::NoJournal
+                | PublicationPrefix::NoIntent
+                | PublicationPrefix::RecoveredNone)
         ) {
+            if case["between_calls_install_intent"].as_bool() == Some(true) {
+                // Closed fixture input installed between the two original
+                // recovery occurrences, never a product resume flag or API.
+                let profiles = source.root.join("profiles");
+                std::fs::rename(
+                    profiles.join(".fixture-pending-publication.json"),
+                    profiles.join("bootstrap-publication.json"),
+                )?;
+            }
             actual = read.run(&source, &cancellation, false);
         }
         let observed = match &actual {
-            Ok(PublicationPrefix::NoJournal | PublicationPrefix::NoIntent) => {
+            Ok(
+                PublicationPrefix::NoJournal
+                | PublicationPrefix::NoIntent
+                | PublicationPrefix::RecoveredNone,
+            ) => {
                 json!({"outcome":"integration-boundary", "stage":"catalog-not-bound"})
             }
-            Ok(PublicationPrefix::VerifiedIntent) => {
-                json!({"outcome":"integration-boundary", "stage":"verified-pointer-not-bound"})
+            Ok(PublicationPrefix::BootstrapProfileIdNotBound) => {
+                json!({"outcome":"integration-boundary", "stage":"bootstrap-profile-id-not-bound"})
             }
             Err(error) => match tests::native_issue(error, 0) {
                 Some((stage, reason)) => json!({"outcome":"native-integration-failure",
@@ -186,7 +203,7 @@ fn original_reference_driver() -> anyhow::Result<()> {
             .insert("name".into(), case["name"].clone());
         observations.push(row);
         let output = serde_json::to_vec_pretty(&json!({
-            "format":"io.tobkiri.original-publication-prelude-native-observations.v1",
+            "format":"io.tobkiri.original-publication-recovery-native-observations.v2",
             "native_comparison":true,"qualification":false,"production_enabled":false,
             "application_factory_binding":"finite fixture only; product factory unqualified",
             "cases":observations,

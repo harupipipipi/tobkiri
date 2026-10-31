@@ -519,6 +519,178 @@ fn finite_review_detachment_failure_drops_owned_diagnostics_before_finish() {
     review_missing_key(true);
 }
 
+#[test]
+fn finite_review_verifies_the_current_snapshot_before_the_next_unbound_call() {
+    review_pointer(ReviewPointerCase::Same);
+}
+
+#[test]
+fn finite_review_discards_a_stale_intent_after_verifying_the_current_snapshot() {
+    review_pointer(ReviewPointerCase::Stale);
+}
+
+#[test]
+fn finite_review_detaches_the_missing_snapshot_error_graph_before_finish() {
+    review_pointer(ReviewPointerCase::MissingSnapshot);
+}
+
+#[derive(Clone, Copy)]
+enum ReviewPointerCase {
+    Same,
+    Stale,
+    MissingSnapshot,
+}
+
+// Small fixture encoding only. The independent original driver verifies the
+// old codecs, pointers and snapshots; these cases exercise the actual worker.
+fn review_fixture_json(value: &serde_json::Value, spaced: bool) -> String {
+    use serde_json::Value;
+    match value {
+        Value::Array(values) => format!(
+            "[{}]",
+            values
+                .iter()
+                .map(|value| review_fixture_json(value, spaced))
+                .collect::<Vec<_>>()
+                .join(if spaced { ", " } else { "," })
+        ),
+        Value::Object(values) => {
+            let mut values: Vec<_> = values.iter().collect();
+            values.sort_unstable_by_key(|(key, _)| *key);
+            format!(
+                "{{{}}}",
+                values
+                    .into_iter()
+                    .map(|(key, value)| format!(
+                        "{}{}{}",
+                        serde_json::to_string(key).unwrap(),
+                        if spaced { ": " } else { ":" },
+                        review_fixture_json(value, spaced)
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(if spaced { ", " } else { "," })
+            )
+        }
+        value => serde_json::to_string(value).unwrap(),
+    }
+}
+
+fn review_pointer(case: ReviewPointerCase) {
+    use hmac::{Hmac, Mac};
+    use serde_json::json;
+    let running = launch(
+        OriginalOperation::ReviewListing(Default::default()),
+        Scenario::Normal,
+        1,
+        false,
+    );
+    let invocation = receive(&running.ready);
+    let deadline = invocation.deadline().unwrap();
+    receive(&running.entered);
+    let profiles = running._root.0.join("profiles");
+    fs::create_dir(&profiles).unwrap();
+    let digest = format!("sha256:{}", "a".repeat(64));
+    let snapshot = json!({
+        "profile":{"profile_id":"defaults"},
+        "plan":{"profile_revision":digest,"plan_digest":digest},
+        "lock":{"lock_digest":digest},
+        "activation":{"profile_id":"defaults","profile_revision":digest,
+            "activation_id":"activation:fixture1","plan_digest":digest,
+            "lock_digest":digest,"state":"active"},
+    });
+    let snapshot = review_fixture_json(&snapshot, false);
+    let relative = "workspaces/defaults/activation/activations/fixture1.json";
+    let snapshot_path = running._root.0.join(relative);
+    fs::create_dir_all(snapshot_path.parent().unwrap()).unwrap();
+    if !matches!(case, ReviewPointerCase::MissingSnapshot) {
+        fs::write(&snapshot_path, &snapshot).unwrap();
+    }
+    let mut pointer = json!({
+        "schema":"io.tobkiri.active-profile-pointer.v1",
+        "profile_id":"defaults","profile_revision":digest,
+        "activation_id":"activation:fixture1","plan_digest":digest,"lock_digest":digest,
+        "activation_snapshot_path":relative,"activation_snapshot_digest":Digest::hash(snapshot.as_bytes()).as_str(),
+        "catalog_revision":null,"generation":1,"updated_at":1000,
+    });
+    pointer["pointer_digest"] =
+        json!(Digest::hash(review_fixture_json(&pointer, false).as_bytes()).as_str());
+    let pointer_bytes = review_fixture_json(&pointer, false);
+    fs::write(profiles.join("active.json"), &pointer_bytes).unwrap();
+    let payload = json!({
+        "schema":"io.tobkiri.profile-publication-intent.v1",
+        "predecessor":if matches!(case, ReviewPointerCase::Stale) { serde_json::Value::Null } else { pointer },
+        "candidate":{"profile_id":"other","profile_revision":digest,
+            "activation_id":"activation:fixture1","plan_digest":digest,"lock_digest":digest},
+        "confirmation_digest":null,
+    });
+    let key = "original-publication-fixture-key-material";
+    fs::write(profiles.join(".publication-key"), key).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(
+            profiles.join(".publication-key"),
+            fs::Permissions::from_mode(0o600),
+        )
+        .unwrap();
+    }
+    let mut hmac = Hmac::<sha2::Sha256>::new_from_slice(key.as_bytes()).unwrap();
+    hmac.update(review_fixture_json(&payload, true).as_bytes());
+    let journal = review_fixture_json(
+        &json!({"payload":payload,"hmac":hex::encode(hmac.finalize().into_bytes())}),
+        false,
+    );
+    let journal_path = profiles.join("bootstrap-publication.json");
+    fs::write(&journal_path, &journal).unwrap();
+    running.resume.send(()).unwrap();
+    let output = tauri::async_runtime::block_on(running.waiter.result());
+    match (case, output) {
+        (ReviewPointerCase::Same, Err(DetachedFailure::Execution { stage: Stage::Review,
+            source: SourceRecord::Integration(crate::native_worker_failure::IntegrationFailure::ReviewNotBound(
+                tobkiri_harness_native::BootstrapReviewReachpoint::BootstrapProfileIdNotBound)) })) => {}
+        (ReviewPointerCase::Stale, Err(DetachedFailure::Execution { stage: Stage::Review,
+            source: SourceRecord::Integration(crate::native_worker_failure::IntegrationFailure::ReviewNotBound(
+                tobkiri_harness_native::BootstrapReviewReachpoint::CatalogNotBound)) })) => {}
+        (ReviewPointerCase::MissingSnapshot, Err(DetachedFailure::Execution { stage: Stage::Review,
+            source: SourceRecord::Review(crate::native_worker_failure::ReviewSourceRecord::ResolutionDenied { message, cause }) })) => {
+            assert_eq!(message, "Profile publication recovery failed closed");
+            let tobkiri_harness_native::OriginalAuthorityCause::Python { class, message, cause: Some(cause), suppressed: true, .. } = cause else { panic!("missing original snapshot wrapper"); };
+            assert_eq!(class, "core_runtime.active_profile_store_v4.ActiveProfileStoreIntegrityError");
+            assert_eq!(message, "active Profile activation snapshot is unavailable");
+            let tobkiri_harness_native::OriginalAuthorityCause::Python { class, message, cause: None, context: Some(context), suppressed: true } = *cause else { panic!("missing synthetic FileNotFoundError"); };
+            assert_eq!(class, "builtins.FileNotFoundError");
+            assert_eq!(message, "fixture1.json");
+            let tobkiri_harness_native::OriginalAuthorityCause::Io(context) = *context else { panic!("missing actual stat context"); };
+            assert_eq!(context.errno, Some(2));
+            assert_eq!(context.filename.as_deref(), Some("fixture1.json"));
+        }
+        (_, other) => panic!("unexpected pointer review outcome: {other:?}"),
+    }
+    assert_eq!(invocation.deadline().unwrap(), deadline);
+    assert_eq!(
+        fs::read_to_string(profiles.join("active.json")).unwrap(),
+        pointer_bytes
+    );
+    assert_eq!(
+        fs::read_to_string(profiles.join(".publication-key")).unwrap(),
+        key
+    );
+    assert_eq!(
+        journal_path.exists(),
+        !matches!(case, ReviewPointerCase::Stale)
+    );
+    if journal_path.exists() {
+        assert_eq!(fs::read_to_string(&journal_path).unwrap(), journal);
+    }
+    if snapshot_path.exists() {
+        assert_eq!(fs::read_to_string(&snapshot_path).unwrap(), snapshot);
+    }
+    assert!(!profiles.join(".active-profile.lock").exists());
+    assert!(!running._root.0.join("authority").exists());
+    assert_eq!(receive(&running.published), (true, true));
+    drain(&running.jobs, &running.controls, &invocation, true);
+}
+
 fn review_missing_key(omit_detachment_invocation: bool) {
     let options = tobkiri_harness_native::BootstrapReviewOptions {
         include_source_additions: true,

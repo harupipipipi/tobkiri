@@ -13,7 +13,10 @@ mod publication_io;
 use publication_io::{Directory, PublicationLock, read_stream};
 #[path = "original_profile_publication_model.rs"]
 mod model;
-use model::validate_predecessor;
+use model::{Pointer, validate_pointer};
+#[cfg(unix)]
+#[path = "original_active_profile.rs"]
+mod active_profile;
 
 const JOURNAL: &str = "bootstrap-publication.json";
 const LOCK: &str = ".bootstrap-publication.lock";
@@ -24,7 +27,8 @@ const RAW_IO: &str = "tobkiri.native.PublicationRawIo";
 pub(crate) enum Prefix {
     NoJournal,
     NoIntent,
-    VerifiedIntent,
+    RecoveredNone,
+    BootstrapProfileIdNotBound,
 }
 
 /// This carrier stays in Bootstrap, outside the caught execution future. Thus
@@ -95,6 +99,7 @@ impl PublicationRead {
                 prefix(
                     &op,
                     root,
+                    discard_superseded,
                     #[cfg(test)]
                     remove_intent_after_lock,
                 )
@@ -170,6 +175,7 @@ fn recovery_error(error: OriginalAuthorityError) -> OriginalAuthorityError {
         || matches!(
             error.class,
             "builtins.ValueError"
+                | "builtins.FileNotFoundError"
                 | "tobkiri_protocol.errors.CanonicalizationError"
                 | "tobkiri_protocol.secure_persistence.SecurePersistenceError"
                 | "core_runtime.hmac_key_manager.SigningKeyError"
@@ -193,6 +199,7 @@ fn recovery_error(error: OriginalAuthorityError) -> OriginalAuthorityError {
 fn prefix<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     root: &Path,
+    discard_superseded: bool,
     #[cfg(test)] remove_intent_after_lock: bool,
 ) -> Result<Prefix> {
     let _paths = op.reserve(
@@ -215,24 +222,56 @@ fn prefix<S: OriginalAuthorityOwner>(
     #[cfg(unix)]
     {
         let directory = Directory::capture(op, &profiles, true)?;
-        let mut guard = PublicationLock::acquire(op, &directory)?;
-        #[cfg(test)]
-        if remove_intent_after_lock {
-            fs::remove_file(&path).map_err(|error| raw_io(error, path.to_str()))?;
-        }
-        let result = read_intent(op, &profiles);
-        // Python skips post-yield validation for a body exception. The current
-        // verified-intent continuation likewise stops at an unbound constructor.
-        let result = if matches!(result, Ok(Prefix::NoIntent)) {
-            finish_scope(
-                result,
-                directory.validate_file(op, LOCK, guard.file.as_ref().expect("publication lock")),
-            )
-        } else {
-            result
-        };
-        let closed = guard.close();
-        finish_scope(result, closed)
+        let guard = PublicationLock::acquire(op, &directory)?;
+        let scope = RecoveryScope { directory, guard };
+        // This private lexical body is the only continuation. Neither an
+        // authenticated arena nor a guard escapes for a later reacquisition.
+        let result = (|| {
+            #[cfg(test)]
+            if remove_intent_after_lock {
+                fs::remove_file(&path).map_err(|error| raw_io(error, path.to_str()))?;
+            }
+            let Some(mut intent) = read_intent(op, &profiles)? else {
+                return Ok(Prefix::NoIntent);
+            };
+            // The caller actually parses the predecessor a SECOND time after
+            // journal.read. Do not reuse the first validation as a cache.
+            let predecessor = intent
+                .doc
+                .get(intent.payload, "predecessor")
+                .expect("intent payload");
+            let expected = if matches!(intent.doc.node(predecessor), Node::Scalar(CanonValue::Null))
+            {
+                None
+            } else {
+                Some(validate_pointer(op, &mut intent.doc, predecessor)?)
+            };
+            let current = active_profile::load(op, root)?;
+            let same = match (&current, &expected) {
+                (None, None) => true,
+                (Some(current), Some(expected)) => {
+                    current.pointer.matches(&current.doc, expected, &intent.doc)
+                }
+                _ => false,
+            };
+            if !same && !published_candidate(current.as_ref(), &intent, expected.as_ref())? {
+                // prepare_bootstrap_profile_review supplies confirmation=None.
+                // Its outer occurrence discards; the inner occurrence keeps.
+                if discard_superseded {
+                    Directory::capture(op, &profiles, true)?.clear_journal(op)?;
+                }
+                return Ok(Prefix::RecoveredNone);
+            }
+            let candidate = intent
+                .doc
+                .get(intent.payload, "candidate")
+                .expect("intent payload");
+            let _profile_id = subscript(&intent.doc, candidate, "profile_id")?;
+            // The next actual dependency is _bootstrap_profile_id(), before
+            // runtime/catalog/Authority. Reaching it is no publication grant.
+            Ok(Prefix::BootstrapProfileIdNotBound)
+        })();
+        scope.finish(op, result)
     }
     #[cfg(not(unix))]
     {
@@ -244,14 +283,107 @@ fn prefix<S: OriginalAuthorityOwner>(
 }
 
 #[cfg(unix)]
+struct RecoveryScope {
+    directory: Directory,
+    guard: PublicationLock,
+}
+#[cfg(unix)]
+impl RecoveryScope {
+    fn finish<S: OriginalAuthorityOwner>(
+        mut self,
+        op: &Operation<'_, S>,
+        result: Result<Prefix>,
+    ) -> Result<Prefix> {
+        // Python validates after a normal return from the with body. Errors
+        // and the not-yet-bound exceptional continuation skip that check.
+        let result = if matches!(result, Ok(Prefix::NoIntent | Prefix::RecoveredNone)) {
+            finish_scope(
+                result,
+                self.directory.validate_file(
+                    op,
+                    LOCK,
+                    self.guard.file.as_ref().expect("publication lock"),
+                ),
+            )
+        } else {
+            result
+        };
+        let closed = self.guard.close();
+        finish_scope(result, closed)
+    }
+}
+
+#[cfg(unix)]
+struct Intent {
+    doc: Funded<Document>,
+    payload: usize,
+}
+
+#[cfg(unix)]
+fn published_candidate(
+    current: Option<&active_profile::LoadedPointer>,
+    intent: &Intent,
+    expected: Option<&Pointer>,
+) -> Result<bool> {
+    let candidate = intent
+        .doc
+        .get(intent.payload, "candidate")
+        .expect("intent payload");
+    let Some(current) = current else {
+        return Ok(false);
+    };
+    // tuple(generator) eagerly obtains all five keys before comparison.
+    let fields = [
+        "profile_id",
+        "profile_revision",
+        "activation_id",
+        "plan_digest",
+        "lock_digest",
+    ];
+    let candidate_fields = [
+        subscript(&intent.doc, candidate, fields[0])?,
+        subscript(&intent.doc, candidate, fields[1])?,
+        subscript(&intent.doc, candidate, fields[2])?,
+        subscript(&intent.doc, candidate, fields[3])?,
+        subscript(&intent.doc, candidate, fields[4])?,
+    ];
+    let same = fields
+        .into_iter()
+        .zip(candidate_fields)
+        .all(|(name, candidate)| {
+            model::equal_atom(
+                current.doc.node(current.pointer.field(name)),
+                intent.doc.node(candidate),
+            )
+        });
+    Ok(same
+        && current.pointer.integer(&current.doc, "generation")
+            == expected.map_or(1, |pointer| pointer.integer(&intent.doc, "generation") + 1))
+}
+
+fn subscript(doc: &Document, id: usize, key: &'static str) -> Result<usize> {
+    if let Node::Object(_) = doc.node(id) {
+        return doc
+            .get(id, key)
+            .ok_or_else(|| raw("builtins.KeyError", format!("'{key}'")));
+    }
+    let message = match doc.node(id) {
+        Node::Array(_) => "list indices must be integers or slices, not str".to_owned(),
+        Node::String(_) => "string indices must be integers, not 'str'".to_owned(),
+        node => format!("'{}' object is not subscriptable", model::kind(node)),
+    };
+    Err(raw("builtins.TypeError", message))
+}
+
+#[cfg(unix)]
 fn read_intent<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     profiles: &Path,
-) -> Result<Prefix> {
+) -> Result<Option<Intent>> {
     // read() independently constructs/captures its SecureDirectory, under lock.
     let directory = Directory::capture(op, profiles, true)?;
     if !directory.exists(op, JOURNAL)? {
-        return Ok(Prefix::NoIntent);
+        return Ok(None);
     }
     let bytes = directory.read(op, JOURNAL)?;
     let mut doc = json::decode_strict(&bytes, op)?;
@@ -316,10 +448,10 @@ fn read_intent<S: OriginalAuthorityOwner>(
     }
     let predecessor = doc.get(payload, "predecessor").expect("exact payload");
     if !matches!(doc.node(predecessor), Node::Scalar(CanonValue::Null)) {
-        validate_predecessor(op, &mut doc, predecessor)?;
+        validate_pointer(op, &mut doc, predecessor)?;
     }
     // candidate and confirmation_digest are deliberately not inspected here.
-    Ok(Prefix::VerifiedIntent)
+    Ok(Some(Intent { doc, payload }))
 }
 
 fn exact(doc: &Document, id: usize, names: &[&str]) -> bool {

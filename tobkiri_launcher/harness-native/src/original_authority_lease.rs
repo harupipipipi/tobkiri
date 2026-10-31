@@ -107,7 +107,7 @@ fn scalar(value: &CanonValue) -> String {
 // A container cannot reach a successful constructor through this conversion.
 // It nevertheless performs its actual builtin DATA repr in source order;
 // malformed models do not introduce recursive Rust calls or recursive Drop.
-fn model_text(doc: &Document, id: Option<usize>, empty_false: bool) -> Result<String> {
+pub(super) fn model_text(doc: &Document, id: Option<usize>, empty_false: bool) -> Result<String> {
     let Some(id) = id else {
         return Ok(String::new());
     };

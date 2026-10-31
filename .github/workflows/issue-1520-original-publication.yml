@@ -1,10 +1,12 @@
-name: Issue 1520 original publication prelude reference
+name: Issue 1520 original publication recovery comparison
 
 'on':
   push:
     branches: [codex/issue-1520-native-shared-state]
     paths:
       - tools/original_publication_reference.py
+      - tools/original_active_profile_fixtures.py
+      - tobkiri_launcher/harness-native/src/original_active_profile*.rs
       - tobkiri_launcher/harness-native/src/original_profile_publication*.rs
       - tobkiri_launcher/harness-native/src/bootstrap_review.rs
       - tobkiri_launcher/harness-native/src/bootstrap_runtime.rs
@@ -59,7 +61,7 @@ jobs:
           python3 -m pip install --disable-pip-version-check --ignore-installed \
             --only-binary=:all: --require-hashes \
             -r "$RUNNER_TEMP/original-publication-requirements.txt"
-      - name: Execute the real original recovery prelude against fresh fixtures
+      - name: Execute real original journal/pointer/snapshot/stale recovery against fresh fixtures
         run: >-
           python3 -B tools/original_publication_reference.py
           --original-root "$GITHUB_WORKSPACE/original-publication-source"
@@ -84,7 +86,7 @@ jobs:
             --features native-source-inspection,native-harness-bootstrap \
             > "$RUNNER_TEMP/launcher-publication-dependency-metadata.json"
           git diff --exit-code -- Cargo.lock tobkiri_launcher/src-tauri/Cargo.lock
-      - name: Execute every fresh original fixture through the native journal body
+      - name: Execute every fresh original fixture through finite native publication recovery
         id: native_driver
         # Actual native allocation-owner proof currently supports macOS only.
         # Linux reference success is not a native journal parity receipt.

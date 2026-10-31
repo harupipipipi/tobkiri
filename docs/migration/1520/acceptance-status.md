@@ -44,6 +44,21 @@ continuations are explicitly unbound. Application-denial types in this
 comparison use a finite CI factory binding. Product factory/GUI integration,
 full recovery and listing remain unqualified; no acceptance item is closed.
 
+The [same-source Launcher distribution CI41248377655](https://github.com/harupipipipi/tobkiri/actions/runs/41248377655)
+completed successfully: 638 library tests (all 12 finite caller cases confirmed
+in individual logs), 123 build-script and 18 resource tests, sealed packaging,
+cold boot, DMG creation and mounted verification. The 280,138,053-byte installer
+artifact was inspected through metadata only. Product Python and PackVM remain;
+this is not full native GUI or model/provider acceptance.
+
+The next recovery slice keeps the same journal guard through actual current
+pointer/snapshot verification and stale-intent discard/retention, ending before
+the bootstrap-identity helper. Its independent v2 comparison retains the original
+48 inputs and adds 29, including an intent installed between the outer and inner
+recovery calls. These 77 fresh source/native cases and three additional actual
+caller regressions are not yet executed. The earlier 48-case result does not
+qualify this larger recovery body or the original GUI flow.
+
 Historical focused checks from the 2026-10-18 slice: foundation gate **0 failures**; complete gate
 **1,044 failures**. Gate regressions **13**, CI-helper regressions **7**, and
 inventory tests **9** passed. That snapshot reported 837 units and

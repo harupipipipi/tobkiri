@@ -47,6 +47,9 @@ impl Document {
     pub fn node_count(&self) -> usize {
         self.nodes.len()
     }
+    pub fn source_bytes(&self) -> usize {
+        self.bytes
+    }
     pub fn node(&self, id: usize) -> &Node {
         &self.nodes[id]
     }

@@ -304,8 +304,17 @@ impl Directory {
         } != 0
         {
             let error = std::io::Error::last_os_error();
-            if !required && error.kind() == std::io::ErrorKind::NotFound {
-                return Ok(None);
+            if error.kind() == std::io::ErrorKind::NotFound {
+                if !required {
+                    return Ok(None);
+                }
+                // Original _stat_entry raises FileNotFoundError(name) from
+                // None: errno/filename are None, while the actual stat error
+                // remains its suppressed context. Do not flatten the two.
+                let mut missing = raw("builtins.FileNotFoundError", name);
+                missing.context = Some(Box::new(raw_io(error, Some(name))));
+                missing.suppressed = true;
+                return Err(missing);
             }
             return Err(raw_io(error, Some(name)));
         }
@@ -351,14 +360,25 @@ impl Directory {
         op: &Operation<'_, S>,
         name: &str,
     ) -> Result<Funded<Zeroizing<Vec<u8>>>> {
-        let files = self.open(op)?;
+        self.read_relative(op, Path::new(name))
+    }
+    pub(super) fn read_relative<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        relative: &Path,
+    ) -> Result<Funded<Zeroizing<Vec<u8>>>> {
+        let parent = self.parent(op, relative)?;
         let result = (|| {
-            let parent = files.last().expect("directory chain");
-            let before = Self::stat(parent, name, true)?.expect("required file");
+            let name = parent
+                .name
+                .to_str()
+                .map_err(|_| OriginalAuthorityError::unavailable())?;
+            let directory = parent.files.last().expect("directory chain");
+            let before = Self::stat(directory, name, true)?.expect("required file");
             let text = CString::new(name).map_err(|_| OriginalAuthorityError::unavailable())?;
             let descriptor = unsafe {
                 libc::openat(
-                    parent.as_raw_fd(),
+                    directory.as_raw_fd(),
                     text.as_ptr(),
                     libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC,
                 )
@@ -376,7 +396,7 @@ impl Directory {
                 }
                 let bytes = read_stream(op, &mut file, 1024 * 1024)?;
                 let after = file.metadata().map_err(|error| raw_io(error, None))?;
-                let named = Self::stat(parent, name, true)?.expect("required file");
+                let named = Self::stat(directory, name, true)?.expect("required file");
                 if read_fingerprint(&after) != read_fingerprint(&opened)
                     || named.read_fingerprint() != read_fingerprint(&opened)
                 {
@@ -386,7 +406,139 @@ impl Directory {
             })();
             finish_scope(read, file.close().map_err(|error| raw_io(error, None)))
         })();
-        close_files(files, result)
+        parent.finish(result)
+    }
+    fn parent<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+        relative: &Path,
+    ) -> Result<Parent> {
+        let capacity = op.reserve(
+            OriginalAuthorityStage::Path,
+            relative
+                .as_os_str()
+                .len()
+                .saturating_mul(8)
+                .saturating_add(
+                    (self.chain.len() + relative.components().count()).saturating_mul(128),
+                )
+                .saturating_add(2048),
+        )?;
+        if relative.is_absolute() || relative.as_os_str().is_empty() {
+            return Err(secure_error("persistence path must be relative"));
+        }
+        let parts = relative
+            .components()
+            .map(|part| match part {
+                Component::Normal(name) => Ok(name),
+                _ => Err(secure_error("persistence path is unsafe")),
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let Some((name, directories)) = parts.split_last() else {
+            return Err(secure_error("persistence path must be relative"));
+        };
+        let name =
+            CString::new(name.as_bytes()).map_err(|_| OriginalAuthorityError::unavailable())?;
+        let mut files = self.open(op)?;
+        if files.try_reserve_exact(directories.len()).is_err() {
+            return close_files(
+                files,
+                Err(OriginalAuthorityError::capacity(
+                    OriginalAuthorityStage::Path,
+                )),
+            );
+        }
+        let result = (|| {
+            for component in directories {
+                op.check(OriginalAuthorityStage::Path)?;
+                let component = CString::new(component.as_bytes())
+                    .map_err(|_| OriginalAuthorityError::unavailable())?;
+                let descriptor = unsafe {
+                    libc::openat(
+                        files.last().expect("parent").as_raw_fd(),
+                        component.as_ptr(),
+                        libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                    )
+                };
+                if descriptor < 0 {
+                    return Err(caused(
+                        secure_error("persistence child directory is unsafe"),
+                        raw_io(std::io::Error::last_os_error(), component.to_str().ok()),
+                    ));
+                }
+                let file =
+                    TrackedFile::new(unsafe { File::from_raw_fd(descriptor) }, op.cleanup.clone());
+                let checked = file
+                    .metadata()
+                    .map_err(|error| {
+                        caused(
+                            secure_error("persistence child directory is unsafe"),
+                            raw_io(error, None),
+                        )
+                    })
+                    .and_then(|metadata| {
+                        if metadata.is_dir() && metadata.uid() == unsafe { libc::getuid() } {
+                            Ok(())
+                        } else {
+                            Err(secure_error("persistence child directory is unsafe"))
+                        }
+                    });
+                if let Err(error) = checked {
+                    return finish_scope(
+                        Err(error),
+                        file.close().map_err(|error| raw_io(error, None)),
+                    );
+                }
+                files.push(file);
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            return close_files(files, Err(error));
+        }
+        Ok(Parent {
+            files,
+            name,
+            _capacity: capacity,
+        })
+    }
+    pub(super) fn clear_journal<S: OriginalAuthorityOwner>(
+        &self,
+        op: &Operation<'_, S>,
+    ) -> Result<()> {
+        let parent = self.parent(op, Path::new(JOURNAL))?;
+        let result = (|| {
+            let directory = parent.files.last().expect("journal parent");
+            let Some(before) = Self::stat(directory, JOURNAL, false)? else {
+                return Ok(());
+            };
+            let current = Self::stat(directory, JOURNAL, true)?.expect("required journal");
+            if current.fingerprint != before.fingerprint {
+                return Err(secure_error("persistence entry changed before unlink"));
+            }
+            op.check(OriginalAuthorityStage::Source)?;
+            if unsafe { libc::unlinkat(directory.as_raw_fd(), parent.name.as_ptr(), 0) } != 0 {
+                return Err(raw_io(std::io::Error::last_os_error(), Some(JOURNAL)));
+            }
+            // A failed fsync follows an actual unlink. It is neither rolled
+            // back nor reported as a read-only/ordinary successful recovery.
+            if unsafe { libc::fsync(directory.as_raw_fd()) } != 0 {
+                return Err(raw_io(std::io::Error::last_os_error(), None));
+            }
+            Ok(())
+        })();
+        // Original missing_ok catches around the complete parent context,
+        // including its finally/close, rather than around unlink alone.
+        match parent.finish(result) {
+            Err(error)
+                if error.class == "builtins.FileNotFoundError"
+                    || (error.class == RAW_IO
+                        && matches!(&error.cause, Some(OriginalAuthorityCause::Io(error)) if error.kind == std::io::ErrorKind::NotFound)) =>
+            {
+                Ok(())
+            }
+            other => other,
+        }
     }
     pub(super) fn validate_file<S: OriginalAuthorityOwner>(
         &self,
@@ -408,6 +560,29 @@ impl Directory {
                 }
             });
         close_files(files, result)
+    }
+}
+
+#[cfg(unix)]
+struct Parent {
+    files: Vec<TrackedFile>,
+    name: CString,
+    _capacity: NativeSetupReservation,
+}
+#[cfg(unix)]
+impl Parent {
+    fn finish<T>(self, result: Result<T>) -> Result<T> {
+        let Self {
+            files,
+            name,
+            _capacity: capacity,
+        } = self;
+        let result = close_files(files, result);
+        drop(name);
+        // Parent names, descriptor vectors and actual close live inside the
+        // same prepaid scope; only the finite result outlives this carrier.
+        drop(capacity);
+        result
     }
 }
 

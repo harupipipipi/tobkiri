@@ -1,9 +1,9 @@
-"""Fresh original publication-prelude fixtures; execution is CI-only.
+"""Fresh original publication-recovery fixtures; execution is CI-only.
 
-This observes the actual original recovery body until it would construct the
-verified pointer store. A test-only sentinel stops that not-yet-ported suffix.
-NoJournal executes the two original recovery calls before the catalog boundary.
-This is neither full recovery nor the original Setup review/listing execution.
+This observes the actual original recovery body through pointer/snapshot reads
+and the stale-publication branch, stopping before _bootstrap_profile_id(). The
+original two recovery calls still run when the first returns None. This is
+neither full recovery nor the original Setup review/listing execution.
 """
 from __future__ import annotations
 
@@ -21,10 +21,13 @@ from original_authority_reference import (
     ORIGINAL_HEAD, error_graph, first_difference, load_json, write_json,
 )
 from original_setup_review_reference import check_original
+from original_active_profile_fixtures import (
+    CASES as ACTIVE_PROFILE_CASES, original_activation_writer, seed_current,
+)
 
 
-FORMAT = "io.tobkiri.original-publication-prelude-fixtures.v1"
-CASES = (
+FORMAT = "io.tobkiri.original-publication-recovery-fixtures.v2"
+BASE_CASES = (
     "absent", "profiles-file", "profiles-without-intent", "valid", "valid-predecessor",
     "intent-disappears-after-lock", "intent-directory", "intent-dangling-symlink",
     "intent-symlink", "profiles-symlink", "profiles-broad-mode",
@@ -39,14 +42,16 @@ CASES = (
     "predecessor-shape", "predecessor-nonmapping", "candidate-not-validated-here",
     "hmac-nested-unicode",
 )
+CASES = BASE_CASES + ACTIVE_PROFILE_CASES
 SOURCES = (
     "core_runtime/bootstrap/profile_capture.py", "core_runtime/bootstrap/profile_publication.py",
     "core_runtime/active_profile_store_v4.py", "core_runtime/hmac_key_manager.py",
     "tobkiri_protocol/canonical.py", "tobkiri_protocol/secure_persistence.py",
+    "tobkiri_protocol/ids.py", "tests/test_named_profile_store_v4.py",
 )
 
 
-class PointerBoundary(BaseException):
+class BootstrapIdentityBoundary(BaseException):
     """An explicit observation boundary, never a projected original error."""
 
 
@@ -189,31 +194,37 @@ def seed(name: str, root: Path, journal_type, pointer_type, protocol, signing) -
 
 def observe(root: Path, name: str, capture, journal_type) -> dict:
     """Run real original recovery IO, stopping before the unimplemented suffix."""
-    original_pointer, original_read = capture.ActiveProfileStore, journal_type.read
+    original_identity, original_read = capture._bootstrap_profile_id, journal_type.read
     previous = {key: os.environ.get(key) for key in ("TOBKIRI_USER_DATA", "RUMI_USER_DATA")}
 
-    def stop_pointer(*args, **kwargs):
-        raise PointerBoundary
+    def stop_identity():
+        raise BootstrapIdentityBoundary
 
     def disappearing_read(journal):
         journal.path.unlink()
         return original_read(journal)
 
     try:
-        capture.ActiveProfileStore = stop_pointer
+        # Do not replace the pointer store or snapshot verifier: their actual
+        # reads, stale comparison, clear and exception handling are observed.
+        capture._bootstrap_profile_id = stop_identity
         if name == "intent-disappears-after-lock":
             journal_type.read = disappearing_read
         for key in previous:
             os.environ[key] = str(root)
         for discard in (True, False):
             capture._recover_bootstrap_publication(discard_superseded=discard)
+            if discard and name == "current-stale-installed-between-recovery-calls":
+                profiles = root / "profiles"
+                (profiles / ".fixture-pending-publication.json").rename(
+                    profiles / "bootstrap-publication.json")
         return {"outcome": "integration-boundary", "stage": "catalog-not-bound"}
-    except PointerBoundary:
-        return {"outcome": "integration-boundary", "stage": "verified-pointer-not-bound"}
+    except BootstrapIdentityBoundary:
+        return {"outcome": "integration-boundary", "stage": "bootstrap-profile-id-not-bound"}
     except BaseException as error:
         return {"outcome": "error", "error": error_graph(error, root)}
     finally:
-        capture.ActiveProfileStore, journal_type.read = original_pointer, original_read
+        capture._bootstrap_profile_id, journal_type.read = original_identity, original_read
         for key, value in previous.items():
             if value is None:
                 os.environ.pop(key, None)
@@ -228,7 +239,7 @@ def prepare(original: Path, destination: Path) -> None:
     sys.path.insert(0, str(runtime))
     from core_runtime.bootstrap import profile_capture as capture
     from core_runtime.bootstrap.profile_publication import ProfilePublicationJournal
-    from core_runtime.active_profile_store_v4 import ActiveProfilePointer
+    from core_runtime.active_profile_store_v4 import ActiveProfilePointer, ActiveProfileStore
     from core_runtime import hmac_key_manager as signing
     from ecosystem.defaultspack.defaultspack.profile_runtime_composition import install_defaultspack_profile_runtime
     from tobkiri_protocol import canonical as protocol
@@ -236,6 +247,7 @@ def prepare(original: Path, destination: Path) -> None:
     install_defaultspack_profile_runtime()
     if Path(capture.__file__).resolve() != (runtime / SOURCES[0]).resolve():
         raise ValueError("original recovery source was substituted")
+    write_activation = original_activation_writer(runtime, protocol)
     destination.mkdir(mode=0o700, parents=True, exist_ok=False)
     reports = []
     for name in CASES:
@@ -243,6 +255,8 @@ def prepare(original: Path, destination: Path) -> None:
         directory.mkdir(mode=0o700)
         seed_root = directory / "seed"
         seed(name, seed_root, ProfilePublicationJournal, ActiveProfilePointer, protocol, signing)
+        if name in ACTIVE_PROFILE_CASES:
+            seed_current(name, seed_root, ActiveProfileStore, write_activation, protocol, signing)
         for target in ("reference", "native"):
             if seed_root.exists():
                 shutil.copytree(seed_root, directory / target, symlinks=True)
@@ -250,6 +264,7 @@ def prepare(original: Path, destination: Path) -> None:
         result = observe(reference, name, capture, ProfilePublicationJournal)
         reports.append({"name": name, "user_data_dir": str(native),
                         "after_lock_remove_intent": name == "intent-disappears-after-lock",
+                        "between_calls_install_intent": name == "current-stale-installed-between-recovery-calls",
                         "expected": result, "reference_state": filesystem(reference)})
     denial_type = type(capture.ProfileResolutionDenied("CI factory binding"))
     metadata = {"format": FORMAT, "original_head": ORIGINAL_HEAD, "python": "3.13.16",
@@ -257,8 +272,9 @@ def prepare(original: Path, destination: Path) -> None:
                 "sources": {name: hashlib.sha256((runtime / name).read_bytes()).hexdigest()
                             for name in SOURCES}, "cases": reports,
                 "native_comparison": False, "qualification": False, "production_enabled": False,
-                "scope": "original publication prelude only; pointer construction and later recovery excluded",
-                "pointer_boundary_injected": True, "reference_checks_passed": False}
+                "scope": "original journal/pointer/snapshot/stale recovery only; bootstrap identity "
+                         "helper and later catalog/Authority/recovery/listing excluded",
+                "bootstrap_identity_boundary_injected": True, "reference_checks_passed": False}
     write_json(destination / "fixtures.json", metadata)
     summary = {key: value for key, value in metadata.items() if key != "cases"}
     summary["cases"] = [{"name": row["name"], "observation": row["expected"],
@@ -266,12 +282,15 @@ def prepare(original: Path, destination: Path) -> None:
     write_json(destination / "summary.json", summary)
     if len(reports) != len(CASES) or len({row["name"] for row in reports}) != len(CASES):
         raise AssertionError("exact original publication case inventory required")
-    catalog = {"absent", "profiles-file", "profiles-without-intent", "intent-disappears-after-lock"}
-    pointer = {"valid", "valid-predecessor", "profiles-broad-mode", "key-unicode-valid",
-               "key-unicode-whitespace", "candidate-not-validated-here", "hmac-nested-unicode"}
+    catalog = {"absent", "profiles-file", "profiles-without-intent", "intent-disappears-after-lock",
+               "valid-predecessor", "current-stale", "current-aba", "current-same-five-updated-at",
+               "current-same-five-snapshot-digest", "current-stale-installed-between-recovery-calls"}
+    identity = {"valid", "profiles-broad-mode", "key-unicode-valid", "key-unicode-whitespace",
+                "current-absent", "current-same-parent", "current-immediately-published",
+                "snapshot-wrapper-envelope"}
     for row in reports:
         expected = ("catalog-not-bound" if row["name"] in catalog else
-                    "verified-pointer-not-bound" if row["name"] in pointer else None)
+                    "bootstrap-profile-id-not-bound" if row["name"] in identity else None)
         if expected is None:
             if row["expected"]["outcome"] != "error":
                 raise AssertionError((row["name"], "original typed failure required"))
@@ -279,7 +298,7 @@ def prepare(original: Path, destination: Path) -> None:
             raise AssertionError((row["name"], "original IO reachpoint differs", row["expected"]))
         if any(path["path"].split("/")[0] == "authority"
                for path in row["reference_state"]["files"]):
-            raise AssertionError("prelude observation crossed the old Authority constructor")
+            raise AssertionError("finite recovery observation crossed the old Authority constructor")
     summary["reference_checks_passed"] = True
     metadata["reference_checks_passed"] = True
     write_json(destination / "fixtures.json", metadata)
@@ -294,7 +313,7 @@ def compare(original: Path, fixtures: Path, observations: Path, output: Path) ->
     reference, native = load_json(fixtures), load_json(observations)
     if (reference["format"] != FORMAT or reference["original_head"] != ORIGINAL_HEAD
             or reference["reference_checks_passed"] is not True
-            or native["format"] != "io.tobkiri.original-publication-prelude-native-observations.v1"):
+            or native["format"] != "io.tobkiri.original-publication-recovery-native-observations.v2"):
         raise ValueError("fresh original/native publication observation formats required")
     expected = {row["name"]: row for row in reference["cases"]}
     actual = {row["name"]: row for row in native["cases"]}
@@ -302,11 +321,12 @@ def compare(original: Path, fixtures: Path, observations: Path, output: Path) ->
             or len(actual) != len(CASES) or len(native["cases"]) != len(CASES)
             or set(expected) != set(CASES) or set(actual) != set(CASES)):
         raise ValueError("exact closed publication case inventory required")
-    report = {"format": "io.tobkiri.original-publication-prelude-comparison.v1",
+    report = {"format": "io.tobkiri.original-publication-recovery-comparison.v2",
               "original_head": ORIGINAL_HEAD, "cases": [], "matched": False,
               "native_comparison": True, "qualification": False, "production_enabled": False,
-              "scope": "finite journal prelude, typed failures and original fixture subtree only; "
-                       "native control metadata, pointer recovery and full review/listing excluded"}
+              "scope": "finite journal/pointer/snapshot/stale recovery, typed failures and original "
+                       "fixture subtree only; native control metadata, bootstrap identity helper, "
+                       "catalog/Authority suffix and full review/listing excluded"}
     destination = fixtures.parent
     for name in CASES:
         case = expected[name]

@@ -262,7 +262,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   実原本48も成功した。必要JSON232,925Bを保存。e238の既存Authority93回帰もtyped/state/key
   比較は成功（全体は同3lint失敗）し、JSON218,240Bを保存した。ここでのApp-denied型は
   有限CI factory bindingであり、実製品factory・Tauri実caller・全recovery/listingではない。
-  新12finite callerの実compileは同54cのDesktop CI41248377655で追跡中。
+  同54cの[Desktop CI41248377655](https://github.com/harupipipipi/tobkiri/actions/runs/41248377655)
+  は全工程成功。実Launcher library638件（finite12件を個別ログでも確認）/build-script
+  123件/resource18件が全成功・skip0。sealed packaging/cold boot/DMG/mounted検証も成功。
+  非公開CI用artifact280,138,053Bはmetadataだけ取得し、必要な証拠JSONのみ保存した。
+  製品Python/PackVMを含む既存配布経路の検証であり、全native Setup/GUI/1Bの証拠ではない。
+  次のSol6.1 xhigh実装は同journal guardのprivate lexical scope内で、2回目のpredecessor
+  parse→実current pointer/snapshot読取→全10field比較→eager候補5key→古いintentのclear/
+  保持を行う。close後にVerifiedIntentを再開する公開carrierや別lock/accountを増やさない。
+  非staleはcandidate['profile_id']の実lookup後、未接続_bootstrap_profile_id()の直前で停止。
+  Root比較は元48入力を保持し、29入力を追加した77件のv2 oracleへ拡張中。元pointer store
+  を置換せず実snapshot検証・stale clearを観測し、outerとinnerの間に閉じたfixtureを置く
+  1件でinner Falseの保持も検査する。数値snapshot IDは有効defaults pointerからの負例。
+  新sourceの同等性・新caller3件は未実行であり、旧48成功を後半の証拠には使わない。
   追加の削減候補: 新Reviewは同invocationの固定bodyを直接呼ぶ。別jobを作る旧試作の
   read_original_authority_snapshot/OriginalAuthorityJob/Dataは現在のtracked callerがなく、
   将来のsnapshot接続後も独立prefetchとして使わない。直接snapshot接続と実caller回帰を

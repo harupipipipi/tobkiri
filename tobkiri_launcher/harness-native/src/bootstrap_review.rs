@@ -28,7 +28,7 @@ pub struct BootstrapReviewOptions {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BootstrapReviewReachpoint {
     CatalogNotBound,
-    VerifiedPointerNotBound,
+    BootstrapProfileIdNotBound,
 }
 
 /// ResolutionDenied is a typed request to the original Pack's denied factory,
@@ -104,10 +104,12 @@ impl Review {
                         BootstrapReviewFailure::Original(error)
                     }
                 })? {
-                PublicationPrefix::NoJournal | PublicationPrefix::NoIntent => {}
-                PublicationPrefix::VerifiedIntent => {
+                PublicationPrefix::NoJournal
+                | PublicationPrefix::NoIntent
+                | PublicationPrefix::RecoveredNone => {}
+                PublicationPrefix::BootstrapProfileIdNotBound => {
                     return Err(BootstrapReviewFailure::NotBound(
-                        BootstrapReviewReachpoint::VerifiedPointerNotBound,
+                        BootstrapReviewReachpoint::BootstrapProfileIdNotBound,
                     ));
                 }
             }

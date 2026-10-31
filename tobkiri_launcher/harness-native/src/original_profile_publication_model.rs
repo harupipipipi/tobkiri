@@ -1,7 +1,7 @@
-//! The original predecessor pointer parser, reached only after intent HMAC.
+//! The original predecessor/current pointer parser, after intent HMAC.
 use super::*;
 
-fn pointer_error(message: impl Into<String>) -> OriginalAuthorityError {
+pub(super) fn pointer_error(message: impl Into<String>) -> OriginalAuthorityError {
     raw(
         "core_runtime.active_profile_store_v4.ActiveProfileStoreIntegrityError",
         message,
@@ -24,7 +24,7 @@ fn canonical_ascii_id(value: &str) -> bool {
     }
     !separator
 }
-fn kind(value: &Node) -> &'static str {
+pub(super) fn kind(value: &Node) -> &'static str {
     match value {
         Node::String(_) => "str",
         Node::Array(_) => "list",
@@ -36,11 +36,69 @@ fn kind(value: &Node) -> &'static str {
         Node::Scalar(_) => unreachable!("scalar arena"),
     }
 }
-pub(super) fn validate_predecessor<S: OriginalAuthorityOwner>(
+const POINTER_FIELDS: [&str; 10] = [
+    "profile_id",
+    "profile_revision",
+    "activation_id",
+    "plan_digest",
+    "lock_digest",
+    "activation_snapshot_path",
+    "activation_snapshot_digest",
+    "catalog_revision",
+    "generation",
+    "updated_at",
+];
+
+/// Native-only indexes into one live, funded arena; never a guest reference,
+/// authority witness or serialized continuation. Both arenas remain in scope.
+pub(super) struct Pointer {
+    fields: [usize; 10],
+}
+impl Pointer {
+    pub(super) fn field(&self, name: &str) -> usize {
+        self.fields[POINTER_FIELDS
+            .iter()
+            .position(|field| *field == name)
+            .expect("fixed pointer field")]
+    }
+    pub(super) fn text(&self, doc: &Document, name: &str) -> Result<String> {
+        match doc.node(self.field(name)) {
+            Node::String(text) => text.utf8(),
+            _ => Err(OriginalAuthorityError::unsupported(
+                OriginalAuthorityStage::Source,
+                "validated pointer text",
+            )),
+        }
+    }
+    pub(super) fn integer(&self, doc: &Document, name: &str) -> i64 {
+        match doc.node(self.field(name)) {
+            Node::Scalar(CanonValue::Int(value)) => *value,
+            _ => unreachable!("validated pointer integer"),
+        }
+    }
+    pub(super) fn matches(&self, doc: &Document, other: &Self, other_doc: &Document) -> bool {
+        self.fields
+            .iter()
+            .zip(other.fields)
+            .all(|(&left, right)| equal_atom(doc.node(left), other_doc.node(right)))
+    }
+}
+pub(super) fn equal_atom(left: &Node, right: &Node) -> bool {
+    match (left, right) {
+        (Node::String(left), Node::String(right)) => left == right,
+        (Node::Scalar(CanonValue::Null), Node::Scalar(CanonValue::Null)) => true,
+        (Node::Scalar(CanonValue::Int(left)), Node::Scalar(CanonValue::Int(right))) => {
+            left == right
+        }
+        _ => false,
+    }
+}
+
+pub(super) fn validate_pointer<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     doc: &mut Document,
     id: usize,
-) -> Result<()> {
+) -> Result<Pointer> {
     const FIELDS: &[&str] = &[
         "schema",
         "profile_id",
@@ -285,5 +343,7 @@ pub(super) fn validate_predecessor<S: OriginalAuthorityOwner>(
             return Err(pointer_error(message));
         }
     }
-    Ok(())
+    Ok(Pointer {
+        fields: POINTER_FIELDS.map(|name| doc.get(id, name).expect("exact validated pointer")),
+    })
 }
