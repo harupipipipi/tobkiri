@@ -1051,3 +1051,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   pointer escape/index/欠落・anchor欠落・空fragment・取得例外・custom resolverの比較を追加。
   正規Resolver class自体のmethod差替えはこの既定policyの契約へ新規追加しない。
   実native/Wasm検証前で未採用。結果cacheやvalidation再実行は導入しない。
+- `cb224cd49`のnative CI41165854018は全成功。新29参照比較（custom返却とNoSuchResourceの
+  suppress/cause/contextを含む）・backend64+11・独立generic64/API19・App37/42/full305453を
+  保持し、entryは0→45→87→110。実64のResolver生成38,242→6,211、Resource生成4,630。
+  native計数だけでWasm fuel改善を主張しない。同ソースの実App Wasm CI41165988012を
+  一度だけ起動し、元のcold/full予算を検証中。製品UI/既定設定にはまだ採用しない。
+- 未実装の小整理候補: `schema_kernel/src/app_schema.rs`のSelected.nameは各ruleでStringを
+  複製するが、保持後の用途はdecorate時の`if`/`$ref`判定だけ。選択時の同じ判定をboolで
+  保持すれば文字列複製を省ける。実keyword参照・選択順・実エラーのpath装飾は保持する。
+  現在のWasm試験と混ぜず、変更前後のnative比較と実測を前提とする。全体予算の解決策や
+  hot spotと断定せず、参照制御移植の結果を先に評価する。
+- `cb224cd49`の実App Wasm CI41165988012はcold/fullとも元2Bで停止した。
+  同一component1b4700f6…eaadf3、実extension467,348bytes/SHAaf81d66e…cd6d6。
+  prepare後1,979,547,224→0、cold1.282093311s/full1.159796787s。両方deadline保持/未超過・
+  unreachable=false・退役・payload0。native機能比較は成功したが、全Wasm操作は未達。
+  coldの現在stackはPython slice/item処理→実Rust Frame.poll、fullはPy_DecRef→Frame.poll。
+  現在位置を全費用の説明にはせず、Astraへ次の実移植範囲と診断要否を照会する。
+  同ソースの再実行や上限緩和・wholeRuntime/product採用は行わない。
