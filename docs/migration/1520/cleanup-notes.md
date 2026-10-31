@@ -1742,3 +1742,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   保持し、新dependency・config・reflection guard・結果cache・retryを増やさない。
   source/AST/rustfmt/inventoryのみ確認済み。実native通過後に同sourceの元予算Wasmを測り、
   採用可否を決める。製品Python/VM削除・既存GUIフロー変更の許可ではない。
+- URI `b71a972f7`の[native CI41213373132](https://github.com/harupipipipi/tobkiri/actions/runs/41213373132)
+  は全成功。新17群146対と全従来比較、actual App37/42・全caller比較を維持した。
+  実64件のURI counterはcold全0→join+defrag13,908/join-only1,932/互換0、旧型38,182/
+  数値335/Python0。実route到達でありfuel改善値ではない。extension1,072,752B/SHA
+  73838bc9…03329、RAM artifact13046548253/67,796Bから必要JSON47,596Bだけ保存した。
+  独立Sol監査も4counter・旧shape・元予算・単一Store/account・export上限を確認した。
+  native通過後、同じb71で[cold/full41213547854](https://github.com/harupipipipi/tobkiri/actions/runs/41213547854)と
+  [累積41213557344](https://github.com/harupipipipi/tobkiri/actions/runs/41213557344)を各1回開始。
+  元2B/64MiB/絶対30秒の実結果は待機中。native成功だけで製品採用や全体完了にしない。

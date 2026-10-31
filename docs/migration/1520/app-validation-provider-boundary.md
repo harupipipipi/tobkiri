@@ -429,3 +429,11 @@ separate4-field operation counters, preserving old value/reference shapes,
 export counts and all original budgets. Source/AST/rustfmt/inventory checks have
 passed. Actual native comparisons and same-source original-budget Wasm remain
 pending; this candidate is not enabled in the product or adopted by Setup.
+
+Native CI41213373132 atb71a972f7 subsequently passed all17 URI groups/146
+pairs and every earlier comparison, including actual App37/42 and final
+callers. Actual64 route counters were cold0 to native join/defrag13,908 and
+join-only1,932, compatibility0; old value counts remain unchanged. This proves
+native route execution, not fuel improvement. Same-source cold/full41213547854
+and cumulative41213557344 started once each after native success and remain
+pending under the unchanged original Store/account and budgets.
