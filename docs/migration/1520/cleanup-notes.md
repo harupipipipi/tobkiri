@@ -1627,3 +1627,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [累積41206992190](https://github.com/harupipipipi/tobkiri/actions/runs/41206992190)を各1回起動した。
   元2B/64MiB/絶対30秒・同一account/Storeのまま実行中で、Wasm完走・燃料改善・製品採用は
   まだ未証明。207の未達結果を3038のnative成功だけで上書きしない。
+- `3038a7483`の実Wasmは終了し、cold/full CI41206989379は両方元2Bで燃料0。
+  component e2157f67…dc1e8、prepare後1,979,517,836、cold約1.298秒/full約1.164秒。
+  元deadline維持、期限超過/unreachableなし、Store退役・physical payload0を確認した。
+  累積CI41206992190は整合性のみ成功。18件完了し、19番profile_intent_v1で燃料0。
+  component5273d5c0…92e0、prepare後1,979,508,153、18件後130,256,857残。
+  実frame16,099/型15,383/数値70/Python0/pointer867/dynamic789/adapter0、
+  primary resource7,305/anchor2,546/opaque0、cache0hit18miss。cold0/単調/到達/index18/
+  one-Store/account/予算更新0/元64MiB30秒/退役・payload0の検査は通過した。
+  旧20件から18件へ減った。新counter観測費用も含むため、個別関数への帰属や純性能値は
+  断定しないが、元guest gateを満たさず採用は保留する。小guard調整を反復する前に、
+  この最適化全体の撤去範囲と次のまとまった移植対象をAstra highへ質問した。
+  独立のRetrieved.value catch修正と比較は切り分けて保持を検討する。
+- 両3038 modeの実extension674,377B/SHA
+  ff5a58b8b707c4be8cd94c440647c526deebd2beffd4f588e2dd8fb6346e4528。
+  RAM artifact13045206074/245,276B・13045186319/246,601Bから必要JSONだけ保存し、
+  binary/ZIPは保存していない。全guest/GUI/839/20/1B/API/PythonVM廃止は未達。
