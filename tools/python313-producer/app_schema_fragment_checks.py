@@ -390,6 +390,30 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
         compare(fresh_same_contents(True), zero=True)
         checks["fresh_resource_with_builtin_contents_never_acquires_ownership"] = True
 
+        def intermediate_id(fixture):
+            nested_uri = "https://fragments.invalid/nested/value.json"
+            fixture["$id"] = "https://fragments.invalid/nested/context.json"
+            fixture["properties"] = {"child": {"$ref": "value.json"}}
+            target = {"type": "integer"}
+            expected = {nested_uri: target}
+            state = {"meta": {"$id": root_uri, "$ref": reference("/properties/child")},
+                     "actual": "bad", "error_schema": target,
+                     "expected_requests": [nested_uri], "events": []}
+
+            def retrieve(uri):
+                contents = expected.get(uri)
+                state["events"].append({"nested_source_get": uri,
+                                        "found": contents is target})
+                assert contents is target, "pointer did not enter the intermediate $id scope"
+                returned = Resource.from_contents(contents, default_specification=DRAFT202012)
+                assert returned is not resource and returned.contents is target
+                return returned
+
+            state["retrieve_resource"] = retrieve
+            return state
+        compare(intermediate_id, "native_pointers")
+        checks["owned_pointer_intermediate_id_changes_subresource_scope"] = True
+
         def mutate_contents(fixture):
             checker = FormatChecker(formats=[])
             events = []
@@ -420,5 +444,5 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
                 finally:
                     original.META_SCHEMA = saved_meta
 
-    assert len(checks) == 13 and all(value is True for value in checks.values())
+    assert len(checks) == 14 and all(value is True for value in checks.values())
     return checks

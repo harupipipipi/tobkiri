@@ -1124,3 +1124,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   実使用URI/返却registry/base URI/scopeとcallback変更を維持し、canonical URIへ戻さない。
   origin推測の追加lookupやretrieve wrapperは不要。別URIでの相対参照、返却時patch/変更、
   同contentsの新Resourceがopaqueである比較を追加する。
+- `6448b8c2a`native CI41169521983は成功。既存generic64/API19/backend64+11/参照29と
+  新13比較・App37/42/full305453を保持。64ケースでnative pointer2,283/dynamic anchor1,932、
+  内部adapter構築0を記録し、full catalogではpointer2,452/dynamic2,086/adapter0。
+  builtin static anchorの対象inventoryは空のため、native静的anchorの実到達は未証明。
+  型/内容が同じ新Resourceの非昇格、所有済みResourceの別URI返却と実scopeは比較済み。
+  Source extension988,600bytes/SHA8e429460…2dac7、RAM artifact13030552060/64,074bytes。
+  これはnative機能/接続証明のみでWasm予算の改善率ではない。
+- 中間$idでpointerのscopeが移る専用比較を追加し、新14比較で再確認する。元29のID比較は
+  custom METAのunowned Resource経路なので、owned native区間の証明と混同しない。
