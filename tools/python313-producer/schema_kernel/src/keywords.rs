@@ -647,17 +647,11 @@ impl OriginalKeywordIterator {
                 };
             }
             "$ref" | "$dynamicRef" => {
-                let kwargs = PyDict::new(py);
-                kwargs.set_item(pyo3::intern!(py, "ref"), value)?;
-                kwargs.set_item(pyo3::intern!(py, "instance"), instance)?;
-                self.delegate(validator.call_method(
-                    pyo3::intern!(py, "_validate_reference"),
-                    (),
-                    Some(&kwargs),
-                )?)?;
+                let method = validator.getattr(pyo3::intern!(py, "_validate_reference"))?;
+                self.delegate(call_keywords(py, context, &method, &[value, instance], 8)?)?;
             }
             "if" => {
-                let selected = if evolved_is_valid(py, validator, value, instance)? {
+                let selected = if evolved_is_valid(py, context, value, instance)? {
                     "then"
                 } else {
                     "else"
@@ -854,7 +848,7 @@ fn descend<'py>(
     // SAFETY: the synchronous call borrows all input Bound objects and method;
     // their owners live through this call, including callbacks/GC. The stack
     // holds exactly nargs + len(kwnames) live pointers (at most four). kwnames
-    // comes from our immutable eight-row table of unique exact Unicode names.
+    // comes from the first eight private rows of unique exact Unicode names.
     // No offset flag is used; the callee cannot write before this array. NULL
     // is propagated once as the original Python exception, with no retry.
     unsafe {
@@ -870,23 +864,59 @@ fn descend<'py>(
     }
 }
 
+fn call_keywords<'py>(
+    py: Python<'py>,
+    context: &Context<'py>,
+    method: &Bound<'py, PyAny>,
+    values: &[&Bound<'py, PyAny>],
+    row: usize,
+) -> PyResult<Bound<'py, PyAny>> {
+    let names = context
+        .descend_names
+        .borrow()
+        .rows
+        .get(row)
+        .ok_or_else(|| PyRuntimeError::new_err("keyword name metadata was cleared"))?
+        .clone_ref(py);
+    let names = names.bind(py);
+    if values.len() > 2 || names.len() != values.len() {
+        return Err(PyRuntimeError::new_err(
+            "internal keyword call shape differs",
+        ));
+    }
+    let mut arguments = [std::ptr::null_mut(); 2];
+    for (slot, value) in arguments.iter_mut().zip(values) {
+        *slot = value.as_ptr();
+    }
+    // SAFETY: all keyword values, the actual selected callable and the private
+    // exact-Unicode names tuple remain owned throughout this synchronous call.
+    // The fixed array has len(kwnames) live pointers, no positional arguments
+    // and no offset flag. Ordinary arbitrary-callable dispatch is retained;
+    // NULL propagates the original exception once, without fallback/retry.
+    unsafe {
+        Bound::from_owned_ptr_or_err(
+            py,
+            ffi::PyObject_Vectorcall(method.as_ptr(), arguments.as_ptr(), 0, names.as_ptr()),
+        )
+    }
+}
+
 fn evolve<'py>(
     py: Python<'py>,
-    validator: &Bound<'py, PyAny>,
+    context: &Context<'py>,
     schema: &Bound<'py, PyAny>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let kwargs = PyDict::new(py);
-    kwargs.set_item(pyo3::intern!(py, "schema"), schema)?;
-    validator.call_method(pyo3::intern!(py, "evolve"), (), Some(&kwargs))
+    let method = context.validator.getattr(pyo3::intern!(py, "evolve"))?;
+    call_keywords(py, context, &method, &[schema], 9)
 }
 
 fn evolved_is_valid(
     py: Python<'_>,
-    validator: &Bound<'_, PyAny>,
+    context: &Context<'_>,
     schema: &Bound<'_, PyAny>,
     instance: &Bound<'_, PyAny>,
 ) -> PyResult<bool> {
-    evolve(py, validator, schema)?
+    evolve(py, context, schema)?
         .call_method1(pyo3::intern!(py, "is_valid"), (instance,))?
         .is_truthy()
 }
@@ -932,7 +962,7 @@ fn contains<'py>(py: Python<'py>, context: &Context<'py>) -> PyResult<Option<Bou
         pyo3::intern!(py, "get"),
         ("maxContains", context.instance.len()?),
     )?;
-    let validator = evolve(py, &context.validator, &context.value)?;
+    let validator = evolve(py, context, &context.value)?;
     for each in context.instance.try_iter()? {
         if validator
             .call_method1(pyo3::intern!(py, "is_valid"), (each?,))?
@@ -992,7 +1022,7 @@ fn one_of_remaining<'py>(
     let more_valid = PyList::empty(py);
     while let Some(item) = next(py, cursor)? {
         let (_, each) = pair(py, &item)?;
-        if evolved_is_valid(py, &context.validator, &each, &context.instance)? {
+        if evolved_is_valid(py, context, &each, &context.instance)? {
             more_valid.append(each)?;
         }
     }
@@ -1309,7 +1339,7 @@ fn scalar<'py>(
             }
         }
         "not" => {
-            if !evolved_is_valid(py, validator, value, instance)? {
+            if !evolved_is_valid(py, context, value, instance)? {
                 return Ok(None);
             }
             format(
@@ -1383,7 +1413,7 @@ impl KeywordNames {
 fn keyword_names(py: Python<'_>) -> PyResult<KeywordNames> {
     // Fixed keyword spellings/order from the original keyword calls. No caller
     // values, callables or results are retained in this per-Store metadata.
-    let names: [&[&str]; 8] = [
+    let names: [&[&str]; 10] = [
         &[],
         &["schema_path"],
         &["path"],
@@ -1392,10 +1422,13 @@ fn keyword_names(py: Python<'_>) -> PyResult<KeywordNames> {
         &["instance", "schema", "schema_path"],
         &["instance", "schema", "path"],
         &["instance", "schema", "schema_path", "path"],
+        &["ref", "instance"],
+        &["schema"],
     ];
     let mut keywords = Vec::with_capacity(names.len());
     for names in names {
         let values = names.iter().map(|name| match *name {
+            "ref" => pyo3::intern!(py, "ref"),
             "instance" => pyo3::intern!(py, "instance"),
             "schema" => pyo3::intern!(py, "schema"),
             "path" => pyo3::intern!(py, "path"),

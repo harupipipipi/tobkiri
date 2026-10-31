@@ -205,4 +205,101 @@ def exercise_descend() -> dict[str, bool]:
     finally:
         active[0] = False
         cls.descend = saved_descend
+    _exercise_keyword_methods()
     return {"descend_keyword_binding_and_generator_protocol": True}
+
+
+def _exercise_keyword_methods() -> None:
+    """Keep actual descriptor binding, keyword shape and exceptions unchanged."""
+    import sys
+    from types import MethodType
+    from jsonschema import Draft202012Validator, validators
+
+    factory = getattr(validators.create, "__wrapped__", validators.create)
+    cls = factory(Draft202012Validator.META_SCHEMA,
+                  validators=Draft202012Validator.VALIDATORS)
+    adapter = sys.modules.get("schema_adapter")
+    if adapter is not None:
+        adapter.install(cls)
+    events, calls = [], []
+    fault = LookupError("selected keyword method failed")
+    target = [None]
+    failure = [None]
+    method_kind = [None]
+
+    class Probe:
+        def is_valid(self, instance):
+            events.append("is_valid")
+            calls.append((instance,))
+            return False
+
+    def record(*args, **kwargs):
+        events.append((len(args), tuple(kwargs)))
+        calls.append(args + tuple(kwargs.values()))
+        if failure[0] == "call":
+            raise fault
+        return Probe() if method_kind[0] == "evolve" else iter(())
+
+    class Callable:
+        @property
+        def __code__(self):
+            raise AssertionError("actual arbitrary callable metadata was inspected")
+
+        def __call__(self, *args, **kwargs):
+            return record(*args, **kwargs)
+
+    callable_object = Callable()
+    binding = [None]
+
+    class Descriptor:
+        def __get__(self, instance, owner):
+            assert instance is target[0] and owner is cls
+            events.append("get")
+            if failure[0] == "get":
+                raise fault
+            if binding[0] == "bound-arbitrary":
+                return MethodType(callable_object, instance)
+            if binding[0] == "function":
+                return record
+            return callable_object
+
+    for keyword, name, value in (("ref", "_validate_reference", "urn:caller:ref"),
+                                 ("dynamicRef", "_validate_reference", "urn:caller:dynamic"),
+                                 ("not_", "evolve", {})):
+        key = {"ref": "$ref", "dynamicRef": "$dynamicRef", "not_": "not"}[keyword]
+        instance, schema = {"same": []}, {key: value}
+        validator = cls(schema)
+        target[0] = validator
+        method_kind[0] = name
+        saved = cls.__dict__[name]
+        cls_attribute = Descriptor()
+        try:
+            setattr(cls, name, cls_attribute)
+            for bound in ("arbitrary", "bound-arbitrary", "function"):
+                binding[0] = bound
+                for fail in (None, "get", "call"):
+                    failure[0] = fail
+                    observations = []
+                    for native in (False, True):
+                        events.clear()
+                        calls.clear()
+                        cursor = (validator.iter_errors(instance) if native else
+                                  getattr(_original_keywords, keyword)(
+                                      validator, value, instance, schema))
+                        assert not events and not calls
+                        try:
+                            assert list(cursor) == []
+                        except LookupError as error:
+                            assert fail is not None and error is fault
+                        else:
+                            assert fail is None
+                        assert events.count("get") == 1
+                        observations.append((events[:], calls[:]))
+                    assert observations[0][0] == observations[1][0]
+                    expected, actual = observations[0][1], observations[1][1]
+                    assert len(expected) == len(actual)
+                    for left, right in zip(expected, actual):
+                        assert len(left) == len(right)
+                        assert all(a is b for a, b in zip(left, right))
+        finally:
+            setattr(cls, name, saved)

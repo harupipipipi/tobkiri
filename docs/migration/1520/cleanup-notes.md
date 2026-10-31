@@ -838,7 +838,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 017: 実App catalog由来のRust/Wasm計測
 
-- 状態: **独立派生build/実Store観測を実装中、実CIは未実行**。
+- 状態: **実Rust/Wasm経路へ到達。元2Bで停止、期限・Store退役・解放確認。全catalog未完**。
 - 場所: `build_schema_kernel_extension.py`、`bundle_catalog_kernel_inputs.py`、
   `bundle_catalog/kernel_runtime.py`、`bundle_catalog_kernel_ci.rs`。
 - 整理方針: 既存bundle catalogのcapture/adapter/entryを再利用し、private64 probeへ
@@ -862,3 +862,34 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   新helperがSDK固有manifestをgeneric stage outcome用runtime_inputs.reportへ渡したのが
   原因。既存build_schema_kernelと同じbounded JSON読み取り→実verify_sdkへ修正する。
   SDK archive/展開内容の照合は緩めない。まだRust compile/guest実行には到達していない。
+
+- 修正 `3835e6759` の実CI `41149378352` / job `124381975326` はcompile・派生App生成に
+  成功。extensionは元637と同一376,558bytes / SHA4304343c…2e53、component28,414,908
+  bytes / SHA811b9884…4b65、importなし。実fullcatalog一回は1.86198259秒で元2Bを
+  消費して停止。prepare後1,979,529,745、最終0、deadline保持/deadline未超過、
+  unreachable=false、Store退役=true、physical drop後payload=0。trap stackに実Rustの
+  OriginalKeywordIterator::step/__next__とPyO3call_methodを確認した。これは実到達の証拠
+  だが、関数別fuel配賦や全45/453件完了の証拠ではない。観測費用も同予算に含まれる。
+  artifact13022443354（241,882bytes）のmetadataだけをRAM検査しbounded receipt保存。
+- 同head前身9fdの既存capability回帰41149114735はbuild/実nativeDATA比較とも成功。
+  baselinebundle41149114824は既存3artifact生成・consumer型検査に成功。Linux/macOS
+  sourceidentityは同じ残fuel1,223,869,669/payload0で成功し、独立cold schema storeは
+  元2Bで停止。fullcatalog/ordinary Flowは未合格。新しい派生成功へ読み替えない。
+
+## 018: keyword呼出し準備の一時辞書を削る
+
+- 状態: **未検証の小さい実装、実CI待ち**。
+- 場所: `schema_kernel/src/keywords.rs` の$ref/$dynamicRefとevolve呼出し。
+- source監査で、descendは既にvectorcallだが、上記2箇所にはまだPyDictのkwargs生成が
+  残っていると確認。Astra highの指示に従い、実methodを一度取得してそのcallableへ
+  Stable ABI PyObject_Vectorcallで0位置引数・元keyword順の値を渡す。private metadata
+  tableに(ref,instance)/(schema)の2行だけ追加。calleeが必要に応じて作るkwargsまで
+  消えるとは主張しない。公開generator・algorithm・counter開始・fallbackは変えない。
+- 原版/移植双方の実handlerからdescriptor・任意callable・bound callable・functionを
+  呼び、get/call故障・同じarg参照・keyword順・一回lookupを既存必須19群に追加する。
+  native64/API19/App37、元一括、同checkpoint診断と実App fullcatalogを別に検証する。
+- 却下した削減案: public keywordのyield-fromをdirect iterator returnへ変えると、現在は
+  Python generator finalizerが担うretained descend childのclose/drop/cycleを失う。
+  公開generatorを削って必須gateを弱めない。既存keyword固有send/throw転送はsource上に
+  未検証の不足もある（現native sendは値無視、throwなし）。今回の内部呼出し準備とは
+  分け、将来の完全なlibrary/Pack互換確認の課題として残す。
