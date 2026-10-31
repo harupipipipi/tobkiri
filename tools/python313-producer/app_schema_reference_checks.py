@@ -63,6 +63,9 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
             events.append({"retrieve": event})
             assert len(args) == 1 and not kwargs, "actual retrieve binding changed"
             uri = args[0]
+            if state.get("retrieve_no_such_resource"):
+                from referencing.exceptions import NoSuchResource
+                raise NoSuchResource(ref=uri)
             contents = state.get("external", {})
             if uri not in contents:
                 raise RetrieveRefused("controlled reference retrieval refused: " + str(uri))
@@ -75,7 +78,10 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
             return resource
 
         object.__setattr__(registry, "_retrieve", retrieve)
+        saved_pointer = Resource.pointer
         try:
+            if "pointer_override" in state:
+                Resource.pointer = state["pointer_override"](saved_pointer, events)
             try:
                 selected.check_schema(actual, format_checker=state.get("checker"))
             except exceptions.SchemaError as error:
@@ -102,7 +108,10 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
             try:
                 object.__setattr__(registry, "_retrieve", saved_retrieve)
             finally:
-                original.META_SCHEMA = saved_meta
+                try:
+                    Resource.pointer = saved_pointer
+                finally:
+                    original.META_SCHEMA = saved_meta
 
     def compare(name, make):
         expected, actual = run(original, make), run(provider, make)
@@ -210,6 +219,89 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
                 "expected_requests": [external_uri], "error_schema": expected,
             }
         compare("external_reference_restores_parent_scope", restored_scope)
+
+        def pointer_reference(fragment):
+            def make():
+                target = {"type": "integer"}
+                return {
+                    "meta": {"$id": root_uri,
+                             "$defs": {"a/b~c": target, "array": [target]},
+                             "$ref": fragment},
+                    "actual": "bad", "local_only": True,
+                }
+            return make
+
+        for label, fragment in (
+            ("escaped", "#/$defs/a~1b~0c"),
+            ("array_index", "#/$defs/array/0"),
+            ("missing", "#/$defs/missing"),
+            ("missing_anchor", "#missing"),
+            ("invalid_anchor", "#missing/anchor"),
+        ):
+            compare("reference_lookup_" + label, pointer_reference(fragment))
+
+        def empty_fragment():
+            target = {"type": "integer"}
+            return {
+                "meta": {"$id": root_uri, "$ref": external_uri + "#"},
+                "actual": "bad", "external": {external_uri: target},
+                "expected_requests": [external_uri], "error_schema": target,
+            }
+        compare("reference_lookup_empty_fragment", empty_fragment)
+
+        def missing_resource():
+            return {"meta": {"$id": root_uri, "$ref": external_uri},
+                    "actual": {}, "external": {}}
+        compare("reference_lookup_retrieve_failure_chain", missing_resource)
+
+        def no_such_resource():
+            state = missing_resource()
+            state["retrieve_no_such_resource"] = True
+            return state
+        compare("reference_lookup_no_such_resource_suppressed_cause", no_such_resource)
+
+        def custom_pointer_resolver():
+            from referencing._core import Resolved
+
+            target = {"$ref": "#/$defs/integer"}
+            external = {"$defs": {"target": target,
+                                  "integer": {"type": "integer"}}}
+
+            class OpaqueResolver:
+                def __init__(self, inner, events):
+                    self.inner, self.events = inner, events
+
+                def __getattribute__(self, name):
+                    if name in ("_base_uri", "_registry", "_previous"):
+                        raise AssertionError("custom resolver state was inspected")
+                    return object.__getattribute__(self, name)
+
+                def lookup(self, ref):
+                    self.events.append({"custom_lookup": ref})
+                    return self.inner.lookup(ref)
+
+                def in_subresource(self, resource):
+                    self.events.append({"custom_descend": resource.contents})
+                    return OpaqueResolver(self.inner.in_subresource(resource), self.events)
+
+            def override_pointer(actual_pointer, events):
+                def pointer(self, pointer, resolver):
+                    resolved = actual_pointer(self, pointer=pointer, resolver=resolver)
+                    if self.contents is not external:
+                        return resolved
+                    return Resolved(contents=resolved.contents,
+                                    resolver=OpaqueResolver(resolved.resolver, events))
+                return pointer
+
+            events = []
+            return {
+                "meta": {"$id": root_uri, "$ref": external_uri + "#/$defs/target"},
+                "actual": "bad", "external": {external_uri: external}, "events": events,
+                "expected_requests": [external_uri],
+                "pointer_override": override_pointer,
+                "error_schema": external["$defs"]["integer"],
+            }
+        compare("pointer_returned_custom_resolver_remains_opaque", custom_pointer_resolver)
 
         custom_uri = "urn:tobkiri:reference-state-custom-meta"
         mapping, missing = validators._META_SCHEMAS, object()

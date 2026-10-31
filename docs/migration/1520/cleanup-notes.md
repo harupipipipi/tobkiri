@@ -1027,3 +1027,27 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   元動作の出典: referencing0.37のResource.idとResolver.in_subresource（Noneのみ無変更、
   present IDはrstrip/URI処理を行う）。
   https://github.com/python-jsonschema/referencing/blob/v0.37.0/referencing/_core.py
+
+- `96efa15a0`のnative CI41165076858は成功。既存generic64/API19・新backend64・既存11に
+  加え、ID各型/anchor/dynamic anchor/外部retrieve/scope復帰/live ID再読取り/opaque policy/
+  custom事前選択/失敗context解放の20比較を通過。App37/42/full305entry453readも一致し、
+  実entry数は0→45→87→110を維持した。metadata artifact13029380564（63,470bytes）は
+  RAMのみで読み、bounded JSON証跡を保存。製品への採用とWasm予算適合はまだ未証明。
+- 同じnative64 profileではcreate_resource25,619→4,630、in_subresource25,204→4,215へ
+  減少した一方、Resolver生成は20,119→38,242へ増加した。lookupごとに境界adapterと
+  _evolve結果を両方生成するため。lookup18,123/urljoin15,840は変わらず、native計数を
+  Wasm fuelの費用配分や性能改善率とは扱わない。次の候補は実Registry/Resource/anchorを
+  保ったRust側lookup/_evolve制御で、URIやretrieveの結果cache・型の推測・失敗retryはしない。
+  同headの実App Wasm CI41165238057を一度だけ起動し、元予算でcold/fullを測定中。
+- CI41165238057の実測はcold/fullとも元2Bで停止。prepare後1,979,543,968、cold2.029334353s/
+  full1.779418969s。同一component71abd04d…60ca5、deadline保持/未超過・unreachable=false・
+  退役・physical payload0。完了結果や性能改善率は未証明で、予算上限は維持する。
+- 次稿はAstra highの回答に従い、lookupの制御とprevious更新をRust側へ移す。
+  実URI関数・Registry取得・Resource.pointer・anchor.resolveはそのまま呼び出す。
+  内部伝達だけのResolvedとadapter+_evolveの二重生成を除く。実境界が返した正規型の
+  resolverは実参照とidentityを保持し、状態不変のdescendでは同じadapterを使う。
+  custom/subclass resolverはprivate fieldsを読まずopaqueな実オブジェクトへdispatchする。
+  元96の無条件private-field取込みも修正する。失敗時の例外型/cause/contextを維持し、
+  pointer escape/index/欠落・anchor欠落・空fragment・取得例外・custom resolverの比較を追加。
+  正規Resolver class自体のmethod差替えはこの既定policyの契約へ新規追加しない。
+  実native/Wasm検証前で未採用。結果cacheやvalidation再実行は導入しない。
