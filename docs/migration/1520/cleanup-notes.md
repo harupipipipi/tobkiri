@@ -1614,3 +1614,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   別3fieldのcold0/単調/最初の実成功時positive/最終index整合を確認する。既存value4fieldと
   reference shape・元export回数・予算・cold/full本体は変更しない。追加counter観測自体の
   fuel費用は累積診断へ含まれるので、旧frontierとの差を関数別改善や純性能値としない。
+- primary Registry `3038a7483`の[native CI41206680006](https://github.com/harupipipipi/tobkiri/actions/runs/41206680006)
+  は全成功。新21群/15対、実default rootのresource/anchor到達、production field/catch、
+  GC3群（共有refcount/View rootとdrop/循環解放とcleanup再入）、Fake入力拒否が通過した。
+  既存generic64/API19・backend64+11・reference29/fragment17/control18/scalar12/value16/
+  object16/default5/ownership4・App37/42と全caller比較も保持した。実64件の新counterは
+  cold全0→resource18,123/anchor6,165/opaque0、旧native型38,182/数値335/Python0。
+  extension1,217,240B/SHA
+  69b4d321d8edb1793ef95ecd02a321c9af539334e8d8f4dbcfa017ef140b47dd。
+  artifact13044995382/67,275BをRAMで読み、必要JSON44,275Bだけ保存した。
+  同じ3038で[cold/full41206989379](https://github.com/harupipipipi/tobkiri/actions/runs/41206989379)と
+  [累積41206992190](https://github.com/harupipipipi/tobkiri/actions/runs/41206992190)を各1回起動した。
+  元2B/64MiB/絶対30秒・同一account/Storeのまま実行中で、Wasm完走・燃料改善・製品採用は
+  まだ未証明。207の未達結果を3038のnative成功だけで上書きしない。
