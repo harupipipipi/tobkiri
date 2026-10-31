@@ -221,7 +221,7 @@ after validation, refusal or trap. The unchanged one-shot2B/64MiB/30s gate remai
 unmet. The final original GUI/839-unit/1B/API/VM-retirement requirements remain
 unchanged.
 
-## Ownership slice implementation (not yet qualified)
+## Ownership slice implementation (native parity; guest budget unmet)
 
 The provider now declares its META/checker/type/registry fields explicitly;
 wildcard forwarding is removed. Its model reads the eight declared Draft202012
@@ -244,4 +244,26 @@ retention, isolation from unselected Original changes and live selected META
 replacement/error references. All execution semantics remain in the existing
 reference engine. Callback bodies/globals, the explicit retrieval callable and
 type-checker dependency are not declared independently implemented by this
-slice. Native compilation, full comparison and actual guest evidence are pending.
+slice.
+
+Native CI41176050740 at71f785246 passed generic64/API19, backend64+11,
+reference29, fragment14, default-callout5, the4 ownership groups and complete
+App37/42/full305-entry453-read comparisons. The caller observer indexes the
+actual selected provider's graph, retaining its error-reference assertions.
+
+Actual Wasm CI41176239148 built and entered the new source-owned model and Rust
+reference path, but independent cold/full operations both exhausted the
+unchanged2B fuel. The separate one-Store cumulative diagnostic41176241136
+completed19 schemas and exhausted fuel on20th profile_lock_v4, with928 native
+pointers/857 dynamic anchors/0 adapters. Both modes retained64MiB/30s and physical
+cleanup to0; neither supplies a completed one-shot semantic result. Source
+ownership parity is not budget or final product qualification.
+
+The next selected slice is an actual-handle value view in the Rust frames,
+starting with fixed App scalar type/numeric rules. Preserve real dict/list
+iterators and reference resolution. Derived mutable views cannot survive a
+reentrant callback/subscription/comparison/iterator/descriptor operation, but
+already-bound child handles must survive a parent replacement as in the source.
+Create errors at the same frame/point from those actual handles. Nonstandard
+operations dispatch at their operation boundary, never by retrying validation.
+This value slice is not yet implemented and carries no predicted fuel gain.

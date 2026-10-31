@@ -1242,3 +1242,27 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   class/graph/checker変更後にsourceから新規再構成できること、実selected META差替えと
   error.schema参照を確認する。source inventoryは12、native/実Wasm packagingにも追加。
   source AST12/rustfmt/diffとSolのreadonly source監査のみ完了、実native/guest検証は未実施。
+- 所有sliceの実native検証は71f785246/CI41176050740で成功。generic64/API19/backend64+11/
+  reference29/fragment14/default-callout5/ownership4とApp37/42/full305453を維持した。
+  初回48ec/CI41175858653は内部比較に成功後、caller observerが旧Originalを索引にして
+  error参照locationを失ったためApp比較失敗。実差分1→0を保存し、71fで実selected provider
+  を索引に修正した（assertion削除やerrorの捏造なし）。extension996,360B/SHA b952650b…c5513。
+- 同71fの実Wasm累積CI41176241136は診断/cleanupのみ成功、sequence=false。
+  元1Store/account/2B/64MiB/30sで19件完了、20番目profile_lock_v4がfuel停止。
+  prepare後1,979,546,512、19件後36,924,554、frames17,429、cache hit0/miss19。
+  実owned graph経路でpointer928/dynamic857/adapter0を確認。component a76c85e0…6e25d。
+  元deadline保持/未超過、unreachable=false、退役、payload0。RAM artifact13033296403。
+- 同head一括CI41176239148はcold/fullとも元2Bで停止。component07736e8e…976ef6、
+  prepare後1,979,531,561→0、cold1.292238855s/full1.154017513s。両方元deadline保持/未超過、
+  unreachable=false、退役、payload0。RAM artifact13033506245。両modeの実Wasm extensionは
+  511,889B/SHA be7b35be…393f1。source definition初期化とnative参照に実到達したが、
+  完全な一括意味結果/予算gateは未達。所有sliceを性能改善と呼ばず、関数別fuelを推測しない。
+- Astra highの次指示は、実handleを持つ値viewをRust frameへ接続し、固定App policyの型・
+  数値制約から移すこと。dict/listの実iteratorと参照解決は同時変更しない。
+  exact scalarはRustで扱い、bool/int・整数float・巨大int・非有限値を維持する。
+  非標準object/custom operationはその操作地点で実処理へ渡し、検証全体を再試行しない。
+  callbackだけでなくsubscription/比較/iterator/descriptorも再入点。mutable内容borrowを
+  残さず読み直すが、原版が既に束縛した子handleを親から再取得して差し替えない。
+  errorは元frameの元時点で実schema/instanceから構成する。子取得前後の差替え、同一子
+  変更、alias、callback挿入の非標準object、例外順/identityを追加比較する。
+  次sliceはまだ未実装で、全value engineや性能合格の予測はしない。
