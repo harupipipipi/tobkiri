@@ -1457,3 +1457,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   SHA d4605b886f330df56d0ddc37269967f16dda437bcccb7f61065ee6b85209e39d。
   RAM artifact13036129128/65,985B、必要JSON41,685B保存。2aだけのWasm再実行は
   行わず、次object sliceのnative成功後、同じ最新sourceで両guest gateを測る。
+
+- object207e6e82e native CI41187452493は成功。object16群/67対に加えfragment17、
+  scalar12/193・control18/48・value16・全既存generic/API/backend/reference29/callout/
+  ownership/App37/42/full305-entry453-read比較を維持。extension1,050,336B/
+  SHA ed1d276e6215dfd99822c74933d649dfa894de948c9feabf022953796446e73a。
+  RAM artifact13037232476/66,563B、必要JSON43,181B保存。64件native call profileは
+  全26行(<60cap)にfind_additional_propertiesがなく、旧1,687回から変わった。
+  全Python workやfuel比率ではない。実native型38,182/数値335/Python境界0は維持。
+- 同じ207e6でWasm cold/full41187640127と累積41187645274を各1回起動、実行中。
+  元one-Store/2B/64MiB/絶対30秒のまま同一runを追跡する。現時点でこのsliceのguest
+  完走/全製品資格は未証明。最新terminal guestは2cの累積20schema、one-shot両方未達。

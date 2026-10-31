@@ -365,7 +365,7 @@ next selected implementation boundary is the App object constraint family,
 preserving separate keyword passes and existing reference algorithms.
 
 
-## App object constraint family (implemented; CI pending)
+## App object constraint family (native parity; guest pending)
 
 Sol6.1 xhigh implemented independent properties, patternProperties and
 additionalProperties cursors. Rules remain separate and keep their original
@@ -379,6 +379,10 @@ rejected-error state retains extras through error decoration.
 Root integrated the owned error-message boundary, source inventory15 and CI.
 The16 groups/67 differential pairs cover overlap, combined regex, key mutations,
 foreign iteration/regex/truth/errors, bound-child identity, contexts and handle
-release. AST/rustfmt checks passed. Actual native/guest CI remains required;
-registry/Resource/URI/pointer/dynamic algorithms, generic API and all earlier
-comparison groups remain unchanged. No product/default switch is made.
+release. Native CI41187452493 at207e6e82e passed those16 groups/67 pairs and all
+prior comparisons, including full App37/42/full305-entry453-read. The bounded
+64-case native profile has no find_additional_properties calls among all26
+matching rows; this is not total Python work or fuel attribution. Same-source
+Wasm cold/full41187640127 and cumulative41187645274 are in progress under the
+original limits. Registry/Resource/URI/pointer/dynamic algorithms, generic API
+and all earlier groups remain unchanged. No product/default switch is made.
