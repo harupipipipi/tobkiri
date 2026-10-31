@@ -12,6 +12,7 @@ import ast
 from contextlib import closing
 import hashlib
 import json
+import math
 from pathlib import Path
 import platform
 import shutil
@@ -26,7 +27,7 @@ ORIGINAL_HEAD = "1cf025f1eeab31a3daa2861b1f26a025c6954b6e"
 CLOCK = 1000.0
 LIMIT = 2 * 1024 * 1024
 FORMAT = "io.tobkiri.original-authority-fixtures.v1"
-CASE_COUNT = 40
+CASE_COUNT = 62
 REQUIREMENTS = (
     "cryptography", "cffi", "pycparser", "pytest", "iniconfig", "packaging",
     "pluggy", "pygments",
@@ -47,6 +48,33 @@ EPOCH_TEXTS = (
     ("zero", "0"), ("negative", "-1"), ("bad-underscore", "1__0"),
     ("empty", ""), ("over-int-digit-limit", "9" * 4301),
 )
+# Authenticated but malformed persisted records reach the actual original
+# UTF-8 decoder, JSON decoder and audit canonicalizer in that order. These
+# fixtures do not replace those functions or predict their exception messages.
+AUDIT_PAYLOADS = {
+    "json-empty": b"",
+    "json-trailing": b"{} false",
+    "json-bom": b"\xef\xbb\xbf{}",
+    "json-unquoted-key": b"{a:1}",
+    "json-trailing-comma": b'{"a":1,}',
+    "json-missing-value": b'{"a":}',
+    "json-invalid-escape": br'{"a":"\x"}',
+    "json-short-unicode": br'{"a":"\u12"}',
+    "json-control-character": b'{"a":"\x00"}',
+    "json-unterminated": b'{"a":"missing}',
+    "utf8-leading": b"\xff",
+    "utf8-continuation": b'{"a":"\xe2(\xa1"}',
+    "utf8-truncated": b'{"a":"\xe2\x82',
+    "json-null": b"null",
+    "json-array": b"[]",
+    "json-huge-integer": b'{"a":' + b"9" * 4301 + b"}",
+    "json-surrogate-value": br'{"a":"\ud800"}',
+    "json-surrogate-key": br'{"\ud800":1}',
+    "json-overwritten-surrogate": br'{"a":"\ud800","a":1}',
+    "json-nan": b'{"a":NaN}',
+    "json-infinite-number": b'{"a":1e400}',
+    "json-depth": b'{"a":' + b"[" * 2000 + b"0" + b"]" * 2000 + b"}",
+}
 
 
 def write_json(path: Path, value: object) -> None:
@@ -187,6 +215,18 @@ def material(root: Path, store_type, helpers: dict, changes: dict | None) -> dic
     return result
 
 
+def finite_observation_float(text: str) -> float:
+    """Keep observation JSON finite; invalid records retain their ciphertext SHA."""
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError("nonfinite decrypted observation")
+    return value
+
+
+def reject_observation_constant(text: str):
+    raise ValueError("nonfinite decrypted observation")
+
+
 def database_state(root: Path, inspection: Path, fernet_type) -> dict:
     """Observe a separate copy, including committed decrypted data and schema."""
     files = []
@@ -241,7 +281,10 @@ def database_state(root: Path, inspection: Path, fernet_type) -> dict:
                         if isinstance(value, bytes):
                             if name == "encrypted_payload" and cipher is not None:
                                 try:
-                                    value = {"decrypted": json.loads(cipher.decrypt(value))}
+                                    value = {"decrypted": json.loads(
+                                        cipher.decrypt(value),
+                                        parse_float=finite_observation_float,
+                                        parse_constant=reject_observation_constant)}
                                 except Exception:
                                     value = {"encrypted_sha256": hashlib.sha256(value).hexdigest()}
                             else:
@@ -306,6 +349,8 @@ def prepare(original_root: Path, destination: Path) -> None:
     ]
     specifications.extend(("epoch-" + name, "epoch:" + text, None)
                           for name, text in EPOCH_TEXTS)
+    specifications.extend(("audit-" + name, "audit-payload:" + name, None)
+                          for name in AUDIT_PAYLOADS)
     reports = []
     for name, kind, changes in specifications:
         case = destination / name
@@ -342,6 +387,18 @@ def prepare(original_root: Path, destination: Path) -> None:
                     store.advance_security_epoch("reference-fixture")
                 if kind.startswith("epoch:"):
                     mutate(path, {"security_epoch": kind.removeprefix("epoch:")})
+                elif kind.startswith("audit-payload:"):
+                    cipher = fernet_type(path.with_suffix(".key").read_bytes())
+                    payload = AUDIT_PAYLOADS[kind.removeprefix("audit-payload:")]
+                    token = cipher.encrypt(payload)
+                    with closing(sqlite3.connect(path)) as connection:
+                        with connection:
+                            changed = connection.execute(
+                                "UPDATE authority_audit SET encrypted_payload=?"
+                                " WHERE sequence=(SELECT MIN(sequence) FROM authority_audit)",
+                                (token,))
+                            if changed.rowcount != 1:
+                                raise AssertionError("one actual original audit row required")
                 elif kind == "missing-epoch":
                     mutate(path, {"security_epoch": None})
                 elif kind in {"reason-untagged", "reason-invalid", "time-nan"}:
