@@ -1672,6 +1672,7 @@ pub struct LauncherCore {
 struct Lifecycle {
     lifecycle: AtomicU64,
     lifecycle_exhausted: std::sync::atomic::AtomicBool,
+    native_shutdown: std::sync::atomic::AtomicBool,
     generation: AtomicU64,
     active_lifecycle: AtomicU64,
     active_generation: AtomicU64,
@@ -1679,7 +1680,8 @@ struct Lifecycle {
 
 impl Lifecycle {
     fn generation_is_active(&self, generation: u64) -> bool {
-        !self.lifecycle_exhausted.load(Ordering::SeqCst)
+        !self.native_shutdown.load(Ordering::SeqCst)
+            && !self.lifecycle_exhausted.load(Ordering::SeqCst)
             && generation != 0
             && generation == self.generation.load(Ordering::SeqCst)
             && generation == self.active_generation.load(Ordering::SeqCst)
@@ -1854,12 +1856,16 @@ impl LauncherCore {
     }
 
     fn startup_is_current(&self, lifecycle: u64, generation: u64) -> bool {
-        !self.lifecycle.lifecycle_exhausted.load(Ordering::SeqCst)
+        !self.lifecycle.native_shutdown.load(Ordering::SeqCst)
+            && !self.lifecycle.lifecycle_exhausted.load(Ordering::SeqCst)
             && lifecycle == self.lifecycle.lifecycle.load(Ordering::SeqCst)
             && generation == self.lifecycle.generation.load(Ordering::SeqCst)
     }
 
     fn next_generation(&self) -> Result<u64, HostError> {
+        if self.lifecycle.native_shutdown.load(Ordering::SeqCst) {
+            return Err(HostError::Cancelled);
+        }
         let mut current = self.lifecycle.generation.load(Ordering::SeqCst);
         loop {
             let next = current
@@ -1879,6 +1885,9 @@ impl LauncherCore {
     }
 
     fn next_lifecycle(&self) -> Result<u64, HostError> {
+        if self.lifecycle.native_shutdown.load(Ordering::SeqCst) {
+            return Err(HostError::Cancelled);
+        }
         if self.lifecycle.lifecycle_exhausted.load(Ordering::SeqCst) {
             return Err(HostError::Limit);
         }
@@ -2077,6 +2086,26 @@ impl LauncherCore {
 
     pub async fn stop(&self, caller: HostCaller<'_>) -> Result<(), HostError> {
         caller.check()?;
+        self.stop_current().await
+    }
+
+    /// Synchronously reject new Session work after an actual native exit.
+    /// This does not claim that existing workers, review or cleanup finished.
+    /// Native owners must subsequently await `shutdown_from_native_owner`.
+    pub fn request_native_shutdown(&self) {
+        self.lifecycle.native_shutdown.store(true, Ordering::SeqCst);
+    }
+
+    /// Drain this frontend's actual owned Session from native lifecycle code.
+    /// Not an IPC/Pack operation: accepts no synthetic caller or alternate Core.
+    /// UI Stop remains guarded and restartable through `stop`. Native shutdown
+    /// permanently closes this wrapper's admission; Arc drop is not completion.
+    pub async fn shutdown_from_native_owner(&self) -> Result<(), HostError> {
+        self.request_native_shutdown();
+        self.stop_current().await
+    }
+
+    async fn stop_current(&self) -> Result<(), HostError> {
         let _ = self.next_lifecycle();
         let _startup = self.startup.lock().await;
         self.close_current().await
@@ -3056,6 +3085,80 @@ mod tests {
 
     async fn launcher_fixture() -> (LauncherCore, ProfileId, tempfile::TempDir) {
         launcher_fixture_with_host(Arc::new(ClosedHost)).await
+    }
+
+    #[tokio::test]
+    async fn native_owner_shutdown_drains_and_refuses_restart_without_a_synthetic_ui_caller() {
+        let (launcher, id, _directory) = launcher_fixture().await;
+        launcher.start(caller(), id.as_str()).await.unwrap();
+        let generation = launcher
+            .current_generation()
+            .expect("actual started Session");
+        assert!(matches!(
+            launcher
+                .stop(HostCaller {
+                    label: "foreign",
+                    url: "https://foreign.invalid/"
+                })
+                .await,
+            Err(HostError::Caller)
+        ));
+        assert_eq!(launcher.current_generation(), Some(generation));
+        assert!(launcher.active_for_generation_now(generation).is_ok());
+
+        // UI Stop keeps its original ability to start the same Profile again.
+        launcher.stop(caller()).await.unwrap();
+        launcher.start(caller(), id.as_str()).await.unwrap();
+        let restarted = launcher.current_generation().unwrap();
+        launcher.request_native_shutdown();
+        assert_eq!(launcher.current_generation(), None);
+        assert!(launcher.active_for_generation_now(restarted).is_err());
+        assert!(matches!(
+            launcher.start(caller(), id.as_str()).await,
+            Err(HostError::Cancelled)
+        ));
+        launcher.shutdown_from_native_owner().await.unwrap();
+        assert_eq!(launcher.current_generation(), None);
+        // A repeated native exit still waits through the same cleanup path.
+        launcher.shutdown_from_native_owner().await.unwrap();
+        assert!(matches!(
+            launcher.start(caller(), id.as_str()).await,
+            Err(HostError::Cancelled)
+        ));
+    }
+
+    #[tokio::test]
+    async fn native_shutdown_before_publication_closes_the_actual_unpublished_session() {
+        let (launcher, profile, _directory) = launcher_fixture().await;
+        let generation = launcher.next_generation().unwrap();
+        let lifecycle = launcher.next_lifecycle().unwrap();
+        let session = Arc::new(launcher.core.start(&profile).await.unwrap());
+        launcher.request_native_shutdown();
+        assert!(matches!(
+            launcher.operations.publish_session(
+                ActiveSession {
+                    session: session.clone(),
+                    generation,
+                    runtime: tokio::runtime::Handle::current(),
+                },
+                || launcher.startup_is_current(lifecycle, generation),
+                || panic!("native shutdown must prevent startup publication"),
+            ),
+            Err(HostError::Cancelled)
+        ));
+        launcher
+            .close_unpublished(
+                session.clone(),
+                generation,
+                tokio::runtime::Handle::current(),
+            )
+            .await
+            .unwrap();
+        launcher.shutdown_from_native_owner().await.unwrap();
+        assert!(session.bind_ui_generation(generation).is_err());
+        let state = launcher.operations.state.lock().unwrap();
+        assert!(state.sessions.active.is_none());
+        assert!(state.sessions.retiring.is_none());
     }
 
     #[tokio::test]

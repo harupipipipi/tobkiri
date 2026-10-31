@@ -8,6 +8,7 @@ on:
       - 'crates/tobkiri-core/src/core.rs'
       - 'crates/tobkiri-core/src/native_profile_review_tests.rs'
       - 'tobkiri_launcher/core-host/src/native_contract.rs'
+      - 'tobkiri_launcher/core-host/src/runtime.rs'
       - 'tobkiri_launcher/src-tauri/src/core_host.rs'
       - '.github/workflows/issue-1520-native-group-review.yml'
   workflow_dispatch:
@@ -30,7 +31,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@1.94.0
-      - run: cargo test --locked -p tobkiri-launcher-core-host --lib native_contract::tests
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - run: cargo test --locked -p tobkiri-launcher-core-host --lib
       - run: cargo test --locked -p tobkiri-gate
       - run: cargo test --locked -p tobkiri-core --lib native_profile_review_tests
   actual-macos-host:
@@ -44,6 +48,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.22.0'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tobkiri_launcher/src-tauri -> target
+          cache-on-failure: true
       - name: Build the actual Core host frontend used by Tauri context
         working-directory: tobkiri_launcher/frontend
         run: |

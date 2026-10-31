@@ -1031,6 +1031,7 @@ pub(crate) fn run() {
                 .is_ok()
             {
                 let core = app.state::<Arc<LauncherCore>>().inner().clone();
+                core.request_native_shutdown();
                 let host = app.state::<Arc<NativeHost>>().inner().clone();
                 let app = app.clone();
                 let shutdown = shutdown.clone();
@@ -1054,7 +1055,7 @@ pub(crate) fn run() {
                     // Cancellation and stream close run off the UI thread.
                     if let Ok(mut pending) = host.terminal.lock() { pending.clear(); }
                     let retired = host.retire_output_generation();
-                    let stopped = core.stop(HostCaller { label: "core-host", url: "tauri://localhost/" }).await;
+                    let stopped = core.shutdown_from_native_owner().await;
                     let result = retired.and(stopped);
                     let _ = finished.send(if result.is_ok() { ShutdownCompletion::Closed } else { ShutdownCompletion::CleanupFailed });
                 });

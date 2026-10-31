@@ -52,12 +52,27 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - 状態: **未対応。実製品の接続・移行が先**。
 - 場所: [native_harness_bootstrap.rs](../../../tobkiri_launcher/src-tauri/src/native_harness_bootstrap.rs)、
   [core_host.rs](../../../tobkiri_launcher/src-tauri/src/core_host.rs)、
-  [feature 分岐](../../../tobkiri_launcher/src-tauri/src/lib.rs)。
+  [feature 分岐](../../../tobkiri_launcher/src-tauri/src/legacy.rs)。
 - 問題: legacy 側の `NativeRuntimeState::adopt_core` と `prepare_original_component` に
   実 callsite がなく、別の core-host 経路に実 Core・Session・UiAttachment がある。
   両者の root も異なる。試作 API の存在だけでは製品接続にならない。
-- 整理案: 実 core-host の同じ所有者へ正規の Setup・保存・起動・終了経路を接続し、
-  役目を終えた試作経路や重複した所有者を段階的に削除する。
+- 整理案（Astra highの2026-10-31回答）: 元run_launcherを製品composition rootに
+  保ち、元AppConfig/ShutdownState/選択済みuser-data-dirからNativeRuntimeStateが
+  RuntimeOwnerを一度だけ開く。実NativeHostとCoreへ移譲し、その同じArcCoreから
+  LauncherCoreを作って一組で公開する。optional core_host::runへApp設定所有権を移したり、
+  既定rootの別Coreを混ぜたりしない。Coreができてもpartial catalog/Profileを採用しない。
+- 元のfeature分岐は相互排他的なTauriアプリであり、単に別Arcが二つある状態ではない。
+  generic core-hostには元のAppConfig/ShutdownStateがなく、legacyの試作helperも実caller
+  がない。Arc参照を差し替えるだけで元Setupへ接続したと呼ばない。
+- 終了は元ShutdownStateで新規生成を止め、準備/guest/Session/reviewをcancel・drainして
+  完了を確認する。NativeComponentPreparationはstage間のsource liveness確認はあるが、
+  同期compile中の終了完了や進行中Storeのcancel接続は別に必要。Arc dropだけでは不足。
+- 最初の実装: generic LauncherCoreのnative終了primitiveを整理中。UI Stopのcaller guardと
+  再起動を保ち、Native Exitでは別の単調shutdown latchで新規受付と有効なSession世代の公開を拒否する。
+  既に開始済みの処理が競合しても、その同じSessionは後続drainで終了を待つ。
+  実owned Sessionの元retirement/drainを待ち、合成HostCallerでUI経路を呼ばない。
+  optional実HostのExit callbackに接続する。元run_launcherとのowner一組化・native準備/
+  reviewの全終了はまだ未接続であり、このprimitiveだけで製品統合とは呼ばない。
 - 条件: 旧 Profile・データ・秘密情報・復旧の実移行、実候補と承認の拘束、
   Stop / Quit の終了・失効まで確認する。空の新 root を既存環境の代用にしない。
   最初の Profile を CLI で作らせる暫定画面も、元 Setup に戻すまで未完了とする。
@@ -893,3 +908,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   公開generatorを削って必須gateを弱めない。既存keyword固有send/throw転送はsource上に
   未検証の不足もある（現native sendは値無視、throwなし）。今回の内部呼出し準備とは
   分け、将来の完全なlibrary/Pack互換確認の課題として残す。
+
+- 018の実結果 `50c4fdf75`: nativeCI41151263976は64/API19（追加method binding/fault比較
+  を含む）/App37/42resource/全305entry453readが一致。Rust entry数も元のまま。
+  generic一括41151263996とApp一括41151263995は元2Bで停止、期限保持・payload0。
+  診断41151269323は10件完了・次は同じexternal catalog。contractまで1,137,660,516
+  fuel、635の1,144,124,292から約0.565%減だが、変更したcold helper metadataも含む。
+  各内部callの配賦や実時間の高速化とは断定しない。全catalogやgeneric64予算は未達。
+  変更は小さいcall準備の整理として記録し、解決策と誤記しない。
+- App所有Rust backendはAstra highが正当な分離方向と回答。成功だけnativeで処理して
+  invalid/unsupportedという検証結果を見た後に原版validatorを再実行する案は不採用。
+  明示的なdefault callableの選択・実呼出し、失敗/参照/format callback/診断順まで直接
+  守る必要がある。互換経路は検証前のprovider選択として区別する。新backend・旧候補の
+  不採用/一般APIの適用範囲を明文化してから実装し、既存gateの結果を消さない。
