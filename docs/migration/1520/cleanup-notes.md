@@ -124,6 +124,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   極端な未観測depthと区別する（Astra high再回答）。surrogate/NaNの先後と非objectも
   追加して総65件へ検証を拡張中。driverは未実装のnative条件を明示outcomeで全件観測し、
   最後のstrict一致assertは維持する。未対応を原本のtyped exceptionへ偽装しない。
+  `9fd38e01e`のCI41230909530は両OSの原本65件と通常回帰/strict Clippyを通過し、macOSの
+  native65件もすべて観測して実close/容量解放/owner再openを終えた。strict結果一致assert
+  は未実装差分で失敗しており、成功へ変更しない。独立state比較は検証ツール自身の
+  再帰first_differenceがdeep2000でRecursionErrorとなり未完だった。型/field/valueと
+  元DFS順を保つ明示stackへ変更し、入力や比較項目を削らず次CIで検証する。
+  artifactからselected JSON135,415Bを保存。製品decoderの深さ対応とは別の修正である。
+  併走した[Desktop CI41226665165](https://github.com/harupipipipi/tobkiri/actions/runs/41226665165)
+  はsource23fで完了成功。新しいTauri callerを含むlibrary635件/build-script123件/
+  runtime-resource18件、9つのfinite test、cold boot、DMG作成とmounted検証が成功。
+  282,099,794Bの非公開用CI/E2E配布物はmetadataのみ確認しダウンロードしない。
+  既存配布物はまだPython/PackVMを含み、このCIだけでnative Setup/GUI会話採用やVM廃止
+  を完了とはしない。
   JSON/surrogate/depth・不正leaseの例外投影、同時key作成/複合I/O/close、Linux process情報
   read内部close receipt等は未閉鎖。全Open同等・既存DB採用・GUI接続の完了とはしない。
 - cryptoの余分なowned key配列copyをZeroizing先作成へ整理した。Fernetは既存RustCryptoの

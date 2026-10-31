@@ -563,24 +563,26 @@ def load_json(path: Path):
 
 def first_difference(expected, actual, path="$"):
     """Compare types as well as values; JSON true must not equal integer one."""
-    if type(expected) is not type(actual):
-        return path + ": type differs"
-    if isinstance(expected, dict):
-        if expected.keys() != actual.keys():
-            return path + ": fields differ"
-        for name in expected:
-            difference = first_difference(expected[name], actual[name], path + "." + name)
-            if difference:
-                return difference
-    elif isinstance(expected, list):
-        if len(expected) != len(actual):
-            return path + ": length differs"
-        for index, (left, right) in enumerate(zip(expected, actual)):
-            difference = first_difference(left, right, path + "[" + str(index) + "]")
-            if difference:
-                return difference
-    elif expected != actual:
-        return path + ": value differs"
+    # The original C JSON codec accepts the depth-2000 fixture. Comparing its
+    # committed state must not add the Python function recursion limit, or skip
+    # that state when the observer hits it. Preserve the same depth-first order.
+    pending = [(expected, actual, path)]
+    while pending:
+        left, right, location = pending.pop()
+        if type(left) is not type(right):
+            return location + ": type differs"
+        if isinstance(left, dict):
+            if left.keys() != right.keys():
+                return location + ": fields differ"
+            for name in reversed(left):
+                pending.append((left[name], right[name], location + "." + name))
+        elif isinstance(left, list):
+            if len(left) != len(right):
+                return location + ": length differs"
+            for index in range(len(left) - 1, -1, -1):
+                pending.append((left[index], right[index], location + "[" + str(index) + "]"))
+        elif left != right:
+            return location + ": value differs"
     return None
 
 
