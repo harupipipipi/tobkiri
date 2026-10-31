@@ -1,0 +1,57 @@
+name: Issue 1520 original denial factory reference
+
+'on':
+  push:
+    branches: [codex/issue-1520-native-shared-state]
+    paths:
+      - tools/original_denied_factory_reference.py
+      - .github/workflows/issue-1520-original-denied-factory.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-1520-original-denied-factory-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  original-factory:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 1cf025f1eeab31a3daa2861b1f26a025c6954b6e
+          path: original-denied-factory-source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Install only original-lock-pinned reference dependencies
+        run: |
+          python3 -B tools/original_setup_review_reference.py requirements \
+            --original-root "$GITHUB_WORKSPACE/original-denied-factory-source" \
+            --output "$RUNNER_TEMP/original-denied-factory-requirements.txt"
+          python3 -m pip install --disable-pip-version-check --ignore-installed \
+            --only-binary=:all: --require-hashes \
+            -r "$RUNNER_TEMP/original-denied-factory-requirements.txt"
+      - name: Observe actual fresh original factory returns
+        run: >-
+          python3 -B tools/original_denied_factory_reference.py prepare
+          --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
+          --output "$RUNNER_TEMP/original-denied-factory-reference"
+      - name: Retain bounded reference observations only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-denied-factory-reference-${{ matrix.os }}
+          path: ${{ runner.temp }}/original-denied-factory-reference/summary.json
+          if-no-files-found: warn

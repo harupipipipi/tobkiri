@@ -284,6 +284,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   小artifactはRAM内でsize/SHAを照合し、必要JSON480,011B/225,052Bのみ保存した。
   新caller3件を含む全finite15は同8b800のDesktop CI41253253796で確認中であり、
   全recovery/実factory/GUI接続、NFC、bootstrap ID/catalog以降は未完のまま。
+  次の削減候補をSourceで確定: 元denied factoryはExceptionを返すだけで、cause/contextは
+  Hostのraiseが作る。Host ProtocolErrorをGuestへ往復して作り直す追加bridgeは不要。
+  Astra highは同Storeの実factory ref＋有限観測DATAと、Host cause/contextを別由来で
+  保持する方針を採用。まず既存import-values/denied/describeの限定接続をSolが実装し、
+  原本8case（同じmessageの別callもfresh例外）と独立lifecycle回帰で比較する。
+  これは準備中で未検証。Guest例外にcauseを設定済みと偽らず、一般exception RPCや
+  Core内のPack class固定、ownedReview文字列へのCoreBuffer資金混在を追加しない。
   追加の削減候補: 新Reviewは同invocationの固定bodyを直接呼ぶ。別jobを作る旧試作の
   read_original_authority_snapshot/OriginalAuthorityJob/Dataは現在のtracked callerがなく、
   将来のsnapshot接続後も独立prefetchとして使わない。直接snapshot接続と実caller回帰を
