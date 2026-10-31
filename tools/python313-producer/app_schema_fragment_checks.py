@@ -5,7 +5,7 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
     """Use real builtin Resources; neither names nor contents confer ownership."""
     from jsonschema import Draft202012Validator as original, FormatChecker, exceptions
     from jsonschema import validators
-    from referencing import Anchor, Registry, Resource
+    from referencing import Anchor, Registry, Resource, _core
     from referencing.jsonschema import DRAFT202012, DynamicAnchor
     from schema_kernel_observation import first_difference, meta_nodes, observe
 
@@ -554,6 +554,49 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
         delta = compare(mutate_contents, "native_pointers")
         assert delta["native_pointers"] >= 2
         checks["builtin_contents_mutation_is_read_on_next_reference"] = True
+
+        # A NoSuchAnchor raised by the actual Retrieved.value getter belongs
+        # inside DynamicAnchor.resolve's original try block.
+        default_meta_uri = "https://json-schema.org/draft/2020-12/schema"
+        saved_retrieved = _core.Retrieved
+        field_observations = []
+        for selected in (original, provider):
+            events = []
+            class Returned:
+                def __init__(self, actual):
+                    self.actual = actual
+                @property
+                def registry(self):
+                    events.append("registry-read")
+                    return self.actual.registry
+                @property
+                def value(self):
+                    value = self.actual.value
+                    events.append(["value-read", type(value).__name__])
+                    if (type(value).__name__ == "DynamicAnchor"
+                            and value.resource.contents.get("$id") == default_meta_uri):
+                        from referencing.exceptions import NoSuchAnchor
+                        events.append("root-value-refused")
+                        raise NoSuchAnchor(ref=default_meta_uri, resource=value.resource, anchor="meta")
+                    return value
+            def constructor(**kwargs):
+                events.append(["construct", list(kwargs)])
+                return Returned(saved_retrieved(**kwargs))
+            actual = {"type": 42, "properties": {"bad": {"type": "integer"}}}
+            try:
+                _core.Retrieved = constructor
+                try:
+                    selected.check_schema(actual, format_checker=None)
+                except exceptions.SchemaError as error:
+                    outcome = observe(error, actual, meta_nodes(selected))
+                else:
+                    raise AssertionError("invalid schema was accepted")
+            finally:
+                _core.Retrieved = saved_retrieved
+            assert "root-value-refused" in events
+            field_observations.append({"events": events, "outcome": outcome})
+        assert first_difference(*field_observations) is None, field_observations
+        checks["production_Retrieved_fields_and_dynamic_value_exception_catch_are_preserved"] = True
     finally:
         try:
             Registry.anchor = saved_anchor
@@ -573,5 +616,5 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
                             finally:
                                 selected.META_SCHEMA = saved_meta
 
-    assert len(checks) == 17 and all(value is True for value in checks.values())
+    assert len(checks) == 18 and all(value is True for value in checks.values())
     return checks

@@ -14,7 +14,6 @@ name: Issue 1520 actual App schema caller reference
       - tools/python313-producer/app_schema_control_checks.py
       - tools/python313-producer/app_schema_scalar_checks.py
       - tools/python313-producer/app_schema_object_checks.py
-      - tools/python313-producer/app_schema_registry_checks.py
       - tools/python313-producer/schema_kernel/**
       - tools/python313-producer/schema_kernel_translate.py
       - tools/python313-producer/schema_kernel_native_check.py

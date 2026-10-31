@@ -1643,3 +1643,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   ff5a58b8b707c4be8cd94c440647c526deebd2beffd4f588e2dd8fb6346e4528。
   RAM artifact13045206074/245,276B・13045186319/246,601Bから必要JSONだけ保存し、
   binary/ZIPは保存していない。全guest/GUI/839/20/1B/API/PythonVM廃止は未達。
+- Astra highの実測後の指示に従い、Sol6.1 xhighがRegistry最適化・専用API・2新規fileを
+  全撤去した。Rootもsource inventoryを元15fileへ戻し、新registry observerとCI接続を
+  外した。約2,100行を削除し、未使用fast pathを残さない。独立のdynamic Retrieved.value
+  をNoSuchAnchor try内へ置く修正だけを保持し、実Original/provider比較を既存fragment
+  helperへ移した（旧17群を維持し18群）。履歴・失敗結果・保護sourceは保持する。
+  撤去後はsource/AST/format確認のみで、実native比較を次に行う。
+- 次候補はAstra high選択のApp-owned container equality。`uniqueItems`は今回対象外で、
+  既存callout5の実uniq rebindと原本sort→限定例外時live再走査を保つ。Solの一次source監査で
+  seqのidentity/分類/len/zip左右取得/compare/truthと、mapのlen/items/membership/getitem/
+  compare/truthの順序は確認した。一方、原本Python frame用再帰counterとStable ABIの
+  `Py_EnterRecursiveCall`は別counterであり、cycle/deepをRust stack＋固定limitへ置換
+  できない。再帰契約が閉じるまで実装を開始せず、Astra highへ次の最小scopeを質問した。

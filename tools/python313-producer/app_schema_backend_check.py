@@ -7,16 +7,6 @@ from pathlib import Path
 import sys
 
 
-def _registry_counts(kernel):
-    """Require actual lookup observations with the closed counter shape."""
-    values = kernel.app_registry_counts()
-    fields = {'primary_resource_hits', 'primary_anchor_hits', 'opaque_lookups'}
-    if (type(values) is not dict or set(values) != fields
-            or any(type(value) is not int or value < 0 for value in values.values())):
-        raise ValueError('actual App registry counters required')
-    return values
-
-
 def compare(args, receipt, package_paths, extension):
     from build_schema_kernel import fingerprint_and_read
     from schema_kernel_observation import first_difference, meta_nodes, observe
@@ -57,9 +47,6 @@ def compare(args, receipt, package_paths, extension):
         profiler = cProfile.Profile()
     receipt['stage'] = 'app-backend-comparison'
     receipt['reference_counts_before_64'] = kernel.app_reference_counts()
-    receipt['registry_counts_before_64'] = _registry_counts(kernel)
-    if any(receipt['registry_counts_before_64'].values()):
-        raise ValueError('registry lookups ran before the actual corpus')
     for case in reference['cases']:
         schema = case['schema']
         try:
@@ -81,9 +68,6 @@ def compare(args, receipt, package_paths, extension):
         raise ValueError('each actual schema must enter Rust frames')
     receipt['reference_counts_after_64'] = kernel.app_reference_counts()
     receipt['value_counts_after_64'] = kernel.app_value_counts()
-    receipt['registry_counts_after_64'] = _registry_counts(kernel)
-    if receipt['registry_counts_after_64']['primary_resource_hits'] <= 0:
-        raise ValueError('actual App schema corpus did not enter primary registry lookup')
     if (receipt['value_counts_after_64']['native_type_checks'] <= 0
             or receipt['value_counts_after_64']['native_numeric_comparisons'] <= 0):
         raise ValueError('actual App schema corpus did not enter native value operations')
@@ -132,8 +116,6 @@ def compare(args, receipt, package_paths, extension):
     receipt['scalar_checks'] = scalar_checks(provider, kernel)
     from app_schema_object_checks import object_checks
     receipt['object_checks'] = object_checks(provider, kernel)
-    from app_schema_registry_checks import registry_checks
-    receipt['registry_checks'] = registry_checks(provider, kernel)
     receipt.update(outcome='success', app_backend_64_success=True,
                    app_backend_entries=kernel.app_schema_entry_count(),
                    app_backend_frames=kernel.app_schema_frame_count(),
