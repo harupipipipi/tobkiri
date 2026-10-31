@@ -46,7 +46,10 @@ async fn actual_app_schema_cumulative_progress() -> Result<()> {
         "qualification":false,"production_enabled":false,"gui_or_os_owner_proof":false,
         "one_shot_acceptance":false,"function_fuel_attribution":false,
         "perturbation":"split load_schema calls add boundary, listing and observation work",
-        "completed_schemas":0,"last_started":null,"checkpoints":[],"stage":"begin"
+        "completed_schemas":0,"last_started":null,"checkpoints":[],"stage":"begin",
+        "cold_value_counts_verified":false,"native_value_counts_observed":false,
+        "last_value_counts":null,"last_value_counts_index":null,
+        "last_successful_observation":null
     });
     let started = Instant::now();
     let outcome: Result<()> = async {
@@ -69,6 +72,7 @@ async fn actual_app_schema_cumulative_progress() -> Result<()> {
         let mut remaining = program.fuel_remaining()?;
         ensure!(remaining <= 2_000_000_000, "original cumulative fuel bound differs");
         report["fuel_after_prepare"] = json!(remaining);
+        let mut value_counts = [0_u64; 4];
         // The same program/account/Store survives every successful call.
         for index in 0..=42 {
             let name = if index == 0 { None } else { Some(&expected_names[index-1]) };
@@ -97,13 +101,13 @@ async fn actual_app_schema_cumulative_progress() -> Result<()> {
                 }
                 _ => anyhow::bail!("actual schema diagnostic result type differs"),
             };
-            let after = program.fuel_remaining()?;
-            ensure!(after <= remaining, "diagnostic replenished fuel");
             ensure!(program.observation().post_return && !program.observation().store_retired
                 && !program.observation().post_return_failed
                 && !program.observation().unreachable_trap
                 && !program.observation().deadline_exceeded,
                 "successful call did not preserve actual Store lifecycle");
+            let after = program.fuel_remaining()?;
+            ensure!(after <= remaining, "diagnostic replenished fuel");
             ensure!(actual.as_bytes().len() <= 16*1024, "bounded checkpoint required");
             let receipt: Value = serde_json::from_slice(actual.as_bytes())?;
             ensure!(receipt["format"] == "tobkiri.app-schema-progress-step/1"
@@ -120,10 +124,33 @@ async fn actual_app_schema_cumulative_progress() -> Result<()> {
                 ensure!(receipt["name"] == json!(name) && receipt["outcome"] == "loaded"
                     && receipt["backend_entries"] == index,
                     "actual cold schema loader did not complete exactly once");
-                report["completed_schemas"] = json!(index);
             }
             ensure!(receipt["schema_cache"] == json!({"hits":0,"misses":index,"size":index}),
                 "actual original cold schema cache differs");
+            let counters = receipt["value_counts"].as_object()
+                .context("actual value counter object required")?;
+            ensure!(counters.len() == 4, "exact actual value counter fields required");
+            let mut next_counts = [0_u64; 4];
+            for (slot, &field) in ["native_type_checks", "python_type_checks",
+                "native_numeric_comparisons", "python_numeric_comparisons"].iter().enumerate() {
+                let count = counters.get(field).and_then(Value::as_u64)
+                    .context("actual native value counter required")?;
+                ensure!(count >= value_counts[slot] && (index > 0 || count == 0),
+                    "value counters reset or validation ran during initialization");
+                next_counts[slot] = count;
+            }
+            ensure!(index == 0 || next_counts[0] > value_counts[0],
+                "actual schema did not enter native scalar typing");
+            value_counts = next_counts;
+            if index == 0 {
+                report["cold_value_counts_verified"] = json!(true);
+            } else {
+                report["native_value_counts_observed"] = json!(true);
+                report["completed_schemas"] = json!(index);
+            }
+            report["last_value_counts"] = receipt["value_counts"].clone();
+            report["last_value_counts_index"] = json!(index);
+            report["last_successful_observation"] = observation.clone();
             report["checkpoints"].as_array_mut().context("checkpoint array")?.push(json!({
                 "index":index,"name":name,"fuel_before":remaining,"fuel_remaining":after,
                 "observation":observation,"receipt":receipt,
@@ -146,7 +173,10 @@ async fn actual_app_schema_cumulative_progress() -> Result<()> {
         && report["last_observation"]["fuel_remaining"] == 0
         && report["last_observation"]["unreachable_trap"] == false
         && report["last_observation"]["deadline_exceeded"] == false
-        && report["original_deadline_preserved"] == true;
+        && report["original_deadline_preserved"] == true
+        && report["cold_value_counts_verified"] == true
+        && report["native_value_counts_observed"] == true
+        && report["last_value_counts_index"] == report["completed_schemas"];
     report["expected_cumulative_fuel_stop"] = json!(expected_fuel_stop);
     report["sequence_completed"] = json!(outcome.is_ok());
     report["diagnostic_observation_valid"] = json!(outcome.is_ok() || expected_fuel_stop);

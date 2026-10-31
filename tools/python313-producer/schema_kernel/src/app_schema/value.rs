@@ -53,10 +53,23 @@ fn default_value_policy(py: Python<'_>) -> PyResult<DefaultValuePolicy> {
     let checker = FIXED_CHECKER.get_or_try_init(py, || {
         Ok::<_, PyErr>(module_member(py, "jsonschema._types", "draft202012_type_checker")?.unbind())
     })?;
+    let boundary = module_member(py, "app_schema_model", "type_boundary")?;
+    require_boundary(&boundary)?;
     Ok(DefaultValuePolicy {
         checker: Some(checker.clone_ref(py)),
-        boundary: Some(module_member(py, "app_schema_model", "type_boundary")?.unbind()),
+        boundary: Some(boundary.unbind()),
     })
+}
+
+fn require_boundary(boundary: &Bound<'_, PyAny>) -> PyResult<()> {
+    // PyCallable_Check inspects the type's call slot, without calling an
+    // arbitrary object's metadata or executing the custom operation early.
+    if !boundary.is_callable() {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "App type boundary must be callable",
+        ));
+    }
+    Ok(())
 }
 
 pub(super) struct TypePolicy {
@@ -73,7 +86,7 @@ impl TypePolicy {
         owner: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
         let (fixed, boundary) = if let Some(policy) = policy {
-            let policy = policy.borrow();
+            let policy = policy.try_borrow()?;
             let missing =
                 || pyo3::exceptions::PyRuntimeError::new_err("App value policy was cleared");
             (
@@ -86,6 +99,10 @@ impl TypePolicy {
                 module_member(py, "app_schema_model", "type_boundary")?.unbind(),
             )
         };
+        // All retained handles have been cloned and the policy borrow ended.
+        // Validate configuration before any Resource/Registry operation; the
+        // actual owner getter and custom checker remain operation-time calls.
+        require_boundary(boundary.bind(py))?;
         Ok(Self {
             checker: checker.clone().unbind(),
             fixed,
@@ -97,7 +114,7 @@ impl TypePolicy {
     pub(super) fn current_checker<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         // A selected provider's configuration may change during a callback.
         Ok(match &self.owner {
-            Some(owner) => owner.bind(py).getattr("TYPE_CHECKER")?,
+            Some(owner) => owner.bind(py).getattr(pyo3::intern!(py, "TYPE_CHECKER"))?,
             None => self.checker.bind(py).clone(),
         })
     }

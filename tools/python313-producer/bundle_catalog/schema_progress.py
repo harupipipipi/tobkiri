@@ -14,6 +14,19 @@ from wit_world.exports.projection import Error, ErrorCode
 # This does not construct an owner, read schemas or run validation.
 import bundle_catalog_adapter as app
 
+VALUE_FIELDS = ("native_type_checks", "python_type_checks",
+                "native_numeric_comparisons", "python_numeric_comparisons")
+
+
+def value_counts(kernel):
+    """Read actual counters; absent, extra or noninteger data is not evidence."""
+    values = kernel.app_value_counts()
+    if (type(values) is not dict or set(values) != set(VALUE_FIELDS)
+            or any(type(values[name]) is not int or values[name] < 0
+                   for name in VALUE_FIELDS)):
+        raise RuntimeError('actual App value counters required')
+    return values
+
 
 class Projection(wit_world.exports.Projection):
     def project(self, payload: str) -> str:
@@ -66,10 +79,14 @@ class Projection(wit_world.exports.Projection):
         else:
             raise Err(Error(ErrorCode.INVALID_REQUEST, 'unknown schema diagnostic command'))
         cache = validation.load_schema.cache_info()
+        values = value_counts(kernel)
+        if outcome == 'metadata' and any(values.values()):
+            raise RuntimeError('value operations ran before the actual cold loader')
         row.update(outcome=outcome,
                    schema_cache={'hits': cache.hits, 'misses': cache.misses,
                                  'size': cache.currsize},
                    backend_entries=kernel.app_schema_entry_count(),
                    backend_frames=kernel.app_schema_frame_count(),
-                   reference_counts=kernel.app_reference_counts())
+                   reference_counts=kernel.app_reference_counts(),
+                   value_counts=values)
         return json.dumps(row, sort_keys=True, separators=(',', ':'))

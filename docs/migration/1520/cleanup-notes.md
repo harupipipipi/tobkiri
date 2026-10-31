@@ -1284,3 +1284,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   必須。Solのsource監査でsurrogate型名のto_str拒否がUnicodeEncodeErrorになる差を発見し、
   実type lookup/UnknownType境界を最初から選ぶよう修正、unknown/surrogate比較を加えた。
   全13source inventoryを更新。source AST7/rustfmt/diffのみ完了、native/guest実行は未実施。
+- 6e23f4bc0のnative CI41178194013で12群/151対と従来全比較が成功。generic64/API19/
+  backend64+11/reference29/fragment14/default-callout5/ownership4/App37/42/full305453を維持。
+  実64件はnative型38,182・native数値335・両Python境界0。extension1,017,720B/
+  SHA fa68fec3…50169。RAM artifact13034180617。Wasm到達/改善はこのnative結果で代用しない。
+- ユーザーの重要実装をSolへ任せる指示に従い、6.1 Sol xhighがpolicy境界と診断controllerを
+  実装。policyはtry_borrowとcallable形状確認を行い、入力を触るResource/Registry callback・
+  entry計数より前にmetadata抽出を終える。TYPE_CHECKERの固定名はinternし、Sourceと同じ
+  literal名の参照関係を保って反復文字列生成を除く。cleared/forged policyの拒否を確認する
+  ために、存在しない公開clear hookは追加しない。
+- 既存12群/151対を残し、4群でctor/不正policy5件の入力評価前拒否、実owner getterの
+  check/decorate時点・名identity・例外identity、UnknownTypeの実context、再入中の同じ
+  policy利用と例外後のweak input解放を追加。診断はcold-zero・正確な4counter形状・
+  単調性・schemaごとのnative型増加を要求し、退役後はfuelへ触れず最後の成功したcounter/
+  observationを残す。実値到達がないfuel停止を診断成功としない。cold/full gateは未変更。
+  この重要実装はsource確認のみで、新native/guest CIによる検証が必要。

@@ -3,6 +3,9 @@
 
 def value_checks(provider, kernel) -> dict[str, bool]:
     """Keep the original oracle, actual objects, and operation-time callbacks."""
+    import gc
+    import sys
+    import weakref
     from decimal import Decimal
     from fractions import Fraction
     from numbers import Number
@@ -23,6 +26,19 @@ def value_checks(provider, kernel) -> dict[str, bool]:
 
     def tag(value):
         return type(value).__module__ + "." + type(value).__qualname__
+
+    def failure_graph(error, supplied=None, seen=None):
+        if error is None:
+            return None
+        seen = {} if seen is None else seen
+        if id(error) in seen:
+            return {"ref": seen[id(error)]}
+        seen[id(error)] = len(seen)
+        return {"type": tag(error), "message": str(error),
+                "is_supplied": error is supplied,
+                "suppressed": error.__suppress_context__,
+                "cause": failure_graph(error.__cause__, supplied, seen),
+                "context": failure_graph(error.__context__, supplied, seen)}
 
     def run(selected, make):
         state = make()
@@ -46,17 +62,7 @@ def value_checks(provider, kernel) -> dict[str, bool]:
                     "identity": sorted(set(known.get(id(value), [])))}
 
         def graph(error, seen=None):
-            if error is None:
-                return None
-            seen = {} if seen is None else seen
-            if id(error) in seen:
-                return {"ref": seen[id(error)]}
-            seen[id(error)] = len(seen)
-            return {"type": tag(error), "message": str(error),
-                    "is_supplied": error is state.get("fault"),
-                    "suppressed": error.__suppress_context__,
-                    "cause": graph(error.__cause__, seen),
-                    "context": graph(error.__context__, seen)}
+            return failure_graph(error, state.get("fault", state.get("unknown_context")), seen)
 
         def observe(error, root=True):
             assert type(error) is (exceptions.SchemaError if root else exceptions.ValidationError)
@@ -81,10 +87,10 @@ def value_checks(provider, kernel) -> dict[str, bool]:
         for label, value in state.get("refs", {}).items():
             index(value, "retained/" + label)
         saved_meta, saved_type = selected.META_SCHEMA, selected.TYPE_CHECKER
+        before = counts()
         selected.META_SCHEMA = meta
         if "type_checker" in state:
             selected.TYPE_CHECKER = state["type_checker"]
-        before = counts()
         try:
             try:
                 selected.check_schema(actual, format_checker=state.get("checker"))
@@ -98,6 +104,12 @@ def value_checks(provider, kernel) -> dict[str, bool]:
                 outcome = {"kind": "exception", "error": graph(error)}
                 if "fault" in state:
                     assert error is state["fault"], "callback exception identity changed"
+                if "unknown_context" in state:
+                    assert type(error) is exceptions.UnknownType
+                    assert error.__context__ is state["unknown_context"]
+                    assert error.__cause__ is None and error.__suppress_context__
+                    assert error.schema is meta and error.instance is actual
+                    assert error.type is meta["type"]
             else:
                 outcome = {"kind": "valid"}
         finally:
@@ -333,5 +345,161 @@ def value_checks(provider, kernel) -> dict[str, bool]:
 
     compare(iterator_failure, ("python_type_checks",))
     checks["array_iterator_callback_then_exception_order_and_identity"] = True
-    assert len(checks) == 12 and all(value is True for value in checks.values())
+
+    reference_policy = kernel.app_reference_policy(provider._SPECIFICATIONS)
+    value_policy = kernel.default_value_policy()
+    try:
+        type(value_policy)()
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("opaque value policy has an arbitrary constructor")
+    policy_events = []
+
+    class RegistryProbe:
+        def resolver_with_root(self, resource):
+            policy_events.append("resolver")
+            raise AssertionError("invalid policy reached Resource/Registry evaluation")
+
+    class FakePolicy:
+        def __getattribute__(self, name):
+            policy_events.append(name)
+            raise AssertionError("forged policy metadata was inspected")
+
+    def rejected_policy(call):
+        before = (kernel.app_schema_entry_count(), kernel.app_schema_frame_count(), counts())
+        try:
+            call()
+        except TypeError:
+            pass
+        else:
+            raise AssertionError("invalid value policy/configuration was accepted")
+        assert not policy_events
+        assert before == (kernel.app_schema_entry_count(), kernel.app_schema_frame_count(), counts())
+
+    import app_schema_model
+    from referencing.jsonschema import DRAFT202012
+    specification_type = type(DRAFT202012)
+    saved_create = specification_type.__dict__["create_resource"]
+
+    def create_probe(specification, contents):
+        policy_events.append("resource")
+        return saved_create(specification, contents)
+
+    try:
+        specification_type.create_resource = create_probe
+        for fake in (object(), FakePolicy(), reference_policy):
+            rejected_policy(lambda: kernel.app_check_schema(
+                {}, {}, RegistryProbe(), reference_policy, provider.TYPE_CHECKER, None,
+                value_policy=fake))
+        saved_boundary = app_schema_model.type_boundary
+        try:
+            app_schema_model.type_boundary = object()
+            rejected_policy(kernel.default_value_policy)
+            rejected_policy(lambda: kernel.app_check_schema(
+                {}, {}, RegistryProbe(), reference_policy, provider.TYPE_CHECKER, None))
+        finally:
+            app_schema_model.type_boundary = saved_boundary
+    finally:
+        specification_type.create_resource = saved_create
+    checks["opaque_and_invalid_value_policies_refuse_before_evaluation"] = True
+
+    from jsonschema import _keywords
+    source_type_name = sys.intern("TYPE_CHECKER")
+
+    def getter_failure(native, stage):
+        events, fault = [], RuntimeError("actual type owner getter failure")
+        meta, actual = {"type": "integer"}, "bad"
+        default = provider.TYPE_CHECKER
+
+        class Owner:
+            schema = meta
+            _validators = [(_keywords.type, "type", "integer")]
+
+            def __getattribute__(self, name):
+                if name == "TYPE_CHECKER":
+                    events.append({"source_name": name is source_type_name})
+                    if stage == "check" or len(events) == 2:
+                        raise fault
+                    return default
+                return object.__getattribute__(self, name)
+
+            def is_type(self, value, kind):
+                return original.is_type(self, value, kind)
+
+        owner = Owner()
+        try:
+            if native:
+                kernel.app_check_schema(actual, meta, provider._REGISTRY, reference_policy,
+                                        default, None, value_policy=value_policy, type_owner=owner)
+            else:
+                next(original.iter_errors(owner, actual))
+        except RuntimeError as error:
+            assert error is fault
+            outcome = failure_graph(error, fault)
+        else:
+            raise AssertionError("actual type owner getter was not reached")
+        assert len(events) == (1 if stage == "check" else 2)
+        assert all(event["source_name"] for event in events)
+        return {"events": events, "error": outcome}
+
+    for stage in ("check", "decorate"):
+        assert first_difference(getter_failure(False, stage), getter_failure(True, stage)) is None
+    checks["type_owner_getter_name_order_and_exception_identity"] = True
+
+    def undefined_type():
+        actual, events = {}, []
+        undefined = exceptions.UndefinedTypeCheck("integer")
+
+        class Checker:
+            def is_type(self, value, kind):
+                events.append({"same_input": value is actual, "kind": kind})
+                raise undefined
+
+        return {"meta": {"type": "integer"}, "actual": actual, "events": events,
+                "type_checker": Checker(), "unknown_context": undefined}
+
+    compare(undefined_type, ("python_type_checks",))
+    checks["custom_undefined_type_preserves_actual_unknown_type_context"] = True
+
+    class WeakInput(dict):
+        pass
+
+    retained = []
+
+    def reentry_failure():
+        state, events = {}, []
+        actual = WeakInput({"held": []})
+        retained.append(weakref.ref(actual))
+        fault = RuntimeError("actual reentrant type failure")
+        default = original.TYPE_CHECKER
+
+        class Checker:
+            def is_type(self, value, kind):
+                events.append({"outer_input": value is actual, "kind": kind})
+                owner = state["owner"]
+                outer_meta, outer_type = owner.META_SCHEMA, owner.TYPE_CHECKER
+                try:
+                    owner.META_SCHEMA, owner.TYPE_CHECKER = {"type": "string"}, default
+                    owner.check_schema("nested", format_checker=None)
+                    events.append("nested-completed")
+                finally:
+                    owner.META_SCHEMA, owner.TYPE_CHECKER = outer_meta, outer_type
+                raise fault
+
+        state.update(meta={"type": "object"}, actual=actual, events=events,
+                     type_checker=Checker(), fault=fault)
+        return state
+
+    reentered = []
+    for selected in (original, provider):
+        observed, delta = run(selected, reentry_failure)
+        gc.collect()
+        assert retained[-1]() is None, "failed reentry retained the actual input"
+        if selected is provider:
+            assert delta["python_type_checks"] > 0 and delta["native_type_checks"] > 0
+        reentered.append(observed)
+    assert first_difference(*reentered) is None
+    checks["reentrant_type_callback_preserves_exception_and_releases_input"] = True
+    assert len(checks) == 16 and all(value is True for value in checks.values())
     return checks

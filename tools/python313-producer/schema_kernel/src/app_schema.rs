@@ -709,7 +709,6 @@ fn app_check_schema(
     value_policy: Option<&Bound<'_, DefaultValuePolicy>>,
     type_owner: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<()> {
-    ENTRIES.fetch_add(1, Ordering::Relaxed);
     let (specification, resolver_type, resource_policy) = {
         let policy = policy.borrow();
         let specification = policy
@@ -729,6 +728,11 @@ fn app_check_schema(
             .clone_ref(py);
         (specification, resolver_type, resources)
     };
+    // Extract opaque configuration before callbacks can inspect an input.
+    // No policy borrow survives Resource construction, resolver callbacks or
+    // a custom type check that reenters this operation.
+    let value_policy = TypePolicy::new(py, type_checker, value_policy, type_owner)?;
+    ENTRIES.fetch_add(1, Ordering::Relaxed);
     let resource = specification
         .bind(py)
         .call_method1("create_resource", (meta,))?;
@@ -737,7 +741,7 @@ fn app_check_schema(
         specification,
         resolver_type,
         checker: format_checker.clone().unbind(),
-        value_policy: TypePolicy::new(py, type_checker, value_policy, type_owner)?,
+        value_policy,
         urljoin: module_member(py, "referencing._core", "urljoin")?.unbind(),
         urldefrag: module_member(py, "referencing._core", "urldefrag")?.unbind(),
         resource_policy,
