@@ -231,6 +231,73 @@ fn graph(value: &OriginalAuthorityError, next: &mut usize) -> Value {
         "cause":source,"context":context})
 }
 
+// Native gaps are not original exceptions. Keep every case observable, then
+// let the unchanged strict comparison fail on the different outcome kind.
+fn native_issue(
+    value: &OriginalAuthorityError,
+    depth: usize,
+) -> Option<(OriginalAuthorityStage, &'static str)> {
+    fn cause(value: &OriginalAuthorityCause, depth: usize) -> Option<&'static str> {
+        if depth > 32 {
+            return Some("native-error-record-depth");
+        }
+        match value {
+            OriginalAuthorityCause::Unsupported(reason) => Some(reason),
+            OriginalAuthorityCause::Capacity => Some("native-capacity"),
+            OriginalAuthorityCause::Cancelled => Some("native-cancelled"),
+            OriginalAuthorityCause::Deadline => Some("native-deadline"),
+            OriginalAuthorityCause::SourceUnavailable => Some("native-source-unavailable"),
+            OriginalAuthorityCause::InvalidRecord(_) => Some("native-record-representation"),
+            OriginalAuthorityCause::Python {
+                cause: source,
+                context,
+                ..
+            } => source
+                .as_ref()
+                .and_then(|value| cause(value, depth + 1))
+                .or_else(|| context.as_ref().and_then(|value| cause(value, depth + 1))),
+            OriginalAuthorityCause::Io(value) => value
+                .context
+                .as_ref()
+                .and_then(|value| cause(value, depth + 1)),
+            OriginalAuthorityCause::SecurePath { context, .. } => {
+                context.as_ref().and_then(|value| cause(value, depth + 1))
+            }
+            _ => None,
+        }
+    }
+    if depth > 32 {
+        return Some((value.stage, "native-error-record-depth"));
+    }
+    value
+        .cause
+        .as_ref()
+        .and_then(|value| cause(value, depth + 1))
+        .map(|reason| (value.stage, reason))
+        .or_else(|| {
+            value
+                .context
+                .as_ref()
+                .and_then(|value| native_issue(value, depth + 1))
+        })
+}
+fn stage_name(value: OriginalAuthorityStage) -> &'static str {
+    match value {
+        OriginalAuthorityStage::Source => "source",
+        OriginalAuthorityStage::Process => "process",
+        OriginalAuthorityStage::Path => "path",
+        OriginalAuthorityStage::Key => "key",
+        OriginalAuthorityStage::Guard => "guard",
+        OriginalAuthorityStage::Connect => "connect",
+        OriginalAuthorityStage::Initialize => "initialize",
+        OriginalAuthorityStage::Audit => "audit",
+        OriginalAuthorityStage::Migration => "migration",
+        OriginalAuthorityStage::Epoch => "epoch",
+        OriginalAuthorityStage::EpochRecord => "epoch-record",
+        OriginalAuthorityStage::Close => "close",
+    }
+}
+
 /// CI sets the exact fresh manifest prepared by the independent pinned source.
 /// Without it, this test cannot report qualification or a native comparison.
 #[test]
@@ -291,7 +358,12 @@ fn original_reference_driver() -> anyhow::Result<()> {
             {
                 json!({"outcome":"non-regular-path"})
             }
-            Err(error) => json!({"outcome":"error", "error":graph(error, &mut 0)}),
+            Err(error) => match native_issue(error, 0) {
+                Some((stage, reason)) => {
+                    json!({"outcome":"native-integration-failure", "stage":stage_name(stage), "reason":reason})
+                }
+                None => json!({"outcome":"error", "error":graph(error, &mut 0)}),
+            },
         };
         let mut expected = case["expected"].clone();
         let expected_object = expected.as_object_mut().unwrap();

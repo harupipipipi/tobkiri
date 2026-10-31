@@ -102,6 +102,28 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   これは閉じた40ケースの有限操作の証拠であり、残るctor全契約・実Setup/GUI接続の採用
   ではない。Astra highは次もctor不足を先に閉じ、同じBootstrap invocation/control/owner
   の元到達点でこの実bodyを呼ぶ順を指定。独立jobの結果prefetch/cacheや新accountは作らない。
+  次の原本corpusは`c0435f566`で40件を保ったままauthenticatedな不正UTF8/JSON等22件を
+  加えた。両OSの初回CI41229630601は全原本操作後、fixture manifestの2MiB制限で停止。
+  `69ba709cf`で全field/型と上限を保ちJSONの余分なindentだけ除去し、CI41229894658へ
+  送った。nonfiniteな観測値はciphertext SHAへ戻してartifact JSONをfiniteに保つが、
+  実原本のdecode/例外/副作用は変更しない。native62件の成功はまだ主張しない。
+  Sourceで確認した整理境界: surrogateはJSON読込で拒否せず、実canonical encodeの地点
+  まで局所decoded表現へ保持する。duplicateの上書きとobject順序を保持し、通常値には
+  既存canonを再利用する。sharedCanonや一般モデルへsurrogate型を拡張しない。
+  原本C decoderのthreadstate/可変recursion残量はRust Hostへ複製せず、固定1024を原本
+  同等としない。証明できないdeep領域はexplicit unsupportedとして実fixtureを残し、
+  不一致を成功へ読み替えない（Astra high回答）。default-off接続の実装は進められるが、
+  その未対応を残して旧state操作全体や製品Setupのqualificationを宣言しない。
+  `69ba709cf`では両OSの実原本62件が完了し、Linuxの全検証も成功した。macOSは製品操作
+  前の検証manifest読込で、未使用reference_state内のlone surrogateをserde_jsonが拒否した。
+  full manifestは原本の文字列を保持してPythonによる独立DB比較に使い、Rust driverには
+  同じfresh入力/expectedだけをnative-fixtures.jsonで渡す。DB比較を省略したり文字列を
+  書き換えたりしない。原本summary99,850BをRAM-only artifactから保存した。
+  特にdeep2000は実原本のdecode/canonicalを通り最終audit-chain-invalidまで到達した。
+  この既知入力は局所codecで処理する必要があり、unsupportedを同等として先送りしない。
+  極端な未観測depthと区別する（Astra high再回答）。surrogate/NaNの先後と非objectも
+  追加して総65件へ検証を拡張中。driverは未実装のnative条件を明示outcomeで全件観測し、
+  最後のstrict一致assertは維持する。未対応を原本のtyped exceptionへ偽装しない。
   JSON/surrogate/depth・不正leaseの例外投影、同時key作成/複合I/O/close、Linux process情報
   read内部close receipt等は未閉鎖。全Open同等・既存DB採用・GUI接続の完了とはしない。
 - cryptoの余分なowned key配列copyをZeroizing先作成へ整理した。Fernetは既存RustCryptoの

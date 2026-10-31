@@ -27,7 +27,7 @@ ORIGINAL_HEAD = "1cf025f1eeab31a3daa2861b1f26a025c6954b6e"
 CLOCK = 1000.0
 LIMIT = 2 * 1024 * 1024
 FORMAT = "io.tobkiri.original-authority-fixtures.v1"
-CASE_COUNT = 62
+CASE_COUNT = 65
 REQUIREMENTS = (
     "cryptography", "cffi", "pycparser", "pytest", "iniconfig", "packaging",
     "pluggy", "pygments",
@@ -70,6 +70,9 @@ AUDIT_PAYLOADS = {
     "json-huge-integer": b'{"a":' + b"9" * 4301 + b"}",
     "json-surrogate-value": br'{"a":"\ud800"}',
     "json-surrogate-key": br'{"\ud800":1}',
+    "json-surrogate-nonobject": br'"\ud800"',
+    "json-surrogate-before-nan": br'{"a":"\ud800","z":NaN}',
+    "json-nan-before-surrogate": br'{"a":NaN,"z":"\ud800"}',
     "json-overwritten-surrogate": br'{"a":"\ud800","a":1}',
     "json-nan": b'{"a":NaN}',
     "json-infinite-number": b'{"a":1e400}',
@@ -476,6 +479,17 @@ def prepare(original_root: Path, destination: Path) -> None:
     # Keep the complete independent state observations and the existing 2 MiB
     # manifest bound; human-readable indentation is unnecessary in this CI input.
     write_json(destination / "fixtures.json", metadata, compact=True)
+    # Rust executes source inputs and compares typed outcomes. It does not
+    # consume the independent SQL observer's decoded records, which can legally
+    # contain lone Python surrogates in these corruption fixtures. Keep that
+    # exact state in the full manifest for the Python comparer, rather than
+    # changing its strings to make an unused Rust serde_json value acceptable.
+    native_metadata = {key: value for key, value in metadata.items() if key != "cases"}
+    native_metadata["cases"] = [
+        {key: value for key, value in row.items() if key != "reference_state"}
+        for row in reports
+    ]
+    write_json(destination / "native-fixtures.json", native_metadata, compact=True)
     summary = {key: value for key, value in metadata.items() if key != "cases"}
     summary["cases"] = [{"name": r["name"], "outcome": r["expected"]["outcome"],
                          "error_type": r["expected"].get("error", {}).get("type"),

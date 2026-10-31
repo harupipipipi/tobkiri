@@ -72,6 +72,7 @@ jobs:
           --original-root "$GITHUB_WORKSPACE/original-authority-source"
           --output "$RUNNER_TEMP/original-authority-reference"
       - uses: dtolnay/rust-toolchain@1.94.0
+        id: rust
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.verification != 'reference' }}
         with:
           components: clippy
@@ -104,7 +105,7 @@ jobs:
         # integer regression, locked dependency graphs and strict library checks.
         if: ${{ runner.os == 'macOS' && (github.event_name != 'workflow_dispatch' || inputs.verification != 'reference') }}
         env:
-          TOBKIRI_ORIGINAL_AUTHORITY_FIXTURES: ${{ runner.temp }}/original-authority-reference/fixtures.json
+          TOBKIRI_ORIGINAL_AUTHORITY_FIXTURES: ${{ runner.temp }}/original-authority-reference/native-fixtures.json
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
           --log "$RUNNER_TEMP/original-authority-native-driver.log" --expected-passed 1 --
@@ -120,7 +121,7 @@ jobs:
           --observations "$RUNNER_TEMP/original-authority-reference/native-observations.json"
           --output "$RUNNER_TEMP/original-authority-reference/comparison.json"
       - name: Strict native library validation
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.verification != 'reference' }}
+        if: ${{ !cancelled() && steps.rust.outcome == 'success' && (github.event_name != 'workflow_dispatch' || inputs.verification != 'reference') }}
         run: cargo clippy --locked -p tobkiri-harness-native --lib -- -D warnings
       - name: Retain bounded observations only (no database, key or fixture payload)
         if: always()
