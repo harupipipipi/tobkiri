@@ -370,7 +370,7 @@ def caller_cases(module: object, fixtures: Path) -> dict:
 
 
 def run(source: Path, source_kind: str, inputs: Path, fixtures: Path,
-        bundle_source: Path, output: Path) -> None:
+        bundle_source: Path, output: Path, kernel_precheck: Path | None = None) -> None:
     """Import only verified real code, then record actual caller observations."""
     require_ci()
     import fetch_schema
@@ -389,7 +389,7 @@ def run(source: Path, source_kind: str, inputs: Path, fixtures: Path,
         for name in SOURCE_HASHES}
     if source_kind == "original" and source_hashes != SOURCE_HASHES:
         raise ValueError("pinned original App source differs")
-    if source_kind == "current" and source != HERE.parents[1] / "tobkiri_runtime":
+    if source_kind in {"current", "kernel"} and source != HERE.parents[1] / "tobkiri_runtime":
         raise ValueError("current App source must be this checked-out repository")
     if any(name == "tobkiri_protocol" or name.startswith("tobkiri_protocol.")
            for name in sys.modules):
@@ -398,6 +398,12 @@ def run(source: Path, source_kind: str, inputs: Path, fixtures: Path,
     packages = [inputs / "packages" / (
         "rpds-py-native" if row["role"] == "native-oracle" else row["distribution"])
         for row in records]
+    kernel, connection = None, None
+    if (source_kind == "kernel") != (kernel_precheck is not None):
+        raise ValueError("kernel lane requires its actual source-built precheck")
+    if kernel_precheck is not None:
+        from app_schema_kernel_lane import install
+        kernel, packages, connection = install(kernel_precheck, packages)
     sys.path[:0] = [str(source), *(str(path) for path in packages)]
     module = importlib.import_module("tobkiri_protocol.validation")
     if Path(module.__file__).resolve(strict=True) != source / "tobkiri_protocol/validation.py":
@@ -412,6 +418,7 @@ def run(source: Path, source_kind: str, inputs: Path, fixtures: Path,
         raise ValueError("complete bundle entry inventory required")
     module.load_schema.cache_clear()
     module._schema_store.cache_clear()
+    entries = {"before_catalog": kernel.keyword_entry_count()} if kernel else None
     original_read = Path.read_bytes
     entry_reads, schema_reads = [], []
 
@@ -434,6 +441,8 @@ def run(source: Path, source_kind: str, inputs: Path, fixtures: Path,
         Path.read_bytes = original_read
     if len(entry_reads) != 453 or len(schema_reads) != 45:
         raise ValueError("actual full bundle/schema read sequence was narrowed or changed")
+    if kernel:
+        entries["after_catalog"] = kernel.keyword_entry_count()
     full = {
         "collections": {name: {"count": len(getattr(catalog, name)),
                                "sha256": digest(ordered_value(getattr(catalog, name)))}
@@ -450,7 +459,16 @@ def run(source: Path, source_kind: str, inputs: Path, fixtures: Path,
     if len(names) != 42:
         raise ValueError("complete original schema inventory required")
     actual = {name: digest(ordered_value(module.load_schema(name))) for name in names}
+    if kernel:
+        entries["after_42"] = kernel.keyword_entry_count()
     observations = caller_cases(module, fixtures)
+    if kernel:
+        entries["after_caller_cases"] = kernel.keyword_entry_count()
+        counts = list(entries.values())
+        if any(type(value) is not int for value in counts) or any(
+                after <= before for before, after in zip(counts, counts[1:])):
+            raise ValueError("each actual App corpus must enter the selected Rust kernel")
+        connection["actual_keyword_entries"] = entries
     if fixture_inventory(fixtures) != pins:
         raise ValueError("shared caller fixtures changed during reference execution")
     if source_hashes != {name: hashlib.sha256(
@@ -463,6 +481,7 @@ def run(source: Path, source_kind: str, inputs: Path, fixtures: Path,
         "qualification": False, "production_enabled": False,
         "scope": "native App caller contract only; no Wasm budget/GUI/OS-owner proof",
         "fixtures": pins,
+        "kernel_connection": connection,
         "contract": {"full_catalog": full, "original_42": actual, "cases": observations},
     }
     raw = encoded(result)
@@ -472,11 +491,12 @@ def run(source: Path, source_kind: str, inputs: Path, fixtures: Path,
         stream.write(raw + b"\n")
 
 
-def compare(original: Path, current: Path, output: Path) -> None:
+def compare(original: Path, current: Path, output: Path,
+            current_kind: str = "current") -> None:
     """Compare actual lanes without converting library vectors into App ones."""
     require_ci()
     values, raw_inputs = [], []
-    for path, kind in ((original, "original"), (current, "current")):
+    for path, kind in ((original, "original"), (current, current_kind)):
         physical(path)
         if not path.is_file() or path.stat().st_size > MAX_OUTPUT:
             raise ValueError("bounded actual caller report required")
@@ -487,6 +507,20 @@ def compare(original: Path, current: Path, output: Path) -> None:
                 or value.get("production_enabled") is not False):
             raise ValueError("caller reference identity or scope differs")
         verify_cases(value["contract"]["cases"])
+        connection = value.get("kernel_connection")
+        if kind == "kernel":
+            if (type(connection) is not dict
+                    or connection.get("native_64_success") is not True
+                    or connection.get("api_19_success") is not True):
+                raise ValueError("actual kernel connection evidence required")
+            # Report JSON is sorted; compare explicit invocation phase order.
+            phases = ("before_catalog", "after_catalog", "after_42", "after_caller_cases")
+            counts = [connection["actual_keyword_entries"][phase] for phase in phases]
+            if any(type(n) is not int for n in counts) or any(
+                    after <= before for before, after in zip(counts, counts[1:])):
+                raise ValueError("actual Rust entry counts missing for an App corpus")
+        elif connection is not None:
+            raise ValueError("original library lane unexpectedly used a private kernel")
         values.append(value)
         raw_inputs.append(raw)
     equal = (encoded(values[0]["fixtures"]) == encoded(values[1]["fixtures"])
@@ -497,6 +531,7 @@ def compare(original: Path, current: Path, output: Path) -> None:
     output.write_bytes(encoded({
         "format": "tobkiri.app-schema-caller-comparison/1",
         "matched": equal, "qualification": False, "production_enabled": False,
+        "current_kind": current_kind,
         "scope": "native caller contract only; no replacement/Wasm-budget/GUI proof",
         "original_report_sha256": hashlib.sha256(raw_inputs[0]).hexdigest(),
         "current_report_sha256": hashlib.sha256(raw_inputs[1]).hexdigest(),
@@ -513,10 +548,12 @@ if __name__ == "__main__":
     stage = commands.add_parser("prepare")
     stage.add_argument("destination", type=Path)
     oracle = commands.add_parser("run")
-    oracle.add_argument("--source-kind", choices=("original", "current"), required=True)
+    oracle.add_argument("--source-kind", choices=("original", "current", "kernel"), required=True)
+    oracle.add_argument("--kernel-precheck", type=Path)
     for name in ("source", "inputs", "fixtures", "bundle-source", "output"):
         oracle.add_argument("--" + name, type=Path, required=True)
     comparison = commands.add_parser("compare")
+    comparison.add_argument("--current-kind", choices=("current", "kernel"), default="current")
     for name in ("original", "current", "output"):
         comparison.add_argument("--" + name, type=Path, required=True)
     args = vars(parser.parse_args())

@@ -148,3 +148,13 @@ lanes and matched all37 cases,42 resources and the full305-entry/453-read
 catalog. Actual schema-cache counts were45 misses,302 hits and45 retained
 objects. This is reference validation, not replacement implementation or Wasm
 qualification. The old standalone one-shot budget failure remains open.
+
+
+The next additional lane connects the existing source-built637 Rust kernel,
+without a new optimization. It verifies its actual successful native64/API19
+precheck, source inventory, extension identity and complete declared translated
+library closure before first import, then installs the same actual adapter.
+Each of the full catalog,42-resource and caller-case phases must increase the
+actual Rust keyword-entry count. Those connection receipts stay outside the
+semantic comparison; the same37-case contract remains the required result.
+This third lane is pending and proves no Wasm budget or product acceptance.

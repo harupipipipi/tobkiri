@@ -4,6 +4,15 @@ name: Issue 1520 actual App schema caller reference
     branches: [codex/issue-1520-native-shared-state]
     paths:
       - tools/python313-producer/app_schema_oracle.py
+      - tools/python313-producer/app_schema_kernel_lane.py
+      - tools/python313-producer/schema_kernel/**
+      - tools/python313-producer/schema_kernel_translate.py
+      - tools/python313-producer/schema_kernel_native_check.py
+      - tools/python313-producer/schema_kernel_api_checks.py
+      - tools/python313-producer/schema_kernel_observation.py
+      - tools/python313-producer/schema_*_checks.py
+      - tools/python313-producer/bundle_catalog_oracle.py
+      - tools/python313-producer/build_schema_kernel.py
       - tools/python313-producer/schema_kernel_oracle.py
       - tools/python313-producer/fetch_schema.py
       - tobkiri_runtime/tobkiri_protocol/**
@@ -17,7 +26,12 @@ concurrency:
 jobs:
   native-caller-contract:
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    timeout-minutes: 25
+    env:
+      PYTHONHASHSEED: '0'
+      PYTHONPATH: ''
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,6 +39,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: 3.13.16
+      - uses: dtolnay/rust-toolchain@1.94.0
       - uses: actions/checkout@v4
         with:
           ref: 54e7da008997a3eb45876cbe18459dba9902cc9d
@@ -67,6 +82,72 @@ jobs:
             --original "$RUNNER_TEMP/app-schema-caller/original.json" \
             --current "$RUNNER_TEMP/app-schema-caller/current.json" \
             --output "$RUNNER_TEMP/app-schema-caller/comparison.json"
+      - name: Prepare the independent original 64-case library reference
+        run: |
+          set -euo pipefail
+          python3 -B - <<'PY'
+          from pathlib import Path
+          import os, subprocess, sys
+          root = Path(os.environ['RUNNER_TEMP'])
+          packages = root/'app-schema-inputs/packages'
+          env = {**os.environ, 'PYTHONPATH': os.pathsep.join(
+              str(path) for path in sorted(packages.iterdir()) if path.is_dir())}
+          subprocess.run([sys.executable, '-S', '-B',
+                          'tools/python313-producer/schema_kernel_oracle.py',
+                          '--source', str(Path(os.environ['GITHUB_WORKSPACE'])/
+                                          'app-schema-original/tobkiri_runtime'),
+                          '--output', str(root/'app-schema-caller/library-reference.json')],
+                         env=env, check=True)
+          PY
+      - name: Restore authenticated registry inputs for the existing kernel
+        run: |
+          set -euo pipefail
+          export CARGO_HOME="$RUNNER_TEMP/app-schema-cargo-home"
+          cargo fetch --locked --manifest-path tools/python313-producer/schema_kernel/Cargo.toml
+          mkdir "$RUNNER_TEMP/app-schema-archives"
+          python3 -B - <<'PY'
+          from pathlib import Path
+          import os, shutil, sys
+          sys.path.insert(0, 'tools/python313-producer')
+          from build_schema_kernel import restore_registry_vendor
+          root = Path(os.environ['RUNNER_TEMP'])
+          for path in (root/'app-schema-cargo-home/registry/cache').glob('*/*.crate'):
+              target = root/'app-schema-archives'/path.name
+              if target.exists():
+                  raise ValueError('ambiguous registry archive name')
+              shutil.copyfile(path, target)
+          restore_registry_vendor(Path('tools/python313-producer/schema_kernel').resolve(),
+                                  root/'app-schema-archives', root/'app-schema-vendor')
+          PY
+      - name: Build and verify the existing Rust kernel against the independent library corpus
+        run: |
+          set -euo pipefail
+          python3 -S -B tools/python313-producer/schema_kernel_native_check.py \
+            --source "$GITHUB_WORKSPACE/tools/python313-producer/schema_kernel" \
+            --vendor "$RUNNER_TEMP/app-schema-vendor" \
+            --inputs "$RUNNER_TEMP/app-schema-inputs" \
+            --reference "$RUNNER_TEMP/app-schema-caller/library-reference.json" \
+            --cargo-home "$RUNNER_TEMP/app-schema-cargo-home" \
+            --destination "$RUNNER_TEMP/app-schema-native"
+      - name: Record the actual Rust-connected App caller in a fresh process
+        run: |
+          set -euo pipefail
+          python3 -S -B tools/python313-producer/app_schema_oracle.py run \
+            --source-kind kernel \
+            --source "$GITHUB_WORKSPACE/tobkiri_runtime" \
+            --inputs "$RUNNER_TEMP/app-schema-inputs" \
+            --fixtures "$RUNNER_TEMP/app-schema-caller/fixtures" \
+            --bundle-source "$GITHUB_WORKSPACE/app-schema-original/tobkiri_runtime" \
+            --kernel-precheck "$RUNNER_TEMP/app-schema-native" \
+            --output "$RUNNER_TEMP/app-schema-caller/kernel.json"
+      - name: Compare the Rust-connected App caller with the actual original
+        run: |
+          set -euo pipefail
+          python3 -B tools/python313-producer/app_schema_oracle.py compare \
+            --original "$RUNNER_TEMP/app-schema-caller/original.json" \
+            --current "$RUNNER_TEMP/app-schema-caller/kernel.json" \
+            --current-kind kernel \
+            --output "$RUNNER_TEMP/app-schema-caller/kernel-comparison.json"
       - name: Retain bounded reference metadata
         if: always()
         uses: actions/upload-artifact@v4
@@ -76,6 +157,9 @@ jobs:
             ${{ runner.temp }}/app-schema-caller/original.json
             ${{ runner.temp }}/app-schema-caller/current.json
             ${{ runner.temp }}/app-schema-caller/comparison.json
+            ${{ runner.temp }}/app-schema-caller/kernel.json
+            ${{ runner.temp }}/app-schema-caller/kernel-comparison.json
+            ${{ runner.temp }}/app-schema-native/schema-kernel-native-check.json
             ${{ runner.temp }}/app-schema-caller/fixtures/fixture-index.json
           retention-days: 14
           if-no-files-found: warn

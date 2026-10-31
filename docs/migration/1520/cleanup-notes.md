@@ -807,3 +807,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   1profile/148executable catalogs。37件には追加のparse故障・失敗後retryを含む。
   artifact13019919970（26,083 bytes）をRAMだけで検査し、bounded JSON receiptのみ保存。
   新checker/compiled plan、captured-ownerや実Wasm上限、GUI合格へは読み替えない。
+
+- 次sliceはAstra highの指示通り、同じ既存637 kernelの第三native laneを追加する。
+  先に元64/API19 precheckを通した実extension/source/派生library閉包を照合し、fresh
+  processで初回importから元のsource翻訳・adapterを接続する。全catalog/42resource/
+  caller caseそれぞれの実keyword entry増加を要求し、黙示的な元library選択を防ぐ。
+  新しい最適化は足さず、同じ37case/45miss302hit/305entry453readを元laneと比較する。
+  第三laneの実CI・続くWasm実測は未完。compiled META planはまだ承認・実装しない。
