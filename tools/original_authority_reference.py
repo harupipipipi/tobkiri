@@ -77,11 +77,13 @@ AUDIT_PAYLOADS = {
 }
 
 
-def write_json(path: Path, value: object) -> None:
+def write_json(path: Path, value: object, *, compact: bool = False) -> None:
     """Write only a bounded JSON observation, with no key or database bytes."""
-    data = json.dumps(value, ensure_ascii=True, allow_nan=False, indent=2) + "\n"
-    if len(data.encode()) > LIMIT:
-        raise ValueError("original Authority observation exceeds bound")
+    layout = {"separators": (",", ":")} if compact else {"indent": 2}
+    data = json.dumps(value, ensure_ascii=True, allow_nan=False, **layout) + "\n"
+    size = len(data.encode())
+    if size > LIMIT:
+        raise ValueError(f"original Authority observation exceeds bound: {size} > {LIMIT}")
     path.write_text(data, encoding="utf-8")
 
 
@@ -471,7 +473,9 @@ def prepare(original_root: Path, destination: Path) -> None:
                 "qualification": False, "production_enabled": False,
                 "sources": {name: hashlib.sha256((runtime / name).read_bytes()).hexdigest()
                             for name in SOURCES}, "cases": reports}
-    write_json(destination / "fixtures.json", metadata)
+    # Keep the complete independent state observations and the existing 2 MiB
+    # manifest bound; human-readable indentation is unnecessary in this CI input.
+    write_json(destination / "fixtures.json", metadata, compact=True)
     summary = {key: value for key, value in metadata.items() if key != "cases"}
     summary["cases"] = [{"name": r["name"], "outcome": r["expected"]["outcome"],
                          "error_type": r["expected"].get("error", {}).get("type"),
