@@ -1298,4 +1298,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   policy利用と例外後のweak input解放を追加。診断はcold-zero・正確な4counter形状・
   単調性・schemaごとのnative型増加を要求し、退役後はfuelへ触れず最後の成功したcounter/
   observationを残す。実値到達がないfuel停止を診断成功としない。cold/full gateは未変更。
-  この重要実装はsource確認のみで、新native/guest CIによる検証が必要。
+  3b7190893のnative CI41180279130で全16群と従来全比較が成功。実64件はnative型
+  38,182/native数値335、Python境界は両方0。extension1,018,768B/SHA db055d03…ad19。
+- 同じ3bの実Wasm cold/full CI41180458589は両方とも元の2B燃料で停止。component
+  e8f7df81…e49f、prepare後1,979,506,477→0。cold約1.984秒/full約1.792秒で、
+  30秒deadline維持・期限超過なし・unreachableなし・Store退役・physical payload0を確認。
+- 累積診断CI41180460640は診断の整合性確認のみ成功。19schema完了、20件目
+  profile_lock_v4で燃料0。最後の成功時は32,072,253残、17,429frames、実native型16,671/
+  数値76/Python境界0、pointer928/dynamic857/adapter0。cold-zero・単調性・各schemaの
+  実到達・最終index19を確認した。元のone-Store/2B/64MiB/30秒とtrap後退役を維持。
+  前ownership版の19件後36,924,554とは観測処理も異なるため、個別処理の燃料帰属や
+  改善を主張しない。cold/full・全20/839・元GUI・1B/API・VM廃止は未達。

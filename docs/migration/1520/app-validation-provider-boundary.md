@@ -266,4 +266,18 @@ reentrant callback/subscription/comparison/iterator/descriptor operation, but
 already-bound child handles must survive a parent replacement as in the source.
 Create errors at the same frame/point from those actual handles. Nonstandard
 operations dispatch at their operation boundary, never by retrying validation.
-This value slice is not yet implemented and carries no predicted fuel gain.
+The value slice is implemented at6e23f4bc0 and hardened at3b7190893. Node
+handles own actual objects without retaining mutable contents or decisions.
+Exact built-in scalar type checks and four numeric bounds run in Rust; custom
+policies/objects and unsafe numeric pairs dispatch at their actual operation
+boundary. Existing iterators, reference algorithms and error-frame timing remain.
+Native CI41180279130 passed all16 value groups plus the unchanged generic,
+reference, ownership and complete App comparisons.
+
+The same source's actual Wasm cumulative diagnostic41180460640 observed16,671
+native type checks and76 native numeric comparisons with zero Python value
+boundaries, but completed only19 schemas before the20th exhausted2B fuel. The
+separate unchanged cold/full gate41180458589 also exhausted fuel in both modes.
+All retained64MiB/30s and cleanup to0. Diagnostic success proves actual native
+value reach and valid observation handling, not sequence completion, one-shot
+parity, performance improvement or final product qualification.
