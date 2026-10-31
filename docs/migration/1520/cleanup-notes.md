@@ -274,7 +274,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Root比較は元48入力を保持し、29入力を追加した77件のv2 oracleへ拡張中。元pointer store
   を置換せず実snapshot検証・stale clearを観測し、outerとinnerの間に閉じたfixtureを置く
   1件でinner Falseの保持も検査する。数値snapshot IDは有効defaults pointerからの負例。
-  新sourceの同等性・新caller3件は未実行であり、旧48成功を後半の証拠には使わない。
+  `8b8001962`の[CI41252586559](https://github.com/harupipipipi/tobkiri/actions/runs/41252586559)
+  は両OSで完了成功。macOSの77件は実typed結果/例外graph・独立file effects/key保持が
+  一致し、実close/別descriptorでのOS lock再取得/容量0/owner再openも成功（body2.41秒）。
+  Linuxは原本77件のみ、両OSのstrict Clippy/2lock graphも成功。元48入力も新到達点で
+  再観測しており、旧48期待値を固定する早期停止flagは追加していない。
+  同sourceの[Authority回帰41252586573](https://github.com/harupipipipi/tobkiri/actions/runs/41252586573)
+  も両OS成功し、Mac normal4＋実93比較、Linux normal2＋原本93が成功した。
+  小artifactはRAM内でsize/SHAを照合し、必要JSON480,011B/225,052Bのみ保存した。
+  新caller3件を含む全finite15は同8b800のDesktop CI41253253796で確認中であり、
+  全recovery/実factory/GUI接続、NFC、bootstrap ID/catalog以降は未完のまま。
   追加の削減候補: 新Reviewは同invocationの固定bodyを直接呼ぶ。別jobを作る旧試作の
   read_original_authority_snapshot/OriginalAuthorityJob/Dataは現在のtracked callerがなく、
   将来のsnapshot接続後も独立prefetchとして使わない。直接snapshot接続と実caller回帰を

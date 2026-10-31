@@ -51,13 +51,21 @@ cold boot, DMG creation and mounted verification. The 280,138,053-byte installer
 artifact was inspected through metadata only. Product Python and PackVM remain;
 this is not full native GUI or model/provider acceptance.
 
-The next recovery slice keeps the same journal guard through actual current
+The [recovery slice at `8b8001962`](https://github.com/harupipipipi/tobkiri/actions/runs/41252586559)
+keeps the same journal guard through actual current
 pointer/snapshot verification and stale-intent discard/retention, ending before
 the bootstrap-identity helper. Its independent v2 comparison retains the original
 48 inputs and adds 29, including an intent installed between the outer and inner
-recovery calls. These 77 fresh source/native cases and three additional actual
-caller regressions are not yet executed. The earlier 48-case result does not
-qualify this larger recovery body or the original GUI flow.
+recovery calls. All 77 fresh source/native cases matched on macOS, including
+typed failures, independently inspected file effects, existing keys and actual
+close/OS-lock release/capacity release/owner reopen. Linux passed the original
+77-case reference; both platforms passed strict Clippy and locked resolution.
+The [same-source Authority regression](https://github.com/harupipipipi/tobkiri/actions/runs/41252586573)
+also passed its existing 93-case comparison. The three new actual caller cases
+and current-source packaging are being checked by
+[Desktop CI41253253796](https://github.com/harupipipipi/tobkiri/actions/runs/41253253796).
+Bootstrap-identity getter/factory/canonical semantics, catalog and subsequent
+recovery/listing, product adoption and the original GUI remain unqualified.
 
 Historical focused checks from the 2026-10-18 slice: foundation gate **0 failures**; complete gate
 **1,044 failures**. Gate regressions **13**, CI-helper regressions **7**, and
