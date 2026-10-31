@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+from contextlib import closing
 import hashlib
 import json
 from pathlib import Path
@@ -140,12 +141,13 @@ def mutate(path: Path, changes: dict[str, str | None]) -> None:
     allowed = {"security_epoch", "security_epoch_advanced_at", "security_epoch_reason_digest"}
     if not changes or not set(changes) <= allowed:
         raise ValueError("fixed fixture metadata mutation required")
-    with sqlite3.connect(path) as connection:
-        for key, value in changes.items():
-            if value is None:
-                connection.execute("DELETE FROM authority_meta WHERE key=?", (key,))
-            else:
-                connection.execute("UPDATE authority_meta SET value=? WHERE key=?", (value, key))
+    with closing(sqlite3.connect(path)) as connection:
+        with connection:
+            for key, value in changes.items():
+                if value is None:
+                    connection.execute("DELETE FROM authority_meta WHERE key=?", (key,))
+                else:
+                    connection.execute("UPDATE authority_meta SET value=? WHERE key=?", (value, key))
 
 
 def material(root: Path, store_type, helpers: dict, changes: dict | None) -> dict:
@@ -211,7 +213,7 @@ def database_state(root: Path, inspection: Path, fernet_type) -> dict:
     except (OSError, ValueError):
         cipher = None
     try:
-        with sqlite3.connect(path.as_uri() + "?mode=ro", uri=True) as connection:
+        with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as connection:
             tables = connection.execute(
                 "SELECT name,sql FROM sqlite_master WHERE type='table'"
                 " AND name NOT LIKE 'sqlite_%' ORDER BY name").fetchall()
@@ -299,8 +301,16 @@ def prepare(original_root: Path, destination: Path) -> None:
                 historical.mkdir(mode=0o700)
                 fixture = historical_authority_v1.__wrapped__(historical)
                 fixture.harness.store.close()
+                # The source fixture's raw sqlite3 context commits but does
+                # not itself close its connection. Copying only the main file
+                # can omit committed WAL pages. SQLite backup captures the
+                # actual committed v1 state, without a recovery/initialization.
+                with closing(sqlite3.connect(fixture.path)) as live:
+                    with closing(sqlite3.connect(path)) as captured:
+                        live.backup(captured)
+                path.chmod(0o600)
                 for source, target in (
-                    (fixture.path, path), (fixture.key_path, path.with_suffix(".key")),
+                    (fixture.key_path, path.with_suffix(".key")),
                     (fixture.path.with_name("." + fixture.path.name + ".lifecycle.lock"),
                      path.with_name("." + path.name + ".lifecycle.lock")),
                 ):
@@ -319,15 +329,16 @@ def prepare(original_root: Path, destination: Path) -> None:
                            if kind == "reason-invalid" else
                            {"security_epoch_advanced_at": "nan"})
                 elif kind in {"future", "unknown-table", "bad-audit"}:
-                    with sqlite3.connect(path) as connection:
-                        if kind == "future":
-                            connection.execute("UPDATE authority_meta SET value='999'"
-                                               " WHERE key='schema_version'")
-                        elif kind == "unknown-table":
-                            connection.execute("CREATE TABLE unexpected(value TEXT)")
-                        else:
-                            connection.execute("UPDATE authority_audit SET encrypted_payload=?",
-                                               (b"not-a-fernet-token",))
+                    with closing(sqlite3.connect(path)) as connection:
+                        with connection:
+                            if kind == "future":
+                                connection.execute("UPDATE authority_meta SET value='999'"
+                                                   " WHERE key='schema_version'")
+                            elif kind == "unknown-table":
+                                connection.execute("CREATE TABLE unexpected(value TEXT)")
+                            else:
+                                connection.execute("UPDATE authority_audit SET encrypted_payload=?",
+                                                   (b"not-a-fernet-token",))
                 elif kind in {"bad-key", "wrong-key"}:
                     path.with_suffix(".key").write_bytes(
                         b"invalid-key" if kind == "bad-key" else fernet_type.generate_key())
@@ -356,6 +367,17 @@ def prepare(original_root: Path, destination: Path) -> None:
                 "sources": {name: hashlib.sha256((runtime / name).read_bytes()).hexdigest()
                             for name in SOURCES}, "cases": reports}
     write_json(destination / "fixtures.json", metadata)
+    summary = {key: value for key, value in metadata.items() if key != "cases"}
+    summary["cases"] = [{"name": r["name"], "outcome": r["expected"]["outcome"],
+                         "error_type": r["expected"].get("error", {}).get("type"),
+                         "late_protocol_refusal": "protocol_snapshot_error" in r["expected"]}
+                        for r in reports]
+    migrated = next(r for r in reports if r["name"] == "historical-v1")
+    tables = migrated["reference_state"].get("tables", {})
+    summary["historical_lease_states"] = sorted(
+        row["state"] for row in tables.get("invocation_leases", {}).get("rows", []))
+    summary["reference_checks_passed"] = False
+    write_json(destination / "summary.json", summary)
     by_name = {item["name"]: item for item in reports}
     successful = {"empty-db", "normal-v4", "historical-v1", "missing-epoch-repaired",
                   "key-outer-whitespace", "key-ignored-base64-bytes", "reason-untagged",
@@ -379,12 +401,9 @@ def prepare(original_root: Path, destination: Path) -> None:
         raise AssertionError("late original protocol safe-integer refusal was bypassed")
     migrated = by_name["historical-v1"]["reference_state"]["tables"]
     if {row["state"] for row in migrated["invocation_leases"]["rows"]} != {"revoked", "ambiguous"}:
-        raise AssertionError("actual historical lease migration did not run")
-    summary = {key: value for key, value in metadata.items() if key != "cases"}
-    summary["cases"] = [{"name": r["name"], "outcome": r["expected"]["outcome"],
-                         "error_type": r["expected"].get("error", {}).get("type"),
-                         "late_protocol_refusal": "protocol_snapshot_error" in r["expected"]}
-                        for r in reports]
+        raise AssertionError(("actual historical lease migration did not run",
+                              summary["historical_lease_states"]))
+    summary["reference_checks_passed"] = True
     write_json(destination / "summary.json", summary)
     print(json.dumps({"format": FORMAT, "cases": len(reports),
                       "original_head": ORIGINAL_HEAD, "native_comparison": False,
