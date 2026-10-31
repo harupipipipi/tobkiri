@@ -857,3 +857,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   full20やnative製品Python削除の条件を満たしたとは呼ばない。
 - 削減候補は未計測。まずactual App経路の制約を記録し、META snapshot/新checker等の
   推測最適化へ進む前にAstra highへ設計照会する。
+
+- 初回 `9fd1c5b20` CI `41149114797` / job `124381130602` はSDK入力検査で停止。
+  新helperがSDK固有manifestをgeneric stage outcome用runtime_inputs.reportへ渡したのが
+  原因。既存build_schema_kernelと同じbounded JSON読み取り→実verify_sdkへ修正する。
+  SDK archive/展開内容の照合は緩めない。まだRust compile/guest実行には到達していない。

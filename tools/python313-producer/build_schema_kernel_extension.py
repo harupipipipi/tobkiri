@@ -37,7 +37,9 @@ def run(source: Path, vendor: Path, archives: Path, rust: Path,
         raise ValueError('closed original kernel source required')
     registry = kernel.verify_registry(source, vendor, archives)
     build_rpds.verify_rust(rust, runtime_inputs.report(rust/'rust-manifest.json'))
-    build_rpds.verify_sdk(sdk, runtime_inputs.report(sdk/'sdk-manifest.json'))
+    sdk_manifest = sdk/'sdk-manifest.json'
+    sdk_report = json.loads(kernel.fingerprint_and_read(sdk_manifest, 16*1024*1024))
+    build_rpds.verify_sdk(sdk, sdk_report)
     destination.mkdir(mode=0o700)
     work = destination/'work'
     work.mkdir(mode=0o700)
@@ -85,7 +87,8 @@ def run(source: Path, vendor: Path, archives: Path, rust: Path,
                 or any(fingerprint(Path(path)) != pin for path, pin in fixed.items())):
             raise ValueError('compiler inputs changed')
         build_rpds.verify_rust(rust, runtime_inputs.report(rust/'rust-manifest.json'))
-        build_rpds.verify_sdk(sdk, runtime_inputs.report(sdk/'sdk-manifest.json'))
+        build_rpds.verify_sdk(sdk, json.loads(
+            kernel.fingerprint_and_read(sdk_manifest, 16*1024*1024)))
         report.update(outcome='success', artifact=identity,
                       artifact_path=artifact.relative_to(destination).as_posix())
     finally:
