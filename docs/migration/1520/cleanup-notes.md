@@ -133,6 +133,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Launcher追加18件、library追加2件の回帰sourceを用意した。libraryの2件は実小componentの
   Domainとhelperへ注入したcleanup errorを使う検査であり、実IO故障や元GUI/fullguestの
   成功証明ではない。Source parse/format/TOML/diff確認のみ実施、実行結果はCI待ち。
+- source `1604abe09`の[CI41192972944](https://github.com/harupipipipi/tobkiri/actions/runs/41192972944)
+  ではLinux実Store16件とmac準備5件は成功。追加domain2件はcomponent実行前に
+  `Not a directory (os error 20)`で失敗し、Clippyは未実行だった。既存準備testは
+  所有tempdirのrealpathを使う一方、新fixtureはmacOSのsymlink祖先を含み得る一時pathを
+  そのままNoFollowへ渡していた。4箇所のfixtureを既存方式へ合わせた。製品のNoFollow・
+  権限・assertion・検査件数は変更しない。修正後の実CI結果は別途記録する。
 
 - 条件: 旧 Profile・データ・秘密情報・復旧の実移行、実候補と承認の拘束、
   Stop / Quit の終了・失効まで確認する。空の新 root を既存環境の代用にしない。

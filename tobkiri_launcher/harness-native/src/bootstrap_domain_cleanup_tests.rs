@@ -103,8 +103,9 @@ async fn domain(root: &Path) -> Result<NativeDataError> {
 
 #[tokio::test(flavor = "current_thread")]
 async fn successful_cleanup_preserves_the_actual_domain_buffers() -> Result<()> {
-    let root = tempfile::tempdir()?;
-    let domain = domain(root.path()).await?;
+    let temporary = tempfile::tempdir()?;
+    let root = temporary.path().canonicalize()?;
+    let domain = domain(&root).await?;
     let pointer = domain.message().as_bytes().as_ptr();
     let domain = initialization_domain_after_cleanup(domain, Ok(()))?;
     assert_eq!(domain.code().as_bytes(), b"method-raised");
@@ -116,8 +117,9 @@ async fn successful_cleanup_preserves_the_actual_domain_buffers() -> Result<()> 
 
 #[tokio::test(flavor = "current_thread")]
 async fn cleanup_failure_retains_domain_bytes_and_the_actual_cleanup_error() -> Result<()> {
-    let root = tempfile::tempdir()?;
-    let domain = domain(root.path()).await?;
+    let temporary = tempfile::tempdir()?;
+    let root = temporary.path().canonicalize()?;
+    let domain = domain(&root).await?;
     let cleanup = anyhow::Error::new(NativeDataIoError::CompletionUnknown);
     let original: &(dyn std::error::Error + 'static) = cleanup.as_ref();
     let pointer = original as *const dyn std::error::Error;

@@ -20,7 +20,7 @@ impl Root {
             rand::random::<u64>()
         ));
         std::fs::create_dir(&root).unwrap();
-        Self(root)
+        Self(root.canonicalize().unwrap())
     }
 }
 impl Drop for Root {

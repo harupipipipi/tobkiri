@@ -364,6 +364,8 @@ mod tests {
             std::process::id(),
             rand::random::<u64>()
         ));
+        std::fs::create_dir(&root).unwrap();
+        let root = root.canonicalize().unwrap();
         let shutdown = Arc::new(AtomicBool::new(false));
         let state = NativeRuntimeState::new(shutdown.clone());
         *state.0.owner.lock().unwrap() =
