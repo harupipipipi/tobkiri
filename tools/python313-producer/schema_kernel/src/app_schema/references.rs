@@ -414,9 +414,16 @@ impl ReferenceState {
                             let anchor = match (|| {
                                 let callable = registry.bind(py).getattr("anchor")?;
                                 let name = value.getattr("name")?;
-                                callable.call1((uri, name))
+                                registry_bound_call(
+                                    env,
+                                    registry.bind(py),
+                                    &callable,
+                                    &uri,
+                                    Some(&name),
+                                )?
+                                .getattr("value")
                             })() {
-                                Ok(retrieved) => retrieved.getattr("value")?,
+                                Ok(anchor) => anchor,
                                 Err(error) => {
                                     let missing = module_member(
                                         py,
@@ -555,7 +562,10 @@ impl ReferenceState {
             let parts = env.urldefrag.bind(py).call1((joined,))?;
             (parts.get_item(0)?, parts.get_item(1)?)
         };
-        let retrieved = match registry.bind(py).call_method1("get_or_retrieve", (&uri,)) {
+        let retrieved = match (|| {
+            let method = registry.bind(py).getattr("get_or_retrieve")?;
+            registry_bound_call(env, registry.bind(py), &method, &uri, None)
+        })() {
             Ok(value) => value,
             Err(error) => {
                 let missing = module_member(py, "referencing.exceptions", "NoSuchResource")?;
@@ -579,9 +589,9 @@ impl ReferenceState {
             let selected = if pointer {
                 retrieved
             } else {
-                retrieved
-                    .getattr("registry")?
-                    .call_method1("anchor", (&uri, &fragment))?
+                let registry = retrieved.getattr("registry")?;
+                let method = registry.getattr("anchor")?;
+                registry_bound_call(env, &registry, &method, &uri, Some(&fragment))?
             };
             let state = self.evolved(py, uri, selected.getattr("registry")?)?;
             return state.fragment(py, env, &selected.getattr("value")?, &fragment, pointer);
@@ -629,6 +639,31 @@ impl ReferenceState {
             .boundary(py, env)?
             .call_method1("in_subresource", (resource,))?;
         Self::from_boundary(&resolver, env)
+    }
+}
+
+fn registry_bound_call<'py>(
+    env: &Environment,
+    registry: &Bound<'py, PyAny>,
+    method: &Bound<'py, PyAny>,
+    uri: &Bound<'py, PyAny>,
+    name: Option<&Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyAny>> {
+    if let Some(view) = env
+        .registry_view
+        .as_ref()
+        .filter(|view| view.matches(registry))
+    {
+        if let Some(retrieved) = view.retrieved(registry, method, uri, name)? {
+            return Ok(retrieved.into_bound(registry.py()));
+        }
+    } else {
+        super::owned_registry::opaque_lookup();
+    }
+    if let Some(name) = name {
+        method.call1((uri, name))
+    } else {
+        method.call1((uri,))
     }
 }
 

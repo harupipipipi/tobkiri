@@ -12,7 +12,8 @@ from app_schema_model import DefinitionModel
 # Capture canonical compatibility metadata before constructing the App's own
 # definition graph. Neither step loads an App input or creates validation results.
 kernel.default_reference_policy()
-_MODEL = DefinitionModel()
+_REGISTRY_POLICY = kernel.app_registry_policy()
+_MODEL = DefinitionModel(_REGISTRY_POLICY)
 _REFERENCE_POLICY = kernel.app_reference_policy(_MODEL.specifications)
 _VALUE_POLICY = kernel.default_value_policy()
 
@@ -25,6 +26,7 @@ class AppSchemaProvider:
     TYPE_CHECKER = _MODEL.type_checker
     _SPECIFICATIONS = _MODEL.specifications
     _REGISTRY = _MODEL.registry
+    _PRIMARY_REGISTRY = _MODEL.registry_state
 
     @classmethod
     def check_schema(cls, schema, format_checker=_UNSET):
@@ -42,7 +44,8 @@ class AppSchemaProvider:
             return
         kernel.app_check_schema(schema, meta, cls._REGISTRY,
                                 _REFERENCE_POLICY, cls.TYPE_CHECKER, checker,
-                                value_policy=_VALUE_POLICY, type_owner=cls)
+                                value_policy=_VALUE_POLICY, type_owner=cls,
+                                registry_state=cls._PRIMARY_REGISTRY)
 
     def __new__(cls, *args, **kwargs):
         # Document validation has not been migrated by this check_schema slice.

@@ -16,6 +16,7 @@ import bundle_catalog_adapter as app
 
 VALUE_FIELDS = ("native_type_checks", "python_type_checks",
                 "native_numeric_comparisons", "python_numeric_comparisons")
+REGISTRY_FIELDS = ("primary_resource_hits", "primary_anchor_hits", "opaque_lookups")
 
 
 def value_counts(kernel):
@@ -25,6 +26,16 @@ def value_counts(kernel):
             or any(type(values[name]) is not int or values[name] < 0
                    for name in VALUE_FIELDS)):
         raise RuntimeError('actual App value counters required')
+    return values
+
+
+def registry_counts(kernel):
+    """Observe actual primary lookups; construction alone is not a hit."""
+    values = kernel.app_registry_counts()
+    if (type(values) is not dict or set(values) != set(REGISTRY_FIELDS)
+            or any(type(values[name]) is not int or values[name] < 0
+                   for name in REGISTRY_FIELDS)):
+        raise RuntimeError('actual App registry counters required')
     return values
 
 
@@ -80,13 +91,14 @@ class Projection(wit_world.exports.Projection):
             raise Err(Error(ErrorCode.INVALID_REQUEST, 'unknown schema diagnostic command'))
         cache = validation.load_schema.cache_info()
         values = value_counts(kernel)
-        if outcome == 'metadata' and any(values.values()):
-            raise RuntimeError('value operations ran before the actual cold loader')
+        registries = registry_counts(kernel)
+        if outcome == 'metadata' and (any(values.values()) or any(registries.values())):
+            raise RuntimeError('value or registry operations ran before the actual cold loader')
         row.update(outcome=outcome,
                    schema_cache={'hits': cache.hits, 'misses': cache.misses,
                                  'size': cache.currsize},
                    backend_entries=kernel.app_schema_entry_count(),
                    backend_frames=kernel.app_schema_frame_count(),
                    reference_counts=kernel.app_reference_counts(),
-                   value_counts=values)
+                   value_counts=values, registry_counts=registries)
         return json.dumps(row, sort_keys=True, separators=(',', ':'))

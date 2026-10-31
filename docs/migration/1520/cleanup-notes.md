@@ -1577,7 +1577,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   RAM artifact13037467805/245,073B・13038101591/246,317Bの必要JSONのみ保存。
   完走・元GUI採用・全839/20受け入れ・1B/API・Python/VM廃止は未達。
 - 次のRegistry sliceは、上のpost-hoc binding-view案と分け、Appが生成する実bindingの
-  一次状態をRustへ移す（Astra highの回答、Sol6.1 xhigh実装中）。元sourceの
+  一次状態をRustへ移す（Astra highの回答、Sol6.1 xhigh実装済み、実CI待ち）。元sourceの
   `DefinitionModel`初期insert、crawlの各insert、combine update、root派生を対象にし、
   実Resource/Registry/RPDS mapを保持する。実mapの走査による所有判定、同じmapへの
   二度目のcrawl、callback由来unknown mapの昇格、結果cacheは追加しない。
@@ -1589,13 +1589,28 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   原本比較にはdefault rootの実native到達と、unknown/custom slot・callback順・供給例外・
   combine優先順位を必須にする。Rootは3producerの閉じたsource inventoryとCI接続を
   担当。source完成後のnative全比較、同じ元2B/64MiB/30秒のcold/full・累積検証で採否を
-  決める。まだsource作業中で、燃料改善・guest完走・製品採用は未証明。
+  決める。source確認のみ成功し、燃料改善・guest完走・製品採用は未証明。
 - 同sliceの未commit初稿のRoot reviewで共有参照の整理が必要になった。native `Arc<Rows>`と
   `Arc<Metadata>`を複数GC対象State/Policyが共有したまま、各`__traverse__`から内部の
   同一Py参照を再報告すると、実strong reference数とGC edge数が一致しない。
   純Rust View/static ownerの保持も外部rootとして正しく残す必要がある。単にtraverseを
   削ってcycle leakへ変えず、Astra highの回答に従いRows/Metadata自身をGC-visible共有
-  Pyclassへ変更し、各holderは容器への実Py参照だけをvisitする設計をSolが修正中。
-  Rowsも親の中身を再帰報告せず、実parent edgeと自身のentriesだけをvisitする。
+  Pyclassへ変更し、各holderは容器への実Py参照だけをvisitする設計へSolが修正した。
+  Rowsはflatなimmutable recordsを共有し、実write時だけnative recordsをCOWする。
+  旧parent chainは上書き済みResourceを不要に保持するため除去し、actual mapの追加走査
+  なしで自身のentriesだけをvisitする。Metadataも独立policyごとに実Pyrefをcloneした
+  holderを持ち、canonical staticと動的holderの寿命を混同しない。
   callback中のborrow/lock回避、immutable view、weakref/GC解放を原本比較に
-  含める。source修正・実CI確認前なので、この保持契約は未検証。
+  含める。4つの`__clear__`はBound receiverから短くtakeし、Pyclass borrow/Storage lockの
+  両方を解放してからdropする。source修正済みだが、実CIでの保持契約は未検証。
+- 同sliceの不要copy整理: 入口のstate生存確認でViewを作って即破棄する処理を
+  `require_available`へ変更し、実root後のViewだけを生成する。候補Rustはabi3-py313の
+  現PyO3のabi3側で未提供の`PyType_GetDict`へ依存せず、builtin descriptor経由で得る実live namespace proxyを
+  保持し、既知slotの現在値だけ読む。proxyもMetadata holderの実GC edgeとして保持する。
+  namespaceの変更・metaclass getter回避を比較し、lookup結果のcacheには使わない。
+  新helperは21群（15対比較＋fresh default実hit/production Retrieved catch/GC3/Fake拒否）。
+  Rootは3inventoryを16sourceへ揃え、既存全比較を保持して新helperを接続した。
+  native64前の新registry3counterのcold0と後の実resource hitを必須とし、累積診断でも
+  別3fieldのcold0/単調/最初の実成功時positive/最終index整合を確認する。既存value4fieldと
+  reference shape・元export回数・予算・cold/full本体は変更しない。追加counter観測自体の
+  fuel費用は累積診断へ含まれるので、旧frontierとの差を関数別改善や純性能値としない。

@@ -21,6 +21,7 @@ static FRAMES: AtomicUsize = AtomicUsize::new(0);
 
 mod cursor;
 mod object;
+mod owned_registry;
 mod references;
 mod value;
 use cursor::{Cursor, Entry, Keyword as Selected, Keywords, Pair};
@@ -35,6 +36,7 @@ struct Environment {
     urljoin: Object,
     urldefrag: Object,
     resource_policy: ResourcePolicy,
+    registry_view: Option<Rc<owned_registry::View>>,
 }
 
 #[derive(Clone, Copy)]
@@ -706,7 +708,7 @@ fn json_type(
 /// The caller chooses the provider BEFORE validation. No original Validator is
 /// constructed, called or retried here, including on malformed/invalid inputs.
 #[pyfunction]
-#[pyo3(signature = (schema, meta, registry, policy, type_checker, format_checker, *, value_policy=None, type_owner=None))]
+#[pyo3(signature = (schema, meta, registry, policy, type_checker, format_checker, *, value_policy=None, type_owner=None, registry_state=None))]
 fn app_check_schema(
     py: Python<'_>,
     schema: &Bound<'_, PyAny>,
@@ -717,6 +719,7 @@ fn app_check_schema(
     format_checker: &Bound<'_, PyAny>,
     value_policy: Option<&Bound<'_, DefaultValuePolicy>>,
     type_owner: Option<&Bound<'_, PyAny>>,
+    registry_state: Option<&Bound<'_, owned_registry::RegistryState>>,
 ) -> PyResult<()> {
     let (specification, resolver_type, resource_policy) = {
         let policy = policy.borrow();
@@ -741,11 +744,33 @@ fn app_check_schema(
     // No policy borrow survives Resource construction, resolver callbacks or
     // a custom type check that reenters this operation.
     let value_policy = TypePolicy::new(py, type_checker, value_policy, type_owner)?;
+    if let Some(state) = registry_state {
+        state.borrow().require_available()?;
+    }
     ENTRIES.fetch_add(1, Ordering::Relaxed);
     let resource = specification
         .bind(py)
         .call_method1("create_resource", (meta,))?;
-    let resolver = registry.call_method1("resolver_with_root", (resource,))?;
+    let (resolver, registry_view) = if let Some(state) = registry_state {
+        let selected = module_member(py, "app_schema_model", "registry_root")?
+            .call1((registry, &resource, state))?;
+        let resolver = selected.get_item(0)?;
+        let state = selected.get_item(1)?;
+        let view = if state.is_none() {
+            None
+        } else {
+            state
+                .cast::<owned_registry::RegistryState>()?
+                .borrow()
+                .view(py)?
+        };
+        (resolver, view)
+    } else {
+        (
+            registry.call_method1("resolver_with_root", (resource,))?,
+            None,
+        )
+    };
     let env = Rc::new(Environment {
         specification,
         resolver_type,
@@ -754,6 +779,7 @@ fn app_check_schema(
         urljoin: module_member(py, "referencing._core", "urljoin")?.unbind(),
         urldefrag: module_member(py, "referencing._core", "urldefrag")?.unbind(),
         resource_policy,
+        registry_view,
     });
     let references = ReferenceState::from_boundary(&resolver, &env)?;
     let frame = Frame::new(
@@ -785,5 +811,6 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(app_check_schema, module)?)?;
     module.add_function(wrap_pyfunction!(app_schema_entry_count, module)?)?;
     module.add_function(wrap_pyfunction!(app_schema_frame_count, module)?)?;
+    owned_registry::register(module)?;
     Ok(())
 }
