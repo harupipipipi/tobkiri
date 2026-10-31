@@ -60,11 +60,13 @@ def _original_schema_resources(repo: Path) -> tuple[dict[str, bytes], dict[str, 
 
 def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
           stdlib: Path, rpds: Path, *, native: bool, bundle_cases: Path,
-          diagnostic_reread: bool = False) -> dict:
+          diagnostic_reread: bool = False,
+          kernel_extension: Path | None = None) -> dict:
     """Stage actual source bytes, schemas, and dependencies for one world."""
     if (repo.resolve() != repo or destination.exists()
             or type(native) is not bool or type(diagnostic_reread) is not bool
-            or (diagnostic_reread and not native)):
+            or (diagnostic_reread and not native)
+            or (kernel_extension is not None and (not native or diagnostic_reread))):
         raise ValueError("new physical source stage and explicit world required")
 
     runtime_files, modules, namespaces = runtime_sources(repo, roots=ROOTS)
@@ -118,6 +120,14 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
     add("bundle_catalog_adapter.py", _read_source(
         repo / PACK / "python/bundle_catalog_adapter.py"
     ))
+    entry = _read_source(HERE / "bundle_catalog/entry.py")
+    export = _read_source(HERE / "bundle_catalog/native.py" if native
+                          else repo / PACK / "python/app.py")
+    kernel_derivation, kernel_bytes = None, None
+    if kernel_extension is not None:
+        from bundle_catalog_kernel_inputs import derive
+        entry, export, kernel_bytes, kernel_derivation = derive(
+            files, entry, export, kernel_extension)
     packed = compress_sources(files)
     captured = Finder(
         packed,
@@ -142,14 +152,16 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
     add("rpds/rpds.abi3.so", _read_source(
         rpds / "work/stage/rpds.abi3.so", verified["extension"]
     ))
-    add("bundle_catalog_export.py", _read_source(
-        HERE / "bundle_catalog/native.py" if native
-        else repo / PACK / "python/app.py"
-    ))
-    add("app.py", _read_source(HERE / "bundle_catalog/entry.py"))
+    add("bundle_catalog_export.py", export)
+    add("app.py", entry)
+    if kernel_bytes is not None:
+        add("_tobkiri_schema_kernel.abi3.so", kernel_bytes)
 
     component_name = (DIAGNOSTIC_COMPONENT if diagnostic_reread
                       else NATIVE_COMPONENT if native else PACK_COMPONENT)
+    if kernel_derivation is not None:
+        from bundle_catalog_kernel_inputs import COMPONENT
+        component_name = COMPONENT
     source_receipt = {
         "format": "tobkiri.bundle-catalog-source/1",
         "component_name": component_name,
@@ -170,6 +182,11 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
         "installed_dmg_admission_claimed": False,
         "production_enabled": False,
     }
+    if kernel_derivation is not None:
+        source_receipt["kernel_derivation"] = kernel_derivation
+        source_receipt["source_storage"] = (
+            "declared keyword source derivation; other original bytes unchanged; "
+            "per-file zlib/identity, no expansion cache")
     add("bundle-catalog-source.json", (
         json.dumps(source_receipt, sort_keys=True, indent=2) + "\n"
     ).encode())
@@ -240,7 +257,8 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
 
 
 def verify_component(proof: dict, source: dict, *, native: bool,
-                     diagnostic_reread: bool = False) -> None:
+                     diagnostic_reread: bool = False,
+                     kernel_derived: bool = False) -> None:
     """Require the exact closed source manifest and typed component boundary."""
     expected = [
         {**item, "bytes": source["files"][item["source"]]["bytes"]}
@@ -254,6 +272,15 @@ def verify_component(proof: dict, source: dict, *, native: bool,
         raise ValueError("explicit valid diagnostic world required")
     expected_name = (DIAGNOSTIC_COMPONENT if diagnostic_reread
                      else NATIVE_COMPONENT if native else PACK_COMPONENT)
+    if kernel_derived:
+        from bundle_catalog_kernel_inputs import COMPONENT
+        if not native or diagnostic_reread:
+            raise ValueError("separate native-only kernel derivation required")
+        expected_name = COMPONENT
+    if type(kernel_derived) is not bool:
+        raise ValueError("explicit kernel derivation flag required")
+    if ("kernel_derivation" in source.get("bundle_catalog", {})) != kernel_derived:
+        raise ValueError("explicit matching kernel derivation scope required")
     if (
         source.get("component_name") != expected_name
         or proof.get("source_manifest") != expected

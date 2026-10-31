@@ -25,6 +25,8 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         native_thread_capabilities: bool = False,
         capability_projection: bool = False,
         bundle_catalog: bool = False,
+        bundle_catalog_kernel: bool = False,
+        kernel_extension: Path | None = None,
         bundle_cases: Path | None = None,
         schema_inputs: Path | None = None, stdlib: Path | None = None,
         rpds: Path | None = None) -> None:
@@ -40,11 +42,14 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
             native_thread_capabilities,
             capability_projection,
             bundle_catalog,
+            bundle_catalog_kernel,
     )) > 1:
         raise ValueError('component build selectors are separate build scopes')
-    app_data_mode = capability_projection or bundle_catalog
-    if bundle_catalog != (bundle_cases is not None):
+    app_data_mode = capability_projection or bundle_catalog or bundle_catalog_kernel
+    if (bundle_catalog or bundle_catalog_kernel) != (bundle_cases is not None):
         raise ValueError('bundle catalog requires its separate original DATA input')
+    if bundle_catalog_kernel != (kernel_extension is not None):
+        raise ValueError('separate kernel trial requires its actual extension build')
     if app_data_mode:
         if any(path is None for path in (schema_inputs, stdlib, rpds)):
             raise ValueError('App DATA component requires all locked schema inputs')
@@ -55,7 +60,8 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         )
     physical_inputs = (producer, validation) + (
         (schema_inputs, stdlib, rpds) if dependency_mode else ()
-    ) + ((bundle_cases,) if bundle_cases is not None else ())
+    ) + ((bundle_cases,) if bundle_cases is not None else ()) + (
+        (kernel_extension,) if kernel_extension is not None else ())
     if (not destination.is_absolute() or not destination.parent.is_dir()
             or destination.parent.resolve() != destination.parent
             or any(not p.is_absolute() or p.resolve() != p for p in physical_inputs)
@@ -104,12 +110,19 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
     identities[str(driver)] = fingerprint(driver)
     if bundle_cases is not None:
         identities[str(bundle_cases)] = fingerprint(bundle_cases, 4 * 1024 * 1024)
+    if kernel_extension is not None:
+        for path in (kernel_extension / 'extension-build.json',
+                     kernel_extension / 'work/target/wasm32-wasip2/release/_tobkiri_schema_kernel.wasm'):
+            identities[str(path)] = fingerprint(path, 4 * 1024 * 1024)
+        snapshots[str(HERE / 'schema_kernel')] = inventory(HERE / 'schema_kernel')
     empty = destination / 'empty-venv'
     empty.mkdir(mode=0o700)
     recipe = destination / 'componentize.sh'
     recipe.write_text('set -eu\n/usr/bin/python3 -I -B /driver.py\n')
     identities[str(recipe)] = fingerprint(recipe)
-    if bundle_catalog:
+    if bundle_catalog_kernel:
+        receipt_format = 'tobkiri.rust-bundle-catalog-native-candidate/1'
+    elif bundle_catalog:
         receipt_format = 'tobkiri.python313-bundle-catalog-candidates/1'
     elif capability_projection:
         receipt_format = 'tobkiri.python313-capability-projection-candidates/1'
@@ -141,7 +154,7 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                'production_enabled': False, 'historical_binary_identity_claimed': False}
     if app_data_mode:
         receipt.update(
-            same_app_adapter_two_worlds=True,
+            same_app_adapter_two_worlds=not bundle_catalog_kernel,
             native_scope='pure DATA comparison only; no authority or product parity',
             ordinary_pack_connected=False,
         )
@@ -156,7 +169,10 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
         receipt['diagnostic_only'] = True
         receipt['diagnostic_outcome_must_fail'] = True
     receipt_path = destination / 'components-build.json'
-    if bundle_catalog:
+    if bundle_catalog_kernel:
+        from bundle_catalog_kernel_inputs import COMPONENT
+        component_names = (COMPONENT,)
+    elif bundle_catalog:
         component_names = ('harness-bundle-catalog-native', 'harness-bundle-catalog',
                            'harness-bundle-catalog-reread-native')
     elif capability_projection:
@@ -180,15 +196,16 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
             inputs = output / 'inputs'
             projection_native = name == 'harness-capability-projection-native'
             bundle_native = name in ('harness-bundle-catalog-native',
-                                    'harness-bundle-catalog-reread-native')
+                                    'harness-bundle-catalog-reread-native') or bundle_catalog_kernel
             bundle_diagnostic = name == 'harness-bundle-catalog-reread-native'
             plan_receipt = (
                 bundle_catalog_inputs.stage(
                     repo, inputs, dependency_inputs, schema_inputs, stdlib, rpds,
                     native=bundle_native, bundle_cases=bundle_cases,
                     diagnostic_reread=bundle_diagnostic,
+                    kernel_extension=kernel_extension,
                 )
-                if bundle_catalog
+                if bundle_catalog or bundle_catalog_kernel
                 else capability_projection_inputs.stage(
                     repo, inputs, dependency_inputs, schema_inputs, stdlib, rpds,
                     native=projection_native,
@@ -252,10 +269,11 @@ def run(source: Path | None, producer: Path, validation: Path, destination: Path
                     or proof['build_plan_sha256'] != plan_receipt['plan_sha256']
                     or proof['compiler_executable_sha256'] != producer_report['binary']['sha256']):
                 raise ValueError('component output differs from its source and producer receipt')
-            if bundle_catalog:
+            if bundle_catalog or bundle_catalog_kernel:
                 bundle_catalog_inputs.verify_component(
                     proof, plan_receipt, native=bundle_native,
                     diagnostic_reread=bundle_diagnostic,
+                    kernel_derived=bundle_catalog_kernel,
                 )
             elif capability_projection:
                 capability_projection_inputs.verify_component(
@@ -299,6 +317,8 @@ if __name__ == '__main__':
     mode.add_argument('--native-thread-capabilities', action='store_true')
     mode.add_argument('--capability-projection', action='store_true')
     mode.add_argument('--bundle-catalog', action='store_true')
+    mode.add_argument('--bundle-catalog-kernel', action='store_true')
+    parser.add_argument('--kernel-extension', type=Path)
     parser.add_argument('--bundle-cases', type=Path)
     for name in ('schema-inputs', 'stdlib', 'rpds'):
         parser.add_argument('--' + name, type=Path)

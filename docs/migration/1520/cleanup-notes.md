@@ -834,3 +834,26 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   fuel/deadline/Store終了のreceiptが必要。観測費用も同予算に含める。別coldstore/
   negativeは独立実験で、元nativeDATA/ordinaryPack/generic64 gateを維持する。
   ここは未実装の次sliceであり、native第三lane成功をWasmやGUIの証拠にしない。
+
+
+## 017: 実App catalog由来のRust/Wasm計測
+
+- 状態: **独立派生build/実Store観測を実装中、実CIは未実行**。
+- 場所: `build_schema_kernel_extension.py`、`bundle_catalog_kernel_inputs.py`、
+  `bundle_catalog/kernel_runtime.py`、`bundle_catalog_kernel_ci.rs`。
+- 整理方針: 既存bundle catalogのcapture/adapter/entryを再利用し、private64 probeへ
+  App依存閉包を複製しない。新しいPack/製品承認操作やHostのdomain処理も追加しない。
+  原本Pack/nativeDATA/generic64は独立したまま。
+- コンパイラ/SDK/registry/元8file kernelを照合しofflineでextensionだけを生成。
+  追加selectorは派生nativeDATA一つだけをbuild。keyword原本/翻訳SHA、元/派生entry・
+  export、actualextension・adapter追加のSHAを明示し、既存普通のstageは無変更。
+- 初回library import前に実extensionとadapterを接続し、preinitのkeyword実行は拒否。
+  request内でcold cacheを要求し、実owner/accessor・元read_catalog一回だけを通す。
+  観測は元ResourcePath.read_bytes/OccurrenceReaderを委譲し、finallyで元の所有関係も
+  復元する。全45schema/453entry read、45miss302hit、Rust entry差、actual全結果の
+  SHA/bytesを観測し、その費用も同じ2B/64MiB/絶対30秒に含める。
+- 実NativeSetupStoreの単一呼出しは成功/trap両方で残fuel・期限・Store退役・payload解放を
+  記録する。trap後のretry/予算補充はしない。成功時も証明は派生App経路だけで、GUI・
+  full20やnative製品Python削除の条件を満たしたとは呼ばない。
+- 削減候補は未計測。まずactual App経路の制約を記録し、META snapshot/新checker等の
+  推測最適化へ進む前にAstra highへ設計照会する。
