@@ -97,8 +97,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   source保持・physical drop後payload0を確認。証明はlibrary/機構の範囲であり、元製品の
   owner一組化・GUI Setup・全終了や全20条件の達成に広げない。
 
-- 元launcherの終了接続を実装済み（Astra high設計、Sol6.1 xhigh担当）。807の実Launcher
-  Rust工程は成功、後続finite差分はCI待ち。元GUI/製品adoptionは未完。
+- 元launcherの終了接続を実装済み（Astra high設計、Sol6.1 xhigh担当）。807と後続finite
+  38fの実Launcher Rust工程は成功。元GUI/製品adoptionは未完。
   変更前のstateはprepare/adoptのproduction callerがなくjob/cancel/Joinを保持しなかった。
   実Setupのprepare/adopt呼出しはまだ未接続のまま、既存owner時も
   ShutdownFlagを確認し、owner生成中からjobを登録、同invocation由来のcancelをEngine前に
@@ -157,7 +157,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   除去し、固定3列はtest限定にした。F廃止で不要になったWorkerFailure/SourceError/worker
   projection scaffoldを削除し、init Domainはdomain_dataへ直接集約した。
   追加9件/10回の小component実行とunbound22件の事前拒否を検査するsourceを用意した。
-  Source parse/format/diff確認は成功、型・ABI・実行はCI未検証。cancelは完了descriptionの
+  Source parse/format/diff確認に加え、下記38f CIで追加9件が成功。cancelは完了descriptionの
   late publication拒否でありVMのcancel trapではなく、finish faultはSource destructor panic
   であり実IO故障ではない。元Python/GUI/全19＋7の資格確認へ読み替えない。
   テスト用watはroot lockの既知1.252.0を使い、独立lockへ既知checksumの3packageのみ追加、
@@ -175,6 +175,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - `38f856e6a`の[lock専用CI41197126669](https://github.com/harupipipipi/tobkiri/actions/runs/41197126669)
   は成功し、実macOS dependency graphの`--locked`解決と両lockの不変を確認した。
   これは有限dispatcherのコンパイル・ABI・実行を検証した結果ではない。
+- 同じ`38f856e6a`の[Desktop CI41197404494](https://github.com/harupipipipi/tobkiri/actions/runs/41197404494)
+  は全工程成功。実Launcher library635件（finite追加9件を個別ログで確認）、
+  build-script123件、standalone runtime-resource18件が全成功・skip0だった。
+  既存配布経路のsealed Python、CI/E2Eアプリcold boot（broker/kernel/panel到達）、
+  非公開CI用DMG作成・マウント後のpackaged Python検証も成功した。281,595,524Bの
+  artifactはmetadataだけ確認し、ローカルへdownloadしていない。この配布経路には
+  製品Python/PackVMが残り、有限操作の元Setup採用・全19/7・承認/settings/chat・1B/API・
+  全839/20条件の完了証明ではない。
 - 次の有限操作は全ABI wrapperの先行追加ではなく、元Setup callerの一単位を選ぶ
   （Astra high回答）。Rootが元`_setup_listing`/`prepare_bootstrap_profile_review`/
   resolution/recovery/candidate selectorを確認し、同じcatalog/resolved/confirmationの
@@ -1582,3 +1590,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   combine優先順位を必須にする。Rootは3producerの閉じたsource inventoryとCI接続を
   担当。source完成後のnative全比較、同じ元2B/64MiB/30秒のcold/full・累積検証で採否を
   決める。まだsource作業中で、燃料改善・guest完走・製品採用は未証明。
+- 同sliceの未commit初稿のRoot reviewで共有参照の整理が必要になった。native `Arc<Rows>`と
+  `Arc<Metadata>`を複数GC対象State/Policyが共有したまま、各`__traverse__`から内部の
+  同一Py参照を再報告すると、実strong reference数とGC edge数が一致しない。
+  純Rust View/static ownerの保持も外部rootとして正しく残す必要がある。単にtraverseを
+  削ってcycle leakへ変えず、Astra highの回答に従いRows/Metadata自身をGC-visible共有
+  Pyclassへ変更し、各holderは容器への実Py参照だけをvisitする設計をSolが修正中。
+  Rowsも親の中身を再帰報告せず、実parent edgeと自身のentriesだけをvisitする。
+  callback中のborrow/lock回避、immutable view、weakref/GC解放を原本比較に
+  含める。source修正・実CI確認前なので、この保持契約は未検証。

@@ -37,7 +37,10 @@ a lease non-escape proof. The new finite application entry accepts only the
 three current getter choices followed by actual description. It keeps all
 intermediate references inside one worker/Store and rejects unbound choices
 before owner/Engine creation. The fixed multi-getter sequence exists only in
-tests; it defines no new Setup sequence. Its new regression sources await CI.
+tests; it defines no new Setup sequence. All nine finite regressions passed
+the actual Launcher pipeline in source38f CI41197404494 (635/123/18 Rust cases,
+plus existing packaging/cold-boot/DMG checks). That pipeline still uses product
+Python/PackVM and is not original Setup/GUI or full guest qualification.
 Unbound operations must fail explicitly before execution; neither a stub nor
 the presence of a WIT declaration counts as original behavior. The original
 GUI and full 19/7 qualification remain required before adoption.

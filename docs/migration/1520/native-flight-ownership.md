@@ -58,8 +58,12 @@ fallback. It does not route Setup through `prepare_original_component` or adopt
 an unqualified component. Source807437c0a passed the actual original Launcher
 Rust stage in CI41194312852:626 library tests (including the18 lifecycle cases),
 123 build-script cases and18 standalone-resource cases. Packaging was superseded
-after that stage; this does not prove an installer or GUI. The later finite
-dispatcher's nine new cases still await execution in the current CI.
+after that stage; this does not prove an installer or GUI. The later source38f
+passed Desktop CI41197404494:635 library cases,123 build-script cases and18
+standalone-resource cases, including individual success logs for all nine new
+finite cases. Its existing packaging/cold-boot/DMG checks also passed. That
+pipeline still includes product Python and PackVM; it does not prove original
+Setup adoption or the full GUI approval/settings/conversation flow.
 The worker retains its actual Join and
 source until physical completion, including when its result waiter leaves.
 Timeout or unverified cleanup remains Stopping, and concurrent stop callers
@@ -83,8 +87,9 @@ intermediate scope, references and funding internal. It returns the exact
 description text as detached DATA, without re-importing descriptions as objects.
 Unbound operations fail before owner/Engine creation. The fixed three-getter
 sequence is test-only and is not the original Setup control flow. Nine new
-small-component/worker regression sources await CI; no new GUI or original
-Python qualification follows from source review alone.
+small-component/worker regressions passed the actual original Launcher test
+pipeline; this establishes their finite ABI/custody/lifecycle scope, not the
+original Python guest or GUI qualification.
 
 Current source coverage is **runtime 19 plus init / transport 7**, rather than
 the older 17/6 description. Capture and WIT declarations do not establish runner
