@@ -1015,3 +1015,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   validate_documentと45,921の元Validator生成を記録した（305root+45,616evolve）。
   定義と文書の双方に未移植の費用が残る。native時間をWasm fuel配賦へ変換しない。
   次はAstraの既定Rust所有参照状態/no-ID遷移と、ID/anchor/retrieve/mutationの比較を実装する。
+
+- 018参照状態の初稿: Rustがbase URI/実registry/dynamic scopeを保持し、必要なID/ref処理の
+  境界だけPython Resolverを組み立てる。通常のexact dictで$id不在またはNoneなら実値を
+  毎回読み、そのRust状態を共有する。空文字/不正型や非builtin mappingを省略しない。
+  Pythonから渡されたspec/resolverを既定らしいと識別して置換するAPIは廃止し、明示的な
+  opaque DefaultReferencePolicyで既定を選ぶ。providerの元closure調査も不要となる。
+  policyはmetadataのみでpreinitにResource/Resolver/入力検証を作らず、権限ではない。
+  実Registry/Resource callbackとtyped cause/contextは既存の解決境界へ保持し、結果依存
+  fallback/ID結果cacheは使わない。native比較と元Wasm予算での測定はまだ未完了。
+  元動作の出典: referencing0.37のResource.idとResolver.in_subresource（Noneのみ無変更、
+  present IDはrstrip/URI処理を行う）。
+  https://github.com/python-jsonschema/referencing/blob/v0.37.0/referencing/_core.py

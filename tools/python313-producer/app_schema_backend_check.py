@@ -90,6 +90,8 @@ def compare(args, receipt, package_paths, extension):
             'top_cumulative_and_self': report, 'reference_library_counts': calls[:60],
         }
     receipt['boundary_checks'] = boundary_checks(provider, kernel)
+    from app_schema_reference_checks import reference_state_checks
+    receipt['reference_state_checks'] = reference_state_checks(provider, kernel)
     receipt.update(outcome='success', app_backend_64_success=True,
                    app_backend_entries=kernel.app_schema_entry_count(),
                    app_backend_frames=kernel.app_schema_frame_count(),

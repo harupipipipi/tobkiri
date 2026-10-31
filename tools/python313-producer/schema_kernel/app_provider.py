@@ -8,13 +8,9 @@ import _tobkiri_schema_kernel as kernel
 from jsonschema import Draft202012Validator as _Original, exceptions, validators
 from jsonschema.validators import _REMOTE_WARNING_REGISTRY, _UNSET
 
-# Capture the original class's actual specification closure, not a reconstructed
-# URI-derived replacement. This binds code metadata only, not a workload/resource.
-def _closure(function):
-    return dict(zip(function.__code__.co_freevars,
-                    (cell.cell_contents for cell in function.__closure__ or ())))
-
-_SPECIFICATION = _closure(_Original.__attrs_post_init__)["specification"]
+# Explicit owned-default policy selection. No Resource, Resolver, input or
+# validation result is constructed during module initialization.
+_REFERENCE_POLICY = kernel.default_reference_policy()
 
 
 class _Metadata(type):
@@ -39,7 +35,7 @@ class AppSchemaProvider(metaclass=_Metadata):
                 raise exceptions.SchemaError.create_from(error)
             return
         kernel.app_check_schema(schema, meta, _REMOTE_WARNING_REGISTRY,
-                                _SPECIFICATION, selected.TYPE_CHECKER, checker)
+                                _REFERENCE_POLICY, selected.TYPE_CHECKER, checker)
 
     def __new__(cls, *args, **kwargs):
         # Document validation has not been migrated by this check_schema slice.
