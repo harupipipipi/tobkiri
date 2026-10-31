@@ -189,7 +189,9 @@ def material(root: Path, store_type, helpers: dict, changes: dict | None) -> dic
 def database_state(root: Path, inspection: Path, fernet_type) -> dict:
     """Observe a separate copy, including committed decrypted data and schema."""
     files = []
-    for path in sorted(root.rglob("*")):
+    authority = root / "authority"
+    paths = ([authority, *sorted(authority.rglob("*"))] if authority.exists() else [])
+    for path in paths:
         relative = str(path.relative_to(root))
         meta = path.lstat()
         row = {"path": relative, "mode": stat.S_IMODE(meta.st_mode)}
@@ -204,7 +206,7 @@ def database_state(root: Path, inspection: Path, fernet_type) -> dict:
     # inspected so SQLite observer sidecars cannot alter the tested root.
     shutil.copytree(root, inspection, symlinks=True)
     path = inspection / "authority/v4.sqlite3"
-    result = {"files": files}
+    result = {"scope": "original-authority-subtree", "files": files}
     if not path.is_file() or path.is_symlink():
         return result
     try:
@@ -370,6 +372,7 @@ def prepare(original_root: Path, destination: Path) -> None:
     summary = {key: value for key, value in metadata.items() if key != "cases"}
     summary["cases"] = [{"name": r["name"], "outcome": r["expected"]["outcome"],
                          "error_type": r["expected"].get("error", {}).get("type"),
+                         "observation": r["expected"],
                          "late_protocol_refusal": "protocol_snapshot_error" in r["expected"]}
                         for r in reports]
     migrated = next(r for r in reports if r["name"] == "historical-v1")
@@ -410,17 +413,129 @@ def prepare(original_root: Path, destination: Path) -> None:
                       "qualification": False, "production_enabled": False}))
 
 
+def load_json(path: Path):
+    """Reject duplicate fields, nonfinite values and oversized observation files."""
+    if path.stat().st_size > LIMIT:
+        raise ValueError("native Authority observation exceeds bound")
+
+    def pairs(items):
+        output = {}
+        for name, value in items:
+            if name in output:
+                raise ValueError("duplicate Authority observation field")
+            output[name] = value
+        return output
+
+    def nonfinite(value):
+        raise ValueError("nonfinite Authority observation")
+
+    return json.loads(path.read_bytes(), object_pairs_hook=pairs, parse_constant=nonfinite)
+
+
+def first_difference(expected, actual, path="$"):
+    """Compare types as well as values; JSON true must not equal integer one."""
+    if type(expected) is not type(actual):
+        return path + ": type differs"
+    if isinstance(expected, dict):
+        if expected.keys() != actual.keys():
+            return path + ": fields differ"
+        for name in expected:
+            difference = first_difference(expected[name], actual[name], path + "." + name)
+            if difference:
+                return difference
+    elif isinstance(expected, list):
+        if len(expected) != len(actual):
+            return path + ": length differs"
+        for index, (left, right) in enumerate(zip(expected, actual)):
+            difference = first_difference(left, right, path + "[" + str(index) + "]")
+            if difference:
+                return difference
+    elif expected != actual:
+        return path + ": value differs"
+    return None
+
+
+def logical_state(value: dict) -> dict:
+    """Keep fixed Authority effects; SQLite physical page layout is separate."""
+    value = dict(value)
+    value["files"] = [dict(row) for row in value["files"]]
+    for row in value["files"]:
+        if Path(row["path"]).name in {"v4.sqlite3", "v4.sqlite3-wal", "v4.sqlite3-shm"}:
+            row.pop("bytes", None)
+    return value
+
+
+def compare(original_root: Path, fixture_path: Path, observations: Path, output: Path) -> None:
+    """Compare actual native results and independently inspect their real DB effects."""
+    _, _, fernet_type, _, _ = original(original_root)
+    fixtures, native = load_json(fixture_path), load_json(observations)
+    if (fixtures["format"] != FORMAT or fixtures["original_head"] != ORIGINAL_HEAD
+            or native["format"] != "io.tobkiri.original-authority-native-observations.v1"):
+        raise ValueError("fresh original/native fixture formats required")
+    expected_names = {row["name"] for row in fixtures["cases"]}
+    actual = {row["name"]: row for row in native["cases"]}
+    if len(expected_names) != 32 or len(actual) != 32 or len(native["cases"]) != 32:
+        raise ValueError("exactly32 distinct original and native observations required")
+    if set(actual) != expected_names:
+        raise ValueError("native Authority case inventory differs")
+    report = {"format": "io.tobkiri.original-authority-comparison.v1",
+              "original_head": ORIGINAL_HEAD, "cases": [], "matched": False,
+              "production_enabled": False, "qualification": False,
+              "scope": "finite old-state materials, typed failures and Authority effects only"}
+    destination = fixture_path.parent
+    for case in fixtures["cases"]:
+        name = case["name"]
+        expected = {key: value for key, value in case["expected"].items()
+                    if key not in {"protocol_snapshot", "protocol_snapshot_error"}}
+        observed = {key: value for key, value in actual[name].items() if key != "name"}
+        difference = first_difference(expected, observed)
+        state = database_state(Path(case["user_data_dir"]),
+                               destination / name / "native-inspection", fernet_type)
+        state_difference = first_difference(logical_state(case["reference_state"]),
+                                            logical_state(state))
+        # Existing key bytes are immutable input, including noncanonical but
+        # valid encoded forms. Newly generated test keys need not equal random
+        # bytes generated by the independent original run.
+        seed_key = destination / name / "seed/authority/v4.key"
+        key_difference = False
+        if seed_key.is_file():
+            for target in ("reference", "native"):
+                key = destination / name / target / "authority/v4.key"
+                key_difference |= not key.is_file() or key.read_bytes() != seed_key.read_bytes()
+        elif observed.get("outcome") == "material":
+            for target in ("reference", "native"):
+                fernet_type((destination / name / target / "authority/v4.key").read_bytes().strip())
+        report["cases"].append({"name": name, "material_difference": difference,
+                                "state_difference": state_difference,
+                                "existing_key_changed": key_difference})
+    report["matched"] = all(not (case["material_difference"] or case["state_difference"]
+                                  or case["existing_key_changed"]) for case in report["cases"])
+    write_json(output, report)
+    if not report["matched"]:
+        failures = [row for row in report["cases"] if row["material_difference"]
+                    or row["state_difference"] or row["existing_key_changed"]]
+        raise AssertionError(failures)
+    print(json.dumps({"native_comparison": True, "matched": True, "cases": 32,
+                      "qualification": False, "production_enabled": False}))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("requirements", "prepare"))
+    parser.add_argument("command", choices=("requirements", "prepare", "compare"))
     parser.add_argument("--original-root", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--fixtures", type=Path)
+    parser.add_argument("--observations", type=Path)
     args = parser.parse_args()
     root = args.original_root.resolve(strict=True)
     if args.command == "requirements":
         requirements(root, args.output)
-    else:
+    elif args.command == "prepare":
         prepare(root, args.output)
+    elif args.fixtures is None or args.observations is None:
+        parser.error("compare requires fixtures and native observations")
+    else:
+        compare(root, args.fixtures, args.observations, args.output)
 
 
 if __name__ == "__main__":

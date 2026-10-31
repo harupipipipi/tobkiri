@@ -147,6 +147,26 @@ cannot substitute for it. Actual IO, typed errors, worker custody and
 cancel/finish/Join may be verified independently, while original-guest unit
 completion and product adoption still require the unchanged runtime budget.
 
+That source gate found no existing native old-Authority adapter. The selected
+AppConfig reaches the original user-data directory, but RuntimeOwner currently
+holds the separate `user_data/core` storage/account; its approval-store epoch
+cannot replace the old `authority/v4.sqlite3` epoch. Astra high selected the
+first finite unit: the actual same-owner old context open, all reachable
+validation/initialization/migrations, two original ordered reads, then close and
+detached old-App materials. Absent DB remains the non-creating genesis branch.
+Publication recovery and Profile resolve are subsequent units. The real
+constructor includes key/process/file/guard/SQLite/audit validation and cannot
+be represented by a readonly SELECT or placeholder context. Its initial native
+implementation is in progress, with no product route switch.
+
+The independent original reference CI41216815649 at02313b516 passed32 cases
+on both Linux and macOS, using pinned original source1cf025f1e and actual
+CPython3.13.16. Real v1 migration, separate reads, typed failures and late
+protocol rejection are observed; this is not a native comparison. All fixture
+DB/key bytes stay in CI temporary storage. Native comparison must separately
+check actual materials, cause/context and old-Authority logical post-state,
+while original-Launcher owner/GUI/full guest adoption remains open.
+
 ## Execution evidence which constrains this boundary
 
 The `48ab3ee5` diagnostic used the declared pre-initialized stdlib configuration.

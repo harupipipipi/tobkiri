@@ -50,6 +50,28 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 ## 003: legacy の試作 owner と実 core-host の経路整理
 
 - 状態: **frontend native終了primitiveは実CI成功。元製品のowner接続・移行は未完**。
+- 次の実接続は、同AppHandle/選択済みuser_dataから旧Authority contextを開き、実初期化・
+  epoch読取・epoch record読取・closeを行う有限native操作（Sol6.1 xhigh実装中）。
+  既存Coreの別approval DB/epochやmetadata getterを代用しない。DB不在枝は作成せず、
+  完全なctor到達範囲が閉じるまで既存DBのnative採用を開かない。snapshot材料は旧App入力
+  の別型であり、Core grant/承認完了へ変換しない。publication recovery/resolveは次区分。
+- この移植での不要な拡大を防ぐ: SQLite C heap全体をguest64MiBへinterceptするallocatorは
+  既存resource定義でも今回のAstra high再確認でも不要。既存native controlの接続/queue/
+  concurrency/statement/pagecache bounds、実row/blob/crypto/diagnostic/返却の容量とcopy/
+  保持、deadline/cancel/実connection/lock/Joinを維持する。guest適合とnativecontrol証拠を
+  分け、未計測heapを新allowanceで埋めない。新しいaccount/frameworkは追加しない。
+- 旧epochはarbitrary positive Python intを保持し、reason_digestはuntagged64hexも許す。
+  一方、後続snapshotのprotocol canonicalは2**53-1超を拒否する。材料読取へこの拒否を
+  前倒ししたり、独自digest writerで迂回したりしない。元の2readを1readへ畳まない。
+- 原本比較準備`02313b516`の[CI41216815649](https://github.com/harupipipipi/tobkiri/actions/runs/41216815649)
+  はLinux/macOSとも32ケース成功。別checkoutの原本1cf025f1e・CPython3.13.16と元lockの
+  hash-pinned依存を使い、実AuthorityStore、実historical v1 fixture、元snapshot helperを
+  実行。実v1 leaseがambiguous/revokedへ移行し、2read間の変更とlate canonical拒否も確認。
+  Native比較はまだ未実行。artifactはsummary JSONのみ各1,383B、必要JSON15,833B保存。
+  Source63fの最初のCIはhistorical guardで失敗。raw main DBだけの複製にはcommitted WALを
+  失う不備があり、SQLite backup＋test connection実closeへ直して、assertを保ったまま成功。
+  今後もDB/keyはCI一時領域のみ。Core control metadataと旧authority subtreeの観測範囲、
+  raw SQLite page配置とlogical schema/commit stateを混同しない。
 - 場所: [native_harness_bootstrap.rs](../../../tobkiri_launcher/src-tauri/src/native_harness_bootstrap.rs)、
   [core_host.rs](../../../tobkiri_launcher/src-tauri/src/core_host.rs)、
   [feature 分岐](../../../tobkiri_launcher/src-tauri/src/legacy.rs)。
