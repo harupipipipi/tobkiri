@@ -37,6 +37,7 @@ CASES = (
     "key-symlink", "key-dangling-symlink", "key-unicode-short", "key-unicode-valid",
     "key-unicode-whitespace", "hmac-wrong", "hmac-uppercase", "hmac-nonascii", "hmac-empty",
     "predecessor-shape", "predecessor-nonmapping", "candidate-not-validated-here",
+    "hmac-nested-unicode",
 )
 SOURCES = (
     "core_runtime/bootstrap/profile_capture.py", "core_runtime/bootstrap/profile_publication.py",
@@ -165,6 +166,11 @@ def seed(name: str, root: Path, journal_type, pointer_type, protocol, signing) -
         elif name == "candidate-not-validated-here":
             envelope["payload"]["candidate"] = [1, True, None]
             envelope["payload"]["confirmation_digest"] = None
+        elif name == "hmac-nested-unicode":
+            envelope["payload"]["candidate"] = {
+                "\U0001f600": ["\"\\,: \n\t", True, None],
+                "\uffff": {"ascii": "\0\b\f\r"},
+            }
         elif name == "key-unicode-valid":
             key.write_bytes(("\u754c" * 32).encode())
         elif name == "key-unicode-whitespace":
@@ -174,7 +180,7 @@ def seed(name: str, root: Path, journal_type, pointer_type, protocol, signing) -
         if name != "payload-schema-before-key":
             envelope["hmac"] = signing.compute_data_hmac(
                 signing.load_signing_key(key), envelope["payload"])
-        if name.startswith("hmac-"):
+        if name in {"hmac-wrong", "hmac-uppercase", "hmac-nonascii", "hmac-empty"}:
             envelope["hmac"] = {"hmac-wrong": "0" * 64,
                                 "hmac-uppercase": envelope["hmac"].upper(),
                                 "hmac-nonascii": "\u00e9", "hmac-empty": ""}[name]
@@ -245,7 +251,9 @@ def prepare(original: Path, destination: Path) -> None:
         reports.append({"name": name, "user_data_dir": str(native),
                         "after_lock_remove_intent": name == "intent-disappears-after-lock",
                         "expected": result, "reference_state": filesystem(reference)})
+    denial_type = type(capture.ProfileResolutionDenied("CI factory binding"))
     metadata = {"format": FORMAT, "original_head": ORIGINAL_HEAD, "python": "3.13.16",
+                "application_denial_class": denial_type.__module__ + "." + denial_type.__qualname__,
                 "sources": {name: hashlib.sha256((runtime / name).read_bytes()).hexdigest()
                             for name in SOURCES}, "cases": reports,
                 "native_comparison": False, "qualification": False, "production_enabled": False,
@@ -260,7 +268,7 @@ def prepare(original: Path, destination: Path) -> None:
         raise AssertionError("exact original publication case inventory required")
     catalog = {"absent", "profiles-file", "profiles-without-intent", "intent-disappears-after-lock"}
     pointer = {"valid", "valid-predecessor", "profiles-broad-mode", "key-unicode-valid",
-               "key-unicode-whitespace", "candidate-not-validated-here"}
+               "key-unicode-whitespace", "candidate-not-validated-here", "hmac-nested-unicode"}
     for row in reports:
         expected = ("catalog-not-bound" if row["name"] in catalog else
                     "verified-pointer-not-bound" if row["name"] in pointer else None)

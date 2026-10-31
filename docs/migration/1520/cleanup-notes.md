@@ -224,8 +224,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   必要JSON135,214Bのみ保存。重要Sol実装のstrict decoderについて、duplicate hookと
   NaN/huge integer/surrogateの先後、元depth64/65と未完JSONの先後という具体的懸念を
   調べるため、同じ原本処理へ10件追加し総47件とする。独立state/key比較も配線準備した。
-  この観測境界は後半recoveryや実review/listing成功ではなく、47件の実結果/native比較は
-  未確認。DB/key/fixture/ZIP/binaryはartifactに含めない。
+  `d5743618a`の[CI41242243436](https://github.com/harupipipipi/tobkiri/actions/runs/41242243436)
+  は原本47件が両OS成功。depth64→後続envelope形拒否、depth65→canonical depth拒否、
+  未完deep JSON→syntax拒否という先後も実測。必要JSON176,416Bだけ保存した。
+  Sol実装の構造空白変換がquoted comma/colon/backslash/Unicodeを変えないことを確認する
+  1件を加え総48へ進める。App-denied tagの比較には実原本factoryの型を有限CI bindingと
+  して渡すが、実製品factory/GUI接続を証明したとはしない。この観測境界は後半recoveryや
+  実review/listing成功ではなく、48件の実結果/native比較は未確認。
+  DB/key/fixture/ZIP/binaryはartifactに含めない。
   JSON/surrogate/depth・不正leaseの例外投影、同時key作成/複合I/O/close、Linux process情報
   read内部close receipt等は未閉鎖。全Open同等・既存DB採用・GUI接続の完了とはしない。
 - cryptoの余分なowned key配列copyをZeroizing先作成へ整理した。Fernetは既存RustCryptoの
