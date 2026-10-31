@@ -958,3 +958,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   入力schemaの$schemaから新しいdialect dispatchを足してはいけない。元check_schemaは
   cls.META_SCHEMAからvalidatorを選択する。実META/資源/first error/SchemaErrorまで実装・
   比較してから元2Bで測定する。新backendのコードはまだ未実装。
+
+- 018 backend初稿: default-off app-schema-backend featureにRustフレーム走査とApp所有
+  check_schema入口を追加。子ごとのPython Validator/evolve/descendは使わず、実Py参照・
+  resolver・分岐・error graphを保持する。scalar ruleは既存generic実装と共通化し、元の
+  method lookup/固定intern文字列identityは保持。原版64/API19は独立したまま、新backend
+  64ケースとApp37/42/full305453の別laneを追加。native比較前であり未採用。
+  現在のMETAで使われない未実装known ruleは明示拒否する。
+  metadata mutation/custom numericの未完了範囲を原版retryで隠さない。まずnative機能比較、
+  次に未完了境界と実Wasm費用を検証し、全App/backend完了へ進める。製品UIは未変更。

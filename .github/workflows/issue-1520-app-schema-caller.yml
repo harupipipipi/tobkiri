@@ -5,6 +5,8 @@ name: Issue 1520 actual App schema caller reference
     paths:
       - tools/python313-producer/app_schema_oracle.py
       - tools/python313-producer/app_schema_kernel_lane.py
+      - tools/python313-producer/app_schema_backend_lane.py
+      - tools/python313-producer/app_schema_backend_check.py
       - tools/python313-producer/schema_kernel/**
       - tools/python313-producer/schema_kernel_translate.py
       - tools/python313-producer/schema_kernel_native_check.py
@@ -148,6 +150,31 @@ jobs:
             --current "$RUNNER_TEMP/app-schema-caller/kernel.json" \
             --current-kind kernel \
             --output "$RUNNER_TEMP/app-schema-caller/kernel-comparison.json"
+      - name: Build the distinct feature-enabled App frame backend and compare all64
+        run: |
+          set -euo pipefail
+          python3 -S -B tools/python313-producer/schema_kernel_native_check.py --app-backend \
+            --source "$GITHUB_WORKSPACE/tools/python313-producer/schema_kernel" \
+            --vendor "$RUNNER_TEMP/app-schema-vendor" \
+            --inputs "$RUNNER_TEMP/app-schema-inputs" \
+            --reference "$RUNNER_TEMP/app-schema-caller/library-reference.json" \
+            --cargo-home "$RUNNER_TEMP/app-schema-cargo-home" \
+            --destination "$RUNNER_TEMP/app-backend-native"
+      - name: Execute the same actual App corpus with its explicitly selected backend
+        run: |
+          set -euo pipefail
+          python3 -S -B tools/python313-producer/app_schema_oracle.py run \
+            --source-kind backend \
+            --source "$GITHUB_WORKSPACE/tobkiri_runtime" \
+            --inputs "$RUNNER_TEMP/app-schema-inputs" \
+            --fixtures "$RUNNER_TEMP/app-schema-caller/fixtures" \
+            --bundle-source "$GITHUB_WORKSPACE/app-schema-original/tobkiri_runtime" \
+            --kernel-precheck "$RUNNER_TEMP/app-backend-native" \
+            --output "$RUNNER_TEMP/app-schema-caller/backend.json"
+          python3 -B tools/python313-producer/app_schema_oracle.py compare \
+            --original "$RUNNER_TEMP/app-schema-caller/original.json" \
+            --current "$RUNNER_TEMP/app-schema-caller/backend.json" --current-kind backend \
+            --output "$RUNNER_TEMP/app-schema-caller/backend-comparison.json"
       - name: Retain bounded reference metadata
         if: always()
         uses: actions/upload-artifact@v4
@@ -159,6 +186,10 @@ jobs:
             ${{ runner.temp }}/app-schema-caller/comparison.json
             ${{ runner.temp }}/app-schema-caller/kernel.json
             ${{ runner.temp }}/app-schema-caller/kernel-comparison.json
+            ${{ runner.temp }}/app-schema-caller/backend.json
+            ${{ runner.temp }}/app-schema-caller/backend-comparison.json
+            ${{ runner.temp }}/app-backend-native/schema-kernel-native-check.json
+            ${{ runner.temp }}/app-backend-native/cargo.log
             ${{ runner.temp }}/app-schema-native/schema-kernel-native-check.json
             ${{ runner.temp }}/app-schema-caller/fixtures/fixture-index.json
           retention-days: 14

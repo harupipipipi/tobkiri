@@ -442,3 +442,21 @@ This classification is based on original caller/SDK contracts before any native
 C-callable implementation, not on a failed test. All observations still execute
 within the original invocation and budget. The new separation requires fresh CI;
 no budget or original product gate is waived.
+
+
+## Experimental App definition-check backend
+
+The default-off `app-schema-backend` feature adds an App-owned `check_schema`
+entry and a flat Rust continuation stack. It retains original Python values,
+reference scopes, format callbacks and genuine error objects; it does not create
+Python Validator children. `app_provider.py` is selected explicitly only in the
+separate native comparison lane. Document validation is an independent original
+operation selected before evaluation. There is no original-validator retry after
+native failure. Generic64/API19 comparisons remain independently required.
+
+This is an unqualified prototype, not a product default. Some META evaluators,
+custom numeric objects and metadata mutation behavior remain unimplemented or
+unverified; unsupported known evaluators refuse instead of accepting input.
+Native functional equality, additional mutation/callback cases and actual Wasm
+fuel/memory/deadline proof must precede adoption. It does not authorize removing
+product Python, a VM, the original GUI flow or compatibility code.

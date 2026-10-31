@@ -38,7 +38,7 @@ def run(args, receipt):
     fetch_schema.verify(args.inputs)
     source = fetch_sdk.inventory(args.source)
     if (set(source) != {"Cargo.toml", "Cargo.lock", "README.md", "COPYING.jsonschema",
-                        "adapter.py", "src/lib.rs", "src/traversal.rs", "src/keywords.rs"}
+                        "adapter.py", "src/lib.rs", "src/traversal.rs", "src/keywords.rs", "src/app_schema.rs", "app_provider.py"}
             or any("link" in item for item in source.values())
             or sum(item["bytes"] for item in source.values()) > builder.MAX_SOURCE):
         raise ValueError("native kernel source closure differs")
@@ -62,6 +62,9 @@ def run(args, receipt):
                "--target-dir", str(target), "--message-format=json",
                "--config", 'source.crates-io.replace-with="schema-vendor"',
                "--config", 'source.schema-vendor.directory=' + json.dumps(str(args.vendor))]
+    receipt["features"] = ["app-schema-backend"] if args.app_backend else []
+    if args.app_backend:
+        command.extend(["--features", "app-schema-backend"])
     receipt["stage"] = "native-build"
     stdout, stderr = destination / "cargo.jsonl", destination / "cargo.log"
     with stdout.open("xb") as out, stderr.open("xb") as err:
@@ -82,6 +85,8 @@ def run(args, receipt):
             or [row.get("success") for row in rows
                 if row.get("reason") == "build-finished"] != [True]):
         raise ValueError("one actual successful native cdylib required")
+    if set(artifacts[0].get("features", [])) != ({"default", "app-schema-backend"} if args.app_backend else {"default"}):
+        raise ValueError("actual compiled extension features differ")
     artifact = Path(artifacts[0]["filenames"][0])
     if (artifact.parent != target / "release" or artifact.suffix != ".so"
             or artifact.resolve(strict=True) != artifact):
@@ -102,6 +107,12 @@ def run(args, receipt):
     ) for row in inputs]
     if len(package_paths) != 6:
         raise ValueError("complete checksum-verified native wheel selection required")
+    if args.app_backend:
+        from app_schema_backend_check import compare
+        compare(args, receipt, package_paths, extension)
+        if fetch_sdk.inventory(args.source) != source:
+            raise ValueError("App backend source changed during comparison")
+        return
     from schema_kernel_translate import native_overlay
     selected = [path for path, row in zip(package_paths, inputs)
                 if row["distribution"] == "jsonschema"]
@@ -218,6 +229,7 @@ def main():
         raise RuntimeError("native execution requires pinned Linux GitHub Actions")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile-calls", action="store_true")
+    parser.add_argument("--app-backend", action="store_true")
     for name in ("source", "vendor", "inputs", "reference", "cargo-home", "destination"):
         parser.add_argument("--" + name, type=Path, required=True)
     args = parser.parse_args()

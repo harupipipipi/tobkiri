@@ -1,8 +1,7 @@
 # App validation backend boundary
 
 Design checkpoint: 2026-10-31. This is an implementation boundary, not a new
-product requirement or acceptance receipt. No new backend is implemented by
-this document. Issue1520, the original GUI flow, all20 acceptance items and all
+product requirement or acceptance receipt. The experimental default-off backend prototype is not qualified or adopted. Issue1520, the original GUI flow, all20 acceptance items and all
 839 original migration units remain in scope.
 
 ## Why a separate backend is needed
@@ -119,8 +118,10 @@ Source review: the [pinned original check_schema method](https://github.com/pyth
 constructs that selected validator with the actual META and format checker, and
 raises from the first yielded error. Its child reference operation and lazy
 branch/error rules need matching Rust transitions. Native64/App37 comparison and
-actual Wasm costs are still required after implementation. No native backend or
-new selected App default exists yet at this checkpoint.
+actual Wasm costs remain required. The default-off experimental Rust frame
+backend and separate native lane now exist, but product selection and qualification
+remain pending. Unsupported META rules currently refuse; metadata mutations and
+custom numeric values need further implementation/verification before adoption.
 
 ## Evidence and scope
 

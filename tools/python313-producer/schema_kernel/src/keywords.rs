@@ -744,19 +744,23 @@ fn pair<'py>(
     Ok((first, second))
 }
 
-fn module_member<'py>(py: Python<'py>, module: &str, name: &str) -> PyResult<Bound<'py, PyAny>> {
+pub(crate) fn module_member<'py>(
+    py: Python<'py>,
+    module: &str,
+    name: &str,
+) -> PyResult<Bound<'py, PyAny>> {
     py.import(module)?.getattr(name)
 }
 
-fn builtin<'py>(py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyAny>> {
+pub(crate) fn builtin<'py>(py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyAny>> {
     module_member(py, "builtins", name)
 }
 
-fn utility<'py>(py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyAny>> {
+pub(crate) fn utility<'py>(py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyAny>> {
     module_member(py, "jsonschema._utils", name)
 }
 
-fn integer(py: Python<'_>, value: usize) -> Bound<'_, PyAny> {
+pub(crate) fn integer(py: Python<'_>, value: usize) -> Bound<'_, PyAny> {
     value
         .into_pyobject(py)
         .expect("infallible usize conversion")
@@ -773,21 +777,24 @@ fn is_type(
     kind: &str,
 ) -> PyResult<bool> {
     let py = validator.py();
-    // These four names come from this module's fixed builtin handlers, not the
-    // schema's actual type values (which keep their original Python objects).
-    let literal = match kind {
-        "object" => pyo3::intern!(py, "object").clone(),
-        "array" => pyo3::intern!(py, "array").clone(),
-        "number" => pyo3::intern!(py, "number").clone(),
-        "string" => pyo3::intern!(py, "string").clone(),
-        _ => PyString::new(py, kind),
-    };
+    let literal = type_literal(py, kind);
     validator
         .call_method1(pyo3::intern!(py, "is_type"), (instance, literal))?
         .is_truthy()
 }
 
-fn format<'py>(
+fn type_literal<'py>(py: Python<'py>, kind: &str) -> Bound<'py, PyString> {
+    // Fixed builtin handler literals retain their original interned identity.
+    match kind {
+        "object" => pyo3::intern!(py, "object").clone(),
+        "array" => pyo3::intern!(py, "array").clone(),
+        "number" => pyo3::intern!(py, "number").clone(),
+        "string" => pyo3::intern!(py, "string").clone(),
+        _ => PyString::new(py, kind),
+    }
+}
+
+pub(crate) fn format<'py>(
     py: Python<'py>,
     template: &str,
     values: &[Bound<'py, PyAny>],
@@ -798,7 +805,7 @@ fn format<'py>(
         .call(&arguments, None)
 }
 
-fn validation_error<'py>(
+pub(crate) fn validation_error<'py>(
     py: Python<'py>,
     message: Bound<'py, PyAny>,
     kwargs: Option<&Bound<'py, PyDict>>,
@@ -921,7 +928,7 @@ fn evolved_is_valid(
         .is_truthy()
 }
 
-fn sorted<'py>(
+pub(crate) fn sorted<'py>(
     py: Python<'py>,
     values: &Bound<'py, PyAny>,
     key_str: bool,
@@ -933,7 +940,10 @@ fn sorted<'py>(
     builtin(py, "sorted")?.call((values,), Some(&kwargs))
 }
 
-fn reprs_joined<'py>(py: Python<'py>, values: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+pub(crate) fn reprs_joined<'py>(
+    py: Python<'py>,
+    values: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
     let reprs = PyList::empty(py);
     for value in values.try_iter()? {
         reprs.append(value?.repr()?)?;
@@ -941,7 +951,7 @@ fn reprs_joined<'py>(py: Python<'py>, values: &Bound<'py, PyAny>) -> PyResult<Bo
     PyString::new(py, ", ").call_method1(pyo3::intern!(py, "join"), (reprs,))
 }
 
-fn extras_message<'py>(
+pub(crate) fn extras_message<'py>(
     py: Python<'py>,
     template: &str,
     values: &Bound<'py, PyAny>,
@@ -1133,9 +1143,38 @@ fn scalar<'py>(
     keyword: &str,
     context: &Context<'py>,
 ) -> PyResult<Option<Bound<'py, PyAny>>> {
-    let validator = &context.validator;
-    let value = &context.value;
-    let instance = &context.instance;
+    scalar_rule(
+        py,
+        keyword,
+        &context.value,
+        &context.instance,
+        |instance, kind| {
+            context
+                .validator
+                .call_method1(pyo3::intern!(py, "is_type"), (instance, kind))?
+                .is_truthy()
+        },
+        || {
+            context
+                .validator
+                .getattr(pyo3::intern!(py, "format_checker"))
+        },
+        |schema, instance| evolved_is_valid(py, context, schema, instance),
+    )
+}
+
+/// Shared validation rules; each caller supplies its OWN traversal/type policy.
+/// The generic library caller still executes every original live method lookup.
+/// The App context uses Rust frames instead of Python Validator children.
+pub(crate) fn scalar_rule<'py>(
+    py: Python<'py>,
+    keyword: &str,
+    value: &Bound<'py, PyAny>,
+    instance: &Bound<'py, PyAny>,
+    mut test_type: impl FnMut(&Bound<'py, PyAny>, &Bound<'py, PyAny>) -> PyResult<bool>,
+    mut format_checker: impl FnMut() -> PyResult<Bound<'py, PyAny>>,
+    mut validates: impl FnMut(&Bound<'py, PyAny>, &Bound<'py, PyAny>) -> PyResult<bool>,
+) -> PyResult<Option<Bound<'py, PyAny>>> {
     let message = match keyword {
         "const" => {
             if utility(py, "equal")?
@@ -1164,10 +1203,7 @@ fn scalar<'py>(
         "type" => {
             let types = utility(py, "ensure_list")?.call1((value,))?;
             for kind in types.try_iter()? {
-                if validator
-                    .call_method1(pyo3::intern!(py, "is_type"), (instance, kind?))?
-                    .is_truthy()?
-                {
+                if test_type(instance, &kind?)? {
                     return Ok(None);
                 }
             }
@@ -1175,7 +1211,7 @@ fn scalar<'py>(
             format(py, "{0!r} is not of type {1}", &[instance.clone(), reprs])?
         }
         "minimum" | "maximum" | "exclusiveMinimum" | "exclusiveMaximum" => {
-            if !is_type(validator, instance, "number")? {
+            if !test_type(instance, type_literal(py, "number").as_any())? {
                 return Ok(None);
             }
             let (failed, template) = match keyword {
@@ -1202,7 +1238,7 @@ fn scalar<'py>(
             format(py, template, &[instance.clone(), value.clone()])?
         }
         "multipleOf" => {
-            if !is_type(validator, instance, "number")? {
+            if !test_type(instance, type_literal(py, "number").as_any())? {
                 return Ok(None);
             }
             let is_float = builtin(py, "isinstance")?
@@ -1243,11 +1279,13 @@ fn scalar<'py>(
                 "minLength" | "maxLength" => "string",
                 _ => "object",
             };
-            if !is_type(validator, instance, kind)? {
+            if !test_type(instance, type_literal(py, kind).as_any())? {
                 return Ok(None);
             }
             // maxProperties repeats this guard in the original source.
-            if keyword == "maxProperties" && !is_type(validator, instance, "object")? {
+            if keyword == "maxProperties"
+                && !test_type(instance, type_literal(py, "object").as_any())?
+            {
                 return Ok(None);
             }
             let length = integer(py, instance.len()?);
@@ -1283,7 +1321,7 @@ fn scalar<'py>(
         }
         "uniqueItems" => {
             if !value.is_truthy()?
-                || !is_type(validator, instance, "array")?
+                || !test_type(instance, type_literal(py, "array").as_any())?
                 || utility(py, "uniq")?.call1((instance,))?.is_truthy()?
             {
                 return Ok(None);
@@ -1291,7 +1329,7 @@ fn scalar<'py>(
             format(py, "{0!r} has non-unique elements", &[instance.clone()])?
         }
         "pattern" => {
-            if !is_type(validator, instance, "string")?
+            if !test_type(instance, type_literal(py, "string").as_any())?
                 || module_member(py, "re", "search")?
                     .call1((value, instance))?
                     .is_truthy()?
@@ -1305,16 +1343,10 @@ fn scalar<'py>(
             )?
         }
         "format" => {
-            if validator
-                .getattr(pyo3::intern!(py, "format_checker"))?
-                .is_none()
-            {
+            if format_checker()?.is_none() {
                 return Ok(None);
             }
-            match validator
-                .getattr(pyo3::intern!(py, "format_checker"))?
-                .call_method1(pyo3::intern!(py, "check"), (instance, value))
-            {
+            match format_checker()?.call_method1(pyo3::intern!(py, "check"), (instance, value)) {
                 Ok(_) => return Ok(None),
                 Err(error) => {
                     let exception = error.value(py);
@@ -1339,7 +1371,7 @@ fn scalar<'py>(
             }
         }
         "not" => {
-            if !evolved_is_valid(py, context, value, instance)? {
+            if !validates(value, instance)? {
                 return Ok(None);
             }
             format(
