@@ -33,6 +33,17 @@ provide native database parity. This result does not yet connect the operation
 to the original Setup review, establish complete IO-failure parity, or close
 an acceptance item. The candidate remains default-off.
 
+The [publication-prelude comparison at `54c6446c9`](https://github.com/harupipipipi/tobkiri/actions/runs/41247998757)
+also passed: macOS matched 48 fresh original cases for journal/lock/read,
+strict JSON, existing signing keys, legacy HMAC and predecessor validation,
+including independently inspected file effects, key retention and actual
+cleanup/OS-lock release. Linux passed the original reference; both platforms
+passed strict library validation and locked dependency resolution. The source
+connects a finite native ReviewListing caller, but verified-pointer/catalog
+continuations are explicitly unbound. Application-denial types in this
+comparison use a finite CI factory binding. Product factory/GUI integration,
+full recovery and listing remain unqualified; no acceptance item is closed.
+
 Historical focused checks from the 2026-10-18 slice: foundation gate **0 failures**; complete gate
 **1,044 failures**. Gate regressions **13**, CI-helper regressions **7**, and
 inventory tests **9** passed. That snapshot reported 837 units and

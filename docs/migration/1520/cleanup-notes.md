@@ -254,6 +254,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   初回publication Mac jobのnative-driver stepはまだ実行中で、stepにcompile時間も含む。
   実body開始は未観測であり、遅延からdeadlockを断定しない。次CIのtest-only progressで
   case開始/実解放を分け、同じ初回handleも終了まで追う。新48比較の成功はまだ主張しない。
+  初回e238 Mac driverはcompile7分55秒、実body0.68秒で48件すべてtyped結果/例外・独立state・
+  既存key保持が一致した。実close/OS lock再取得/容量0/owner再openも成功し、停止では
+  なかった。初回全体の失敗は上記3lintのみ。必要JSON232,970Bを保存した。
+  最小修正`54c6446c9`の[CI41247998757](https://github.com/harupipipipi/tobkiri/actions/runs/41247998757)
+  は両OSで完了成功。macOS native48一致/実解放、両OSstrict Clippy/2lock graph、Linuxの
+  実原本48も成功した。必要JSON232,925Bを保存。e238の既存Authority93回帰もtyped/state/key
+  比較は成功（全体は同3lint失敗）し、JSON218,240Bを保存した。ここでのApp-denied型は
+  有限CI factory bindingであり、実製品factory・Tauri実caller・全recovery/listingではない。
+  新12finite callerの実compileは同54cのDesktop CI41248377655で追跡中。
+  追加の削減候補: 新Reviewは同invocationの固定bodyを直接呼ぶ。別jobを作る旧試作の
+  read_original_authority_snapshot/OriginalAuthorityJob/Dataは現在のtracked callerがなく、
+  将来のsnapshot接続後も独立prefetchとして使わない。直接snapshot接続と実caller回帰を
+  確認後、これらの試作wrapperだけを除く。再利用中のRetained/typed detachmentと原本93
+  library比較は残す。legacy製品APIや未移植機能を削る許可ではない。
   JSON/surrogate/depth・不正leaseの例外投影、同時key作成/複合I/O/close、Linux process情報
   read内部close receipt等は未閉鎖。全Open同等・既存DB採用・GUI接続の完了とはしない。
 - cryptoの余分なowned key配列copyをZeroizing先作成へ整理した。Fernetは既存RustCryptoの
