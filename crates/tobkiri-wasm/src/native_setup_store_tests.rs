@@ -539,3 +539,141 @@ async fn closed_empty_capture_cannot_be_rebound_or_open_an_ambient_source() {
     drop(capture);
     crate::reap_allocation_owners().unwrap();
 }
+
+#[tokio::test]
+async fn cancellation_parent_refuses_foreign_and_precancelled_without_refund_or_retry() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
+    for foreign in [false, true] {
+        let (account, invocation) = funding();
+        let deadline = invocation.deadline().unwrap();
+        let engine = WasmEngine::new_with_control(invocation.control()).unwrap();
+        let unrelated = CoreControl::default();
+        let parent = CoreCancellation::new_with_control(if foreign {
+            &unrelated
+        } else {
+            invocation.control()
+        })
+        .unwrap();
+        if !foreign {
+            parent.cancel();
+        }
+        assert!(
+            engine
+                .native_setup_store_with_cancellation_parent(invocation.clone(), (), &parent)
+                .is_err()
+        );
+        assert_eq!(invocation.deadline().unwrap(), deadline);
+        assert_eq!(account.snapshot().unwrap().charged_bytes, 0);
+        // A refused construction never creates a replacement Store attempt.
+        assert!(engine.native_setup_store(invocation, ()).is_err());
+    }
+}
+
+#[tokio::test]
+async fn store_child_cancel_is_local_and_retains_parent_after_handle_drop() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
+    let (account, invocation) = funding();
+    let engine = WasmEngine::new_with_control(invocation.control()).unwrap();
+    let parent = CoreCancellation::new_with_control(invocation.control()).unwrap();
+    let owned = engine
+        .native_setup_store_with_cancellation_parent(invocation, (), &parent)
+        .unwrap();
+    assert!(owned.cancellation().is_direct_child_of(&parent));
+    owned.cancellation().cancel();
+    assert!(!parent.is_cancelled());
+    assert_eq!(
+        owned.cancellation().cause(),
+        Some(tobkiri_gate::CancellationCause::Explicit)
+    );
+    drop(parent);
+    assert!(owned.cancellation().is_cancelled());
+    drop(owned);
+    assert_eq!(account.snapshot().unwrap().charged_bytes, 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn actual_inflight_guest_observes_parent_cancel_with_original_grace_and_budget() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
+    let (account, invocation) = funding();
+    let deadline = invocation.deadline().unwrap();
+    let engine = WasmEngine::new_with_control(invocation.control()).unwrap();
+    let parent = CoreCancellation::new_with_control(invocation.control()).unwrap();
+    let mut owned = engine
+        .native_setup_store_with_cancellation_parent(invocation, (), &parent)
+        .unwrap();
+    let module = Module::new(engine.engine(), wat::parse_str(
+        "(module (import \"fixture\" \"pace\" (func $pace)) (func (export \"run\") (loop $again call $pace br $again)))"
+    ).unwrap()).unwrap();
+    let guest = {
+        let store = owned.store.as_mut().unwrap();
+        // Fixture-only pacing prevents fuel exhaustion from hiding the real
+        // epoch cancellation. It creates no IO or Profile authority. Cancellation
+        // starts INSIDE the first actual guest call, not before instantiation.
+        let signal = parent.clone();
+        let pace = wasmtime::Func::wrap(&mut *store, move || {
+            if !signal.is_cancelled() {
+                signal.cancel();
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        });
+        let instance = Instance::new_async(&mut *store, &module, &[pace.into()])
+            .await
+            .unwrap();
+        instance
+            .get_typed_func::<(), ()>(&mut *store, "run")
+            .unwrap()
+    };
+    let started = Instant::now();
+    let result = tokio::time::timeout(
+        Duration::from_secs(8),
+        guest.call_async(owned.store.as_mut().unwrap(), ()),
+    )
+    .await
+    .expect("actual cancellation failed to stop the guest");
+    let error = result.expect_err("cancelled infinite guest completed");
+    assert!(
+        format!("{error:#}").contains("component cancelled after grace period"),
+        "{error:#}"
+    );
+    assert!(started.elapsed() >= Duration::from_secs(2));
+    assert!(
+        owned
+            .store
+            .as_ref()
+            .unwrap()
+            .data()
+            .cancel_observed
+            .is_some()
+    );
+    assert_eq!(owned.original_deadline(), deadline);
+    assert!(Instant::now() < deadline);
+    assert!(owned.fuel_remaining().unwrap() > 0);
+    assert!(owned.cancellation().is_direct_child_of(&parent));
+    drop(owned);
+    assert_eq!(account.snapshot().unwrap().charged_bytes, 0);
+}
+
+#[tokio::test]
+async fn racing_parent_cancellation_cannot_leave_an_unsignalled_store() {
+    let _serial = crate::allocation::TEST_CUSTODY.lock().await;
+    let (account, first) = funding();
+    let engine = WasmEngine::new_with_control(first.control()).unwrap();
+    for invocation in std::iter::once(first).chain((0..7).map(|_| account.begin().unwrap())) {
+        let parent = CoreCancellation::new_with_control(invocation.control()).unwrap();
+        let signal = parent.clone();
+        let cancel = std::thread::spawn(move || signal.cancel());
+        let result = engine.native_setup_store_with_cancellation_parent(invocation, (), &parent);
+        cancel.join().unwrap();
+        if let Ok(store) = result {
+            assert!(store.cancellation().is_direct_child_of(&parent));
+            drop(parent);
+            assert!(store.cancellation().is_cancelled());
+            assert_eq!(
+                store.cancellation().cause(),
+                Some(tobkiri_gate::CancellationCause::Explicit)
+            );
+            drop(store);
+        }
+        assert_eq!(account.snapshot().unwrap().charged_bytes, 0);
+    }
+}

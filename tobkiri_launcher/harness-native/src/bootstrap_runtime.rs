@@ -13,7 +13,8 @@ use std::sync::{
 };
 use tobkiri_canon::{AllocationBudget, ControlHandle, CoreBuffer, CoreValue, MAX_BYTES};
 use tobkiri_gate::{
-    CapacityKind, ControlKind, ControlReservation, NativeSetupInvocation, NativeSetupReservation,
+    CapacityKind, ControlKind, ControlReservation, CoreCancellation, NativeSetupInvocation,
+    NativeSetupReservation,
 };
 use tobkiri_wasm::{
     NativeDataBinding, NativeDataError, NativeDataErrorContract, NativeDataExport, NativeDataIo,
@@ -359,6 +360,29 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         source: S,
         index: &'static BootstrapModuleIndex,
     ) -> Result<std::result::Result<Self, NativeDataError>> {
+        Self::prepare_inner(engine, component, invocation, source, index, None).await
+    }
+
+    /// Retain the actual preparation lineage; cancellation conveys no IO rights.
+    pub(crate) async fn prepare_with_cancellation_parent(
+        engine: &WasmEngine,
+        component: &Component,
+        invocation: NativeSetupInvocation,
+        source: S,
+        index: &'static BootstrapModuleIndex,
+        parent: &CoreCancellation,
+    ) -> Result<std::result::Result<Self, NativeDataError>> {
+        Self::prepare_inner(engine, component, invocation, source, index, Some(parent)).await
+    }
+
+    async fn prepare_inner(
+        engine: &WasmEngine,
+        component: &Component,
+        invocation: NativeSetupInvocation,
+        source: S,
+        index: &'static BootstrapModuleIndex,
+        parent: Option<&CoreCancellation>,
+    ) -> Result<std::result::Result<Self, NativeDataError>> {
         source.check_live()?;
         let bytes = u64::try_from(ControlHandle::<Work<S>>::storage_bytes::<Funding>())?;
         let native = invocation.reserve(CapacityKind::VfsBuffer, bytes)?;
@@ -385,13 +409,20 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 _control: control,
             },
         )?;
-        let store = engine
-            .native_setup_store_with_imports(
+        let store = match parent {
+            Some(parent) => engine.native_setup_store_with_imports_and_cancellation_parent(
                 invocation.clone(),
                 State { work: work.clone() },
                 &State::<S>::BINDINGS,
-            )
-            .map_err(|original| initialization_failure(work.get(), None, original))?;
+                parent,
+            ),
+            None => engine.native_setup_store_with_imports(
+                invocation.clone(),
+                State { work: work.clone() },
+                &State::<S>::BINDINGS,
+            ),
+        }
+        .map_err(|original| initialization_failure(work.get(), None, original))?;
         let io = store
             .native_data_io()
             .context("native bootstrap IO was not bound")?

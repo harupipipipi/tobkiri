@@ -179,7 +179,7 @@ jobs:
         if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/harness-native-preparation.log" --expected-passed 2 --
+          --log "$RUNNER_TEMP/harness-native-preparation.log" --expected-passed 5 --
           cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
           preparation::tests:: -- --nocapture
       - name: Preserve init failures and reject unauthorized inspection and cancelled getters

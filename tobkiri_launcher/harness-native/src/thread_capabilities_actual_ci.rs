@@ -238,7 +238,7 @@ async fn child_operation() -> Result<()> {
         NativeComponentPreparation::new(invocation.clone(), CodeSource(File::open(&artifact)?))?
             .compile(File::open(&artifact)?, &expected)?;
     let preparation = prepared.observation();
-    let (engine, component, invocation, source) = prepared.into_diagnostic_parts()?;
+    let (engine, component, invocation, source, cancellation) = prepared.into_diagnostic_parts()?;
     let size = u64::try_from(ControlHandle::<Work>::storage_bytes::<Funding>())?;
     let work = ControlHandle::try_new_precharged(
         Work {
@@ -255,10 +255,11 @@ async fn child_operation() -> Result<()> {
             _control: invocation.control().reserve(ControlKind::Frame, size)?,
         },
     )?;
-    let store = engine.native_setup_store_with_imports(
+    let store = engine.native_setup_store_with_imports_and_cancellation_parent(
         invocation.clone(),
         State(work.clone()),
         &IMPORTS,
+        &cancellation,
     )?;
     let io = store.native_data_io().context("actual IO missing")?.clone();
     let budget = store.allocation_owners().graph().clone();

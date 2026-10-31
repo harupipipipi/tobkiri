@@ -5,7 +5,7 @@ use crate::{BootstrapInputOwner, BootstrapModuleIndex, NativeBootstrap};
 use anyhow::{Result, ensure};
 use std::{fs::File, io::Read, time::Instant};
 use tobkiri_canon::{CoreBuffer, Digest};
-use tobkiri_gate::{CapacityKind, ControlKind, NativeSetupInvocation};
+use tobkiri_gate::{CapacityKind, ControlKind, CoreCancellation, NativeSetupInvocation};
 use tobkiri_wasm::{
     NativeDataBinding, NativeDataError, NativeDataIoError, NativeDataObservation,
     NativeDataProgram, NativeDataValue, WasmEngine,
@@ -35,6 +35,7 @@ pub struct NativeComponentPreparation<S: NativeComponentOwner> {
     invocation: NativeSetupInvocation,
     engine: WasmEngine,
     deadline: Instant,
+    cancellation: CoreCancellation,
 }
 
 /// The same Engine, component, source owner and original operation after compile.
@@ -61,11 +62,38 @@ impl<S: NativeComponentOwner> NativeComponentPreparation<S> {
     /// The caller must begin the real operation BEFORE entering this function.
     /// Both the actual app adapter and CI use this same composition choice.
     pub fn new(invocation: NativeSetupInvocation, source: S) -> Result<Self> {
+        Self::new_inner(invocation, source, None)
+    }
+
+    /// Preserve an actual native owner's cancellation without changing accounts.
+    /// The funded child rejects foreign/inert parents and cannot cancel them.
+    pub fn new_with_cancellation_parent(
+        invocation: NativeSetupInvocation,
+        source: S,
+        parent: &CoreCancellation,
+    ) -> Result<Self> {
+        Self::new_inner(invocation, source, Some(parent))
+    }
+
+    fn new_inner(
+        invocation: NativeSetupInvocation,
+        source: S,
+        parent: Option<&CoreCancellation>,
+    ) -> Result<Self> {
         let deadline = invocation.deadline()?;
         source.check_component_live()?;
         ensure!(
             Instant::now() < deadline,
             "original native preparation deadline expired"
+        );
+        let cancellation = match parent {
+            Some(parent) => parent.child_with_control(invocation.control())?,
+            None => CoreCancellation::new_with_control(invocation.control())?,
+        };
+        ensure!(
+            !cancellation.is_cancelled(),
+            "native preparation cancelled: {:?}",
+            cancellation.cause()
         );
         let engine =
             WasmEngine::new_with_control_and_optimization(invocation.control(), OptLevel::None)?;
@@ -74,9 +102,16 @@ impl<S: NativeComponentOwner> NativeComponentPreparation<S> {
             invocation,
             engine,
             deadline,
+            cancellation,
         };
         preparation.check_live()?;
         Ok(preparation)
+    }
+
+    /// Reduction-only handle retained across compile and the eventual Store.
+    /// Signalling it does not prove worker completion or physical release.
+    pub fn cancellation(&self) -> &CoreCancellation {
+        &self.cancellation
     }
 
     fn check_live(&self) -> Result<()> {
@@ -84,6 +119,11 @@ impl<S: NativeComponentOwner> NativeComponentPreparation<S> {
         ensure!(
             self.invocation.deadline()? == self.deadline && Instant::now() < self.deadline,
             "original native deadline exhausted during component preparation"
+        );
+        ensure!(
+            !self.cancellation.is_cancelled(),
+            "native preparation cancelled: {:?}",
+            self.cancellation.cause()
         );
         Ok(())
     }
@@ -156,13 +196,20 @@ impl<S: NativeComponentOwner> PreparedNativeComponent<S> {
     ))]
     pub(crate) fn into_diagnostic_parts(
         self,
-    ) -> Result<(WasmEngine, Component, NativeSetupInvocation, S)> {
+    ) -> Result<(
+        WasmEngine,
+        Component,
+        NativeSetupInvocation,
+        S,
+        CoreCancellation,
+    )> {
         self.preparation.check_live()?;
         Ok((
             self.preparation.engine,
             self.component,
             self.preparation.invocation,
             self.preparation.source,
+            self.preparation.cancellation,
         ))
     }
 
@@ -182,11 +229,20 @@ impl<S: NativeComponentOwner> PreparedNativeComponent<S> {
         let preparation = self.preparation;
         let store = preparation
             .engine
-            .native_setup_store(preparation.invocation, ())?;
+            .native_setup_store_with_cancellation_parent(
+                preparation.invocation,
+                (),
+                &preparation.cancellation,
+            )?;
         let program = store
             .prepare_data_program(&self.component, bindings)
             .await?;
         preparation.source.check_component_live()?;
+        ensure!(
+            !preparation.cancellation.is_cancelled(),
+            "native preparation cancelled: {:?}",
+            preparation.cancellation.cause()
+        );
         ensure!(
             Instant::now() < program.original_deadline(),
             "original preparation deadline expired"
@@ -207,14 +263,31 @@ impl<S: NativeComponentOwner> PreparedNativeComponent<S> {
         S: BootstrapInputOwner,
     {
         self.preparation.check_live()?;
-        NativeBootstrap::prepare(
+        let cancellation = self.preparation.cancellation;
+        let result = NativeBootstrap::prepare_with_cancellation_parent(
             &self.preparation.engine,
             &self.component,
             self.preparation.invocation,
             self.preparation.source,
             index,
+            &cancellation,
         )
-        .await
+        .await;
+        // Never replace an actual initialization/refusal failure with a later
+        // cancellation observation. A successful object is not published late.
+        match result {
+            Ok(Ok(runner)) if cancellation.is_cancelled() => {
+                let original =
+                    anyhow::anyhow!("native preparation cancelled: {:?}", cancellation.cause());
+                match runner.finish().await {
+                    Ok(()) => Err(original),
+                    Err(cleanup) => {
+                        Err(crate::BootstrapCleanupFailure { original, cleanup }.into())
+                    }
+                }
+            }
+            other => other,
+        }
     }
 }
 
@@ -402,6 +475,44 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn cancellation_keeps_source_custody_and_refuses_late_compile_or_handoff() -> Result<()> {
+        let temporary = tempfile::tempdir()?;
+        let root = temporary.path().canonicalize()?;
+        let owner = RuntimeOwner::open(root.join("data"))?;
+        let retired = Arc::new(AtomicBool::new(false));
+        let bytes = data_component()?;
+        let path = root.join("cancelled.wasm");
+        File::create(&path)?.write_all(&bytes)?;
+        for after_compile in [false, true] {
+            let invocation = owner.begin_native_setup()?;
+            let deadline = invocation.deadline()?;
+            let parent = CoreCancellation::new_with_control(invocation.control())?;
+            let preparation = NativeComponentPreparation::new_with_cancellation_parent(
+                invocation.clone(),
+                source(&root, &retired)?,
+                &parent,
+            )?;
+            assert!(preparation.cancellation().is_direct_child_of(&parent));
+            let failure = if after_compile {
+                let prepared = preparation.compile(File::open(&path)?, &Digest::hash(&bytes))?;
+                parent.cancel();
+                prepared.prepare_data_program(&[]).await.err()
+            } else {
+                parent.cancel();
+                preparation
+                    .compile(File::open(&path)?, &Digest::hash(&bytes))
+                    .err()
+            }
+            .ok_or_else(|| anyhow::anyhow!("cancelled preparation published"))?;
+            assert!(failure.to_string().contains("native preparation cancelled"));
+            assert_eq!(invocation.deadline()?, deadline);
+            assert_eq!(invocation.capacity_snapshot()?.charged_bytes, 0);
+            assert_eq!(Arc::strong_count(&retired), 1);
+        }
+        Ok(())
+    }
+
     // Controlled owner of the selected test artifact, deliberately no roots API.
     // This fixture proves DATA custody, not product artifact admission or GUI IO.
     struct DataSource {
@@ -450,12 +561,14 @@ mod tests {
         File::create(&path)?.write_all(&bytes)?;
         let invocation = owner.begin_native_setup()?;
         let deadline = invocation.deadline()?;
-        let prepared = NativeComponentPreparation::new(
+        let parent = CoreCancellation::new_with_control(invocation.control())?;
+        let prepared = NativeComponentPreparation::new_with_cancellation_parent(
             invocation.clone(),
             DataSource {
                 retired: retired.clone(),
                 _directory: File::open(&root)?,
             },
+            &parent,
         )?
         .compile(File::open(path)?, &Digest::hash(&bytes))?;
         let binding = [NativeDataBinding {
@@ -480,7 +593,19 @@ mod tests {
             assert_eq!(program.original_deadline(), deadline);
         }
         assert_eq!(Arc::strong_count(&retired), 2);
-        program.retire();
+        parent.cancel();
+        drop(parent);
+        // The preparation has been consumed, yet its retained child still sees
+        // parent cancellation. The first entry starts the ORIGINAL grace.
+        let within_grace = program.invoke(0, None).await?;
+        assert!(within_grace.is_ok());
+        tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
+        let error = program
+            .invoke(0, None)
+            .await
+            .err()
+            .ok_or_else(|| anyhow::anyhow!("consumed preparation lost cancellation"))?;
+        assert!(format!("{error:#}").contains("component cancelled after grace period"));
         assert!(program.observation().store_retired);
         drop(program);
         tobkiri_wasm::reap_allocation_owners()?;

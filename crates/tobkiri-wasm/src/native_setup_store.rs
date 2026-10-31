@@ -162,7 +162,19 @@ impl WasmEngine {
         invocation: NativeSetupInvocation,
         data: T,
     ) -> Result<NativeSetupStore<T>> {
-        self.native_setup_store_inner(invocation, data, None)
+        self.native_setup_store_inner(invocation, data, None, None)
+    }
+
+    /// Keep a native preparation's cancellation lineage through this Store.
+    /// The child is funded by the same actual invocation control; it conveys
+    /// no permission and cannot cancel its parent or renew the original budget.
+    pub fn native_setup_store_with_cancellation_parent<T: Send + 'static>(
+        &self,
+        invocation: NativeSetupInvocation,
+        data: T,
+        parent: &CoreCancellation,
+    ) -> Result<NativeSetupStore<T>> {
+        self.native_setup_store_inner(invocation, data, None, Some(parent))
     }
 
     /// Fix native-only signatures and factories BEFORE Store construction.
@@ -176,7 +188,22 @@ impl WasmEngine {
         bindings: &'static [NativeImportBinding<T>],
     ) -> Result<NativeSetupStore<T>> {
         let table = imports::Table::new(&invocation, &data, bindings)?;
-        let mut store = self.native_setup_store_inner(invocation, data, Some(table))?;
+        let mut store = self.native_setup_store_inner(invocation, data, Some(table), None)?;
+        store.bind_native_data_io()?;
+        Ok(store)
+    }
+
+    /// Bind the same fixed native IO table with a preparation cancellation parent.
+    pub fn native_setup_store_with_imports_and_cancellation_parent<T: NativeImportState>(
+        &self,
+        invocation: NativeSetupInvocation,
+        data: T,
+        bindings: &'static [NativeImportBinding<T>],
+        parent: &CoreCancellation,
+    ) -> Result<NativeSetupStore<T>> {
+        let table = imports::Table::new(&invocation, &data, bindings)?;
+        let mut store =
+            self.native_setup_store_inner(invocation, data, Some(table), Some(parent))?;
         store.bind_native_data_io()?;
         Ok(store)
     }
@@ -186,6 +213,7 @@ impl WasmEngine {
         invocation: NativeSetupInvocation,
         data: T,
         imports: Option<imports::TableRef<T>>,
+        parent: Option<&CoreCancellation>,
     ) -> Result<NativeSetupStore<T>> {
         let deadline = invocation.deadline()?;
         if Instant::now() >= deadline {
@@ -199,7 +227,13 @@ impl WasmEngine {
         let structure_control = invocation
             .control()
             .reserve(ControlKind::Frame, STORE_STRUCTURE_CONTROL_BYTES)?;
-        let cancel = CoreCancellation::new_with_control(invocation.control())?;
+        let cancel = match parent {
+            Some(parent) => parent.child_with_control(invocation.control())?,
+            None => CoreCancellation::new_with_control(invocation.control())?,
+        };
+        if cancel.is_cancelled() {
+            bail!("native Setup parent cancelled: {:?}", cancel.cause());
+        }
         let retirement = tokio_util::sync::CancellationToken::new();
         let owners =
             crate::allocation::native_owners(&invocation, deadline, &cancel, &retirement, FUEL)?;

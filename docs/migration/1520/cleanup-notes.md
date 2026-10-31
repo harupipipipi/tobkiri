@@ -75,6 +75,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   （新規2件含む）/Gate76件/Profile承認12件が成功し、実macOS Hostのコンパイルも成功。
   元run_launcherとのowner一組化・native準備/reviewの全終了はまだ未接続であり、
   このprimitiveだけで製品統合とは呼ばない。
+- 次の小区分: native準備からStoreへ同じCoreControlで資金を確保したキャンセル子を
+  引き継ぐ。外部account/inert・既キャンセル親は拒否し、Storeの単一claim・元2B/64MiB/
+  絶対期限・既存2秒graceは変更しない。同期compileは前後で確認するだけで、途中停止や
+  worker完了を偽装しない。準備消費後も子が親を保持し、子のcancelは親へ逆流しない。
+  late initialization成功を返す直前のcancelは実finishを待ち、cancelとcleanup故障を両方
+  保持する。失敗を後発cancelで上書きしない。コード実装済み、実CIは未検証。
+- この小区分の回帰は実Storeの親生成race/外部親/既cancel拒否/子のみcancel/元graceでの
+  guest停止とpayload解放、および実macOS準備のcompile前/引継ぎ前拒否・消費後cancelと
+  source寿命。旧fullharnessのpreparation期待件数が2のままだったため実5件へ更新する。
+  Store用API重複は既存innerへ集約し、bootstrapも単一prepare_innerを共有する。
+  元ShutdownStateの親生成・worker join・Core owner一組化・GUI承認への接続は別途未実装。
 - 条件: 旧 Profile・データ・秘密情報・復旧の実移行、実候補と承認の拘束、
   Stop / Quit の終了・失効まで確認する。空の新 root を既存環境の代用にしない。
   最初の Profile を CLI で作らせる暫定画面も、元 Setup に戻すまで未完了とする。
