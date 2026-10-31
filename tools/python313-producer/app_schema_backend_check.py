@@ -67,6 +67,10 @@ def compare(args, receipt, package_paths, extension):
     if kernel.app_schema_entry_count() != 64 or kernel.app_schema_frame_count() <= 64:
         raise ValueError('each actual schema must enter Rust frames')
     receipt['reference_counts_after_64'] = kernel.app_reference_counts()
+    receipt['value_counts_after_64'] = kernel.app_value_counts()
+    if (receipt['value_counts_after_64']['native_type_checks'] <= 0
+            or receipt['value_counts_after_64']['native_numeric_comparisons'] <= 0):
+        raise ValueError('actual App schema corpus did not enter native value operations')
     if (receipt['reference_counts_after_64']['native_pointers'] <= 0
             or receipt['reference_counts_after_64']['native_dynamic_anchors'] <= 0):
         raise ValueError('actual owned builtin fragment paths were not exercised')
@@ -104,6 +108,8 @@ def compare(args, receipt, package_paths, extension):
     from app_schema_callout_checks import callout_checks, owned_model_checks
     receipt['default_callout_checks'] = callout_checks(provider, kernel)
     receipt['owned_model_checks'] = owned_model_checks(provider, kernel)
+    from app_schema_value_checks import value_checks
+    receipt['value_checks'] = value_checks(provider, kernel)
     receipt.update(outcome='success', app_backend_64_success=True,
                    app_backend_entries=kernel.app_schema_entry_count(),
                    app_backend_frames=kernel.app_schema_frame_count(),

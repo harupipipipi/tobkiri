@@ -8,7 +8,7 @@ use crate::keywords::{self, builtin, format, module_member, validation_error};
 use pyo3::{
     exceptions::{PyMemoryError, PyNotImplementedError, PyRuntimeError},
     prelude::*,
-    types::{PyBool, PyDict, PyFloat, PyInt, PyIterator, PyList, PyString, PyTuple},
+    types::{PyBool, PyDict, PyIterator, PyList, PyString, PyTuple},
 };
 use std::{
     rc::Rc,
@@ -20,13 +20,15 @@ static ENTRIES: AtomicUsize = AtomicUsize::new(0);
 static FRAMES: AtomicUsize = AtomicUsize::new(0);
 
 mod references;
+mod value;
 use references::{DefaultReferencePolicy, ReferenceState, ResourcePolicy};
+use value::{DefaultValuePolicy, Node, TypePolicy};
 
 struct Environment {
     specification: Object,
     resolver_type: Object,
     checker: Object,
-    type_checker: Object,
+    value_policy: TypePolicy,
     urljoin: Object,
     urldefrag: Object,
     resource_policy: ResourcePolicy,
@@ -83,8 +85,8 @@ enum Action {
 }
 
 struct Frame {
-    schema: Object,
-    instance: Object,
+    schema: Node,
+    instance: Node,
     references: Rc<ReferenceState>,
     // Pending ordinary descents enter their actual subresource lazily. A lookup
     // supplies its own resolver and must not enter it a second time.
@@ -101,8 +103,8 @@ struct Frame {
 impl Frame {
     fn new(schema: Object, instance: Object, references: Rc<ReferenceState>, root: bool) -> Self {
         Self {
-            schema,
-            instance,
+            schema: Node::new(schema),
+            instance: Node::new(instance),
             references,
             enter_resource: !root,
             root,
@@ -162,7 +164,7 @@ impl Frame {
         kwargs.set_item("validator_value", selected.value.bind(py))?;
         kwargs.set_item("instance", self.instance.bind(py))?;
         kwargs.set_item("schema", self.schema.bind(py))?;
-        kwargs.set_item("type_checker", env.type_checker.bind(py))?;
+        kwargs.set_item("type_checker", env.value_policy.current_checker(py)?)?;
         let error_bound = error.bind(py);
         error_bound.call_method("_set", (), Some(&kwargs))?;
         if selected.name != "if" && selected.name != "$ref" {
@@ -420,22 +422,22 @@ impl Frame {
                 Ok(())
             };
             match name.as_str() {
-                "properties" if json_type(instance, "object")? => {
+                "properties" if json_type(env, instance, "object", schema)? => {
                     children(ChildKind::Properties, value.call_method0("items")?)?
                 }
-                "propertyNames" if json_type(instance, "object")? => {
+                "propertyNames" if json_type(env, instance, "object", schema)? => {
                     children(ChildKind::PropertyNames, instance.clone())?
                 }
-                "dependentSchemas" if json_type(instance, "object")? => {
+                "dependentSchemas" if json_type(env, instance, "object", schema)? => {
                     children(ChildKind::DependentSchemas, value.call_method0("items")?)?
                 }
-                "additionalProperties" if json_type(instance, "object")? => {
+                "additionalProperties" if json_type(env, instance, "object", schema)? => {
                     // Preserve the original extras iterator/set ordering and live
                     // dictionary values; this helper performs no validation.
                     let extras = keywords::utility(py, "find_additional_properties")?
                         .call1((instance, schema))?;
                     let extras = builtin(py, "set")?.call1((extras,))?;
-                    if json_type(&value, "object")? {
+                    if json_type(env, &value, "object", schema)? {
                         children(ChildKind::Additional, extras)?;
                     } else if !value.is_truthy()? && extras.is_truthy()? {
                         let message = if schema.contains("patternProperties")? {
@@ -470,7 +472,7 @@ impl Frame {
                         return self.decorate(py, env, error);
                     }
                 }
-                "items" if json_type(instance, "array")? => {
+                "items" if json_type(env, instance, "array", schema)? => {
                     let prefix = schema
                         .call_method1("get", ("prefixItems", PyList::empty(py)))?
                         .len()?;
@@ -506,7 +508,7 @@ impl Frame {
                         )?;
                     }
                 }
-                "prefixItems" if json_type(instance, "array")? => children(
+                "prefixItems" if json_type(env, instance, "array", schema)? => children(
                     ChildKind::PrefixItems,
                     builtin(py, "zip")?
                         .call1((builtin(py, "enumerate")?.call1((instance,))?, &value))?,
@@ -562,17 +564,28 @@ impl Frame {
                 | "additionalProperties"
                 | "items"
                 | "prefixItems" => {}
-                "type" | "const" | "enum" | "minimum" | "maximum" | "exclusiveMinimum"
-                | "exclusiveMaximum" | "multipleOf" | "minItems" | "maxItems" | "minLength"
-                | "maxLength" | "minProperties" | "maxProperties" | "uniqueItems" | "pattern"
-                | "format" | "not" => {
+                "minimum" | "maximum" | "exclusiveMinimum" | "exclusiveMaximum" => {
+                    if let Some(error) = value::numeric_bound(
+                        py,
+                        &env.value_policy,
+                        &name,
+                        &value,
+                        instance,
+                        schema,
+                    )? {
+                        return self.decorate(py, env, error.unbind());
+                    }
+                }
+                "type" | "const" | "enum" | "multipleOf" | "minItems" | "maxItems"
+                | "minLength" | "maxLength" | "minProperties" | "maxProperties" | "uniqueItems"
+                | "pattern" | "format" | "not" => {
                     let references = self.references.clone();
                     let error = keywords::scalar_rule(
                         py,
                         &name,
                         &value,
                         instance,
-                        |actual, kind| json_type(actual, &kind.extract::<String>()?),
+                        |actual, kind| env.value_policy.check(py, actual, kind, schema),
                         || Ok(env.checker.bind(py).clone()),
                         |subschema, actual| {
                             let frame = Frame::new(
@@ -662,34 +675,29 @@ fn next<'py>(py: Python<'py>, cursor: &Py<PyIterator>) -> PyResult<Option<Bound<
     cursor.bind(py).clone().next().transpose()
 }
 
-fn json_type(value: &Bound<'_, PyAny>, kind: &str) -> PyResult<bool> {
-    Ok(match kind {
-        "object" => value.is_instance_of::<PyDict>(),
-        "array" => value.is_instance_of::<PyList>(),
-        "string" => value.is_instance_of::<PyString>(),
-        "boolean" => value.is_instance_of::<PyBool>(),
-        "null" => value.is_none(),
-        "integer" => {
-            (!value.is_instance_of::<PyBool>() && value.is_instance_of::<PyInt>())
-                || (value.is_instance_of::<PyFloat>()
-                    && value.call_method0("is_integer")?.is_truthy()?)
-        }
-        "number" => {
-            !value.is_instance_of::<PyBool>()
-                && (value.is_instance_of::<PyInt>() || value.is_instance_of::<PyFloat>())
-        }
-        _ => {
-            return Err(PyNotImplementedError::new_err(format!(
-                "experimental JSON type: {kind}"
-            )))
-        }
-    })
+fn json_type(
+    env: &Environment,
+    value: &Bound<'_, PyAny>,
+    kind: &str,
+    schema: &Bound<'_, PyAny>,
+) -> PyResult<bool> {
+    let py = value.py();
+    match kind {
+        "object" => env
+            .value_policy
+            .check(py, value, pyo3::intern!(py, "object").as_any(), schema),
+        "array" => env
+            .value_policy
+            .check(py, value, pyo3::intern!(py, "array").as_any(), schema),
+        _ => unreachable!("structural App type"),
+    }
 }
 
 /// Inputs are the live selected provider's META, resource registry and callbacks.
 /// The caller chooses the provider BEFORE validation. No original Validator is
 /// constructed, called or retried here, including on malformed/invalid inputs.
 #[pyfunction]
+#[pyo3(signature = (schema, meta, registry, policy, type_checker, format_checker, *, value_policy=None, type_owner=None))]
 fn app_check_schema(
     py: Python<'_>,
     schema: &Bound<'_, PyAny>,
@@ -698,6 +706,8 @@ fn app_check_schema(
     policy: &Bound<'_, DefaultReferencePolicy>,
     type_checker: &Bound<'_, PyAny>,
     format_checker: &Bound<'_, PyAny>,
+    value_policy: Option<&Bound<'_, DefaultValuePolicy>>,
+    type_owner: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<()> {
     ENTRIES.fetch_add(1, Ordering::Relaxed);
     let (specification, resolver_type, resource_policy) = {
@@ -727,7 +737,7 @@ fn app_check_schema(
         specification,
         resolver_type,
         checker: format_checker.clone().unbind(),
-        type_checker: type_checker.clone().unbind(),
+        value_policy: TypePolicy::new(py, type_checker, value_policy, type_owner)?,
         urljoin: module_member(py, "referencing._core", "urljoin")?.unbind(),
         urldefrag: module_member(py, "referencing._core", "urldefrag")?.unbind(),
         resource_policy,
@@ -758,6 +768,7 @@ fn app_schema_frame_count() -> usize {
 
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     references::register(module)?;
+    value::register(module)?;
     module.add_function(wrap_pyfunction!(app_check_schema, module)?)?;
     module.add_function(wrap_pyfunction!(app_schema_entry_count, module)?)?;
     module.add_function(wrap_pyfunction!(app_schema_frame_count, module)?)?;

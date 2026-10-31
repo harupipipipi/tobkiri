@@ -9,7 +9,8 @@ from importlib.resources import files
 import builtins
 import json
 
-from jsonschema import _format
+from jsonschema import _format, exceptions
+from jsonschema._types import draft202012_type_checker
 from jsonschema.validators import _warn_for_remote_retrieve
 from referencing import Registry
 from referencing.jsonschema import DRAFT202012
@@ -53,6 +54,7 @@ class DefinitionModel:
     """Own the selected default contents, resources and registration table."""
 
     def __init__(self) -> None:
+        self.type_checker = draft202012_type_checker
         root = files("jsonschema_specifications").joinpath("schemas", "draft202012")
         documents = [json.loads(root.joinpath(name).read_bytes()) for name in SOURCE_DOCUMENTS]
         resources = [(document["$id"], DRAFT202012.create_resource(document))
@@ -73,3 +75,11 @@ class DefinitionModel:
             # Preserve the actual exception-class / tuple representation.
             caught = exceptions[0] if len(exceptions) == 1 else exceptions
             self.checker.checkers[name] = (callback, caught)
+
+
+def type_boundary(checker, instance, kind, schema):
+    """Run the actual selected custom operation with its original error context."""
+    try:
+        return checker.is_type(instance, kind)
+    except exceptions.UndefinedTypeCheck:
+        raise exceptions.UnknownType(kind, instance, schema) from None

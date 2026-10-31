@@ -38,7 +38,7 @@ def run(args, receipt):
     fetch_schema.verify(args.inputs)
     source = fetch_sdk.inventory(args.source)
     if (set(source) != {"Cargo.toml", "Cargo.lock", "README.md", "COPYING.jsonschema",
-                        "adapter.py", "src/lib.rs", "src/traversal.rs", "src/keywords.rs", "src/app_schema.rs", "src/app_schema/references.rs", "app_provider.py", "app_schema_model.py"}
+                        "adapter.py", "src/lib.rs", "src/traversal.rs", "src/keywords.rs", "src/app_schema.rs", "src/app_schema/references.rs", "src/app_schema/value.rs", "app_provider.py", "app_schema_model.py"}
             or any("link" in item for item in source.values())
             or sum(item["bytes"] for item in source.values()) > builder.MAX_SOURCE):
         raise ValueError("native kernel source closure differs")

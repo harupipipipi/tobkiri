@@ -1266,3 +1266,21 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   errorは元frameの元時点で実schema/instanceから構成する。子取得前後の差替え、同一子
   変更、alias、callback挿入の非標準object、例外順/identityを追加比較する。
   次sliceはまだ未実装で、全value engineや性能合格の予測はしない。
+- 次value sliceを実装（CI前）。`app_schema/value.rs`のNodeがFrameの実schema/instance
+  handleを所有し、mutable内容や判定結果は保存しない。dict/list iteratorと参照解決は未変更。
+  source-default型policyをopaque metadataで明示し、exact組込み型の判定と整数float判定を
+  Rustで行う。App TYPE_CHECKERは明示source依存から取得し、実ownerの設定は操作時・error
+  decoration時に読み直す。custom checker/非標準object/非exact型名は実is_type境界へ渡す。
+  UnknownTypeへの変換も実except内で行い、例外contextと実引数を残す。
+- Appのminimum/maximum/exclusiveMinimum/exclusiveMaximumのみ、exact i64同士・float同士・
+  整数が正確に表せる±2^53範囲の混合値をRust比較へ移した。巨大整数・危うい混合値・
+  subclass/custom比較は比較前に実Py rich-compareを選ぶ。multipleOfやgeneric keyword APIを
+  同時変更しない。bool/int・NaN/Inf・負のzeroを区別し、errorは元位置で実handleから作る。
+  policyはsource/type実装metadataで、callerのnative許可flagやCore権限を追加しない。
+- 独立helperに12群/151対の実原版比較を追加。exact/scalar境界、全4数値制約、巨大/非有限値、
+  Decimal/Fraction/Number/subclass、custom TYPEと途中差替え、型名hash、子取得前後の差替え・
+  同一子変更・複数path alias・非標準値挿入、比較/descriptor/iterator例外identityと順を含む。
+  NaNをJSON digestへ通さず、実node参照とrepr/tagで観測する。実64件のnative型/数値到達も
+  必須。Solのsource監査でsurrogate型名のto_str拒否がUnicodeEncodeErrorになる差を発見し、
+  実type lookup/UnknownType境界を最初から選ぶよう修正、unknown/surrogate比較を加えた。
+  全13source inventoryを更新。source AST7/rustfmt/diffのみ完了、native/guest実行は未実施。

@@ -14,6 +14,7 @@ from app_schema_model import DefinitionModel
 kernel.default_reference_policy()
 _MODEL = DefinitionModel()
 _REFERENCE_POLICY = kernel.app_reference_policy(_MODEL.specifications)
+_VALUE_POLICY = kernel.default_value_policy()
 
 
 class AppSchemaProvider:
@@ -21,7 +22,7 @@ class AppSchemaProvider:
 
     META_SCHEMA = _MODEL.meta
     FORMAT_CHECKER = _MODEL.checker
-    TYPE_CHECKER = _Original.TYPE_CHECKER
+    TYPE_CHECKER = _MODEL.type_checker
     _SPECIFICATIONS = _MODEL.specifications
     _REGISTRY = _MODEL.registry
 
@@ -40,7 +41,8 @@ class AppSchemaProvider:
                 raise exceptions.SchemaError.create_from(error)
             return
         kernel.app_check_schema(schema, meta, cls._REGISTRY,
-                                _REFERENCE_POLICY, cls.TYPE_CHECKER, checker)
+                                _REFERENCE_POLICY, cls.TYPE_CHECKER, checker,
+                                value_policy=_VALUE_POLICY, type_owner=cls)
 
     def __new__(cls, *args, **kwargs):
         # Document validation has not been migrated by this check_schema slice.
