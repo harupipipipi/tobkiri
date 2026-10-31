@@ -15,6 +15,7 @@ use tobkiri_core::RuntimeOwner;
 pub(super) struct Fixture {
     pub clock: f64,
     pub mutation: BTreeMap<String, Option<String>>,
+    pub after_close_fault: bool,
 }
 impl Fixture {
     pub fn after_epoch(&self, path: &Path) -> Result<()> {
@@ -294,6 +295,7 @@ fn stage_name(value: OriginalAuthorityStage) -> &'static str {
         OriginalAuthorityStage::Migration => "migration",
         OriginalAuthorityStage::Epoch => "epoch",
         OriginalAuthorityStage::EpochRecord => "epoch-record",
+        OriginalAuthorityStage::Snapshot => "snapshot",
         OriginalAuthorityStage::Close => "close",
     }
 }
@@ -346,12 +348,35 @@ fn original_reference_driver() -> anyhow::Result<()> {
                         .collect()
                 })
                 .unwrap_or_default(),
+            after_close_fault: case["after_close_fault"].as_bool().unwrap_or(false),
         };
         let mut read = OriginalAuthorityRead::new(&invocation)?;
-        read.run_inner(&source, &cancellation, Some(&fixture))?;
+        let snapshot_operation = case["operation"].as_str() == Some("snapshot");
+        if snapshot_operation {
+            let bundle = case["bundle_lock_digest"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("snapshot bundle DATA missing"))?;
+            read.run_operation(&source, &cancellation, Some(bundle), Some(&fixture))?;
+        } else {
+            anyhow::ensure!(
+                case["operation"].is_null() || case["operation"] == "material",
+                "unknown fixture operation"
+            );
+            read.run_inner(&source, &cancellation, Some(&fixture))?;
+        }
         let actual = read.result().expect("actual original operation result");
         let observed = match actual {
-            Ok(value) => material(value),
+            Ok(value) => {
+                if snapshot_operation {
+                    let value = read
+                        .snapshot_result()
+                        .expect("snapshot was selected")
+                        .expect("snapshot operation succeeded");
+                    json!({"outcome":"snapshot","security_epoch":value.security_epoch.decimal(),"snapshot_digest":value.digest.as_str()})
+                } else {
+                    material(value)
+                }
+            }
             Err(error)
                 if error.class
                     == "core_runtime.bootstrap.profile_capture.ProfileResolutionDenied" =>
@@ -367,10 +392,12 @@ fn original_reference_driver() -> anyhow::Result<()> {
         };
         let mut expected = case["expected"].clone();
         let expected_object = expected.as_object_mut().unwrap();
-        // This operation returns materials. The original later protocol digest
-        // gate remains the Python caller's separate checked responsibility.
-        expected_object.remove("protocol_snapshot");
-        expected_object.remove("protocol_snapshot_error");
+        // Preserve the separate material-only proof. Snapshot operations
+        // compare their in-scope canonical result/error without removing it.
+        if !snapshot_operation {
+            expected_object.remove("protocol_snapshot");
+            expected_object.remove("protocol_snapshot_error");
+        }
         let mut flat = observed.clone();
         flat.as_object_mut()
             .unwrap()
@@ -593,6 +620,164 @@ fn decoded_data_preserves_source_order_depth_and_releases_actual_capacity() -> a
     );
     drop(decoded);
     assert!(!selected.join("authority").exists());
+    drop(diagnostics);
+    assert_eq!(invocation.capacity_snapshot()?.charged_bytes, 0);
+    assert_eq!(invocation.capacity_snapshot()?.reservations, 0);
+    Ok(())
+}
+
+#[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn snapshot_stays_in_scope_and_keeps_protocol_failure_separate_from_close() -> anyhow::Result<()> {
+    let temporary = tempfile::tempdir()?;
+    let root = temporary.path().canonicalize()?;
+    let selected = root.join("selected");
+    std::fs::create_dir(&selected)?;
+    let source = Source {
+        root: selected.clone(),
+        _selected: File::open(&selected)?,
+        live: Arc::new(AtomicBool::new(true)),
+    };
+    let owner = RuntimeOwner::open(root.join("core"))?;
+    let invocation = owner.begin_native_setup()?;
+    let cancellation = CoreCancellation::new_with_control(invocation.control())?;
+    // No digest syntax restriction or normalization is added to the App input.
+    let bundle = " opaque candidate \n\0é ";
+    let mut read = OriginalAuthorityRead::new(&invocation)?;
+    assert!(read.snapshot_result().is_none());
+    read.run_snapshot(&source, &cancellation, bundle)?;
+    let actual = read
+        .snapshot_result()
+        .expect("snapshot operation")
+        .expect("successful genesis snapshot");
+    assert_eq!(actual.security_epoch.decimal(), "1");
+    let reason = Digest::hash(br#"{"reason":"genesis"}"#);
+    let expected = object([
+        ("bundle_lock_digest", CanonValue::Str(bundle.into())),
+        ("grant_import", CanonValue::Str("none".into())),
+        (
+            "schema",
+            CanonValue::Str("io.tobkiri.profile-authority-snapshot.v1".into()),
+        ),
+        ("security_epoch", CanonValue::Int(1)),
+        (
+            "security_epoch_reason_digest",
+            CanonValue::Str(reason.as_str().into()),
+        ),
+    ]);
+    assert_eq!(
+        actual.digest,
+        &tobkiri_canon::digest(&expected, tobkiri_canon::Variant::StrictV1)?
+    );
+    assert!(read.cleanup_verified());
+    assert!(!selected.join("authority").exists());
+    assert_eq!(
+        read.run_snapshot(&source, &cancellation, bundle),
+        Err(OriginalAuthorityAdmission::AlreadyAttempted)
+    );
+    drop(read);
+    assert_eq!(invocation.capacity_snapshot()?.charged_bytes, 0);
+    let diagnostics = invocation.reserve(tobkiri_gate::CapacityKind::VfsBuffer, 16384)?;
+    let op = Operation {
+        owner: &source,
+        invocation: &invocation,
+        cancellation: &cancellation,
+        deadline: invocation.deadline()?,
+        pid: std::process::id(),
+        cleanup: Arc::new(io::CleanupState::new(
+            invocation
+                .control()
+                .reserve(tobkiri_gate::ControlKind::Context, 4096)?,
+        )),
+        fixture: None,
+    };
+    // The first read can exceed I-JSON while the second record remains safe.
+    let split = OriginalAuthorityMaterial::Existing {
+        epoch: OriginalAuthorityEpoch("9007199254740992".into()),
+        record_epoch: OriginalAuthorityEpoch("1".into()),
+        advanced_at: 1000.0,
+        reason_digest: reason.as_str().into(),
+    };
+    assert_eq!(
+        snapshot::digest(&op, &split, bundle)?,
+        tobkiri_canon::digest(&expected, tobkiri_canon::Variant::StrictV1)?
+    );
+    let unsafe_record = OriginalAuthorityMaterial::Existing {
+        epoch: OriginalAuthorityEpoch("1".into()),
+        record_epoch: OriginalAuthorityEpoch("9007199254740992".into()),
+        advanced_at: 1000.0,
+        reason_digest: reason.as_str().into(),
+    };
+    let failure = || {
+        snapshot::digest(&op, &unsafe_record, bundle)
+            .err()
+            .expect("actual canonical range failure")
+    };
+    let canonical = io::finish_scope::<Digest>(Err(failure()), Ok(())).unwrap_err();
+    assert_eq!(
+        canonical.class,
+        "tobkiri_protocol.errors.CanonicalizationError"
+    );
+    assert_eq!(
+        canonical.message,
+        "integer exceeds I-JSON safe range; use a canonical decimal string"
+    );
+    assert!(canonical.context.is_none());
+    assert!(canonical.cause.is_none());
+    assert!(!canonical.suppressed);
+    drop(canonical);
+    let closing = || OriginalAuthorityError {
+        stage: OriginalAuthorityStage::Close,
+        class: "builtins.RuntimeError",
+        message: "injected snapshot close failure after actual close".into(),
+        cause: None,
+        context: None,
+        suppressed: false,
+    };
+    let displaced = failure();
+    let original_buffer = displaced.message.as_ptr();
+    let surfaced = io::finish_scope::<Digest>(Err(displaced), Err(closing())).unwrap_err();
+    assert_eq!(surfaced.class, "builtins.RuntimeError");
+    assert!(surfaced.cause.is_none());
+    assert!(!surfaced.suppressed);
+    let context = surfaced
+        .context
+        .as_ref()
+        .expect("with preserves actual active error");
+    assert_eq!(context.message.as_ptr(), original_buffer);
+    assert_eq!(
+        context.class,
+        "tobkiri_protocol.errors.CanonicalizationError"
+    );
+    drop(surfaced);
+    let surfaced =
+        io::finish_scope(Ok(snapshot::digest(&op, &split, bundle)?), Err(closing())).unwrap_err();
+    assert!(surfaced.context.is_none());
+    drop(surfaced);
+    // A Source size rejection remains canonicalization, not a newly imposed
+    // digest syntax rule or an oversized conservative admission estimate.
+    let long_bundle = "x".repeat(tobkiri_canon::MAX_BYTES);
+    let oversized = snapshot::digest(&op, &split, &long_bundle).unwrap_err();
+    assert_eq!(
+        oversized.class,
+        "tobkiri_protocol.errors.CanonicalizationError"
+    );
+    assert_eq!(oversized.message, "canonical JSON exceeds size limit");
+    drop(oversized);
+    drop(long_bundle);
+    let mut refused = OriginalAuthorityRead::new(&invocation)?;
+    cancellation.cancel();
+    refused.run_snapshot(&source, &cancellation, bundle)?;
+    assert!(matches!(
+        refused.snapshot_result().unwrap(),
+        Err(OriginalAuthorityError {
+            cause: Some(OriginalAuthorityCause::Cancelled),
+            ..
+        })
+    ));
+    assert!(refused.cleanup_verified());
+    drop(refused);
+    drop(op);
     drop(diagnostics);
     assert_eq!(invocation.capacity_snapshot()?.charged_bytes, 0);
     assert_eq!(invocation.capacity_snapshot()?.reservations, 0);

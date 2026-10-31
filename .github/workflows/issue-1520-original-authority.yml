@@ -41,7 +41,7 @@ jobs:
           - os: ubuntu-22.04
             unit_tests: 2
           - os: macos-15
-            unit_tests: 3
+            unit_tests: 4
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     env:

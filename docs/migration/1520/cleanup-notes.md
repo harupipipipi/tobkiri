@@ -172,6 +172,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   観測する。canonical成功/失敗とclose成功/実close後のRuntimeError注入の4組合せを含める。
   この注入はcontext/surfaceの制御フロー投影検査であり、OS/SQLiteのphysical-close故障の
   資格証拠とはしない。実close後の状態とkey保持は引き続き独立比較する。
+  Sol6.1 xhighのsnapshot固定操作を追加しsource snapshotとしてfreezeした。借用APIの
+  run_snapshot/snapshot_resultは同Read/invocation/control/sourceを使い、成功DATAも
+  canonical errorも実close後だけ公開する。close errorには先のactual errorをmoveで
+  contextへ保つ。bundle文字列の追加検査/正規化、guestへ跨がるDB contextやTauri IPCは
+  追加しない。Mac通常unitは4/Linux2。Source/rustfmtのみ確認済みで、実93比較は次CI。
   JSON/surrogate/depth・不正leaseの例外投影、同時key作成/複合I/O/close、Linux process情報
   read内部close receipt等は未閉鎖。全Open同等・既存DB採用・GUI接続の完了とはしない。
 - cryptoの余分なowned key配列copyをZeroizing先作成へ整理した。Fernetは既存RustCryptoの

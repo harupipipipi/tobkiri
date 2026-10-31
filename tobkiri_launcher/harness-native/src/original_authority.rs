@@ -17,6 +17,8 @@ mod json;
 mod lease;
 #[path = "original_authority_schema.rs"]
 mod schema;
+#[path = "original_authority_snapshot.rs"]
+mod snapshot;
 
 /// Implemented only by the trusted composition retaining the actual selected
 /// AppConfig/ShutdownState. A path value or native allocation lease is not this
@@ -54,6 +56,14 @@ pub enum OriginalAuthorityMaterial {
     },
 }
 
+/// Borrowed App candidate DATA from the fixed in-scope snapshot operation.
+/// The first epoch read remains separate from the record used by the digest.
+/// No connection, Core grant, source capability or funded buffer escapes here.
+pub struct OriginalAuthoritySnapshot<'a> {
+    pub security_epoch: &'a OriginalAuthorityEpoch,
+    pub digest: &'a Digest,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OriginalAuthorityStage {
     Source,
@@ -67,6 +77,7 @@ pub enum OriginalAuthorityStage {
     Migration,
     Epoch,
     EpochRecord,
+    Snapshot,
     Close,
 }
 
@@ -311,6 +322,8 @@ impl std::error::Error for OriginalAuthorityAdmission {}
 /// Production drops this BEFORE sending the separately prepaid detached DATA.
 pub struct OriginalAuthorityRead {
     result: Option<Result<OriginalAuthorityMaterial>>,
+    snapshot_digest: Option<Digest>,
+    snapshot_requested: bool,
     cleanup: Arc<io::CleanupState>,
     attempted: bool,
     // Result/retained native IO are destroyed before their capacity custody.
@@ -346,6 +359,8 @@ impl OriginalAuthorityRead {
             .map_err(|error| OriginalAuthorityAdmission::Capacity { code: error.code() })?;
         Ok(Self {
             result: None,
+            snapshot_digest: None,
+            snapshot_requested: false,
             cleanup: Arc::new(io::CleanupState::new(control)),
             attempted: false,
             capacity,
@@ -366,16 +381,50 @@ impl OriginalAuthorityRead {
             self.run_inner(owner, cancellation)
         }
     }
+    /// Execute the original snapshot helper before AuthorityStore.__exit__.
+    /// `bundle_lock_digest` is candidate DATA, not metadata authority. It is
+    /// neither normalized nor validated as a digest. The existing invocation,
+    /// selected owner, cancellation and absolute deadline are borrowed intact.
+    pub fn run_snapshot<S: OriginalAuthorityOwner>(
+        &mut self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+        bundle_lock_digest: &str,
+    ) -> std::result::Result<(), OriginalAuthorityAdmission> {
+        self.run_operation(
+            owner,
+            cancellation,
+            Some(bundle_lock_digest),
+            #[cfg(test)]
+            None,
+        )
+    }
     fn run_inner<S: OriginalAuthorityOwner>(
         &mut self,
         owner: &S,
         cancellation: &CoreCancellation,
         #[cfg(test)] fixture: Option<&tests::Fixture>,
     ) -> std::result::Result<(), OriginalAuthorityAdmission> {
+        self.run_operation(
+            owner,
+            cancellation,
+            None,
+            #[cfg(test)]
+            fixture,
+        )
+    }
+    fn run_operation<S: OriginalAuthorityOwner>(
+        &mut self,
+        owner: &S,
+        cancellation: &CoreCancellation,
+        bundle_lock_digest: Option<&str>,
+        #[cfg(test)] fixture: Option<&tests::Fixture>,
+    ) -> std::result::Result<(), OriginalAuthorityAdmission> {
         if self.attempted {
             return Err(OriginalAuthorityAdmission::AlreadyAttempted);
         }
         self.attempted = true;
+        self.snapshot_requested = bundle_lock_digest.is_some();
         let deadline = self
             .invocation
             .deadline()
@@ -394,11 +443,25 @@ impl OriginalAuthorityRead {
             .check(OriginalAuthorityStage::Source)
             .and_then(|()| {
                 owner
-                    .with_original_user_data(|root| io::read_selected(&operation, root))
+                    .with_original_user_data(|root| {
+                        io::read_selected(&operation, root, bundle_lock_digest)
+                    })
                     .and_then(|result| result)
             });
         drop(operation);
-        let bytes = outcome_bytes(&outcome);
+        let (outcome, snapshot_digest) = match outcome {
+            Ok(io::Completed {
+                material,
+                snapshot_digest,
+            }) => (Ok(material), snapshot_digest),
+            Err(error) => (Err(error), None),
+        };
+        let bytes = outcome_bytes(&outcome)
+            + snapshot_digest
+                .as_ref()
+                .map(|_| std::mem::size_of::<Digest>())
+                .unwrap_or(0);
+        self.snapshot_digest = snapshot_digest;
         self.result = Some(outcome);
         // The scratch temporaries have physically died. Only the actual
         // retained result's String capacities and owned record allocations
@@ -410,6 +473,29 @@ impl OriginalAuthorityRead {
     }
     pub fn result(&self) -> Option<Result<&OriginalAuthorityMaterial, &OriginalAuthorityError>> {
         self.result.as_ref().map(|result| result.as_ref())
+    }
+    pub fn snapshot_result(
+        &self,
+    ) -> Option<Result<OriginalAuthoritySnapshot<'_>, &OriginalAuthorityError>> {
+        if !self.snapshot_requested {
+            return None;
+        }
+        self.result.as_ref().map(|outcome| match outcome {
+            Ok(material) => {
+                let epoch = match material {
+                    OriginalAuthorityMaterial::Genesis { epoch, .. }
+                    | OriginalAuthorityMaterial::Existing { epoch, .. } => epoch,
+                };
+                Ok(OriginalAuthoritySnapshot {
+                    security_epoch: epoch,
+                    digest: self
+                        .snapshot_digest
+                        .as_ref()
+                        .expect("successful fixed snapshot operation"),
+                })
+            }
+            Err(error) => Err(error),
+        })
     }
     pub fn cleanup_verified(&self) -> bool {
         self.cleanup.verified()

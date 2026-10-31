@@ -632,10 +632,39 @@ fn canonical(path: &Path) -> Result<PathBuf> {
     Ok(absolute)
 }
 
+pub(super) struct Completed {
+    pub material: OriginalAuthorityMaterial,
+    pub snapshot_digest: Option<Digest>,
+}
+fn completed<S: OriginalAuthorityOwner>(
+    op: &Operation<'_, S>,
+    material: OriginalAuthorityMaterial,
+    bundle_lock_digest: Option<&str>,
+) -> Result<Completed> {
+    let snapshot_digest = bundle_lock_digest
+        .map(|bundle| snapshot::digest(op, &material, bundle))
+        .transpose()?;
+    Ok(Completed {
+        material,
+        snapshot_digest,
+    })
+}
+pub(super) fn finish_scope<T>(outcome: Result<T>, closed: Result<()>) -> Result<T> {
+    match closed {
+        Ok(()) => outcome,
+        Err(mut error) => {
+            if let Err(previous) = outcome {
+                error.context = Some(Box::new(previous));
+            }
+            Err(error)
+        }
+    }
+}
 pub(super) fn read_selected<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     root: &Path,
-) -> Result<OriginalAuthorityMaterial> {
+    bundle_lock_digest: Option<&str>,
+) -> Result<Completed> {
     let path = root.join("authority/v4.sqlite3");
     // Path.is_file and Path.exists are separate original operations. A dangling
     // final symlink is absent here; existing symlinks are refused by the ctor.
@@ -650,19 +679,18 @@ pub(super) fn read_selected<S: OriginalAuthorityOwner>(
                 suppressed: false,
             });
         }
-        return Ok(genesis());
+        return completed(op, genesis(), bundle_lock_digest);
     }
     #[cfg(unix)]
     {
         let mut store = Store::open(op, canonical(&path)?)?;
-        let result = store.material();
+        let result = store
+            .material()
+            .and_then(|material| completed(op, material, bundle_lock_digest));
         let close = store.close();
         // __exit__ close is later than the active read failure, and replaces
         // it if close itself raises. Preserve the displaced error as context.
-        match close {
-            Ok(()) => result,
-            Err(error) => Err(error),
-        }
+        finish_scope(result, close)
     }
     #[cfg(not(unix))]
     Err(OriginalAuthorityError::unsupported(
@@ -1264,6 +1292,21 @@ impl<'a, 'host, S: OriginalAuthorityOwner> Store<'a, 'host, S> {
             ));
         }
         self.closed = true;
+        #[cfg(test)]
+        if self
+            .op
+            .fixture
+            .is_some_and(|fixture| fixture.after_close_fault)
+        {
+            return Err(OriginalAuthorityError {
+                stage: OriginalAuthorityStage::Close,
+                class: "builtins.RuntimeError",
+                message: "injected snapshot close failure after actual close".into(),
+                cause: None,
+                context: None,
+                suppressed: false,
+            });
+        }
         Ok(())
     }
 }

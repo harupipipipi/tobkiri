@@ -15,7 +15,8 @@ pub use original_authority::{
     OriginalAuthorityAdmission, OriginalAuthorityCause, OriginalAuthorityCleanup,
     OriginalAuthorityCloseReceipt, OriginalAuthorityEpoch, OriginalAuthorityError,
     OriginalAuthorityIoError, OriginalAuthorityMaterial, OriginalAuthorityOwner,
-    OriginalAuthorityRead, OriginalAuthorityStage, read_original_authority,
+    OriginalAuthorityRead, OriginalAuthoritySnapshot, OriginalAuthorityStage,
+    read_original_authority,
 };
 mod source_metadata;
 #[cfg(target_os = "macos")]
