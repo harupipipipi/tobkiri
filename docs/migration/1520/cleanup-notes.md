@@ -93,6 +93,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   strict Clippyのみ5件失敗（借用/cast/if表現）。6.1 Sol xhighが最小修正し、秘密配列の
   by-value copyやlint抑制で通さない。共有capacity CI41226219893は成功。
   macOSインストーラCI41226665165は同sourceで実行中で、Tauri callerのcompileは未確認。
+  修正`f77855520`の[CI41228262432](https://github.com/harupipipipi/tobkiri/actions/runs/41228262432)
+  は両OSで完了成功。macOSはnative40件のtyped材料/例外・logical schema/committed rows・
+  file mode/存在・既存key保持がすべて一致し、実close/容量解放/owner再openも成功。
+  Linuxは原本40件・実unsupported拒否/整数の2件、両OSのstrict Clippyと2lock graphが成功。
+  2B/64MiB/絶対30秒や元製品のOS proofは変更していない。artifactはRAMのみで読み、
+  selected JSON94,074Bだけを保存。DB/key/ZIP/binaryはローカルへ保存しない。
+  これは閉じた40ケースの有限操作の証拠であり、残るctor全契約・実Setup/GUI接続の採用
+  ではない。Astra highは次もctor不足を先に閉じ、同じBootstrap invocation/control/owner
+  の元到達点でこの実bodyを呼ぶ順を指定。独立jobの結果prefetch/cacheや新accountは作らない。
   JSON/surrogate/depth・不正leaseの例外投影、同時key作成/複合I/O/close、Linux process情報
   read内部close receipt等は未閉鎖。全Open同等・既存DB採用・GUI接続の完了とはしない。
 - cryptoの余分なowned key配列copyをZeroizing先作成へ整理した。Fernetは既存RustCryptoの
