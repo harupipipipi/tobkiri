@@ -823,3 +823,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   bounded receiptのみ保存。これはnative上の既存kernel接続証明であり、実Wasmの
   同一予算達成・製品への採用ではない。次は既存bundle catalog App source経路の
   独立Wasm実測設計をAstra highへ照会中。元64 gateや全製品要件は未完のまま。
+
+- Astra highの次設計回答: private64 probeへApp閉包を再構成せず、実bundle-catalog capture
+  から明示的に別のRust派生nativeDATA artifactを作る。元42resource/305entry453read/
+  実owner/accessor/adapter/entryを維持し、kernel・adapter・必要なkeyword翻訳だけを
+  圧縮前に追加する。元SHA/翻訳対象/派生SHAを区別し、初回import前後を検査、reloadや
+  原版fallbackで修復しない。preinitはmodule初期化だけで、schema検証・App cache・
+  catalog結果を前倒ししない。未変更のfullcatalog処理を一度、同じStoreの元2B/64MiB/
+  絶対30秒で呼ぶ。実Wasmのロード元・呼出し中Rust到達・resource実access・意味一致・
+  fuel/deadline/Store終了のreceiptが必要。観測費用も同予算に含める。別coldstore/
+  negativeは独立実験で、元nativeDATA/ordinaryPack/generic64 gateを維持する。
+  ここは未実装の次sliceであり、native第三lane成功をWasmやGUIの証拠にしない。
