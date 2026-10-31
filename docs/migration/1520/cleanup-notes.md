@@ -1084,3 +1084,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   trapは同Storeを退役して終了し、fuel再取得/続行はしない。観測が正しい予算停止だけを
   診断成功と区別し、sequence_completed/qualification=falseと全物理dropを保存する。
   元のcold/full gateは独立して維持し、別modeの診断成功で置き換えない。CI検証は未実施。
+- `0066e3246`実診断CI41167136452は観測とcleanupの検査に成功したが、42件の実行完了では
+  ない。同じ2B/64MiB/絶対30秒で19件を完了し、20番profile_lock_v4.schema.jsonの開始後に
+  fuel0で停止。開始時残22,620,801、完了cache hit0/miss19/size19、backend entry19/
+  frames17,429。deadline保持/未超過・unreachable=false・退役・payload0。
+  実componentf13bd8a6…ae6a20、RAM metadataZIP13029905942/244,635bytes、bounded証跡保存。
+- metadata列挙は1,070,414fuel。完了したschemaの累積差分を新規frame数で割った値は
+  約108,194〜116,869と近く、単一schemaの特別な固定費より評価量と共に増えている。
+  Defaults Setup270,603,967fuel/2,416frames、Pack manifest212,489,788/1,936等。
+  これは分割呼出しのparser/境界/観測等も含むschema単位の比で、関数別費用ではない。
+  original cold/full一括gateは未達のまま。次の実移植箇所をAstraへこの実測で照会する。
