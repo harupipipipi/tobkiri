@@ -71,6 +71,18 @@ def run(args, receipt):
         result = subprocess.run(command, cwd=destination, env=environment,
                                 stdout=out, stderr=err, timeout=600, check=False)
     if result.returncode:
+        # Cargo sends structured compiler diagnostics to stdout in JSON mode.
+        # Retain bounded actual errors rather than only the stderr summary.
+        diagnostics = []
+        for line in builder.fingerprint_and_read(stdout, 4 * 1024 * 1024).splitlines():
+            row = json.loads(line)
+            if row.get("reason") == "compiler-message":
+                message = row.get("message", {})
+                if message.get("level") == "error":
+                    diagnostics.append(message)
+        receipt["compiler_errors"] = diagnostics
+        for message in diagnostics:
+            print((message.get("rendered") or message.get("message", ""))[:12000], flush=True)
         with stderr.open("rb") as stream:
             stream.seek(max(0, stderr.stat().st_size - 3000))
             print(stream.read().decode(errors="replace"), flush=True)
