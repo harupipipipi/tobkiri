@@ -479,6 +479,8 @@ def run(source: Path, source_kind: str, inputs: Path, fixtures: Path,
         raise ValueError("actual full bundle/schema read sequence was narrowed or changed")
     if kernel:
         entries["after_catalog"] = count_entries()
+        if source_kind == "backend":
+            connection["actual_catalog_reference_counts"] = kernel.app_reference_counts()
     full = {
         "collections": {name: {"count": len(getattr(catalog, name)),
                                "sha256": digest(ordered_value(getattr(catalog, name)))}

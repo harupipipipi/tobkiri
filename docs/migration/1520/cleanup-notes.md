@@ -1105,3 +1105,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   必須比較はpointer escape/index/不正token/欠落/実参照、途中$id/dynamic scope、anchor競合/
   外部跨ぎ、class patch/format中patch/descriptor/helper変更/所有contents変更/typed cause。
   fragment移植は未実装。実到達・adapter生成数と同じ累積診断/元cold/fullで採否を決める。
+- fragment初稿を`schema_kernel/src/app_schema/references.rs`へ分離して実装。最初に自然に
+  load/crawl済みの実SPECIFICATIONS._resourcesと既存_anchors（別Resourceを含む）だけを
+  保持する。per-call rootは別Resourceなので同じURI/contentsでも所有へ加えない。
+  正規methodは最初の既知provider import時にPyOnceLockへ固定し、後のpolicy作成でpatchを
+  正規と採り直さない。これはsource metadataのみでResource/Resolver/入力検証を新造しない。
+  実contentsのpointer歩行・既定subresource制御・既存anchor走査をRust stateへ接続し、
+  内部Resolver adapter/ResolvedとPython制御の往復を除く。実Registry/URI呼出しと、pointer
+  各segmentの実spec.create_resource、実Resource.idは維持する。helper変更は取得済み実
+  callableへ同じkwargsを渡し、custom resolverをopaqueに保持する。結果/ID/解決先cacheなし。
+  実bound methodを一度だけ取得して分岐し、不一致ならそのcallableを直接呼ぶ。
+  新10比較は実builtinへの到達・error参照・class/format中patch・descriptor/helper変更・
+  外部Resourceのopaque経路・contents再読取りを含む。新到達/adapter計数をnative報告と
+  累積診断へ追加。GCは全policy handleを列挙、closed source inventoryは新moduleも含める。
+  native/実Wasm検証前で未採用。referencing由来のMIT attributionも同梱noticeへ加える。
+- Astraが外部alias条件を明確化: 既に所有している同一Resourceをcallbackが別URIで返す
+  場合はnativeを許可する。未所有Resourceを同型/同内容から昇格させない条件は変わらない。
+  実使用URI/返却registry/base URI/scopeとcallback変更を維持し、canonical URIへ戻さない。
+  origin推測の追加lookupやretrieve wrapperは不要。別URIでの相対参照、返却時patch/変更、
+  同contentsの新Resourceがopaqueである比較を追加する。

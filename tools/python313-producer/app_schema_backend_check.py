@@ -44,6 +44,7 @@ def compare(args, receipt, package_paths, extension):
         import cProfile
         profiler = cProfile.Profile()
     receipt['stage'] = 'app-backend-comparison'
+    receipt['reference_counts_before_64'] = kernel.app_reference_counts()
     for case in reference['cases']:
         schema = case['schema']
         try:
@@ -63,6 +64,10 @@ def compare(args, receipt, package_paths, extension):
             raise ValueError('App-owned native definition check differs: '+case['name'])
     if kernel.app_schema_entry_count() != 64 or kernel.app_schema_frame_count() <= 64:
         raise ValueError('each actual schema must enter Rust frames')
+    receipt['reference_counts_after_64'] = kernel.app_reference_counts()
+    if (receipt['reference_counts_after_64']['native_pointers'] <= 0
+            or receipt['reference_counts_after_64']['native_dynamic_anchors'] <= 0):
+        raise ValueError('actual owned builtin fragment paths were not exercised')
     if profiler is not None:
         import io
         import pstats
@@ -92,6 +97,8 @@ def compare(args, receipt, package_paths, extension):
     receipt['boundary_checks'] = boundary_checks(provider, kernel)
     from app_schema_reference_checks import reference_state_checks
     receipt['reference_state_checks'] = reference_state_checks(provider, kernel)
+    from app_schema_fragment_checks import fragment_checks
+    receipt['fragment_checks'] = fragment_checks(provider, kernel)
     receipt.update(outcome='success', app_backend_64_success=True,
                    app_backend_entries=kernel.app_schema_entry_count(),
                    app_backend_frames=kernel.app_schema_frame_count(),

@@ -70,5 +70,6 @@ class Projection(wit_world.exports.Projection):
                    schema_cache={'hits': cache.hits, 'misses': cache.misses,
                                  'size': cache.currsize},
                    backend_entries=kernel.app_schema_entry_count(),
-                   backend_frames=kernel.app_schema_frame_count())
+                   backend_frames=kernel.app_schema_frame_count(),
+                   reference_counts=kernel.app_reference_counts())
         return json.dumps(row, sort_keys=True, separators=(',', ':'))

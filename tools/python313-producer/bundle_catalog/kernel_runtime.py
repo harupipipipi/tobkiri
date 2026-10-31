@@ -84,7 +84,7 @@ def read_catalog_observed(*, app_backend: bool = False) -> str:
     encoded = actual.encode('utf-8', errors='strict')
     if app_backend and after != 45:
         raise RuntimeError('each actual cold schema must enter the Rust frame backend once')
-    return json.dumps({
+    receipt = {
         'format': ('tobkiri.app-frame-bundle-catalog-observation/1' if app_backend
                    else 'tobkiri.rust-bundle-catalog-observation/1'),
         'actual_sha256': hashlib.sha256(encoded).hexdigest(), 'actual_bytes': len(encoded),
@@ -97,4 +97,7 @@ def read_catalog_observed(*, app_backend: bool = False) -> str:
         'keyword_loader': type(_keywords.__loader__).__module__,
         'python': list(sys.version_info[:3]),
         'qualification': False, 'production_enabled': False,
-    }, sort_keys=True, separators=(',', ':'))
+    }
+    if app_backend:
+        receipt['reference_counts'] = kernel.app_reference_counts()
+    return json.dumps(receipt, sort_keys=True, separators=(',', ':'))

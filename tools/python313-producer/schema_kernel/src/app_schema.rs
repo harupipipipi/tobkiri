@@ -7,12 +7,10 @@
 use crate::keywords::{self, builtin, format, module_member, validation_error};
 use pyo3::{
     exceptions::{PyMemoryError, PyNotImplementedError, PyRuntimeError},
-    gc::{PyTraverseError, PyVisit},
     prelude::*,
     types::{PyBool, PyDict, PyFloat, PyInt, PyIterator, PyList, PyString, PyTuple},
 };
 use std::{
-    cell::RefCell,
     rc::Rc,
     sync::atomic::{AtomicUsize, Ordering},
 };
@@ -21,238 +19,8 @@ type Object = Py<PyAny>;
 static ENTRIES: AtomicUsize = AtomicUsize::new(0);
 static FRAMES: AtomicUsize = AtomicUsize::new(0);
 
-/// Closed default-policy metadata, never execution authority. There is no
-/// constructor accepting a caller's arbitrary specification or resolver.
-#[pyclass(module = "_tobkiri_schema_kernel")]
-struct DefaultReferencePolicy {
-    specification: Option<Object>,
-    resolver_type: Option<Object>,
-}
-
-#[pymethods]
-impl DefaultReferencePolicy {
-    fn __traverse__(&self, visit: PyVisit<'_>) -> Result<(), PyTraverseError> {
-        if let Some(value) = &self.specification {
-            visit.call(value)?;
-        }
-        if let Some(value) = &self.resolver_type {
-            visit.call(value)?;
-        }
-        Ok(())
-    }
-    fn __clear__(&mut self) {
-        self.specification = None;
-        self.resolver_type = None;
-    }
-}
-
-#[pyfunction]
-fn default_reference_policy(py: Python<'_>) -> PyResult<DefaultReferencePolicy> {
-    // Select metadata only, before evaluation. No Resource, Resolver, input or
-    // validation result is constructed during producer initialization.
-    Ok(DefaultReferencePolicy {
-        specification: Some(module_member(py, "referencing.jsonschema", "DRAFT202012")?.unbind()),
-        resolver_type: Some(module_member(py, "referencing._core", "Resolver")?.unbind()),
-    })
-}
-
-/// The actual URI, registry and dynamic-scope values are owned by Rust frames.
-/// Python adapters are materialized only for explicit ID/reference operations.
-/// No schema decisions or ID lookups are cached.
-enum ReferenceState {
-    Owned {
-        base_uri: Object,
-        registry: Object,
-        previous: Object,
-        // Preserve a real boundary result's identity, and reuse a materialized
-        // adapter while this exact state survives an ordinary no-ID descent.
-        adapter: RefCell<Option<Object>>,
-    },
-    Boundary(Object),
-}
-impl ReferenceState {
-    fn from_boundary(resolver: &Bound<'_, PyAny>, env: &Environment) -> PyResult<Rc<Self>> {
-        // Only the concrete default-policy result can become owned state.
-        // Never inspect a subclass/custom resolver's private fields.
-        if !resolver
-            .get_type()
-            .is(env.resolver_type.bind(resolver.py()))
-        {
-            return Ok(Rc::new(Self::Boundary(resolver.clone().unbind())));
-        }
-        Ok(Rc::new(Self::Owned {
-            base_uri: resolver.getattr("_base_uri")?.unbind(),
-            registry: resolver.getattr("_registry")?.unbind(),
-            previous: resolver.getattr("_previous")?.unbind(),
-            adapter: RefCell::new(Some(resolver.clone().unbind())),
-        }))
-    }
-    fn boundary<'py>(&self, py: Python<'py>, env: &Environment) -> PyResult<Bound<'py, PyAny>> {
-        let Self::Owned {
-            base_uri,
-            registry,
-            previous,
-            adapter,
-        } = self
-        else {
-            let Self::Boundary(resolver) = self else {
-                unreachable!()
-            };
-            return Ok(resolver.bind(py).clone());
-        };
-        if let Some(resolver) = adapter.borrow().as_ref() {
-            return Ok(resolver.bind(py).clone());
-        }
-        let kwargs = PyDict::new(py);
-        kwargs.set_item("base_uri", base_uri.bind(py))?;
-        kwargs.set_item("registry", registry.bind(py))?;
-        kwargs.set_item("previous", previous.bind(py))?;
-        let resolver = env.resolver_type.bind(py).call((), Some(&kwargs))?;
-        *adapter.borrow_mut() = Some(resolver.clone().unbind());
-        Ok(resolver)
-    }
-    fn evolved(
-        &self,
-        py: Python<'_>,
-        uri: Bound<'_, PyAny>,
-        registry: Bound<'_, PyAny>,
-    ) -> PyResult<Rc<Self>> {
-        let Self::Owned {
-            base_uri, previous, ..
-        } = self
-        else {
-            unreachable!()
-        };
-        let mut previous = previous.bind(py).clone();
-        if base_uri.bind(py).is_truthy()? && (!previous.is_truthy()? || uri.ne(base_uri.bind(py))?)
-        {
-            previous = previous.call_method1("push_front", (base_uri.bind(py),))?;
-        }
-        Ok(Rc::new(Self::Owned {
-            base_uri: uri.unbind(),
-            registry: registry.unbind(),
-            previous: previous.unbind(),
-            adapter: RefCell::new(None),
-        }))
-    }
-    fn lookup(
-        &self,
-        py: Python<'_>,
-        env: &Environment,
-        reference: &Bound<'_, PyAny>,
-    ) -> PyResult<(Object, Rc<Self>)> {
-        let Self::Owned {
-            base_uri, registry, ..
-        } = self
-        else {
-            let resolved = self
-                .boundary(py, env)?
-                .call_method1("lookup", (reference,))?;
-            return Ok((
-                resolved.getattr("contents")?.unbind(),
-                Self::from_boundary(&resolved.getattr("resolver")?, env)?,
-            ));
-        };
-        // Keep the original URI implementation, call order and live arguments.
-        let (uri, fragment) = if reference.call_method1("startswith", ("#",))?.is_truthy()? {
-            (
-                base_uri.bind(py).clone(),
-                reference.get_item(builtin(py, "slice")?.call1((1, py.None()))?)?,
-            )
-        } else {
-            let joined = env.urljoin.bind(py).call1((base_uri.bind(py), reference))?;
-            let parts = env.urldefrag.bind(py).call1((joined,))?;
-            (parts.get_item(0)?, parts.get_item(1)?)
-        };
-        let retrieved = match registry.bind(py).call_method1("get_or_retrieve", (&uri,)) {
-            Ok(value) => value,
-            Err(error) => {
-                let missing = module_member(py, "referencing.exceptions", "NoSuchResource")?;
-                let unavailable = module_member(py, "referencing.exceptions", "Unretrievable")?;
-                let suppress = error.value(py).is_instance(&missing)?;
-                if !suppress && !error.value(py).is_instance(&unavailable)? {
-                    return Err(error);
-                }
-                let kwargs = PyDict::new(py);
-                kwargs.set_item("ref", reference)?;
-                let value = module_member(py, "referencing.exceptions", "Unresolvable")?
-                    .call((), Some(&kwargs))?;
-                value.setattr("__context__", error.value(py))?;
-                let converted = PyErr::from_value(value);
-                converted.set_cause(py, if suppress { None } else { Some(error) });
-                return Err(converted);
-            }
-        };
-        let pointer = fragment.call_method1("startswith", ("/",))?.is_truthy()?;
-        if pointer || fragment.is_truthy()? {
-            let selected = if pointer {
-                retrieved
-            } else {
-                retrieved
-                    .getattr("registry")?
-                    .call_method1("anchor", (&uri, &fragment))?
-            };
-            let state = self.evolved(py, uri, selected.getattr("registry")?)?;
-            let kwargs = PyDict::new(py);
-            if pointer {
-                kwargs.set_item("pointer", &fragment)?;
-            }
-            kwargs.set_item("resolver", state.boundary(py, env)?)?;
-            let resolved = selected.getattr("value")?.call_method(
-                if pointer { "pointer" } else { "resolve" },
-                (),
-                Some(&kwargs),
-            )?;
-            return Ok((
-                resolved.getattr("contents")?.unbind(),
-                Self::from_boundary(&resolved.getattr("resolver")?, env)?,
-            ));
-        }
-        let state = self.evolved(py, uri, retrieved.getattr("registry")?)?;
-        Ok((
-            retrieved.getattr("value")?.getattr("contents")?.unbind(),
-            state,
-        ))
-    }
-    fn descend(
-        self: &Rc<Self>,
-        py: Python<'_>,
-        env: &Environment,
-        schema: &Bound<'_, PyAny>,
-    ) -> PyResult<Rc<Self>> {
-        if let Self::Boundary(resolver) = self.as_ref() {
-            let resource = env
-                .specification
-                .bind(py)
-                .call_method1("create_resource", (schema,))?;
-            let next = resolver
-                .bind(py)
-                .call_method1("in_subresource", (resource,))?;
-            return Self::from_boundary(&next, env);
-        }
-        // This is an owned Draft2020-12 rule, not an identity guess about a
-        // received specification. Read the live value on EVERY transition.
-        if schema.is_exact_instance_of::<PyDict>() {
-            let dictionary = schema.cast::<PyDict>()?;
-            if dictionary
-                .get_item("$id")?
-                .is_none_or(|value| value.is_none())
-            {
-                return Ok(self.clone());
-            }
-        }
-        // Empty strings and invalid IDs are not absence. Non-builtin mappings
-        // also retain their real protocol calls at the resolution boundary.
-        let resource = env
-            .specification
-            .bind(py)
-            .call_method1("create_resource", (schema,))?;
-        let resolver = self
-            .boundary(py, env)?
-            .call_method1("in_subresource", (resource,))?;
-        Self::from_boundary(&resolver, env)
-    }
-}
+mod references;
+use references::{DefaultReferencePolicy, ReferenceState, ResourcePolicy};
 
 struct Environment {
     specification: Object,
@@ -261,6 +29,7 @@ struct Environment {
     type_checker: Object,
     urljoin: Object,
     urldefrag: Object,
+    resource_policy: ResourcePolicy,
 }
 
 struct Selected {
@@ -931,7 +700,7 @@ fn app_check_schema(
     format_checker: &Bound<'_, PyAny>,
 ) -> PyResult<()> {
     ENTRIES.fetch_add(1, Ordering::Relaxed);
-    let (specification, resolver_type) = {
+    let (specification, resolver_type, resource_policy) = {
         let policy = policy.borrow();
         let specification = policy
             .specification
@@ -943,7 +712,12 @@ fn app_check_schema(
             .as_ref()
             .ok_or_else(|| PyRuntimeError::new_err("default reference policy was cleared"))?
             .clone_ref(py);
-        (specification, resolver_type)
+        let resources = policy
+            .resources
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("default reference policy was cleared"))?
+            .clone_ref(py);
+        (specification, resolver_type, resources)
     };
     let resource = specification
         .bind(py)
@@ -956,6 +730,7 @@ fn app_check_schema(
         type_checker: type_checker.clone().unbind(),
         urljoin: module_member(py, "referencing._core", "urljoin")?.unbind(),
         urldefrag: module_member(py, "referencing._core", "urldefrag")?.unbind(),
+        resource_policy,
     });
     let references = ReferenceState::from_boundary(&resolver, &env)?;
     let frame = Frame::new(
@@ -982,8 +757,7 @@ fn app_schema_frame_count() -> usize {
 }
 
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_class::<DefaultReferencePolicy>()?;
-    module.add_function(wrap_pyfunction!(default_reference_policy, module)?)?;
+    references::register(module)?;
     module.add_function(wrap_pyfunction!(app_check_schema, module)?)?;
     module.add_function(wrap_pyfunction!(app_schema_entry_count, module)?)?;
     module.add_function(wrap_pyfunction!(app_schema_frame_count, module)?)?;
