@@ -986,3 +986,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   子Validatorは除去できたが、resource作成・scope移動・参照lookup等のPython呼出しが残る。
   次は実native64のcProfileで実関数/呼出し数を収集し、Rust参照状態への移行境界を決める。
   native時間をWasm fuelへ配賦しない。再試行/上限緩和/原版invalid側fallbackはしない。
+
+- 実native64 profile`38dcddde7`/CI41161831597はgeneric64/API19/new64+11/App37/full比較を
+  維持して成功。実create_resource25,619回/in_subresource25,204回/lookup18,123回を記録。
+  ただしこれは64定義だけのnative呼出し数。full catalogには元のdocument検証も交互に
+  含まれるため、trapの現在位置だけで費用の支配要因を断定しない。
+- 同じ実artifactで既存cold-original-schema-store（原版42calls/cache/全結果SHA/bytes）を
+  別の元2B/64MiB/絶対30秒の一回として計測する。full操作は別Storeで引き続き検査し、
+  cold成功や部分結果をfull完走へ合成しない。失敗時も双方のfuel/deadline/dropを保存する。
+  native full catalogも実一回をprofileし、定義と元documentの呼出し数を区別する。
+- Astra high: 既定Appの参照状態もRust所有へ進める。まず実schemaを毎回読むID変更なしの
+  descendを対象とし、任意のPython resolver/specを既定らしいと推測して省略しない。
+  不在/None/空文字/相対/絶対/不正型、scope復帰、callback後の再読取り、retrieve順序、
+  実schema/error同一性とcustom事前選択を検証する。meta/結果のobject-id cacheは使わない。
+  実Wasm成功までwholeRuntime bindingや製品採用には進まない。
+- 将来のwholeRuntime接続はAstraの指示で実ModulePathBindings.install後のcoldなvalidation
+  moduleへの明示bindingを選ぶ。None/custom/既使用cacheは上書きせず、binder/provider/so/設定を
+  plan/provenance/実component admissionへ結ぶ。元indexは元source bytesのみの証明であり、
+  派生compositionの動作や権限へ流用しない。ordinaryPackとは独立した別artifact検証が必要。
+  cryptographyを含む未提供closureと元GUI/owner統合は未完了のまま。まだ接続コードなし。

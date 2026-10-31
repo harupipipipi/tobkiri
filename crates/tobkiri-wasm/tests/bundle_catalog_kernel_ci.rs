@@ -49,6 +49,18 @@ fn input(label: &str, limit: u64) -> Result<Vec<u8>> {
 #[tokio::test]
 #[ignore = "actual source-built App/Rust component; Linux CI only"]
 async fn actual_rust_bundle_catalog_one_shot() -> Result<()> {
+    compare_one_shot(false).await
+}
+
+#[tokio::test]
+#[ignore = "independent cold schema operation using the SAME actual component; Linux CI only"]
+async fn actual_app_frame_cold_schema_store_one_shot() -> Result<()> {
+    compare_one_shot(true).await
+}
+
+// Separate operations, separate original invocations. Their results/fuel cannot
+// be combined to claim that the full catalog completed within one budget.
+async fn compare_one_shot(schema_store: bool) -> Result<()> {
     ensure!(
         std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"),
         "CI only"
@@ -66,6 +78,16 @@ async fn actual_rust_bundle_catalog_one_shot() -> Result<()> {
             && original["read_occurrences"] == 453,
         "complete original reference required"
     );
+    if schema_store {
+        ensure!(
+            original["schema_store_cold_selfcheck_calls"] == 42
+                && original["schema_store_expected_bytes"]
+                    .as_u64()
+                    .is_some_and(|n| n <= 4 * 1024 * 1024)
+                && original["schema_store_expected_sha256"].is_string(),
+            "independent original cold schema reference required"
+        );
+    }
     let bytes = input("COMPONENT", 32 * 1024 * 1024)?;
     let identity = Digest::hash(&bytes);
     let control = CoreControl::default();
@@ -80,6 +102,11 @@ async fn actual_rust_bundle_catalog_one_shot() -> Result<()> {
         "qualification":false,"production_enabled":false,"gui_or_os_owner_proof":false,
         "generic_64_parity_claim":false,"invocations":1,"stage":"begin"});
     report["app_schema_backend"] = json!(app_backend);
+    report["operation"] = json!(if schema_store {
+        "cold-schema-store"
+    } else {
+        "full-catalog"
+    });
     let started = Instant::now();
     let outcome: Result<()> = async {
         let invocation = account.begin()?;
@@ -108,13 +135,28 @@ async fn actual_rust_bundle_catalog_one_shot() -> Result<()> {
             )
             .await?;
         report["fuel_after_prepare"] = json!(program.fuel_remaining()?);
-        report["stage"] = json!("invoke-full-original-catalog");
-        let input = CoreBuffer::copy_from(b"tobkiri.embedded-bundle-read/1", owners.graph())?;
+        report["stage"] = json!(if schema_store {
+            "invoke-cold-schema-store"
+        } else {
+            "invoke-full-original-catalog"
+        });
+        let payload = if schema_store {
+            b"tobkiri.cold-original-schema-store/1".as_slice()
+        } else {
+            b"tobkiri.embedded-bundle-read/1".as_slice()
+        };
+        let input = CoreBuffer::copy_from(payload, owners.graph())?;
         let reply = program.invoke(0, Some(&input)).await;
         report["observation"] = serde_json::to_value(program.observation())?;
         report["original_deadline_preserved"] = json!(program.original_deadline() == deadline);
         ensure!(program.original_deadline() == deadline, "deadline renewed");
-        let actual = match reply.context("actual full original App/Rust call failed")? {
+        let actual = match reply.with_context(|| {
+            if schema_store {
+                "actual original cold schema store failed"
+            } else {
+                "actual full original App/Rust call failed"
+            }
+        })? {
             Ok(NativeDataValue::String(value)) => value,
             Err(error) => {
                 let message = error.message().as_str()?;
@@ -128,6 +170,27 @@ async fn actual_rust_bundle_catalog_one_shot() -> Result<()> {
             }
             _ => anyhow::bail!("actual typed App/Rust result differs"),
         };
+        ensure!(
+            program.observation().post_return && !program.observation().store_retired,
+            "post-return or Store lifetime differs"
+        );
+        if schema_store {
+            ensure!(
+                actual.as_bytes().len() <= 4 * 1024 * 1024
+                    && original["schema_store_expected_bytes"].as_u64()
+                        == Some(actual.as_bytes().len() as u64)
+                    && original["schema_store_expected_sha256"]
+                        == Digest::hash(actual.as_bytes())
+                            .as_str()
+                            .trim_start_matches("sha256:"),
+                "actual original cold schema store/cache outcome differs"
+            );
+            report["stage"] = json!("returned-original-cold-schema-store");
+            report["schema_store_output_bytes"] = json!(actual.as_bytes().len());
+            report["schema_store_output_sha256"] = original["schema_store_expected_sha256"].clone();
+            drop((actual, input, program, owners));
+            return Ok(());
+        }
         ensure!(
             actual.as_bytes().len() <= 16 * 1024,
             "bounded runtime receipt required"
@@ -162,10 +225,6 @@ async fn actual_rust_bundle_catalog_one_shot() -> Result<()> {
                 && receipt["production_enabled"] == false,
             "actual catalog/Rust/resource/cache receipt differs"
         );
-        ensure!(
-            program.observation().post_return && !program.observation().store_retired,
-            "post-return or Store lifetime differs"
-        );
         report["runtime_receipt"] = receipt;
         report["stage"] = json!("returned-original-catalog");
         drop((actual, input, program, owners));
@@ -181,7 +240,10 @@ async fn actual_rust_bundle_catalog_one_shot() -> Result<()> {
     if let Err(error) = &outcome {
         report["error"] = json!(format!("{error:#}").chars().take(4096).collect::<String>());
     }
-    let path = PathBuf::from(std::env::var("TOBKIRI_BUNDLE_REPORT")?);
+    let mut path = PathBuf::from(std::env::var("TOBKIRI_BUNDLE_REPORT")?);
+    if schema_store {
+        path.set_file_name("app-schema-cold-store-observation.json");
+    }
     let file = OpenOptions::new().write(true).create_new(true).open(path)?;
     serde_json::to_writer_pretty(file, &report)?;
     ensure!(retained == 0, "retained invocation payload");

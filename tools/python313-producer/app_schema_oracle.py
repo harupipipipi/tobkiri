@@ -442,11 +442,39 @@ def run(source: Path, source_kind: str, inputs: Path, fixtures: Path,
                 entry_reads.append(relative)
         return original_read(path)
 
+    catalog_profiler = None
+    if source_kind == "backend":
+        import cProfile
+        catalog_profiler = cProfile.Profile()
     Path.read_bytes = read_actual
     try:
-        catalog = bundle.BundledCatalog.load(root)
+        catalog = (bundle.BundledCatalog.load(root) if catalog_profiler is None else
+                   catalog_profiler.runcall(bundle.BundledCatalog.load, root))
     finally:
         Path.read_bytes = original_read
+    if catalog_profiler is not None:
+        import io
+        import pstats
+        text = io.StringIO()
+        statistics = pstats.Stats(catalog_profiler, stream=text)
+        statistics.sort_stats("cumulative").print_stats(35)
+        statistics.sort_stats("time").print_stats(35)
+        profile = text.getvalue()
+        if len(profile.encode()) > 24*1024:
+            raise ValueError("bounded actual catalog native profile required")
+        calls = []
+        for entry in catalog_profiler.getstats():
+            code = entry.code
+            if not isinstance(code, str) and any(name in code.co_filename for name in
+                    ("jsonschema", "referencing", "tobkiri_protocol/validation.py")):
+                calls.append({"file": code.co_filename, "line": code.co_firstlineno,
+                              "function": code.co_qualname, "calls": entry.callcount})
+        calls.sort(key=lambda row: (-row["calls"], row["file"], row["line"]))
+        connection["actual_catalog_native_profile"] = {
+            "scope": "one actual cold full catalog; includes native definitions and original documents",
+            "native_only": True, "wasm_fuel_attribution": False, "benchmark_claim": False,
+            "top_cumulative_and_self": profile, "actual_function_calls": calls[:60],
+        }
     if len(entry_reads) != 453 or len(schema_reads) != 45:
         raise ValueError("actual full bundle/schema read sequence was narrowed or changed")
     if kernel:

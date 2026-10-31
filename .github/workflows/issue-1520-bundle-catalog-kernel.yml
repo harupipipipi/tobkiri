@@ -23,7 +23,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: issue-1520-bundle-kernel-${{ github.ref }}-${{ github.sha }}
+  group: issue-1520-bundle-kernel-${{ github.ref }}-${{ github.sha }}-${{ inputs.app_schema_backend && 'app-frame' || 'generic' }}
   cancel-in-progress: false
 jobs:
   actual-app-wasm:
@@ -174,6 +174,7 @@ jobs:
           --stdlib "$RUNNER_TEMP/schema-stdlib"
           --rpds "$RUNNER_TEMP/schema-rpds"
       - name: Bind the actual derived source and component receipts
+        id: bind_artifact
         run: |
           python3 -B - <<'PYBIND'
           from pathlib import Path
@@ -213,7 +214,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: app-schema-catalog-kernel
+          cache-on-failure: true
+      - name: Isolate the independent original42 cold schema operation in the SAME artifact
+        if: ${{ !cancelled() && steps.bind_artifact.conclusion == 'success' }}
+        run: >-
+          cargo test --locked -p tobkiri-wasm --test bundle_catalog_kernel_ci
+          actual_app_frame_cold_schema_store_one_shot -- --ignored --exact --nocapture
       - name: Invoke the actual full App catalog once through the bounded native Store
+        if: ${{ !cancelled() && steps.bind_artifact.conclusion == 'success' }}
         run: >-
           cargo test --locked -p tobkiri-wasm --test bundle_catalog_kernel_ci
           actual_rust_bundle_catalog_one_shot -- --ignored --exact --nocapture
@@ -235,5 +243,7 @@ jobs:
             ${{ runner.temp }}/app-schema-bundle/harness-bundle-catalog-app-frame-native/work/component.build.json
             ${{ runner.temp }}/app-schema-bundle/harness-bundle-catalog-app-frame-native/build.*
             ${{ runner.temp }}/app-schema-wasm-observation.json
+            ${{ runner.temp }}/app-schema-cold-store-observation.json
+            ${{ runner.temp }}/bundle-native-profile.json
           retention-days: 14
           if-no-files-found: warn
