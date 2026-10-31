@@ -757,7 +757,9 @@ pub(crate) fn builtin<'py>(py: Python<'py>, name: &str) -> PyResult<Bound<'py, P
 }
 
 pub(crate) fn utility<'py>(py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyAny>> {
-    module_member(py, "jsonschema._utils", name)
+    // The pinned keyword source uses from-imported globals. Rebinding an
+    // exporter later must not silently replace that already selected binding.
+    module_member(py, "jsonschema._keywords", name)
 }
 
 pub(crate) fn integer(py: Python<'_>, value: usize) -> Bound<'_, PyAny> {

@@ -99,6 +99,8 @@ def compare(args, receipt, package_paths, extension):
     receipt['reference_state_checks'] = reference_state_checks(provider, kernel)
     from app_schema_fragment_checks import fragment_checks
     receipt['fragment_checks'] = fragment_checks(provider, kernel)
+    from app_schema_callout_checks import callout_checks
+    receipt['default_callout_checks'] = callout_checks(provider, kernel)
     receipt.update(outcome='success', app_backend_64_success=True,
                    app_backend_entries=kernel.app_schema_entry_count(),
                    app_backend_frames=kernel.app_schema_frame_count(),

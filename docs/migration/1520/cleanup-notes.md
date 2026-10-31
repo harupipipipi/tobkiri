@@ -1192,3 +1192,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   strict parser由来/登録箇所未発見という理由だけで許可しない。成立時のみ閉じた経路を
   Rust value modelへ、live callback経路を3510の参照保持engineへ開始前dispatchする案を
   検討する。現時点でその事前判定は未証明で、次の性能コードはまだ追加していない。
+- 通常経路のcallout調査で、具体的なbinding相違を発見した。
+  `keywords.rs:utility`は補助関数を`jsonschema._utils`から毎回取得していたが、原版
+  `_keywords.py`は7種類の補助関数をfrom-importし、自分のglobal bindingから呼ぶ。
+  export元の再代入は既存aliasを変えず、import先の再代入は次の実呼出しを変える。
+  取得先を実`jsonschema._keywords`に修正し、余分なcache/guard/別engineを作らない。
+  これは性能施策ではなく実callback/参照保持の互換修正で、closed operationの事前選択を
+  証明するものでもない。全global削除/builtin fallbackや反射契約の完了は主張しない。
+- `app_schema_callout_checks.py`に独立した5比較を追加。元META・既定FORMAT_CHECKER・
+  checkers dictの同一性を維持し、stock regex callbackから後続maxItems実入力を変更、
+  呼出し前/途中のimport先uniq変更、export元変更がaliasに影響しないこと、実例外の
+  identityと停止順を比較する。check_schemaにはchecker引数を渡さない。
+  原版を実oracleとして結果/順序/実引数参照/error graphを検査し、両leg後に全bindingを
+  復元する。原版constructorを再実行してnativeの失敗を補修する経路は追加しない。
+  ローカルはsource AST/rustfmtのみ、native実行はCI待ち。
