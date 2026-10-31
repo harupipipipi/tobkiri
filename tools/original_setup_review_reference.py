@@ -58,11 +58,16 @@ def run_tests(root: Path, destination: Path) -> None:
     sources = {name: hashlib.sha256((runtime / name).read_bytes()).hexdigest()
                for name in SOURCES}
     junit = destination / "original-setup.xml"
-    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", PYTHONPATH=str(runtime),
+    effects = destination / "readonly-effects.json"
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1",
+               PYTHONPATH=os.pathsep.join((str(runtime), str(Path(__file__).parent.resolve()))),
                PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+               TOBKIRI_ORIGINAL_SETUP_ROOT=str(root),
+               TOBKIRI_ORIGINAL_SETUP_EFFECTS=str(effects),
                TOBKIRI_USER_DATA=str(destination / "unused-host-state"),
                RUMI_USER_DATA=str(destination / "unused-host-state"))
     command = [sys.executable, "-B", "-m", "pytest", "-q", "-ra", "-p", "no:cacheprovider",
+               "-p", "original_setup_review_observer",
                "--basetemp", str(destination / "pytest"), "--junitxml", str(junit), *TESTS]
     # Logs stay in the CI runner and are streamed to its job log. No database,
     # key, raw fixture, executable artifact or entire source tree is uploaded.
@@ -85,6 +90,10 @@ def run_tests(root: Path, destination: Path) -> None:
               "passed": passed, "native_comparison": False,
               "qualification": False, "production_enabled": False,
               "scope": "six original packaged-fixture Setup and successor regressions only"}
+    if effects.is_file():
+        if effects.stat().st_size > 128 * 1024:
+            raise ValueError("original Setup side-effect diagnostic exceeds bound")
+        report["readonly_effects"] = json.loads(effects.read_text())
     (destination / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
     if not passed:
         raise AssertionError("all six original Setup reference cases must pass without skips")

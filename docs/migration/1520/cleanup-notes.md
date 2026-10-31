@@ -196,8 +196,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   snapshot APIを代用しない。19wrapperの存在や独立snapshot単体を全Setup実装としない。
   Rootは別のclean原本checkout・元packaged fixture上の既存Setup/successor6テストを
   実行する独立CIを用意した。原本lockの版/hash選択は既存reference helperを共有し、
-  CPython3.13用rpds行を明示選択する。source/AST確認済み・実CI結果待ちであり、native
-  review/GUI/完全recoveryや製品採用の証拠ではない。fixture/DB/keyはCIにだけ保持する。
+  CPython3.13用rpds行を明示選択する。
+  `5151aedd6`の[原本Setup CI41239656333](https://github.com/harupipipipi/tobkiri/actions/runs/41239656333)
+  は5成功/1失敗。未変更のtest_review_and_cancel_are_read_onlyはconfirmation内容を通過し、
+  最後のuser_data不在assertに失敗した。原本自身の失敗を消したりassertを弱めない。
+  Sourceのpin predecessor照会はProfileDefinitionStore constructorでcreate=Trueへ到達
+  するが、生成物の内訳/役割は未実測。次CIで原本関数を置換しないread-only metadata
+  observerを使い、初回no-journalのbefore/return点/afterを確認する。observerは対象へ
+  lstat/scandirだけを行い、ファイル内容・鍵を読まず、生成/修復/削除をしない。
+  Astra highは実副作用を確定後、既存testの非書込を限定bugfixとしてnativeへ反映する
+  方針を支持。原本完全一致とは区別し、既存storeの排他/競合保証やjournalありのwriteful
+  recoveryを落とさない。native review/GUI/完全recoveryや製品採用の証拠ではなく、
+  fixture/DB/keyはCIにだけ保持する。
   JSON/surrogate/depth・不正leaseの例外投影、同時key作成/複合I/O/close、Linux process情報
   read内部close receipt等は未閉鎖。全Open同等・既存DB採用・GUI接続の完了とはしない。
 - cryptoの余分なowned key配列copyをZeroizing先作成へ整理した。Fernetは既存RustCryptoの
