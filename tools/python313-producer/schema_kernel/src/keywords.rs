@@ -815,6 +815,40 @@ pub(crate) fn validation_error<'py>(
     module_member(py, "jsonschema.exceptions", "ValidationError")?.call((message,), kwargs)
 }
 
+/// A caught Python exception remains active while its handler evaluates
+/// getters and calls the error constructor. Merely retaining a PyErr does
+/// not establish that handled-exception state for actual Python callbacks.
+struct HandledException<'py> {
+    previous: Option<Bound<'py, PyAny>>,
+}
+impl<'py> HandledException<'py> {
+    fn enter(exception: &Bound<'py, PyAny>) -> Self {
+        // Stable ABI since 3.11. Get returns a new reference (or NULL with
+        // no exception); Set borrows and INCREFs its argument, never steals.
+        // All references stay live through callbacks/GC. No exception is
+        // raised again, so its actual traceback and identity are retained.
+        unsafe {
+            let previous =
+                Bound::from_owned_ptr_or_opt(exception.py(), ffi::PyErr_GetHandledException());
+            ffi::PyErr_SetHandledException(exception.as_ptr());
+            Self { previous }
+        }
+    }
+}
+impl Drop for HandledException<'_> {
+    fn drop(&mut self) {
+        // The synchronous handler still holds the GIL. Restore before its
+        // caller decorates/yields the result or applies generator PEP 479.
+        unsafe {
+            ffi::PyErr_SetHandledException(
+                self.previous
+                    .as_ref()
+                    .map_or(std::ptr::null_mut(), Bound::as_ptr),
+            );
+        }
+    }
+}
+
 fn descend<'py>(
     py: Python<'py>,
     context: &Context<'py>,
@@ -1359,16 +1393,17 @@ pub(crate) fn scalar_rule<'py>(
                     )?)? {
                         return Err(error);
                     }
+                    let _handled = HandledException::enter(exception.as_any());
+                    // Source: ValidationError(error.message, cause=error.cause).
+                    // Select this actual constructor before either getter;
+                    // each getter may mutate live state or raise an exception.
+                    let constructor =
+                        module_member(py, "jsonschema.exceptions", "ValidationError")?;
+                    let message = exception.getattr(pyo3::intern!(py, "message"))?;
+                    let cause = exception.getattr(pyo3::intern!(py, "cause"))?;
                     let kwargs = PyDict::new(py);
-                    kwargs.set_item(
-                        pyo3::intern!(py, "cause"),
-                        exception.getattr(pyo3::intern!(py, "cause"))?,
-                    )?;
-                    return Ok(Some(validation_error(
-                        py,
-                        exception.getattr(pyo3::intern!(py, "message"))?,
-                        Some(&kwargs),
-                    )?));
+                    kwargs.set_item(pyo3::intern!(py, "cause"), cause)?;
+                    return constructor.call((message,), Some(&kwargs)).map(Some);
                 }
             }
         }

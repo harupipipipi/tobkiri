@@ -1668,3 +1668,25 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   FormatChecker.check内部はそのまま使い、型確認・選択・呼出し・error変換をApp Frameへ
   接続する。callback/checkerのlive変更・例外/causeと先行したcatch・PEP479境界を維持し、
   既に直接実行済みの箇所は再包装しない。Sol6.1 xhighがsource gateを監査中。
+- 監査結果: pattern/formatは既に`keywords::scalar_rule`からRust closure経由で実
+  re.search/checker.checkへ直接到達しており、Python keyword-generator/Validator carrierは
+  残っていなかった。移設・再包装・新counterを追加して性能改善と数えない。
+  代わりに、実format error変換でcause→message→constructorとなっていた順序をSolが
+  constructor選択→message→causeへ修正した。変換中はpublic abi3の実handled-exceptionを
+  RAIIで設定・復元し、getter/constructorが投げる実例外へ元FormatError contextを保つ。
+  checker自身のcatchを先に完了し、未捕捉StopIterationだけを既存PEP479へ渡す。
+  既存prescribed constructor ownerはexceptions.ValidationErrorのまま維持する。
+  Originalのprivate imported alias単独変更への互換性を追加せず、比較では両laneへ同じ
+  constructorを明示設定する。generic側の既存owner差全体を解消したとは主張しない。
+  新helper15群/31対で順序、途中差替え、供給例外identity/context、再入と外側handler復元、
+  非callableもgetter後に実callすることを比較する。Source確認のみ成功、実CI待ち。
+- 撤去後ecaeの実Wasmはcold/full CI41208732791が元2Bで両方停止。component
+  07f8af7c…ca179、prepare後1,979,511,589、cold約2.018秒/full約1.788秒、元deadline維持、
+  期限超過/unreachableなし、退役・payload0。累積CI41208734734は20件へ戻り、21番
+  profile_lock_v5で燃料0。component5ee2d9c1…1b548、prepare後1,979,514,114、20件後
+  125,433,519残/18,106frames/型17,348/数値77/Python0、cache0hit20miss。
+  cold0/単調/各件到達/index20/1Store-account/予算更新0/64MiB30秒/退役payload0を確認。
+  18→20への回復で撤去を確認したが、元42/full guest gateや全製品の完了ではない。
+  両mode実extension557,270B/SHA
+  74bbd78829ea32f7e267a7fee8a6df2f45d1822280b61ec10380c37aca6b762e。
+  RAM artifact13045079620/244,897B・13044987842/246,374Bの必要JSONのみ保存した。

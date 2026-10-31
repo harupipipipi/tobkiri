@@ -116,6 +116,8 @@ def compare(args, receipt, package_paths, extension):
     receipt['scalar_checks'] = scalar_checks(provider, kernel)
     from app_schema_object_checks import object_checks
     receipt['object_checks'] = object_checks(provider, kernel)
+    from app_schema_pattern_format_checks import pattern_format_checks
+    receipt['pattern_format_checks'] = pattern_format_checks(provider, kernel)
     receipt.update(outcome='success', app_backend_64_success=True,
                    app_backend_entries=kernel.app_schema_entry_count(),
                    app_backend_frames=kernel.app_schema_frame_count(),
