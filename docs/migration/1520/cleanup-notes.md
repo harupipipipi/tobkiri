@@ -151,6 +151,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   reallocの共存、canonical scratch、normalized leaseを同じaccountへ事前予約する。
   Macの通常unitを3件へ、Linuxは2件のままにする。Source/rustfmt確認のみであり、
   77件の実native結果とcompiler/strict lintは次CIで確認する。
+  実装`4fe22073b`の[CI41234273534](https://github.com/harupipipipi/tobkiri/actions/runs/41234273534)
+  は両OSで完了成功。macOSは原本77件のtyped材料/例外・logical state・既存key保持、
+  各操作の実close/容量解放/owner再openがすべて一致。Mac通常3/Linux通常2、両OSの
+  strict Clippy/2lock graph、Linuxの原本77件と明示unsupported-owner拒否も成功した。
+  selected JSON180,987Bのみ保存。deep2000、surrogate/NaN先後、12のlegacy lease境界も
+  この実native比較を通った。極端な未観測depthと既存IO/RNG/clock/close故障の全面資格、
+  実製品接続・GUI/1B/API・全20条件は引き続き未完で、材料-only unitを製品採用にしない。
+  次接続のSource再確認で重要な順序差を発見: 実profile_captureのsnapshot canonicalは
+  AuthorityStoreのwith内、close前に実行される。材料-only77の返却後にcanonicalを行う
+  接続は、canonical/close失敗のsurfaceとcontextを変える。Astra highは同じ固定native
+  bodyへ元snapshot helperを移し、現在bundle digest→open/init→epoch→record→元protocol
+  canonical/digest→closeの順を指定した。DB contextをguestへ跨がせる仕組みは作らない。
+  bundle digestは候補DATAでありCore grant/epoch/承認ではない。余分な事前検査/正規化を
+  追加せず、不在DBを作らない。同Bootstrap invocation/control/sourceで実bodyを借りる。
+  材料-only77は維持し、新しいsnapshot sub-operationの成功/失敗とcloseとの組合せを
+  原本helper/実contextで独立比較する。後続Bootstrap cleanupは別階層として扱う。
   JSON/surrogate/depth・不正leaseの例外投影、同時key作成/複合I/O/close、Linux process情報
   read内部close receipt等は未閉鎖。全Open同等・既存DB採用・GUI接続の完了とはしない。
 - cryptoの余分なowned key配列copyをZeroizing先作成へ整理した。Fernetは既存RustCryptoの
