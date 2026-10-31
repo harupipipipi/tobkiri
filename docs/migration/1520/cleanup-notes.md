@@ -1133,3 +1133,23 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   これはnative機能/接続証明のみでWasm予算の改善率ではない。
 - 中間$idでpointerのscopeが移る専用比較を追加し、新14比較で再確認する。元29のID比較は
   custom METAのunowned Resource経路なので、owned native区間の証明と混同しない。
+- `3510bd970`のnative CI41169716119は新14比較を含め全成功、extensionは6448と同一bytes。
+  実Wasmの累積診断CI41169851328は観測/cleanup検査に成功したが、19件完了/20件目停止は
+  変わらず。19件後残fuelは40,575,326（旧22,620,801）、frames17,429、cache hit0/miss19。
+  Rust pointer928/dynamic857/adapter0の実到達を確認。metadata/observerも変更されており、
+  差分を関数の費用割合とは扱わない。新componentd95ce723…de564、RAM artifact13030871218。
+- 同head一括CI41169845789は元2Bでcold/fullとも停止。同component09b486f0…58dcb、prepare後
+  1,979,547,721→0、cold1.304300670s/full1.161261552s。両方元deadline保持/未超過・
+  unreachable=false・退役・payload0。RAM artifact13030344622。元一括gateは未達。
+- Astraが次に選んだのは、App内部の参照URI→URI/fragment区間をまとめたRust移植実験。
+  `urljoin`制御だけを移してPython parse/unparseへ戻る旧試行は再利用しない。
+  exact builtin ASCII str、対応構文、現在の正規URI関数/省略helperと可変scheme設定が
+  対応範囲のときだけ実行前に選ぶ。mutable listはidentityだけで固定扱いしない。
+  条件外はそのURI操作の最初から実Python経路へ渡し、native失敗後には再試行しない。
+  Rustで分岐/parse/join/再構成/defragをまとめ、途中tuple/parse-result/helpersを除去する。
+  CPythonそのものの動作と入力文字列を返す場合の参照関係を保ち、一般URI正規化へ変えない。
+  空/fragment/query/空query・fragment、path/network/scheme/slash/dot、percent/case/control、
+  Unicode/bracket/subclassの事前原版選択、関数/helper/設定の変更後dispatchを比較する。
+  Registry/Frameは同時に変更しない。同じ累積診断と未変更cold/fullで前進を測り、効果が
+  小さければ戻す。guard自体が多数のPython処理を再現する場合は対応範囲を狭める。
+  URIコードは未実装。native profileの回数/時間だけでfuel支配や42件完了を予測しない。
