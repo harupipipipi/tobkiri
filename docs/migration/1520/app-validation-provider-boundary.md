@@ -281,3 +281,18 @@ separate unchanged cold/full gate41180458589 also exhausted fuel in both modes.
 All retained64MiB/30s and cleanup to0. Diagnostic success proves actual native
 value reach and valid observation handling, not sequence completion, one-shot
 parity, performance improvement or final product qualification.
+
+
+## App execution-control slice (implemented; CI pending)
+
+Astra's next selected boundary is the App frame's own control state: frozen root
+keyword work rows, enumerate counters, fixed ranges and prefix zip coordination.
+Sol6.1 xhigh implemented that engine and12 groups/25 differential pairs; Root
+integrated the actual foreign-key/pair operations, source inventory and CI. Real dict/list iterators and foreign
+protocol operations remain live. Public error/context lists and child binding
+points stay observable; this is neither a builtin-reference cache nor a schema
+plan/result cache. The original root comprehension unpacks/selects each pair
+while collecting; it does not call a foreign length hint through list(pairs).
+Foreign error keys retain actual set-membership/hash operations at the original
+decoration point. Source AST/rustfmt checks passed; actual native/guest CI is
+still required. No fuel improvement or final qualification is claimed.

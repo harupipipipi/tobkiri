@@ -83,3 +83,35 @@ def type_boundary(checker, instance, kind, schema):
         return checker.is_type(instance, kind)
     except exceptions.UndefinedTypeCheck:
         raise exceptions.UnknownType(kind, instance, schema) from None
+
+
+# Fixed keyword definitions from jsonschema 4.26.0 validators.py:767-804.
+# Only dispatch names are stored; no schema, input, permission or result is kept.
+_KEYWORD_NAMES = {name: name for name in (
+    "$dynamicRef", "$ref", "additionalProperties", "allOf", "anyOf", "const",
+    "contains", "dependentRequired", "dependentSchemas", "enum",
+    "exclusiveMaximum", "exclusiveMinimum", "format", "if", "items",
+    "maxItems", "maxLength", "maxProperties", "maximum", "minItems",
+    "minLength", "minProperties", "minimum", "multipleOf", "not", "oneOf",
+    "pattern", "patternProperties", "prefixItems", "properties",
+    "propertyNames", "required", "type", "unevaluatedItems",
+    "unevaluatedProperties", "uniqueItems",
+)}
+
+
+def unpack_keyword_pair(pair):
+    """Preserve the actual foreign pair's sequence-unpack operations/errors."""
+    key, value = pair
+    return key, value
+
+
+def select_keyword(key, root):
+    """Dispatch a foreign key using source membership/getitem or descend get."""
+    if root:
+        return _KEYWORD_NAMES[key] if key in _KEYWORD_NAMES else None
+    return _KEYWORD_NAMES.get(key)
+
+
+def keyword_has_schema_path(key):
+    """Preserve foreign-key hash/equality at the error-decoration boundary."""
+    return key not in {"if", "$ref"}

@@ -1309,3 +1309,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   実到達・最終index19を確認した。元のone-Store/2B/64MiB/30秒とtrap後退役を維持。
   前ownership版の19件後36,924,554とは観測処理も異なるため、個別処理の燃料帰属や
   改善を主張しない。cold/full・全20/839・元GUI・1B/API・VM廃止は未達。
+
+- 実装済み・実CI待ち（Astra high設計、Sol6.1 xhigh担当）: App frameの内部enumerate/range/
+  root作業列をRustの実行状態へ移す。実dict/list iterator、foreign protocolと公開error
+  contextは維持し、live列をsnapshot化しない。builtin参照cacheやMETA事前計画ではない。
+  実原本4.26 validators.py263–277のroot列はlist comprehensionで、prototypeの
+  list(pairs)とはforeign length hintと逐次unpack時点が異なる。CPython3.13.16の
+  [list実装](https://raw.githubusercontent.com/python/cpython/v3.13.16/Objects/listobject.c)、
+  [enumerate実装](https://raw.githubusercontent.com/python/cpython/v3.13.16/Objects/enumobject.c)、
+  [zip実装](https://raw.githubusercontent.com/python/cpython/v3.13.16/Python/bltinmodule.c)を
+  source確認。短いzipでも左を先に一個消費する順序、子取得時点、長さ固定時点、
+  iterator/hint例外と途中解放を12群/25差分対で比較する。Solはcursor.rsとframe変更・新helperを
+  実装、Rootがsource-defined foreign pair/key境界、source inventory14件とCIを統合。
+  未知keyを先にString変換しない。rootは実逐次unpack/membership/getitem、descendはgetで
+  選別する。Root監査でforeign error keyのset membership/hash欠落を見つけ、同じerror
+  decoration位置の実key境界で修正した。公開context list、実iterator、参照処理と値policyは
+  維持。AST6/rustfmt/diffのみ成功、実native/guest CIは未実施、燃料削減は未測定。

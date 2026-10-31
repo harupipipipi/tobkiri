@@ -8,7 +8,7 @@ use crate::keywords::{self, builtin, format, module_member, validation_error};
 use pyo3::{
     exceptions::{PyMemoryError, PyNotImplementedError, PyRuntimeError},
     prelude::*,
-    types::{PyBool, PyDict, PyIterator, PyList, PyString, PyTuple},
+    types::{PyBool, PyDict, PyList, PyString},
 };
 use std::{
     rc::Rc,
@@ -19,8 +19,10 @@ type Object = Py<PyAny>;
 static ENTRIES: AtomicUsize = AtomicUsize::new(0);
 static FRAMES: AtomicUsize = AtomicUsize::new(0);
 
+mod cursor;
 mod references;
 mod value;
+use cursor::{Cursor, Entry, Keyword as Selected, Keywords, Pair};
 use references::{DefaultReferencePolicy, ReferenceState, ResourcePolicy};
 use value::{DefaultValuePolicy, Node, TypePolicy};
 
@@ -32,12 +34,6 @@ struct Environment {
     urljoin: Object,
     urldefrag: Object,
     resource_policy: ResourcePolicy,
-}
-
-struct Selected {
-    keyword: Object,
-    value: Object,
-    name: String,
 }
 
 #[derive(Clone, Copy)]
@@ -53,12 +49,12 @@ enum ChildKind {
 
 struct Children {
     kind: ChildKind,
-    cursor: Py<PyIterator>,
+    cursor: Cursor,
     live: bool,
 }
 
 struct Alternatives {
-    cursor: Py<PyIterator>,
+    cursor: Cursor,
     errors: Vec<Object>,
     branch_errors: usize,
     live: bool,
@@ -93,7 +89,8 @@ struct Frame {
     enter_resource: bool,
     root: bool,
     started: bool,
-    cursor: Option<Py<PyIterator>>,
+    cursor: Option<Keywords>,
+    false_yielded: bool,
     selected: Option<Selected>,
     handler: Option<Handler>,
     path: Option<Object>,
@@ -110,6 +107,7 @@ impl Frame {
             root,
             started: false,
             cursor: None,
+            false_yielded: false,
             selected: None,
             handler: None,
             path: None,
@@ -127,14 +125,7 @@ impl Frame {
         if self.enter_resource {
             self.references = self.references.descend(py, env, schema)?;
         }
-        let pairs = schema.call_method0("items")?;
-        // Original root construction freezes its selected pairs; ordinary
-        // descend iterates the actual live items view on each next().
-        self.cursor = Some(if self.root {
-            builtin(py, "list")?.call1((pairs,))?.try_iter()?.unbind()
-        } else {
-            pairs.try_iter()?.unbind()
-        });
+        self.cursor = Some(Keywords::new(schema, self.root)?);
         Ok(())
     }
 
@@ -167,7 +158,15 @@ impl Frame {
         kwargs.set_item("type_checker", env.value_policy.current_checker(py)?)?;
         let error_bound = error.bind(py);
         error_bound.call_method("_set", (), Some(&kwargs))?;
-        if selected.name != "if" && selected.name != "$ref" {
+        let keyword = selected.keyword.bind(py);
+        let has_schema_path = if keyword.is_exact_instance_of::<PyString>() {
+            selected.name != "if" && selected.name != "$ref"
+        } else {
+            module_member(py, "app_schema_model", "keyword_has_schema_path")?
+                .call1((keyword,))?
+                .is_truthy()?
+        };
+        if has_schema_path {
             error_bound
                 .getattr("schema_path")?
                 .call_method1("appendleft", (selected.keyword.bind(py),))?;
@@ -197,11 +196,10 @@ impl Frame {
             self.start(py, env)?;
         }
         if self.schema.bind(py).is_instance_of::<PyBool>() {
-            if self.cursor.is_some() || self.schema.bind(py).is_truthy()? {
+            if self.false_yielded || self.schema.bind(py).is_truthy()? {
                 return Ok(Action::Done);
             }
-            // An empty retained iterator marks the single false-schema yield.
-            self.cursor = Some(PyTuple::empty(py).try_iter()?.unbind());
+            self.false_yielded = true;
             let kwargs = PyDict::new(py);
             kwargs.set_item("validator", py.None())?;
             kwargs.set_item("validator_value", py.None())?;
@@ -238,77 +236,99 @@ impl Frame {
                                 }
                             }
                         }
-                        match next(py, &children.cursor)? {
+                        match children.cursor.next(py)? {
                             None => None,
                             Some(item) => {
                                 let selected = self.selected.as_ref().expect("selected rule");
                                 let value = selected.value.bind(py);
                                 let instance = self.instance.bind(py);
-                                let child = match children.kind {
-                                    ChildKind::Properties => {
-                                        let key = item.get_item(0)?;
-                                        let schema = item.get_item(1)?;
-                                        if !instance.contains(&key)? {
+                                let child = match (children.kind, item) {
+                                    (
+                                        ChildKind::Properties,
+                                        Entry::Pair(Pair { key, value: schema }),
+                                    ) => {
+                                        let key = key.bind(py);
+                                        if !instance.contains(key)? {
                                             self.handler = Some(handler);
                                             continue;
                                         }
                                         self.child(
                                             py,
-                                            schema,
-                                            instance.get_item(&key)?,
+                                            schema.bind(py).clone(),
+                                            instance.get_item(key)?,
                                             Some(key.clone()),
-                                            Some(key),
+                                            Some(key.clone()),
                                         )
                                     }
-                                    ChildKind::Additional => self.child(
+                                    (ChildKind::Additional, Entry::Value(item)) => self.child(
                                         py,
                                         value.clone(),
-                                        instance.get_item(&item)?,
-                                        Some(item),
+                                        instance.get_item(item.bind(py))?,
+                                        Some(item.into_bound(py)),
                                         None,
                                     ),
-                                    ChildKind::PropertyNames => {
-                                        self.child(py, value.clone(), item, None, None)
-                                    }
-                                    ChildKind::Items => self.child(
+                                    (ChildKind::PropertyNames, Entry::Value(item)) => self.child(
                                         py,
                                         value.clone(),
-                                        instance.get_item(&item)?,
-                                        Some(item),
+                                        item.into_bound(py),
+                                        None,
                                         None,
                                     ),
-                                    ChildKind::PrefixItems => {
-                                        let index = item.get_item(0)?.get_item(0)?;
-                                        let actual = item.get_item(0)?.get_item(1)?;
+                                    (ChildKind::Items, Entry::Value(item)) => self.child(
+                                        py,
+                                        value.clone(),
+                                        instance.get_item(item.bind(py))?,
+                                        Some(item.into_bound(py)),
+                                        None,
+                                    ),
+                                    (
+                                        ChildKind::PrefixItems,
+                                        Entry::Prefix {
+                                            index,
+                                            instance: actual,
+                                            schema,
+                                        },
+                                    ) => {
+                                        let index = index.into_bound(py);
                                         self.child(
                                             py,
-                                            item.get_item(1)?,
-                                            actual,
+                                            schema.into_bound(py),
+                                            actual.into_bound(py),
                                             Some(index.clone()),
                                             Some(index),
                                         )
                                     }
-                                    ChildKind::AllOf => self.child(
+                                    (
+                                        ChildKind::AllOf,
+                                        Entry::Indexed {
+                                            index,
+                                            value: schema,
+                                        },
+                                    ) => self.child(
                                         py,
-                                        item.get_item(1)?,
+                                        schema.into_bound(py),
                                         instance.clone(),
                                         None,
-                                        Some(item.get_item(0)?),
+                                        Some(index.into_bound(py)),
                                     ),
-                                    ChildKind::DependentSchemas => {
-                                        let key = item.get_item(0)?;
+                                    (
+                                        ChildKind::DependentSchemas,
+                                        Entry::Pair(Pair { key, value: schema }),
+                                    ) => {
+                                        let key = key.into_bound(py);
                                         if !instance.contains(&key)? {
                                             self.handler = Some(handler);
                                             continue;
                                         }
                                         self.child(
                                             py,
-                                            item.get_item(1)?,
+                                            schema.into_bound(py),
                                             instance.clone(),
                                             None,
                                             Some(key),
                                         )
                                     }
+                                    _ => unreachable!("child cursor shape"),
                                 };
                                 children.live = true;
                                 Some(Action::Push(child))
@@ -363,15 +383,19 @@ impl Frame {
                                 }
                             }
                         }
-                        if let Some(item) = next(py, &alternatives.cursor)? {
+                        if let Some(Entry::Indexed {
+                            index,
+                            value: schema,
+                        }) = alternatives.cursor.next(py)?
+                        {
                             alternatives.branch_errors = 0;
                             alternatives.live = true;
                             let child = self.child(
                                 py,
-                                item.get_item(1)?,
+                                schema.into_bound(py),
                                 self.instance.bind(py).clone(),
                                 None,
-                                Some(item.get_item(0)?),
+                                Some(index.into_bound(py)),
                             );
                             Some(Action::Push(child))
                         } else {
@@ -400,37 +424,33 @@ impl Frame {
                     return Ok(action);
                 }
             }
-            let Some(pair) = next(py, self.cursor.as_ref().expect("started META frame"))? else {
+            let Some(selected) = self.cursor.as_mut().expect("started META frame").next(py)? else {
                 return Ok(Action::Done);
             };
-            let keyword = pair.get_item(0)?;
-            let value = pair.get_item(1)?;
-            let name = keyword.extract::<String>()?;
-            self.selected = Some(Selected {
-                keyword: keyword.unbind(),
-                value: value.clone().unbind(),
-                name: name.clone(),
-            });
+            let name = selected.name.clone();
+            let value = selected.value.clone_ref(py).into_bound(py);
+            self.selected = Some(selected);
             let instance = self.instance.bind(py);
             let schema = self.schema.bind(py);
-            let mut children = |kind, values: Bound<'_, PyAny>| -> PyResult<()> {
+            let mut children = |kind, cursor: Cursor| {
                 self.handler = Some(Handler::Children(Children {
                     kind,
-                    cursor: values.try_iter()?.unbind(),
+                    cursor,
                     live: false,
                 }));
-                Ok(())
             };
             match name.as_str() {
-                "properties" if json_type(env, instance, "object", schema)? => {
-                    children(ChildKind::Properties, value.call_method0("items")?)?
-                }
+                "properties" if json_type(env, instance, "object", schema)? => children(
+                    ChildKind::Properties,
+                    Cursor::pairs(&value.call_method0("items")?)?,
+                ),
                 "propertyNames" if json_type(env, instance, "object", schema)? => {
-                    children(ChildKind::PropertyNames, instance.clone())?
+                    children(ChildKind::PropertyNames, Cursor::values(instance)?)
                 }
-                "dependentSchemas" if json_type(env, instance, "object", schema)? => {
-                    children(ChildKind::DependentSchemas, value.call_method0("items")?)?
-                }
+                "dependentSchemas" if json_type(env, instance, "object", schema)? => children(
+                    ChildKind::DependentSchemas,
+                    Cursor::pairs(&value.call_method0("items")?)?,
+                ),
                 "additionalProperties" if json_type(env, instance, "object", schema)? => {
                     // Preserve the original extras iterator/set ordering and live
                     // dictionary values; this helper performs no validation.
@@ -438,7 +458,7 @@ impl Frame {
                         .call1((instance, schema))?;
                     let extras = builtin(py, "set")?.call1((extras,))?;
                     if json_type(env, &value, "object", schema)? {
-                        children(ChildKind::Additional, extras)?;
+                        children(ChildKind::Additional, Cursor::values(&extras)?);
                     } else if !value.is_truthy()? && extras.is_truthy()? {
                         let message = if schema.contains("patternProperties")? {
                             let verb = if extras.len()? == 1 { "does" } else { "do" };
@@ -476,9 +496,10 @@ impl Frame {
                     let prefix = schema
                         .call_method1("get", ("prefixItems", PyList::empty(py)))?
                         .len()?;
-                    if instance.len()? > prefix {
+                    let total = instance.len()?;
+                    if total > prefix {
                         if value.is(&false.into_pyobject(py)?) {
-                            let extra = instance.len()? - prefix;
+                            let extra = total - prefix;
                             let rest = if extra != 1 {
                                 instance
                                     .get_item(builtin(py, "slice")?.call1((prefix, py.None()))?)?
@@ -502,27 +523,16 @@ impl Frame {
                                 validation_error(py, message, None)?.unbind(),
                             );
                         }
-                        children(
-                            ChildKind::Items,
-                            builtin(py, "range")?.call1((prefix, instance.len()?))?,
-                        )?;
+                        children(ChildKind::Items, Cursor::range(prefix, total));
                     }
                 }
-                "prefixItems" if json_type(env, instance, "array", schema)? => children(
-                    ChildKind::PrefixItems,
-                    builtin(py, "zip")?
-                        .call1((builtin(py, "enumerate")?.call1((instance,))?, &value))?,
-                )?,
-                "allOf" => children(
-                    ChildKind::AllOf,
-                    builtin(py, "enumerate")?.call1((&value,))?,
-                )?,
+                "prefixItems" if json_type(env, instance, "array", schema)? => {
+                    children(ChildKind::PrefixItems, Cursor::prefix(instance, &value)?)
+                }
+                "allOf" => children(ChildKind::AllOf, Cursor::enumerated(&value)?),
                 "anyOf" => {
                     self.handler = Some(Handler::AnyOf(Alternatives {
-                        cursor: builtin(py, "enumerate")?
-                            .call1((&value,))?
-                            .try_iter()?
-                            .unbind(),
+                        cursor: Cursor::enumerated(&value)?,
                         errors: Vec::new(),
                         branch_errors: 0,
                         live: false,
@@ -669,10 +679,6 @@ impl Execution {
             }
         }
     }
-}
-
-fn next<'py>(py: Python<'py>, cursor: &Py<PyIterator>) -> PyResult<Option<Bound<'py, PyAny>>> {
-    cursor.bind(py).clone().next().transpose()
 }
 
 fn json_type(
