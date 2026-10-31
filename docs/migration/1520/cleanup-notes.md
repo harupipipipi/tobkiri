@@ -1005,3 +1005,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   plan/provenance/実component admissionへ結ぶ。元indexは元source bytesのみの証明であり、
   派生compositionの動作や権限へ流用しない。ordinaryPackとは独立した別artifact検証が必要。
   cryptographyを含む未提供closureと元GUI/owner統合は未完了のまま。まだ接続コードなし。
+
+- `7d34a0174`実測CI41162682461で、同一component SHA0eea81c5…b06a1のcold42操作と
+  full操作を別invocationで検査。両方元2Bで停止した（cold1.084401120s/full0.929129181s、
+  prepare後1,979,550,701）。両方deadline保持/未超過・unreachable=false・退役・payload0。
+  coldでも同じRust Frame.poll内だったため、文書段階へ進む前に定義側の削減が必要。
+  部分結果は合成しない。全Wasm操作は未達のまま。
+- 同headnativeCI41162600216は既存比較を保持して成功。full native profileは305の
+  validate_documentと45,921の元Validator生成を記録した（305root+45,616evolve）。
+  定義と文書の双方に未移植の費用が残る。native時間をWasm fuel配賦へ変換しない。
+  次はAstraの既定Rust所有参照状態/no-ID遷移と、ID/anchor/retrieve/mutationの比較を実装する。
