@@ -161,6 +161,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   であり実IO故障ではない。元Python/GUI/全19＋7の資格確認へ読み替えない。
   テスト用watはroot lockの既知1.252.0を使い、独立lockへ既知checksumの3packageのみ追加、
   旧version/checksumは保持した。実`--locked` resolver確認は次のLauncher CIで行う。
+- 依存解決だけを先行確認するため、既存native-data-handoff workflowに明示選択の
+  `launcher-lock` modeを追加した。通常push/default dispatchの実Store/preparation/domain/
+  Clippyはそのまま実行する。lock modeはmacOS用の実依存graphを`cargo metadata --locked`
+  で解決し、両lockが不変であることだけを確認する。build.rs・型・ABI・実行を検査せず、
+  Launcher本体やGUIの合格には数えない。実Desktop CIの代わりにはしない。
 
 - 条件: 旧 Profile・データ・秘密情報・復旧の実移行、実候補と承認の拘束、
   Stop / Quit の終了・失効まで確認する。空の新 root を既存環境の代用にしない。

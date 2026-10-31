@@ -11,10 +11,16 @@ on:
       - 'crates/tobkiri-wasm/src/native_setup_store_tests.rs'
       - '.github/workflows/issue-1520-native-data-handoff.yml'
   workflow_dispatch:
+    inputs:
+      verification:
+        description: Library handoff tests or dependency resolution only
+        type: choice
+        options: [handoff, launcher-lock]
+        default: handoff
 permissions:
   contents: read
 concurrency:
-  group: issue-1520-native-data-handoff-${{ github.sha }}
+  group: issue-1520-native-data-handoff-${{ github.sha }}-${{ github.event_name == 'workflow_dispatch' && inputs.verification || 'handoff' }}
   cancel-in-progress: false
 env:
   CARGO_BUILD_JOBS: '1'
@@ -22,7 +28,28 @@ env:
   CARGO_PROFILE_TEST_DEBUG: '0'
   CARGO_PROFILE_DEV_DEBUG: '0'
 jobs:
+  launcher-lock:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.verification == 'launcher-lock' }}
+    name: Standalone Launcher dependency graph (no build)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Resolve the exact macOS Launcher graph without changing its lock
+        working-directory: tobkiri_launcher/src-tauri
+        run: >-
+          cargo metadata --locked --format-version 1
+          --filter-platform aarch64-apple-darwin
+          --features native-source-inspection,native-harness-bootstrap
+          > "$RUNNER_TEMP/launcher-dependency-metadata.json"
+      - name: Verify both tracked locks remain unchanged
+        run: git diff --exit-code -- Cargo.lock tobkiri_launcher/src-tauri/Cargo.lock
   cancellation-lineage:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.verification != 'launcher-lock' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 40
     steps:
@@ -36,6 +63,7 @@ jobs:
       - name: Actual Store cancellation, custody and original-budget regressions
         run: cargo test --locked -p tobkiri-wasm --lib native_setup_store::tests -- --test-threads=1
   same-invocation:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.verification != 'launcher-lock' }}
     runs-on: macos-15
     timeout-minutes: 40
     steps:
