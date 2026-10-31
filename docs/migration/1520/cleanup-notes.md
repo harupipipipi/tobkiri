@@ -72,6 +72,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   失う不備があり、SQLite backup＋test connection実closeへ直して、assertを保ったまま成功。
   今後もDB/keyはCI一時領域のみ。Core control metadataと旧authority subtreeの観測範囲、
   raw SQLite page配置とlogical schema/commit stateを混同しない。
+- 原本referenceは`3946f5d5f`の[CI41221394933](https://github.com/harupipipipi/tobkiri/actions/runs/41221394933)
+  で両OS40ケースへ拡張して成功。v2/v3の実schema upgrade、既存DBのkey未在・DB/key/guard
+  mode、guard directory/symlinkを追加し、実failureのerrno/relative filename/contextも保持。
+  sourceと実戻りを調べた上で追加しており、反射仮説や任意APIへのscope拡大ではない。
+- 最初のnative old-state実装をCI用snapshotとして固定した（6.1 Sol xhigh実装・独立crypto
+  source監査、Root統合）。同じtracked job/source/control/invocationで実Open→2read→close、
+  private read carrierと既存Detachmentの実copyをworker内で保持してからDATAだけ返す。
+  受信DATA消費までSourceCustodyやNativeAccountを延命する案は採用しない。実未完I/Oだけを
+  実close receiptに従い既存control予約付きledgerへ保持し、sendとJoinを混同しない。
+  Source/AST/rustfmt/TOMLのみ確認済みで、初回compiler/native40比較は次のCI。
+  JSON/surrogate/depth・不正leaseの例外投影、同時key作成/複合I/O/close、Linux process情報
+  read内部close receipt等は未閉鎖。全Open同等・既存DB採用・GUI接続の完了とはしない。
+- cryptoの余分なowned key配列copyをZeroizing先作成へ整理した。Fernetは既存RustCryptoの
+  AES/CBC/HMACと既存canonを使い、独自AES/HMACを増やさない。固定sourceのBase64と
+  HMAC→decrypt/padding順は独立監査で差を未発見。明示owned bufferのzeroizing Dropと
+  HMAC/SHA内部・全stack/registerの消去保証を分け、全copy消去を主張しない。
 - 場所: [native_harness_bootstrap.rs](../../../tobkiri_launcher/src-tauri/src/native_harness_bootstrap.rs)、
   [core_host.rs](../../../tobkiri_launcher/src-tauri/src/core_host.rs)、
   [feature 分岐](../../../tobkiri_launcher/src-tauri/src/legacy.rs)。

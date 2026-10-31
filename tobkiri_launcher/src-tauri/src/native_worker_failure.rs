@@ -220,6 +220,17 @@ impl Detachment {
                 issue,
             })
     }
+    /// Copy original-Authority text once under this worker's same invocation.
+    /// The read-side carrier and this prepaid copy overlap until detachment;
+    /// neither reservation nor source custody is sent to the result consumer.
+    pub(crate) fn authority_text(&mut self, input: &str) -> Result<String, DetachedFailure> {
+        self.bytes(input.as_bytes())
+            .and_then(|bytes| String::from_utf8(bytes).map_err(|_| DetachmentIssue::Encoding))
+            .map_err(|issue| DetachedFailure::Detachment {
+                stage: Stage::Operation,
+                issue,
+            })
+    }
     fn bytes(&mut self, input: &[u8]) -> Result<Vec<u8>, DetachmentIssue> {
         let invocation = self
             .invocation

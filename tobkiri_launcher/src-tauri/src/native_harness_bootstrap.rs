@@ -20,7 +20,8 @@ use tauri::{AppHandle, Manager};
 use tobkiri_core::{Core, Digest, HostIo, NativeSetupInvocation, RuntimeOwner};
 use tobkiri_harness_native::{
     BootstrapInputOwner, BootstrapModuleIndex, BootstrapRoots, ModuleMetadataPolicy,
-    NativeBootstrap, NativeComponentPreparation, ORIGINAL_PROFILE_SOURCE_METADATA,
+    NativeBootstrap, NativeComponentPreparation, OriginalAuthorityError, OriginalAuthorityMaterial,
+    OriginalAuthorityOwner, ORIGINAL_PROFILE_SOURCE_METADATA,
 };
 use tobkiri_wasm::NativeDataIoError;
 
@@ -28,6 +29,12 @@ use tobkiri_wasm::NativeDataIoError;
 mod dispatch;
 pub(crate) use crate::native_worker_failure::UnboundOperation;
 pub(crate) use dispatch::{OriginalGetter, OriginalOperation};
+#[path = "native_authority_job.rs"]
+mod authority;
+pub(crate) use authority::{
+    read_original_authority_snapshot, OriginalAuthorityData, OriginalAuthorityJob,
+    OriginalAuthorityJobFailure,
+};
 
 enum OwnedRuntime {
     Unopened,
@@ -49,6 +56,7 @@ struct RuntimeState {
     owner: Mutex<OwnedRuntime>,
     jobs: Jobs,
     finalization: Finalization,
+    retained_authority: Mutex<Vec<authority::Retained>>,
 }
 
 impl NativeRuntimeState {
@@ -57,6 +65,7 @@ impl NativeRuntimeState {
             owner: Mutex::new(OwnedRuntime::Unopened),
             jobs: Jobs::new(shutdown),
             finalization: Finalization::default(),
+            retained_authority: Mutex::new(Vec::new()),
         }))
     }
 
@@ -159,6 +168,24 @@ impl BootstrapInputOwner for OriginalBootstrapInputs {
 
     fn check_live(&self) -> std::result::Result<(), NativeDataIoError> {
         with_original_host_inputs(&self.app, |_| ()).map_err(|_| NativeDataIoError::Retired)
+    }
+}
+
+// The source capability is the SAME retained original App owner used above.
+// Metadata inspection policy does not authorize this fixed persistence action.
+impl OriginalAuthorityOwner for OriginalBootstrapInputs {
+    fn with_original_user_data<R>(
+        &self,
+        operation: impl FnOnce(&std::path::Path) -> R,
+    ) -> std::result::Result<R, OriginalAuthorityError> {
+        crate::native_harness_host_inputs::with_original_authority_source(&self.app, |inputs| {
+            operation(inputs.internal_runtime_storage_parent())
+        })
+        .map_err(|_| OriginalAuthorityError::unavailable())
+    }
+    fn check_original_owner(&self) -> std::result::Result<(), OriginalAuthorityError> {
+        with_original_host_inputs(&self.app, |_| ())
+            .map_err(|_| OriginalAuthorityError::unavailable())
     }
 }
 
@@ -301,7 +328,7 @@ async fn run_original_job(
                     Condition::NativePanic,
                 )),
                 false,
-            )
+            );
         }
     };
     let output = finish_bound_job(runner, operation, &job, &runtime.0.jobs, &mut detachment).await;

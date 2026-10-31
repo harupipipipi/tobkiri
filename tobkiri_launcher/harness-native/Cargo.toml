@@ -11,17 +11,24 @@ thread-capabilities-ci = []
 
 [dependencies]
 anyhow.workspace = true
+aes.workspace = true
+base64.workspace = true
+cbc.workspace = true
+getrandom.workspace = true
+hmac.workspace = true
+rusqlite.workspace = true
+sha2.workspace = true
 tobkiri-canon.workspace = true
 tobkiri-gate.workspace = true
 tobkiri-wasm.workspace = true
 wasmtime.workspace = true
+zeroize.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true
 
 [dev-dependencies]
 tobkiri-core.workspace = true
-base64.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 tokio.workspace = true

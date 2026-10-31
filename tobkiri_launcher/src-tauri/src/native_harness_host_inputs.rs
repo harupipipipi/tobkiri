@@ -69,6 +69,29 @@ pub(crate) fn with_original_host_inputs<T>(
     with_selected_config(config.inner(), &shutdown.inner().0, use_inputs)
 }
 
+/// Fixed old-Authority operation only. The tracked caller applies publication
+/// retirement AFTER physical DB close, so an earlier actual failure survives
+/// shutdown while late successful DATA is dropped. No new source selection or
+/// guest filesystem role is minted by this borrow of the managed AppConfig.
+#[cfg(feature = "native-harness-bootstrap")]
+pub(crate) fn with_original_authority_source<T>(
+    app: &AppHandle,
+    operation: impl for<'host> FnOnce(NativeHostSourceInputs<'host>) -> T,
+) -> Result<T, NativeHostInputsUnavailable> {
+    let shutdown = app
+        .try_state::<ShutdownState>()
+        .ok_or(NativeHostInputsUnavailable::ShutdownStateMissing)?;
+    let config = app
+        .try_state::<AppConfig>()
+        .ok_or(NativeHostInputsUnavailable::ConfigurationMissing)?;
+    if shutdown.inner().0.load(Ordering::Acquire) {
+        return Err(NativeHostInputsUnavailable::ShuttingDown);
+    }
+    Ok(operation(NativeHostSourceInputs {
+        config: config.inner(),
+    }))
+}
+
 fn with_selected_config<T>(
     config: &AppConfig,
     shutdown: &std::sync::atomic::AtomicBool,

@@ -1,4 +1,4 @@
-name: Issue 1520 original Authority reference
+name: Issue 1520 original Authority context parity
 
 'on':
   push:
@@ -6,7 +6,22 @@ name: Issue 1520 original Authority reference
     paths:
       - tools/original_authority_reference.py
       - .github/workflows/issue-1520-original-authority.yml
+      - tobkiri_launcher/harness-native/src/original_authority*.rs
+      - tobkiri_launcher/harness-native/src/lib.rs
+      - tobkiri_launcher/harness-native/Cargo.toml
+      - tobkiri_launcher/src-tauri/src/native_harness_bootstrap.rs
+      - tobkiri_launcher/src-tauri/src/native_harness_host_inputs.rs
+      - tobkiri_launcher/src-tauri/src/native_worker_failure.rs
+      - Cargo.toml
+      - Cargo.lock
+      - tobkiri_launcher/src-tauri/Cargo.lock
   workflow_dispatch:
+    inputs:
+      verification:
+        description: Fresh original/native comparison or original reference only
+        type: choice
+        options: [native, reference]
+        default: native
 
 permissions:
   contents: read
@@ -23,7 +38,12 @@ jobs:
       matrix:
         os: [ubuntu-22.04, macos-15]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 40
+    env:
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,10 +70,61 @@ jobs:
           python3 -B tools/original_authority_reference.py prepare
           --original-root "$GITHUB_WORKSPACE/original-authority-source"
           --output "$RUNNER_TEMP/original-authority-reference"
+      - uses: dtolnay/rust-toolchain@1.94.0
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.verification != 'reference' }}
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.verification != 'reference' }}
+        with:
+          cache-on-failure: true
+      - name: Verify the actual root and standalone Launcher locked graphs
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.verification != 'reference' }}
+        run: |
+          cargo metadata --locked --format-version 1 \
+            > "$RUNNER_TEMP/authority-dependency-metadata.json"
+          cargo metadata --locked --format-version 1 \
+            --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
+            --filter-platform aarch64-apple-darwin \
+            --features native-source-inspection,native-harness-bootstrap \
+            > "$RUNNER_TEMP/launcher-authority-dependency-metadata.json"
+          git diff --exit-code -- Cargo.lock tobkiri_launcher/src-tauri/Cargo.lock
+      - name: Verify actual cancellation and original integer boundary regressions
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.verification != 'reference' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/original-authority-unit.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::tests -- --test-threads=1
+      - name: Execute the real native operation against every fresh original fixture
+        id: native_driver
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.verification != 'reference' }}
+        env:
+          TOBKIRI_ORIGINAL_AUTHORITY_FIXTURES: ${{ runner.temp }}/original-authority-reference/fixtures.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/original-authority-native-driver.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::tests::original_reference_driver
+          -- --ignored --exact --test-threads=1 --nocapture
+      - name: Compare typed native results and independently observed committed state
+        if: ${{ !cancelled() && (github.event_name != 'workflow_dispatch' || inputs.verification != 'reference') && steps.native_driver.outcome != 'skipped' }}
+        run: >-
+          python3 -B tools/original_authority_reference.py compare
+          --original-root "$GITHUB_WORKSPACE/original-authority-source"
+          --fixtures "$RUNNER_TEMP/original-authority-reference/fixtures.json"
+          --observations "$RUNNER_TEMP/original-authority-reference/native-observations.json"
+          --output "$RUNNER_TEMP/original-authority-reference/comparison.json"
+      - name: Strict native library validation
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.verification != 'reference' }}
+        run: cargo clippy --locked -p tobkiri-harness-native --lib -- -D warnings
       - name: Retain bounded observations only (no database, key or fixture payload)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: original-authority-reference-${{ matrix.os }}
-          path: ${{ runner.temp }}/original-authority-reference/summary.json
+          path: |
+            ${{ runner.temp }}/original-authority-reference/summary.json
+            ${{ runner.temp }}/original-authority-reference/native-observations.json
+            ${{ runner.temp }}/original-authority-reference/comparison.json
           if-no-files-found: warn

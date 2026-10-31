@@ -9,7 +9,14 @@ mod bootstrap_runtime;
 mod exception_graph;
 mod init_diagnostic;
 mod init_trace;
+mod original_authority;
 mod preparation;
+pub use original_authority::{
+    OriginalAuthorityAdmission, OriginalAuthorityCause, OriginalAuthorityCleanup,
+    OriginalAuthorityCloseReceipt, OriginalAuthorityEpoch, OriginalAuthorityError,
+    OriginalAuthorityIoError, OriginalAuthorityMaterial, OriginalAuthorityOwner,
+    OriginalAuthorityRead, OriginalAuthorityStage, read_original_authority,
+};
 mod source_metadata;
 #[cfg(target_os = "macos")]
 mod source_resolve;
