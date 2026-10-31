@@ -283,7 +283,7 @@ value reach and valid observation handling, not sequence completion, one-shot
 parity, performance improvement or final product qualification.
 
 
-## App execution-control slice (native parity; guest pending)
+## App execution-control slice (native parity; guest budget unmet)
 
 Astra's next selected boundary is the App frame's own control state: frozen root
 keyword work rows, enumerate counters, fixed ranges and prefix zip coordination.
@@ -305,6 +305,10 @@ StopIteration, retaining its actual cause/context. Normal iterator termination
 and prior catches run first. The extended18 groups/48 pairs retain every prior
 case. Native CI41182636950 at25c8aa373 passed all18 control groups/48 pairs,
 all prior value/reference/ownership groups and complete App comparisons. The
-same-source actual Wasm cold/full41182761288 and cumulative41182767015 are in
-progress under unchanged limits. Their outcome, budget qualification and final
-product acceptance remain open.
+same-source actual Wasm cold/full41182761288 both exhausted the unchanged2B
+fuel. Cumulative41182767015 passed diagnostic integrity only:19 schemas returned
+and20th profile_lock_v4 exhausted fuel, with34,803,270 remaining after19. Actual
+native value/reference counters and17,429 frames remained observable under one
+Store/account, zero budget resets and the original64MiB/30s limits; retirement
+and physical payload0 passed. Neither the unchanged19-schema frontier nor the
+native comparisons qualify one-shot completion or final product adoption.

@@ -1360,3 +1360,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - 同じ25c8でWasm cold/full41182761288と累積診断41182767015を各1回起動。
   元のone-Store/2B/64MiB/絶対30秒を維持し、実行中。同じrunを最後まで追跡する。
   このcontrol sliceの完走件数・燃料改善はまだ未測定。失敗後の予算更新・再試行は行わない。
+
+- 25c8実Wasmは終了。cold/full CI41182761288は両方2B燃料で停止。component
+  c166298e…e3896、prepare後1,979,519,111→0、cold約1.329秒/full約1.170秒。
+  絶対30秒deadline維持・期限超過なし・unreachableなし・Store退役・physical payload0。
+- 累積CI41182767015は診断整合性のみ成功、19件完了/20件目profile_lock_v4で燃料0。
+  component601b9800…22bf5、prepare後1,979,545,006、19件後34,803,270残、17,429frames、
+  native型16,671/数値76/Python境界0、pointer928/dynamic857/adapter0。実cold-zero/
+  各schema到達/単調性/index19/同一Store・account/予算更新0と退役・payload0を確認。
+  前3bの19件後32,072,253から数値は変わったが、完了件数は19のまま。個別処理への
+  燃料帰属や全体完走・製品採用の証拠ではない。
+- 両modeの実Wasm extension540,035B/SHA
+  0e14563420cc55fd09e90d2da92078f8646de4ace90ee212b5228c554724db70を確認。
+  RAM artifact13035970297/244,810B・13034919667/246,127Bから必要JSONのみ保存。
+  cold/full gate・全20/839・元GUI・1B/API・Python/VM廃止は未達。Astraへ次のまとまった
+  App-owned evaluator境界を質問中で、次の実装はまだ選択していない。
