@@ -814,3 +814,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   caller caseそれぞれの実keyword entry増加を要求し、黙示的な元library選択を防ぐ。
   新しい最適化は足さず、同じ37case/45miss302hit/305entry453readを元laneと比較する。
   第三laneの実CI・続くWasm実測は未完。compiled META planはまだ承認・実装しない。
+
+- 第三lane `1d4b406ea` のCI `41147858083` / job `124377059142` は実compileと
+  native64/API19を通過し、Rust接続後の全37case/42resource/全catalogも元実装と一致。
+  実Rust keyword entryはcatalog前0→catalog後158,593→42resource後217,373→
+  caller後217,932。source/extension/派生library閉包・実import先を照合し、原版library
+  だけの比較でないことを確認。artifact13021598114（42,641bytes）をRAM検査し、
+  bounded receiptのみ保存。これはnative上の既存kernel接続証明であり、実Wasmの
+  同一予算達成・製品への採用ではない。次は既存bundle catalog App source経路の
+  独立Wasm実測設計をAstra highへ照会中。元64 gateや全製品要件は未完のまま。

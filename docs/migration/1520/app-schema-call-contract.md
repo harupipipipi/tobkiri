@@ -157,4 +157,8 @@ library closure before first import, then installs the same actual adapter.
 Each of the full catalog,42-resource and caller-case phases must increase the
 actual Rust keyword-entry count. Those connection receipts stay outside the
 semantic comparison; the same37-case contract remains the required result.
-This third lane is pending and proves no Wasm budget or product acceptance.
+CI `41147858083` / job `124377059142` at `1d4b406ea` passed the actual native
+build, native64/API19 precheck and this third lane. All37 cases,42 resources and
+the full catalog matched the original. Actual Rust keyword entries increased
+from0 to158,593 after catalog,217,373 after42 resources and217,932 after caller
+cases. This proves the native connection, not a Wasm budget or product acceptance.
