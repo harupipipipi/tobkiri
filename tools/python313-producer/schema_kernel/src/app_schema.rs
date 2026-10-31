@@ -23,6 +23,7 @@ static FRAMES: AtomicUsize = AtomicUsize::new(0);
 mod cursor;
 mod object;
 mod references;
+mod uri;
 mod value;
 use cursor::{Cursor, Entry, Keyword as Selected, Keywords, Pair};
 use references::{DefaultReferencePolicy, ReferenceState, ResourcePolicy};
@@ -33,8 +34,6 @@ struct Environment {
     resolver_type: Object,
     checker: Object,
     value_policy: TypePolicy,
-    urljoin: Object,
-    urldefrag: Object,
     resource_policy: ResourcePolicy,
 }
 
@@ -752,8 +751,6 @@ fn app_check_schema(
         resolver_type,
         checker: format_checker.clone().unbind(),
         value_policy,
-        urljoin: module_member(py, "referencing._core", "urljoin")?.unbind(),
-        urldefrag: module_member(py, "referencing._core", "urldefrag")?.unbind(),
         resource_policy,
     });
     let references = ReferenceState::from_boundary(&resolver, &env)?;
@@ -796,6 +793,7 @@ fn app_schema_frame_count() -> usize {
 
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     references::register(module)?;
+    uri::register(module)?;
     value::register(module)?;
     module.add_function(wrap_pyfunction!(app_check_schema, module)?)?;
     module.add_function(wrap_pyfunction!(app_schema_entry_count, module)?)?;

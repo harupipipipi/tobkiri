@@ -460,3 +460,26 @@ unverified; unsupported known evaluators refuse instead of accepting input.
 Native functional equality, additional mutation/callback cases and actual Wasm
 fuel/memory/deadline proof must precede adoption. It does not authorize removing
 product Python, a VM, the original GUI flow or compatibility code.
+
+### App-owned URI interval
+
+The separate App backend translates a bounded CPython 3.13.16 URI DATA family
+in `src/app_schema/uri.rs`. It does not replace generic API19 or shared urllib.
+Actual opaque resolver lookup, Registry/Resource/retrieval/pointer operations
+remain outside that interval. Unsupported arguments execute the complete
+source-defined compatibility sequence once, including lookup-local callable
+binding and real two-item unpack; no native failure is retried in Python.
+
+Native admission uses exact ASCII strings and excludes bracketed forms.
+Nonfragment resolve also excludes literal hashes and nonrelative/scheme-less
+nonempty bases: shared parser caches can expose the identity of a returned
+path or fragment. Direct fragment-only lookup preserves base identity and real
+slice behavior. Join-only retains its separately proved raw-return cases.
+No general URL normalization, result cache, reflective function guard or new
+configuration channel is introduced. Native/compatibility route counters are
+observations, not authority or performance proof. Actual native comparisons and
+the original-budget Wasm gates remain required before adoption.
+
+The upstream license and translation summary are retained in
+[COPYING.python](COPYING.python). Existing jsonschema/referencing-derived code
+retains [COPYING.jsonschema](COPYING.jsonschema).

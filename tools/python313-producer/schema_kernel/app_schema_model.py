@@ -14,6 +14,7 @@ from jsonschema import _format, exceptions
 from jsonschema._types import draft202012_type_checker
 from jsonschema.validators import _warn_for_remote_retrieve
 from referencing import Registry
+from referencing import _core as _reference_core
 from referencing.jsonschema import DRAFT202012
 
 ROOT_URI = "https://json-schema.org/draft/2020-12/schema"
@@ -76,6 +77,23 @@ class DefinitionModel:
             # Preserve the actual exception-class / tuple representation.
             caught = exceptions[0] if len(exceptions) == 1 else exceptions
             self.checker.checkers[name] = (callback, caught)
+
+
+def uri_resolve_boundary(base, reference):
+    """Run the original URI sequence once for unsupported owned arguments."""
+    if reference.startswith("#"):
+        return base, reference[1:]
+    # Source binds the outer callable before evaluating the inner call.
+    # Keep it even if join changes the module's current defrag binding.
+    defrag = _reference_core.urldefrag
+    join = _reference_core.urljoin
+    uri, fragment = defrag(join(base, reference))
+    return uri, fragment
+
+
+def uri_join_boundary(base, reference):
+    """Select the current real join at this owned resource transition."""
+    return _reference_core.urljoin(base, reference)
 
 
 def type_boundary(checker, instance, kind, schema):

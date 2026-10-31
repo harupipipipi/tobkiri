@@ -390,3 +390,42 @@ one-Store/account/64MiB/30s, retirement and payload0 checks held. This unchanged
 frontier does not qualify one-shot completion. Registry/Resource/URI/pointer/
 dynamic algorithms, generic API and earlier groups remain unchanged. No
 product/default switch is made.
+
+## Format error production and the next owned URI interval
+
+The format conversion already called the actual matcher/checker directly. No
+carrier removal or performance gain is claimed. Source cb741 fixed constructor,
+message and cause binding order with actual handled-exception RAII, but native
+CI41209957896 exposed a final SchemaError context mismatch on handler reentry.
+Sol6.1 xhigh corrected the actual producer at8b2eac5c6 using CPython's public
+SetObject operation on the same actual exception; constructors are not rerun.
+Native CI41211361636 passed all17 format groups/43 differential pairs and every
+prior generic, App and final caller comparison. Same-source Wasm
+41211646611 exhausted the original2B in both cold/full operations; cumulative
+41211649138 completed20 then stopped on profile_lock_v5. This correctness fix
+does not establish full guest or product qualification.
+
+The next default-off candidate translates only the App-owned URI DATA interval
+in owned reference lookup and in_resource. Opaque selected resolver lookup and
+actual Registry/Resource/retrieval/pointer/anchor/dynamic operations retain their
+existing ownership. Generic API19 and shared urllib remain independent.
+Unsupported input chooses its complete source-defined compatibility sequence
+before native URI work; failures are never retried. The compatibility boundary
+preserves startswith/truth/slice, outer-callable binding before inner join,
+live aliases at the next operation and actual two-item unpack.
+
+Native admission is exact ASCII strings without brackets or nonempty
+scheme-less bases. Nonfragment resolves additionally keep literal hashes and
+nonrelative base schemes on the existing path, preserving shared-parser cached
+path/fragment identity. Direct fragment-only lookup retains base identity and
+slice behavior. Join-only has its own raw-return cases. The pinned CPython
+license and translation changes are in COPYING.python. No new dependency,
+configuration API, reflection guard, emulated cache or result cache is added.
+
+Sol6.1 xhigh implemented17 URI groups/146 pairs (145 symmetric and one
+owner-isolation comparison), retaining actual shared-resolver/fresh-default
+controls and all earlier fixtures. Root integrated the17-source closure and
+separate4-field operation counters, preserving old value/reference shapes,
+export counts and all original budgets. Source/AST/rustfmt/inventory checks have
+passed. Actual native comparisons and same-source original-budget Wasm remain
+pending; this candidate is not enabled in the product or adopted by Setup.

@@ -29,9 +29,9 @@ def run(source: Path, vendor: Path, archives: Path, rust: Path,
         raise ValueError('new extension output required')
     kernel.packages(source)
     source_files = fetch_sdk.inventory(source)
-    if (set(source_files) != {'Cargo.toml', 'Cargo.lock', 'README.md',
+    if (set(source_files) != {'Cargo.toml', 'Cargo.lock', 'README.md', 'COPYING.python',
                               'COPYING.jsonschema', 'adapter.py', 'src/lib.rs',
-                              'src/traversal.rs', 'src/keywords.rs', 'src/app_schema.rs', 'src/app_schema/references.rs', 'src/app_schema/value.rs', 'src/app_schema/cursor.rs', 'src/app_schema/object.rs', 'app_provider.py', 'app_schema_model.py'}
+                              'src/traversal.rs', 'src/keywords.rs', 'src/app_schema.rs', 'src/app_schema/references.rs', 'src/app_schema/uri.rs', 'src/app_schema/value.rs', 'src/app_schema/cursor.rs', 'src/app_schema/object.rs', 'app_provider.py', 'app_schema_model.py'}
             or any('link' in row for row in source_files.values())
             or sum(row['bytes'] for row in source_files.values()) > kernel.MAX_SOURCE):
         raise ValueError('closed original kernel source required')

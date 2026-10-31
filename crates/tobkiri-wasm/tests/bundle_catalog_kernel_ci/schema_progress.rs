@@ -49,6 +49,8 @@ async fn actual_app_schema_cumulative_progress() -> Result<()> {
         "completed_schemas":0,"last_started":null,"checkpoints":[],"stage":"begin",
         "cold_value_counts_verified":false,"native_value_counts_observed":false,
         "last_value_counts":null,"last_value_counts_index":null,
+        "cold_uri_counts_verified":false,"native_uri_observed":false,
+        "last_uri_counts":null,"last_uri_counts_index":null,
         "last_successful_observation":null
     });
     let started = Instant::now();
@@ -73,6 +75,7 @@ async fn actual_app_schema_cumulative_progress() -> Result<()> {
         ensure!(remaining <= 2_000_000_000, "original cumulative fuel bound differs");
         report["fuel_after_prepare"] = json!(remaining);
         let mut value_counts = [0_u64; 4];
+        let mut uri_counts = [0_u64; 4];
         // The same program/account/Store survives every successful call.
         for index in 0..=42 {
             let name = if index == 0 { None } else { Some(&expected_names[index-1]) };
@@ -142,14 +145,33 @@ async fn actual_app_schema_cumulative_progress() -> Result<()> {
             ensure!(index == 0 || next_counts[0] > value_counts[0],
                 "actual schema did not enter native scalar typing");
             value_counts = next_counts;
+            let counters = receipt["uri_counts"].as_object()
+                .context("actual URI counter object required")?;
+            ensure!(counters.len() == 4, "exact actual URI counter fields required");
+            let mut next_uri_counts = [0_u64; 4];
+            for (slot, &field) in ["native_join_defrags", "native_join_only",
+                "python_resolve_boundaries", "python_join_boundaries"].iter().enumerate() {
+                let count = counters.get(field).and_then(Value::as_u64)
+                    .context("actual URI operation counter required")?;
+                ensure!(count >= uri_counts[slot] && (index > 0 || count == 0),
+                    "URI counters reset or work ran before the actual workload");
+                next_uri_counts[slot] = count;
+            }
+            ensure!(index == 0 || next_uri_counts[0] > 0,
+                "actual schema workload did not enter native URI join/defrag");
+            uri_counts = next_uri_counts;
             if index == 0 {
                 report["cold_value_counts_verified"] = json!(true);
+                report["cold_uri_counts_verified"] = json!(true);
             } else {
                 report["native_value_counts_observed"] = json!(true);
+                report["native_uri_observed"] = json!(true);
                 report["completed_schemas"] = json!(index);
             }
             report["last_value_counts"] = receipt["value_counts"].clone();
             report["last_value_counts_index"] = json!(index);
+            report["last_uri_counts"] = receipt["uri_counts"].clone();
+            report["last_uri_counts_index"] = json!(index);
             report["last_successful_observation"] = observation.clone();
             report["checkpoints"].as_array_mut().context("checkpoint array")?.push(json!({
                 "index":index,"name":name,"fuel_before":remaining,"fuel_remaining":after,
@@ -176,7 +198,10 @@ async fn actual_app_schema_cumulative_progress() -> Result<()> {
         && report["original_deadline_preserved"] == true
         && report["cold_value_counts_verified"] == true
         && report["native_value_counts_observed"] == true
-        && report["last_value_counts_index"] == report["completed_schemas"];
+        && report["last_value_counts_index"] == report["completed_schemas"]
+        && report["cold_uri_counts_verified"] == true
+        && report["native_uri_observed"] == true
+        && report["last_uri_counts_index"] == report["completed_schemas"];
     report["expected_cumulative_fuel_stop"] = json!(expected_fuel_stop);
     report["sequence_completed"] = json!(outcome.is_ok());
     report["diagnostic_observation_valid"] = json!(outcome.is_ok() || expected_fuel_stop);

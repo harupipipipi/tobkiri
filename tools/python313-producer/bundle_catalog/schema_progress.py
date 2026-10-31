@@ -16,6 +16,8 @@ import bundle_catalog_adapter as app
 
 VALUE_FIELDS = ("native_type_checks", "python_type_checks",
                 "native_numeric_comparisons", "python_numeric_comparisons")
+URI_FIELDS = ("native_join_defrags", "native_join_only",
+              "python_resolve_boundaries", "python_join_boundaries")
 
 
 def value_counts(kernel):
@@ -25,6 +27,15 @@ def value_counts(kernel):
             or any(type(values[name]) is not int or values[name] < 0
                    for name in VALUE_FIELDS)):
         raise RuntimeError('actual App value counters required')
+    return values
+
+
+def uri_counts(kernel):
+    """Count operation routes, not internal callback counts or prepared results."""
+    values = kernel.app_uri_counts()
+    if (type(values) is not dict or set(values) != set(URI_FIELDS)
+            or any(type(values[name]) is not int or values[name] < 0 for name in URI_FIELDS)):
+        raise RuntimeError('actual App URI counters required')
     return values
 
 
@@ -80,13 +91,14 @@ class Projection(wit_world.exports.Projection):
             raise Err(Error(ErrorCode.INVALID_REQUEST, 'unknown schema diagnostic command'))
         cache = validation.load_schema.cache_info()
         values = value_counts(kernel)
-        if outcome == 'metadata' and any(values.values()):
-            raise RuntimeError('value operations ran before the actual cold loader')
+        uris = uri_counts(kernel)
+        if outcome == 'metadata' and (any(values.values()) or any(uris.values())):
+            raise RuntimeError('value or URI operations ran before the actual cold loader')
         row.update(outcome=outcome,
                    schema_cache={'hits': cache.hits, 'misses': cache.misses,
                                  'size': cache.currsize},
                    backend_entries=kernel.app_schema_entry_count(),
                    backend_frames=kernel.app_schema_frame_count(),
                    reference_counts=kernel.app_reference_counts(),
-                   value_counts=values)
+                   value_counts=values, uri_counts=uris)
         return json.dumps(row, sort_keys=True, separators=(',', ':'))

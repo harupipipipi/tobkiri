@@ -1702,3 +1702,43 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   CPythonへ委ねる。非exception factory返却は既存経路のまま。元15群31対を保ち、
   作成済error identity/prior-context/outer-overwrite/backlink/self-cycleを追加して17群43対。
   Source/AST/format確認のみ成功で、実native比較を再実行する。
+- `8b2eac5c6`の[native CI41211361636](https://github.com/harupipipipi/tobkiri/actions/runs/41211361636)
+  は17群43対と従来のgeneric64/API19・backend64+11・reference29/fragment18/control18/
+  scalar12/value16/object16/default5/ownership4・App37/42・全caller比較が成功。
+  extension1,052,224B/SHA d7a53d7b…1250f。RAM artifact13045869511/66,946Bから
+  必要JSON44,640Bだけ保存した。外側context修正のnative同等性の証明であり、性能値ではない。
+  同じ8b2の[cold/full41211646611](https://github.com/harupipipipi/tobkiri/actions/runs/41211646611)
+  は両方元2Bで燃料0。component06103791…a0f27、prepare後1,979,497,181、
+  cold約1.985秒/full約1.758秒、期限維持・unreachableなし・退役/payload0。
+  [累積41211649138](https://github.com/harupipipipi/tobkiri/actions/runs/41211649138)は
+  20件完了、21番profile_lock_v5で燃料0。componentf791279f…1f2e4、prepare後
+  1,979,508,025、20件後124,989,214残。1Store/account・予算更新0・64MiB/絶対30秒・
+  cold0/単調/到達/index20・退役/payload0を維持した診断で、全体完了ではない。
+  両modeのextension558,321B/SHA247453f9…fc0be、RAM artifact13046349055/245,211Bと
+  13046498098/246,273Bから必要JSONだけ保存した。
+- 次sliceはAstra highが選択したApp-owned URI DATA区間。Sol6.1 xhighが新`uri.rs`へ
+  pinned CPython3.13.16のjoin/defrag制御を限定移植し、Rootが実owned referenceの2callsite、
+  model互換境界、17source inventory（URIとCOPYING.python追加）、CIを接続した。
+  generic API19・共有urllib、実opaque resolver、Registry/Resource/retrieval/pointer/anchor/
+  dynamic scopeの責任は移さない。原本のstartswith/truth/slice、外側defragの先行選択、
+  join中のalias変更と次lookupのlive選択、実2項unpack、resource.id→joinの順序を保つ。
+  eagerなEnvironmentのURL alias保持2fieldは除去し、必要な元境界でだけ選択する。
+- URIのsource reviewで見つかった整理条件: shared urlsplit cacheのpath/fragment実identityは
+  Registry/anchor callbackから観測できる。nativeの後でやり直すのではなく、最初にexact
+  ASCII strかを確認し、bracket形・nonempty scheme-less baseは元の全sequenceへ渡す。
+  nonfragment resolveではbase/refのliteral #と非relative schemeのbaseも先に互換経路へ
+  渡す。これによりcacheをRustへ複製せず、非対応caseの結果を新規文字列で偽装しない。
+  direct #fragmentだけは元base実handleとslice挙動を維持し、join/defragを実行しない。
+  join-onlyは独立に証明したraw early-returnを残す。不要になったnative hashed-defrag構築と
+  その専用helperも削除した。実cacheを使う繰返しpath/fragment・base継承fragmentと
+  direct sliceのidentity比較を含む17群146対（対称145対＋owned区間isolation1対）を追加。
+  共有urllibの変更がowned区間外まで隔離されるとは主張せず、実shared-resolverとfresh
+  default対照を残す。既存fixtureは保持する。actual native/guest比較はまだ未実行。
+- URI observerは独立4field（native join+defrag/native join-only/互換resolve/互換join）で、
+  実route entryだけを数える。fragment-onlyはjoin+defragへ数えず、内部callback回数の
+  指標にしない。native64のcold0→実join+defrag到達、累積のcold0/最初の成功時positive/
+  単調/index整合を必須とし、旧value/reference shape・export回数・元予算を変えない。
+  観測費用は累積燃料に含む。CPythonの一次license全文と変更概要をCOPYING.pythonへ
+  保持し、新dependency・config・reflection guard・結果cache・retryを増やさない。
+  source/AST/rustfmt/inventoryのみ確認済み。実native通過後に同sourceの元予算Wasmを測り、
+  採用可否を決める。製品Python/VM削除・既存GUIフロー変更の許可ではない。

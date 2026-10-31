@@ -7,6 +7,17 @@ from pathlib import Path
 import sys
 
 
+def _uri_counts(kernel):
+    """Require the closed actual-operation counter shape."""
+    values = kernel.app_uri_counts()
+    fields = {'native_join_defrags', 'native_join_only',
+              'python_resolve_boundaries', 'python_join_boundaries'}
+    if (type(values) is not dict or set(values) != fields
+            or any(type(value) is not int or value < 0 for value in values.values())):
+        raise ValueError('actual App URI counters required')
+    return values
+
+
 def compare(args, receipt, package_paths, extension):
     from build_schema_kernel import fingerprint_and_read
     from schema_kernel_observation import first_difference, meta_nodes, observe
@@ -47,6 +58,9 @@ def compare(args, receipt, package_paths, extension):
         profiler = cProfile.Profile()
     receipt['stage'] = 'app-backend-comparison'
     receipt['reference_counts_before_64'] = kernel.app_reference_counts()
+    receipt['uri_counts_before_64'] = _uri_counts(kernel)
+    if any(receipt['uri_counts_before_64'].values()):
+        raise ValueError('URI operations ran before the actual corpus')
     for case in reference['cases']:
         schema = case['schema']
         try:
@@ -68,6 +82,9 @@ def compare(args, receipt, package_paths, extension):
         raise ValueError('each actual schema must enter Rust frames')
     receipt['reference_counts_after_64'] = kernel.app_reference_counts()
     receipt['value_counts_after_64'] = kernel.app_value_counts()
+    receipt['uri_counts_after_64'] = _uri_counts(kernel)
+    if receipt['uri_counts_after_64']['native_join_defrags'] <= 0:
+        raise ValueError('actual App corpus did not enter native URI join/defrag')
     if (receipt['value_counts_after_64']['native_type_checks'] <= 0
             or receipt['value_counts_after_64']['native_numeric_comparisons'] <= 0):
         raise ValueError('actual App schema corpus did not enter native value operations')
@@ -118,6 +135,8 @@ def compare(args, receipt, package_paths, extension):
     receipt['object_checks'] = object_checks(provider, kernel)
     from app_schema_pattern_format_checks import pattern_format_checks
     receipt['pattern_format_checks'] = pattern_format_checks(provider, kernel)
+    from app_schema_uri_checks import uri_checks
+    receipt['uri_checks'] = uri_checks(provider, kernel)
     receipt.update(outcome='success', app_backend_64_success=True,
                    app_backend_entries=kernel.app_schema_entry_count(),
                    app_backend_frames=kernel.app_schema_frame_count(),

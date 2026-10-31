@@ -1,7 +1,7 @@
 //! App-owned reference state and explicit Python resolution boundaries.
 //! Derived from referencing 0.37.0, referencing/_core.py and jsonschema.py
 //! (MIT; see crate-root COPYING.jsonschema). Builtin ownership is metadata, not authority.
-use super::{Environment, Object};
+use super::{uri, Environment, Object};
 use crate::keywords::{builtin, module_member};
 use pyo3::{
     exceptions::{PyLookupError, PyUnicodeEncodeError},
@@ -278,7 +278,7 @@ impl ReferenceState {
         if id.is_none() {
             return Ok(self.clone());
         }
-        let uri = env.urljoin.bind(py).call1((base_uri.bind(py), id))?;
+        let uri = uri::join(py, base_uri.bind(py), &id)?;
         Ok(Rc::new(Self::Owned {
             base_uri: uri.unbind(),
             registry: registry.clone_ref(py),
@@ -544,17 +544,7 @@ impl ReferenceState {
                 Self::from_boundary(&resolved.getattr("resolver")?, env)?,
             ));
         };
-        // Keep the original URI implementation, call order and live arguments.
-        let (uri, fragment) = if reference.call_method1("startswith", ("#",))?.is_truthy()? {
-            (
-                base_uri.bind(py).clone(),
-                reference.get_item(builtin(py, "slice")?.call1((1, py.None()))?)?,
-            )
-        } else {
-            let joined = env.urljoin.bind(py).call1((base_uri.bind(py), reference))?;
-            let parts = env.urldefrag.bind(py).call1((joined,))?;
-            (parts.get_item(0)?, parts.get_item(1)?)
-        };
+        let (uri, fragment) = uri::resolve(py, base_uri.bind(py), reference)?;
         let retrieved = match registry.bind(py).call_method1("get_or_retrieve", (&uri,)) {
             Ok(value) => value,
             Err(error) => {
