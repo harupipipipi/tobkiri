@@ -1172,3 +1172,23 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   一緒に除去し、検証済み3510のApp/URI経路へ戻した。試行の全sourceは5e3425572の履歴に
   保持し、未使用600行を残さない。別修正33464819aの構造化Cargoコンパイルエラーを
   bounded検証記録へ保存する改善は維持する。元42/full予算gate・GUI採用は引き続き未達。
+- 戻し後native CI41173790783もgeneric64/API19/backend64+11/reference29/fragment14と
+  App37/42/full比較に成功。extension988,600B/SHA8e429460…2dac7は3510/6448と完全一致。
+  戻しをsource差分だけで成功扱いせず、実native成果物でも確認した。
+- Astra highは、続けて提示した「urllib呼出し閉包の追加移植」を撤回した。
+  coercion小幅・単独join後退・今回19→15という経緯から、この系列を優先する実測根拠はない。
+  次の性能実装を未確定と明記し、通常経路の閉鎖性を確認する前にRust value snapshotを
+  導入しない。失敗を必須比較から除外しない。
+- 次の判断に必要な具体的なcallout調査対象を整理した。現4a51/3510では
+  `app_schema.rs`のstart(118)が実items view/root listを持ち、decorate(158)が実errorの
+  `_set`/pathを更新する。scalar dispatch(566)→`keywords.rs:1169`はequal/ensure_list/
+  uniq、re.search、format checker.check(1349)、実数比較とrepr/formatへ戻る。
+  `references.rs`のpointer(245)/fragment(325)/lookup(478)/descend(544)は実Registry/
+  Resource/Specification/URI/descriptorに戻り、その後のcontents・scopeを読み直す。
+  `app_check_schema`(693)もcreate_resource/resolver_with_rootを呼ぶ。参照だけを付けた
+  Rust snapshotでは、その途中で変化する入力・設定・例外時点を維持できない。
+  閉じた経路の事前選択には、(1)全外部calloutと観測状態、(2)新descriptor/callbackを
+  実行しない開始前判定、(3)終了まで前提が崩れないこと、の具体的な証拠が必要。
+  strict parser由来/登録箇所未発見という理由だけで許可しない。成立時のみ閉じた経路を
+  Rust value modelへ、live callback経路を3510の参照保持engineへ開始前dispatchする案を
+  検討する。現時点でその事前判定は未証明で、次の性能コードはまだ追加していない。
