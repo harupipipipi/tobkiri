@@ -143,3 +143,13 @@ recorded. If the generic kernel is not adopted, say so explicitly and preserve
 its results; an App result does not qualify that kernel. Native product Python,
 VMs and legacy mechanisms are removed only after the actual replacement meets
 the full product contract.
+
+
+Native prototype evidence (`7c0f5a265`): CI41159026652 passed the existing generic64/
+API19 lane and its App comparison, plus the separate App backend64,11 boundary
+probes and full App37/42/305-entry/453-read contract. The App backend entered Rust
+0→45→87→110 times across the cold catalog/schema/caller phases. This establishes
+only that tested native subset. Unimplemented META operators, broader mutation/
+custom numeric behavior, real Wasm limits and actual product adoption remain open.
+The next explicit Wasm artifact uses the new provider import while preserving the
+original document operation; it does not replace the generic candidate or budget.

@@ -165,6 +165,8 @@ def boundary_checks(provider, kernel):
                                    'same_cause_and_context': error.__cause__ is error.__context__})
                 else:
                     raise ValueError('missing META resource accepted')
+            if any(row['calls'] != ['urn:tobkiri:missing-meta'] for row in graphs):
+                raise ValueError('actual controlled META retrieve callback was not reached')
             if first_difference(*graphs) is not None or not graphs[1]['same_cause_and_context']:
                 raise ValueError('META lookup exception cause/context differs: '+str(graphs))
             cases['unresolved-meta-reference-cause-context'] = True

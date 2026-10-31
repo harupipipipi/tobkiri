@@ -8,7 +8,7 @@ import json
 import sys
 
 
-def read_catalog_observed() -> str:
+def read_catalog_observed(*, app_backend: bool = False) -> str:
     """Return a bounded receipt of the actual result and its real read path."""
     import _tobkiri_schema_kernel as kernel
     import jsonschema
@@ -16,13 +16,25 @@ def read_catalog_observed() -> str:
     import bundle_catalog_adapter as app
     from tobkiri_protocol import validation
 
+    if type(app_backend) is not bool:
+        raise RuntimeError('explicit App backend mode required')
+    if app_backend:
+        from app_schema_provider import AppSchemaProvider
+        if (validation.Draft202012Validator is not AppSchemaProvider
+                or getattr(_keywords, '_tobkiri_translated_keywords', False)
+                or kernel.app_schema_frame_count() != 0):
+            raise RuntimeError('actual App-owned provider and original document path required')
+        count_entries = kernel.app_schema_entry_count
+    else:
+        if (getattr(_keywords, '_tobkiri_keyword_kernel', None) is not kernel
+                or getattr(_keywords, '_tobkiri_translated_keywords', False) is not True
+                or jsonschema.Draft202012Validator.iter_errors.__module__ != 'schema_adapter'):
+            raise RuntimeError('actual generic Rust-connected library required')
+        count_entries = kernel.keyword_entry_count
     if (kernel.production_enabled is not False
-            or getattr(_keywords, '_tobkiri_keyword_kernel', None) is not kernel
-            or getattr(_keywords, '_tobkiri_translated_keywords', False) is not True
-            or jsonschema.Draft202012Validator.iter_errors.__module__ != 'schema_adapter'
             or not kernel.__file__.endswith('/_tobkiri_schema_kernel.abi3.so')):
-        raise RuntimeError('actual Rust-connected captured library required')
-    before = kernel.keyword_entry_count()
+        raise RuntimeError('actual source-built Rust extension required')
+    before = count_entries()
     if (before != 0 or validation.load_schema.cache_info().currsize != 0
             or validation._schema_store.cache_info().currsize != 0):
         raise RuntimeError('App workload was performed before the cold invocation')
@@ -64,16 +76,20 @@ def read_catalog_observed() -> str:
         else:
             del resource_type.read_bytes
         occurrence_type.__call__ = original_occurrence
-    after = kernel.keyword_entry_count()
+    after = count_entries()
     cache = validation.load_schema.cache_info()
     if (after <= before or len(schema_reads) != 45 or reads != 453
             or (cache.misses, cache.hits, cache.currsize) != (45, 302, 45)):
         raise RuntimeError('actual App/Rust/resource/cache path differs')
     encoded = actual.encode('utf-8', errors='strict')
+    if app_backend and after != 45:
+        raise RuntimeError('each actual cold schema must enter the Rust frame backend once')
     return json.dumps({
-        'format': 'tobkiri.rust-bundle-catalog-observation/1',
+        'format': ('tobkiri.app-frame-bundle-catalog-observation/1' if app_backend
+                   else 'tobkiri.rust-bundle-catalog-observation/1'),
         'actual_sha256': hashlib.sha256(encoded).hexdigest(), 'actual_bytes': len(encoded),
-        'keyword_entries_before': before, 'keyword_entries_after': after,
+        ('backend_entries_before' if app_backend else 'keyword_entries_before'): before,
+        ('backend_entries_after' if app_backend else 'keyword_entries_after'): after,
         'schema_reads': schema_reads, 'entry_reads': reads,
         'schema_cache': {'misses': cache.misses, 'hits': cache.hits, 'size': cache.currsize},
         'captured_resource_owner': True,

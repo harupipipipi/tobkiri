@@ -967,3 +967,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   現在のMETAで使われない未実装known ruleは明示拒否する。
   metadata mutation/custom numericの未完了範囲を原版retryで隠さない。まずnative機能比較、
   次に未完了境界と実Wasm費用を検証し、全App/backend完了へ進める。製品UIは未変更。
+
+- 018実結果`7c0f5a265`: nativeCI41159026652は全成功。既存generic64/API19とApp37一致を
+  保持し、別featureの新backendも原版64・追加11境界検証・App37/42/full305entry453readが
+  一致。新backend実entry数0→45(catalog)→87(42schema)→110(caller)。新backend native
+  extension909,944bytes/SHA829273a2…26a6。これはnative機能比較だけでWasm予算・製品採用の
+  証明ではない。追加11の未解決META ref試験へ実retrieve URI到達のassertも補強する。
+- 続いて、明示的な--app-backend/--app-schema-backendで同じソースをWasmへbuildする
+  別artifact経路を追加。実Appのvalidation importだけを新providerへ置き換え、元/派生SHAを
+  記録し、元jsonschema keyword/文書経路を改変しない。初期化中のentry/frame0と本呼出しの
+  45coldchecks、実source owner・45schema/453entry read・45miss302hit・元結果SHA/bytesを
+  同じ2B/64MiB/絶対30秒一回で検査する。generic候補は別のまま、結果依存retryはしない。

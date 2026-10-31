@@ -53,6 +53,11 @@ async fn actual_rust_bundle_catalog_one_shot() -> Result<()> {
         std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"),
         "CI only"
     );
+    let app_backend = match std::env::var("TOBKIRI_BUNDLE_APP_BACKEND").as_deref() {
+        Ok("1") => true,
+        Ok("0") | Err(std::env::VarError::NotPresent) => false,
+        _ => anyhow::bail!("explicit App backend fixture selection required"),
+    };
     let original: Value = serde_json::from_slice(&input("CASES", 4 * 1024 * 1024)?)?;
     ensure!(
         original["format"] == "tobkiri.bundle-catalog-comparison/1"
@@ -74,6 +79,7 @@ async fn actual_rust_bundle_catalog_one_shot() -> Result<()> {
         "memory_limit_bytes":64*1024*1024, "wall_seconds":30,
         "qualification":false,"production_enabled":false,"gui_or_os_owner_proof":false,
         "generic_64_parity_claim":false,"invocations":1,"stage":"begin"});
+    report["app_schema_backend"] = json!(app_backend);
     let started = Instant::now();
     let outcome: Result<()> = async {
         let invocation = account.begin()?;
@@ -127,8 +133,21 @@ async fn actual_rust_bundle_catalog_one_shot() -> Result<()> {
             "bounded runtime receipt required"
         );
         let receipt: Value = serde_json::from_slice(actual.as_bytes())?;
+        let expected_format = if app_backend {
+            "tobkiri.app-frame-bundle-catalog-observation/1"
+        } else {
+            "tobkiri.rust-bundle-catalog-observation/1"
+        };
+        let actual_entries = if app_backend {
+            receipt["backend_entries_before"] == 0 && receipt["backend_entries_after"] == 45
+        } else {
+            receipt["keyword_entries_before"] == 0
+                && receipt["keyword_entries_after"]
+                    .as_u64()
+                    .is_some_and(|n| n > 0)
+        };
         ensure!(
-            receipt["format"] == "tobkiri.rust-bundle-catalog-observation/1"
+            receipt["format"] == expected_format
                 && receipt["actual_sha256"] == original["expected_sha256"]
                 && receipt["actual_bytes"] == original["expected_bytes"]
                 && receipt["entry_reads"] == 453
@@ -136,10 +155,7 @@ async fn actual_rust_bundle_catalog_one_shot() -> Result<()> {
                     .as_array()
                     .is_some_and(|rows| rows.len() == 45)
                 && receipt["schema_cache"] == json!({"misses":45,"hits":302,"size":45})
-                && receipt["keyword_entries_before"] == 0
-                && receipt["keyword_entries_after"]
-                    .as_u64()
-                    .is_some_and(|n| n > 0)
+                && actual_entries
                 && receipt["captured_resource_owner"] == true
                 && receipt["keyword_loader"] == "bundle_catalog_loader"
                 && receipt["qualification"] == false

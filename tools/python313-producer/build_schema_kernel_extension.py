@@ -19,9 +19,9 @@ import runtime_inputs
 
 
 def run(source: Path, vendor: Path, archives: Path, rust: Path,
-        sdk: Path, destination: Path) -> None:
+        sdk: Path, destination: Path, app_backend: bool = False) -> None:
     """Verify the original compiler/source closure and compile offline once."""
-    if sys.platform != 'linux' or os.environ.get('GITHUB_ACTIONS') != 'true':
+    if type(app_backend) is not bool or sys.platform != 'linux' or os.environ.get('GITHUB_ACTIONS') != 'true':
         raise ValueError('kernel extension compilation requires Linux CI')
     for path in (source, vendor, archives, rust, sdk, destination.parent):
         build_rpds.physical(path)
@@ -49,13 +49,20 @@ def run(source: Path, vendor: Path, archives: Path, rust: Path,
     (config/'pyo3-config.txt').write_text(build_rpds.PYO3_CONFIG)
     (config/'cargo.toml').write_text(build_rpds.CARGO_CONFIG)
     recipe = destination/'build.sh'
-    recipe.write_text(build_rpds.RECIPE.replace('cd /rpds\n', 'cd /kernel\n'))
+    code = build_rpds.RECIPE.replace('cd /rpds\n', 'cd /kernel\n')
+    if app_backend:
+        anchor = '--features pyo3/abi3-py313'
+        if code.count(anchor) != 1:
+            raise ValueError('exact compiler feature anchor required')
+        code = code.replace(anchor, anchor+',app-schema-backend')
+    recipe.write_text(code)
     fixed = {str(path): fingerprint(path) for path in (
         recipe, config/'pyo3-config.txt', config/'cargo.toml')}
     report = {'format': 'tobkiri.app-schema-kernel-extension/1',
               'source_head': os.environ.get('GITHUB_SHA'), 'source_files': source_files,
               'registry': registry, 'outcome': 'failure', 'guest_executed': False,
-              'production_enabled': False, 'configuration': fixed}
+              'production_enabled': False, 'configuration': fixed,
+              'features': ['app-schema-backend'] if app_backend else []}
     try:
         command = sandbox_command(None, work, recipe, (
             (source, '/kernel'), (vendor, '/vendor'), (rust/'toolchain', '/rust'),
@@ -72,6 +79,10 @@ def run(source: Path, vendor: Path, archives: Path, rust: Path,
                 or [row.get('success') for row in messages
                     if row.get('reason') == 'build-finished'] != [True]):
             raise ValueError('one successful actual kernel cdylib required')
+        features = artifacts[0].get('features', [])
+        if set(features) != ({'default', 'app-schema-backend'} if app_backend else {'default'}):
+            raise ValueError('actual Wasm compiler features differ')
+        report['compiled_features'] = features
         name = artifacts[0]['filenames'][0]
         if name != '/work/target/wasm32-wasip2/release/_tobkiri_schema_kernel.wasm':
             raise ValueError('kernel escaped its actual target')
@@ -97,6 +108,7 @@ def run(source: Path, vendor: Path, archives: Path, rust: Path,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--app-backend', action='store_true')
     for name in ('source', 'vendor', 'archives', 'rust', 'sdk', 'destination'):
         parser.add_argument('--'+name, type=Path, required=True)
     run(**vars(parser.parse_args()))

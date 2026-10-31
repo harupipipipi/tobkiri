@@ -13,6 +13,12 @@ name: Issue 1520 Rust-connected actual App catalog Wasm
       - tools/python313-producer/schema_kernel_translate.py
       - crates/tobkiri-wasm/tests/bundle_catalog_kernel_ci.rs
   workflow_dispatch:
+    inputs:
+      app_schema_backend:
+        description: Build the separate App-owned Rust frame checker instead of the generic candidate
+        type: boolean
+        required: false
+        default: false
 permissions:
   contents: read
   actions: read
@@ -24,6 +30,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     env:
+      APP_SCHEMA_BACKEND: ${{ inputs.app_schema_backend && '1' || '0' }}
       PRODUCER_RUN: '39956025119'
       PRODUCER_HEAD: ae7f83080a36e823ac330342584210243dc38050
       RPDS_RUN: '40182231971'
@@ -147,6 +154,7 @@ jobs:
       - name: Compile only the source-built Wasm kernel in the offline namespace
         run: >-
           python3 -B tools/python313-producer/build_schema_kernel_extension.py
+          ${{ inputs.app_schema_backend && '--app-backend' || '' }}
           --source "$GITHUB_WORKSPACE/tools/python313-producer/schema_kernel"
           --vendor "$RUNNER_TEMP/app-schema-vendor"
           --archives "$RUNNER_TEMP/app-schema-archives"
@@ -156,6 +164,7 @@ jobs:
       - name: Build the separate derived actual App catalog artifact
         run: >-
           python3 -B tools/python313-producer/build_components.py --bundle-catalog-kernel
+          ${{ inputs.app_schema_backend && '--app-schema-backend' || '' }}
           --kernel-extension "$RUNNER_TEMP/app-schema-extension"
           --bundle-cases "$RUNNER_TEMP/bundle-cases.json"
           --producer "$RUNNER_TEMP/harness-producer"
@@ -172,10 +181,14 @@ jobs:
           sys.path.insert(0, 'tools/python313-producer')
           from build_native import fingerprint
           from bundle_catalog_inputs import verify_component
-          from bundle_catalog_kernel_inputs import COMPONENT
+          from bundle_catalog_kernel_inputs import COMPONENT, APP_COMPONENT
+          app_backend=os.environ['APP_SCHEMA_BACKEND']=='1'
+          if app_backend:
+              COMPONENT=APP_COMPONENT
           root=Path(os.environ['RUNNER_TEMP'])
           report=json.loads((root/'app-schema-bundle/components-build.json').read_bytes())
-          if (report['format']!='tobkiri.rust-bundle-catalog-native-candidate/1'
+          expected_format=('tobkiri.app-frame-bundle-catalog-native-candidate/1' if app_backend else 'tobkiri.rust-bundle-catalog-native-candidate/1')
+          if (report['format']!=expected_format
                   or report['outcome']!='success' or report['inputs_unchanged'] is not True
                   or report['production_enabled'] is not False
                   or set(report['components'])!={COMPONENT}):
@@ -186,7 +199,7 @@ jobs:
           if (fingerprint(component,32*1024*1024)!=item['artifact']
                   or fingerprint(proof_path)!=item['build_receipt']):
               raise ValueError('actual artifact/build receipt differs')
-          verify_component(json.loads(proof_path.read_bytes()),item['source'],native=True,kernel_derived=True)
+          verify_component(json.loads(proof_path.read_bytes()),item['source'],native=True,kernel_derived=True,app_schema_backend=app_backend)
           cases=root/'bundle-cases.json'
           if item['source']['bundle_catalog']['original_bundle_cases']!=fingerprint(cases,4*1024*1024):
               raise ValueError('actual original DATA differs')
@@ -194,6 +207,7 @@ jobs:
               for label,path in [('COMPONENT',component),('CASES',cases)]:
                   stream.write(f'TOBKIRI_BUNDLE_{label}={path}\n')
                   stream.write(f'TOBKIRI_BUNDLE_{label}_SHA256={fingerprint(path)["sha256"]}\n')
+              stream.write(f'TOBKIRI_BUNDLE_APP_BACKEND={int(app_backend)}\n')
               stream.write(f'TOBKIRI_BUNDLE_REPORT={root/"app-schema-wasm-observation.json"}\n')
           PYBIND
       - uses: Swatinem/rust-cache@v2
@@ -216,6 +230,10 @@ jobs:
             ${{ runner.temp }}/app-schema-bundle/harness-bundle-catalog-rust-kernel-native/inputs/provenance.json
             ${{ runner.temp }}/app-schema-bundle/harness-bundle-catalog-rust-kernel-native/work/component.build.json
             ${{ runner.temp }}/app-schema-bundle/harness-bundle-catalog-rust-kernel-native/build.*
+            ${{ runner.temp }}/app-schema-bundle/harness-bundle-catalog-app-frame-native/inputs/plan.json
+            ${{ runner.temp }}/app-schema-bundle/harness-bundle-catalog-app-frame-native/inputs/provenance.json
+            ${{ runner.temp }}/app-schema-bundle/harness-bundle-catalog-app-frame-native/work/component.build.json
+            ${{ runner.temp }}/app-schema-bundle/harness-bundle-catalog-app-frame-native/build.*
             ${{ runner.temp }}/app-schema-wasm-observation.json
           retention-days: 14
           if-no-files-found: warn
