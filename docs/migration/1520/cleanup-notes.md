@@ -136,6 +136,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   282,099,794Bの非公開用CI/E2E配布物はmetadataのみ確認しダウンロードしない。
   既存配布物はまだPython/PackVMを含み、このCIだけでnative Setup/GUI会話採用やVM廃止
   を完了とはしない。
+  次の検証は、実historical v1 fixtureから12種のlease入力を追加して総77件へ拡張する。
+  nested principalとunknown kwargsの先後、scopeの構造/要素/quotasの先後、数値function ID、
+  string/dictのcall_chain、bool/int/float重複とunhashable/長さ短絡を対象にする。
+  実原本keyで復号し、原本authority_digestとFernetで1行だけ更新してidentity/hash検査後の
+  consumerへ到達させる。期待値の詳細は原本の実ctorで観測し、nativeの値で作らない。
   JSON/surrogate/depth・不正leaseの例外投影、同時key作成/複合I/O/close、Linux process情報
   read内部close receipt等は未閉鎖。全Open同等・既存DB採用・GUI接続の完了とはしない。
 - cryptoの余分なowned key配列copyをZeroizing先作成へ整理した。Fernetは既存RustCryptoの

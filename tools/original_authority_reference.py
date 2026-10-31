@@ -27,7 +27,7 @@ ORIGINAL_HEAD = "1cf025f1eeab31a3daa2861b1f26a025c6954b6e"
 CLOCK = 1000.0
 LIMIT = 2 * 1024 * 1024
 FORMAT = "io.tobkiri.original-authority-fixtures.v1"
-CASE_COUNT = 65
+CASE_COUNT = 77
 REQUIREMENTS = (
     "cryptography", "cffi", "pycparser", "pytest", "iniconfig", "packaging",
     "pluggy", "pygments",
@@ -78,6 +78,12 @@ AUDIT_PAYLOADS = {
     "json-infinite-number": b'{"a":1e400}',
     "json-depth": b'{"a":' + b"[" * 2000 + b"0" + b"]" * 2000 + b"}",
 }
+LEASE_CASES = (
+    "principal-nonobject", "unknown-root", "principal-before-unknown",
+    "scope-type-precedence", "scope-value-precedence", "numeric-function-id",
+    "call-chain-string", "call-chain-dict", "call-chain-bool-int",
+    "call-chain-float-int", "call-chain-unhashable", "call-chain-depth-before-unhashable",
+)
 
 
 def write_json(path: Path, value: object, *, compact: bool = False) -> None:
@@ -232,6 +238,57 @@ def reject_observation_constant(text: str):
     raise ValueError("nonfinite decrypted observation")
 
 
+def mutate_historical_lease(path: Path, kind: str, fernet_type, digest) -> None:
+    """Modify one real v1 record, preserving its actual cryptographic identity."""
+    cipher = fernet_type(path.with_suffix(".key").read_bytes())
+    with closing(sqlite3.connect(path)) as connection:
+        with connection:
+            row = connection.execute(
+                "SELECT lease_id,encrypted_payload FROM invocation_leases"
+                " WHERE state IN ('issued','dispatched') ORDER BY lease_id LIMIT 1"
+            ).fetchone()
+            if row is None:
+                raise AssertionError("actual historical lease required")
+            payload = json.loads(cipher.decrypt(row[1]).decode("utf-8"))
+            if payload["lease_id"] != row[0]:
+                raise AssertionError("historical input identity differs")
+            if kind in {"principal-nonobject", "principal-before-unknown"}:
+                payload["caller"] = None
+            if kind in {"unknown-root", "principal-before-unknown"}:
+                payload["fixture_unknown"] = True
+            elif kind == "scope-type-precedence":
+                payload["authorized_scope"].update(
+                    capability="", dimensions={"fixture": [1]}, quotas=[])
+            elif kind == "scope-value-precedence":
+                payload["authorized_scope"].update(
+                    capability="", dimensions={"fixture": [1]}, quotas={"fixture": True})
+            elif kind == "numeric-function-id":
+                payload["caller"]["function_id"] = 7
+            elif kind == "call-chain-string":
+                payload["call_chain"] = "ab"
+            elif kind == "call-chain-dict":
+                payload["call_chain"] = {"a": 0, "b": 1}
+            elif kind == "call-chain-bool-int":
+                payload["call_chain"] = [1, True]
+            elif kind == "call-chain-float-int":
+                payload["call_chain"] = [1, 1.0]
+            elif kind == "call-chain-unhashable":
+                payload["call_chain"] = [[]]
+            elif kind == "call-chain-depth-before-unhashable":
+                payload["call_chain"] = [[], 1, 2, 3, 4]
+            elif kind != "principal-nonobject":
+                raise ValueError("closed historical mutation required")
+            # Use the ORIGINAL codec/digest, then real Fernet encryption. This
+            # reaches from_dict after identity/hash validation, not before it.
+            encoded = json.dumps(payload, ensure_ascii=True, allow_nan=False,
+                                 separators=(",", ":")).encode("utf-8")
+            changed = connection.execute(
+                "UPDATE invocation_leases SET lease_digest=?,encrypted_payload=? WHERE lease_id=?",
+                (digest(payload), cipher.encrypt(encoded), row[0]))
+            if changed.rowcount != 1:
+                raise AssertionError("one historical lease mutation required")
+
+
 def database_state(root: Path, inspection: Path, fernet_type) -> dict:
     """Observe a separate copy, including committed decrypted data and schema."""
     files = []
@@ -356,6 +413,8 @@ def prepare(original_root: Path, destination: Path) -> None:
                           for name, text in EPOCH_TEXTS)
     specifications.extend(("audit-" + name, "audit-payload:" + name, None)
                           for name in AUDIT_PAYLOADS)
+    specifications.extend(("lease-" + name, "v1-lease:" + name, None)
+                          for name in LEASE_CASES)
     reports = []
     for name, kind, changes in specifications:
         case = destination / name
@@ -367,7 +426,7 @@ def prepare(original_root: Path, destination: Path) -> None:
             authority.mkdir(mode=0o700)
             if kind == "empty":
                 path.touch(mode=0o600)
-            elif kind == "v1":
+            elif kind == "v1" or kind.startswith("v1-lease:"):
                 from tests.test_authority_v4_schema_migration import historical_authority_v1
                 historical = case / "historical"
                 historical.mkdir(mode=0o700)
@@ -387,6 +446,9 @@ def prepare(original_root: Path, destination: Path) -> None:
                      path.with_name("." + path.name + ".lifecycle.lock")),
                 ):
                     shutil.copy2(source, target)
+                if kind.startswith("v1-lease:"):
+                    mutate_historical_lease(path, kind.removeprefix("v1-lease:"),
+                                            fernet_type, digest)
             else:
                 with store_type(path, clock=lambda: CLOCK) as store:
                     store.advance_security_epoch("reference-fixture")
@@ -511,6 +573,8 @@ def prepare(original_root: Path, destination: Path) -> None:
                   "between-read-change", "epoch-plus-leading-zero", "epoch-underscore",
                   "epoch-unicode-decimal", "epoch-unicode-whitespace", "epoch-i-json-boundary",
                   "epoch-above-i-json", "epoch-above-u64", "epoch-hundred-digits"}
+    successful.update({"lease-numeric-function-id", "lease-call-chain-string",
+                       "lease-call-chain-dict"})
     for name, report in by_name.items():
         expected = ("genesis" if name in {"absent", "dangling-db-symlink"} else
                     "non-regular-path" if name == "non-file" else
