@@ -303,4 +303,8 @@ correction is implemented: root construction stays outside the generator
 boundary; descendant preparation and keyword execution wrap only unhandled
 StopIteration, retaining its actual cause/context. Normal iterator termination
 and prior catches run first. The extended18 groups/48 pairs retain every prior
-case; this new source requires its own native proof.
+case. Native CI41182636950 at25c8aa373 passed all18 control groups/48 pairs,
+all prior value/reference/ownership groups and complete App comparisons. The
+same-source actual Wasm cold/full41182761288 and cumulative41182767015 are in
+progress under unchanged limits. Their outcome, budget qualification and final
+product acceptance remain open.

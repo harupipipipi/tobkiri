@@ -1350,3 +1350,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   items/id、descendant items/id、型/format、捕捉済Stop、allOf/not/not内constructor、
   Stop subclassの正常終端を含む。source AST/rustfmt確認のみで、新native CIが必要。
   現native成功からこの追加の同等性は推定しない。
+
+- 例外境界修正25c8aa373 native CI41182636950は成功。control18群/48差分対、value16、
+  従来のgeneric64/API19/backend64+11/reference29/fragment14/default-callout5/ownership4、
+  App37/42/full305-entry453-read全比較を維持。extension1,035,008B/
+  SHA 0581fe1ae3891965914dad5c9e88828219ccb5924eb96d7ac3b6d2a54e904b71。
+  RAM artifact13034729384/65,672B、必要JSONのみ40,817B保存。元のconstructor/iterator/
+  callback例外の区別をこの比較範囲で確認。全製品・Wasm予算の同等性ではない。
+- 同じ25c8でWasm cold/full41182761288と累積診断41182767015を各1回起動。
+  元のone-Store/2B/64MiB/絶対30秒を維持し、実行中。同じrunを最後まで追跡する。
+  このcontrol sliceの完走件数・燃料改善はまだ未測定。失敗後の予算更新・再試行は行わない。
