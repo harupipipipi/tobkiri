@@ -52,7 +52,7 @@ impl Keys {
         random(&mut *raw, OriginalAuthorityStage::Key)?;
         let mut encoded = Zeroizing::new([0; 44]);
         URL_SAFE
-            .encode_slice(&*raw, &mut *encoded)
+            .encode_slice(raw.as_slice(), &mut *encoded)
             .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Key))?;
         Self::parse(op, &*encoded)
     }

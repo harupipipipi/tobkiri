@@ -11,6 +11,7 @@ name: Issue 1520 original Authority context parity
       - tobkiri_launcher/harness-native/Cargo.toml
       - tobkiri_launcher/src-tauri/src/native_harness_bootstrap.rs
       - tobkiri_launcher/src-tauri/src/native_harness_host_inputs.rs
+      - tobkiri_launcher/src-tauri/src/native_authority_job.rs
       - tobkiri_launcher/src-tauri/src/native_worker_failure.rs
       - Cargo.toml
       - Cargo.lock
@@ -89,7 +90,7 @@ jobs:
             --features native-source-inspection,native-harness-bootstrap \
             > "$RUNNER_TEMP/launcher-authority-dependency-metadata.json"
           git diff --exit-code -- Cargo.lock tobkiri_launcher/src-tauri/Cargo.lock
-      - name: Verify actual cancellation and original integer boundary regressions
+      - name: Verify platform ownership and original integer boundary regressions
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.verification != 'reference' }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
@@ -98,7 +99,10 @@ jobs:
           original_authority::tests -- --test-threads=1
       - name: Execute the real native operation against every fresh original fixture
         id: native_driver
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.verification != 'reference' }}
+        # The current native allocation-owner proof supports macOS only.
+        # Linux still runs the original reference, the explicit platform refusal,
+        # integer regression, locked dependency graphs and strict library checks.
+        if: ${{ runner.os == 'macOS' && (github.event_name != 'workflow_dispatch' || inputs.verification != 'reference') }}
         env:
           TOBKIRI_ORIGINAL_AUTHORITY_FIXTURES: ${{ runner.temp }}/original-authority-reference/fixtures.json
         run: >-
@@ -108,7 +112,7 @@ jobs:
           original_authority::tests::original_reference_driver
           -- --ignored --exact --test-threads=1 --nocapture
       - name: Compare typed native results and independently observed committed state
-        if: ${{ !cancelled() && (github.event_name != 'workflow_dispatch' || inputs.verification != 'reference') && steps.native_driver.outcome != 'skipped' }}
+        if: ${{ !cancelled() && runner.os == 'macOS' && (github.event_name != 'workflow_dispatch' || inputs.verification != 'reference') && steps.native_driver.outcome != 'skipped' }}
         run: >-
           python3 -B tools/original_authority_reference.py compare
           --original-root "$GITHUB_WORKSPACE/original-authority-source"

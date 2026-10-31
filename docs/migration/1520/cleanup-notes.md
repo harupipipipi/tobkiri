@@ -50,8 +50,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 ## 003: legacy の試作 owner と実 core-host の経路整理
 
 - 状態: **frontend native終了primitiveは実CI成功。元製品のowner接続・移行は未完**。
-- 次の実接続は、同AppHandle/選択済みuser_dataから旧Authority contextを開き、実初期化・
-  epoch読取・epoch record読取・closeを行う有限native操作（Sol6.1 xhigh実装中）。
+- 次の実接続として、同AppHandle/選択済みuser_dataから旧Authority contextを開き、実初期化・
+  epoch読取・epoch record読取・closeを行う有限native操作を追加した（Sol6.1 xhigh実装）。
   既存Coreの別approval DB/epochやmetadata getterを代用しない。DB不在枝は作成せず、
   完全なctor到達範囲が閉じるまで既存DBのnative採用を開かない。snapshot材料は旧App入力
   の別型であり、Core grant/承認完了へ変換しない。publication recovery/resolveは次区分。
@@ -81,7 +81,18 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   private read carrierと既存Detachmentの実copyをworker内で保持してからDATAだけ返す。
   受信DATA消費までSourceCustodyやNativeAccountを延命する案は採用しない。実未完I/Oだけを
   実close receiptに従い既存control予約付きledgerへ保持し、sendとJoinを混同しない。
-  Source/AST/rustfmt/TOMLのみ確認済みで、初回compiler/native40比較は次のCI。
+  `23f5706fc`の[初回native比較CI41226219937](https://github.com/harupipipipi/tobkiri/actions/runs/41226219937)
+  ではmacOSの通常2件＋fresh original fixture必須driver1件が成功。全40件のmaterial/error
+  と既存key保持は一致したが、committed state比較は検証ツールのJSON境界で失敗した。
+  manifest経由のreferenceはarray、fresh observerのPRAGMA結果はtupleだったためで、
+  observerのcolumns/index_infoをarrayへ統一する。厳密な型/field/value比較は維持する。
+  修正後のstate一致は未確認。Linuxはnative ownerのOS/filesystem proof拒否で停止した。
+  製品ゲートは緩めず、Linuxは元40件と明示unsupported拒否・整数回帰・lock/clippy、
+  native実DB操作の40件は対応macOSで検査する。
+  同sourceのhandoff CI41226219929はpreparation/domain cleanupとStore lineageが成功し、
+  strict Clippyのみ5件失敗（借用/cast/if表現）。6.1 Sol xhighが最小修正し、秘密配列の
+  by-value copyやlint抑制で通さない。共有capacity CI41226219893は成功。
+  macOSインストーラCI41226665165は同sourceで実行中で、Tauri callerのcompileは未確認。
   JSON/surrogate/depth・不正leaseの例外投影、同時key作成/複合I/O/close、Linux process情報
   read内部close receipt等は未閉鎖。全Open同等・既存DB採用・GUI接続の完了とはしない。
 - cryptoの余分なowned key配列copyをZeroizing先作成へ整理した。Fernetは既存RustCryptoの

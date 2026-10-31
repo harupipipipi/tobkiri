@@ -344,6 +344,7 @@ fn original_reference_driver() -> anyhow::Result<()> {
 }
 
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn cancelled_absent_operation_does_not_create_authority_state() -> anyhow::Result<()> {
     let temporary = tempfile::tempdir()?;
     let root = temporary.path().canonicalize()?;
@@ -371,6 +372,29 @@ fn cancelled_absent_operation_does_not_create_authority_state() -> anyhow::Resul
     drop(read);
     assert!(!user_data.join("authority").exists());
     assert_eq!(invocation.capacity_snapshot()?.charged_bytes, 0);
+    Ok(())
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn unsupported_owner_refuses_before_authority_admission() -> anyhow::Result<()> {
+    let temporary = tempfile::tempdir()?;
+    let root = temporary.path().canonicalize()?;
+    let user_data = root.join("selected");
+    std::fs::create_dir(&user_data)?;
+    let error =
+        match RuntimeOwner::open(root.join("core")).and_then(|owner| owner.begin_native_setup()) {
+            Ok(_) => anyhow::bail!("unsupported platform admitted native authority funding"),
+            Err(error) => error,
+        };
+    match error {
+        tobkiri_core::CoreError::Store(source) => assert_eq!(
+            source.to_string(),
+            "storage primitive unavailable: allocation owner OS/filesystem proof unavailable"
+        ),
+        other => anyhow::bail!("owner rejected for an unrelated reason: {other:?}"),
+    }
+    assert!(!user_data.join("authority").exists());
     Ok(())
 }
 

@@ -251,14 +251,19 @@ def database_state(root: Path, inspection: Path, fernet_type) -> dict:
                 rows.sort(key=lambda row: json.dumps(row, sort_keys=True))
                 # SQL whitespace is not the persisted-schema contract. Retain
                 # actual columns/constraints and index structure instead.
-                columns = connection.execute("PRAGMA table_info(" + quoted + ")").fetchall()
+                # The reference crosses the JSON manifest before comparison;
+                # the fresh observer must expose that same array representation.
+                # Preserve every SQLite field and its type without relaxing the
+                # strict result/state comparator.
+                columns = [list(row) for row in connection.execute(
+                    "PRAGMA table_info(" + quoted + ")")]
                 indexes = []
                 for index in connection.execute("PRAGMA index_list(" + quoted + ")"):
                     index_name = '"' + index[1].replace('"', '""') + '"'
                     indexes.append({"name": index[1], "unique": bool(index[2]),
                                     "origin": index[3], "partial": bool(index[4]),
-                                    "columns": connection.execute(
-                                        "PRAGMA index_info(" + index_name + ")").fetchall()})
+                                    "columns": [list(row) for row in connection.execute(
+                                        "PRAGMA index_info(" + index_name + ")")]})
                 indexes.sort(key=lambda row: row["name"])
                 observed[table] = {"columns": columns, "strict": ddl.rstrip().endswith("STRICT"),
                                    "indexes": indexes, "rows": rows}

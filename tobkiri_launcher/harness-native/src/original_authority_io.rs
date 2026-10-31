@@ -175,6 +175,31 @@ fn identity(metadata: &fs::Metadata) -> Identity {
         kind: metadata.mode() & 0o170000,
     }
 }
+// libc 0.2.190: Linux dev_t/mode_t are u64/u32; Darwin uses i32/u16.
+// Keep the original signed Darwin device conversion, without same-type
+// conversions in the Linux build. These helpers perform no I/O or callbacks.
+#[cfg(unix)]
+fn device_bits(value: libc::dev_t) -> u64 {
+    #[cfg(target_os = "linux")]
+    {
+        value
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        value as u64
+    }
+}
+#[cfg(unix)]
+fn mode_bits(value: libc::mode_t) -> u32 {
+    #[cfg(target_os = "linux")]
+    {
+        value
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        u32::from(value)
+    }
+}
 #[cfg(unix)]
 fn regular(metadata: &fs::Metadata) -> Result<Identity> {
     if !metadata.is_file() {
@@ -384,13 +409,13 @@ impl Parent {
         }
         Ok(Some(FileStat {
             identity: Identity {
-                device: stat.st_dev as u64,
-                inode: stat.st_ino as u64,
+                device: device_bits(stat.st_dev),
+                inode: stat.st_ino,
                 owner: stat.st_uid,
-                kind: u32::from(stat.st_mode & libc::S_IFMT),
+                kind: mode_bits(stat.st_mode & libc::S_IFMT),
             },
             size: stat.st_size as u64,
-            mode: u32::from(stat.st_mode),
+            mode: mode_bits(stat.st_mode),
         }))
     }
     fn open_file_raw(&self, name: &CString, flags: i32, mode: libc::mode_t) -> Result<TrackedFile> {
@@ -399,7 +424,7 @@ impl Parent {
                 self.fd.as_raw_fd(),
                 name.as_ptr(),
                 flags | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-                u32::from(mode),
+                mode_bits(mode),
             )
         };
         if fd < 0 {
@@ -595,16 +620,13 @@ fn canonical(path: &Path) -> Result<PathBuf> {
     };
     #[cfg(target_os = "macos")]
     for (alias, real) in [("/var", "/private/var"), ("/tmp", "/private/tmp")] {
-        if let Ok(suffix) = absolute.strip_prefix(alias) {
-            if let (Ok(meta), Ok(target)) = (fs::symlink_metadata(alias), fs::read_link(alias)) {
-                if meta.file_type().is_symlink()
-                    && meta.uid() == 0
-                    && (target == Path::new(real)
-                        || target == Path::new(real.trim_start_matches('/')))
-                {
-                    return Ok(Path::new(real).join(suffix));
-                }
-            }
+        if let Ok(suffix) = absolute.strip_prefix(alias)
+            && let (Ok(meta), Ok(target)) = (fs::symlink_metadata(alias), fs::read_link(alias))
+            && meta.file_type().is_symlink()
+            && meta.uid() == 0
+            && (target == Path::new(real) || target == Path::new(real.trim_start_matches('/')))
+        {
+            return Ok(Path::new(real).join(suffix));
         }
     }
     Ok(absolute)
@@ -1515,10 +1537,10 @@ fn descriptor_identity(fd: i32) -> Option<Identity> {
         return None;
     }
     Some(Identity {
-        device: stat.st_dev as u64,
-        inode: stat.st_ino as u64,
+        device: device_bits(stat.st_dev),
+        inode: stat.st_ino,
         owner: stat.st_uid,
-        kind: u32::from(stat.st_mode & libc::S_IFMT),
+        kind: mode_bits(stat.st_mode & libc::S_IFMT),
     })
 }
 #[cfg(unix)]
