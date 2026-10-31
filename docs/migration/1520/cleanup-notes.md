@@ -1206,3 +1206,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   原版を実oracleとして結果/順序/実引数参照/error graphを検査し、両leg後に全bindingを
   復元する。原版constructorを再実行してnativeの失敗を補修する経路は追加しない。
   ローカルはsource AST/rustfmtのみ、native実行はCI待ち。
+- b7d61c3bcのnative CI41174455898でdefault-callout5群を含む全比較が成功。
+  generic64/API19/backend64+11/reference29/fragment14/App37/42/full305453は維持。
+  extension988,608B/SHA dfbceec5…70ef6、RAM artifact13031658726。性能/実Wasm予算達成や
+  closed operationの採用証拠とは扱わない。
+- Solの残存binding監査では、keywordのValidationError/FormatError/Fraction/re aliasの
+  取得元と、Fractionを実際には2回lookupする時点の差も見つかった。false-schema errorは
+  keywordではなくvalidators側の責任なので一括置換しない。未採用generic翻訳の互換TODOと
+  して保持し、App移植を全第三者private globalsの再現へ拡大しない。
+- Astra highが、未選択のOriginalへ全metadataをforwardする現在のmetaclassは元Appの
+  必須仕様ではなくprototype追加結合の可能性が高いと整理した。選択されたproviderの
+  設定・実callback・入力変更は保持し、独立したApp定義/依存stateを所有する方向へ進む。
+  原版54e7のload_schema/SDK/Workflowを確認し、実checker/resolver/拡張とprivate globalを
+  区別する根拠とケース別の維持条件を`app-validation-provider-boundary.md`へ追記した。
+  既存fixtureはまだ削除/retargetしていない。原版runtime/docsのliteral metadata名検索が
+  0件というだけで共有契約の不存在を断定しない。実所有META/resourceの参照対応と
+  independent-owner isolation検査を伴う次の実装が必要で、独立providerはまだ未実装。

@@ -153,3 +153,70 @@ only that tested native subset. Unimplemented META operators, broader mutation/
 custom numeric behavior, real Wasm limits and actual product adoption remain open.
 The next explicit Wasm artifact uses the new provider import while preserving the
 original document operation; it does not replace the generic candidate or budget.
+
+## App ownership versus the prototype's forwarding
+
+The `AppSchemaProvider._Metadata.__getattr__` forwarding to `_Original` is
+prototype code, not evidence that all globals of an unselected implementation
+belong to the App contract. Astra high reviewed this distinction after the URI
+experiment regressed from19 to15 completed schemas. Further shared-URI porting
+was withdrawn. No closed Rust value-model operation is qualified by that review.
+
+An App-owned provider may own its source-admitted META and dependency state.
+It must retain the actual selected provider's configuration, callbacks, live
+input changes, first-error ordering and data/error references. This does not
+automatically require following changes to a different, unselected Python
+implementation. A source digest identifies DATA; it does not grant execution
+authority or certify a closed operation. No existing policy token proves that
+the current shared-Python prototype is closed or immutable.
+
+### Original-source evidence
+
+The pinned original is `54e7da008997a3eb45876cbe18459dba9902cc9d`.
+
+- [`validation.load_schema`](https://github.com/harupipipipi/tobkiri/blob/54e7da008997a3eb45876cbe18459dba9902cc9d/tobkiri_runtime/tobkiri_protocol/validation.py#L96-L116)
+  parses the actual bytes, refuses an absent selected dependency, calls its
+  `check_schema(payload)`, preserves the caught exception as cause, and returns
+  the actual payload. It does not pass a META or format-checker argument.
+- Its separate document operation constructs an actual `FormatChecker` and
+  `RefResolver`, then passes them to the selected validator. Those arguments are
+  actual App configuration; provider independence cannot discard them.
+- [`PackSdk.render`](https://github.com/harupipipipi/tobkiri/blob/54e7da008997a3eb45876cbe18459dba9902cc9d/tobkiri_runtime/core_runtime/pack_sdk.py#L77-L86)
+  calls the selected definition checker. The SDK manifest operation explicitly
+  supplies a fresh checker and consumes ordered error paths/messages.
+- [`Workflow integration`](https://github.com/harupipipipi/tobkiri/blob/54e7da008997a3eb45876cbe18459dba9902cc9d/tobkiri_runtime/core_runtime/workflow_v4/integration.py#L114-L161)
+  extends the validator with a real Sound value rule and supplies an explicit
+  captured-resource registry which prevents network discovery. This is a real
+  extension/configuration requirement, distinct from rewriting private globals.
+- A source search for literal `META_SCHEMA` and `FORMAT_CHECKER` across that
+  revision's `tobkiri_runtime` (including units) and `docs` returned no matches.
+  This bounds the evidence; it is not exhaustive dynamic alias analysis or a
+  proof that no other public/shared-object contract exists.
+
+### Preserve case intent before changing a fixture
+
+| Existing cases | Observation to retain in an independent provider |
+|---|---|
+| App37, parser/refusal/custom selected callable/cache cases,42 resources and full305-entry/453-read catalog | All recorded reader/parser/selection/cache/cause/result observations remain required unchanged. |
+| Backend11 META/branch/callback/error cases | Apply a configuration change to the actually selected provider in each lane. Preserve valid/invalid outcomes, live input/META changes, real error references and stop order. Do not silently keep testing only `_Original` forwarding. |
+| Reference29 and fragment14 | Preserve actual selected resolver/registry/META resource ownership, descriptors, retrieval, scope and live mutation. Retargeting to an independently owned resource graph requires explicit source/ownership and error-node mappings; a copied URI or equal contents is insufficient. |
+| New default-callout `live-input` and `exception` | Keep actual default checker configuration, callback argument identity, later input reads, supplied exception identity and no retry. |
+| New default-callout `existing-import`, `rebind-import`, `rebind-exporter` | Currently required by the shared-Python/translated-library prototype, whose scalar implementation uses those actual bindings. Preserve these tests there. They do not by themselves establish a product obligation for an independent backend to consult an unused `_keywords` implementation. |
+| Generic64/API19 | Keep as evidence for that separate unadopted library translation. They do not qualify the App backend, and are not silently replaced by native App success. |
+| Shipped SDK/Workflow checker, resolver and extension arguments | Preserve actual App-owned callbacks/configuration and reference boundaries; document-operation migration is separate and remains incomplete. |
+
+No existing case has been removed or retargeted by this checkpoint. A future
+change must identify its selected provider state, map every affected case to the
+original observation, and add an independent-owner isolation check. Sharing a
+META object with an unselected implementation cannot be inferred solely from
+the prototype's metaclass. Conversely, an actual original shared-object
+contract discovered later must be retained rather than categorized away.
+
+The next implementation boundary is an independently owned App definition and
+an explicit compatibility operation, not another loop of public-library helper
+ports. A Rust value-model snapshot cannot cover admitted live callbacks by
+itself. Before that model executes, its actual callback/configuration policy and
+stability must be established, with both valid and invalid cases and no fallback
+after validation, refusal or trap. The unchanged one-shot2B/64MiB/30s gate remains
+unmet. The final original GUI/839-unit/1B/API/VM-retirement requirements remain
+unchanged.
