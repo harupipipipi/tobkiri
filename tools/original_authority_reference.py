@@ -26,6 +26,7 @@ ORIGINAL_HEAD = "1cf025f1eeab31a3daa2861b1f26a025c6954b6e"
 CLOCK = 1000.0
 LIMIT = 2 * 1024 * 1024
 FORMAT = "io.tobkiri.original-authority-fixtures.v1"
+CASE_COUNT = 38
 REQUIREMENTS = (
     "cryptography", "cffi", "pycparser", "pytest", "iniconfig", "packaging",
     "pluggy", "pygments",
@@ -204,7 +205,14 @@ def database_state(root: Path, inspection: Path, fernet_type) -> dict:
         files.append(row)
     # Key bytes and database bytes never enter the JSON/artifact. The copy is
     # inspected so SQLite observer sidecars cannot alter the tested root.
-    shutil.copytree(root, inspection, symlinks=True)
+    inspection.mkdir(mode=0o700)
+    captured = inspection / "authority"
+    if authority.is_symlink():
+        captured.symlink_to(authority.readlink())
+    elif authority.is_dir():
+        shutil.copytree(authority, captured, symlinks=True)
+    elif authority.exists():
+        shutil.copy2(authority, captured)
     path = inspection / "authority/v4.sqlite3"
     result = {"scope": "original-authority-subtree", "files": files}
     if not path.is_file() or path.is_symlink():
@@ -270,11 +278,16 @@ def prepare(original_root: Path, destination: Path) -> None:
         ("absent", "absent", None), ("non-file", "directory", None),
         ("dangling-db-symlink", "dangling", None), ("empty-db", "empty", None),
         ("normal-v4", "normal", None), ("historical-v1", "v1", None),
+        ("historical-v2", "v2", None), ("historical-v3", "v3", None),
         ("unknown-table", "unknown-table", None), ("future-version", "future", None),
         ("missing-epoch-repaired", "missing-epoch", None),
         ("bad-key", "bad-key", None), ("wrong-key", "wrong-key", None),
         ("key-outer-whitespace", "key-whitespace", None),
         ("key-ignored-base64-bytes", "key-base64-noise", None),
+        ("key-broad-mode", "key-broad", None),
+        ("guard-broad-mode", "guard-broad", None),
+        ("guard-directory", "guard-directory", None),
+        ("guard-symlink", "guard-symlink", None),
         ("bad-audit-token", "bad-audit", None),
         ("reason-untagged", "reason-untagged", None),
         ("reason-invalid", "reason-invalid", None),
@@ -330,10 +343,17 @@ def prepare(original_root: Path, destination: Path) -> None:
                            {"security_epoch_reason_digest": "invalid"}
                            if kind == "reason-invalid" else
                            {"security_epoch_advanced_at": "nan"})
-                elif kind in {"future", "unknown-table", "bad-audit"}:
+                elif kind in {"future", "unknown-table", "bad-audit", "v2", "v3"}:
                     with closing(sqlite3.connect(path)) as connection:
                         with connection:
-                            if kind == "future":
+                            if kind in {"v2", "v3"}:
+                                # These versions already have request-bound
+                                # lease columns; their registration table is
+                                # introduced by the original v4 initializer.
+                                connection.execute("DROP TABLE host_extension_registrations")
+                                connection.execute("UPDATE authority_meta SET value=?"
+                                                   " WHERE key='schema_version'", (kind[1:],))
+                            elif kind == "future":
                                 connection.execute("UPDATE authority_meta SET value='999'"
                                                    " WHERE key='schema_version'")
                             elif kind == "unknown-table":
@@ -349,6 +369,21 @@ def prepare(original_root: Path, destination: Path) -> None:
                     key = key_path.read_bytes()
                     key_path.write_bytes(b" \t" + key + b"\r\n" if kind == "key-whitespace"
                                          else key[:5] + b"!\xff" + key[5:])
+                elif kind == "key-broad":
+                    path.with_suffix(".key").chmod(0o644)
+                elif kind.startswith("guard-"):
+                    guard = path.with_name("." + path.name + ".lifecycle.lock")
+                    if kind == "guard-broad":
+                        guard.chmod(0o644)
+                    else:
+                        guard.unlink()
+                        if kind == "guard-directory":
+                            guard.mkdir(mode=0o700)
+                        else:
+                            target = authority / "guard-target"
+                            target.write_bytes(b"\0")
+                            target.chmod(0o600)
+                            guard.symlink_to(target.name)
         elif kind != "absent":
             authority.mkdir(mode=0o700)
             if kind == "directory":
@@ -382,7 +417,10 @@ def prepare(original_root: Path, destination: Path) -> None:
     summary["reference_checks_passed"] = False
     write_json(destination / "summary.json", summary)
     by_name = {item["name"]: item for item in reports}
-    successful = {"empty-db", "normal-v4", "historical-v1", "missing-epoch-repaired",
+    if len(reports) != CASE_COUNT:
+        raise AssertionError("closed original Authority case inventory differs")
+    successful = {"empty-db", "normal-v4", "historical-v1", "historical-v2", "historical-v3",
+                  "missing-epoch-repaired",
                   "key-outer-whitespace", "key-ignored-base64-bytes", "reason-untagged",
                   "between-read-change", "epoch-plus-leading-zero", "epoch-underscore",
                   "epoch-unicode-decimal", "epoch-unicode-whitespace", "epoch-i-json-boundary",
@@ -406,6 +444,11 @@ def prepare(original_root: Path, destination: Path) -> None:
     if {row["state"] for row in migrated["invocation_leases"]["rows"]} != {"revoked", "ambiguous"}:
         raise AssertionError(("actual historical lease migration did not run",
                               summary["historical_lease_states"]))
+    for name in ("historical-v1", "historical-v2", "historical-v3"):
+        tables = by_name[name]["reference_state"]["tables"]
+        meta = {row["key"]: row["value"] for row in tables["authority_meta"]["rows"]}
+        if meta["schema_version"] != "4" or "host_extension_registrations" not in tables:
+            raise AssertionError("actual supported schema upgrade did not finish")
     summary["reference_checks_passed"] = True
     write_json(destination / "summary.json", summary)
     print(json.dumps({"format": FORMAT, "cases": len(reports),
@@ -474,8 +517,9 @@ def compare(original_root: Path, fixture_path: Path, observations: Path, output:
         raise ValueError("fresh original/native fixture formats required")
     expected_names = {row["name"] for row in fixtures["cases"]}
     actual = {row["name"]: row for row in native["cases"]}
-    if len(expected_names) != 32 or len(actual) != 32 or len(native["cases"]) != 32:
-        raise ValueError("exactly32 distinct original and native observations required")
+    if (len(expected_names) != CASE_COUNT or len(actual) != CASE_COUNT
+            or len(native["cases"]) != CASE_COUNT):
+        raise ValueError("exact closed original/native observation inventory required")
     if set(actual) != expected_names:
         raise ValueError("native Authority case inventory differs")
     report = {"format": "io.tobkiri.original-authority-comparison.v1",
@@ -515,7 +559,7 @@ def compare(original_root: Path, fixture_path: Path, observations: Path, output:
         failures = [row for row in report["cases"] if row["material_difference"]
                     or row["state_difference"] or row["existing_key_changed"]]
         raise AssertionError(failures)
-    print(json.dumps({"native_comparison": True, "matched": True, "cases": 32,
+    print(json.dumps({"native_comparison": True, "matched": True, "cases": CASE_COUNT,
                       "qualification": False, "production_enabled": False}))
 
 
