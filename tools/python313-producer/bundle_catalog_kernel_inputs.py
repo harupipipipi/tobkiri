@@ -56,6 +56,7 @@ def derive(files: dict[str, bytes], entry: bytes, export: bytes,
     translation = None
     if app_backend:
         additions['app_schema_provider.py'] = (source/'app_provider.py').read_bytes()
+        additions['app_schema_model.py'] = (source/'app_schema_model.py').read_bytes()
         name = 'tobkiri_protocol/validation.py'
         original = files[name]
         import_anchor = b'    from jsonschema import Draft202012Validator, FormatChecker, RefResolver\n'

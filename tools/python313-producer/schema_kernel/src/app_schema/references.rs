@@ -40,12 +40,7 @@ pub(super) struct ResourcePolicy {
     anchors: Vec<Object>,
 }
 impl ResourcePolicy {
-    fn capture(py: Python<'_>) -> PyResult<Self> {
-        let specification = module_member(py, "referencing.jsonschema", "DRAFT202012")?;
-        let resource_type = module_member(py, "referencing._core", "Resource")?;
-        let static_type = module_member(py, "referencing._core", "Anchor")?;
-        let dynamic_type = module_member(py, "referencing.jsonschema", "DynamicAnchor")?;
-        let registry = module_member(py, "jsonschema.validators", "SPECIFICATIONS")?;
+    fn inventory(registry: &Bound<'_, PyAny>) -> PyResult<(Vec<Object>, Vec<Object>)> {
         let values = |mapping: Bound<'_, PyAny>| -> PyResult<Vec<Object>> {
             mapping
                 .call_method0("items")?
@@ -56,13 +51,24 @@ impl ResourcePolicy {
         let mut resources = values(registry.getattr("_resources")?)?;
         let anchors = values(registry.getattr("_anchors")?)?;
         for anchor in &anchors {
-            // Anchor factories created distinct real Resource objects during
-            // the original builtin registry's own crawl. Retain those too.
-            let resource = anchor.bind(py).getattr("resource")?;
-            if !resources.iter().any(|owned| owned.bind(py).is(&resource)) {
+            let resource = anchor.bind(registry.py()).getattr("resource")?;
+            if !resources
+                .iter()
+                .any(|owned| owned.bind(registry.py()).is(&resource))
+            {
                 resources.push(resource.unbind());
             }
         }
+        Ok((resources, anchors))
+    }
+
+    fn capture(py: Python<'_>) -> PyResult<Self> {
+        let specification = module_member(py, "referencing.jsonschema", "DRAFT202012")?;
+        let resource_type = module_member(py, "referencing._core", "Resource")?;
+        let static_type = module_member(py, "referencing._core", "Anchor")?;
+        let dynamic_type = module_member(py, "referencing.jsonschema", "DynamicAnchor")?;
+        let registry = module_member(py, "jsonschema.validators", "SPECIFICATIONS")?;
+        let (resources, anchors) = Self::inventory(&registry)?;
         Ok(Self {
             pointer_function: resource_type.getattr("pointer")?.unbind(),
             static_function: static_type.getattr("resolve")?.unbind(),
@@ -177,6 +183,45 @@ fn default_reference_policy(py: Python<'_>) -> PyResult<DefaultReferencePolicy> 
         specification: Some(canonical.specification.clone_ref(py)),
         resolver_type: Some(canonical.resolver_type.clone_ref(py)),
         resources: Some(canonical.clone_ref(py)),
+    })
+}
+
+/// Retain an explicitly constructed App model's existing resources. This
+/// selects reference implementation metadata, never permission or source trust.
+#[pyfunction]
+fn app_reference_policy(
+    py: Python<'_>,
+    registry: &Bound<'_, PyAny>,
+) -> PyResult<DefaultReferencePolicy> {
+    let canonical = CANONICAL.get_or_try_init(py, || ResourcePolicy::capture(py))?;
+    if !registry
+        .get_type()
+        .is(&module_member(py, "referencing._core", "Registry")?)
+    {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "actual App model Registry required",
+        ));
+    }
+    let (resources, anchors) = ResourcePolicy::inventory(registry)?;
+    for resource in &resources {
+        let value = resource.bind(py);
+        if !value.get_type().is(canonical.resource_type.bind(py))
+            || !value
+                .getattr("_specification")?
+                .is(canonical.specification.bind(py))
+        {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
+                "actual Draft 2020-12 Resource required",
+            ));
+        }
+    }
+    let mut owned = canonical.clone_ref(py);
+    owned.resources = resources;
+    owned.anchors = anchors;
+    Ok(DefaultReferencePolicy {
+        specification: Some(owned.specification.clone_ref(py)),
+        resolver_type: Some(owned.resolver_type.clone_ref(py)),
+        resources: Some(owned),
     })
 }
 
@@ -652,6 +697,7 @@ fn app_reference_counts(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<DefaultReferencePolicy>()?;
     module.add_function(wrap_pyfunction!(default_reference_policy, module)?)?;
+    module.add_function(wrap_pyfunction!(app_reference_policy, module)?)?;
     module.add_function(wrap_pyfunction!(app_reference_counts, module)?)?;
     Ok(())
 }

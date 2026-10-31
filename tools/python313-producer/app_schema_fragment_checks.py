@@ -14,16 +14,22 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
     external_uri = "https://fragments.invalid/external.json"
     child_uri = "https://fragments.invalid/child.json"
     fixture_key = "_tobkiri_fragment_checks"
-    resource = validators.SPECIFICATIONS[core_uri]
-    assert type(resource) is Resource and resource._specification is DRAFT202012
-    definitions = resource.contents["$defs"]
-    assert type(definitions) is dict and fixture_key not in definitions
-    dynamic = validators.SPECIFICATIONS._anchors[(core_uri, "meta")]
-    assert type(dynamic) is DynamicAnchor
-    assert type(dynamic.resource) is Resource
-    assert dynamic.resource._specification is DRAFT202012
-    registry = validators._REMOTE_WARNING_REGISTRY
-    saved_meta, saved_retrieve = original.META_SCHEMA, registry._retrieve
+
+    def specifications_for(selected):
+        if selected is original:
+            return validators.SPECIFICATIONS
+        return selected._SPECIFICATIONS
+
+    def registry_for(selected):
+        if selected is original:
+            return validators._REMOTE_WARNING_REGISTRY
+        return selected._REGISTRY
+
+    saved_lanes = [
+        (selected, selected.META_SCHEMA, registry_for(selected),
+         registry_for(selected)._retrieve)
+        for selected in (original, provider)
+    ]
     saved_pointer = Resource.__dict__["pointer"]
     saved_helper = DRAFT202012.maybe_in_subresource
     checks = {}
@@ -61,7 +67,7 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
 
     def pointer_wrapper(actual_pointer, state):
         def pointer(receiver, *args, **kwargs):
-            expected = state.get("external_resource", resource)
+            expected = state.get("external_resource", state["owned_resource"])
             event = {
                 "pointer": list(args[:1]) + ([kwargs["pointer"]] if "pointer" in kwargs else []),
                 "arity": len(args), "keywords": list(kwargs),
@@ -80,6 +86,18 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
         return pointer
 
     def run(selected, make):
+        specifications = specifications_for(selected)
+        resource = specifications[core_uri]
+        assert type(resource) is Resource and resource._specification is DRAFT202012
+        definitions = resource.contents["$defs"]
+        assert type(definitions) is dict and fixture_key not in definitions
+        dynamic = specifications._anchors[(core_uri, "meta")]
+        assert type(dynamic) is DynamicAnchor
+        assert type(dynamic.resource) is Resource
+        assert dynamic.resource._specification is DRAFT202012
+        registry = registry_for(selected)
+        assert registry[core_uri] is resource
+        saved_meta, saved_retrieve = selected.META_SCHEMA, registry._retrieve
         fixture = {"integer": {"type": "integer"}, "string": {"type": "string"},
                    "a/b~c": {"type": "integer"}, "array": [{"type": "integer"}],
                    "changing": {"type": "string"},
@@ -87,11 +105,12 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
         assert fixture_key not in definitions
         definitions[fixture_key] = fixture
         try:
-            state = make(fixture)
+            state = make(fixture, resource, specifications)
+            state["owned_resource"] = resource
             state.setdefault("events", [])
             meta, actual, events = state["meta"], state["actual"], state["events"]
-            original.META_SCHEMA = meta
-            known = meta_nodes()
+            selected.META_SCHEMA = meta
+            known = meta_nodes(selected)
             requests = []
 
             def retrieve(*args, **kwargs):
@@ -154,7 +173,7 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
                         object.__setattr__(registry, "_retrieve", saved_retrieve)
                     finally:
                         try:
-                            original.META_SCHEMA = saved_meta
+                            selected.META_SCHEMA = saved_meta
                         finally:
                             del definitions[fixture_key]
 
@@ -170,7 +189,7 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
         return delta
 
     def basic(suffix, actual, target=None):
-        def make(fixture):
+        def make(fixture, resource, specifications):
             state = {"meta": {"$id": root_uri, "$ref": reference(suffix)}, "actual": actual}
             if target is not None:
                 state["error_schema"] = target(fixture)
@@ -188,7 +207,7 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
             compare(basic(suffix, "bad", target), "native_pointers")
         checks["builtin_pointer_escapes_indexes_and_genuine_failures"] = True
 
-        def dynamic_anchor(fixture):
+        def dynamic_anchor(fixture, resource, specifications):
             return {"meta": {"$id": root_uri, "$dynamicRef": core_uri + "#meta"},
                     "actual": {"$anchor": 0},
                     "error_schema": resource.contents["$defs"]["anchorString"]}
@@ -197,20 +216,33 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
 
         # Inspect only the existing crawled inventory. Calling anchors() here
         # would create new Resources and would not establish builtin provenance.
-        static = [(uri, name, anchor) for (uri, name), anchor in
-                  validators.SPECIFICATIONS._anchors.items()
-                  if type(anchor) is Anchor and type(anchor.resource) is Resource
-                  and anchor.resource._specification is DRAFT202012]
-        if static:
-            uri, name, _anchor = sorted(static, key=lambda item: item[:2])[0]
-            compare(lambda fixture: {"meta": {"$id": root_uri, "$ref": uri + "#" + name},
-                                     "actual": {}}, "native_static_anchors")
+        def static_anchors(specifications):
+            return sorted(
+                [(uri, name, anchor) for (uri, name), anchor in
+                 specifications._anchors.items()
+                 if type(anchor) is Anchor and type(anchor.resource) is Resource
+                 and anchor.resource._specification is DRAFT202012],
+                key=lambda item: item[:2],
+            )
+
+        inventories = [static_anchors(specifications_for(selected))
+                       for selected in (original, provider)]
+        assert [item[:2] for item in inventories[0]] == [
+            item[:2] for item in inventories[1]
+        ], "selected builtin static-anchor inventories differ"
+        if inventories[0]:
+            def static_anchor(fixture, resource, specifications):
+                uri, name, _anchor = static_anchors(specifications)[0]
+                return {"meta": {"$id": root_uri, "$ref": uri + "#" + name},
+                        "actual": {}}
+            compare(static_anchor, "native_static_anchors")
             checks["existing_builtin_static_anchor_enters_native_path"] = True
         else:
             checks["no_static_anchor_resource_fabricated_for_empty_inventory"] = True
 
-        def patched_pointer(fixture):
-            state = basic("/integer", "bad", lambda f: f["integer"])(fixture)
+        def patched_pointer(fixture, resource, specifications):
+            state = basic("/integer", "bad", lambda f: f["integer"])(
+                fixture, resource, specifications)
             state["pointer_calls"] = 1
             state["install"] = lambda state: setattr(
                 Resource, "pointer", pointer_wrapper(saved_pointer, state))
@@ -218,7 +250,7 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
         compare(patched_pointer, zero=True)
         checks["patched_resource_pointer_dispatches_actual_callback_once"] = True
 
-        def mid_operation_patch(fixture):
+        def mid_operation_patch(fixture, resource, specifications):
             events = []
             checker = FormatChecker(formats=[])
             state = {"meta": {"$id": root_uri, "allOf": [
@@ -237,8 +269,9 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
         compare(mid_operation_patch, "native_pointers")
         checks["format_callback_changes_next_pointer_dispatch"] = True
 
-        def descriptor_pointer(fixture):
-            state = basic("/integer", "bad", lambda f: f["integer"])(fixture)
+        def descriptor_pointer(fixture, resource, specifications):
+            state = basic("/integer", "bad", lambda f: f["integer"])(
+                fixture, resource, specifications)
 
             class Descriptor:
                 def __get__(self, receiver, owner):
@@ -254,7 +287,7 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
         compare(descriptor_pointer, "native_pointers")
         checks["pointer_descriptor_gets_once_and_binds_actual_receiver"] = True
 
-        def helper_with_opaque_result(fixture):
+        def helper_with_opaque_result(fixture, resource, specifications):
             events = []
             locations = {}
             index_nodes(locations, resource.contents, core_uri)
@@ -299,7 +332,7 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
         checks["live_subresource_helper_arguments_and_opaque_resolver_preserved"] = True
 
         def external_pointer(patched):
-            def make(fixture):
+            def make(fixture, resource, specifications):
                 target = {"type": "integer"}
                 state = {"meta": {"$id": root_uri, "$ref": external_uri + "#/$defs/target"},
                          "actual": "bad", "external": {"$defs": {"target": target}},
@@ -314,7 +347,7 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
         compare(external_pointer(True), zero=True)
         checks["retrieved_default_resource_remains_opaque_and_dispatches_pointer"] = True
 
-        def owned_alias(fixture):
+        def owned_alias(fixture, resource, specifications):
             fixture["alias"] = {"$ref": "child.json"}
             child = {"type": "integer"}
             state = {"meta": {"$id": root_uri, "$ref":
@@ -338,7 +371,7 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
         checks["owned_resource_alias_preserves_retrieved_base_uri_and_child_scope"] = True
 
         def changed_owned_alias(patch_method):
-            def make(fixture):
+            def make(fixture, resource, specifications):
                 key = "integer" if patch_method else "changing"
                 state = {"meta": {"$id": root_uri, "$ref":
                                   external_uri + "#/$defs/" + fixture_key + "/" + key},
@@ -365,7 +398,7 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
         checks["owned_alias_uses_contents_and_pointer_method_after_retrieval"] = True
 
         def fresh_same_contents(patch_method):
-            def make(fixture):
+            def make(fixture, resource, specifications):
                 state = {"meta": {"$id": root_uri, "$ref":
                                   external_uri + "#/$defs/" + fixture_key + "/integer"},
                          "actual": "bad", "error_schema": fixture["integer"], "events": [],
@@ -390,7 +423,7 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
         compare(fresh_same_contents(True), zero=True)
         checks["fresh_resource_with_builtin_contents_never_acquires_ownership"] = True
 
-        def intermediate_id(fixture):
+        def intermediate_id(fixture, resource, specifications):
             nested_uri = "https://fragments.invalid/nested/value.json"
             fixture["$id"] = "https://fragments.invalid/nested/context.json"
             fixture["properties"] = {"child": {"$ref": "value.json"}}
@@ -414,7 +447,7 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
         compare(intermediate_id, "native_pointers")
         checks["owned_pointer_intermediate_id_changes_subresource_scope"] = True
 
-        def mutate_contents(fixture):
+        def mutate_contents(fixture, resource, specifications):
             checker = FormatChecker(formats=[])
             events = []
 
@@ -439,10 +472,11 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
             try:
                 object.__setattr__(DRAFT202012, "maybe_in_subresource", saved_helper)
             finally:
-                try:
-                    object.__setattr__(registry, "_retrieve", saved_retrieve)
-                finally:
-                    original.META_SCHEMA = saved_meta
+                for selected, saved_meta, registry, saved_retrieve in saved_lanes:
+                    try:
+                        object.__setattr__(registry, "_retrieve", saved_retrieve)
+                    finally:
+                        selected.META_SCHEMA = saved_meta
 
     assert len(checks) == 14 and all(value is True for value in checks.values())
     return checks

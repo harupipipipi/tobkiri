@@ -36,7 +36,7 @@ def install(precheck: Path, packages: list[Path]):
     if any(n == 'jsonschema' or n.startswith('jsonschema.') or n == '_tobkiri_schema_kernel'
            for n in sys.modules):
         raise ValueError('App backend must precede first import')
-    sys.path[:0] = [str(extension.parent), *(str(p) for p in packages)]
+    sys.path[:0] = [str(extension.parent), str(source), *(str(p) for p in packages)]
     import _tobkiri_schema_kernel as kernel
     import jsonschema
     original = [p for p in packages if p.name == 'jsonschema']
@@ -50,6 +50,8 @@ def install(precheck: Path, packages: list[Path]):
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
+    if Path(sys.modules['app_schema_model'].__file__).resolve(strict=True) != source/'app_schema_model.py':
+        raise ValueError('actual owned model source required')
     if kernel.app_schema_entry_count() != 0 or kernel.app_schema_frame_count() != 0:
         raise ValueError('App workload executed during provider initialization')
     return kernel, packages, {'extension': receipt['extension'],

@@ -14,7 +14,7 @@ def compare(args, receipt, package_paths, extension):
     config = sysconfig.get_paths()
     stdlib = [config['stdlib'], config['platstdlib'], sysconfig.get_config_var('DESTSHARED')]
     here = Path(__file__).resolve().parent
-    sys.path[:] = list(dict.fromkeys([str(here), str(extension.parent),
+    sys.path[:] = list(dict.fromkeys([str(here), str(extension.parent), str(args.source),
         *(str(p) for p in package_paths), *(p for p in stdlib if isinstance(p, str))]))
     if any(name == 'jsonschema' or name.startswith('jsonschema.') for name in sys.modules):
         raise ValueError('App backend must precede first original library import')
@@ -29,6 +29,8 @@ def compare(args, receipt, package_paths, extension):
     provider_module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = provider_module
     spec.loader.exec_module(provider_module)
+    if Path(sys.modules['app_schema_model'].__file__).resolve(strict=True) != args.source/'app_schema_model.py':
+        raise ValueError('actual owned model source required')
     provider = provider_module.AppSchemaProvider
     if kernel.app_schema_entry_count() != 0 or kernel.app_schema_frame_count() != 0:
         raise ValueError('App validation ran before the actual corpus')
@@ -37,7 +39,7 @@ def compare(args, receipt, package_paths, extension):
             or len(reference.get('cases', [])) != 64):
         raise ValueError('complete original64 source reference required')
     from jsonschema import exceptions
-    known = meta_nodes()
+    known = meta_nodes(provider)
     actual = []
     profiler = None
     if args.profile_calls:
@@ -99,8 +101,9 @@ def compare(args, receipt, package_paths, extension):
     receipt['reference_state_checks'] = reference_state_checks(provider, kernel)
     from app_schema_fragment_checks import fragment_checks
     receipt['fragment_checks'] = fragment_checks(provider, kernel)
-    from app_schema_callout_checks import callout_checks
+    from app_schema_callout_checks import callout_checks, owned_model_checks
     receipt['default_callout_checks'] = callout_checks(provider, kernel)
+    receipt['owned_model_checks'] = owned_model_checks(provider, kernel)
     receipt.update(outcome='success', app_backend_64_success=True,
                    app_backend_entries=kernel.app_schema_entry_count(),
                    app_backend_frames=kernel.app_schema_frame_count(),
@@ -114,15 +117,15 @@ def boundary_checks(provider, kernel):
     from schema_kernel_observation import first_difference, meta_nodes, observe
     import urllib.request
 
-    saved_meta = original.META_SCHEMA
+    saved_meta = {selected: selected.META_SCHEMA for selected in (original, provider)}
     cases = {}
 
     def scenario(name, make):
         observations = []
         for selected in (original, provider):
             meta, actual, events, checker = make()
-            original.META_SCHEMA = meta
-            known = meta_nodes()
+            selected.META_SCHEMA = meta
+            known = meta_nodes(selected)
             try:
                 selected.check_schema(actual, format_checker=checker)
             except exceptions.SchemaError as error:
@@ -201,7 +204,7 @@ def boundary_checks(provider, kernel):
                     calls.append(request.full_url)
                     raise supplied
                 urllib.request.urlopen = denied
-                original.META_SCHEMA = {'$id': 'urn:tobkiri:meta-fixture', '$ref': 'urn:tobkiri:missing-meta'}
+                selected.META_SCHEMA = {'$id': 'urn:tobkiri:meta-fixture', '$ref': 'urn:tobkiri:missing-meta'}
                 try:
                     selected.check_schema({})
                 except exceptions._WrappedReferencingError as error:
@@ -217,7 +220,8 @@ def boundary_checks(provider, kernel):
         finally:
             urllib.request.urlopen = saved_open
 
-        original.META_SCHEMA = saved_meta
+        for selected, meta in saved_meta.items():
+            selected.META_SCHEMA = meta
         saved_init = original.__init__
         class ConstructorCalled(Exception):
             pass
@@ -246,7 +250,8 @@ def boundary_checks(provider, kernel):
         finally:
             original.__init__ = saved_init
     finally:
-        original.META_SCHEMA = saved_meta
+        for selected, meta in saved_meta.items():
+            selected.META_SCHEMA = meta
     if len(cases) != 11 or not all(cases.values()):
         raise ValueError('all11 App backend boundary cases required')
     return cases

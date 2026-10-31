@@ -33,7 +33,7 @@ def at(root: object, path: list) -> object:
     return root
 
 
-def meta_nodes() -> dict:
+def meta_nodes(selected=None) -> dict:
     from jsonschema import Draft202012Validator
     from jsonschema_specifications import REGISTRY
 
@@ -46,9 +46,13 @@ def meta_nodes() -> dict:
             for key, child in members:
                 index(child, uri, [*path, key])
 
-    index(Draft202012Validator.META_SCHEMA, "original-class-meta-schema", [])
-    for uri in sorted(REGISTRY):
-        index(REGISTRY.contents(uri), uri, [])
+    provider = Draft202012Validator if selected is None else selected
+    registry = getattr(provider, "_SPECIFICATIONS", REGISTRY)
+    # This retained label describes the selected class-root role in both lanes;
+    # it does not require sharing the unselected implementation's actual object.
+    index(provider.META_SCHEMA, "original-class-meta-schema", [])
+    for uri in sorted(registry):
+        index(registry.contents(uri), uri, [])
 
     return known_nodes
 

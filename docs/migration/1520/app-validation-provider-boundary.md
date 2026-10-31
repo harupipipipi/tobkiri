@@ -220,3 +220,28 @@ stability must be established, with both valid and invalid cases and no fallback
 after validation, refusal or trap. The unchanged one-shot2B/64MiB/30s gate remains
 unmet. The final original GUI/839-unit/1B/API/VM-retirement requirements remain
 unchanged.
+
+## Ownership slice implementation (not yet qualified)
+
+The provider now declares its META/checker/type/registry fields explicitly;
+wildcard forwarding is removed. Its model reads the eight declared Draft202012
+definition documents from the artifact's already lock-pinned source DATA. It
+constructs an independent reference graph and checker registration dictionary,
+retaining the explicitly selected real callbacks and exception classes. The
+class-root dictionary shares children with its own registry root, matching the
+original root-view relationship, without sharing Original's containers.
+
+Only definition DATA/resources are constructed during ordinary initialization;
+no App schema/catalog/result is loaded or validated and no producer warming is
+added. The new native metadata factory retains that actual graph's crawled
+Resource/anchor objects. It grants no source trust or execution authority.
+External retrieval still does not extend ownership.
+
+The existing11/29/14/5 comparison groups now target the selected lane's state;
+their names and behavior assertions remain. Four additional ownership groups
+cover source reconstruction, absence of shared containers, actual callback/class
+retention, isolation from unselected Original changes and live selected META
+replacement/error references. All execution semantics remain in the existing
+reference engine. Callback bodies/globals, the explicit retrieval callable and
+type-checker dependency are not declared independently implemented by this
+slice. Native compilation, full comparison and actual guest evidence are pending.

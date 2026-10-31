@@ -1222,3 +1222,23 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   既存fixtureはまだ削除/retargetしていない。原版runtime/docsのliteral metadata名検索が
   0件というだけで共有契約の不存在を断定しない。実所有META/resourceの参照対応と
   independent-owner isolation検査を伴う次の実装が必要で、独立providerはまだ未実装。
+- 次の所有sliceを実装（CI前）。wildcard `_Metadata.__getattr__`を削除し、App providerが
+  明示的なMETA/checker/type/registry属性を持つ。新`app_schema_model.py`はartifactに既存の
+  lock-pinned jsonschema-specifications2025.9.1から固定8文書を読み直してgraphを構成し、
+  OriginalのMETA・registryをdeepcopyしない。class rootだけは原版同様の浅いdict viewで、
+  自分のregistry rootの実childと共有し、Originalのcontainerとは共有しない。
+  jsonschema4.26の登録定義を明示し、独立checker表に実callback/例外classを保持する。
+  callback本体とglobals・明示remote callback・type checkerは引き続き実依存で、完全独立や
+  callback-free判定とは呼ばない。source dataは既存lock/inputs/component digestへ結び付く。
+- 定義graphだけを通常module初期化時に構成し、App schema/catalog/validation結果を作らず、
+  producer warmingを追加しない。Rust `app_reference_policy`はその実crawled Resource/
+  anchor Resourceを保持するmetadata factoryで、exact Registry/Resource/DRAFT形状を確認。
+  source trustや実行権限は付与せず、後続retrieve由来resourceは昇格しない。
+  元のdefault policyは別のcompatibility metadataとして維持する。engine/予算は未変更。
+- backend11/reference29/fragment14/default-callout5は、各laneで実際に選択されたproviderの
+  META/checker/registry/resourceとerror参照を対象に変更。ケース名・正負計数・descriptor・
+  retrieval・scope・例外順/参照を残し、削除しない。observerも選択providerのgraphを索引化。
+  新4群で8文書の内容一致/全container非共有、登録表独立と実callable/例外保持、Originalの
+  class/graph/checker変更後にsourceから新規再構成できること、実selected META差替えと
+  error.schema参照を確認する。source inventoryは12、native/実Wasm packagingにも追加。
+  source AST12/rustfmt/diffとSolのreadonly source監査のみ完了、実native/guest検証は未実施。

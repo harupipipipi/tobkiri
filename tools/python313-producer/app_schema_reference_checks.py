@@ -4,8 +4,8 @@
 def reference_state_checks(provider, kernel) -> dict[str, bool]:
     """Compare live reference state with the unmodified original validator.
 
-    All retrieval stays inside a controlled callback on the same original
-    registry object. These observations establish no network or source rights.
+    All retrieval stays inside a controlled callback on the selected lane's
+    actual registry. These observations establish no network or source rights.
     """
     import gc
     import weakref
@@ -18,8 +18,16 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
 
     root_uri = "https://refs.invalid/root.json"
     external_uri = "https://refs.invalid/external/value.json"
-    registry = validators._REMOTE_WARNING_REGISTRY
-    saved_meta, saved_retrieve = original.META_SCHEMA, registry._retrieve
+    original_registry = validators._REMOTE_WARNING_REGISTRY
+
+    def registry_for(selected):
+        return original_registry if selected is original else selected._REGISTRY
+
+    saved_lanes = [
+        (selected, selected.META_SCHEMA, registry_for(selected),
+         registry_for(selected)._retrieve)
+        for selected in (original, provider)
+    ]
     checks = {}
 
     class RetrieveRefused(Exception):
@@ -50,12 +58,14 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
                 index_resource(known, child, uri, (*path, key))
 
     def run(selected, make):
+        registry = registry_for(selected)
+        saved_meta, saved_retrieve = selected.META_SCHEMA, registry._retrieve
         state = make()
         meta, actual = state["meta"], state["actual"]
         events = state.setdefault("events", [])
         returned, requests = [], []
-        original.META_SCHEMA = meta
-        known = meta_nodes()
+        selected.META_SCHEMA = meta
+        known = meta_nodes(selected)
 
         def retrieve(*args, **kwargs):
             event = {"args": list(args), "kwargs": list(kwargs.items())}
@@ -111,7 +121,7 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
                 try:
                     Resource.pointer = saved_pointer
                 finally:
-                    original.META_SCHEMA = saved_meta
+                    selected.META_SCHEMA = saved_meta
 
     def compare(name, make):
         expected, actual = run(original, make), run(provider, make)
@@ -309,11 +319,12 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
         custom_observations = []
         try:
             for selected in (original, provider):
+                saved_meta = selected.META_SCHEMA
                 meta = {"$schema": custom_uri, "type": "integer"}
                 actual, events = "bad", []
                 checker = FormatChecker(formats=[])
-                original.META_SCHEMA = meta
-                known = meta_nodes()
+                selected.META_SCHEMA = meta
+                known = meta_nodes(selected)
 
                 class Selected:
                     FORMAT_CHECKER = checker
@@ -331,11 +342,14 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
                 mapping[custom_uri] = Selected
                 before = kernel.app_schema_entry_count()
                 try:
-                    selected.check_schema(actual)
-                except exceptions.SchemaError as error:
-                    outcome = observe(error, actual, known)
-                else:
-                    raise AssertionError("selected original custom validator accepted the fixture")
+                    try:
+                        selected.check_schema(actual)
+                    except exceptions.SchemaError as error:
+                        outcome = observe(error, actual, known)
+                    else:
+                        raise AssertionError("selected original custom validator accepted the fixture")
+                finally:
+                    selected.META_SCHEMA = saved_meta
                 assert kernel.app_schema_entry_count() == before
                 assert len(events) == 2 and events[0]["same_meta"] and events[0]["same_checker"]
                 assert events[1]["iter_errors"]
@@ -343,7 +357,6 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
             assert first_difference(*custom_observations) is None
             checks["custom_meta_validator_selected_before_native_evaluation"] = True
         finally:
-            original.META_SCHEMA = saved_meta
             if saved_selection is missing:
                 del mapping[custom_uri]
             else:
@@ -365,7 +378,8 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
         for fake in (None, object(), ArbitraryPolicy()):
             before = kernel.app_schema_entry_count()
             try:
-                kernel.app_check_schema({}, {}, registry, fake, original.TYPE_CHECKER, None)
+                kernel.app_check_schema({}, {}, original_registry, fake,
+                                        original.TYPE_CHECKER, None)
             except TypeError:
                 pass
             else:
@@ -377,18 +391,22 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
             pass
 
         def released_context(selected):
+            saved_meta = selected.META_SCHEMA
             meta = {"anyOf": [{"type": "string"}, {"type": "integer"}]}
             actual = InputWeakDict({"retained": []})
             retained = weakref.ref(actual)
-            original.META_SCHEMA = meta
-            known = meta_nodes()
+            selected.META_SCHEMA = meta
+            known = meta_nodes(selected)
             try:
-                selected.check_schema(actual, format_checker=None)
-            except exceptions.SchemaError as error:
-                assert len(error.context) == 2
-                outcome = observe(error, actual, known)
-            else:
-                raise AssertionError("invalid context fixture was accepted")
+                try:
+                    selected.check_schema(actual, format_checker=None)
+                except exceptions.SchemaError as error:
+                    assert len(error.context) == 2
+                    outcome = observe(error, actual, known)
+                else:
+                    raise AssertionError("invalid context fixture was accepted")
+            finally:
+                selected.META_SCHEMA = saved_meta
             del actual
             gc.collect()
             assert retained() is None, "failed reference context retained the original input"
@@ -397,10 +415,11 @@ def reference_state_checks(provider, kernel) -> dict[str, bool]:
         assert first_difference(released_context(original), released_context(provider)) is None
         checks["failed_context_releases_input_after_exception_collection"] = True
     finally:
-        try:
-            object.__setattr__(registry, "_retrieve", saved_retrieve)
-        finally:
-            original.META_SCHEMA = saved_meta
+        for selected, saved_meta, registry, saved_retrieve in saved_lanes:
+            try:
+                object.__setattr__(registry, "_retrieve", saved_retrieve)
+            finally:
+                selected.META_SCHEMA = saved_meta
 
-    assert checks and all(value is True for value in checks.values())
+    assert len(checks) == 29 and all(value is True for value in checks.values())
     return checks
