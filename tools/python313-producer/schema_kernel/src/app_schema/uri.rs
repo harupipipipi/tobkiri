@@ -283,8 +283,8 @@ impl UriPolicy {
     pub(super) fn actual_join<'py>(
         &self,
         py: Python<'py>,
-        base: &Bound<'_, PyAny>,
-        reference: &Bound<'_, PyAny>,
+        base: &Bound<'py, PyAny>,
+        reference: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
         self.selected(py, "urljoin")?.call1((base, reference))
     }
