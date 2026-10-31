@@ -262,5 +262,5 @@ def uri_checks(kernel, policy) -> dict[str, bool]:
     finally:
         restore()
 
-    assert len(checks) == 10 and all(value is True for value in checks.values())
+        assert len(checks) == 11 and all(value is True for value in checks.values())
     return checks
