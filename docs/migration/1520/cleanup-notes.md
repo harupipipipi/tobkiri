@@ -86,6 +86,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   source寿命。旧fullharnessのpreparation期待件数が2のままだったため実5件へ更新する。
   Store用API重複は既存innerへ集約し、bootstrapも単一prepare_innerを共有する。
   元ShutdownStateの親生成・worker join・Core owner一組化・GUI承認への接続は別途未実装。
+- `e2e764869`実CI41156475997: Linux Store全16件成功（実guestは元2秒graceで停止、
+  deadline/fuel保持・payload0）。mac準備は4/5成功。DATA結果の新規割当は既存ownerが
+  cancel直後から拒否するため、「grace内の呼出し成功」を期待したテストが誤りだった。
+  製品の拒否を緩めず、実result-storage/canonical割当拒否と同Store退役を検査する。
+  これはepoch graceの変更ではない。修正後mac実検証は未完了。
+
 - 条件: 旧 Profile・データ・秘密情報・復旧の実移行、実候補と承認の拘束、
   Stop / Quit の終了・失効まで確認する。空の新 root を既存環境の代用にしない。
   最初の Profile を CLI で作らせる暫定画面も、元 Setup に戻すまで未完了とする。

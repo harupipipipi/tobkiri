@@ -595,17 +595,20 @@ mod tests {
         assert_eq!(Arc::strong_count(&retired), 2);
         parent.cancel();
         drop(parent);
-        // The preparation has been consumed, yet its retained child still sees
-        // parent cancellation. The first entry starts the ORIGINAL grace.
-        let within_grace = program.invoke(0, None).await?;
-        assert!(within_grace.is_ok());
-        tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
+        // The consumed preparation's retained child still sees cancellation.
+        // Epoch execution keeps its existing grace, but new result storage is
+        // refused immediately by the original allocation owner's cancel check.
         let error = program
             .invoke(0, None)
             .await
             .err()
             .ok_or_else(|| anyhow::anyhow!("consumed preparation lost cancellation"))?;
-        assert!(format!("{error:#}").contains("component cancelled after grace period"));
+        let failure = format!("{error:#}");
+        assert!(failure.contains("result-storage"), "{failure}");
+        assert!(
+            failure.contains("canonical host allocation unavailable"),
+            "{failure}"
+        );
         assert!(program.observation().store_retired);
         drop(program);
         tobkiri_wasm::reap_allocation_owners()?;
