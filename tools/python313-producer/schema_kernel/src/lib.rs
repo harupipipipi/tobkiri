@@ -72,6 +72,5 @@ fn _tobkiri_schema_kernel(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("production_enabled", false)?;
     module.add("implemented_handler_count", 36)?;
     module.add("license_notice", include_str!("../COPYING.jsonschema"))?;
-    module.add("uri_license_notice", include_str!("../COPYING.python"))?;
     Ok(())
 }

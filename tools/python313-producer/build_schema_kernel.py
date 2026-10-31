@@ -564,7 +564,7 @@ def verify_inputs(
     if (
         set(source_files) != {
             "Cargo.toml", "Cargo.lock", "README.md", "COPYING.jsonschema", "adapter.py",
-            "src/lib.rs", "src/traversal.rs", "src/keywords.rs", "src/app_schema.rs", "src/app_schema/references.rs", "src/app_schema/uri.rs", "COPYING.python", "app_provider.py",
+            "src/lib.rs", "src/traversal.rs", "src/keywords.rs", "src/app_schema.rs", "src/app_schema/references.rs", "app_provider.py",
         }
         or any("link" in item for item in source_files.values())
         or sum(item["bytes"] for item in source_files.values()) > MAX_SOURCE
