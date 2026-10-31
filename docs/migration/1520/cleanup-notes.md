@@ -176,7 +176,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   run_snapshot/snapshot_resultは同Read/invocation/control/sourceを使い、成功DATAも
   canonical errorも実close後だけ公開する。close errorには先のactual errorをmoveで
   contextへ保つ。bundle文字列の追加検査/正規化、guestへ跨がるDB contextやTauri IPCは
-  追加しない。Mac通常unitは4/Linux2。Source/rustfmtのみ確認済みで、実93比較は次CI。
+  追加しない。Mac通常unitは4/Linux2。
+  実装`2cb833cf8`の[CI41237506970](https://github.com/harupipipipi/tobkiri/actions/runs/41237506970)
+  は両OSで完了成功。macOSは材料77＋snapshot16の93件でtyped結果/例外graph・独立観測の
+  logical state・既存key保持がすべて一致し、実close/容量解放/owner再openも成功した。
+  first epochとsecond recordの別変化、canonical拒否と実close後の故障注入のcontextも
+  比較対象に含む。Mac通常4/Linux通常2、両OSstrict Clippy/2lock graphも成功。
+  Linuxは原本93件とunsupported-owner拒否を検査し、native DB比較は対応macOSのみ。
+  RAM artifactからselected JSON218,195Bだけ保存し、DB/key/ZIP/binaryは保存していない。
+  次は同Bootstrap invocation/control/sourceの元到達点への接続。独立jobの材料やdigestを
+  prefetch/cacheとして渡すことはしない。既存Setup/recovery/catalog/追加source/Host引継ぎ
+  の全体と、未達の実Wasm予算を閉じるまで製品経路はdefault-offを維持する。
   JSON/surrogate/depth・不正leaseの例外投影、同時key作成/複合I/O/close、Linux process情報
   read内部close receipt等は未閉鎖。全Open同等・既存DB採用・GUI接続の完了とはしない。
 - cryptoの余分なowned key配列copyをZeroizing先作成へ整理した。Fernetは既存RustCryptoの

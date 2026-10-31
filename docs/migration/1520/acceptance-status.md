@@ -23,6 +23,16 @@ capture, a component build, mechanism replay or provisional inventory target
 does not close these requirements. Keep legacy removal and final acceptance
 blocked by the actual full completion gate, without waiving that gate.
 
+The [original Authority comparison at `2cb833cf8`](https://github.com/harupipipipi/tobkiri/actions/runs/41237506970)
+passed the finite native operation on macOS: 77 material cases and 16 snapshot
+cases matched the independently pinned original, including typed failures,
+logical database state, existing keys and physical cleanup. Snapshot canonical
+processing runs before the original Store scope closes. Linux passed the
+original 93-case reference and its explicit native-owner refusal; it does not
+provide native database parity. This result does not yet connect the operation
+to the original Setup review, establish complete IO-failure parity, or close
+an acceptance item. The candidate remains default-off.
+
 Historical focused checks from the 2026-10-18 slice: foundation gate **0 failures**; complete gate
 **1,044 failures**. Gate regressions **13**, CI-helper regressions **7**, and
 inventory tests **9** passed. That snapshot reported 837 units and
