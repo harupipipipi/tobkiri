@@ -167,6 +167,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   追加せず、不在DBを作らない。同Bootstrap invocation/control/sourceで実bodyを借りる。
   材料-only77は維持し、新しいsnapshot sub-operationの成功/失敗とcloseとの組合せを
   原本helper/実contextで独立比較する。後続Bootstrap cleanupは別階層として扱う。
+  新しい独立referenceは材料77件を保持してsnapshot16件（総93）を追加する。原本helperを
+  actual with内で呼び、first epochとrecordの別変化、safe-range拒否、genesis/v1と不正stateを
+  観測する。canonical成功/失敗とclose成功/実close後のRuntimeError注入の4組合せを含める。
+  この注入はcontext/surfaceの制御フロー投影検査であり、OS/SQLiteのphysical-close故障の
+  資格証拠とはしない。実close後の状態とkey保持は引き続き独立比較する。
   JSON/surrogate/depth・不正leaseの例外投影、同時key作成/複合I/O/close、Linux process情報
   read内部close receipt等は未閉鎖。全Open同等・既存DB採用・GUI接続の完了とはしない。
 - cryptoの余分なowned key配列copyをZeroizing先作成へ整理した。Fernetは既存RustCryptoの

@@ -27,7 +27,9 @@ ORIGINAL_HEAD = "1cf025f1eeab31a3daa2861b1f26a025c6954b6e"
 CLOCK = 1000.0
 LIMIT = 2 * 1024 * 1024
 FORMAT = "io.tobkiri.original-authority-fixtures.v1"
-CASE_COUNT = 77
+CASE_COUNT = 93
+BUNDLE_LOCK_DIGEST = "sha256:" + hashlib.sha256(b"original snapshot input fixture\n").hexdigest()
+CLOSE_FAULT_MESSAGE = "injected snapshot close failure after actual close"
 REQUIREMENTS = (
     "cryptography", "cffi", "pycparser", "pytest", "iniconfig", "packaging",
     "pluggy", "pygments",
@@ -226,6 +228,42 @@ def material(root: Path, store_type, helpers: dict, changes: dict | None) -> dic
     return result
 
 
+def snapshot(root: Path, store_type, helpers: dict, changes: dict | None,
+             after_close_fault: bool) -> dict:
+    """Run the exact original helper INSIDE the actual original DB context."""
+    path = root / "authority/v4.sqlite3"
+    if not path.is_file():
+        if path.exists():
+            return {"outcome": "non-regular-path"}
+        return {"outcome": "snapshot", "security_epoch": "1",
+                "snapshot_digest": helpers["_genesis_authority_snapshot_digest"](
+                    BUNDLE_LOCK_DIGEST)}
+    original_close = store_type.close
+
+    def close_then_inject(store):
+        # A control-flow projection fault AFTER actual cleanup. This is not
+        # claimed as an OS/file/SQLite physical-close failure qualification.
+        original_close(store)
+        raise RuntimeError(CLOSE_FAULT_MESSAGE)
+
+    if after_close_fault:
+        store_type.close = close_then_inject
+    try:
+        try:
+            with store_type(path, clock=lambda: CLOCK) as store:
+                first = store.security_epoch
+                if changes:
+                    mutate(path, changes)
+                # Do not move this helper after __exit__, even on failure.
+                result = helpers["_authority_snapshot_digest"](store, BUNDLE_LOCK_DIGEST)
+        except Exception as error:
+            return {"outcome": "error", "error": error_graph(error, root)}
+        return {"outcome": "snapshot", "security_epoch": str(first),
+                "snapshot_digest": result}
+    finally:
+        store_type.close = original_close
+
+
 def finite_observation_float(text: str) -> float:
     """Keep observation JSON finite; invalid records retain their ciphertext SHA."""
     value = float(text)
@@ -415,6 +453,33 @@ def prepare(original_root: Path, destination: Path) -> None:
                           for name in AUDIT_PAYLOADS)
     specifications.extend(("lease-" + name, "v1-lease:" + name, None)
                           for name in LEASE_CASES)
+    snapshot_specs = [
+        ("snapshot-absent", "absent", None),
+        ("snapshot-non-file", "directory", None),
+        ("snapshot-dangling", "dangling", None),
+        ("snapshot-empty", "empty", None),
+        ("snapshot-normal", "normal", None),
+        ("snapshot-v1", "v1", None),
+        ("snapshot-between-read-change", "normal", {
+            "security_epoch": "7", "security_epoch_advanced_at": "1001.25",
+            "security_epoch_reason_digest": digest({"reason": "between-reads"})}),
+        ("snapshot-first-large-second-safe", "epoch:9007199254740992", {
+            "security_epoch": "1", "security_epoch_advanced_at": "1001.25",
+            "security_epoch_reason_digest": digest({"reason": "between-reads"})}),
+        ("snapshot-first-safe-second-large", "normal", {
+            "security_epoch": "9007199254740992",
+            "security_epoch_advanced_at": "1001.25",
+            "security_epoch_reason_digest": digest({"reason": "between-reads"})}),
+        ("snapshot-large-record", "epoch:9007199254740992", None),
+        ("snapshot-untagged-reason", "reason-untagged", None),
+        ("snapshot-invalid-reason", "reason-invalid", None),
+        ("snapshot-wrong-key", "wrong-key", None),
+        ("snapshot-normal-close-fault", "normal", None),
+        ("snapshot-canonical-close-fault", "epoch:9007199254740992", None),
+        ("snapshot-nonfinite-time", "time-nan", None),
+    ]
+    snapshot_names = {name for name, _, _ in snapshot_specs}
+    specifications.extend(snapshot_specs)
     reports = []
     for name, kind, changes in specifications:
         case = destination / name
@@ -528,10 +593,16 @@ def prepare(original_root: Path, destination: Path) -> None:
         reference, native = case / "reference", case / "native"
         shutil.copytree(seed, reference, symlinks=True)
         shutil.copytree(seed, native, symlinks=True)
+        is_snapshot = name in snapshot_names
+        close_fault = name in {"snapshot-normal-close-fault", "snapshot-canonical-close-fault"}
+        expected = (snapshot(reference, store_type, helpers, changes, close_fault) if is_snapshot
+                    else material(reference, store_type, helpers, changes))
         report = {"name": name, "user_data_dir": str(native), "clock": CLOCK,
-                  "after_epoch_mutation": changes,
-                  "expected": material(reference, store_type, helpers, changes),
+                  "operation": "snapshot" if is_snapshot else "material",
+                  "after_epoch_mutation": changes, "expected": expected,
                   "reference_state": database_state(reference, case / "inspection", fernet_type)}
+        if is_snapshot:
+            report.update(bundle_lock_digest=BUNDLE_LOCK_DIGEST, after_close_fault=close_fault)
         reports.append(report)
     metadata = {"format": FORMAT, "original_head": ORIGINAL_HEAD,
                 "python": platform.python_version(), "native_comparison": False,
@@ -553,7 +624,8 @@ def prepare(original_root: Path, destination: Path) -> None:
     ]
     write_json(destination / "native-fixtures.json", native_metadata, compact=True)
     summary = {key: value for key, value in metadata.items() if key != "cases"}
-    summary["cases"] = [{"name": r["name"], "outcome": r["expected"]["outcome"],
+    summary["cases"] = [{"name": r["name"], "operation": r["operation"],
+                         "outcome": r["expected"]["outcome"],
                          "error_type": r["expected"].get("error", {}).get("type"),
                          "observation": r["expected"],
                          "late_protocol_refusal": "protocol_snapshot_error" in r["expected"]}
@@ -575,9 +647,15 @@ def prepare(original_root: Path, destination: Path) -> None:
                   "epoch-above-i-json", "epoch-above-u64", "epoch-hundred-digits"}
     successful.update({"lease-numeric-function-id", "lease-call-chain-string",
                        "lease-call-chain-dict"})
+    snapshot_successful = {
+        "snapshot-absent", "snapshot-dangling", "snapshot-empty", "snapshot-normal",
+        "snapshot-v1", "snapshot-between-read-change", "snapshot-first-large-second-safe",
+        "snapshot-untagged-reason",
+    }
     for name, report in by_name.items():
         expected = ("genesis" if name in {"absent", "dangling-db-symlink"} else
-                    "non-regular-path" if name == "non-file" else
+                    "non-regular-path" if name in {"non-file", "snapshot-non-file"} else
+                    "snapshot" if name in snapshot_successful else
                     "material" if name in successful else "error")
         if report["expected"]["outcome"] != expected:
             raise AssertionError((name, expected, report["expected"]))
@@ -590,6 +668,14 @@ def prepare(original_root: Path, destination: Path) -> None:
     if any("protocol_snapshot_error" not in by_name[name]["expected"] for name in
            ("epoch-above-i-json", "epoch-above-u64", "epoch-hundred-digits")):
         raise AssertionError("late original protocol safe-integer refusal was bypassed")
+    for name in ("snapshot-first-safe-second-large", "snapshot-large-record"):
+        if (by_name[name]["expected"].get("error", {}).get("type")
+                != "tobkiri_protocol.errors.CanonicalizationError"):
+            raise AssertionError("snapshot canonical refusal did not occur inside the context")
+    fault = by_name["snapshot-canonical-close-fault"]["expected"]["error"]
+    if (fault["type"] != "builtins.RuntimeError" or fault["message"] != CLOSE_FAULT_MESSAGE
+            or fault["context"]["type"] != "tobkiri_protocol.errors.CanonicalizationError"):
+        raise AssertionError("after-close projection lost the active canonical failure")
     migrated = by_name["historical-v1"]["reference_state"]["tables"]
     if {row["state"] for row in migrated["invocation_leases"]["rows"]} != {"revoked", "ambiguous"}:
         raise AssertionError(("actual historical lease migration did not run",
