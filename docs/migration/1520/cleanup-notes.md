@@ -248,6 +248,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   9→12件。Root fresh driverは独立したOS lock再取得・close receipt・容量0・owner再open、
   元typed結果/state/keyを検査する。Source/rustfmt/ASTのみ確認済みで、実native48比較、
   既存93回帰、strict ClippyとTauri compileは次CIで確認する。
+  source固定`e238fcdbb`の初回CIはlibrary compile・既存unit・Store cancellation・domain
+  cleanupまで進み、strict Clippyでunused mut/collapsible if/静的fallbackのlazy closureの
+  3件を検出。lint抑制を使わず、元評価順と鍵copyを保つ最小表現へ修正する。
+  初回publication Mac jobのnative-driver stepはまだ実行中で、stepにcompile時間も含む。
+  実body開始は未観測であり、遅延からdeadlockを断定しない。次CIのtest-only progressで
+  case開始/実解放を分け、同じ初回handleも終了まで追う。新48比較の成功はまだ主張しない。
   JSON/surrogate/depth・不正leaseの例外投影、同時key作成/複合I/O/close、Linux process情報
   read内部close receipt等は未閉鎖。全Open同等・既存DB採用・GUI接続の完了とはしない。
 - cryptoの余分なowned key配列copyをZeroizing先作成へ整理した。Fernetは既存RustCryptoの

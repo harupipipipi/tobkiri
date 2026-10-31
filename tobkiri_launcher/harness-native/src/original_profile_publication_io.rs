@@ -18,7 +18,7 @@ pub(super) fn read_stream<S: OriginalAuthorityOwner>(
         ));
     }
     scratch.resize(chunk, 0);
-    let mut capacity = op.reserve(OriginalAuthorityStage::Source, 1)?;
+    let capacity = op.reserve(OriginalAuthorityStage::Source, 1)?;
     let mut bytes = Zeroizing::new(Vec::new());
     loop {
         op.check(OriginalAuthorityStage::Source)?;

@@ -147,6 +147,11 @@ fn original_reference_driver() -> anyhow::Result<()> {
         let invocation = owner.begin_native_setup()?;
         let cancellation = CoreCancellation::new_with_control(invocation.control())?;
         let mut read = PublicationRead::new(&invocation)?;
+        eprintln!(
+            "CI_PUBLICATION_CASE_START index={} name={}",
+            index,
+            case["name"].as_str().expect("closed fixture name")
+        );
         if case["after_lock_remove_intent"].as_bool() == Some(true) {
             read.remove_intent_after_lock_for_fixture();
         }
@@ -211,6 +216,7 @@ fn original_reference_driver() -> anyhow::Result<()> {
         drop(invocation);
         drop(owner);
         drop(RuntimeOwner::open(owner_path)?);
+        eprintln!("CI_PUBLICATION_CASE_CLOSED index={index} capacity=0 reservations=0");
     }
     anyhow::ensure!(
         all_match,

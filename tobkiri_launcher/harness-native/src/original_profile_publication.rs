@@ -128,11 +128,11 @@ fn secure_error(message: &'static str) -> OriginalAuthorityError {
     )
 }
 fn into_cause(mut error: OriginalAuthorityError) -> OriginalAuthorityCause {
-    if error.class == RAW_IO {
-        if let Some(OriginalAuthorityCause::Io(mut io)) = error.cause.take() {
-            io.context = error.context.map(|error| Box::new(into_cause(*error)));
-            return OriginalAuthorityCause::Io(io);
-        }
+    if error.class == RAW_IO
+        && let Some(OriginalAuthorityCause::Io(mut io)) = error.cause.take()
+    {
+        io.context = error.context.map(|error| Box::new(into_cause(*error)));
+        return OriginalAuthorityCause::Io(io);
     }
     OriginalAuthorityCause::Python {
         class: error.class,
@@ -411,11 +411,9 @@ fn signing_key<S: OriginalAuthorityOwner>(
                 .err()
                 .and_then(|mut error| error.cause.take());
             let mut outer = fail("signing-key file is unreadable");
-            outer.cause = cause.or_else(|| {
-                Some(OriginalAuthorityCause::Unsupported(
-                    "signing key Unicode projection",
-                ))
-            });
+            outer.cause = cause.or(Some(OriginalAuthorityCause::Unsupported(
+                "signing key Unicode projection",
+            )));
             outer.suppressed = true;
             let _ = error;
             outer
