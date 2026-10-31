@@ -40,6 +40,8 @@ def pattern_format_checks(provider, kernel) -> dict[str, bool]:
                 # Error observation is outside the actual keyword handler.
                 state["armed"] = False
                 if type(error) is exceptions.SchemaError:
+                    if "produced" in state:
+                        assert error is state["produced"]
                     assert error.schema is state.get("error_schema", meta)
                     assert error.instance is state.get("error_instance", actual)
                     assert error.validator_value is error.schema[error.validator]
@@ -73,6 +75,7 @@ def pattern_format_checks(provider, kernel) -> dict[str, bool]:
 
         saved = selected.META_SCHEMA, selected.TYPE_CHECKER, selected.FORMAT_CHECKER
         saved_constructor = exceptions.ValidationError, _keywords.ValidationError
+        saved_create_from = exceptions.SchemaError.__dict__.get("create_from")
         saved_search = re.search
         before = kernel.app_schema_entry_count()
         selected.META_SCHEMA = meta
@@ -95,6 +98,11 @@ def pattern_format_checks(provider, kernel) -> dict[str, bool]:
         finally:
             re.search = saved_search
             exceptions.ValidationError, _keywords.ValidationError = saved_constructor
+            if saved_create_from is None:
+                if "create_from" in exceptions.SchemaError.__dict__:
+                    del exceptions.SchemaError.create_from
+            else:
+                exceptions.SchemaError.create_from = saved_create_from
             selected.META_SCHEMA, selected.TYPE_CHECKER, selected.FORMAT_CHECKER = saved
         assert kernel.app_schema_entry_count() - before == (
             state.get("calls", 1) if selected is provider else 0)
@@ -327,5 +335,64 @@ def pattern_format_checks(provider, kernel) -> dict[str, bool]:
     checks["handled_exception_is_restored_after_conversion_and_real_reentry"] = True
     compare(lambda selected: conversion(selected, noncallable=True))
     checks["noncallable_constructor_is_called_only_after_both_actual_getters"] = True
-    assert len(checks) == 15 and pairs == 31 and all(checks.values()), (len(checks), pairs)
+
+    def final_producer(selected, *, outer, prior, suppressed):
+        events, actual = [], "actual producer input"
+        cause, previous = ValueError("retained cause"), LookupError("prior context")
+        checker = FormatChecker(formats=[])
+        saved = exceptions.SchemaError.create_from
+        state = {"meta": {"format": "producer"}, "actual": actual,
+                 "checker": checker, "events": events, "must_fail": True,
+                 "error_cause": cause, "refs": {"cause": cause, "prior": previous}}
+        if outer:
+            state["outer"] = RuntimeError("actual outer handler")
+            state["refs"]["outer"] = state["outer"]
+        def callback(value):
+            assert value is actual
+            events.append("callback")
+            return False
+        checker.checks("producer")(callback)
+        def create(cls, error):
+            events.append("create-from")
+            # Call the real factory once on this actual yielded validation
+            # error. The returned instance is the one each lane must raise.
+            produced = saved(error)
+            assert type(produced) is exceptions.SchemaError
+            assert produced.schema is state["meta"] and produced.instance is actual
+            produced.cause = produced.__cause__ = cause
+            produced.__suppress_context__ = suppressed
+            produced.__context__ = previous if prior else None
+            if outer == "backlink":
+                state["outer"].__context__ = produced
+            elif outer == "self-cycle":
+                state["outer"].__context__ = state["outer"]
+            state["produced"] = produced
+            return produced
+        def verify():
+            produced = state["produced"]
+            assert produced.__cause__ is cause and produced.cause is cause
+            assert produced.__suppress_context__ is suppressed
+            assert produced.__context__ is (state["outer"] if outer else
+                                           previous if prior else None)
+            if outer == "backlink":
+                assert state["outer"].__context__ is None
+            elif outer == "self-cycle":
+                assert state["outer"].__context__ is state["outer"]
+            assert events == (["callback", "create-from", "outer-restored"] if outer else
+                              ["callback", "create-from"]), events
+        state.update(install=lambda: setattr(exceptions.SchemaError, "create_from", classmethod(create)),
+                     verify=verify)
+        return state
+    for outer in (None, "new"):
+        for prior in (False, True):
+            for suppressed in (False, True):
+                compare(lambda selected: final_producer(
+                    selected, outer=outer, prior=prior, suppressed=suppressed))
+    checks["final_producer_preserves_actual_instance_cause_suppression_and_context"] = True
+    for outer in ("backlink", "self-cycle"):
+        for suppressed in (False, True):
+            compare(lambda selected: final_producer(
+                selected, outer=outer, prior=True, suppressed=suppressed))
+    checks["final_producer_uses_CPython_context_cycle_handling_without_reconstruction"] = True
+    assert len(checks) == 17 and pairs == 43 and all(checks.values()), (len(checks), pairs)
     return checks

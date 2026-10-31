@@ -1690,3 +1690,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   両mode実extension557,270B/SHA
   74bbd78829ea32f7e267a7fee8a6df2f45d1822280b61ec10380c37aca6b762e。
   RAM artifact13045079620/244,897B・13044987842/246,374Bの必要JSONのみ保存した。
+- format修正`cb741adb2`のnative CI41209957896は新比較の外側handler再入で失敗。
+  既存全library groupsとmessage/cause/constructor順・outer復元eventsは一致したが、
+  最終SchemaError.__context__が元のouter RuntimeErrorではなくNoneだった。backendの
+  最終caller比較へは未到達。artifact13045724568/50,321Bの必要JSON44,028Bを保存した。
+  PyO3のnormalized from_value→restoreはSetRaisedExceptionだけであり、元Python raiseが
+  通るSetObjectのcontext付与をしないことをSolが一次sourceで確認した。
+  最終producerはCのactual BaseException判定（偽__class__/custommetaを読まない）後、
+  builtin BaseException targetのpublic PyErr_SetObject→fetchで同じ実errorを返す。
+  constructor再実行・手動chain再構築をせず、cause/suppressionとcontext-cycle処理を
+  CPythonへ委ねる。非exception factory返却は既存経路のまま。元15群31対を保ち、
+  作成済error identity/prior-context/outer-overwrite/backlink/self-cycleを追加して17群43対。
+  Source/AST/format確認のみ成功で、実native比較を再実行する。

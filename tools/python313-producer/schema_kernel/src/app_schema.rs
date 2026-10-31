@@ -7,6 +7,7 @@
 use crate::keywords::{self, builtin, format, module_member, validation_error};
 use pyo3::{
     exceptions::{PyMemoryError, PyNotImplementedError, PyRuntimeError, PyStopIteration},
+    ffi,
     prelude::*,
     types::{PyBool, PyDict, PyList, PyString},
 };
@@ -765,6 +766,20 @@ fn app_check_schema(
     if let Some(error) = Execution::new(env, frame).first_error(py)? {
         let error = module_member(py, "jsonschema.exceptions", "SchemaError")?
             .call_method1("create_from", (error.bind(py),))?;
+        // PyErr::from_value preserves an instance but its normalized restore
+        // does not perform Python `raise instance`'s implicit context chaining.
+        // Use the actual C-level instance check (no spoofable __class__ read).
+        // BaseException is an exact builtin normalization target: every real
+        // exception instance is already its subtype, so SetObject retains the
+        // same value/type/traceback without invoking another constructor or a
+        // custom metaclass check. CPython attaches the actual handled context,
+        // including its own cycle avoidance, preserving cause/suppression.
+        unsafe {
+            if ffi::PyExceptionInstance_Check(error.as_ptr()) != 0 {
+                ffi::PyErr_SetObject(ffi::PyExc_BaseException, error.as_ptr());
+                return Err(PyErr::fetch(py));
+            }
+        }
         return Err(PyErr::from_value(error));
     }
     Ok(())
