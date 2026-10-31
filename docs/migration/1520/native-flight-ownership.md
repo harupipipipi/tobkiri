@@ -55,8 +55,11 @@ approval, UserDocument prompt or implicit grant.
 The current implementation slice adds tracked preparation workers and connects
 their drain to the original signal, requested exit, setup failure and exit
 fallback. It does not route Setup through `prepare_original_component` or adopt
-an unqualified component. Source review, Rust parsing/formatting and manifest
-checks are complete; no Launcher CI result for this slice has been recorded.
+an unqualified component. Source807437c0a passed the actual original Launcher
+Rust stage in CI41194312852:626 library tests (including the18 lifecycle cases),
+123 build-script cases and18 standalone-resource cases. Packaging was superseded
+after that stage; this does not prove an installer or GUI. The later finite
+dispatcher's nine new cases still await execution in the current CI.
 The worker retains its actual Join and
 source until physical completion, including when its result waiter leaves.
 Timeout or unverified cleanup remains Stopping, and concurrent stop callers

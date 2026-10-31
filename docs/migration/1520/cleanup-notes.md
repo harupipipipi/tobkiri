@@ -97,7 +97,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   source保持・physical drop後payload0を確認。証明はlibrary/機構の範囲であり、元製品の
   owner一組化・GUI Setup・全終了や全20条件の達成に広げない。
 
-- 元launcherの終了接続をsource実装済み（Astra high設計、Sol6.1 xhigh担当、CI未検証）。
+- 元launcherの終了接続を実装済み（Astra high設計、Sol6.1 xhigh担当）。807の実Launcher
+  Rust工程は成功、後続finite差分はCI待ち。元GUI/製品adoptionは未完。
   変更前のstateはprepare/adoptのproduction callerがなくjob/cancel/Joinを保持しなかった。
   実Setupのprepare/adopt呼出しはまだ未接続のまま、既存owner時も
   ShutdownFlagを確認し、owner生成中からjobを登録、同invocation由来のcancelをEngine前に
@@ -166,6 +167,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Clippyはそのまま実行する。lock modeはmacOS用の実依存graphを`cargo metadata --locked`
   で解決し、両lockが不変であることだけを確認する。build.rs・型・ABI・実行を検査せず、
   Launcher本体やGUIの合格には数えない。実Desktop CIの代わりにはしない。
+- `807437c0a`の[Desktop CI41194312852](https://github.com/harupipipipi/tobkiri/actions/runs/41194312852)
+  では実Launcher Rust工程が成功。library626件（新lifecycle18件を含む）、build-script
+  integration123件、standalone runtime-resource18件が全成功した。その後の配布工程は
+  最新finite sourceのCI41197404494へ切り替えて中止したため、installer完成とは数えない。
+  finite追加9件はこの807実行に含まれない。
+- `38f856e6a`の[lock専用CI41197126669](https://github.com/harupipipipi/tobkiri/actions/runs/41197126669)
+  は成功し、実macOS dependency graphの`--locked`解決と両lockの不変を確認した。
+  これは有限dispatcherのコンパイル・ABI・実行を検証した結果ではない。
 
 - 条件: 旧 Profile・データ・秘密情報・復旧の実移行、実候補と承認の拘束、
   Stop / Quit の終了・失効まで確認する。空の新 root を既存環境の代用にしない。
