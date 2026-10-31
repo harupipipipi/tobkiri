@@ -978,3 +978,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   記録し、元jsonschema keyword/文書経路を改変しない。初期化中のentry/frame0と本呼出しの
   45coldchecks、実source owner・45schema/453entry read・45miss302hit・元結果SHA/bytesを
   同じ2B/64MiB/絶対30秒一回で検査する。generic候補は別のまま、結果依存retryはしない。
+
+- 実Wasm初回Appframe `316874bf7`/CI41159765631は元2Bで停止（1.811789s、prepare後
+  1,979,539,652→0）。deadline保持/未超過・unreachable=false・退役・physicalpayload0。
+  実feature extension445,530bytes/SHA286acaf7…4a41、component100bf37b…7ec11。
+  trapは実Rust Frame.poll→PyObject_VectorcallMethod内。45件完了/文書段階到達は未証明。
+  子Validatorは除去できたが、resource作成・scope移動・参照lookup等のPython呼出しが残る。
+  次は実native64のcProfileで実関数/呼出し数を収集し、Rust参照状態への移行境界を決める。
+  native時間をWasm fuelへ配賦しない。再試行/上限緩和/原版invalid側fallbackはしない。

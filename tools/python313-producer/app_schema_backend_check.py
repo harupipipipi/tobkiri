@@ -39,11 +39,18 @@ def compare(args, receipt, package_paths, extension):
     from jsonschema import exceptions
     known = meta_nodes()
     actual = []
+    profiler = None
+    if args.profile_calls:
+        import cProfile
+        profiler = cProfile.Profile()
     receipt['stage'] = 'app-backend-comparison'
     for case in reference['cases']:
         schema = case['schema']
         try:
-            provider.check_schema(schema)
+            if profiler is None:
+                provider.check_schema(schema)
+            else:
+                profiler.runcall(provider.check_schema, schema)
         except exceptions.SchemaError as error:
             result = {'valid': False, 'error': observe(error, schema, known)}
         else:
@@ -56,6 +63,32 @@ def compare(args, receipt, package_paths, extension):
             raise ValueError('App-owned native definition check differs: '+case['name'])
     if kernel.app_schema_entry_count() != 64 or kernel.app_schema_frame_count() <= 64:
         raise ValueError('each actual schema must enter Rust frames')
+    if profiler is not None:
+        import io
+        import pstats
+        text = io.StringIO()
+        statistics = pstats.Stats(profiler, stream=text)
+        statistics.sort_stats('cumulative').print_stats(35)
+        statistics.sort_stats('time').print_stats(35)
+        report = text.getvalue()
+        if len(report.encode()) > 24*1024:
+            raise ValueError('bounded native profile exceeded its limit')
+        calls = []
+        for entry in profiler.getstats():
+            code = entry.code
+            if isinstance(code, str):
+                continue
+            if ('referencing' in code.co_filename or 'jsonschema' in code.co_filename
+                    or code.co_qualname.startswith(('Resource.', 'Resolver.', 'Resolved.', 'Specification.'))):
+                calls.append({'file': code.co_filename, 'line': code.co_firstlineno,
+                              'function': code.co_qualname, 'calls': entry.callcount,
+                              'recursive_calls': entry.reccallcount})
+        calls.sort(key=lambda row: (-row['calls'], row['file'], row['line']))
+        receipt['native_call_profile'] = {
+            'scope': 'only64 actual App-owned check_schema calls; boundaries and observer excluded',
+            'native_only': True, 'wasm_fuel_attribution': False, 'benchmark_claim': False,
+            'top_cumulative_and_self': report, 'reference_library_counts': calls[:60],
+        }
     receipt['boundary_checks'] = boundary_checks(provider, kernel)
     receipt.update(outcome='success', app_backend_64_success=True,
                    app_backend_entries=kernel.app_schema_entry_count(),

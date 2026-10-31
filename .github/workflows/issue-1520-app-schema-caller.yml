@@ -153,7 +153,7 @@ jobs:
       - name: Build the distinct feature-enabled App frame backend and compare all64
         run: |
           set -euo pipefail
-          python3 -S -B tools/python313-producer/schema_kernel_native_check.py --app-backend \
+          python3 -S -B tools/python313-producer/schema_kernel_native_check.py --app-backend --profile-calls \
             --source "$GITHUB_WORKSPACE/tools/python313-producer/schema_kernel" \
             --vendor "$RUNNER_TEMP/app-schema-vendor" \
             --inputs "$RUNNER_TEMP/app-schema-inputs" \
