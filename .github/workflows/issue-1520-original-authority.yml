@@ -1,0 +1,59 @@
+name: Issue 1520 original Authority reference
+
+'on':
+  push:
+    branches: [codex/issue-1520-native-shared-state]
+    paths:
+      - tools/original_authority_reference.py
+      - .github/workflows/issue-1520-original-authority.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-1520-original-authority-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  actual-original-context:
+    name: Original context reference (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Retain the independent pre-port original checkout
+        uses: actions/checkout@v4
+        with:
+          ref: 1cf025f1eeab31a3daa2861b1f26a025c6954b6e
+          path: original-authority-source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Install only original-lock-pinned reference dependencies in CI
+        run: |
+          python3 -B tools/original_authority_reference.py requirements \
+            --original-root "$GITHUB_WORKSPACE/original-authority-source" \
+            --output "$RUNNER_TEMP/original-authority-requirements.txt"
+          python3 -m pip install --disable-pip-version-check --ignore-installed \
+            --only-binary=:all: --require-hashes \
+            -r "$RUNNER_TEMP/original-authority-requirements.txt"
+      - name: Execute the actual original open, reads, migration and failures
+        run: >-
+          python3 -B tools/original_authority_reference.py prepare
+          --original-root "$GITHUB_WORKSPACE/original-authority-source"
+          --output "$RUNNER_TEMP/original-authority-reference"
+      - name: Retain bounded observations only (no database, key or fixture payload)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-authority-reference-${{ matrix.os }}
+          path: ${{ runner.temp }}/original-authority-reference/summary.json
+          if-no-files-found: warn
