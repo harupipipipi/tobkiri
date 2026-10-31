@@ -107,7 +107,17 @@ impl Keywords {
     pub(super) fn new(schema: &Bound<'_, PyAny>, root: bool) -> PyResult<Self> {
         let py = schema.py();
         let pairs = schema.call_method0(pyo3::intern!(py, "items"))?;
-        let mut cursor = Cursor::pairs(&pairs)?;
+        let mut cursor = if root {
+            // Pinned CPython 3.13's inlined comprehension emits GET_ITER for
+            // the outer expression, then GET_ITER again on that actual result
+            // before FOR_ITER (compile.c:5481,5105). A foreign iterator may
+            // replace itself or raise on either call. Ordinary for loops below
+            // retain their single iterator acquisition.
+            let outer = pairs.try_iter()?;
+            Cursor::pairs(outer.as_any())?
+        } else {
+            Cursor::pairs(&pairs)?
+        };
         if !root {
             return Ok(Self::Live(cursor));
         }

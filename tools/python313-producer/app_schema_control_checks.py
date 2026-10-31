@@ -265,9 +265,13 @@ def control_checks(provider, kernel) -> dict[str, bool]:
         class Pairs:
             def __init__(self):
                 self.index = 0
+                self.iter_calls = 0
 
             def __iter__(self):
                 events.append("pairs-iter")
+                self.iter_calls += 1
+                if failure == "iter-second" and self.iter_calls == 2:
+                    raise fault
                 return self
 
             def __next__(self):
@@ -296,7 +300,7 @@ def control_checks(provider, kernel) -> dict[str, bool]:
 
     compare(lambda: foreign_root(None))
     checks["foreign_root_collects_pairs_without_length_hint"] = True
-    for failure in ("next", "unpack"):
+    for failure in ("iter-second", "next", "unpack"):
         compare(lambda: foreign_root(failure))
     checks["foreign_root_next_and_unpack_exception_order_and_identity"] = True
 

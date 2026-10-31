@@ -1319,9 +1319,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   [enumerate実装](https://raw.githubusercontent.com/python/cpython/v3.13.16/Objects/enumobject.c)、
   [zip実装](https://raw.githubusercontent.com/python/cpython/v3.13.16/Python/bltinmodule.c)を
   source確認。短いzipでも左を先に一個消費する順序、子取得時点、長さ固定時点、
-  iterator/hint例外と途中解放を12群/25差分対で比較する。Solはcursor.rsとframe変更・新helperを
+  iterator/hint例外と途中解放を12群/26差分対で比較する。Solはcursor.rsとframe変更・新helperを
   実装、Rootがsource-defined foreign pair/key境界、source inventory14件とCIを統合。
   未知keyを先にString変換しない。rootは実逐次unpack/membership/getitem、descendはgetで
   選別する。Root監査でforeign error keyのset membership/hash欠落を見つけ、同じerror
   decoration位置の実key境界で修正した。公開context list、実iterator、参照処理と値policyは
   維持。AST6/rustfmt/diffのみ成功、実native/guest CIは未実施、燃料削減は未測定。
+
+- 初回4a779669b native CI41182075209: コンパイル、generic64/API19、backend64+11/
+  reference29/fragment14/default-callout5/ownership4/value16は成功。新controlのforeign
+  root iterableで、元は__iter__2回・native1回の差を検出して停止。App backendの最終
+  caller/full比較へは未到達。artifact13034843533のJSONだけをRAM経由で保存した。
+  テストを緩めず、同じ操作順に直す。Wasmはnative成功まで起動しない。
+
+- Solが原因を確定: pinned CPython3.13.16の内包表記はcompile.cの外側GET_ITER後、
+  その実iteratorへもう一度GET_ITERする。rootだけこの2段を再現し、live cursorは1回を
+  維持する。2回目__iter__の実供給例外比較も追加、12群/26対。AST/rustfmtのみ成功、
+  修正後の実native CI待ち。テストの期待値や既存caseは変更しない。

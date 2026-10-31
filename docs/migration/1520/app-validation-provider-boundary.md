@@ -287,7 +287,7 @@ parity, performance improvement or final product qualification.
 
 Astra's next selected boundary is the App frame's own control state: frozen root
 keyword work rows, enumerate counters, fixed ranges and prefix zip coordination.
-Sol6.1 xhigh implemented that engine and12 groups/25 differential pairs; Root
+Sol6.1 xhigh implemented that engine and12 groups/26 differential pairs; Root
 integrated the actual foreign-key/pair operations, source inventory and CI. Real dict/list iterators and foreign
 protocol operations remain live. Public error/context lists and child binding
 points stay observable; this is neither a builtin-reference cache nor a schema
