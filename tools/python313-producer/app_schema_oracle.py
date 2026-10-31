@@ -206,7 +206,7 @@ def caller_cases(module: object, fixtures: Path) -> dict:
     alias = "__caller_oracle_alias__"
     if alias in aliases:
         raise ValueError("caller fixture alias conflicts with the real namespace")
-    known = meta_nodes()
+    known = meta_nodes(module.Draft202012Validator)
     cases = {}
 
     def reset() -> None:
