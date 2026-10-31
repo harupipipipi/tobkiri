@@ -49,7 +49,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 003: legacy の試作 owner と実 core-host の経路整理
 
-- 状態: **未対応。実製品の接続・移行が先**。
+- 状態: **frontend native終了primitiveは実CI成功。元製品のowner接続・移行は未完**。
 - 場所: [native_harness_bootstrap.rs](../../../tobkiri_launcher/src-tauri/src/native_harness_bootstrap.rs)、
   [core_host.rs](../../../tobkiri_launcher/src-tauri/src/core_host.rs)、
   [feature 分岐](../../../tobkiri_launcher/src-tauri/src/legacy.rs)。
@@ -71,8 +71,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   再起動を保ち、Native Exitでは別の単調shutdown latchで新規受付と有効なSession世代の公開を拒否する。
   既に開始済みの処理が競合しても、その同じSessionは後続drainで終了を待つ。
   実owned Sessionの元retirement/drainを待ち、合成HostCallerでUI経路を呼ばない。
-  optional実HostのExit callbackに接続する。元run_launcherとのowner一組化・native準備/
-  reviewの全終了はまだ未接続であり、このprimitiveだけで製品統合とは呼ばない。
+  optional実HostのExit callbackに接続済み。`eff7d8dd7` のCI41153941066でcore-host全73件
+  （新規2件含む）/Gate76件/Profile承認12件が成功し、実macOS Hostのコンパイルも成功。
+  元run_launcherとのowner一組化・native準備/reviewの全終了はまだ未接続であり、
+  このprimitiveだけで製品統合とは呼ばない。
 - 条件: 旧 Profile・データ・秘密情報・復旧の実移行、実候補と承認の拘束、
   Stop / Quit の終了・失効まで確認する。空の新 root を既存環境の代用にしない。
   最初の Profile を CLI で作らせる暫定画面も、元 Setup に戻すまで未完了とする。
@@ -921,3 +923,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   明示的なdefault callableの選択・実呼出し、失敗/参照/format callback/診断順まで直接
   守る必要がある。互換経路は検証前のprovider選択として区別する。新backend・旧候補の
   不採用/一般APIの適用範囲を明文化してから実装し、既存gateの結果を消さない。
+
+- App backendの境界と未決事項を[専用設計記録](app-validation-provider-boundary.md)へ整理。
+  明示的default callableの選択、実call/None拒否、mutable cache、直接のerror構築、
+  reference/format callbackと結果依存fallback禁止を固定する。新backendはまだ未実装。
+  Source-onlyな不存在調査だけでcallback契約を消さず、実装前に37ケースの影響を明示する。
