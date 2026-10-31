@@ -314,7 +314,7 @@ and physical payload0 passed. Neither the unchanged19-schema frontier nor the
 native comparisons qualify one-shot completion or final product adoption.
 
 
-## App scalar constraint family (native parity; guest pending)
+## App scalar constraint family (native parity; guest frontier20, budget unmet)
 
 The next source slice owns type, const/enum, six length constraints and the four
 existing numeric bounds in the App value engine. Those operations no longer use
@@ -337,6 +337,11 @@ repr normalization before f-string formatting. Native CI41184395732 at2c1238151
 passed the12 groups/193 pairs and all prior groups, including complete App
 comparisons. The bounded64-case native call profile contains no shared-library
 ensure_list call and908 equal calls; this is neither total Python work nor fuel
-attribution. Same-source Wasm cold/full41184568625 and cumulative41184572912 are
-in progress under the unchanged limits. Budget qualification and final product
-adoption remain pending.
+attribution. Same-source Wasm cold/full41184568625 both exhausted the original2B
+fuel. Cumulative41184572912 passed diagnostic integrity and advanced the schema
+frontier from19 to20, completing profile_lock_v4 and exhausting fuel on21st
+profile_lock_v5. After20,117,706,594 fuel remained;18,106 frames and actual
+native type17,348/numeric77/Python value boundaries0 were observed. One original
+Store/account, zero resets,64MiB/30s, retirement and payload0 were preserved.
+This is a cumulative schema count, not completion of the issue's20 acceptance
+conditions. One-shot42/full, all839 units and final product adoption remain open.

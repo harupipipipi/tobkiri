@@ -1408,3 +1408,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - 同じ2c123でWasm cold/full41184568625と累積診断41184572912を各1回起動、実行中。
   元one-Store/2B/64MiB/絶対30秒を維持。最新実guest完走frontierはまだ25cの19件で、
   このsliceによる全体完走・製品採用・Python/VM廃止は未証明。
+
+- scalar2c実Wasm終了。cold/full CI41184568625は両方元2Bで停止。component
+  c03889f5…838d25、prepare後1,979,512,600→0、cold約1.975秒/full約1.777秒。
+  元絶対30秒を維持し期限超過・unreachableなし、Store退役・physical payload0。
+- 累積CI41184572912は診断整合性のみ成功、完了frontierが19→20 schemaへ進んだ。
+  profile_lock_v4を完了し、21件目profile_lock_v5で燃料0。component94194394…09448、
+  prepare後1,979,536,847、19件後187,482,898、20件後117,706,594残。20件後18,106frames、
+  native型17,348/数値77/Python境界0、pointer962/dynamic891/adapter0/cache0hit20miss。
+  one-Store/account・予算更新0・64MiB/30秒・cold-zero/単調性/各件到達/index20と
+  退役・payload0を確認。これは累積schema件数であり、issueの全20受け入れ条件を
+  達成した意味ではない。未完のone-shot42/fullや全製品移植の証明ではない。
+- 両modeの実extension548,575B/SHA
+  b26116ba91d2209520df4992bd6346d30518b85f9dccd0e7aa5b0fb514bb4c22を確認。
+  RAM artifact13036632594/244,952B・13036197024/246,392BのJSONだけを保存。
+  共有helper呼出数とaggregate frontierは改善したが、個々の関数へのfuel帰属は行わない。
+  次のApp-owned reference/resource境界をAstraへ質問中。追加設計/実装はまだ未選択。
