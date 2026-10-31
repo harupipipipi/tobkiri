@@ -11,6 +11,10 @@ use tobkiri_gate::{CapacityKind, CoreCancellation, NativeSetupInvocation, Native
 mod crypto;
 #[path = "original_authority_io.rs"]
 mod io;
+#[path = "original_authority_json.rs"]
+mod json;
+#[path = "original_authority_lease.rs"]
+mod lease;
 #[path = "original_authority_schema.rs"]
 mod schema;
 

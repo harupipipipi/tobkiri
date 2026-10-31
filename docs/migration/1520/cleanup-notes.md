@@ -141,6 +141,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   string/dictのcall_chain、bool/int/float重複とunhashable/長さ短絡を対象にする。
   実原本keyで復号し、原本authority_digestとFernetで1行だけ更新してidentity/hash検査後の
   consumerへ到達させる。期待値の詳細は原本の実ctorで観測し、nativeの値で作らない。
+  Source比較ツールの非再帰修正`9ca3a5138`のCI41232275126はstate比較を最後まで実行した。
+  65件すべてlogical state/key保持は一致し、typed材料/例外の差は23件として失敗を保持。
+  selected JSON149,092Bを保存した。原本77件の追加は`c45407e6e`/CI41233464333で実行中。
+  重要Sol6.1 xhighが旧Authority専用のflat arena JSON/lease consumerを実装してfreezeした。
+  非再帰parse/canonical/Drop、ordered object/duplicate/surrogate、元の例外発生順と
+  scalar型を維持し、sharedCanon全体や依存は変更しない。旧normalize_leaseの重複を除き、
+  consumerを小moduleへ分離する。新しい値は以前の64倍係数を流用せず、型/Vec growth/
+  reallocの共存、canonical scratch、normalized leaseを同じaccountへ事前予約する。
+  Macの通常unitを3件へ、Linuxは2件のままにする。Source/rustfmt確認のみであり、
+  77件の実native結果とcompiler/strict lintは次CIで確認する。
   JSON/surrogate/depth・不正leaseの例外投影、同時key作成/複合I/O/close、Linux process情報
   read内部close receipt等は未閉鎖。全Open同等・既存DB採用・GUI接続の完了とはしない。
 - cryptoの余分なowned key配列copyをZeroizing先作成へ整理した。Fernetは既存RustCryptoの

@@ -9,7 +9,7 @@ use std::{
     sync::{Mutex, OnceLock},
     time::{Duration, Instant},
 };
-use tobkiri_canon::{Variant, encode, parse};
+use tobkiri_canon::{Variant, encode};
 use tobkiri_gate::{ControlKind, ControlReservation};
 
 const DDL: &str = r#"
@@ -112,7 +112,7 @@ pub(super) fn valid_digest(value: &str) -> bool {
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
-fn valid_id(value: &str) -> bool {
+pub(super) fn valid_id(value: &str) -> bool {
     let bytes = value.as_bytes();
     (1..=255).contains(&bytes.len())
         && bytes[0].is_ascii_alphanumeric()
@@ -269,36 +269,18 @@ fn clock_string(now: f64) -> Result<String> {
 fn decoded<S: OriginalAuthorityOwner>(
     store: &Store<'_, '_, S>,
     token: &[u8],
-) -> Result<Funded<CanonValue>> {
+) -> Result<Funded<json::Document>> {
     store.assert_crypto()?;
     let plaintext = store.keys.decrypt(store.op, token)?;
-    // Prepay a conservative structural allocation bound before entering the
-    // existing lossless parser. Raw bytes, authenticated plaintext, and parsed
-    // DATA coexist and retain DISTINCT permits. This is not SQLite C-heap
-    // interception; the decoder's own physical storage is bounded here.
-    let maximum = plaintext
-        .len()
-        .checked_mul(64)
-        .and_then(|bytes| bytes.checked_add(128))
-        .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
-    let capacity = store.op.reserve(OriginalAuthorityStage::Audit, maximum)?;
-    let value = parse(&plaintext, Variant::LegacyFloat).map_err(|_| {
-        OriginalAuthorityError::unsupported(
-            OriginalAuthorityStage::Audit,
-            "Python JSON decode exception/representation",
-        )
-    })?;
-    if !matches!(value, CanonValue::Obj(_)) {
+    let value = json::decode(&plaintext, store.op)?;
+    if value.entries(value.root).is_none() {
         return Err(OriginalAuthorityError::new(
             OriginalAuthorityStage::Audit,
             "authority record is not an object",
             None,
         ));
     }
-    Ok(Funded {
-        value,
-        _capacity: capacity,
-    })
+    Ok(value)
 }
 #[cfg(unix)]
 fn digest<S: OriginalAuthorityOwner>(
@@ -376,15 +358,18 @@ fn verify_rows<S: OriginalAuthorityOwner>(
             Some(Value::Integer(v)) => CanonValue::Int(*v),
             _ => return Err(error("authoritative audit chain is invalid")),
         };
-        let value = object([
-            ("event_id", CanonValue::Str(text(row, 1)?.into())),
-            ("event_type", CanonValue::Str(text(row, 2)?.into())),
-            ("event_state", CanonValue::Str(text(row, 3)?.into())),
-            ("previous_digest", CanonValue::Str(previous.clone())),
-            ("payload", payload.value.clone()),
-            ("created_at", created),
-        ]);
-        let expected = digest(store, &value)?;
+        let encoded = json::canonical(
+            &payload,
+            Some(json::Audit {
+                id: text(row, 1)?,
+                kind: text(row, 2)?,
+                state: text(row, 3)?,
+                previous: &previous,
+                created: &created,
+            }),
+            store.op,
+        )?;
+        let expected = Digest::hash(&encoded);
         if text(row, 4)? != previous
             || !constant_eq(text(row, 5)?.as_bytes(), expected.as_str().as_bytes())
         {
@@ -603,33 +588,32 @@ fn migrate<S: OriginalAuthorityOwner>(
     for row in &rows.rows {
         let mut payload = decoded(store, blob(row, 2)?)?;
         let id = text(row, 0)?;
-        if payload.get("lease_id").and_then(CanonValue::as_str) != Some(id) {
+        if !payload
+            .get(payload.root, "lease_id")
+            .is_some_and(|node| payload.string_is(node, id))
+        {
             return Err(error("historical InvocationLease identity is inconsistent"));
         }
         if !constant_eq(
-            digest(store, &payload)?.as_str().as_bytes(),
+            Digest::hash(&json::canonical(&payload, None, store.op)?)
+                .as_str()
+                .as_bytes(),
             text(row, 1)?.as_bytes(),
         ) {
             return Err(error("historical InvocationLease digest is inconsistent"));
         }
+        payload.insert_string("request_id", &format!("legacy-{id}"));
         let activation = digest(
             store,
             &object([("legacy_unbound_activation", CanonValue::Str(id.into()))]),
         )?;
+        payload.insert_string("activation_digest", activation.as_str());
         let plan = digest(
             store,
             &object([("legacy_unbound_plan", CanonValue::Str(id.into()))]),
         )?;
-        let CanonValue::Obj(ref mut values) = payload.value else {
-            return Err(error("authority record is not an object"));
-        };
-        values.insert("request_id".into(), CanonValue::Str(format!("legacy-{id}")));
-        values.insert(
-            "activation_digest".into(),
-            CanonValue::Str(activation.as_str().into()),
-        );
-        values.insert("plan_digest".into(), CanonValue::Str(plan.as_str().into()));
-        normalize_lease(values)?;
+        payload.insert_string("plan_digest", plan.as_str());
+        let payload = lease::normalize(&payload, store.op)?;
         let lease_digest = digest(store, &payload)?;
         let encoded_capacity = store
             .op
@@ -747,234 +731,4 @@ fn append_audit<S: OriginalAuthorityOwner>(
         }
         error
     })
-}
-
-fn validation(message: String) -> OriginalAuthorityError {
-    OriginalAuthorityError {
-        stage: OriginalAuthorityStage::Migration,
-        class: "core_runtime.authority.v4_models.AuthorityValidationError",
-        message,
-        cause: None,
-        context: None,
-        suppressed: false,
-    }
-}
-fn require_id(name: &str, value: Option<&CanonValue>) -> Result<()> {
-    if !value.and_then(CanonValue::as_str).is_some_and(valid_id) {
-        return Err(validation(format!("{name} is invalid")));
-    }
-    Ok(())
-}
-fn require_digest(name: &str, value: Option<&CanonValue>) -> Result<()> {
-    if !value.and_then(CanonValue::as_str).is_some_and(valid_digest) {
-        return Err(validation(format!(
-            "{name} must be an exact SHA-256 digest"
-        )));
-    }
-    Ok(())
-}
-fn positive(value: &CanonValue) -> bool {
-    matches!(value, CanonValue::Int(value) if *value > 0)
-        || matches!(value, CanonValue::BigInt(value) if !value.starts_with('-') && value != "0")
-}
-fn number(value: &CanonValue) -> Option<f64> {
-    match value {
-        CanonValue::Int(v) => Some(*v as f64),
-        CanonValue::Float(v) => Some(*v),
-        CanonValue::BigInt(v) => v.parse().ok(),
-        _ => None,
-    }
-}
-fn normalize_lease(values: &mut BTreeMap<String, CanonValue>) -> Result<()> {
-    for name in ["caller", "target"] {
-        let Some(CanonValue::Obj(principal)) = values.get_mut(name) else {
-            return Err(OriginalAuthorityError::unsupported(
-                OriginalAuthorityStage::Migration,
-                "principal structural exception",
-            ));
-        };
-        for name in [
-            "parent_artifact_digest",
-            "function_implementation_digest",
-            "contract_revision_digest",
-        ] {
-            require_digest(name, principal.get(name))?;
-        }
-        for name in ["function_id", "operation_id"] {
-            require_id(name, principal.get(name))?;
-        }
-        principal.retain(|key, _| {
-            [
-                "parent_artifact_digest",
-                "function_implementation_digest",
-                "function_id",
-                "contract_revision_digest",
-                "operation_id",
-            ]
-            .contains(&key.as_str())
-        });
-    }
-    let Some(CanonValue::Obj(scope)) = values.get_mut("authorized_scope") else {
-        return Err(OriginalAuthorityError::unsupported(
-            OriginalAuthorityStage::Migration,
-            "scope structural exception",
-        ));
-    };
-    if scope.keys().any(|key| {
-        ![
-            "capability",
-            "semantics_digest",
-            "dimensions",
-            "quotas",
-            "exact_request_digest",
-            "opaque",
-        ]
-        .contains(&key.as_str())
-    }) {
-        return Err(validation("scope contains unknown fields".into()));
-    }
-    scope
-        .entry("dimensions".into())
-        .or_insert_with(|| CanonValue::Obj(BTreeMap::new()));
-    scope
-        .entry("quotas".into())
-        .or_insert_with(|| CanonValue::Obj(BTreeMap::new()));
-    scope
-        .entry("exact_request_digest".into())
-        .or_insert(CanonValue::Null);
-    scope
-        .entry("opaque".into())
-        .or_insert(CanonValue::Bool(false));
-    require_id("capability", scope.get("capability"))?;
-    require_digest("semantics_digest", scope.get("semantics_digest"))?;
-    let Some(CanonValue::Obj(dimensions)) = scope.get_mut("dimensions") else {
-        return Err(validation(
-            "scope dimensions and quotas must be objects".into(),
-        ));
-    };
-    for (name, items) in dimensions {
-        if !valid_id(name) {
-            return Err(validation("scope dimension is invalid".into()));
-        }
-        let CanonValue::Arr(items) = items else {
-            return Err(validation("scope dimension values must be arrays".into()));
-        };
-        if items.iter().any(|item| !matches!(item, CanonValue::Str(_))) {
-            return Err(validation("scope dimension values must be strings".into()));
-        }
-        items.sort_by(|one, two| one.as_str().cmp(&two.as_str()));
-        items.dedup();
-        if items.is_empty() || items.iter().any(|item| item.as_str() == Some("")) {
-            return Err(validation("scope dimensions cannot be empty".into()));
-        }
-        if items.len() > 1 && items.iter().any(|item| item.as_str() == Some("*")) {
-            return Err(validation("scope wildcard cannot mix with values".into()));
-        }
-    }
-    let Some(CanonValue::Obj(quotas)) = scope.get("quotas") else {
-        return Err(validation(
-            "scope dimensions and quotas must be objects".into(),
-        ));
-    };
-    for (name, value) in quotas {
-        if !valid_id(name) {
-            return Err(validation("scope quota is invalid".into()));
-        }
-        if !matches!(value, CanonValue::Int(_) | CanonValue::BigInt(_)) {
-            return Err(validation("scope quotas must be integers".into()));
-        }
-        if !positive(value) && !matches!(value, CanonValue::Int(0)) {
-            return Err(validation(
-                "scope quotas must be non-negative integers".into(),
-            ));
-        }
-    }
-    if scope.get("exact_request_digest") != Some(&CanonValue::Null) {
-        require_digest("exact_request_digest", scope.get("exact_request_digest"))?;
-    }
-    let opaque = scope.get("opaque") == Some(&CanonValue::Bool(true));
-    scope.insert("opaque".into(), CanonValue::Bool(opaque));
-    if opaque && scope.get("exact_request_digest") == Some(&CanonValue::Null) {
-        return Err(validation(
-            "opaque scope requires an exact request digest".into(),
-        ));
-    }
-    values
-        .entry("call_chain".into())
-        .or_insert_with(|| CanonValue::Arr(Vec::new()));
-    for name in [
-        "lease_id",
-        "request_id",
-        "caller_domain_id",
-        "target_domain_id",
-        "resource_namespace",
-        "profile_id",
-        "activation_id",
-        "caller_publisher_lineage",
-        "target_publisher_lineage",
-        "host_extension_id",
-        "provider_authority_id",
-        "grant_id",
-        "audit_reservation_id",
-    ] {
-        require_id(name, values.get(name))?;
-    }
-    for name in [
-        "request_digest",
-        "effect_digest",
-        "activation_digest",
-        "plan_digest",
-        "profile_authority_digest",
-        "provider_authority_digest",
-    ] {
-        require_digest(name, values.get(name))?;
-    }
-    for name in [
-        "caller_boot_epoch",
-        "target_boot_epoch",
-        "security_epoch",
-        "fencing_token",
-    ] {
-        if !values.get(name).is_some_and(positive) {
-            return Err(validation(format!("{name} must be a positive integer")));
-        }
-    }
-    for name in ["issued_at", "expires_at"] {
-        if !values
-            .get(name)
-            .and_then(number)
-            .is_some_and(|value| value.is_finite() && value >= 0.0)
-        {
-            return Err(validation(format!("{name} must be a finite timestamp")));
-        }
-    }
-    if values.get("expires_at").and_then(number) <= values.get("issued_at").and_then(number) {
-        return Err(validation("lease expiry is invalid".into()));
-    }
-    let Some(CanonValue::Arr(chain)) = values.get("call_chain") else {
-        return Err(OriginalAuthorityError::unsupported(
-            OriginalAuthorityStage::Migration,
-            "lease call-chain structural exception",
-        ));
-    };
-    let mut chain_values = BTreeSet::new();
-    for item in chain {
-        let Some(item) = item.as_str() else {
-            return Err(OriginalAuthorityError::unsupported(
-                OriginalAuthorityStage::Migration,
-                "lease call-chain hashing",
-            ));
-        };
-        chain_values.insert(item);
-    }
-    if chain.len() > 4 || chain.len() != chain_values.len() {
-        return Err(validation("lease call chain is cyclic or too deep".into()));
-    }
-    if values.len() != 29 {
-        return Err(OriginalAuthorityError::unsupported(
-            OriginalAuthorityStage::Migration,
-            "InvocationLease constructor fields",
-        ));
-    }
-    Ok(())
 }

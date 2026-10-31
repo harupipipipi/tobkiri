@@ -37,7 +37,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, macos-15]
+        include:
+          - os: ubuntu-22.04
+            unit_tests: 2
+          - os: macos-15
+            unit_tests: 3
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     env:
@@ -95,7 +99,7 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.verification != 'reference' }}
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
-          --log "$RUNNER_TEMP/original-authority-unit.log" --expected-passed 2 --
+          --log "$RUNNER_TEMP/original-authority-unit.log" --expected-passed ${{ matrix.unit_tests }} --
           cargo test --locked -p tobkiri-harness-native --lib
           original_authority::tests -- --test-threads=1
       - name: Execute the real native operation against every fresh original fixture

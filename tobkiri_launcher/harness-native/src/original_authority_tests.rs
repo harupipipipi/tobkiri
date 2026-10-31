@@ -448,6 +448,158 @@ fn cancelled_absent_operation_does_not_create_authority_state() -> anyhow::Resul
 }
 
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn decoded_data_preserves_source_order_depth_and_releases_actual_capacity() -> anyhow::Result<()> {
+    let temporary = tempfile::tempdir()?;
+    let root = temporary.path().canonicalize()?;
+    let selected = root.join("selected");
+    std::fs::create_dir(&selected)?;
+    let source = Source {
+        root: selected.clone(),
+        _selected: File::open(&selected)?,
+        live: Arc::new(AtomicBool::new(true)),
+    };
+    let owner = RuntimeOwner::open(root.join("core"))?;
+    let invocation = owner.begin_native_setup()?;
+    let cancellation = CoreCancellation::new_with_control(invocation.control())?;
+    let cleanup = Arc::new(io::CleanupState::new(
+        invocation
+            .control()
+            .reserve(tobkiri_gate::ControlKind::Context, 4096)?,
+    ));
+    let op = Operation {
+        owner: &source,
+        invocation: &invocation,
+        cancellation: &cancellation,
+        deadline: invocation.deadline()?,
+        pid: std::process::id(),
+        cleanup,
+        fixture: None,
+    };
+    // Production keeps OriginalAuthorityRead's diagnostic scratch through the
+    // read-to-detach interval. This private decoder test prepays its own finite
+    // diagnostic storage until the actual errors below have been dropped.
+    let diagnostics = op.reserve(OriginalAuthorityStage::Audit, 8192)?;
+    let empty = super::json::decode(b"", &op)
+        .err()
+        .expect("actual decode failure");
+    match empty.cause.as_ref().expect("decode cause") {
+        OriginalAuthorityCause::Python {
+            class,
+            context,
+            suppressed,
+            ..
+        } => {
+            assert_eq!(*class, "json.decoder.JSONDecodeError");
+            assert!(*suppressed);
+            assert!(
+                matches!(context.as_deref(),Some(OriginalAuthorityCause::Python {class:"builtins.StopIteration",message,..}) if message=="0")
+            );
+        }
+        _ => panic!("unexpected decode cause"),
+    }
+    drop(empty);
+    let decoded = super::json::decode(br#"{"z":"\ud800","a":1,"z":"ok"}"#, &op)?;
+    let names: Vec<_> = decoded
+        .entries(decoded.root)
+        .unwrap()
+        .iter()
+        .map(|(name, _)| name.utf8().unwrap())
+        .collect();
+    assert_eq!(names, ["z", "a"]);
+    assert_eq!(
+        &**super::json::canonical(&decoded, None, &op)?,
+        br#"{"a":1,"z":"ok"}"#
+    );
+    drop(decoded);
+    let decoded = super::json::decode(br#"{"a":"\ud800","b":NaN}"#, &op)?;
+    let failure = super::json::canonical(&decoded, None, &op)
+        .err()
+        .expect("nonfinite failure precedes UTF8 encode");
+    assert_eq!(failure.class, "builtins.ValueError");
+    assert_eq!(
+        failure.message,
+        "Out of range float values are not JSON compliant: nan"
+    );
+    drop(failure);
+    drop(decoded);
+    let deep = format!("{{\"nested\":{}0{}}}", "[".repeat(2000), "]".repeat(2000));
+    let decoded = super::json::decode(deep.as_bytes(), &op)?;
+    let encoded = super::json::canonical(&decoded, None, &op)?;
+    assert_eq!(&**encoded, deep.as_bytes());
+    assert!(invocation.capacity_snapshot()?.charged_bytes > 0);
+    drop(encoded);
+    drop(decoded);
+    assert_eq!(invocation.capacity_snapshot()?.charged_bytes, 8192);
+
+    let digest = "a".repeat(64);
+    let principal = json!({"parent_artifact_digest":digest,"function_implementation_digest":digest,
+        "function_id":"function","contract_revision_digest":digest,"operation_id":"operation"});
+    let mut model = json!({"lease_id":"lease","request_id":"request","caller":principal,"target":principal,
+        "caller_domain_id":true,"caller_boot_epoch":1,"target_domain_id":"target","target_boot_epoch":1,
+        "request_digest":digest,"effect_digest":digest,"authorized_scope":{"capability":true,"semantics_digest":digest},
+        "resource_namespace":"resource","profile_id":"profile","activation_id":"activation","activation_digest":digest,
+        "plan_digest":digest,"profile_authority_digest":digest,"fencing_token":1,"caller_publisher_lineage":"caller",
+        "target_publisher_lineage":"target","host_extension_id":"extension","provider_authority_id":"provider",
+        "provider_authority_digest":digest,"grant_id":"grant","audit_reservation_id":"audit","security_epoch":1,
+        "issued_at":9007199254740992i64,"expires_at":9007199254740993i64});
+    let input = serde_json::to_vec(&model)?;
+    let decoded = super::json::decode(&input, &op)?;
+    let normalized = super::lease::normalize(&decoded, &op)?;
+    assert_eq!(
+        normalized.get("caller_domain_id"),
+        Some(&CanonValue::Bool(true))
+    );
+    assert_eq!(
+        normalized
+            .get("authorized_scope")
+            .unwrap()
+            .get("capability")
+            .and_then(CanonValue::as_str),
+        Some("True")
+    );
+    drop(normalized);
+    drop(decoded);
+    model["call_chain"] = json!([true, 1, []]);
+    let input = serde_json::to_vec(&model)?;
+    let decoded = super::json::decode(&input, &op)?;
+    let failure = super::lease::normalize(&decoded, &op)
+        .err()
+        .expect("set reaches later unhashable item");
+    assert_eq!(failure.class, "builtins.TypeError");
+    assert_eq!(failure.message, "unhashable type: 'list'");
+    drop(failure);
+    drop(decoded);
+    model["call_chain"] = json!([true, 1.0]);
+    let input = serde_json::to_vec(&model)?;
+    let decoded = super::json::decode(&input, &op)?;
+    assert_eq!(
+        super::lease::normalize(&decoded, &op)
+            .err()
+            .expect("Python numeric duplicate")
+            .message,
+        "lease call chain is cyclic or too deep"
+    );
+    drop(decoded);
+    model["call_chain"] = json!([[], 0, 1, 2, 3]);
+    let input = serde_json::to_vec(&model)?;
+    let decoded = super::json::decode(&input, &op)?;
+    assert_eq!(
+        super::lease::normalize(&decoded, &op)
+            .err()
+            .expect("length short-circuits set")
+            .message,
+        "lease call chain is cyclic or too deep"
+    );
+    drop(decoded);
+    assert!(!selected.join("authority").exists());
+    drop(diagnostics);
+    assert_eq!(invocation.capacity_snapshot()?.charged_bytes, 0);
+    assert_eq!(invocation.capacity_snapshot()?.reservations, 0);
+    Ok(())
+}
+
+#[test]
 #[cfg(target_os = "linux")]
 fn unsupported_owner_refuses_before_authority_admission() -> anyhow::Result<()> {
     let temporary = tempfile::tempdir()?;
