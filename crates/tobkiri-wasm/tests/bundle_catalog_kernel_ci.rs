@@ -10,6 +10,9 @@ use tobkiri_wasm::{
 };
 use wasmtime::component::Component;
 
+#[path = "bundle_catalog_kernel_ci/schema_progress.rs"]
+mod schema_progress;
+
 struct AllocationOnlyFixture;
 impl NativeSetupLease for AllocationOnlyFixture {
     fn validate(&self) -> std::result::Result<(), GateError> {

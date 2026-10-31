@@ -1075,3 +1075,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   trap後は続行せず、呼出し分割の擾乱を明記する。元cold/full一括gateは独立して維持する。
   関数別fuel比率ではなくschemaごとの費用/進行を得て、次のApp内部Rust接続を一箇所選ぶ。
   診断コードは未実装。小C API移植の反復やnative呼出し数だけでURI移植へ戻らない。
+- 累積診断の初稿を実装: 明示的なapp_schema_progress/app_schema_backendでのみ作る
+  `harness-app-schema-progress-native`と専用receipt。通常cold/full artifactには混ぜない。
+  実captured ownerから元_schema_storeと同じ順序で42名を列挙し、実load_schema(name)を
+  positionalで一度ずつ呼ぶ。元のparser/provider/cacheを使用し、結果を事前準備しない。
+  Rust側は一回のaccount.begin/Store/programを最大43export callsで保持し、各完了点の
+  燃料・cache・backend実entryと呼出し開始/完了数を記録。直前に開始した名前も保持する。
+  trapは同Storeを退役して終了し、fuel再取得/続行はしない。観測が正しい予算停止だけを
+  診断成功と区別し、sequence_completed/qualification=falseと全物理dropを保存する。
+  元のcold/full gateは独立して維持し、別modeの診断成功で置き換えない。CI検証は未実施。

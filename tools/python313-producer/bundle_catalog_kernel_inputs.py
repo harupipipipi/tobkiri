@@ -12,16 +12,27 @@ from schema_kernel_translate import translate
 
 COMPONENT = 'harness-bundle-catalog-rust-kernel-native'
 APP_COMPONENT = 'harness-bundle-catalog-app-frame-native'
+PROGRESS_COMPONENT = 'harness-app-schema-progress-native'
+
+
+def component_name(*, app_backend: bool, schema_progress: bool = False) -> str:
+    """Select a closed, distinct diagnostic artifact without changing defaults."""
+    if (type(app_backend) is not bool or type(schema_progress) is not bool
+            or (schema_progress and not app_backend)):
+        raise ValueError('schema progress requires the explicit App backend')
+    return PROGRESS_COMPONENT if schema_progress else APP_COMPONENT if app_backend else COMPONENT
 
 
 def derive(files: dict[str, bytes], entry: bytes, export: bytes,
-           extension_root: Path, *, app_backend: bool = False) -> tuple[bytes, bytes, bytes, dict]:
+           extension_root: Path, *, app_backend: bool = False,
+           schema_progress: bool = False) -> tuple[bytes, bytes, bytes, dict]:
     """Add only the actual kernel/adapter and declared pre-import translation."""
     if (type(app_backend) is not bool
             or os.environ.get('GITHUB_ACTIONS') != 'true'
             or not extension_root.is_absolute()
             or extension_root.resolve(strict=True) != extension_root):
         raise ValueError('physical CI extension build required')
+    component_name(app_backend=app_backend, schema_progress=schema_progress)
     report_path = extension_root/'extension-build.json'
     report = json.loads(report_path.read_bytes())
     source = HERE/'schema_kernel'
@@ -39,8 +50,8 @@ def derive(files: dict[str, bytes], entry: bytes, export: bytes,
     if (artifact.resolve(strict=True) != artifact
             or fingerprint(artifact, 4*1024*1024) != report['artifact']):
         raise ValueError('actual Wasm kernel bytes differ')
-    additions = {'bundle_catalog_kernel_runtime.py':
-                 (HERE/'bundle_catalog/kernel_runtime.py').read_bytes()}
+    additions = ({} if schema_progress else {'bundle_catalog_kernel_runtime.py':
+                 (HERE/'bundle_catalog/kernel_runtime.py').read_bytes()})
     changes = {}
     translation = None
     if app_backend:
@@ -95,6 +106,8 @@ if _kernel.app_schema_entry_count() != 0 or _kernel.app_schema_frame_count() != 
         raise ValueError('exact original entry/export derivation anchors required')
     derived_entry = entry.replace(anchor, setup+anchor)
     derived_export = export.replace(call, replacement)
+    if schema_progress:
+        derived_export = (HERE/'bundle_catalog/schema_progress.py').read_bytes()
     def identity(data: bytes) -> dict:
         return {'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
     return derived_entry, derived_export, artifact.read_bytes(), {
@@ -102,6 +115,7 @@ if _kernel.app_schema_entry_count() != 0 or _kernel.app_schema_frame_count() != 
         'extension_build': fingerprint(report_path, 4*1024*1024),
         'extension': report['artifact'], 'kernel_source': report['source_files'],
         'keyword_translation': translation, 'app_schema_backend': app_backend,
+        'schema_progress_diagnostic': schema_progress,
         'app_source_changes': changes, 'features': report['features'],
         'entry': {'original': identity(entry), 'derived': identity(derived_entry)},
         'export': {'original': identity(export), 'derived': identity(derived_export)},

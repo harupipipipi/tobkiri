@@ -61,12 +61,15 @@ def _original_schema_resources(repo: Path) -> tuple[dict[str, bytes], dict[str, 
 def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
           stdlib: Path, rpds: Path, *, native: bool, bundle_cases: Path,
           diagnostic_reread: bool = False,
-          kernel_extension: Path | None = None, app_schema_backend: bool = False) -> dict:
+          kernel_extension: Path | None = None, app_schema_backend: bool = False,
+          app_schema_progress: bool = False) -> dict:
     """Stage actual source bytes, schemas, and dependencies for one world."""
     if (repo.resolve() != repo or destination.exists()
             or type(native) is not bool or type(diagnostic_reread) is not bool
             or type(app_schema_backend) is not bool
             or (app_schema_backend and kernel_extension is None)
+            or type(app_schema_progress) is not bool
+            or (app_schema_progress and not app_schema_backend)
             or (diagnostic_reread and not native)
             or (kernel_extension is not None and (not native or diagnostic_reread))):
         raise ValueError("new physical source stage and explicit world required")
@@ -129,7 +132,8 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
     if kernel_extension is not None:
         from bundle_catalog_kernel_inputs import derive
         entry, export, kernel_bytes, kernel_derivation = derive(
-            files, entry, export, kernel_extension, app_backend=app_schema_backend)
+            files, entry, export, kernel_extension, app_backend=app_schema_backend,
+            schema_progress=app_schema_progress)
     packed = compress_sources(files)
     captured = Finder(
         packed,
@@ -162,8 +166,9 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
     component_name = (DIAGNOSTIC_COMPONENT if diagnostic_reread
                       else NATIVE_COMPONENT if native else PACK_COMPONENT)
     if kernel_derivation is not None:
-        from bundle_catalog_kernel_inputs import COMPONENT, APP_COMPONENT
-        component_name = APP_COMPONENT if app_schema_backend else COMPONENT
+        from bundle_catalog_kernel_inputs import component_name as kernel_component_name
+        component_name = kernel_component_name(app_backend=app_schema_backend,
+                                              schema_progress=app_schema_progress)
     source_receipt = {
         "format": "tobkiri.bundle-catalog-source/1",
         "component_name": component_name,
@@ -190,6 +195,8 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
                   if app_schema_backend else
                   "declared keyword source derivation; other original bytes unchanged; ")
         source_receipt["source_storage"] = change + "per-file zlib/identity, no expansion cache"
+        if app_schema_progress:
+            source_receipt["source_storage"] += "; separate split-call diagnostic export"
     add("bundle-catalog-source.json", (
         json.dumps(source_receipt, sort_keys=True, indent=2) + "\n"
     ).encode())
@@ -261,7 +268,8 @@ def stage(repo: Path, destination: Path, verified: dict, schema_inputs: Path,
 
 def verify_component(proof: dict, source: dict, *, native: bool,
                      diagnostic_reread: bool = False,
-                     kernel_derived: bool = False, app_schema_backend: bool = False) -> None:
+                     kernel_derived: bool = False, app_schema_backend: bool = False,
+                     app_schema_progress: bool = False) -> None:
     """Require the exact closed source manifest and typed component boundary."""
     expected = [
         {**item, "bytes": source["files"][item["source"]]["bytes"]}
@@ -276,12 +284,17 @@ def verify_component(proof: dict, source: dict, *, native: bool,
     expected_name = (DIAGNOSTIC_COMPONENT if diagnostic_reread
                      else NATIVE_COMPONENT if native else PACK_COMPONENT)
     if kernel_derived:
-        from bundle_catalog_kernel_inputs import COMPONENT, APP_COMPONENT
+        from bundle_catalog_kernel_inputs import component_name as kernel_component_name
         if not native or diagnostic_reread:
             raise ValueError("separate native-only kernel derivation required")
-        expected_name = APP_COMPONENT if app_schema_backend else COMPONENT
+        expected_name = kernel_component_name(app_backend=app_schema_backend,
+                                              schema_progress=app_schema_progress)
     if type(app_schema_backend) is not bool or (app_schema_backend and not kernel_derived):
         raise ValueError("explicit App backend derivation required")
+    if (type(app_schema_progress) is not bool or (app_schema_progress and not app_schema_backend)
+            or source.get('bundle_catalog', {}).get('kernel_derivation', {}).get(
+                'schema_progress_diagnostic', False) != app_schema_progress):
+        raise ValueError('actual schema progress source mode differs')
     if kernel_derived and source.get("bundle_catalog", {}).get("kernel_derivation", {}).get("app_schema_backend", False) != app_schema_backend:
         raise ValueError("actual App backend source mode differs")
     if type(kernel_derived) is not bool:

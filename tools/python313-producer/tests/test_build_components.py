@@ -19,6 +19,22 @@ import fetch_validation_tools as validation
 
 
 class ComponentBuildTests(unittest.TestCase):
+    def test_schema_progress_cannot_select_an_ordinary_or_generic_build(self):
+        with patch.object(build_components.sys, 'platform', 'linux'), patch.dict(
+            os.environ, {'GITHUB_ACTIONS': 'true'},
+        ):
+            for options in (
+                {'app_schema_progress': True},
+                {'bundle_catalog_kernel': True, 'app_schema_progress': True},
+                {'bundle_catalog_kernel': True, 'app_schema_backend': True,
+                 'app_schema_progress': 1},
+                {'bundle_catalog': True, 'app_schema_backend': True,
+                 'app_schema_progress': True},
+            ):
+                with self.subTest(options=options), self.assertRaises(ValueError):
+                    build_components.run(None, Path('/producer'), Path('/validation'),
+                                         Path('/destination'), **options)
+
     def test_native_thread_capabilities_plan_pins_exact_diagnostic_world(self):
         repo = component_inputs.HERE.parents[1]
         with tempfile.TemporaryDirectory() as directory:
