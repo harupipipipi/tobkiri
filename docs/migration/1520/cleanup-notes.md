@@ -187,6 +187,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   次は同Bootstrap invocation/control/sourceの元到達点への接続。独立jobの材料やdigestを
   prefetch/cacheとして渡すことはしない。既存Setup/recovery/catalog/追加source/Host引継ぎ
   の全体と、未達の実Wasm予算を閉じるまで製品経路はdefault-offを維持する。
+  次のsource監査で、元prepare_bootstrap_profile_reviewのcaller自体は現Guest closureに
+  含まれず、read/stat wrapperにもcatalog/recoveryのnative bodyがないと確認した。
+  Astra highはgenericなreview orchestrationをRustへ移す区間を指定。元Pack-ownedの
+  catalog/resolveを純DATAに限定する仮定は撤回し、元IO到達点で許可resourceへ行う汎用Host
+  操作を接続する。snapshot前とresolve内のlock再readを畳まず、Pack shape/IDはCoreへ
+  持ち込まない。journal recoveryには書込み/DB初期化の別枝があり、不在DBを作らない
+  snapshot APIを代用しない。19wrapperの存在や独立snapshot単体を全Setup実装としない。
+  Rootは別のclean原本checkout・元packaged fixture上の既存Setup/successor6テストを
+  実行する独立CIを用意した。原本lockの版/hash選択は既存reference helperを共有し、
+  CPython3.13用rpds行を明示選択する。source/AST確認済み・実CI結果待ちであり、native
+  review/GUI/完全recoveryや製品採用の証拠ではない。fixture/DB/keyはCIにだけ保持する。
   JSON/surrogate/depth・不正leaseの例外投影、同時key作成/複合I/O/close、Linux process情報
   read内部close receipt等は未閉鎖。全Open同等・既存DB採用・GUI接続の完了とはしない。
 - cryptoの余分なowned key配列copyをZeroizing先作成へ整理した。Fernetは既存RustCryptoの

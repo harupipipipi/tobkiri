@@ -98,12 +98,17 @@ def write_json(path: Path, value: object, *, compact: bool = False) -> None:
     path.write_text(data, encoding="utf-8")
 
 
-def requirements(root: Path, output: Path) -> None:
+def requirements(
+    root: Path, output: Path, *, packages: tuple[str, ...] = REQUIREMENTS,
+    versions: dict[str, str] | None = None,
+) -> None:
     """Select exact versions and wheel hashes from the original checked-in lock."""
     lock = tomllib.loads((root / "tobkiri_runtime/uv.lock").read_text())
     rows = []
-    for name in REQUIREMENTS:
-        matches = [p for p in lock["package"] if p["name"] == name]
+    for name in packages:
+        matches = [p for p in lock["package"] if p["name"] == name
+                   and (not versions or name not in versions
+                        or p["version"] == versions[name])]
         if len(matches) != 1 or not matches[0].get("wheels"):
             raise ValueError("one locked wheel inventory per dependency required")
         item = matches[0]
