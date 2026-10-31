@@ -1153,3 +1153,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   Registry/Frameは同時に変更しない。同じ累積診断と未変更cold/fullで前進を測り、効果が
   小さければ戻す。guard自体が多数のPython処理を再現する場合は対応範囲を狭める。
   URIコードは未実装。native profileの回数/時間だけでfuel支配や42件完了を予測しない。
+- URI初稿を`app_schema/uri.rs`へ実装。非prefixのexact builtin ASCII str・bracketなし、
+  現在の正規helper/defaults/result constructor/iterationとscheme/control設定の対応範囲で、
+  parse/join/再構成/defragをまとめてRust実行する。現在の可変listは長さ・順序・各実要素を
+  初回source metadataと比べ、同じlist objectだから不変とは扱わない。raw MRO dictionaryの
+  constructor/iterator確認はdescriptorを実行しない。GuardにURI結果やvalidation結果はない。
+  空base/ref・別schemeで入力を返す場合は実Python文字列参照を保持し、percentをdecodeしない。
+  途中のPython tuple/parse-resultを作らず、必要なURI/fragmentだけ実値として返す。
+  条件外は最初から取得済み実Python関数へdispatch。outer defragをinner joinより先に選び、
+  iterable返却は3要素までの本当のunpackを行う。native失敗後のfallbackなし。
+- URI関数をcheck_schema開始時に固定していたEnvも除き、実呼出し時点のbindingを使う。
+  scopeのResource.id呼出し後のjoinは引き続き実Python処理で、変更後の関数も反映する。
+  新68操作/11群の比較を追加し、URI native/boundary計数も保存する。既存Registry/Frameの
+  アルゴリズムは変更しない。全13ファイルの閉じたsource inventoryとGC handle列挙を更新。
+  CPythonのplain LICENSE metadata13,809bytesだけを取得しsource noticeとして同梱した
+  （archive/executable/依存バイナリのlocal保存なし）。実native/Wasｍ検証前で未採用。
+- ソースレビューでscheme-less baseのsingle-element joinが入力文字列そのものを返す
+  経路を確認。そこは実行前にPython全処理を選び、相対base4件を別途比較する。
+  空baseおよび明示的なASCII schemeのbaseをnative候補とし、文字列の値だけで同一性を
+  代用しない。通常の実schema64件でもURI native到達を必須にする。

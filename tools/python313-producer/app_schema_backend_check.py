@@ -66,7 +66,8 @@ def compare(args, receipt, package_paths, extension):
         raise ValueError('each actual schema must enter Rust frames')
     receipt['reference_counts_after_64'] = kernel.app_reference_counts()
     if (receipt['reference_counts_after_64']['native_pointers'] <= 0
-            or receipt['reference_counts_after_64']['native_dynamic_anchors'] <= 0):
+            or receipt['reference_counts_after_64']['native_dynamic_anchors'] <= 0
+            or receipt['reference_counts_after_64']['native_uri_resolutions'] <= 0):
         raise ValueError('actual owned builtin fragment paths were not exercised')
     if profiler is not None:
         import io
@@ -99,6 +100,8 @@ def compare(args, receipt, package_paths, extension):
     receipt['reference_state_checks'] = reference_state_checks(provider, kernel)
     from app_schema_fragment_checks import fragment_checks
     receipt['fragment_checks'] = fragment_checks(provider, kernel)
+    from app_schema_uri_checks import uri_checks
+    receipt['uri_checks'] = uri_checks(kernel, provider_module._REFERENCE_POLICY)
     receipt.update(outcome='success', app_backend_64_success=True,
                    app_backend_entries=kernel.app_schema_entry_count(),
                    app_backend_frames=kernel.app_schema_frame_count(),

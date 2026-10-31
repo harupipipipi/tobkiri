@@ -1,6 +1,7 @@
 //! App-owned reference state and explicit Python resolution boundaries.
 //! Derived from referencing 0.37.0, referencing/_core.py and jsonschema.py
 //! (MIT; see crate-root COPYING.jsonschema). Builtin ownership is metadata, not authority.
+use super::uri::UriPolicy;
 use super::{Environment, Object};
 use crate::keywords::{builtin, module_member};
 use pyo3::{
@@ -26,6 +27,7 @@ static ADAPTERS: AtomicUsize = AtomicUsize::new(0);
 /// Capture once at the trusted provider's first library load, never after each
 /// operation's patches. External retrieval never adds ownership to these lists.
 pub(super) struct ResourcePolicy {
+    uri: UriPolicy,
     specification: Object,
     resolver_type: Object,
     resource_type: Object,
@@ -64,6 +66,7 @@ impl ResourcePolicy {
             }
         }
         Ok(Self {
+            uri: UriPolicy::capture(py)?,
             pointer_function: resource_type.getattr("pointer")?.unbind(),
             static_function: static_type.getattr("resolve")?.unbind(),
             dynamic_function: dynamic_type.getattr("resolve")?.unbind(),
@@ -80,6 +83,7 @@ impl ResourcePolicy {
     }
     pub(super) fn clone_ref(&self, py: Python<'_>) -> Self {
         Self {
+            uri: self.uri.clone_ref(py),
             specification: self.specification.clone_ref(py),
             resolver_type: self.resolver_type.clone_ref(py),
             resource_type: self.resource_type.clone_ref(py),
@@ -95,6 +99,7 @@ impl ResourcePolicy {
         }
     }
     fn visit(&self, visit: &PyVisit<'_>) -> Result<(), PyTraverseError> {
+        self.uri.visit(visit)?;
         for value in [
             &self.specification,
             &self.resolver_type,
@@ -233,7 +238,10 @@ impl ReferenceState {
         if id.is_none() {
             return Ok(self.clone());
         }
-        let uri = env.urljoin.bind(py).call1((base_uri.bind(py), id))?;
+        let uri = env
+            .resource_policy
+            .uri
+            .actual_join(py, base_uri.bind(py), &id)?;
         Ok(Rc::new(Self::Owned {
             base_uri: uri.unbind(),
             registry: registry.clone_ref(py),
@@ -493,17 +501,12 @@ impl ReferenceState {
                 Self::from_boundary(&resolved.getattr("resolver")?, env)?,
             ));
         };
-        // Keep the original URI implementation, call order and live arguments.
-        let (uri, fragment) = if reference.call_method1("startswith", ("#",))?.is_truthy()? {
-            (
-                base_uri.bind(py).clone(),
-                reference.get_item(builtin(py, "slice")?.call1((1, py.None()))?)?,
-            )
-        } else {
-            let joined = env.urljoin.bind(py).call1((base_uri.bind(py), reference))?;
-            let parts = env.urldefrag.bind(py).call1((joined,))?;
-            (parts.get_item(0)?, parts.get_item(1)?)
-        };
+        let (uri, fragment) = env
+            .resource_policy
+            .uri
+            .resolve(py, base_uri.bind(py), reference)?;
+        let uri = uri.bind(py).clone();
+        let fragment = fragment.bind(py).clone();
         let retrieved = match registry.bind(py).call_method1("get_or_retrieve", (&uri,)) {
             Ok(value) => value,
             Err(error) => {
@@ -646,12 +649,34 @@ fn app_reference_counts(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         DYNAMIC_ANCHORS.load(Ordering::Relaxed),
     )?;
     result.set_item("adapter_constructions", ADAPTERS.load(Ordering::Relaxed))?;
+    let (native, boundary) = super::uri::counts();
+    result.set_item("native_uri_resolutions", native)?;
+    result.set_item("python_uri_boundaries", boundary)?;
     Ok(result)
+}
+
+#[pyfunction]
+fn app_reference_uri(
+    py: Python<'_>,
+    base: &Bound<'_, PyAny>,
+    reference: &Bound<'_, PyAny>,
+    policy: &Bound<'_, DefaultReferencePolicy>,
+) -> PyResult<(Object, Object)> {
+    let metadata = policy
+        .borrow()
+        .resources
+        .as_ref()
+        .ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err("default reference policy was cleared")
+        })?
+        .clone_ref(py);
+    metadata.uri.resolve(py, base, reference)
 }
 
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<DefaultReferencePolicy>()?;
     module.add_function(wrap_pyfunction!(default_reference_policy, module)?)?;
     module.add_function(wrap_pyfunction!(app_reference_counts, module)?)?;
+    module.add_function(wrap_pyfunction!(app_reference_uri, module)?)?;
     Ok(())
 }

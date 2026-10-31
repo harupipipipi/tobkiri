@@ -20,6 +20,7 @@ static ENTRIES: AtomicUsize = AtomicUsize::new(0);
 static FRAMES: AtomicUsize = AtomicUsize::new(0);
 
 mod references;
+mod uri;
 use references::{DefaultReferencePolicy, ReferenceState, ResourcePolicy};
 
 struct Environment {
@@ -27,8 +28,6 @@ struct Environment {
     resolver_type: Object,
     checker: Object,
     type_checker: Object,
-    urljoin: Object,
-    urldefrag: Object,
     resource_policy: ResourcePolicy,
 }
 
@@ -728,8 +727,6 @@ fn app_check_schema(
         resolver_type,
         checker: format_checker.clone().unbind(),
         type_checker: type_checker.clone().unbind(),
-        urljoin: module_member(py, "referencing._core", "urljoin")?.unbind(),
-        urldefrag: module_member(py, "referencing._core", "urldefrag")?.unbind(),
         resource_policy,
     });
     let references = ReferenceState::from_boundary(&resolver, &env)?;
