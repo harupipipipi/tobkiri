@@ -598,8 +598,10 @@ impl Frame {
                 | "additionalProperties"
                 | "items"
                 | "prefixItems" => {}
-                "minimum" | "maximum" | "exclusiveMinimum" | "exclusiveMaximum" => {
-                    if let Some(error) = value::numeric_bound(
+                "type" | "const" | "enum" | "minItems" | "maxItems" | "minLength" | "maxLength"
+                | "minProperties" | "maxProperties" | "minimum" | "maximum"
+                | "exclusiveMinimum" | "exclusiveMaximum" => {
+                    if let Some(error) = value::scalar_constraint(
                         py,
                         &env.value_policy,
                         &name,
@@ -610,9 +612,7 @@ impl Frame {
                         return self.decorate(py, env, error.unbind());
                     }
                 }
-                "type" | "const" | "enum" | "multipleOf" | "minItems" | "maxItems"
-                | "minLength" | "maxLength" | "minProperties" | "maxProperties" | "uniqueItems"
-                | "pattern" | "format" | "not" => {
+                "multipleOf" | "uniqueItems" | "pattern" | "format" | "not" => {
                     let references = self.references.clone();
                     let error = keywords::scalar_rule(
                         py,

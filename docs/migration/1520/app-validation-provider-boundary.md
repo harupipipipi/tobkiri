@@ -312,3 +312,26 @@ native value/reference counters and17,429 frames remained observable under one
 Store/account, zero budget resets and the original64MiB/30s limits; retirement
 and physical payload0 passed. Neither the unchanged19-schema frontier nor the
 native comparisons qualify one-shot completion or final product adoption.
+
+
+## App scalar constraint family (implemented; CI pending)
+
+The next source slice owns type, const/enum, six length constraints and the four
+existing numeric bounds in the App value engine. Those operations no longer use
+the generic scalar dispatcher. The generic API and its remaining App
+multipleOf/uniqueItems/pattern/format/not path remain unchanged.
+
+Exact scalar operations retain actual handles; unsafe numeric equality uses the
+actual primitive comparison without narrowing. Container/foreign equality uses
+App-owned source-defined recursive operation boundaries, retaining real
+subscription/iteration/comparison/truth operations. Generic helper globals are
+not the new engine's configuration API. Single type handling retains the actual
+kind object, multiple types and enums retain actual genexpr iterator acquisition
+and live mutation, and type failure formatting re-reads current kinds. Lengths
+are read at each original operation point; maxProperties retains both selected
+type checks. Public errors and selected TypePolicy stay at their existing points.
+
+Sol6.1 xhigh implemented the important Rust engine and12 groups/193 differential
+pairs. Root integrated the foreign boundaries and CI and corrected single-kind
+repr normalization before f-string formatting. AST/rustfmt checks passed; actual
+native/guest results, budget qualification and product adoption remain pending.

@@ -6,7 +6,7 @@ use pyo3::{
     gc::{PyTraverseError, PyVisit},
     prelude::*,
     sync::PyOnceLock,
-    types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyModule, PyString},
+    types::{PyBool, PyDict, PyFloat, PyInt, PyIterator, PyList, PyModule, PyString, PyTuple},
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -257,6 +257,224 @@ pub(super) fn numeric_bound<'py>(
         None,
     )
     .map(Some)
+}
+
+fn scalar(value: &Bound<'_, PyAny>) -> bool {
+    value.is_none()
+        || value.is_exact_instance_of::<PyBool>()
+        || value.is_exact_instance_of::<PyInt>()
+        || value.is_exact_instance_of::<PyFloat>()
+        || value.is_exact_instance_of::<PyString>()
+}
+
+fn equal(py: Python<'_>, left: &Bound<'_, PyAny>, right: &Bound<'_, PyAny>) -> PyResult<bool> {
+    if !(scalar(left) && scalar(right)) {
+        return module_member(py, "app_schema_model", "equality_boundary")?
+            .call1((left, right))?
+            .is_truthy();
+    }
+    // Source equality tests identity before numeric equality: a retained NaN
+    // equals itself, while two distinct NaNs do not. Bool is never a number.
+    if left.is(right) {
+        return Ok(true);
+    }
+    if left.is_none() || right.is_none() {
+        return Ok(false);
+    }
+    if left.is_exact_instance_of::<PyString>() || right.is_exact_instance_of::<PyString>() {
+        // Exact Unicode's C comparison also handles lone surrogates without
+        // converting either live value into a UTF-8-only representation.
+        return left.eq(right);
+    }
+    if left.is_exact_instance_of::<PyBool>() || right.is_exact_instance_of::<PyBool>() {
+        return Ok(false);
+    }
+    const EXACT: std::ops::RangeInclusive<i64> = -9_007_199_254_740_992..=9_007_199_254_740_992;
+    Ok(match (number(left), number(right)) {
+        (Some(Number::Int(a)), Some(Number::Int(b))) => a == b,
+        (Some(Number::Float(a)), Some(Number::Float(b))) => a == b,
+        (Some(Number::Int(a)), Some(Number::Float(b))) if EXACT.contains(&a) => a as f64 == b,
+        (Some(Number::Float(a)), Some(Number::Int(b))) if EXACT.contains(&b) => a == b as f64,
+        // Arbitrary-size exact ints and unsafe int/float pairs retain Python's
+        // exact primitive rich comparison; no approximate numeric conversion.
+        _ => return left.eq(right),
+    })
+}
+
+fn single_type(value: &Bound<'_, PyAny>) -> PyResult<bool> {
+    if value.is_instance_of::<PyString>() {
+        return Ok(true); // Actual str subclasses keep this exact kind object.
+    }
+    if value.is_none()
+        || value.is_exact_instance_of::<PyBool>()
+        || value.is_exact_instance_of::<PyInt>()
+        || value.is_exact_instance_of::<PyFloat>()
+        || value.is_exact_instance_of::<PyList>()
+        || value.is_exact_instance_of::<PyDict>()
+        || value.is_exact_instance_of::<PyTuple>()
+    {
+        return Ok(false);
+    }
+    // Source isinstance(value, str) can read a foreign __class__ property.
+    module_member(value.py(), "app_schema_model", "type_is_single")?
+        .call1((value,))?
+        .is_truthy()
+}
+
+fn genexpr_iterator<'py>(values: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyIterator>> {
+    // Pinned 3.13 emits outer GET_ITER, then GET_ITER on that result when the
+    // generator expression starts. Preserve both actual foreign operations.
+    let outer = values.try_iter()?;
+    outer.as_any().try_iter()
+}
+
+fn type_rule<'py>(
+    py: Python<'py>,
+    policy: &TypePolicy,
+    value: &Bound<'py, PyAny>,
+    instance: &Bound<'py, PyAny>,
+    schema: &Bound<'py, PyAny>,
+) -> PyResult<Option<Bound<'py, PyAny>>> {
+    let single = single_type(value)?;
+    if single {
+        if policy.check(py, instance, value, schema)? {
+            return Ok(None);
+        }
+    } else {
+        let mut iterator = genexpr_iterator(value)?;
+        while let Some(kind) = iterator.next() {
+            if policy.check(py, instance, &kind?, schema)? {
+                return Ok(None);
+            }
+        }
+    }
+    // Failure formatting re-iterates the original kinds, just as the original
+    // repr generator does. No temporary singleton list or kind snapshot exists.
+    module_member(py, "app_schema_model", "type_error")?
+        .call1((instance, value, single))
+        .map(Some)
+}
+
+fn length_rule<'py>(
+    py: Python<'py>,
+    policy: &TypePolicy,
+    keyword: &str,
+    value: &Bound<'py, PyAny>,
+    instance: &Bound<'py, PyAny>,
+    schema: &Bound<'py, PyAny>,
+) -> PyResult<Option<Bound<'py, PyAny>>> {
+    let kind = match keyword {
+        "minItems" | "maxItems" => pyo3::intern!(py, "array"),
+        "minLength" | "maxLength" => pyo3::intern!(py, "string"),
+        _ => pyo3::intern!(py, "object"),
+    };
+    if !policy.check(py, instance, kind.as_any(), schema)? {
+        return Ok(None);
+    }
+    if keyword == "maxProperties" && !policy.check(py, instance, kind.as_any(), schema)? {
+        return Ok(None); // This second selected type check is in the source.
+    }
+    let length = instance.len()?; // Actual protocol, once per constraint visit.
+    let minimum = keyword.starts_with("min");
+    let failed = if value.is_exact_instance_of::<PyInt>() {
+        match value.extract::<i64>() {
+            Ok(bound) => {
+                if minimum {
+                    (length as i128) < bound as i128
+                } else {
+                    (length as i128) > bound as i128
+                }
+            }
+            Err(_) => {
+                let actual_length = length.into_pyobject(py)?.into_any();
+                if minimum {
+                    actual_length.lt(value)?
+                } else {
+                    actual_length.gt(value)?
+                }
+            }
+        }
+    } else {
+        let actual_length = length.into_pyobject(py)?.into_any();
+        if minimum {
+            actual_length.lt(value)?
+        } else {
+            actual_length.gt(value)?
+        }
+    };
+    if !failed {
+        return Ok(None);
+    }
+    let adjective = if minimum {
+        if value.eq(1)? {
+            "should be non-empty"
+        } else if keyword == "minProperties" {
+            "does not have enough properties"
+        } else {
+            "is too short"
+        }
+    } else if value.eq(0)? {
+        "is expected to be empty"
+    } else if keyword == "maxProperties" {
+        "has too many properties"
+    } else {
+        "is too long"
+    };
+    validation_error(
+        py,
+        format(
+            py,
+            "{0!r} {1}",
+            &[instance.clone(), PyString::new(py, adjective).into_any()],
+        )?,
+        None,
+    )
+    .map(Some)
+}
+
+pub(super) fn scalar_constraint<'py>(
+    py: Python<'py>,
+    policy: &TypePolicy,
+    keyword: &str,
+    value: &Bound<'py, PyAny>,
+    instance: &Bound<'py, PyAny>,
+    schema: &Bound<'py, PyAny>,
+) -> PyResult<Option<Bound<'py, PyAny>>> {
+    match keyword {
+        "type" => type_rule(py, policy, value, instance, schema),
+        "minimum" | "maximum" | "exclusiveMinimum" | "exclusiveMaximum" => {
+            numeric_bound(py, policy, keyword, value, instance, schema)
+        }
+        "minItems" | "maxItems" | "minLength" | "maxLength" | "minProperties" | "maxProperties" => {
+            length_rule(py, policy, keyword, value, instance, schema)
+        }
+        "const" | "enum" => {
+            if keyword == "const" {
+                if equal(py, instance, value)? {
+                    return Ok(None);
+                }
+            } else {
+                let mut iterator = genexpr_iterator(value)?;
+                while let Some(each) = iterator.next() {
+                    if equal(py, &each?, instance)? {
+                        return Ok(None);
+                    }
+                }
+            }
+            let constructor = module_member(py, "jsonschema.exceptions", "ValidationError")?;
+            let message = if keyword == "const" {
+                format(py, "{0!r} was expected", &[value.clone()])?
+            } else {
+                format(
+                    py,
+                    "{0!r} is not one of {1!r}",
+                    &[instance.clone(), value.clone()],
+                )?
+            };
+            constructor.call1((message,)).map(Some)
+        }
+        _ => unreachable!("closed App scalar constraint"),
+    }
 }
 
 #[pyfunction]

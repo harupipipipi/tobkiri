@@ -5,6 +5,7 @@ definitions: jsonschema 4.26.0/_format.py (MIT, packaged dependency notice).
 No App schema, catalog, validation or result is read/prepared here. Callback
 bodies and their globals remain explicit shared dependencies in this slice.
 """
+from collections.abc import Mapping as _EqualityMapping, Sequence as _EqualitySequence
 from importlib.resources import files
 import builtins
 import json
@@ -115,3 +116,58 @@ def select_keyword(key, root):
 def keyword_has_schema_path(key):
     """Preserve foreign-key hash/equality at the error-decoration boundary."""
     return key not in {"if", "$ref"}
+
+
+# Owned operation boundaries derived from jsonschema 4.26.0 _utils.py:99-143
+# and _keywords.py:262-266; MIT attribution is in COPYING.jsonschema. These
+# helpers retain no input/result and do not consult the generic helper globals.
+
+
+def _equality_unbool(value, true=object(), false=object()):
+    if value is True:
+        return true
+    if value is False:
+        return false
+    return value
+
+
+def _equality_sequence(one, two):
+    if len(one) != len(two):
+        return False
+    return all(equality_boundary(left, right) for left, right in zip(one, two))
+
+
+def _equality_mapping(one, two):
+    if len(one) != len(two):
+        return False
+    return all(key in two and equality_boundary(value, two[key])
+               for key, value in one.items())
+
+
+def equality_boundary(one, two):
+    """Run actual container/foreign equality, retaining its truth-result object."""
+    if one is two:
+        return True
+    if isinstance(one, str) or isinstance(two, str):
+        return one == two
+    if isinstance(one, _EqualitySequence) and isinstance(two, _EqualitySequence):
+        return _equality_sequence(one, two)
+    if isinstance(one, _EqualityMapping) and isinstance(two, _EqualityMapping):
+        return _equality_mapping(one, two)
+    return _equality_unbool(one) == _equality_unbool(two)
+
+
+def type_is_single(value):
+    """Preserve foreign __class__ observations at the type-specification check."""
+    return isinstance(value, str)
+
+
+def type_error(instance, types, single):
+    """Build a type error after the actual second-pass kind representations."""
+    # join also normalizes a str-subclass returned by a custom __repr__;
+    # passing that subclass straight to the f-string adds a __format__ call.
+    if single:
+        reprs = ", ".join((repr(types),))
+    else:
+        reprs = ", ".join(repr(kind) for kind in types)
+    return exceptions.ValidationError(f"{instance!r} is not of type {reprs}")

@@ -1375,3 +1375,23 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   RAM artifact13035970297/244,810B・13034919667/246,127Bから必要JSONのみ保存。
   cold/full gate・全20/839・元GUI・1B/API・Python/VM廃止は未達。Astraへ次のまとまった
   App-owned evaluator境界を質問中で、次の実装はまだ選択していない。
+
+- 次sliceを実装済み・実CI待ち（Astra high回答、Sol6.1 xhigh重要実装）: Appのtype/const/enum/
+  六つの長さ制約と既存四numeric boundを、自身のNode/TypePolicy/error経路へまとめる。
+  generic scalar_ruleは他の独立APIとpattern/format等にまだ必要なので削除しない。
+  typeのensure_list/import/一時list、exact scalar比較の汎用helper往復を除く。
+  実iterator・foreign __class__/比較/len・短絡/変更/実error handleは維持し、container
+  走査・pattern/format/reference・uniqueItems等を同時変更しない。
+- Rootがmodelの実foreign境界を独立source定義した: equality_boundaryは4.26
+  _utils99–143由来のidentity/str/Sequence/Mapping/own unbool sentinel/再帰操作を保持。
+  元helperのmutable globalsへは委譲せず、実比較result objectのtruthを一回だけ適用する。
+  type_is_singleは実isinstanceでforeign __class__も読み、type_errorはkind reprを先に
+  実再走査してからinstance reprを作る。MIT告知を維持、結果/input cacheなし。
+  これらはまだPythonのforeign operation境界であり、family全体のRust完結や削除可能性を
+  主張しない。Solはvalue.rsのfamily本体とApp dispatch、新12群/193差分対を実装。
+  bool/int/float/巨大int/NaN同一・別object/±0/Unicode/surrogate、126サイズ/bound組合せ、
+  live enum/type変更、foreign比較結果のtruth/len例外、genexpr実2段GetIter、偽装__class__、
+  除去したgeneric helper globalsを変更口にしないtripwireを含む。既存全groupsは維持。
+  Root監査でsingle kindのreprがstr subclassを返す場合のjoin正規化漏れを修正し、余分な
+  __format__呼出を防いだ。Source AST3/rustfmt/diffのみ成功、実native/guest CIは未実施。
+  4counter形状とsource inventory14件を維持。燃料削減と全製品の同等性は未測定。
