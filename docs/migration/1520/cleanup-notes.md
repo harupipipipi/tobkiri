@@ -1011,7 +1011,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 018: keyword呼出し準備の一時辞書を削る
 
-- 状態: **未検証の小さい実装、実CI待ち**。
+- 現在の状態（2026-11-01 JST）: **内部呼出し/型/値/参照/keyword familyのnative比較は
+  下記の各sourceで通過。最新URI b71は全native比較成功、同source実Wasm累積40件へ増加**。
+  cold/fullは元2B未達。原本839/製品GUI/全20条件・採用は未完。
+  以下は各sliceのsource順の履歴であり、過去の「待機中」は後続の実結果で更新する。
 - 場所: `schema_kernel/src/keywords.rs` の$ref/$dynamicRefとevolve呼出し。
 - source監査で、descendは既にvectorcallだが、上記2箇所にはまだPyDictのkwargs生成が
   残っていると確認。Astra highの指示に従い、実methodを一度取得してそのcallableへ
@@ -1751,3 +1754,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   native通過後、同じb71で[cold/full41213547854](https://github.com/harupipipipi/tobkiri/actions/runs/41213547854)と
   [累積41213557344](https://github.com/harupipipipi/tobkiri/actions/runs/41213557344)を各1回開始。
   元2B/64MiB/絶対30秒の実結果は待機中。native成功だけで製品採用や全体完了にしない。
+- URI b71の実Wasmは終了。cold/full CI41213547854は両方元2Bで燃料0。
+  component89063178…c61fe、prepare後1,979,510,397、cold約1.685秒/full約1.505秒。
+  元deadline維持・期限超過/unreachableなし・Store退役/physical payload0。
+  累積CI41213557344は**20→40件**へ増え、41番surface_template_v1で燃料0。
+  componentcd1a6681…77dc4、prepare後1,979,510,697、40件後91,359,231残、型31,358/
+  数値215/Python0、URI join+defrag11,417/join-only1,591/互換0。
+  1Store/account・予算更新0・元64MiB/絶対30秒、counter cold0/実到達/単調/index40と
+  cleanup/payload0を確認。追加observer費用を含む実flow測定であり、関数別fuel比や
+  全42件・一括・issue全20条件の完了とはしない。効果のある候補として保持し、製品は
+  default-offのまま。両modeのextension577,194B/SHA31e1ac1e…89ffa。
+  RAM artifact13047053895/245,670Bと13047291954/248,868Bから必要JSON6,629/89,925Bのみ
+  保存。ソース・binary/ZIPをダウンロードしてローカルで実行していない。
+- 実結果後の次の優先区間はAstra high回答の元Setup review→listing。
+  raw-id HashSetによる所有metadataの小整理を主作業にせず、003の実ownerからAuthority
+  snapshot/epoch/source能力を得る正規経路を先に閉じる。実recovery write/同じcandidate/
+  resolve/catalog/listingの順序・typed error・cancel/finish/Joinを保つ。必要ABIだけ接続し、
+  全19/7wrapperの追加を進捗に数えない。元guest予算未達のまま製品経路を有効化しない。

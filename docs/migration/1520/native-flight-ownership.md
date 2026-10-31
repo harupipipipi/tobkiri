@@ -135,6 +135,18 @@ Small-component ABI/custody/cancel/finish/Join tests remain distinct from the
 original guest's execution under 2B fuel, and neither permits enabling Setup
 or bypassing its existing GUI confirmation and approval flow.
 
+Astra high rechecked this priority after URI native parity on 2026-11-01 JST.
+After the same-source URI Wasm adoption decision, the next implementation is
+this complete review-to-listing unit, rather than another small schema guard or
+raw-resource identity index. The concrete source gate is the legitimate path
+by which the native caller obtains the original prepare operation's actual
+Authority snapshot/epoch and source capabilities from the same owner. If that
+path is missing, connecting it belongs to the first implementation of this
+unit. A new authority snapshot, default root or serialized custody marker
+cannot substitute for it. Actual IO, typed errors, worker custody and
+cancel/finish/Join may be verified independently, while original-guest unit
+completion and product adoption still require the unchanged runtime budget.
+
 ## Execution evidence which constrains this boundary
 
 The `48ab3ee5` diagnostic used the declared pre-initialized stdlib configuration.

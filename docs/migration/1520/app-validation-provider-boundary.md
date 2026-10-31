@@ -437,3 +437,16 @@ join-only1,932, compatibility0; old value counts remain unchanged. This proves
 native route execution, not fuel improvement. Same-source cold/full41213547854
 and cumulative41213557344 started once each after native success and remain
 pending under the unchanged original Store/account and budgets.
+
+Both actual b71 Wasm runs subsequently finished. Cold/full41213547854 still
+exhausted the original2B; component89063178…c61fe retained the original
+deadline and retired with physical payload0. Cumulative41213557344 advanced
+from20 to40 schemas, stopping on41st surface_template_v1. After40,91,359,231
+fuel remained; URI join/defrag11,417 and join-only1,591 had executed with zero
+compatibility entries. Cold-zero, monotonicity/reach/index40, one Store/account,
+zero resets,64MiB/absolute30s and cleanup/payload0 passed. Both modes built the
+same577,194-byte extension SHA31e1ac1e…89ffa. The retained URI candidate has a
+measured benefit but remains unqualified/default-off:40 cumulative schemas do
+not establish42/full, all20 issue conditions or original GUI/Setup adoption.
+The next priority is the actual original Setup review-to-listing unit described
+in the ownership map, with its legitimate same-owner native inputs.
