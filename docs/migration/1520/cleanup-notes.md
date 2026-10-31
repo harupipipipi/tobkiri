@@ -208,6 +208,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   方針を支持。原本完全一致とは区別し、既存storeの排他/競合保証やjournalありのwriteful
   recoveryを落とさない。native review/GUI/完全recoveryや製品採用の証拠ではなく、
   fixture/DB/keyはCIにだけ保持する。
+  observer `40086b3e0`/CI41240029648は原本の同じ5成功/1失敗を保持し、実生成物を確定。
+  beforeはuser_data不在、ProfileDefinitionStore.__init__復帰でuser_data/profiles各0700、
+  _locked復帰でprofiles/.profile-definition.lock(0600、0B)、afterもこの3つだけだった。
+  index/Authority/keyは作成されていない。metadata JSON19,194Bを保存し、原本副作用を
+  同等移植すべき根拠にはしない。nativeの初回非作成修正は限定bugfixとして区別する。
+  次のpublication prelude referenceは元_recover_bootstrap_publicationを実行し、元pointer
+  store constructor直前だけ明示test sentinelで停止する。元journal/lock/strict read/key/
+  HMAC/predecessorは実処理し、NoJournalは元outer/innerの2呼出しを通す。37のfresh入力を
+  準備し、追加/不正key、uppercase/nonASCII HMAC、JSON/順序/symlinkと前倒し検査を比較する。
+  この観測境界は後半recoveryや実review/listing成功ではない。source/AST確認のみで、
+  原本実CI結果は待機中。DB/key/fixture/ZIP/binaryはartifactに含めない。
   JSON/surrogate/depth・不正leaseの例外投影、同時key作成/複合I/O/close、Linux process情報
   read内部close receipt等は未閉鎖。全Open同等・既存DB採用・GUI接続の完了とはしない。
 - cryptoの余分なowned key配列copyをZeroizing先作成へ整理した。Fernetは既存RustCryptoの
