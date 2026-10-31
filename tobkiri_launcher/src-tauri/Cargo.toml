@@ -7,7 +7,7 @@ edition = "2021"
 default = []
 core-host = ["dep:tobkiri-launcher-core-host", "dep:async-trait", "dep:tokio", "dep:ulid"]
 native-source-inspection = ["dep:tobkiri-core", "dep:tokio", "dep:async-trait"]
-native-harness-bootstrap = ["dep:tobkiri-core", "dep:tobkiri-harness-native", "dep:tobkiri-wasm"]
+native-harness-bootstrap = ["dep:tobkiri-core", "dep:tobkiri-gate", "dep:tobkiri-harness-native", "dep:tobkiri-wasm", "dep:tokio"]
 
 [lib]
 name = "tobkiri_launcher_lib"
@@ -32,6 +32,7 @@ libc = "0.2"
 [dependencies]
 tobkiri-launcher-core-host = { path = "../core-host", optional = true }
 tobkiri-core = { path = "../../crates/tobkiri-core", optional = true }
+tobkiri-gate = { path = "../../crates/tobkiri-gate", optional = true }
 tobkiri-harness-native = { path = "../harness-native", optional = true }
 tobkiri-wasm = { path = "../../crates/tobkiri-wasm", optional = true }
 async-trait = { version = "=0.1.92", optional = true }

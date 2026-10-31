@@ -3,10 +3,21 @@
 //! This opt-in constructor is not yet routed from the original production
 //! operation. Keep that route unchanged until actual component/flow parity.
 use crate::native_harness_host_inputs::{with_original_host_inputs, NativeHostSourceRole};
-use anyhow::{anyhow, bail, Result};
+use crate::native_runtime_jobs::{
+    Finalization, JobTicket, Jobs, LifecycleError, SourceCustody, WorkerExit,
+};
+use crate::native_worker_failure::{
+    Condition, DetachedFailure, Detachment, Outcome, SourceError, Stage, WorkerFailure,
+};
+use anyhow::{bail, Result};
 use std::{
     fs::File,
-    sync::{Arc, Mutex},
+    future::{poll_fn, Future},
+    panic::{catch_unwind, AssertUnwindSafe},
+    pin::Pin,
+    sync::{atomic::AtomicBool, Arc, Mutex},
+    task::Poll,
+    time::Instant,
 };
 use tauri::{AppHandle, Manager};
 use tobkiri_core::{Core, Digest, HostIo, NativeSetupInvocation, RuntimeOwner};
@@ -14,7 +25,7 @@ use tobkiri_harness_native::{
     BootstrapInputOwner, BootstrapModuleIndex, BootstrapRoots, ModuleMetadataPolicy,
     NativeBootstrap, NativeComponentPreparation, ORIGINAL_PROFILE_SOURCE_METADATA,
 };
-use tobkiri_wasm::{NativeDataError, NativeDataIoError};
+use tobkiri_wasm::NativeDataIoError;
 
 enum OwnedRuntime {
     Unopened,
@@ -30,46 +41,86 @@ impl Default for OwnedRuntime {
 
 /// Cold registration only. Root IO first occurs at the native operation's
 /// reachpoint, using the original selected user_data_dir and one fixed child.
-#[derive(Default)]
-pub(crate) struct NativeRuntimeState(Mutex<OwnedRuntime>);
+#[derive(Clone)]
+pub(crate) struct NativeRuntimeState(Arc<RuntimeState>);
+struct RuntimeState {
+    owner: Mutex<OwnedRuntime>,
+    jobs: Jobs,
+    finalization: Finalization,
+}
 
 impl NativeRuntimeState {
-    fn begin(&self, app: &AppHandle) -> Result<NativeSetupInvocation> {
-        let mut state = self
-            .0
-            .lock()
-            .map_err(|_| anyhow!("native runtime owner is poisoned"))?;
+    pub(crate) fn new(shutdown: Arc<AtomicBool>) -> Self {
+        Self(Arc::new(RuntimeState {
+            owner: Mutex::new(OwnedRuntime::Unopened),
+            jobs: Jobs::new(shutdown),
+            finalization: Finalization::default(),
+        }))
+    }
+
+    fn begin(&self, app: &AppHandle, job: &JobTicket) -> Result<NativeSetupInvocation> {
+        job.ensure_accepting(&self.0.jobs)?;
+        let mut state =
+            self.0.owner.lock().map_err(|_| {
+                anyhow::Error::new(LifecycleError("native runtime owner is poisoned"))
+            })?;
+        // Existing owners do not bypass the original flag or admission seal.
+        job.ensure_accepting(&self.0.jobs)?;
         if matches!(*state, OwnedRuntime::Unopened) {
             let owner = with_original_host_inputs(app, |inputs| {
                 RuntimeOwner::open(inputs.internal_runtime_storage_parent().join("core"))
             })
-            .map_err(|_| anyhow!("original native configuration is unavailable"))??;
+            .map_err(|_| {
+                anyhow::Error::new(LifecycleError(
+                    "original native configuration is unavailable",
+                ))
+            })??;
             *state = OwnedRuntime::Native(owner);
         }
         match &*state {
             OwnedRuntime::Native(owner) => Ok(owner.begin_native_setup()?),
             OwnedRuntime::Core(core) => Ok(core.begin_native_setup()?),
-            _ => bail!("native runtime owner is unavailable"),
+            _ => bail!(LifecycleError("native runtime owner is unavailable")),
         }
     }
 
     /// Future effectful Core composition must consume THIS owner; reopening the
     /// default/another root would replace accounting and is not an alternative.
-    pub(crate) fn adopt_core(&self, host: Arc<dyn HostIo>) -> Result<Arc<Core>> {
-        let mut state = self
-            .0
-            .lock()
-            .map_err(|_| anyhow!("native runtime owner is poisoned"))?;
+    pub(crate) fn adopt_core(&self, job: &JobTicket, host: Arc<dyn HostIo>) -> Result<Arc<Core>> {
+        job.ensure_accepting(&self.0.jobs)?;
+        let mut state =
+            self.0.owner.lock().map_err(|_| {
+                anyhow::Error::new(LifecycleError("native runtime owner is poisoned"))
+            })?;
+        job.ensure_accepting(&self.0.jobs)?;
         if let OwnedRuntime::Core(core) = &*state {
             return Ok(core.clone());
         }
         let OwnedRuntime::Native(owner) = std::mem::replace(&mut *state, OwnedRuntime::Closed)
         else {
-            bail!("native runtime ownership cannot be transferred");
+            bail!(LifecycleError(
+                "native runtime ownership cannot be transferred"
+            ));
         };
         let core = Arc::new(Core::from_runtime_owner(owner, host)?);
         *state = OwnedRuntime::Core(core.clone());
         Ok(core)
+    }
+
+    /// All real preparation/IO Joins precede dropping this same owner. There
+    /// are no product Sessions here yet; none are fabricated to obtain close.
+    pub(crate) fn stop_until(&self, deadline: Instant) -> Result<()> {
+        self.0.jobs.drain_until(deadline)?;
+        self.0.finalization.run_until(deadline, || {
+            let owner = {
+                let mut owner = self.0.owner.lock().map_err(|_| {
+                    anyhow::Error::new(LifecycleError("native runtime owner is poisoned"))
+                })?;
+                std::mem::replace(&mut *owner, OwnedRuntime::Closed)
+            };
+            drop(owner);
+            self.0.jobs.mark_closed()
+        })
     }
 }
 
@@ -77,6 +128,8 @@ impl NativeRuntimeState {
 /// worker completion. No serialized roots or cloned configuration replace it.
 pub(crate) struct OriginalBootstrapInputs {
     app: AppHandle,
+    // Field order releases the actual AppHandle before publishing its receipt.
+    _custody: SourceCustody,
 }
 impl BootstrapInputOwner for OriginalBootstrapInputs {
     fn original_module_metadata_policy(&self) -> Option<&'static ModuleMetadataPolicy> {
@@ -111,35 +164,224 @@ impl BootstrapInputOwner for OriginalBootstrapInputs {
 /// selected roots remain metadata. Init permits only bounded observations;
 /// later original getters require the exact explicit module metadata policy.
 /// No frame or path value can enable general FS, approval or effect authority.
-pub(crate) struct OriginalComponentPreparation {
-    preparation: NativeComponentPreparation<OriginalBootstrapInputs>,
+pub(crate) type OriginalJobFuture<'a> = Pin<
+    Box<dyn Future<Output = std::result::Result<serde_json::Value, WorkerFailure>> + Send + 'a>,
+>;
+
+/// Only detached DATA leaves the owning worker. Dropping this waiter never
+/// unregisters the worker, cancels its Join, or transfers its Bootstrap/Store.
+pub(crate) struct OriginalComponentJob {
+    result: tokio::sync::oneshot::Receiver<Outcome>,
+}
+impl OriginalComponentJob {
+    pub(crate) async fn result(self) -> Outcome {
+        self.result.await.unwrap_or_else(|_| {
+            Err(DetachedFailure::condition(
+                Stage::Admission,
+                Condition::WorkerDisconnected,
+            ))
+        })
+    }
 }
 
-pub(crate) fn prepare_original_component(app: AppHandle) -> Result<OriginalComponentPreparation> {
+pub(crate) fn prepare_original_component<F>(
+    app: AppHandle,
+    artifact: File,
+    expected: Digest,
+    index: &'static BootstrapModuleIndex,
+    operation: F,
+) -> std::result::Result<OriginalComponentJob, DetachedFailure>
+where
+    F: for<'a> FnOnce(&'a mut NativeBootstrap<OriginalBootstrapInputs>) -> OriginalJobFuture<'a>
+        + Send
+        + 'static,
+{
     let state = app
         .try_state::<NativeRuntimeState>()
-        .ok_or_else(|| anyhow!("original runtime owner is not registered"))?;
-    let invocation = state.begin(&app)?;
-    Ok(OriginalComponentPreparation {
-        preparation: NativeComponentPreparation::new(
-            invocation,
-            OriginalBootstrapInputs { app: app.clone() },
-        )?,
-    })
+        .ok_or_else(|| {
+            DetachedFailure::condition(Stage::Admission, Condition::RuntimeStateMissing)
+        })?
+        .inner()
+        .clone();
+    let (send, result) = tokio::sync::oneshot::channel();
+    let runtime = state.clone();
+    let lifecycle = state.0.jobs.clone();
+    state
+        .0
+        .jobs
+        .spawn(move |job| {
+            let outcome = catch_unwind(AssertUnwindSafe(|| {
+                tauri::async_runtime::block_on(run_original_job(
+                    runtime, app, job, artifact, expected, index, operation,
+                ))
+            }));
+            let (result, cleanup_verified) = match outcome {
+                Ok(outcome) => outcome,
+                Err(_) => (
+                    Err(DetachedFailure::condition(
+                        Stage::Operation,
+                        Condition::NativePanic,
+                    )),
+                    false,
+                ),
+            };
+            if !cleanup_verified {
+                lifecycle.cleanup_failed();
+            }
+            if result.is_err() {
+                log::error!("Native preparation failed; detached structured failure returned");
+            }
+            let _ = send.send(result);
+            WorkerExit { cleanup_verified }
+        })
+        .map_err(|error| Detachment::new(None).native(&error, Stage::Admission))?;
+    Ok(OriginalComponentJob { result })
 }
 
-impl OriginalComponentPreparation {
-    /// Consume the original preparation; no retry creates another invocation.
-    pub(crate) async fn initialize(
-        self,
-        artifact: File,
-        expected: &Digest,
-        index: &'static BootstrapModuleIndex,
-    ) -> Result<std::result::Result<NativeBootstrap<OriginalBootstrapInputs>, NativeDataError>>
-    {
-        self.preparation
-            .compile(artifact, expected)?
-            .initialize(index)
-            .await
+pub(super) async fn caught<F: Future>(future: F) -> std::result::Result<F::Output, &'static str> {
+    let mut future = std::pin::pin!(future);
+    poll_fn(
+        |context| match catch_unwind(AssertUnwindSafe(|| future.as_mut().poll(context))) {
+            Ok(value) => value.map(Ok),
+            Err(_) => Poll::Ready(Err("native operation panicked")),
+        },
+    )
+    .await
+}
+
+async fn run_original_job<F>(
+    runtime: NativeRuntimeState,
+    app: AppHandle,
+    job: JobTicket,
+    artifact: File,
+    expected: Digest,
+    index: &'static BootstrapModuleIndex,
+    operation: F,
+) -> (Outcome, bool)
+where
+    F: for<'a> FnOnce(&'a mut NativeBootstrap<OriginalBootstrapInputs>) -> OriginalJobFuture<'a>,
+{
+    // No Store/IO exists during these synchronous stages. Owner creation is
+    // already represented by the registered worker before reaching this code.
+    let mut stage = Stage::Owner;
+    let prepared = catch_unwind(AssertUnwindSafe(|| -> Result<_> {
+        let invocation = runtime.begin(&app, &job)?;
+        let parent = job.attach_invocation(&invocation)?;
+        let source = OriginalBootstrapInputs {
+            app,
+            _custody: job.source_custody()?,
+        };
+        stage = Stage::EngineCompile;
+        NativeComponentPreparation::new_with_cancellation_parent(invocation, source, &parent)?
+            .compile(artifact, &expected)
+    }));
+    let mut detachment = Detachment::new(job.invocation());
+    let prepared = match prepared {
+        Ok(Ok(prepared)) => prepared,
+        Ok(Err(error)) => {
+            let detached = detachment.native(&error, stage);
+            drop(error);
+            return (Err(detached), true);
+        }
+        Err(_) => {
+            return (
+                Err(DetachedFailure::condition(stage, Condition::NativePanic)),
+                true,
+            );
+        }
+    };
+    let mut runner = match caught(prepared.initialize(index)).await {
+        Ok(Ok(Ok(runner))) => runner,
+        Ok(Ok(Err(domain))) => {
+            let original = WorkerFailure::Domain(domain);
+            let detached = detachment.worker(&original);
+            drop(original);
+            return (Err(detached), true);
+        }
+        Ok(Err(error)) => {
+            let clean = crate::native_worker_failure::initialization_cleanup_verified(&error);
+            let detached = detachment.native(&error, Stage::Initialize);
+            drop(error);
+            return (Err(detached), clean);
+        }
+        Err(_) => {
+            return (
+                Err(DetachedFailure::condition(
+                    Stage::Initialize,
+                    Condition::NativePanic,
+                )),
+                false,
+            )
+        }
+    };
+    // Keep Bootstrap outside the panic boundary. Even a panic while building
+    // or polling the borrowed operation cannot move it out of this worker.
+    // Defer construction into the caught poll too; no borrowed future escapes
+    // an unwind closure and Bootstrap itself remains outside that future.
+    let result = caught(async { operation(&mut runner).await })
+        .await
+        .map_err(|_| WorkerFailure::Execution {
+            stage: Stage::Operation,
+            source: SourceError::Condition(Condition::NativePanic),
+        })
+        .and_then(|value| value);
+    // Keep actual errors/buffers live during detachment and finish. Only the
+    // closed DATA projection can outlive this worker and original account.
+    let detached_error = result.as_ref().err().map(|error| detachment.worker(error));
+    let cleanup = caught(runner.finish()).await;
+    let cleanup_error = match &cleanup {
+        Ok(Ok(())) => None,
+        Ok(Err(error)) => Some(detachment.native(error, Stage::Finish)),
+        Err(_) => Some(DetachedFailure::condition(
+            Stage::Finish,
+            Condition::NativePanic,
+        )),
+    };
+    let original = match result {
+        Ok(value) => Ok(value),
+        Err(error) => {
+            drop(error);
+            Err(detached_error.expect("detached original failure"))
+        }
+    };
+    drop(cleanup);
+    let permitted = original.is_err() || job.ensure_accepting(&runtime.0.jobs).is_ok();
+    let clean = cleanup_error.is_none();
+    let output = crate::native_worker_failure::complete(original, cleanup_error, permitted);
+    drop(detachment);
+    (output, clean)
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+    use std::{sync::atomic::Ordering, time::Duration};
+
+    #[test]
+    fn original_shutdown_flag_refuses_new_jobs_with_an_already_open_owner() {
+        let root = std::env::temp_dir().join(format!(
+            "tobkiri-existing-native-owner-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        ));
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let state = NativeRuntimeState::new(shutdown.clone());
+        *state.0.owner.lock().unwrap() =
+            OwnedRuntime::Native(RuntimeOwner::open(root.join("core")).unwrap());
+        shutdown.store(true, Ordering::SeqCst);
+        assert!(state
+            .0
+            .jobs
+            .spawn(|_| panic!("existing owner bypassed original shutdown"))
+            .is_err());
+        state
+            .stop_until(Instant::now() + Duration::from_secs(20))
+            .unwrap();
+        assert!(matches!(
+            *state.0.owner.lock().unwrap(),
+            OwnedRuntime::Closed
+        ));
+        state.stop_until(Instant::now()).unwrap();
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

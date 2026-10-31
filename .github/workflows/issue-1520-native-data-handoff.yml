@@ -6,6 +6,7 @@ on:
       - 'tobkiri_launcher/harness-native/src/preparation.rs'
       - 'tobkiri_launcher/harness-native/src/lib.rs'
       - 'tobkiri_launcher/harness-native/src/bootstrap_runtime.rs'
+      - 'tobkiri_launcher/harness-native/src/bootstrap_domain_cleanup_tests.rs'
       - 'crates/tobkiri-wasm/src/native_setup_store.rs'
       - 'crates/tobkiri-wasm/src/native_setup_store_tests.rs'
       - '.github/workflows/issue-1520-native-data-handoff.yml'
@@ -49,5 +50,11 @@ jobs:
           cache-on-failure: true
       - name: Actual prepared component and original-owner DATA regressions
         run: cargo test --locked -p tobkiri-harness-native --lib preparation::tests -- --test-threads=1
+      - name: Preserve actual domain DATA and the original cleanup failure
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-domain-cleanup.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          bootstrap_runtime::domain_cleanup_tests -- --test-threads=1
       - name: Strict library validation
         run: cargo clippy --locked -p tobkiri-harness-native --lib -- -D warnings

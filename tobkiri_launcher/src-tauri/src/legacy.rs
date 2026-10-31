@@ -4,6 +4,10 @@ mod config;
 mod native_harness_host_inputs;
 #[cfg(feature = "native-harness-bootstrap")]
 mod native_harness_bootstrap;
+#[cfg(feature = "native-harness-bootstrap")]
+mod native_runtime_jobs;
+#[cfg(feature = "native-harness-bootstrap")]
+mod native_worker_failure;
 mod debug_approval;
 mod defaultspack_authority;
 mod defaultspack_manager;
@@ -85,7 +89,16 @@ mod dock_registration;
 
 /// Wrapper around a shared progress string, managed as Tauri State.
 pub struct SetupProgress(pub Arc<Mutex<String>>);
-pub struct ShutdownState(pub Arc<AtomicBool>, pub Arc<(Mutex<bool>, Condvar)>);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShutdownOutcome {
+    Pending,
+    Closed,
+    Forced,
+}
+pub struct ShutdownState(
+    pub Arc<AtomicBool>,
+    pub Arc<(Mutex<ShutdownOutcome>, Condvar)>,
+);
 pub struct AllowedNavigationPorts(pub Arc<Mutex<Vec<u16>>>);
 
 const PRIMARY_WINDOW_LABELS: [&str; 2] = ["panel", "main"];
@@ -3114,18 +3127,20 @@ fn spawn_signal_shutdown_watcher(app: &AppHandle, set: libc::sigset_t) {
                 // held by a deadlocked thread) must not turn the signal
                 // handler into the next hang: bound the cleanup, then exit
                 // regardless so the signal always terminates the launcher.
-                stop_managed_runtimes_bounded(
+                let closed = stop_managed_runtimes_bounded(
                     defaultspack.map(|state| Arc::clone(state.inner())),
                     kernel_manager.map(|state| Arc::clone(state.inner())),
+                    native_runtime_for_shutdown(&handle),
                 );
-                complete_shutdown(&completion);
-            } else {
-                // Another exit path already claimed shutdown but its
-                // bounded cleanup may still be running; wait for it rather
-                // than exiting underneath the in-flight stop.
-                wait_for_shutdown_completion(&completion);
+                finish_shutdown(&completion, closed);
             }
-            std::process::exit(0);
+            // One wait also covers another exit path's in-flight cleanup.
+            let outcome = wait_for_shutdown_completion(&completion);
+            std::process::exit(if outcome == ShutdownOutcome::Closed {
+                0
+            } else {
+                1
+            });
         });
 }
 
@@ -3144,99 +3159,182 @@ pub(crate) fn request_app_exit(app: &AppHandle) {
     let km = Arc::clone(app.state::<Arc<Mutex<KernelManager>>>().inner());
     let defaultspack = Arc::clone(app.state::<Arc<DefaultspackManager>>().inner());
     let completion = Arc::clone(&app.state::<ShutdownState>().inner().1);
+    let native = native_runtime_for_shutdown(app);
     let handle = app.clone();
 
-    std::thread::spawn(move || {
-        // The same bound as the signal path: a wedged runtime stop must not
-        // leave the launcher hidden-but-alive with windows already closed.
-        stop_managed_runtimes_bounded(Some(defaultspack), Some(km));
-        complete_shutdown(&completion);
-        handle.exit(0);
-    });
+    let worker_completion = completion.clone();
+    let worker_handle = handle.clone();
+    let spawned = std::thread::Builder::new()
+        .name("tobkiri-exit-cleanup".into())
+        .spawn(move || {
+            // The same bound as the signal path: a wedged runtime stop must not
+            // leave the launcher hidden-but-alive with windows already closed.
+            let closed = stop_managed_runtimes_bounded(Some(defaultspack), Some(km), native);
+            finish_shutdown(&worker_completion, closed);
+            worker_handle.exit(if closed { 0 } else { 1 });
+        });
+    if spawned.is_err() {
+        finish_shutdown(&completion, false);
+        handle.exit(1);
+    }
 }
 
 fn claim_shutdown(shutdown_flag: &AtomicBool) -> bool {
     !shutdown_flag.swap(true, Ordering::SeqCst)
 }
 
-type ShutdownCompletion = Arc<(Mutex<bool>, Condvar)>;
+type ShutdownCompletion = Arc<(Mutex<ShutdownOutcome>, Condvar)>;
 
-fn complete_shutdown(completion: &ShutdownCompletion) {
+fn finish_shutdown(completion: &ShutdownCompletion, closed: bool) {
     let (lock, notified) = &**completion;
     if let Ok(mut done) = lock.lock() {
-        *done = true;
+        // A late successful observer cannot turn an already forced exit into
+        // normal completion. A later observed failure remains conservative.
+        if !closed {
+            *done = ShutdownOutcome::Forced;
+        } else if *done == ShutdownOutcome::Pending {
+            *done = ShutdownOutcome::Closed;
+        }
     }
     notified.notify_all();
 }
 
-fn wait_for_shutdown_completion(completion: &ShutdownCompletion) {
+fn wait_for_shutdown_completion(completion: &ShutdownCompletion) -> ShutdownOutcome {
     // Outlast the cleanup watchdog so an in-progress bounded stop can
     // finish before a concurrent exit path ends the process beneath it.
     let (lock, notified) = &**completion;
     let deadline = Instant::now() + shutdown_budget::CONCURRENT_EXIT_WAIT;
     if let Ok(mut done) = lock.lock() {
-        while !*done {
+        while *done == ShutdownOutcome::Pending {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                break;
+                return ShutdownOutcome::Forced;
             }
             match notified.wait_timeout(done, remaining) {
                 Ok((guard, _)) => done = guard,
-                Err(_) => break,
+                Err(_) => return ShutdownOutcome::Forced,
             }
         }
+        return *done;
+    }
+    ShutdownOutcome::Forced
+}
+
+#[cfg(feature = "native-harness-bootstrap")]
+type NativeRuntimeShutdown = native_harness_bootstrap::NativeRuntimeState;
+#[cfg(not(feature = "native-harness-bootstrap"))]
+type NativeRuntimeShutdown = ();
+
+fn native_runtime_for_shutdown(app: &AppHandle) -> Option<NativeRuntimeShutdown> {
+    #[cfg(feature = "native-harness-bootstrap")]
+    {
+        app.try_state::<NativeRuntimeShutdown>()
+            .map(|state| state.inner().clone())
+    }
+    #[cfg(not(feature = "native-harness-bootstrap"))]
+    {
+        let _ = app;
+        None
     }
 }
 
 fn stop_managed_runtimes(
     defaultspack: Option<&DefaultspackManager>,
     kernel_manager: Option<&Mutex<KernelManager>>,
-) {
+    native: Option<&NativeRuntimeShutdown>,
+    deadline: Instant,
+) -> bool {
     // Both runtimes own independent process groups and each preserves its own
     // bounded graceful-stop window. Stop them concurrently so application
     // shutdown waits for the slower runtime once instead of adding both
     // deadlines together.
     thread::scope(|scope| {
-        if let Some(defaultspack) = defaultspack {
-            let _defaultspack_stop = scope.spawn(|| {
+        let defaultspack_stop = defaultspack.map(|defaultspack| {
+            scope.spawn(move || {
                 if let Err(error) = defaultspack.stop_for_shutdown() {
                     error!("Failed to stop Defaultspack during shutdown: {error:#}");
+                    false
+                } else {
+                    true
                 }
-            });
-        }
-        if let Some(kernel_manager) = kernel_manager {
-            let _kernel_stop = scope.spawn(|| match kernel_manager.lock() {
+            })
+        });
+        let kernel_stop = kernel_manager.map(|kernel_manager| {
+            scope.spawn(move || match kernel_manager.lock() {
                 Ok(mut kernel) => {
                     if let Err(error) = kernel.stop() {
                         error!("Failed to stop kernel during shutdown: {error}");
+                        false
+                    } else {
+                        true
                     }
                 }
                 Err(error) => {
                     error!("Failed to lock kernel manager during shutdown: {error}");
+                    false
                 }
+            })
+        });
+        #[cfg(feature = "native-harness-bootstrap")]
+        let native_closed = {
+            let stop = native.map(|native| {
+                scope.spawn(move || match native.stop_until(deadline) {
+                    Ok(()) => true,
+                    Err(error) => {
+                        error!("Native runtime remains Stopping: {error:#}");
+                        false
+                    }
+                })
             });
-        }
-    });
+            stop.map(|task| task.join().unwrap_or(false))
+                .unwrap_or(true)
+        };
+        #[cfg(not(feature = "native-harness-bootstrap"))]
+        let native_closed = {
+            let _ = (native, deadline);
+            true
+        };
+        let defaultspack_closed = defaultspack_stop
+            .map(|task| task.join().unwrap_or(false))
+            .unwrap_or(true);
+        let kernel_closed = kernel_stop
+            .map(|task| task.join().unwrap_or(false))
+            .unwrap_or(true);
+        native_closed && defaultspack_closed && kernel_closed
+    })
 }
 
 fn stop_managed_runtimes_bounded(
     defaultspack: Option<Arc<DefaultspackManager>>,
     kernel_manager: Option<Arc<Mutex<KernelManager>>>,
-) {
+    native: Option<NativeRuntimeShutdown>,
+) -> bool {
     // Every shutdown path bounds the graceful stop behind one watchdog so a
     // wedged manager lock can never outlast the launcher itself.
-    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+    let deadline = Instant::now() + shutdown_budget::RUNTIME_WATCHDOG;
+    // The already-claimed original ShutdownFlag rejects native admissions.
+    // Sealing/cancellation and Joins run inside the watched cleanup worker too.
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<bool>();
     let _ = std::thread::Builder::new()
         .name("tobkiri-runtime-cleanup".into())
         .spawn(move || {
-            stop_managed_runtimes(defaultspack.as_deref(), kernel_manager.as_deref());
-            let _ = done_tx.send(());
+            let closed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                stop_managed_runtimes(
+                    defaultspack.as_deref(),
+                    kernel_manager.as_deref(),
+                    native.as_ref(),
+                    deadline,
+                )
+            }))
+            .unwrap_or(false);
+            let _ = done_tx.send(closed);
         });
-    if done_rx
-        .recv_timeout(shutdown_budget::RUNTIME_WATCHDOG)
-        .is_err()
-    {
-        error!("Timed out stopping managed runtimes; exiting anyway");
+    match done_rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+        Ok(closed) => closed,
+        Err(_) => {
+            error!("Managed runtime cleanup did not finish; forcing nonzero exit without a completion receipt");
+            false
+        }
     }
 }
 
@@ -4102,6 +4200,17 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             if !shutdown_requested {
                 api.prevent_exit();
                 request_app_exit(app_handle);
+            } else {
+                let shutdown = app_handle.state::<ShutdownState>();
+                let (outcome, _) = &*shutdown.inner().1;
+                if outcome
+                    .lock()
+                    .map(|value| *value == ShutdownOutcome::Pending)
+                    .unwrap_or(false)
+                {
+                    // An already claimed normal exit still waits for cleanup.
+                    api.prevent_exit();
+                }
             }
         }
 
@@ -4117,16 +4226,24 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             if claim_shutdown(shutdown_flag) {
                 let defaultspack = app_handle.state::<Arc<DefaultspackManager>>();
                 let kernel_manager = app_handle.state::<Arc<Mutex<KernelManager>>>();
-                stop_managed_runtimes_bounded(
+                let closed = stop_managed_runtimes_bounded(
                     Some(Arc::clone(defaultspack.inner())),
                     Some(Arc::clone(kernel_manager.inner())),
+                    native_runtime_for_shutdown(app_handle),
                 );
-                complete_shutdown(&shutdown_state.inner().1);
+                finish_shutdown(&shutdown_state.inner().1, closed);
+                if !closed {
+                    std::process::exit(1);
+                }
             } else {
                 // An earlier exit path claimed shutdown but its bounded
                 // cleanup may still be running; let it finish before the
                 // process ends beneath the in-flight stop.
-                wait_for_shutdown_completion(&shutdown_state.inner().1);
+                if wait_for_shutdown_completion(&shutdown_state.inner().1)
+                    != ShutdownOutcome::Closed
+                {
+                    std::process::exit(1);
+                }
             }
         }
 
@@ -4182,11 +4299,20 @@ fn exit_after_setup_failure(
     // state was registered so they cannot outlive the process.
     let defaultspack = app.try_state::<Arc<DefaultspackManager>>();
     let kernel_manager = app.try_state::<Arc<Mutex<KernelManager>>>();
-    if defaultspack.is_some() || kernel_manager.is_some() {
-        stop_managed_runtimes_bounded(
+    let native = native_runtime_for_shutdown(app.handle());
+    let shutdown = app.try_state::<ShutdownState>();
+    if let Some(shutdown) = &shutdown {
+        let _ = claim_shutdown(&shutdown.inner().0);
+    }
+    if defaultspack.is_some() || kernel_manager.is_some() || native.is_some() {
+        let closed = stop_managed_runtimes_bounded(
             defaultspack.map(|state| Arc::clone(state.inner())),
             kernel_manager.map(|state| Arc::clone(state.inner())),
+            native,
         );
+        if let Some(shutdown) = shutdown {
+            finish_shutdown(&shutdown.inner().1, closed);
+        }
     }
     std::process::exit(1);
 }
@@ -4240,7 +4366,7 @@ fn launcher_setup(app: &mut tauri::App, ctx: &LauncherSetupContext) -> AnyResult
     let shutdown_flag = Arc::new(AtomicBool::new(false));
     app.manage(ShutdownState(
         Arc::clone(&shutdown_flag),
-        Arc::new((Mutex::new(false), Condvar::new())),
+        Arc::new((Mutex::new(ShutdownOutcome::Pending), Condvar::new())),
     ));
 
     record_startup_stage(&ctx.startup_stage, "loading_panel_bootstrap_secret");
@@ -4317,7 +4443,9 @@ fn launcher_setup(app: &mut tauri::App, ctx: &LauncherSetupContext) -> AnyResult
     }
     app.manage(config.clone());
     #[cfg(feature = "native-harness-bootstrap")]
-    app.manage(native_harness_bootstrap::NativeRuntimeState::default());
+    app.manage(native_harness_bootstrap::NativeRuntimeState::new(
+        Arc::clone(&shutdown_flag),
+    ));
 
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.show();
@@ -4456,6 +4584,61 @@ mod tests {
 
         assert!(super::claim_shutdown(&shutdown_flag));
         assert!(!super::claim_shutdown(&shutdown_flag));
+    }
+
+    #[test]
+    fn forced_shutdown_is_distinct_and_cannot_be_promoted_by_a_late_success() {
+        let completion = Arc::new((Mutex::new(ShutdownOutcome::Pending), Condvar::new()));
+        finish_shutdown(&completion, false);
+        assert_eq!(
+            wait_for_shutdown_completion(&completion),
+            ShutdownOutcome::Forced
+        );
+        finish_shutdown(&completion, true);
+        assert_eq!(
+            wait_for_shutdown_completion(&completion),
+            ShutdownOutcome::Forced
+        );
+    }
+
+    #[test]
+    fn actual_managed_kernel_lock_failure_is_not_closed_success() {
+        let kernel = Arc::new(Mutex::new(KernelManager::new(
+            &test_config(),
+            "shutdown-test".into(),
+        )));
+        let worker = kernel.clone();
+        assert!(std::thread::spawn(move || {
+            let _guard = worker.lock().unwrap();
+            panic!("supplied managed kernel lock failure");
+        })
+        .join()
+        .is_err());
+        assert!(!stop_managed_runtimes(
+            None,
+            Some(kernel.as_ref()),
+            None,
+            Instant::now() + Duration::from_secs(1)
+        ));
+    }
+
+    #[cfg(feature = "native-harness-bootstrap")]
+    #[test]
+    fn actual_shutdown_coordinator_closes_cold_native_state_idempotently() {
+        let native =
+            native_harness_bootstrap::NativeRuntimeState::new(Arc::new(AtomicBool::new(true)));
+        assert!(stop_managed_runtimes_bounded(
+            None,
+            None,
+            Some(native.clone())
+        ));
+        native.stop_until(Instant::now()).unwrap();
+        let completion = Arc::new((Mutex::new(ShutdownOutcome::Pending), Condvar::new()));
+        finish_shutdown(&completion, true);
+        assert_eq!(
+            wait_for_shutdown_completion(&completion),
+            ShutdownOutcome::Closed
+        );
     }
 
     #[test]

@@ -97,8 +97,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   source保持・physical drop後payload0を確認。証明はlibrary/機構の範囲であり、元製品の
   owner一組化・GUI Setup・全終了や全20条件の達成に広げない。
 
-- 元launcherの終了接続を追加実装中（Astra high設計、Sol6.1 xhigh担当）。現stateは
-  prepare/adoptのproduction callerがなくjob/cancel/Joinを保持しない。既存owner時も
+- 元launcherの終了接続をsource実装済み（Astra high設計、Sol6.1 xhigh担当、CI未検証）。
+  変更前のstateはprepare/adoptのproduction callerがなくjob/cancel/Joinを保持しなかった。
+  実Setupのprepare/adopt呼出しはまだ未接続のまま、既存owner時も
   ShutdownFlagを確認し、owner生成中からjobを登録、同invocation由来のcancelをEngine前に
   登録する。workerがcompile/init/実処理/finish/actualJoinまで所有し、外へはdetached data
   のみ返す。caller dropでも追跡を残す。stopはadmission閉鎖→cancel→lock外でfinish/Join→
@@ -106,6 +107,32 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   元signal/requestExit/setupFailure/Exitfallbackへ接続し、強制終了を正常完了と記録しない。
   RuntimeOwner.close/Core.closeは存在せず仮定しない。実Setup・qualified artifact・GUI
   採用は別途未完で、このlifecycle sliceを全体完成へ読み替えない。
+- この小区分のsource reviewで見つかった整理点: owner slotを空にしただけでは、別の
+  stop callerへ解放完了を返せない。実destructorを一度だけ実行し、同じ完了を待つ。
+  また元Defaultspack/kernelのstopエラーをログだけで捨てると、新しいClosed表示が
+  cleanup成功を誤って表す。元stop API・同時実行・watchdogは保ち、実Joinと全stop結果を
+  一つの終了結果へ集約した。Forcedは後発successでClosedへ戻さない。
+- 返却境界の修正: `NativeDataError`のDebugは各bufferの長さしか含まず、String化は
+  実code/message/detailsを失う。外側errorにも元失敗・cleanup失敗・funded diagnosticが
+  ある。単なるログ文字列へ置換せず、実DATAと失敗の関係を保持し、Bootstrap/Storeや
+  未追跡のaccount leaseをworker外へ逃がさない返却契約へ修正する。Astra highの回答は、
+  domain/initialization/execution/cleanupを分けたdetached構造化failureを選択し、任意の
+  anyhow受入れをやめて明示投影できるjob error型へ狭める。実bufferのencodingを保ち、
+  初期化のdiagnostic/trace/observationsと元失敗・cleanup失敗の別枝を保持する。worker内で
+  detached化→finish→lease保持診断の解放→結果送信→実Joinとsource終了を確認する。
+  無制限chain収集・未知errorの自動String化・無期限error保持は追加しない。detached化の
+  失敗も明示し、成功や切詰めへ変えない。source実装済み、実Setup採用は引き続き未完。
+  現public APIのanyhow context内に隠れた非公開engine error等は、全型投影の証明がない。
+  新workerはstage付きUnsupportedSourceとして明示拒否する方針であり、元errorの完全な
+  同等性を達成したとは数えない。実Setup採用前には必要なsource生成点で型付き契約を
+  接続する必要がある。cleanup失敗時は公開可能な元成功DATAも元failureも別枝で保持する。
+  失効した成功DATAはcleanupの有無によらずworker内で捨て、拒否metadataだけを残す。
+  `complete`でこの順序を一元化し、ログへraw DATAを新規展開しない。
+- 既存libraryのinit domain拒否も、finish失敗時に元DATAを捨てていたため、
+  `BootstrapDomainCleanupFailure`で実domain DATAと実cleanup errorを別fieldに保持した。
+  Launcher追加18件、library追加2件の回帰sourceを用意した。libraryの2件は実小componentの
+  Domainとhelperへ注入したcleanup errorを使う検査であり、実IO故障や元GUI/fullguestの
+  成功証明ではない。Source parse/format/TOML/diff確認のみ実施、実行結果はCI待ち。
 
 - 条件: 旧 Profile・データ・秘密情報・復旧の実移行、実候補と承認の拘束、
   Stop / Quit の終了・失効まで確認する。空の新 root を既存環境の代用にしない。

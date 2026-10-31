@@ -52,6 +52,34 @@ impl std::error::Error for BootstrapCleanupFailure {
     }
 }
 
+/// The original domain DATA remains DATA when physical cleanup also fails.
+/// Neither this envelope nor a domain spelling grants any native operation.
+#[derive(Debug)]
+pub struct BootstrapDomainCleanupFailure {
+    pub domain: NativeDataError,
+    pub cleanup: anyhow::Error,
+}
+impl std::fmt::Display for BootstrapDomainCleanupFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("native domain refusal was followed by unverified physical cleanup")
+    }
+}
+impl std::error::Error for BootstrapDomainCleanupFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.cleanup.as_ref())
+    }
+}
+
+fn initialization_domain_after_cleanup(
+    domain: NativeDataError,
+    cleanup: Result<()>,
+) -> Result<NativeDataError> {
+    match cleanup {
+        Ok(()) => Ok(domain),
+        Err(cleanup) => Err(BootstrapDomainCleanupFailure { domain, cleanup }.into()),
+    }
+}
+
 struct Work<S> {
     source: S,
     invocation: NativeSetupInvocation,
@@ -516,7 +544,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 Ok(Ok(runner))
             }
             Ok(Err(domain)) => {
-                runner.finish().await?;
+                let domain = initialization_domain_after_cleanup(domain, runner.finish().await)?;
                 Ok(Err(domain))
             }
             Ok(Ok(NativeDataValue::String(_))) => {
@@ -742,6 +770,9 @@ fn initialization_failure<S>(
 ))]
 #[path = "bootstrap_actual_ci.rs"]
 mod actual_ci;
+#[cfg(all(test, target_os = "macos"))]
+#[path = "bootstrap_domain_cleanup_tests.rs"]
+mod domain_cleanup_tests;
 #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
 #[path = "bootstrap_policy_tests.rs"]
 mod policy_tests;

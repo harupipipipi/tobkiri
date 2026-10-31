@@ -29,7 +29,13 @@ data directory's `Tobkiri` child. No old Profile/data/secret/recovery inheritanc
 is proved by opening that default root. Do not switch an existing environment
 to an empty root or describe it as migrated.
 
-The agreed product owner is the existing real core-host Core/Session/UI path.
+The agreed product composition root remains the original `run_launcher`, with
+its selected AppConfig, ShutdownState, Setup and windows. The separate core-host
+path demonstrates real Core/Session/UI APIs; it is not a replacement startup
+path. The original composition must transfer its one RuntimeOwner into the
+real NativeHost/Core and publish LauncherCore with that same Arc<Core>, rather
+than opening a second/default root. That adoption is still incomplete.
+
 Before an ordinary App Flow can serve first Setup, find or implement its
 legitimate initial Profile/Session bootstrap. A test Profile, fabricated lease
 or implicit approval cannot fill that missing boundary. The first App round
@@ -45,6 +51,22 @@ active state and unconnected additional-source/recovery/developer-handover
 actions must not appear successful. Preserve all original Setup steps,
 dedicated GUI approval, settings and conversation behavior; add no terminal
 approval, UserDocument prompt or implicit grant.
+
+The current implementation slice adds tracked preparation workers and connects
+their drain to the original signal, requested exit, setup failure and exit
+fallback. It does not route Setup through `prepare_original_component` or adopt
+an unqualified component. Source review, Rust parsing/formatting and manifest
+checks are complete; no Launcher CI result for this slice has been recorded.
+The worker retains its actual Join and
+source until physical completion, including when its result waiter leaves.
+Timeout or unverified cleanup remains Stopping, and concurrent stop callers
+must not publish Closed before the one owner destruction has completed.
+Its detached failure contract preserves actual domain bytes and known init
+diagnostics, with original outcome and cleanup in separate branches. Revoked
+success DATA is discarded before either return branch. Opaque source errors
+remain explicitly unsupported; unknown initialization cleanup and the existing
+context-wrapped late-init-cancel path conservatively remain Stopping. This is
+not complete error parity or a qualified original-Setup adoption.
 
 ## Execution evidence which constrains this boundary
 

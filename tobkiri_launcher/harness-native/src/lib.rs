@@ -23,7 +23,9 @@ mod thread_capabilities_actual_ci;
 pub use bootstrap_metadata::{
     BootstrapInputOwner, BootstrapModule, BootstrapModuleIndex, BootstrapRoots,
 };
-pub use bootstrap_runtime::{BootstrapCleanupFailure, NativeBootstrap};
+pub use bootstrap_runtime::{
+    BootstrapCleanupFailure, BootstrapDomainCleanupFailure, NativeBootstrap,
+};
 pub use init_diagnostic::OriginalInitializationFailure;
 pub use init_trace::{InitializationRejection, InitializationTrace};
 pub use preparation::{
