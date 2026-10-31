@@ -68,6 +68,21 @@ remain explicitly unsupported; unknown initialization cleanup and the existing
 context-wrapped late-init-cancel path conservatively remain Stopping. This is
 not complete error parity or a qualified original-Setup adoption.
 
+The callback API is still trusted internal code. Its HRTB limits the Bootstrap
+borrow, but does not stop a callback from cloning `data_budget()` or sending an
+owned funded result through a captured channel. A detached return type alone
+therefore proves neither global lease non-escape nor destruction of every owner
+reference. The current proof covers resources held by the worker itself and its
+actual Join. Before production adoption, replace the caller-supplied callback
+entry with a finite operation dispatcher, keeping intermediate references and
+funding inside the same worker/Store. The first slice covers the three currently
+bound runtime methods and `describe_value`; it does not pretend missing methods
+are implemented. Arbitrary callbacks remain private internal/test machinery.
+
+Current source coverage is **runtime 19 plus init / transport 7**, rather than
+the older 17/6 description. Capture and WIT declarations do not establish runner
+binding or complete execution. See the [current coverage table](native-setup-boundary.md#current-source-coverage-2026-10-31).
+
 ## Execution evidence which constrains this boundary
 
 The `48ab3ee5` diagnostic used the declared pre-initialized stdlib configuration.

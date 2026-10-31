@@ -16,6 +16,29 @@ a specific subsequent interactive request. Preserve these distinct decisions,
 including the visible Setup confirmation and later interactive review, rather
 than introducing an unapproved Profile import or new blanket Launch ceremony.
 
+## Current source coverage, 2026-10-31
+
+The current [captured method list](../../../tools/python313-producer/harness_native/source_package.py),
+[Python dispatcher](../../../tools/python313-producer/harness_native/dispatcher.py) and
+[WIT world](../../../tools/python313-producer/harness_native/native.wit) define
+19 original runtime methods plus init and seven transport operations. Older
+17/6 descriptions below precede the two root getters and `native-inputs`.
+
+| Surface | Captured source / WIT | Current native runner binding | Execution qualification |
+| --- | --- | --- | --- |
+| Original runtime | 19 methods plus init | init, bootstrap-profile-id, host-resource-root, bundled-profile-root | Full original method corpus and Setup adoption remain incomplete. |
+| Value transport | Seven operations | describe-value | Complete transport execution, original value/error restoration and production custody remain incomplete. |
+| Worker lifecycle | Native Rust mechanism | Tracked worker, cancellation, finish, actual Join and original exit paths | Library mechanism CI is separate from original Launcher and GUI qualification. |
+
+The [native runner](../../../tobkiri_launcher/harness-native/src/bootstrap_runtime.rs)
+binds those actual methods. An arbitrary callback can still clone owned budget
+or result handles despite its HRTB borrow; a detached result channel alone is
+not a lease non-escape proof. The next finite-dispatcher slice covers only these
+current bindings, with all intermediate references internal to one worker/Store.
+Unbound operations must fail explicitly before execution; neither a stub nor
+the presence of a WIT declaration counts as original behavior. The original
+GUI and full 19/7 qualification remain required before adoption.
+
 ## Current source facts
 
 - The inactive [original Setup projection candidate](../../../packs/local.harness-setup-python/README.md)

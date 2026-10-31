@@ -139,6 +139,17 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   所有tempdirのrealpathを使う一方、新fixtureはmacOSのsymlink祖先を含み得る一時pathを
   そのままNoFollowへ渡していた。4箇所のfixtureを既存方式へ合わせた。製品のNoFollow・
   権限・assertion・検査件数は変更しない。修正後の実CI結果は別途記録する。
+- fixture修正`807437c0a`の[CI41193520451](https://github.com/harupipipipi/tobkiri/actions/runs/41193520451)
+  は全成功。Linux実Store16、mac準備5、実小component Domain/helper cleanup2、
+  harness-native library Clippy `-D warnings`が通過した。Launcher追加18件と元GUIを
+  これで検証したとは数えない。修正済みsourceのDesktop CI41194312852は別途進行する。
+- 次の整理（Astra high判断、Sol6.1 xhigh担当）: HRTBでBootstrapのborrowを縛っても、
+  callbackがbudgetやfunded結果を外部channelへcloneすることまでは防げない。今回の
+  worker自身の保持物・実Joinの証明と、全callerのlease非escapeを区別する。製品入口を
+  有限操作dispatcherへ絞り、現boundの3 original methods＋describeだけを同Store内で
+  実行し、中間reference/fundingを内部保持する。任意Fは内部/testへ閉じ、未bound操作は
+  実行前のintegration failureにする。元source/WITは現在runtime19＋init/transport7で、
+  capture・binding・実検証を分けて記録する。19/7全対応やSetup採用は未完のまま。
 
 - 条件: 旧 Profile・データ・秘密情報・復旧の実移行、実候補と承認の拘束、
   Stop / Quit の終了・失効まで確認する。空の新 root を既存環境の代用にしない。
