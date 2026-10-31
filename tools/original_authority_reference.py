@@ -26,7 +26,7 @@ ORIGINAL_HEAD = "1cf025f1eeab31a3daa2861b1f26a025c6954b6e"
 CLOCK = 1000.0
 LIMIT = 2 * 1024 * 1024
 FORMAT = "io.tobkiri.original-authority-fixtures.v1"
-CASE_COUNT = 38
+CASE_COUNT = 40
 REQUIREMENTS = (
     "cryptography", "cffi", "pycparser", "pytest", "iniconfig", "packaging",
     "pluggy", "pygments",
@@ -282,6 +282,8 @@ def prepare(original_root: Path, destination: Path) -> None:
         ("unknown-table", "unknown-table", None), ("future-version", "future", None),
         ("missing-epoch-repaired", "missing-epoch", None),
         ("bad-key", "bad-key", None), ("wrong-key", "wrong-key", None),
+        ("missing-key-existing-db", "missing-key", None),
+        ("database-broad-mode", "database-broad", None),
         ("key-outer-whitespace", "key-whitespace", None),
         ("key-ignored-base64-bytes", "key-base64-noise", None),
         ("key-broad-mode", "key-broad", None),
@@ -364,6 +366,10 @@ def prepare(original_root: Path, destination: Path) -> None:
                 elif kind in {"bad-key", "wrong-key"}:
                     path.with_suffix(".key").write_bytes(
                         b"invalid-key" if kind == "bad-key" else fernet_type.generate_key())
+                elif kind == "missing-key":
+                    path.with_suffix(".key").unlink()
+                elif kind == "database-broad":
+                    path.chmod(0o644)
                 elif kind in {"key-whitespace", "key-base64-noise"}:
                     key_path = path.with_suffix(".key")
                     key = key_path.read_bytes()
