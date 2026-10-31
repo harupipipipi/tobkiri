@@ -88,6 +88,40 @@ matching successful fixed schemas alone cannot justify the choice. Construction
 and validation costs remain in the original invocation. There is no validation
 result or workload preparation during producer preinit.
 
+## First implementation slice: schema definition checks
+
+Astra high's follow-up selects an App-owned `check_schema` entry with an actual
+Rust execution context. A thin PyClass replacing the original constructor is
+insufficient: retain no per-child Python Validator construction or Python calls
+to `validator.descend` / `evolve` as the internal recursion mechanism.
+
+The Rust context owns frames containing the actual schema/instance handles,
+paths, resolver scope and branch state. Handles retained across a suspended
+step must be owned; do not store GIL-bound temporary borrows. Reuse the36
+handlers' validation rules with direct Rust control transitions and type tests.
+Python boundaries are the required actual resolver/format callbacks and genuine
+error construction, rather than a recreated public third-party traversal API.
+
+The first slice must complete valid AND invalid schema definition checks, use
+the actual META/resource objects, stop at the original first error, and create
+the genuine `SchemaError`. This is separate from document validation. During
+that slice, document validation remains an explicitly selected original operation
+BEFORE evaluation; a schema-check success does not qualify document validation.
+
+Crucially, do not invent dispatch based on the input schema's `$schema`.
+The pinned `Draft202012Validator.check_schema` chooses its validator from
+`cls.META_SCHEMA`, not from the supplied schema declaration. The outer App
+provider is the selected actual callable; original/custom compatibility dispatch
+must reproduce the original operation before validation starts. Invalid results,
+exceptions, capacity refusal and traps never initiate a second validator.
+
+Source review: the [pinned original check_schema method](https://github.com/python-jsonschema/jsonschema/blob/v4.26.0/jsonschema/validators.py#L284) selects from the class META,
+constructs that selected validator with the actual META and format checker, and
+raises from the first yielded error. Its child reference operation and lazy
+branch/error rules need matching Rust transitions. Native64/App37 comparison and
+actual Wasm costs are still required after implementation. No native backend or
+new selected App default exists yet at this checkpoint.
+
 ## Evidence and scope
 
 Keep the original/current/native caller reference and add a separately identified

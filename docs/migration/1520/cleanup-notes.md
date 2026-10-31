@@ -80,7 +80,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   絶対期限・既存2秒graceは変更しない。同期compileは前後で確認するだけで、途中停止や
   worker完了を偽装しない。準備消費後も子が親を保持し、子のcancelは親へ逆流しない。
   late initialization成功を返す直前のcancelは実finishを待ち、cancelとcleanup故障を両方
-  保持する。失敗を後発cancelで上書きしない。コード実装済み、実CIは未検証。
+  保持する。失敗を後発cancelで上書きしない。実CIの結果は下記。
 - この小区分の回帰は実Storeの親生成race/外部親/既cancel拒否/子のみcancel/元graceでの
   guest停止とpayload解放、および実macOS準備のcompile前/引継ぎ前拒否・消費後cancelと
   source寿命。旧fullharnessのpreparation期待件数が2のままだったため実5件へ更新する。
@@ -90,7 +90,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   deadline/fuel保持・payload0）。mac準備は4/5成功。DATA結果の新規割当は既存ownerが
   cancel直後から拒否するため、「grace内の呼出し成功」を期待したテストが誤りだった。
   製品の拒否を緩めず、実result-storage/canonical割当拒否と同Store退役を検査する。
-  これはepoch graceの変更ではない。修正後mac実検証は未完了。
+  これはepoch graceの変更ではない。
+- 修正`a938d9dd0`のCI41157332132は全成功。Linux実Store16件、macOS実RuntimeOwnerの
+  準備/引継ぎ5件、harness-native libraryのClippy -D warningsを通過。消費済み準備の
+  親cancel/drop後に実DATA呼出しが既存result-storage割当拒否で停止し、同Store退役と
+  source保持・physical drop後payload0を確認。証明はlibrary/機構の範囲であり、元製品の
+  owner一組化・GUI Setup・全終了や全20条件の達成に広げない。
 
 - 条件: 旧 Profile・データ・秘密情報・復旧の実移行、実候補と承認の拘束、
   Stop / Quit の終了・失効まで確認する。空の新 root を既存環境の代用にしない。
@@ -945,3 +950,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   明示的default callableの選択、実call/None拒否、mutable cache、直接のerror構築、
   reference/format callbackと結果依存fallback禁止を固定する。新backendはまだ未実装。
   Source-onlyな不存在調査だけでcallback契約を消さず、実装前に37ケースの影響を明示する。
+
+- 018 backendの次の具体化（Astra high回答）: 最初はApp所有check_schemaを成功・失敗とも
+  Rust frame/contextで完結させる。generic handlerのPython descend/evolve経由を再利用する
+  薄いPyClass置換は不採用。子ごとのPython Validatorを作らず、必要なresolver/format/error
+  境界だけ元objectへ戻す。document検証は評価前から元経路を選ぶ別operationとして残す。
+  入力schemaの$schemaから新しいdialect dispatchを足してはいけない。元check_schemaは
+  cls.META_SCHEMAからvalidatorを選択する。実META/資源/first error/SchemaErrorまで実装・
+  比較してから元2Bで測定する。新backendのコードはまだ未実装。
