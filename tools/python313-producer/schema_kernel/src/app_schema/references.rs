@@ -406,10 +406,16 @@ impl ReferenceState {
                         DYNAMIC_ANCHORS.fetch_add(1, Ordering::Relaxed);
                         let mut last = resource;
                         for uri in previous.bind(py).try_iter()? {
-                            let anchor = match registry
-                                .bind(py)
-                                .call_method1("anchor", (uri?, value.getattr("name")?))
-                            {
+                            let uri = uri?;
+                            // Source binds registry.anchor before reading the
+                            // live name. A getter can replace that descriptor;
+                            // this operation still calls its already-bound one.
+                            // Both lookups remain inside the source try block.
+                            let anchor = match (|| {
+                                let callable = registry.bind(py).getattr("anchor")?;
+                                let name = value.getattr("name")?;
+                                callable.call1((uri, name))
+                            })() {
                                 Ok(retrieved) => retrieved.getattr("value")?,
                                 Err(error) => {
                                     let missing = module_member(

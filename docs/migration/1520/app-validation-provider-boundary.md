@@ -345,3 +345,19 @@ native type17,348/numeric77/Python value boundaries0 were observed. One original
 Store/account, zero resets,64MiB/30s, retirement and payload0 were preserved.
 This is a cumulative schema count, not completion of the issue's20 acceptance
 conditions. One-shot42/full, all839 units and final product adoption remain open.
+
+
+## Reference binding order (source fix; CI pending)
+
+The dynamic-anchor loop now binds the actual registry.anchor descriptor before
+reading the actual name and calls that retained callable once. It preserves the
+original NoSuchAnchor catch scope. Three new comparisons use actual selected
+owned anchors, retaining all14 earlier groups, for17 groups/23 pairs on the
+current inventory. Native CI is still required.
+
+The proposed registry binding-view optimization is deferred. An outer canonical
+root method and exact return type do not establish registry ownership; unknown
+rpds maps cannot be scanned as a pure eligibility check. No unknown-registry
+admission, unused fast path, probe retry or result cache was introduced. Astra's
+next selected implementation boundary is the App object constraint family,
+preserving separate keyword passes and existing reference algorithms.

@@ -5,7 +5,7 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
     """Use real builtin Resources; neither names nor contents confer ownership."""
     from jsonschema import Draft202012Validator as original, FormatChecker, exceptions
     from jsonschema import validators
-    from referencing import Anchor, Resource
+    from referencing import Anchor, Registry, Resource
     from referencing.jsonschema import DRAFT202012, DynamicAnchor
     from schema_kernel_observation import first_difference, meta_nodes, observe
 
@@ -31,6 +31,8 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
         for selected in (original, provider)
     ]
     saved_pointer = Resource.__dict__["pointer"]
+    saved_anchor = Registry.__dict__["anchor"]
+    saved_dynamic_name = DynamicAnchor.__dict__["name"]
     saved_helper = DRAFT202012.maybe_in_subresource
     checks = {}
     fields = ("native_pointers", "native_static_anchors", "native_dynamic_anchors",
@@ -143,6 +145,9 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
                     outcome["schema_is_actual_resource_child"] = True
             except Exception as error:
                 outcome = {"kind": "exception", "error": graph(error)}
+                if "fault" in state:
+                    assert error is state["fault"]
+                    outcome["is_supplied_exception"] = True
             else:
                 outcome = {"kind": "valid"}
             after = counts()
@@ -152,6 +157,8 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
                 assert not any(delta.values()), "original oracle entered native fragments"
             if "error_schema" in state:
                 assert outcome["kind"] == "schema-error"
+            if "fault" in state:
+                assert outcome["kind"] == "exception" and outcome["is_supplied_exception"]
             if "expected_requests" in state:
                 assert requests == state["expected_requests"], requests
             if state.get("pointer_calls") is not None:
@@ -161,21 +168,38 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
             if state.get("opaque"):
                 assert any("opaque_lookup" in event for event in events)
                 assert any("helper" in event for event in events)
+            if "dynamic_order" in state:
+                positions = [index for index, event in enumerate(events) if "name_get" in event]
+                assert len(positions) == 1, events
+                position = positions[0]
+                assert position > 0 and "anchor_bind" in events[position - 1], events
+                assert events[position]["same_anchor"] and events[position]["same_owner"]
+                assert not any("replacement_call" in event for event in events), events
+                if state["dynamic_order"] == "raise":
+                    assert position + 1 == len(events), events
+                else:
+                    assert events[position + 1]["anchor_call"] == events[position - 1]["anchor_bind"]
             return {"outcome": outcome, "events": events, "actual": actual}, delta
         finally:
             try:
-                Resource.pointer = saved_pointer
+                Registry.anchor = saved_anchor
             finally:
                 try:
-                    object.__setattr__(DRAFT202012, "maybe_in_subresource", saved_helper)
+                    DynamicAnchor.name = saved_dynamic_name
                 finally:
                     try:
-                        object.__setattr__(registry, "_retrieve", saved_retrieve)
+                        Resource.pointer = saved_pointer
                     finally:
                         try:
-                            selected.META_SCHEMA = saved_meta
+                            object.__setattr__(DRAFT202012, "maybe_in_subresource", saved_helper)
                         finally:
-                            del definitions[fixture_key]
+                            try:
+                                object.__setattr__(registry, "_retrieve", saved_retrieve)
+                            finally:
+                                try:
+                                    selected.META_SCHEMA = saved_meta
+                                finally:
+                                    del definitions[fixture_key]
 
     def compare(make, positive=None, zero=False):
         expected, _ = run(original, make)
@@ -213,6 +237,71 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
                     "error_schema": resource.contents["$defs"]["anchorString"]}
         compare(dynamic_anchor, "native_dynamic_anchors")
         checks["existing_builtin_dynamic_anchor_enters_native_path"] = True
+
+        def dynamic_binding(mode):
+            def make(fixture, resource, specifications):
+                dynamic = specifications._anchors[(core_uri, "meta")]
+                assert type(dynamic) is DynamicAnchor
+                events, bindings = [], []
+                fault = RuntimeError("actual dynamic anchor name getter failure")
+                state = {"meta": {"$id": root_uri, "$dynamicRef": core_uri + "#meta"},
+                         "actual": {"$anchor": 0}, "events": events, "dynamic_order": mode}
+                if mode == "raise":
+                    state["fault"] = fault
+                else:
+                    state["error_schema"] = resource.contents["$defs"]["anchorString"]
+
+                def replacement(receiver, uri, name):
+                    events.append({"replacement_call": True})
+                    raise AssertionError("name getter changed an already-bound anchor operation")
+
+                class AnchorDescriptor:
+                    def __get__(self, receiver, owner):
+                        if receiver is None:
+                            return self
+                        binding = len(bindings)
+                        bindings.append(receiver)
+                        events.append({"anchor_bind": binding,
+                                       "exact_registry": type(receiver) is Registry,
+                                       "same_owner": owner is Registry})
+                        method = saved_anchor.__get__(receiver, owner)
+                        assert method.__self__ is receiver
+
+                        def call(uri, name):
+                            events.append({"anchor_call": binding, "uri": uri, "name": name,
+                                           "same_registry": method.__self__ is bindings[binding]})
+                            return method(uri, name)
+
+                        return call
+
+                class NameDescriptor:
+                    def __get__(self, receiver, owner):
+                        if receiver is None:
+                            return self
+                        name = saved_dynamic_name.__get__(receiver, owner)
+                        if receiver is dynamic:
+                            events.append({"name_get": True, "same_anchor": receiver is dynamic,
+                                           "same_owner": owner is DynamicAnchor})
+                            if mode == "replace":
+                                Registry.anchor = replacement
+                            elif mode == "raise":
+                                raise fault
+                        return name
+
+                def install(state):
+                    Registry.anchor = AnchorDescriptor()
+                    DynamicAnchor.name = NameDescriptor()
+
+                state["install"] = install
+                return state
+            return make
+
+        compare(dynamic_binding("ordered"), "native_dynamic_anchors")
+        checks["dynamic_anchor_binds_registry_descriptor_before_live_name_getter"] = True
+        compare(dynamic_binding("replace"), "native_dynamic_anchors")
+        checks["dynamic_name_getter_replacement_preserves_already_bound_callable"] = True
+        compare(dynamic_binding("raise"), "native_dynamic_anchors")
+        checks["dynamic_name_getter_exception_preserves_supplied_identity_and_bind_order"] = True
 
         # Inspect only the existing crawled inventory. Calling anchors() here
         # would create new Resources and would not establish builtin provenance.
@@ -467,16 +556,22 @@ def fragment_checks(provider, kernel) -> dict[str, bool]:
         checks["builtin_contents_mutation_is_read_on_next_reference"] = True
     finally:
         try:
-            Resource.pointer = saved_pointer
+            Registry.anchor = saved_anchor
         finally:
             try:
-                object.__setattr__(DRAFT202012, "maybe_in_subresource", saved_helper)
+                DynamicAnchor.name = saved_dynamic_name
             finally:
-                for selected, saved_meta, registry, saved_retrieve in saved_lanes:
+                try:
+                    Resource.pointer = saved_pointer
+                finally:
                     try:
-                        object.__setattr__(registry, "_retrieve", saved_retrieve)
+                        object.__setattr__(DRAFT202012, "maybe_in_subresource", saved_helper)
                     finally:
-                        selected.META_SCHEMA = saved_meta
+                        for selected, saved_meta, registry, saved_retrieve in saved_lanes:
+                            try:
+                                object.__setattr__(registry, "_retrieve", saved_retrieve)
+                            finally:
+                                selected.META_SCHEMA = saved_meta
 
-    assert len(checks) == 14 and all(value is True for value in checks.values())
+    assert len(checks) == 17 and all(value is True for value in checks.values())
     return checks

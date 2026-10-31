@@ -1424,3 +1424,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   RAM artifact13036632594/244,952B・13036197024/246,392BのJSONだけを保存。
   共有helper呼出数とaggregate frontierは改善したが、個々の関数へのfuel帰属は行わない。
   次のApp-owned reference/resource境界をAstraへ質問中。追加設計/実装はまだ未選択。
+
+- Registry binding-view案は今回は見送る。Astra highとSol source監査により、modelの
+  specifications・combine後registry・root派生registryは別instanceで、exact Resolverや
+  外側canonical methodだけでは内部override由来のregistryをownedと証明できない。
+  [pinned rpds-py](https://raw.githubusercontent.com/crate-py/rpds/7277eb681f6efd67eca1bbaa32f78d78bdc044a5/src/lib.rs)
+  のitems/keys iteratorはremove内で同一stored keyにもPython __eq__を呼ぶため、
+  未知mapの走査を無副作用なkey検査に使えない。未使用fastpathやguard群を追加せず、
+  将来はApp自身のbinding構築を一次状態にする別設計が必要。source lookup cacheや
+  callback返却unknown registryの所有昇格を導入しない。
+- 独立のsource正確性修正をSol6.1 xhighが実装: dynamic anchorで実registry.anchorを
+  bindしてから実name getterを読み、同じcallableを一回だけ呼ぶ。Descriptor/getter/callは
+  元NoSuchAnchor捕捉内、scope iterator.advanceは外のまま。現Rustの引数準備がnameを
+  先に評価する差を修正した。実owned anchorだけを一時patchする3群を追加し、既存14群
+  を維持、合計17群/現inventory23差分対。取得順・getterによるmethod差替え・供給例外
+  identity/causeを比較し、native dynamic到達を必須。AST/rustfmtのみ成功、実CI待ち。
+- 次のまとまったsliceはAstra指示のApp object family properties/patternProperties/
+  additionalProperties。三ruleを融合せず実順序・child binding/live変更・combined regex
+  の意味を保ち、generic findAdditionalPropertiesへの委譲を外す。registry/URI/resource/
+  pointer/dynamic算法は変更しない。まだ実装前。
