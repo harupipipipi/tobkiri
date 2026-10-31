@@ -217,8 +217,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   store constructor直前だけ明示test sentinelで停止する。元journal/lock/strict read/key/
   HMAC/predecessorは実処理し、NoJournalは元outer/innerの2呼出しを通す。37のfresh入力を
   準備し、追加/不正key、uppercase/nonASCII HMAC、JSON/順序/symlinkと前倒し検査を比較する。
-  この観測境界は後半recoveryや実review/listing成功ではない。source/AST確認のみで、
-  原本実CI結果は待機中。DB/key/fixture/ZIP/binaryはartifactに含めない。
+  `4ea245e1e`の[原本prelude CI41241103672](https://github.com/harupipipipi/tobkiri/actions/runs/41241103672)
+  は両OS37件成功。uppercase HMACは認証失敗、nonASCII HMACはraw TypeError、31個の
+  Unicode codepoint keyはweak、32個とPython whitespace trim後のkeyは元pointer到達を
+  実測。candidate/confirmationの追加検査をこの段階へ前倒ししないことも確認した。
+  必要JSON135,214Bのみ保存。重要Sol実装のstrict decoderについて、duplicate hookと
+  NaN/huge integer/surrogateの先後、元depth64/65と未完JSONの先後という具体的懸念を
+  調べるため、同じ原本処理へ10件追加し総47件とする。独立state/key比較も配線準備した。
+  この観測境界は後半recoveryや実review/listing成功ではなく、47件の実結果/native比較は
+  未確認。DB/key/fixture/ZIP/binaryはartifactに含めない。
   JSON/surrogate/depth・不正leaseの例外投影、同時key作成/複合I/O/close、Linux process情報
   read内部close receipt等は未閉鎖。全Open同等・既存DB採用・GUI接続の完了とはしない。
 - cryptoの余分なowned key配列copyをZeroizing先作成へ整理した。Fernetは既存RustCryptoの

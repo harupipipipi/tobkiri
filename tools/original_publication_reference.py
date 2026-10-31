@@ -17,7 +17,9 @@ import stat
 import sys
 from types import SimpleNamespace
 
-from original_authority_reference import ORIGINAL_HEAD, error_graph, write_json
+from original_authority_reference import (
+    ORIGINAL_HEAD, error_graph, first_difference, load_json, write_json,
+)
 from original_setup_review_reference import check_original
 
 
@@ -27,6 +29,9 @@ CASES = (
     "intent-disappears-after-lock", "intent-directory", "intent-dangling-symlink",
     "intent-symlink", "profiles-symlink", "profiles-broad-mode",
     "json-empty", "json-invalid-utf8", "json-duplicate", "json-float", "json-large-integer",
+    "json-depth64", "json-depth65", "json-depth65-malformed", "json-surrogate",
+    "json-surrogate-duplicate", "json-duplicate-nan", "json-nan-duplicate",
+    "json-duplicate-large-integer", "json-overflow", "json-nan",
     "key-missing", "key-before-envelope-shape", "envelope-shape", "payload-schema-before-key",
     "key-empty", "key-short", "key-invalid-utf8", "key-broad-mode", "key-directory",
     "key-symlink", "key-dangling-symlink", "key-unicode-short", "key-unicode-valid",
@@ -110,6 +115,15 @@ def seed(name: str, root: Path, journal_type, pointer_type, protocol, signing) -
             "json-empty": b"", "json-invalid-utf8": b"\xff",
             "json-duplicate": b'{"a":1,"a":2}', "json-float": b'{"a":1.5}',
             "json-large-integer": b'{"a":9007199254740992}',
+            "json-depth64": b"[" * 64 + b"0" + b"]" * 64,
+            "json-depth65": b"[" * 65 + b"0" + b"]" * 65,
+            "json-depth65-malformed": b"[" * 65 + b"0" + b"]" * 64,
+            "json-surrogate": br'{"a":"\ud800"}',
+            "json-surrogate-duplicate": br'{"a":"\ud800","a":1}',
+            "json-duplicate-nan": b'{"a":1,"a":NaN}',
+            "json-nan-duplicate": b'{"a":NaN,"a":1}',
+            "json-duplicate-large-integer": b'{"a":1,"a":9007199254740992}',
+            "json-overflow": b'{"a":1e400}', "json-nan": b'{"a":NaN}',
         }
         intent.write_bytes(contents[name])
     elif name in {"key-missing", "key-before-envelope-shape"}:
@@ -266,12 +280,72 @@ def prepare(original: Path, destination: Path) -> None:
                       "qualification": False, "production_enabled": False}))
 
 
+def compare(original: Path, fixtures: Path, observations: Path, output: Path) -> None:
+    """Compare native observations and independently inspect the fixture subtree."""
+    check_original(original)
+    reference, native = load_json(fixtures), load_json(observations)
+    if (reference["format"] != FORMAT or reference["original_head"] != ORIGINAL_HEAD
+            or reference["reference_checks_passed"] is not True
+            or native["format"] != "io.tobkiri.original-publication-prelude-native-observations.v1"):
+        raise ValueError("fresh original/native publication observation formats required")
+    expected = {row["name"]: row for row in reference["cases"]}
+    actual = {row["name"]: row for row in native["cases"]}
+    if (len(expected) != len(CASES) or len(reference["cases"]) != len(CASES)
+            or len(actual) != len(CASES) or len(native["cases"]) != len(CASES)
+            or set(expected) != set(CASES) or set(actual) != set(CASES)):
+        raise ValueError("exact closed publication case inventory required")
+    report = {"format": "io.tobkiri.original-publication-prelude-comparison.v1",
+              "original_head": ORIGINAL_HEAD, "cases": [], "matched": False,
+              "native_comparison": True, "qualification": False, "production_enabled": False,
+              "scope": "finite journal prelude, typed failures and original fixture subtree only; "
+                       "native control metadata, pointer recovery and full review/listing excluded"}
+    destination = fixtures.parent
+    for name in CASES:
+        case = expected[name]
+        root = destination / name / "native"
+        if str(root) != case["user_data_dir"]:
+            raise ValueError("original fixture root does not match its closed case")
+        result = {key: value for key, value in actual[name].items() if key != "name"}
+        result_difference = first_difference(case["expected"], result)
+        state_difference = first_difference(case["reference_state"], filesystem(root))
+        key_changed = False
+        for filename in (".publication-key", "original-key"):
+            seed_key = destination / name / "seed" / "profiles" / filename
+            if seed_key.is_file() and not seed_key.is_symlink():
+                seed_bytes = seed_key.read_bytes()
+                for target in ("reference", "native"):
+                    key = destination / name / target / "profiles" / filename
+                    key_changed |= (not key.is_file() or key.is_symlink()
+                                    or key.read_bytes() != seed_bytes)
+        report["cases"].append({"name": name, "result_difference": result_difference,
+                                "state_difference": state_difference,
+                                "existing_key_changed": key_changed})
+    report["matched"] = all(not (case["result_difference"] or case["state_difference"]
+                                  or case["existing_key_changed"]) for case in report["cases"])
+    write_json(output, report)
+    if not report["matched"]:
+        raise AssertionError([case for case in report["cases"] if case["result_difference"]
+                              or case["state_difference"] or case["existing_key_changed"]])
+    print(json.dumps({"native_comparison": True, "matched": True, "cases": len(CASES),
+                      "qualification": False, "production_enabled": False}))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("command", choices=("prepare", "compare"), nargs="?", default="prepare")
     parser.add_argument("--original-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--fixtures", type=Path)
+    parser.add_argument("--observations", type=Path)
     args = parser.parse_args()
-    prepare(args.original_root.resolve(strict=True), args.output.resolve())
+    original = args.original_root.resolve(strict=True)
+    if args.command == "prepare":
+        prepare(original, args.output.resolve())
+    elif args.fixtures is None or args.observations is None:
+        parser.error("compare requires fresh original fixtures and native observations")
+    else:
+        compare(original, args.fixtures.resolve(strict=True),
+                args.observations.resolve(strict=True), args.output.resolve())
 
 
 if __name__ == "__main__":
