@@ -216,7 +216,9 @@ async fn original_catalog_component_driver() -> Result<()> {
     let mut observed = None;
     let execution: Result<()> = async {
         let error = match runtime
-            .setup_review_listing(&BootstrapReviewOptions::default())
+            // Preserve this constructor-entry proof while normal listing
+            // continues into the independently tested definition interval.
+            .setup_review_catalog_prefix(&BootstrapReviewOptions::default())
             .await?
         {
             Ok(value) => {

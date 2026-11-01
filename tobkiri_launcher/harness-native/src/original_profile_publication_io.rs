@@ -624,6 +624,7 @@ impl Drop for ProcessGuard {
 fn process_lock<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     path: &Path,
+    name: LockName,
 ) -> Result<ProcessGuard> {
     static LOCKS: OnceLock<Mutex<BTreeMap<PathBuf, ProcessEntry>>> = OnceLock::new();
     // Every retained registry entry owns its bounded original control token.
@@ -665,6 +666,7 @@ fn process_lock<S: OriginalAuthorityOwner>(
         .owner
         .lock()
         .map_err(|_| OriginalAuthorityError::unavailable())?;
+    let deadline = name.deadline(op.deadline);
     while owner.is_some() {
         op.check(OriginalAuthorityStage::Guard)?;
         if *owner == Some(std::thread::current().id()) {
@@ -673,12 +675,14 @@ fn process_lock<S: OriginalAuthorityOwner>(
                 "nested publication recovery continuation",
             ));
         }
+        if matches!(name, LockName::Definition) && Instant::now() >= deadline {
+            return Err(lock_timeout());
+        }
         owner = local
             .changed
             .wait_timeout(
                 owner,
-                Duration::from_millis(10)
-                    .min(op.deadline.saturating_duration_since(Instant::now())),
+                Duration::from_millis(10).min(deadline.saturating_duration_since(Instant::now())),
             )
             .map_err(|_| OriginalAuthorityError::unavailable())?
             .0;
@@ -686,6 +690,38 @@ fn process_lock<S: OriginalAuthorityOwner>(
     *owner = Some(std::thread::current().id());
     drop(owner);
     Ok(ProcessGuard { lock: local })
+}
+
+#[cfg(unix)]
+#[derive(Clone, Copy)]
+pub(super) enum LockName {
+    Publication,
+    Definition,
+}
+// Only these fixed lexical callers are admitted. The existing owner check
+// still refuses reentry of the SAME lock; it does not implement arbitrary
+// Python RLock recursion. Publication -> Definition is a different full name.
+#[cfg(unix)]
+impl LockName {
+    pub(super) fn text(self) -> &'static str {
+        match self {
+            Self::Publication => LOCK,
+            Self::Definition => ".profile-definition.lock",
+        }
+    }
+    fn deadline(self, operation: Instant) -> Instant {
+        match self {
+            Self::Publication => operation,
+            Self::Definition => operation.min(Instant::now() + Duration::from_secs(5)),
+        }
+    }
+}
+#[cfg(unix)]
+fn lock_timeout() -> OriginalAuthorityError {
+    raw(
+        "core_runtime.active_profile_store_v4.ActiveProfileStoreLockTimeout",
+        "active Profile lock deadline exceeded",
+    )
 }
 
 #[cfg(unix)]
@@ -700,11 +736,19 @@ impl PublicationLock {
         op: &Operation<'_, S>,
         directory: &Directory,
     ) -> Result<Self> {
-        let local = process_lock(op, &directory.root)?;
+        Self::acquire_named(op, directory, LockName::Publication)
+    }
+    pub(super) fn acquire_named<S: OriginalAuthorityOwner>(
+        op: &Operation<'_, S>,
+        directory: &Directory,
+        name: LockName,
+    ) -> Result<Self> {
+        let path = directory.root.join(name.text());
+        let local = process_lock(op, &path, name)?;
         let files = directory.open(op)?;
         let result = (|| {
             let parent = files.last().expect("directory chain");
-            let before = Directory::stat(parent, LOCK, false)?;
+            let before = Directory::stat(parent, name.text(), false)?;
             let flags = libc::O_RDWR
                 | libc::O_NOFOLLOW
                 | libc::O_CLOEXEC
@@ -716,19 +760,22 @@ impl PublicationLock {
             let descriptor = unsafe {
                 libc::openat(
                     parent.as_raw_fd(),
-                    c".bootstrap-publication.lock".as_ptr(),
+                    match name {
+                        LockName::Publication => c".bootstrap-publication.lock".as_ptr(),
+                        LockName::Definition => c".profile-definition.lock".as_ptr(),
+                    },
                     flags,
                     0o600,
                 )
             };
             if descriptor < 0 {
-                return Err(raw_io(std::io::Error::last_os_error(), Some(LOCK)));
+                return Err(raw_io(std::io::Error::last_os_error(), Some(name.text())));
             }
             let file =
                 TrackedFile::new(unsafe { File::from_raw_fd(descriptor) }, op.cleanup.clone());
             let validation = (|| {
                 let opened = file.metadata().map_err(|error| raw_io(error, None))?;
-                let named = Directory::stat(parent, LOCK, true)?.expect("required lock");
+                let named = Directory::stat(parent, name.text(), true)?.expect("required lock");
                 if !owned_regular(&opened)
                     || fingerprint(&opened) != named.fingerprint
                     || before
@@ -764,37 +811,52 @@ impl PublicationLock {
             locked: false,
             local: Some(local),
         };
-        loop {
-            op.check(OriginalAuthorityStage::Guard)?;
-            if unsafe {
-                libc::flock(
-                    guard.file.as_ref().expect("publication lock").as_raw_fd(),
-                    libc::LOCK_EX | libc::LOCK_NB,
-                )
-            } == 0
-            {
-                guard.locked = true;
-                break;
+        // Python starts the OS wait after its distinct process-lock wait.
+        let deadline = name.deadline(op.deadline);
+        let acquired = (|| {
+            loop {
+                op.check(OriginalAuthorityStage::Guard)?;
+                if unsafe {
+                    libc::flock(
+                        guard.file.as_ref().expect("publication lock").as_raw_fd(),
+                        libc::LOCK_EX | libc::LOCK_NB,
+                    )
+                } == 0
+                {
+                    guard.locked = true;
+                    break;
+                }
+                let error = std::io::Error::last_os_error();
+                if !error.raw_os_error().is_some_and(|errno| {
+                    [libc::EACCES, libc::EAGAIN, libc::EDEADLK].contains(&errno)
+                }) {
+                    return Err(caused(
+                        raw(
+                            "core_runtime.active_profile_store_v4.ActiveProfileStoreError",
+                            "active Profile lock is unavailable",
+                        ),
+                        raw_io(error, None),
+                    ));
+                }
+                if matches!(name, LockName::Definition) && Instant::now() >= deadline {
+                    return Err(caused(lock_timeout(), raw_io(error, None)));
+                }
+                std::thread::park_timeout(
+                    Duration::from_millis(10)
+                        .min(deadline.saturating_duration_since(Instant::now())),
+                );
             }
-            let error = std::io::Error::last_os_error();
-            if !error
-                .raw_os_error()
-                .is_some_and(|errno| [libc::EACCES, libc::EAGAIN, libc::EDEADLK].contains(&errno))
-            {
-                return Err(caused(
-                    raw(
-                        "core_runtime.active_profile_store_v4.ActiveProfileStoreError",
-                        "active Profile lock is unavailable",
-                    ),
-                    raw_io(error, None),
-                ));
-            }
-            std::thread::park_timeout(
-                Duration::from_millis(10)
-                    .min(op.deadline.saturating_duration_since(Instant::now())),
-            );
+            directory.validate_file(op, name.text(), guard.file.as_ref().expect("profile lock"))
+        })();
+        if let Err(error) = acquired {
+            return if matches!(name, LockName::Definition) {
+                finish_scope(Err(error), guard.close())
+            } else {
+                // Preserve the historical publication caller's error/Drop
+                // behavior; this slice only adds the definition occurrence.
+                Err(error)
+            };
         }
-        directory.validate_file(op, LOCK, guard.file.as_ref().expect("publication lock"))?;
         Ok(guard)
     }
     pub(super) fn close(&mut self) -> Result<()> {

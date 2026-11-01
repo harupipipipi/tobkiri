@@ -155,6 +155,24 @@ pub(super) fn decode_catalog_lock<S: OriginalAuthorityOwner>(
     op: &Operation<'_, S>,
     budget: &std::sync::Arc<dyn tobkiri_canon::AllocationBudget>,
 ) -> Result<Funded<Document>> {
+    decode_metered_strict(input, op, budget)
+}
+
+/// The fixed registry read retains the old strict allocation reservation and
+/// charges its reached duplicate-key comparisons to the existing native work.
+pub(super) fn decode_profile_definitions<S: OriginalAuthorityOwner>(
+    input: &[u8],
+    op: &Operation<'_, S>,
+    budget: &std::sync::Arc<dyn tobkiri_canon::AllocationBudget>,
+) -> Result<Funded<Document>> {
+    decode_metered_strict(input, op, budget)
+}
+
+fn decode_metered_strict<S: OriginalAuthorityOwner>(
+    input: &[u8],
+    op: &Operation<'_, S>,
+    budget: &std::sync::Arc<dyn tobkiri_canon::AllocationBudget>,
+) -> Result<Funded<Document>> {
     if input.len() > tobkiri_canon::MAX_BYTES {
         return Err(strict_error("json input exceeds size limit"));
     }

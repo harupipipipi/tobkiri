@@ -353,13 +353,30 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
         .map_err(anyhow::Error::from)?;
     // Repeat the actual selected user-data lookup at its original post-load
     // reachpoint. No constructor, exists, migration or Authority is advanced.
-    pack.work
-        .get()
-        .source
-        .with_original_review_user_data(|_| ())?;
-    Ok(Err(BootstrapReviewFailure::NotBound(
-        BootstrapReviewReachpoint::ProfileDefinitionStoreNotBound,
-    )))
+    if review.catalog_prefix {
+        pack.work
+            .get()
+            .source
+            .with_original_review_user_data(|_| ())?;
+        return Ok(Err(BootstrapReviewFailure::NotBound(
+            BootstrapReviewReachpoint::ProfileDefinitionStoreNotBound,
+        )));
+    }
+    let prefix = crate::original_authority::definitions::run(
+        &review.read,
+        &pack.work.get().source,
+        pack.cancellation,
+        pack.input_budget,
+    );
+    match prefix {
+        Ok(prefix) => Ok(Err(BootstrapReviewFailure::NotBound(match prefix {
+            crate::original_authority::definitions::DefinitionPrefix::ImportLegacyNotBound =>
+                BootstrapReviewReachpoint::ImportLegacyCollectionNotBound,
+            crate::original_authority::definitions::DefinitionPrefix::MigrateLegacySuccessorsNotBound =>
+                BootstrapReviewReachpoint::MigrateLegacySuccessorsNotBound,
+        }))),
+        Err(error) => Ok(Err(original_failure(error))),
+    }
 }
 
 fn parent(resolved: &CoreBuffer, count: usize) -> Result<PathBuf> {

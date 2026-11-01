@@ -810,7 +810,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
     where
         S: crate::BootstrapReviewOwner,
     {
-        self.setup_review_inner(options, false).await
+        self.setup_review_inner(options, false, false).await
     }
 
     /// Historical same-guard identity boundary only; not the product candidate.
@@ -822,13 +822,26 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
     where
         S: crate::BootstrapReviewOwner,
     {
-        self.setup_review_inner(options, true).await
+        self.setup_review_inner(options, true, false).await
+    }
+
+    /// Historical constructor-entry catalog proof, before registry adoption.
+    #[cfg(test)]
+    pub async fn setup_review_catalog_prefix(
+        &mut self,
+        options: &crate::BootstrapReviewOptions,
+    ) -> Result<std::result::Result<CoreBuffer, crate::BootstrapReviewFailure>>
+    where
+        S: crate::BootstrapReviewOwner,
+    {
+        self.setup_review_inner(options, false, true).await
     }
 
     async fn setup_review_inner(
         &mut self,
         options: &crate::BootstrapReviewOptions,
         identity_prefix: bool,
+        catalog_prefix: bool,
     ) -> Result<std::result::Result<CoreBuffer, crate::BootstrapReviewFailure>>
     where
         S: crate::BootstrapReviewOwner,
@@ -855,6 +868,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             Err(error) => return Ok(Err(crate::BootstrapReviewFailure::Admission(error))),
         };
         review.identity_prefix = identity_prefix;
+        review.catalog_prefix = catalog_prefix;
         // The carrier remains in self, outside dispatch's caught future, even
         // if a source callback panics during its real persistence operation.
         self.review = Some(review);

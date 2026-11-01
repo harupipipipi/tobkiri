@@ -212,24 +212,97 @@ def prepare(original: Path, catalog: Path, output: Path) -> None:
                         "no migration body, actual native Store, factory qualification, Authority or GUI"})
 
 
+def compare(original: Path, fixtures: Path, observations: Path, output: Path) -> None:
+    """Independently compare direct native observations and actual fixture files."""
+    check_original(original)
+    for path in (fixtures, observations):
+        if path.stat().st_size > 2 * 1024 * 1024:
+            raise ValueError("definition comparison exceeds bounded input")
+    expected = json.loads(fixtures.read_bytes())
+    native = json.loads(observations.read_bytes())
+    if (expected.get("format") != FORMAT or expected.get("original_head") != ORIGINAL_HEAD
+            or expected.get("case_count") != 13
+            or native.get("format") != "io.tobkiri.original-profile-definition-prefix-native-observations.v1"
+            or native.get("original_head") != ORIGINAL_HEAD or native.get("case_count") != 13):
+        raise ValueError("definition comparison identity differs")
+    references = {row["name"]: row for row in expected["cases"]}
+    actual = {row["name"]: row for row in native["cases"]}
+    if (len(expected["cases"]) != 13 or len(native["cases"]) != 13
+            or set(references) != set(CASES) or set(actual) != set(CASES)):
+        raise ValueError("definition comparison case set differs")
+    flags = (
+        "key_bytes_and_identity_unchanged", "index_bytes_and_identity_unchanged",
+        "execution_matched_interval", "physical_owner_reopened",
+    )
+    # The driver records the exact close receipt rather than a new success
+    # token; its data is compared with independently inspected OS state below.
+    results = []
+    for name in CASES:
+        reference, observed = references[name], actual[name]
+        user_data = fixtures.parent / name / "native/user-data"
+        state = filesystem(user_data)
+        receipt = observed.get("close_receipt", {})
+        after = observed.get("capacity", {}).get("after_reap", {})
+        key = user_data / "profiles/.publication-key"
+        seed_key = fixtures.parent / name / "seed-user-data/profiles/.publication-key"
+        key_equal = key.read_bytes() == seed_key.read_bytes()
+        # cleanup_verified is derived here; it is not an input success flag.
+        cleanup = (observed.get("close_succeeded") is True
+                   and receipt == {"open_files": 0, "open_connections": 0, "uncertain": False}
+                   and after == {"bytes": 0, "reservations": 0}
+                   and _lock_free(user_data / "profiles/.profile-definition.lock") is True
+                   and _lock_free(user_data / "profiles/.bootstrap-publication.lock") is True)
+        matched = (observed.get("observation") == reference["expected"]
+                   and state == reference["user_data_after"]
+                   and observed.get("user_data_after") == state
+                   and all(observed.get(flag) is True for flag in flags)
+                   and observed.get("journal_lock_held_after_store_retirement") is True
+                   and observed.get("definition_lock_free_before_finish") is True
+                   and observed.get("journal_lock_free_before_finish") is False
+                   and observed.get("single_store") is True
+                   and observed.get("budget_resets") == 0
+                   and observed.get("same_original_30s_deadline") is True
+                   and key_equal and cleanup)
+        results.append({"name": name, "matched": matched,
+                        "typed_outcome_matches": observed.get("observation") == reference["expected"],
+                        "independent_files_match": state == reference["user_data_after"],
+                        "existing_key_unchanged": key_equal, "cleanup_verified": cleanup})
+    passed = sum(row["matched"] for row in results)
+    write_json(output, {"format": "io.tobkiri.original-profile-definition-prefix-comparison.v1",
+               "original_head": ORIGINAL_HEAD, "cases": results,
+               "passed": passed, "failed": len(results) - passed,
+               "qualification": False, "production_enabled": False,
+               "scope": "direct controlled-root native interval and typed projection only; "
+                        "no actual AppHandle, Wasm catalog, Guest factory, migration or Authority qualification"})
+    if passed != 13:
+        raise AssertionError("native definitions interval differs; see bounded comparison")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("prepare", "probe"))
+    parser.add_argument("command", choices=("prepare", "probe", "compare"))
     parser.add_argument("--original-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--catalog-fixtures", type=Path)
     parser.add_argument("--runtime", type=Path)
     parser.add_argument("--user-data", type=Path)
+    parser.add_argument("--fixtures", type=Path)
+    parser.add_argument("--observations", type=Path)
     args = parser.parse_args()
     original = args.original_root.resolve(strict=True)
     if args.command == "prepare":
         if args.catalog_fixtures is None:
             parser.error("prepare requires --catalog-fixtures")
         prepare(original, args.catalog_fixtures.resolve(strict=True), args.output.resolve())
-    else:
+    elif args.command == "probe":
         if args.runtime is None or args.user_data is None:
             parser.error("probe requires --runtime and --user-data")
         probe(original, args.runtime.resolve(strict=True), args.user_data.resolve(strict=True), args.output)
+    else:
+        if args.fixtures is None or args.observations is None:
+            parser.error("compare requires --fixtures and --observations")
+        compare(original, args.fixtures.resolve(strict=True),
+                args.observations.resolve(strict=True), args.output)
 
 
 if __name__ == "__main__":

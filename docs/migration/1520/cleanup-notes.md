@@ -2259,7 +2259,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 025: registryのdeepcopyを重複したnative保持へ移さない
 
-- 状態: **Sol6.1 xhighのdefinition接続Sourceが確定した未コミットWIP。実行未検証**。
+- 状態: **Sol6.1 xhighのdefinition接続と独立driverのSourceが確定。Native実行未検証**。
 - 場所: `original_profile_definitions{,_model,_tests}.rs`、既存publication IO/JSON、
   `tools/original_profile_definition_prefix_reference.py`。
 - 整理: 元snapshotの厳密JSON/digest/全state・履歴・ID検証とnormal postyield検証を保ち、
@@ -2273,6 +2273,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   sentinelで止める。実definition lock解放とjournal保持、state/key・closeを別に観測する。
   CI41323891367は両OS13件成功。正常4枝/負例9枝と実lock lifetimeを観測し、135,961Bの
   選択JSONのみ保存した。migration本体0、Native比較は未実行であり、製品採用の証拠ではない。
+  同じ13件のNative direct区間を別のSol6.1 xhighが実装したdriverで比較する。
+  既存1account/1Storeの実budget、journal保持/definition解放、元state/key、実close、
+  DATA解放/reap0/0、physical owner再openを検証予定。実AppHandle/Wasm全catalog/
+  Guest factory/非同期Joinの資格はこの同期mechanics driverへ含めない。
 - 未完: outer catch対象のSecurePersistence/ActiveProfileStore/Timeoutの有限class実bindingは
   必須残件。Astra highに従い既存typed-request投影は未資格と明記し、実同Storeのfactory/
   cause/context成功へ読み替えない。接続済factoryの失敗からのfallbackや別builtin合成はしない。

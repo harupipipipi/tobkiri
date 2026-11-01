@@ -53,6 +53,8 @@ pub enum BootstrapReviewReachpoint {
     HostProfileCatalogNotBound,
     CatalogSourceNotBound,
     ProfileDefinitionStoreNotBound,
+    ImportLegacyCollectionNotBound,
+    MigrateLegacySuccessorsNotBound,
 }
 
 /// ResolutionDenied is a typed request to the original Pack's denied factory,
@@ -111,6 +113,7 @@ pub(crate) struct Review {
     pub(crate) attempted: bool,
     pub(crate) actual: ActualCustody,
     pub(crate) identity_prefix: bool,
+    pub(crate) catalog_prefix: bool,
 }
 #[derive(Default)]
 pub(crate) struct ActualCustody {
@@ -144,6 +147,7 @@ impl Review {
             attempted: false,
             actual: ActualCustody::default(),
             identity_prefix: false,
+            catalog_prefix: false,
         })
     }
     pub(crate) fn receipt(&self) -> OriginalAuthorityCloseReceipt {

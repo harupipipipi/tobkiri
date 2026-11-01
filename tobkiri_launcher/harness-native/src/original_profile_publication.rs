@@ -19,6 +19,8 @@ use model::{Pointer, validate_pointer};
 mod active_profile;
 #[path = "original_profile_catalog_io.rs"]
 pub(crate) mod catalog;
+#[path = "original_profile_definitions.rs"]
+pub(crate) mod definitions;
 
 const JOURNAL: &str = "bootstrap-publication.json";
 const LOCK: &str = ".bootstrap-publication.lock";

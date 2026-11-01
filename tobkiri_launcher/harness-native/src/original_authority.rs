@@ -12,6 +12,7 @@ mod crypto;
 #[path = "original_authority_io.rs"]
 mod io;
 pub(crate) use io::publication::catalog;
+pub(crate) use io::publication::definitions;
 pub(crate) use io::publication::{Prefix as PublicationPrefix, PublicationRead};
 #[path = "original_authority_json.rs"]
 mod json;
