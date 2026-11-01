@@ -2078,9 +2078,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - 次のApp adapterもSol6.1 xhighが`app_bootstrap_identity.rs`へ隔離して実装した。
   同じUnicode helperとfunded writerを使い、元のtype/empty→length→NFC→lower/prefix→
   ASCII fullmatchと5種のProtocolError messageを保持する。成功は元slice、処理/資金/
-  transport failureは別のouter errorとし、ID不正へ丸めない。通常8単体とRootの原本
-  returned58比較driverは実行待ち。raw getter例外11件はこのadapter外と明示する。
+  transport failureは別のouter errorとし、ID不正へ丸めない。実装835ed9818の
+  CI41266515519はLinux/macOSとも通常8単体・Rootの原本returned58比較・strict Clippyに
+  成功。正確ProtocolError messageと成功slice identity、診断funding解放0を確認し、
+  選択JSON150,205Bを保存。raw getter例外11件はこのadapter外と明示する。
   Tauriへ同じ規約を二重実装せず、今はmigration専用App moduleのcfg(test)内で比較する。
   実getter/opaque causeは別のSol実装で有限観測とrunner-held custodyを追加したが、
   7 caller/6 Guest回帰・実component/default getter driverは次CIで確認する。
   canonical adapter・実factory・同journal guardをつなぐwholeunitの完成には数えない。
+  次の原本連続区間もcf4acd29f/CI41266973919で両OS147入力が成功した（native比較なし）。
+  旧77入力を保持し、raw69とcandidate mismatch1を追加。元helper/factory/比較後の
+  workspace Path純構築・immutable runtime取得まで実行し、host_profile_catalog入口で
+  明示Boundary停止する。sys.settrace/別catalog実装を増やさず、元の自然な呼出し境界を
+  使う。Boundaryはtyped errorではなく到達状態/cleanup用で、catalog/Authority以降は未接続。

@@ -102,6 +102,19 @@ separately passed69 controlled raw-getter inputs through the unchanged original
 validator/factory/Host raise on both platforms. This is an original reference,
 without native comparison, publication guard or product adoption.
 
+The App canonical adapter at `835ed9818` subsequently passed8 unit tests and
+all58 returned-getter comparisons in
+[CI41266515519](https://github.com/harupipipipi/tobkiri/actions/runs/41266515519)
+on both platforms. It preserves exact ProtocolError messages and input identity;
+the11 raw getter errors are outside this adapter. The actual component getter
+comparison and the same-guard recovery continuation remain separate gates.
+[Original continuous-boundary CI41266973919](https://github.com/harupipipipi/tobkiri/actions/runs/41266973919)
+passed147 original cases at `cf4acd29f`:77 previous inputs,69 controlled getters
+and one candidate mismatch. It reaches the original catalog call entry after
+workspace Path/runtime preparation, without entering catalog/Authority bodies.
+This reference does not establish native continuation, product adoption or any
+new completed acceptance item.
+
 Historical focused checks from the 2026-10-18 slice: foundation gate **0 failures**; complete gate
 **1,044 failures**. Gate regressions **13**, CI-helper regressions **7**, and
 inventory tests **9** passed. That snapshot reported 837 units and
