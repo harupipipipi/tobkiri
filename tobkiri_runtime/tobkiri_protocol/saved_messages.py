@@ -41,8 +41,13 @@ def build_saved_model_messages(
     system_prompt: Mapping[str, str] | None = None,
     workspace_resolution: SavedWorkspaceResolution | None = None,
     timing_context: tuple[bool, Mapping[str, Any] | None] = (False, None),
+    pending_user_content: Any = None,
 ) -> list[dict[str, Any]]:
-    """Independently constrain the selected owner history to resolved text."""
+    """Assemble the selected branch within the caller's existing input bounds.
+
+    Durable graph size is not a model-message count. Callers retain their
+    transport/schema/byte checks; this stage preserves selected roles/content.
+    """
     # This optional capability is passed directly by the Host. It must never
     # be reconstructed from a serialized Flow node payload.
     _require_resolved_context(conversation, workspace_resolution)
@@ -60,7 +65,7 @@ def build_saved_model_messages(
     if task_gap is not None:
         prefix.append({"role": "system", "content": task_gap_prompt(task_gap)})
     messages = conversation.get("messages")
-    if not isinstance(messages, list) or len(messages) > 200:
+    if not isinstance(messages, list):
         raise SavedMessageContextError("saved bridge owner history is invalid")
     by_id: dict[str, Mapping[str, Any]] = {}
     for message in messages:
@@ -74,10 +79,10 @@ def build_saved_model_messages(
     if not messages:
         if current is not None:
             raise SavedMessageContextError("saved bridge empty history has a current node")
-        return prefix
-    if not isinstance(current, str) or current not in by_id:
+        selected = []
+    elif not isinstance(current, str) or current not in by_id:
         raise SavedMessageContextError("saved bridge current message is unavailable")
-    if all(message.get("parent_id") is None for message in messages):
+    elif all(message.get("parent_id") is None for message in messages):
         selected = messages[: messages.index(by_id[current]) + 1]
     else:
         selected = []
@@ -137,6 +142,17 @@ def build_saved_model_messages(
         elif flatten_text_blocks and isinstance(content, list):
             content = "".join(part["text"] for part in content)
         result.append({"role": message["role"], "content": content})
+    if pending_user_content is not None:
+        # A Host preflight supplies the same validated user content that the
+        # owner will append to this selected branch. Do not rewrite the owner
+        # snapshot or mint context evidence for a hypothetical revision.
+        if not is_saved_user_content(pending_user_content):
+            raise SavedMessageContextError("saved conversation user content is unavailable")
+        result.append({
+            "role": "user",
+            "content": (saved_user_text(pending_user_content)
+                        if flatten_text_blocks else pending_user_content),
+        })
     if flatten_text_blocks:
         return result
     return _bounded_inline_image_history(result)

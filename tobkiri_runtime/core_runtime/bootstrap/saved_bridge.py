@@ -119,6 +119,8 @@ def _required_targets(request: Mapping[str, Any]) -> tuple[Target, ...]:
 
 _WALL_MONOTONIC_OFFSET = time.time() - time.monotonic()
 _STRATEGY_MAXIMUM_COST_MICROUSD = 1_000_000
+# The existing saved Guest's read-result value bound, not a history allowance.
+_MAX_SAVED_READ_BYTES = 512 * 1024
 
 
 def _strategy_maximum_cost(request: Mapping[str, Any]) -> int:
@@ -205,6 +207,7 @@ def _messages(
     flatten_text_blocks: bool = False,
     system_prompt: Mapping[str, str] | None = None,
     timing_context: tuple[bool, Mapping[str, Any] | None] = (False, None),
+    pending_user_content: Any = None,
 ) -> list[dict[str, Any]]:
     """Retain the legacy bridge error contract around pure message assembly."""
     try:
@@ -213,6 +216,7 @@ def _messages(
             system_prompt=system_prompt,
             workspace_resolution=workspace_resolution(conversation),
             timing_context=timing_context,
+            pending_user_content=pending_user_content,
         )
     except SavedMessageContextError as error:
         raise AuthorityDenied(str(error)) from error
@@ -221,13 +225,15 @@ def _messages(
 def _saved_read_projection(conversation: Mapping[str, Any]) -> dict[str, Any]:
     """Return only guest state needed to detect duplicate saved appends."""
     messages = conversation.get("messages")
-    if not isinstance(messages, list) or len(messages) > 200:
+    if not isinstance(messages, list):
         raise AuthorityDenied("saved bridge owner history is invalid")
     identifiers: list[dict[str, str]] = []
+    seen: set[str] = set()
     for message in messages:
         identifier = message.get("id") if isinstance(message, Mapping) else None
-        if not isinstance(identifier, str) or not identifier:
+        if not isinstance(identifier, str) or not identifier or identifier in seen:
             raise AuthorityDenied("saved bridge owner message identity is invalid")
+        seen.add(identifier)
         identifiers.append({"id": identifier})
     return {
         "id": conversation.get("id"),
@@ -238,6 +244,63 @@ def _saved_read_projection(conversation: Mapping[str, Any]) -> dict[str, Any]:
         "system_prompt_id": conversation.get("system_prompt_id"),
         "messages": identifiers,
     }
+
+
+def _saved_message_id(request: Mapping[str, Any], role: str) -> str:
+    """Use the existing Guest/append identity, including its canonical encoding."""
+    identity = [request["conversation_id"], request["turn_id"], role]
+    return "message:" + canonical_digest(identity).removeprefix("sha256:")
+
+
+def _check_saved_read_value(value: Mapping[str, Any]) -> None:
+    """Check the entire value encoded by the saved Guest's read resume step."""
+    if len(canonical_json(dict(value))) > _MAX_SAVED_READ_BYTES:
+        raise AuthorityDenied("saved bridge owner read exceeds continuation budget")
+
+
+def _generation_arguments(
+    outer: object, request: Mapping[str, Any], conversation: Mapping[str, Any],
+    *, messages: list[dict[str, Any]], selected: Mapping[str, Any],
+    prompt: Mapping[str, str] | None, trace: Sequence[Mapping[str, Any]] = (),
+) -> dict[str, Any]:
+    """Apply the same static model-input fields at admission and execution."""
+    requirements: dict[str, Any] = {"request_surface": "conversation.saved"}
+    if _contains_inline_images(messages):
+        requirements["modalities"] = ["image", "text"]
+    arguments: dict[str, Any] = {
+        "model_reference": conversation.get("model_reference"),
+        "requirements": requirements,
+        "messages": messages,
+    }
+    thinking_level = resolved_thinking_level(conversation, request)
+    if thinking_level is not None:
+        arguments["parameters"] = {"thinking_level": thinking_level}
+    if selected["tools"]:
+        if _requires_tool_calling(request):
+            requirements["tool_calling"] = True
+        parameters = dict(arguments.get("parameters") or {})
+        parameters["tool_choice"] = (
+            "required" if request["tool_selection"].get("must_use") and not trace
+            else "auto"
+        )
+        arguments.update({"tools": selected["tools"], "parameters": parameters})
+    if request.get("strategy_reference") is not None:
+        request_id = str(getattr(getattr(outer, "context", None), "request_id", ""))
+        if not request_id:
+            raise AuthorityDenied("saved bridge strategy request identity is unavailable")
+        arguments.update({
+            "request_id": request_id,
+            "idempotency_key": _strategy_idempotency_key(
+                request, conversation, trace, request_id=request_id,
+            ),
+            "deadline": _strategy_deadline(outer),
+            "maximum_cost_microusd": _strategy_maximum_cost(request),
+        })
+        if prompt is not None:
+            arguments["system_prompt_digest"] = saved_prompt_digest(prompt)
+    if len(canonical_json(arguments)) > MAX_SAVED_INPUT_BYTES:
+        raise AuthorityDenied("saved bridge AI input exceeds budget")
+    return arguments
 
 
 def _requires_tool_calling(request: Mapping[str, Any]) -> bool:
@@ -476,6 +539,53 @@ class SavedBridgeCallbacks:
         finally:
             _WORKSPACE_PIN.reset(token)
 
+    def _check_history_capacity(
+        self, conversation: Mapping[str, Any], request: Mapping[str, Any],
+        prompt: Mapping[str, str] | None, *, append_user: bool,
+    ) -> bool:
+        """Check actual read encoding before each known append on this snapshot.
+
+        A repeated turn is left to the existing Guest reconciliation path; its
+        user and assistant must not be appended or counted a second time. New
+        appends increment the owner revision once each under the existing CAS.
+        These detached ID projections are capacity calculations, never owner
+        facts or execution context for a hypothetical conversation revision.
+        """
+        projection = _saved_read_projection(conversation)
+        revision = projection["conversation_revision"]
+        if type(revision) is not int or revision < 1:
+            raise AuthorityDenied("saved bridge conversation revision is invalid")
+        value: dict[str, Any] = {"conversation": projection}
+        if self._stream_available is not None:
+            # This is the largest actual selector the read callback can add.
+            value["delivery_mode"] = (
+                "incremental" if request.get("strategy_reference") is None else "buffered"
+            )
+        if saved_prompt_reference(conversation) is not None:
+            # A read admission or later assistant append need not reorder/repeat
+            # prompt-owner reads to size this fixed-format ASCII digest field.
+            value["system_prompt_digest"] = (
+                saved_prompt_digest(prompt) if prompt is not None else "sha256:" + "0" * 64
+            )
+        _check_saved_read_value(value)
+        identifiers = {item["id"] for item in projection["messages"]}
+        user_id = _saved_message_id(request, "user")
+        assistant_id = _saved_message_id(request, "assistant")
+        if append_user and identifiers.intersection((user_id, assistant_id)):
+            return True
+        for identifier in ((user_id, assistant_id) if append_user else (assistant_id,)):
+            if identifier in identifiers:
+                continue
+            revision += 1
+            projection = {
+                **projection,
+                "conversation_revision": revision,
+                "current_node_id": identifier,
+                "messages": [*projection["messages"], {"id": identifier}],
+            }
+            _check_saved_read_value({**value, "conversation": projection})
+        return False
+
     def _preflight(self, outer: object) -> None:
         """Check every captured target and owned context before any user append."""
         request = _request(outer)
@@ -483,12 +593,25 @@ class SavedBridgeCallbacks:
         tools = self._tools(outer, request)
         conversation = self._conversation(outer, request)
         prompt = self._system_prompt(outer, conversation)
+        if self._check_history_capacity(conversation, request, prompt, append_user=True):
+            # The Guest's first read reports TURN_RECONCILIATION_REQUIRED for
+            # either ID anywhere in the graph, including an unselected branch.
+            return
         revision = conversation.get("conversation_revision")
         if type(revision) is not int or revision != request["conversation_revision"]:
             raise AuthorityDenied("saved bridge conversation revision changed")
         model = conversation.get("model_reference")
         if not isinstance(model, str) or not model.strip():
             raise AuthorityDenied("saved bridge owned model is unavailable")
+        owner_messages = [
+            *_messages(conversation, system_prompt=prompt,
+                       pending_user_content=request["content"]),
+            *saved_task_context_messages(request),
+            *saved_chat_reference_messages(request),
+        ]
+        _generation_arguments(
+            outer, request, conversation, messages=owner_messages, selected=tools, prompt=prompt,
+        )
         strategy_reference = request.get("strategy_reference")
         if strategy_reference is not None:
             outcome = self._dispatch(outer, STRATEGY_CATALOG, {})
@@ -510,12 +633,7 @@ class SavedBridgeCallbacks:
                 )
             conversation = self._recheck_linked_context(outer, request, conversation)
             return
-        owner_messages = _messages(conversation, system_prompt=prompt)
-        requires_image_input = _contains_inline_images(
-            owner_messages
-        ) or _contains_inline_images(
-            [{"role": "user", "content": request["content"]}]
-        )
+        requires_image_input = _contains_inline_images(owner_messages)
         requirements: dict[str, Any] = {}
         if requires_image_input:
             requirements["modalities"] = ["image", "text"]
@@ -524,8 +642,8 @@ class SavedBridgeCallbacks:
         payload: dict[str, Any] = {
             "model_profile_id": model,
             "messages": [
-                *_messages(conversation, flatten_text_blocks=True, system_prompt=prompt),
-                {"role": "user", "content": saved_user_text(request["content"])},
+                *_messages(conversation, flatten_text_blocks=True, system_prompt=prompt,
+                           pending_user_content=request["content"]),
                 *saved_task_context_messages(request),
                 *saved_chat_reference_messages(request),
             ],
@@ -640,6 +758,7 @@ class SavedBridgeCallbacks:
             if dict(payload) != {"operation": "get", "conversation_id": request["conversation_id"]}:
                 raise AuthorityDenied("saved bridge conversation read is out of scope")
             conversation = self._conversation(outer, request)
+            reconcile = self._check_history_capacity(conversation, request, None, append_user=True)
             value: dict[str, Any] = {
                 "conversation": _saved_read_projection(conversation)
             }
@@ -647,6 +766,7 @@ class SavedBridgeCallbacks:
             # comes from Guest input or redirects an already sealed AI intent.
             if (
                 self._stream_available is not None
+                and not reconcile
                 and request.get("strategy_reference") is None
                 and self._stream_ready(outer, request, conversation)
             ):
@@ -656,13 +776,14 @@ class SavedBridgeCallbacks:
             prompt = self._system_prompt(outer, conversation)
             if prompt is not None:
                 value["system_prompt_digest"] = saved_prompt_digest(prompt)
+            _check_saved_read_value(value)
             return {"status": "ok", "value": value}
         elif stage in {"user", "assistant"}:
             self._check_append(
                 request, payload, 1 if stage == "user" else 3, trace if stage == "assistant" else []
             )
             if stage == "user":
-                self._tools(outer, request)
+                selected = self._tools(outer, request)
                 conversation = self._conversation(outer, request)
                 _require_resolved_context(conversation)
                 prompt = self._system_prompt(outer, conversation)
@@ -719,77 +840,23 @@ class SavedBridgeCallbacks:
             ):
                 raise AuthorityDenied("saved bridge AI input differs from the owner")
             selected = self._tools(outer, request)
-            arguments = {
-                key: value
-                for key, value in provider_payload.items()
-                if key != "system_prompt_digest"
-            }
-            arguments["messages"] = [
-                *_messages(
-                    conversation, system_prompt=prompt,
-                    timing_context=selected_timing_context(
-                        outer, conversation, dispatch=self._dispatch,
-                        read_owner=lambda: self._read_conversation(outer, conversation["id"]),
-                    ),
-                ),
-                *saved_task_context_messages(request),
-                *saved_chat_reference_messages(request),
-                *trace,
-            ]
-            requirements = dict(provider_payload["requirements"])
-            if _contains_inline_images(arguments["messages"]):
-                requirements["modalities"] = ["image", "text"]
-            arguments["requirements"] = requirements
-            thinking_level = resolved_thinking_level(conversation, request)
-            if thinking_level is not None:
-                # The selected level comes from the validated initial request,
-                # never from the guest's AI intent or a resumed frame.
-                arguments["parameters"] = {
-                    "thinking_level": thinking_level
-                }
-            if selected["tools"]:
-                if _requires_tool_calling(request):
-                    requirements["tool_calling"] = True
-                parameters = dict(arguments.get("parameters") or {})
-                parameters["tool_choice"] = (
-                    "required"
-                    if request["tool_selection"].get("must_use") and not trace
-                    else "auto"
-                )
-                arguments.update(
-                    {
-                        "tools": selected["tools"],
-                        "requirements": requirements,
-                        "parameters": parameters,
-                    }
-                )
-            if strategy_reference is not None:
-                request_id = str(
-                    getattr(getattr(outer, "context", None), "request_id", "")
-                )
-                if not request_id:
-                    raise AuthorityDenied(
-                        "saved bridge strategy request identity is unavailable"
-                    )
-                arguments.update(
-                    {
-                        "request_id": request_id,
-                        "idempotency_key": _strategy_idempotency_key(
-                            request,
-                            conversation,
-                            trace,
-                            request_id=request_id,
+            self._check_history_capacity(conversation, request, prompt, append_user=False)
+            arguments = _generation_arguments(
+                outer, request, conversation,
+                messages=[
+                    *_messages(
+                        conversation, system_prompt=prompt,
+                        timing_context=selected_timing_context(
+                            outer, conversation, dispatch=self._dispatch,
+                            read_owner=lambda: self._read_conversation(outer, conversation["id"]),
                         ),
-                        "deadline": _strategy_deadline(outer),
-                        "maximum_cost_microusd": _strategy_maximum_cost(request),
-                    }
-                )
-                if prompt is not None:
-                    arguments["system_prompt_digest"] = saved_prompt_digest(
-                        prompt
-                    )
-            if len(canonical_json(arguments)) > MAX_SAVED_INPUT_BYTES:
-                raise AuthorityDenied("saved bridge AI input exceeds budget")
+                    ),
+                    *saved_task_context_messages(request),
+                    *saved_chat_reference_messages(request),
+                    *trace,
+                ],
+                selected=selected, prompt=prompt, trace=trace,
+            )
             dispatch_arguments = (
                 {
                     "strategy_reference": strategy_reference,
@@ -823,6 +890,10 @@ class SavedBridgeCallbacks:
                 ):
                     raise AuthorityDenied("saved live progress reservation failed")
                 arguments["progress_id"] = progress_value["progress_id"]
+            # Live-progress identity is known only at this reached stage. Keep
+            # the existing input limit after adding those actual delivery fields.
+            if len(canonical_json(arguments)) > MAX_SAVED_INPUT_BYTES:
+                raise AuthorityDenied("saved bridge AI input exceeds budget")
             outcome = self._dispatch(outer, target, dispatch_arguments)
             additions: dict[str, Any] = {}
             if (
@@ -949,6 +1020,23 @@ class SavedBridgeCallbacks:
                     # Provisional display failure cannot prevent or retry the effect.
                     pass
         conversation = self._recheck_linked_context(outer, request, conversation)
+        if stage == "user":
+            # Recompute on the fresh owner snapshot immediately before its CAS
+            # append; a previous preflight is not a capacity/currentness grant.
+            if self._check_history_capacity(conversation, request, prompt, append_user=True):
+                raise AuthorityDenied("saved bridge turn requires reconciliation")
+            _generation_arguments(
+                outer, request, conversation,
+                messages=[
+                    *_messages(conversation, system_prompt=prompt,
+                               pending_user_content=request["content"]),
+                    *saved_task_context_messages(request),
+                    *saved_chat_reference_messages(request),
+                ],
+                selected=selected, prompt=prompt,
+            )
+        elif stage == "assistant":
+            self._check_history_capacity(conversation, request, None, append_user=False)
         if stage == "tool" and workspace_execution is not None:
             assert self._workspace_execution_registry is not None
             with self._workspace_execution_registry.register(workspace_execution):
@@ -1015,17 +1103,13 @@ class SavedBridgeCallbacks:
             metadata["saved_tool_messages"] = trace
             fields.add("tool_logs")
 
-        def message_id(kind: str) -> str:
-            identity = [request["conversation_id"], request["turn_id"], kind]
-            return "message:" + canonical_digest(identity).removeprefix("sha256:")
-
         if (
             set(payload) != append_fields
             or payload["operation"] != "append"
             or payload["conversation_id"] != request["conversation_id"]
             or not isinstance(message, Mapping)
             or set(message) != fields
-            or message["id"] != message_id(role)
+            or message["id"] != _saved_message_id(request, role)
             or message["role"] != role
             or canonical_json(message["metadata"]) != canonical_json(metadata)
             or canonical_json(message.get("tool_logs", []))
@@ -1036,7 +1120,7 @@ class SavedBridgeCallbacks:
                 "error", "running",
             })
             or (hop == 1 and message["content"] != request["content"])
-            or (hop == 3 and message["parent_id"] != message_id("user"))
+            or (hop == 3 and message["parent_id"] != _saved_message_id(request, "user"))
         ):
             raise AuthorityDenied("saved bridge append is out of scope")
 
