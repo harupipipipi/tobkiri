@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "tobkiri_conversation_orchestration_pack",
-  "source_identity": "sha256:d0a2ef23ba31a885ec23c317bbe7e07b95f4bdf821f62ada2bcfca3553cadfc0",
+  "source_identity": "sha256:2a2b16a636d3c32a4fc2663c107792bc52e73ce7a71f11e85bdc981620ffcfdd",
   "variants": [
     {
       "variant_id": "tobkiri_conversation_orchestration_pack.messages.python",
@@ -664,6 +664,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:8f116df230307cebad6827d77167a57b6feed160d587f5b81d82aa80a69f4223",
-  "catalog_digest": "sha256:d99c4e9165e9edd029c987b2dbb495921d70f3c863ecf06b00765c4279f0ad6f"
+  "materialization_catalog_digest": "sha256:867f6ea4f8b60076d724d1edabc1090800ad58acbdd02474234e3bf9dc4b60a3",
+  "catalog_digest": "sha256:87e3a5a9fe36fc559d4d9ec0fe0de1dbde15e9417540399eed07f27ba5f48c20"
 }

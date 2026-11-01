@@ -112,8 +112,13 @@ also passed137 Harness tests and actual construction, then observed the unmodifi
 default getter on one real Store: fuel decreased, the original deadline and
 scope were preserved, and actual finish/data release/reap left0 bytes and0
 reservations with source destruction and owner reopen. The same-guard recovery
-continuation is implemented at `c6d700124` and its actual continuous execution is
-being checked in [CI41275395353](https://github.com/harupipipipi/tobkiri/actions/runs/41275395353).
+continuation is implemented at `c6d700124` and its two actual default-getter
+operations (valid and candidate mismatch) passed in
+[CI41275395353](https://github.com/harupipipipi/tobkiri/actions/runs/41275395353).
+Both preserve the original lock through getter/validation/factory/comparison,
+match original state/file/key observations, and prove actual lock release,
+Source destruction and0 bytes/0 reservations after DATA release and reap. This
+does not qualify controlled69/native147, the catalog/Authority bodies or GUI adoption.
 The26 finite Launcher caller cases passed in
 [Desktop CI41267778512](https://github.com/harupipipipi/tobkiri/actions/runs/41267778512),
 with652 library,123 build-script and18 resource tests, packaging, cold boot and DMG
@@ -124,6 +129,16 @@ and one candidate mismatch. It reaches the original catalog call entry after
 workspace Path/runtime preparation, without entering catalog/Authority bodies.
 This reference does not establish native continuation, product adoption or any
 new completed acceptance item.
+
+Saved Project parity source at `eb5dabff0` restores existing owner-based membership
+and exact mutation acknowledgements while preserving the conversation execution
+workspace and inert bindings. Frontend59 tests, type/boundary checks and actual UI
+build passed in [CI41277008561](https://github.com/harupipipipi/tobkiri/actions/runs/41277008561).
+Its generation job also verified canonical Pack/executable/Profile/bundle artifacts
+and strict integrity. The38 generated text files were imported with source/hash/path
+checks. Backend attempts stopped in fixture setup on stale then dirty source; no
+backend behavioral pass is claimed. Verification of the committed clean snapshot
+remains required, along with full GUI and Rust/Wasm adoption.
 
 Historical focused checks from the 2026-10-18 slice: foundation gate **0 failures**; complete gate
 **1,044 failures**. Gate regressions **13**, CI-helper regressions **7**, and

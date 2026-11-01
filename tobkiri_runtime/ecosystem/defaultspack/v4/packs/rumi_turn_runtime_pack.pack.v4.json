@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:b4c286455b4c51d7ff43fddd3d4fb778c34d09f44360e70098e289214cd2dc74",
+      "digest": "sha256:78f86b15464a16048fb7759553ee1a4ec28f17b829461e5982301b95b493596b",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -41,7 +41,7 @@
       "path": "runtime/progress_host.py"
     },
     {
-      "digest": "sha256:b78e923cb23e5d96d209dd743e954b71b746ecc56b9035386b07975cd8152890",
+      "digest": "sha256:6b4cb34c141928dd860c552cd1ddca4ea8d15fde5027df375e33727fbb682901",
       "kind": "executable",
       "path": "runtime/saved.py"
     },
@@ -253,8 +253,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:28bd98e7c9a551c113ad9ec3f298d1444acf077e2c35830aa066dd7602c82734",
-    "artifact_set_digest": "sha256:d731a2ab4b17700306ea8fe91c00c7cf60e2700d40cff17b99bc59fc2349edcb",
+    "source_identity": "sha256:ec742a420d2fbdaf360dd45f65f9d1b638f682cae2d1c260615b385d24266e65",
+    "artifact_set_digest": "sha256:12cce155a1b8cffab25a9bde3a299fd209b6db7cec7c228bd8ff5fb6da4463d6",
     "contract_catalog_digest": "sha256:34266e04d171830567d6a58acf4b8aa9b3828d11d43d743d3cc08fcc4c54f39b"
   },
   "migration": {
@@ -360,26 +360,26 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:f585503a44577e7a7e83b22830cc13441eda61536dcbbe986b174261d1c7d281",
+    "artifact_digest": "sha256:3c908bed3ceee9a71c8576faa2341d13785ea0641025fb53369cc3c689ac20b9",
     "display_name": "Tobkiri Turn Runtime",
     "id": "rumi_turn_runtime_pack",
     "kind": "host_extension",
-    "version": "1.0.0"
+    "version": "1.0.1"
   },
   "pack_api_version": "io.tobkiri.pack.v4",
   "provenance": {
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_turn_runtime_pack/pack.v4.json",
-    "source_digest": "sha256:28bd98e7c9a551c113ad9ec3f298d1444acf077e2c35830aa066dd7602c82734",
+    "source_digest": "sha256:ec742a420d2fbdaf360dd45f65f9d1b638f682cae2d1c260615b385d24266e65",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:4d22bd320d57fb85b0e8da4f9fb6c557c1874e27e2446e57c8b55525611c7963",
+    "content_root_digest": "sha256:c8f46d4dbcfd68b5b1978680aa705c645834862c3519a633641d8968ae7f2c4b",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:72e5fe4e8f670a1618d79b16dfc9896b6e9f4276616d87632022b726ec01735a",
-    "input_inventory_digest": "sha256:0a3ec1816ccb8850bcee905fef431aafe3cc35bf49e07795e9c432b59fa6dcf9",
+    "input_inventory_digest": "sha256:3e29f526f9fc18f5c5b3bc0be3a20232a51a112b0bb9bae5c62b1a5ec271625b",
     "normative": true,
     "evidence": [
       {
@@ -390,7 +390,7 @@
       {
         "path": "ecosystem/rumi_turn_runtime_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:28bd98e7c9a551c113ad9ec3f298d1444acf077e2c35830aa066dd7602c82734"
+        "digest": "sha256:ec742a420d2fbdaf360dd45f65f9d1b638f682cae2d1c260615b385d24266e65"
       }
     ]
   },
@@ -578,6 +578,15 @@
         "contract_id": "tobkiri.resource.workspace.v1",
         "optional": false,
         "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.project.state.v1",
+        "operations": [
+          "tobkiri_ui_settings_pack.projects-read"
+        ],
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
       }
     ],
     "execution_boundary": "host_brokered",

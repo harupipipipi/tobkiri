@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:28bd98e7c9a551c113ad9ec3f298d1444acf077e2c35830aa066dd7602c82734",
+  "source_identity": "sha256:ec742a420d2fbdaf360dd45f65f9d1b638f682cae2d1c260615b385d24266e65",
   "variants": [
     {
       "variant_id": "rumi_turn_runtime_pack.chat-message-deliver.python",
@@ -2358,6 +2358,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:86eb2b4fcf6c681a632dda72ae46367cff21e9abf42029f316ffdced51181584",
-  "catalog_digest": "sha256:3d3ea8589f1d4d9b7e442d94cb74e57fb3c2396de78e82d5ffb09098b52066f5"
+  "materialization_catalog_digest": "sha256:7afda07ddbcfc1a52b3e1ecc9ed0cbc38ff4f718032cfde22b55e347b79b5e29",
+  "catalog_digest": "sha256:149ebb53511934e03db05298969c014bdcc4cdfd54b1e53ce7ab3bb7b717d62a"
 }

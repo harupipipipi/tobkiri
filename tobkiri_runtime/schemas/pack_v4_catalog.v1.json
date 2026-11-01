@@ -1484,7 +1484,7 @@
           "path": "ui/shell-app.js"
         },
         {
-          "digest": "sha256:2cc5938759d28b06d0c47164a81ca167f0caebfeee45d2cbf045fc310bbcbddb",
+          "digest": "sha256:91e25f4a6eaab5012ca13c100f995fd55f9ca9a4d0bf541b3a8d6f1104163047",
           "index_role": "asset",
           "kind": "asset",
           "path": "ui/shell-defaultspack-app.js"

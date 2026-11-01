@@ -2090,8 +2090,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   0B/0予約、Source destructor・owner再openまで成功した。必要JSON4,033Bのみ保存。
   新caller7を含むfinite26はDesktop CI41267778512で全件成功した。実測652 library /
   123 build-script /18 resourceとpackaging・cold boot・DMG検証も成功し、選択JSON13,235Bを保存。
-  canonical adapter・実factory・同journal guardの接続はc6d700124で実装したが、実Wasmの
-  連続区間CI41275395353は検証中。新caller9を含む35件の成功には読み替えない。
+  canonical adapter・実factory・同journal guardの接続はc6d700124で実装し、実Wasmの
+  連続区間CI41275395353は通常default getterのvalid/mismatch計2操作で成功した。
+  別FDでfinish前のlock保持・finish後の取得、元deadline/1Store/account/0reset、
+  原本とのstate/file/key比較、DATA解放/実reap後0B/0予約・Source destructor/reopenを確認。
+  選択JSON5,635Bを保存。controlled69や全147のnative比較、新caller9を含む35件の
+  Desktop成功、catalog/Authority以降や通常GUI採用には読み替えない。
   次の原本連続区間もcf4acd29f/CI41266973919で両OS147入力が成功した（native比較なし）。
   旧77入力を保持し、raw69とcandidate mismatch1を追加。元helper/factory/比較後の
   workspace Path純構築・immutable runtime取得まで実行し、host_profile_catalog入口で
@@ -2100,7 +2104,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 020: Project所属を一律拒否する保存送信と所属変更の待機漏れ
 
-- 状態: **Sol6.1 xhighによる修正ソースあり。回帰実行・生成物同期は未確認**。
+- 状態: **修正eb5dabff0、CIのfrontend59件・生成/整合確認成功。backend回帰は未確認**。
 - 場所: `saved_bridge.py`、`rumi_turn_runtime_pack/runtime/saved.py`、
   `tobkiri_protocol/saved_conversation.py`、`saved_project_context.py`、
   defaultspackの`App.tsx`/`historyMembership.ts`/`savedCodingContext.ts`。
@@ -2113,6 +2117,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   requested Profile edgeを宣言するだけで、実grantは既存承認経路を必要とする。
   Sourceはcanonical catalogとProfile intentを先に更新し、manifest/sidecar/index/
   executable/profile lock/bundleは既存generatorで生成する。生成manifestをauthor sourceにしない。
+  CI41277008561のgeneration job124761232096で実UI buildと既存全generator/strict integrityが
+  成功。変更Packだけをdefaultspack4.0.2、Turn/Orchestration/SideChat/UISettings1.0.1へ
+  更新し、公開Contractのversion/signatureは維持した。実artifact13071058988（1,343,797B、
+  SHA256 71a221cdd0c1c90521c562265ddf6e5a58a45080845be717329198ef2d806dc3）をRAMで検証し、
+  source/patch hashと38パスを照合して37 JSON＋1生成JSだけ取り込んだ。ZIPは保存しない。
+  patch4,914,321Bは生成textだけで、source receiptを別保存。frontendは59/59、0skipと
+  tsc/既存boundary/security lintが成功した。
 - 維持: Historyの所属move/clearは会話のexecution workspace・全binding・順序・primaryを
   変えない。Composerで新Projectを明示選択した場合は、元の操作が保存したworkspaceを
   使用する。Project自身のprimaryと会話のworkspaceを等しいと要求しない。No Projectや
@@ -2127,3 +2138,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - 削除前提: 追加したPython App policyは既存Wasm Pack内の責務。Rust Hostへの全移植や
   製品Python/PackVM廃止の完了を意味しない。旧拒否経路の廃止にはowner/linked/workspace/
   ACK race回帰、実生成物のdigest整合、通常GUIでの同じ機能を確認する。全受入条件は未完。
+  最初のbackend試行はstale manifest、その次は生成patchを当てたdirty checkoutに対する
+  既存fixtureの拒否で停止した（両OS各341 setup errors）。製品動作成功には数えない。
+  CIはgenerateとverifyを分け、生成物をcommit後にverify modeで同じclean sourceの
+  owner回帰を実行する。source/clean検証の無効化やテスト内再生成は行わない。

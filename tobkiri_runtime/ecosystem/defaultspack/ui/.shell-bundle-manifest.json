@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "9d9654ee312a1bcafcf8f4c4e1861750f60a9cdc0aa18d8c3c9811b4a1b321d8",
+    "digest": "678f9d5e30846905d09a4fb9d72b762d747890dac65b159bfe35dc429dc17b33",
     "entries": [
       {
         "path": "index.html",
@@ -125,8 +125,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 449640,
-        "sha256": "2f139584b0113a2d0c6b462e7ed58477029347b48741c7d5463d2584bfb6f9aa"
+        "size": 452627,
+        "sha256": "b88ee3fccfdbc263401675ab7841a03507987eb68878e7029edc748d497e7528"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -2200,13 +2200,13 @@
       },
       {
         "path": "src/lib/historyMembership.test.ts",
-        "size": 4164,
-        "sha256": "81827dd8725b7039f378e382b512ccbc479ae3d1f3da8e8cfed74afd3cb22d94"
+        "size": 10056,
+        "sha256": "28709f132cc69aecb1b8cbfdd7b80e3345d4cbd46dbb0d3bd3f8f067c5ce21a2"
       },
       {
         "path": "src/lib/historyMembership.ts",
-        "size": 3602,
-        "sha256": "864f28bb226cd98ef07fe81a23f292af9d75ec2084c9862bfa1ed801d0a35822"
+        "size": 6212,
+        "sha256": "570293662240634d2834b63266921a1990af8aa54cce0e2bcf2f07cb1b74e367"
       },
       {
         "path": "src/lib/historyMembershipMove.test.ts",
@@ -2475,13 +2475,13 @@
       },
       {
         "path": "src/lib/savedCodingContext.test.ts",
-        "size": 8275,
-        "sha256": "f8dd3c4c0cbd9fef2be707dce54d7f58871d537f996fd2e76e10e54e99e8c1cb"
+        "size": 9742,
+        "sha256": "9ff989886c75a648e692aeeaca399ac329f79226be08341540137392bdf4353a"
       },
       {
         "path": "src/lib/savedCodingContext.ts",
-        "size": 3465,
-        "sha256": "63d77639d0fa30ba5a2346d8090ce131f62af8d0f7841f5ed09a369ccd4c774a"
+        "size": 4610,
+        "sha256": "3f785ed4260ce549e917977fcb6c1492ddc0e4c6387b437de1405610e8ac3315"
       },
       {
         "path": "src/lib/savedCodingWorkspace.test.ts",
@@ -2495,8 +2495,8 @@
       },
       {
         "path": "src/lib/savedProjectSendPreflight.ts",
-        "size": 1479,
-        "sha256": "24dfe436ccbb27172c64c09f06228e8554ce377593b81a985f5ee7d4e0e62c61"
+        "size": 1785,
+        "sha256": "df742c1767ba77664d2defba1ececa6e326afba7f33104df797a753add6b4b39"
       },
       {
         "path": "src/lib/scopedPendingChat.test.ts",
@@ -3106,7 +3106,7 @@
     ]
   },
   "bundle": {
-    "digest": "038e141df2783b33aefad424b57d07d1b2209fe9ea52c7f6e72970fae458effe",
+    "digest": "3ed489ef0a552d1b638fb78c7567fc20f145844539d1e132b6108db9057dfadd",
     "entries": [
       {
         "path": "shell-app.css",
@@ -3120,8 +3120,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2687246,
-        "sha256": "2cc5938759d28b06d0c47164a81ca167f0caebfeee45d2cbf045fc310bbcbddb"
+        "size": 2689881,
+        "sha256": "91e25f4a6eaab5012ca13c100f995fd55f9ca9a4d0bf541b3a8d6f1104163047"
       },
       {
         "path": "shell-icons.js",

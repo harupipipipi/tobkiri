@@ -2,6 +2,13 @@ name: Issue 1520 saved Project parity
 
 on:
   workflow_dispatch:
+    inputs:
+      verification:
+        type: choice
+        options: [generate, verify]
+        default: generate
+        required: true
+        description: Generate candidate text or verify the committed source snapshot
   push:
     branches: [codex/issue-1520-native-shared-state]
     paths:
@@ -35,7 +42,8 @@ env:
 
 jobs:
   saved-owner-boundaries:
-    needs: generated-source
+    if: github.event_name == 'workflow_dispatch' && inputs.verification == 'verify'
+    needs: saved-composer-boundaries
     strategy:
       fail-fast: false
       matrix:
@@ -56,32 +64,12 @@ jobs:
         run: >-
           python -m pip install --require-hashes --no-compile
           -r requirements.txt -r requirements-dev.txt
-      - uses: actions/download-artifact@v4
-        with:
-          name: saved-project-generated-source-${{ github.sha }}
-          path: ${{ runner.temp }}/generated-source
-      - name: Use the verified generated source from this exact workflow commit
-        working-directory: .
+      - name: Require the committed packaged source closure without modifying it
         run: |
-          python - <<'PY'
-          import hashlib
-          import json
-          import os
-          from pathlib import Path
-          import subprocess
-
-          root = Path(os.environ["RUNNER_TEMP"]) / "generated-source"
-          receipt = json.loads((root / "generated-source-manifest.json").read_text())
-          patch = (root / "generated-source.patch").read_bytes()
-          assert receipt["source_commit"] == os.environ["GITHUB_SHA"]
-          assert receipt["run_id"] == os.environ["GITHUB_RUN_ID"]
-          assert receipt["patch_bytes"] == len(patch) <= 16 * 1024 * 1024
-          assert receipt["patch_sha256"] == hashlib.sha256(patch).hexdigest()
-          for name in receipt["paths"]:
-              assert name.startswith("tobkiri_runtime/") and ".." not in Path(name).parts, name
-          subprocess.run(["git", "apply", "--check", "-"], input=patch, check=True)
-          subprocess.run(["git", "apply", "-"], input=patch, check=True)
-          PY
+          python -B scripts/generator_source_manifest.py --check
+          python -B scripts/migrate_pack_artifacts_v4.py --check
+          python -B scripts/generate_executable_catalogs_v4.py --check
+          python -B scripts/generate_defaultspack_v4_bundle.py --check
       - name: Exercise actual saved owners, exchange, workspace guards and linked views
         run: |
           python -m pytest -q \
@@ -126,6 +114,7 @@ jobs:
         run: npm run lint
 
   generated-source:
+    if: github.event_name != 'workflow_dispatch' || inputs.verification == 'generate'
     needs: saved-composer-boundaries
     runs-on: ubuntu-22.04
     timeout-minutes: 30
