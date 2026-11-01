@@ -265,14 +265,14 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             }
             None => pending.result.as_ref().expect("actual getter result"),
         };
-        let scope = CoreValue::parse_guest(self.call.as_bytes(), &self.input_budget)?
+        let scope = CoreValue::parse_guest(self.call.as_bytes(), self.input_budget)?
             .get_key("scope")
             .context("original call scope missing")?;
         let packet = result(
             bytes,
             "io.tobkiri.native-value-result.v1",
             &scope,
-            &self.input_budget,
+            self.input_budget,
         )?;
         let root = field(&packet, "root")?;
         ownership(&packet, &root, false)?;
@@ -303,7 +303,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 .as_ref()
                 .expect("actual identity view")
                 .as_bytes(),
-            &self.input_budget,
+            self.input_budget,
         )?;
         let validated = validate_view(&observation, &root, &scope, raised);
         let (builtin, recovery_catch) = match validated {

@@ -790,7 +790,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             diagnostic,
         ) {
             Ok(review) => review,
-            Err(error) => return Ok(Err(error)),
+            Err(error) => return Ok(Err(crate::BootstrapReviewFailure::Admission(error))),
         };
         // The carrier remains in self, outside dispatch's caught future, even
         // if a source callback panics during its real persistence operation.

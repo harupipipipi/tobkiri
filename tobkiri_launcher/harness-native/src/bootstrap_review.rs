@@ -99,9 +99,12 @@ impl Review {
         invocation: &NativeSetupInvocation,
         options: &BootstrapReviewOptions,
         diagnostic: Option<CoreBuffer>,
-    ) -> Result<Self, BootstrapReviewFailure> {
+    ) -> Result<Self, OriginalAuthorityAdmission> {
+        // Construction can only refuse admission. Keep actual guest/cause
+        // carriers inline and funded; no uncharged Box is needed to shrink
+        // an unrelated execution-error variant on this constructor path.
         Ok(Self {
-            read: PublicationRead::new(invocation).map_err(BootstrapReviewFailure::Admission)?,
+            read: PublicationRead::new(invocation)?,
             _denial_diagnostic: diagnostic,
             _flags: (
                 options.include_source_additions,

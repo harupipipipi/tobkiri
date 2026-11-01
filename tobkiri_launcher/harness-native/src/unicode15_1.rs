@@ -127,14 +127,13 @@ fn normalize_nfc<'a, M: UnicodeWork + ?Sized>(
         charge(work, 1)?;
         let cp = scratch[read];
         let ccc = combining_class(cp, work)?;
-        if let Some(position) = starter {
-            if last_ccc == 0 || last_ccc < ccc {
-                if let Some(composite) = composition(scratch[position], cp, work)? {
-                    charge(work, 1)?;
-                    scratch[position] = composite;
-                    continue;
-                }
-            }
+        if let Some(position) = starter
+            && (last_ccc == 0 || last_ccc < ccc)
+            && let Some(composite) = composition(scratch[position], cp, work)?
+        {
+            charge(work, 1)?;
+            scratch[position] = composite;
+            continue;
         }
         charge(work, 1)?;
         scratch[written] = cp;
@@ -235,7 +234,7 @@ fn composition<M: UnicodeWork + ?Sized>(
         ));
     }
     if (S_BASE..S_BASE + S_COUNT).contains(&first)
-        && (first - S_BASE) % T_COUNT == 0
+        && (first - S_BASE).is_multiple_of(T_COUNT)
         && (T_BASE + 1..T_BASE + T_COUNT).contains(&second)
     {
         return Ok(Some(first + second - T_BASE));

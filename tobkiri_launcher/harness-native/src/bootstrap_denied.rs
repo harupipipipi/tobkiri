@@ -239,17 +239,17 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         {
             BootstrapDeniedRaise::Plain => None,
             BootstrapDeniedRaise::ExplicitFrom(error) => {
-                let code = error.code().try_copy_to(&self.input_budget)?;
-                let message = error.message().try_copy_to(&self.input_budget)?;
-                let details = error.details().try_copy_to(&self.input_budget)?;
-                let bound = NativeErrorGraph::decode(code, message, details, &self.input_budget)?;
+                let code = error.code().try_copy_to(self.input_budget)?;
+                let message = error.message().try_copy_to(self.input_budget)?;
+                let details = error.details().try_copy_to(self.input_budget)?;
+                let bound = NativeErrorGraph::decode(code, message, details, self.input_budget)?;
                 Some(BootstrapDeniedRaise::ExplicitFrom(bound))
             }
             BootstrapDeniedRaise::OpaqueGetter(error) => {
-                let scope = CoreValue::parse_guest(self.call.as_bytes(), &self.input_budget)?
+                let scope = CoreValue::parse_guest(self.call.as_bytes(), self.input_budget)?
                     .get_key("scope")
                     .context("original call scope missing")?;
-                error.check_store(&self.input_budget, &scope)?;
+                error.check_store(self.input_budget, &scope)?;
                 None
             }
         };
@@ -259,7 +259,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 .expect("admitted factory")
                 .host_raise = rebound;
         }
-        let message = CoreBuffer::copy_from(message.as_bytes(), &self.input_budget)?;
+        let message = CoreBuffer::copy_from(message.as_bytes(), self.input_budget)?;
         let input = import_message(self, message.as_str()?)?;
         let custody = self.denied_pending.as_mut().expect("admitted factory");
         custody.message = Some(message);
@@ -292,18 +292,18 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             .as_mut()
             .expect("admitted factory")
             .imported = Some(imported.clone());
-        let scope = CoreValue::parse_guest(self.call.as_bytes(), &self.input_budget)?
+        let scope = CoreValue::parse_guest(self.call.as_bytes(), self.input_budget)?
             .get_key("scope")
             .context("original call scope missing")?;
         let imported_value = result(
             &imported,
             "io.tobkiri.native-values-imported.v1",
             &scope,
-            &self.input_budget,
+            self.input_budget,
         )?;
         let argument = field(&imported_value, "root")?;
         ownership(&imported_value, &argument, false)?;
-        let args = CoreValue::array_from([Ok(argument)].into_iter(), &self.input_budget)?;
+        let args = CoreValue::array_from([Ok(argument)].into_iter(), self.input_budget)?;
         let call = frame(
             self,
             "io.tobkiri.native-call.v1",
@@ -311,7 +311,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 ("args", args),
                 (
                     "kwargs",
-                    CoreValue::array_from(std::iter::empty(), &self.input_budget)?,
+                    CoreValue::array_from(std::iter::empty(), self.input_budget)?,
                 ),
             ],
         )?;
@@ -332,7 +332,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                             .context("factory method error reference is missing")?,
                         "io.tobkiri.native-value-result.v1",
                         &scope,
-                        &self.input_budget,
+                        self.input_budget,
                     )?;
                     ownership(&raised, &field(&raised, "root")?, false)?;
                 }
@@ -349,7 +349,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             &returned,
             "io.tobkiri.native-value-result.v1",
             &scope,
-            &self.input_budget,
+            self.input_budget,
         )?;
         let root = field(&returned_value, "root")?;
         ownership(&returned_value, &root, true)?;
@@ -376,7 +376,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
             .expect("admitted factory message")
             .clone();
         if let Err(error) =
-            validate_view(&view, &root, &scope, message.as_str()?, &self.input_budget)
+            validate_view(&view, &root, &scope, message.as_str()?, self.input_budget)
         {
             #[cfg(debug_assertions)]
             {
@@ -414,7 +414,7 @@ fn import_message<S: BootstrapInputOwner>(
     runner: &ReviewPackBorrow<'_, S>,
     message: &str,
 ) -> Result<CoreBuffer> {
-    let mut out = CoreBuffer::builder(&runner.input_budget, MAX_BYTES);
+    let mut out = CoreBuffer::builder(runner.input_budget, MAX_BYTES);
     out.append(b"{\"format\":\"io.tobkiri.native-value-input.v1\",\"scope\":")?;
     Scope::original(&runner.work.get().invocation).write(&mut out)?;
     out.append(b",\"nodes\":[{\"kind\":\"str\",\"value\":")?;
@@ -427,7 +427,7 @@ pub(super) fn frame<S: BootstrapInputOwner, const N: usize>(
     format: &str,
     values: [(&str, CoreValue); N],
 ) -> Result<CoreBuffer> {
-    let mut out = CoreBuffer::builder(&runner.input_budget, MAX_BYTES);
+    let mut out = CoreBuffer::builder(runner.input_budget, MAX_BYTES);
     out.append(b"{\"format\":")?;
     bootstrap_metadata::string_parts(&mut out, [format])?;
     out.append(b",\"scope\":")?;
@@ -436,7 +436,7 @@ pub(super) fn frame<S: BootstrapInputOwner, const N: usize>(
         out.append(b",")?;
         bootstrap_metadata::string_parts(&mut out, [name])?;
         out.append(b":")?;
-        let encoded = value.encode_guest(&runner.input_budget)?;
+        let encoded = value.encode_guest(runner.input_budget)?;
         out.append(encoded.as_bytes())?;
     }
     out.append(b"}")?;
