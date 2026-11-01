@@ -2296,5 +2296,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   DATA解放/reap0/0、physical owner再openは確認した。失敗6件を成功へ数えない。
   実AppHandle/Wasm全catalog/Guest factory/非同期Joinの資格はこの同期mechanics driverへ含めない。
 - 未完: outer catch対象のSecurePersistence/ActiveProfileStore/Timeoutの有限class実bindingは
-  必須残件。Astra highに従い既存typed-request投影は未資格と明記し、実同Storeのfactory/
-  cause/context成功へ読み替えない。接続済factoryの失敗からのfallbackや別builtin合成はしない。
+  必須残件。実lock timeoutはActiveProfileStoreLockTimeoutでありbuiltin TimeoutErrorへ
+  置換しない。最新Astra high回答に従い、native IO原因は閉じたApp-owned class graphで
+  Hostに保持し、同Storeの実denied factory返値のintrinsicsとHost explicit-fromを分ける。
+  Guestが原因objectを処理しない区間でclassを再生成するexport/frameworkは増やさない。
+  raw Guest例外は実refを保つ。既存typed-request投影を成功へ読み替えず、未知型は未資格、
+  registry別RuntimeError familyは元どおりraw。実factory失敗からのfallbackも行わない。
+  独立参照tool `original_recovery_error_reference.py` は実原本class10入力をcatalog入口で
+  制御注入し、元recover/catch・実factory・journal finallyを変更せず観測するSource。
+  args/MRO/OS fields/同nodeのcause-context/suppression、raw registry2枝を確認予定で、
+  native IO原因・Guest class実生成・実factory failure・GUIの証拠には数えない。
