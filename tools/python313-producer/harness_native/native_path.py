@@ -141,7 +141,7 @@ class PathBridge:
         # Do not catch native resource/cancellation/panic failures. Only the
         # explicitly returned closed domain DATA channel may be decoded below.
         response = self._inspect(wire.dumps({
-            "format": (_PREFIX + "catalog-request.v1" if catalog or
+            "format": ("io.tobkiri.native-catalog-request.v1" if catalog or
                        self._catalog_root is not None else _PREFIX + "request.v1"),
             "scope": self.scope.wire(),
             "target": target, "operation": operation, "args": args,

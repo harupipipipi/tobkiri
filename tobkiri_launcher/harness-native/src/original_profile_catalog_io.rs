@@ -1197,7 +1197,7 @@ fn read_resource<S: crate::BootstrapReviewOwner>(
             OriginalAuthorityStage::Source,
         ));
     }
-    let initial = size.saturating_add(1).min(LIMIT).max(1);
+    let initial = size.saturating_add(1).clamp(1, LIMIT);
     let capacity = op.reserve(OriginalAuthorityStage::Source, initial)?;
     let mut bytes = Zeroizing::new(Vec::new());
     bytes
