@@ -404,9 +404,28 @@ async fn init_checkpoint_is_data_and_cannot_authorize_root_inspection() -> Resul
     assert_eq!(trace.inspect_validated, 1);
     assert_eq!(trace.host_phase, "export-returned");
     // The exact same DATA must not acquire a root or source-operation right.
+    let fuel_before = runtime.fuel_remaining()?;
     assert!(runtime.host_resource_root().await.is_err());
     assert_eq!(runtime.initialization_trace().checkpoint_count, 1);
+    // The real failing call retired its Store. Its earlier Copy sample must
+    // remain available without a dead-Store query or another guest call.
+    assert!(runtime.fuel_remaining().is_err());
+    let failed_call = runtime
+        .ci_retired_call()
+        .context("actual retired-call sample missing")?;
+    assert_eq!(failed_call.phase_at_retire_failure, "host-root");
+    assert!(failed_call.store_retired && !failed_call.post_return);
+    assert!(!failed_call.deadline_exceeded);
+    assert!(
+        failed_call
+            .fuel_remaining
+            .is_some_and(|remaining| remaining < fuel_before)
+    );
+    // No journal was entered. A call sample cannot manufacture a cleanup
+    // handle or substitute for the real IO retirement awaited by finish.
+    assert!(runtime.original_review_uncertain_cleanup().is_none());
     runtime.finish().await?;
+    assert!(failed_call.fuel_remaining.is_some());
     let invocation = owner.begin_native_setup()?;
     let component = policy_component(&engine, payload, InitAction::InspectTwiceThenUnit, false)?;
     let failure =

@@ -77,7 +77,7 @@ impl crate::BootstrapReviewOwner for CatalogSource {
     }
 }
 
-fn lock_is_free(root: &Path) -> Result<bool> {
+pub(super) fn lock_is_free(root: &Path) -> Result<bool> {
     let file = OpenOptions::new()
         .read(true)
         .write(true)
@@ -217,13 +217,52 @@ async fn original_catalog_component_driver() -> Result<()> {
     let mut held_success = None;
     let mut cleanup_probe = None;
     let mut observed = None;
+    let mut post_review_copy = None;
     let execution: Result<()> = async {
-        let error = match runtime
+        let outcome = runtime
             // Preserve this constructor-entry proof while normal listing
             // continues into the independently tested definition interval.
             .setup_review_catalog_prefix(&BootstrapReviewOptions::default())
-            .await?
-        {
+            .await;
+        // Review/Read live outside the caught call future, including a trap.
+        // Acquire its actual ledger BEFORE `?` or finish, not only typed DATA.
+        cleanup_probe = runtime.original_review_uncertain_cleanup();
+        let progress = runtime
+            .work
+            .get()
+            .catalog
+            .try_lock()
+            .ok()
+            .and_then(|current| current.as_ref().map(|io| io.ci_progress()));
+        let retired_call = runtime.ci_retired_call();
+        let live_fuel = runtime
+            .program
+            .as_ref()
+            .filter(|program| !program.observation().store_retired)
+            .and_then(|program| program.fuel_remaining().ok());
+        post_review_copy = Some(json!({
+            "phase":CiRetiredCall::phase_name(runtime.work.get().phase.load(Ordering::Acquire)),
+            "inspection_attempts_before_review":inspections_before_review,
+            "inspection_attempts_after_review":runtime.inspection_attempts(),
+            "catalog_progress_copy_only":progress,
+            "live_store_fuel_available":live_fuel.is_some(),
+            "live_store_fuel_remaining":live_fuel,
+            "retired_call_sample_available":retired_call.is_some(),
+            "retired_call_sample":retired_call.map(|sample| json!({
+                "fuel_remaining":sample.fuel_remaining,
+                "post_return":sample.post_return,
+                "store_retired":sample.store_retired,
+                "deadline_exceeded":sample.deadline_exceeded,
+                "phase_at_retire_failure":sample.phase_at_retire_failure,
+            })),
+            "cleanup_probe_present":cleanup_probe.is_some(),
+            "cleanup_probe_verified_before_finish":cleanup_probe.as_ref().map(|v| v.is_verified()),
+            "qualification":false,
+        }));
+        if outcome.is_err() {
+            observed = Some(json!({"outcome":"outer-error", "qualification":false}));
+        }
+        let error = match outcome? {
             Ok(value) => {
                 held_success = Some(value);
                 bail!("unbound catalog returned success");
@@ -240,7 +279,6 @@ async fn original_catalog_component_driver() -> Result<()> {
             .as_ref()
             .or(diagnostic.as_ref())
             .context("actual outcome required")?;
-        cleanup_probe = runtime.original_review_uncertain_cleanup();
         if let BootstrapReviewFailure::ObservationRefused(failure) = error {
             let native = failure.error();
             let catalog_progress = runtime
@@ -297,7 +335,8 @@ async fn original_catalog_component_driver() -> Result<()> {
     let before = invocation.capacity_snapshot();
     let cleanup = runtime.finish().await;
     let after_finish = invocation.capacity_snapshot();
-    let verified = cleanup_probe.as_ref().is_some_and(|v| v.is_verified());
+    let probe_present = cleanup_probe.is_some();
+    let verified = cleanup_probe.as_ref().map(|v| v.is_verified());
     let lock_released = lock_is_free(&user_data)?;
     drop(held_failure);
     drop(held_success);
@@ -309,8 +348,12 @@ async fn original_catalog_component_driver() -> Result<()> {
     let after_reap = invocation.capacity_snapshot()?;
     let output = json!({"format":"io.tobkiri.actual-catalog-prefix-observations.v1",
         "name":"packaged-valid","observation":observed,"execution_matched_branch":execution.is_ok(),
+        "post_review_copy_only":post_review_copy,
         "execution_error":execution.as_ref().err().map(ToString::to_string),
-        "cleanup_verified":cleanup.is_ok() && verified,"journal_lock_released_after_finish":lock_released,
+        "finish_ok":cleanup.is_ok(),"cleanup_probe_present":probe_present,
+        "cleanup_probe_verified_after_finish":verified,
+        "cleanup_verified":cleanup.is_ok() && verified == Some(true),
+        "journal_lock_released_after_finish":lock_released,
         "source_destructor_reached":dropped.load(Ordering::Acquire),
         "capacity":{"before_finish":{"bytes":before.charged_bytes,"reservations":before.reservations},
         "after_finish":{"bytes":after_finish.charged_bytes,"reservations":after_finish.reservations},

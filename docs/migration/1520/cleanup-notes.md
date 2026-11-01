@@ -2260,6 +2260,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   観測した。一方cleanup_probeをtyped return後だけ取得するdriverはouter trapで未取得のため、
   cleanup_verifiedはfalse。0/0やlock解放をIO Join receiptへ読み替えない。上限を保って
   実燃料消費箇所とtrap時の既存cleanup ledger保持を次に確認する。
+  次のCI専用修正は、outer errorを伝播する前に既存reviewのcleanup probeとcatalog進行を
+  取得し、実callが既に採取したfuel/post-return/Store破棄/deadlineをprogram破棄前にCopyする。
+  未取得はnullで、finish・probeの実検証・OS lock・reapは別々に記録する。新しいGuest callや
+  追加予算は使わず、Copyは既存Workの予約へ含める。既存policy6件のうち1件で、実失敗後の
+  Store不可読とCopy保持、journal未開始時probe不在を確認する。Source/rustfmtのみ確認済みで、
+  実test/compileとcatalog診断の結果はCI待ち。
   将来の整理は未接続HostコードをGuest closureから外して実Rustへ移すことだが、今回の
   依存置換の成功だけでSource削除や後続activation機能の達成を認定しない。
 

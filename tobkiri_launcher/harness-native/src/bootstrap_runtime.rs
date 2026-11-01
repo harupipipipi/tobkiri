@@ -103,6 +103,48 @@ fn initialization_domain_after_cleanup(
     }
 }
 
+/// Copy-only CI metadata from the already sampled real call. It is neither
+/// a Store/source handle nor an IO Join/journal-close receipt.
+#[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
+#[derive(Clone, Copy)]
+pub(crate) struct CiRetiredCall {
+    pub(crate) fuel_remaining: Option<u64>,
+    pub(crate) post_return: bool,
+    pub(crate) store_retired: bool,
+    pub(crate) deadline_exceeded: bool,
+    pub(crate) phase_at_retire_failure: &'static str,
+}
+#[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
+impl CiRetiredCall {
+    fn capture(phase: u8, observation: tobkiri_wasm::NativeDataObservation) -> Self {
+        Self {
+            fuel_remaining: observation.fuel_remaining,
+            post_return: observation.post_return,
+            store_retired: observation.store_retired,
+            deadline_exceeded: observation.deadline_exceeded,
+            phase_at_retire_failure: Self::phase_name(phase),
+        }
+    }
+    fn phase_name(phase: u8) -> &'static str {
+        match phase {
+            CONSTRUCTING => "constructing",
+            INITIALIZING => "initializing",
+            READY => "ready",
+            HOST_ROOT => "host-root",
+            BUNDLE_ROOT => "bundle-root",
+            CLOSED => "closed",
+            REVIEW => "review",
+            DENIED => "denied",
+            IDENTITY => "identity",
+            REVIEW_HOST_ROOT => "review-host-root",
+            REVIEW_BUNDLE_ROOT => "review-bundle-root",
+            CATALOG_LOAD => "catalog-load",
+            CATALOG_PARSE => "catalog-manifest-parse",
+            _ => "unknown",
+        }
+    }
+}
+
 struct Work<S> {
     source: S,
     invocation: NativeSetupInvocation,
@@ -120,6 +162,8 @@ struct Work<S> {
     catalog: std::sync::Mutex<Option<crate::original_authority::catalog::CatalogIo>>,
     catalog_dispatch: OnceLock<catalog::Dispatch<S>>,
     review_root: std::sync::Mutex<Option<catalog::RootResolution>>,
+    #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
+    ci_retired_call: OnceLock<CiRetiredCall>,
 }
 struct Funding {
     _native: NativeSetupReservation,
@@ -516,6 +560,8 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 catalog: std::sync::Mutex::new(None),
                 catalog_dispatch: OnceLock::new(),
                 review_root: std::sync::Mutex::new(None),
+                #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
+                ci_retired_call: OnceLock::new(),
             },
             Funding {
                 _native: native,
@@ -794,6 +840,13 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             .fuel_remaining()
     }
 
+    /// Already sampled, Copy-only CI metadata; not a live Store query or an
+    /// IO/journal cleanup receipt. None means no available program sample.
+    #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
+    pub(crate) fn ci_retired_call(&self) -> Option<CiRetiredCall> {
+        self.work.get().ci_retired_call.get().copied()
+    }
+
     /// Borrow the original DATA codec account for native frame codecs. Cloning
     /// its handle retains these same limits, deadline and physical accounting.
     pub fn data_budget(&self) -> &Arc<dyn AllocationBudget> {
@@ -1062,6 +1115,19 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
                 .as_ref()
                 .expect("rejected factory custody")
                 .assert_rejected_outputs_live();
+        }
+        #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
+        if let Some(program) = self.program.as_ref() {
+            // NativeDataEntry has already sampled the real call before its
+            // own retirement. Copy that sample before losing this program;
+            // never query dead Store fuel or execute another guest call.
+            let sample = CiRetiredCall::capture(
+                self.work.get().phase.load(Ordering::Acquire),
+                program.observation(),
+            );
+            // Nested error propagation must not replace the first available
+            // sample with a closed phase or an invented unavailable/zero fuel.
+            let _ = self.work.get().ci_retired_call.set(sample);
         }
         self.work.get().phase.store(CLOSED, Ordering::Release);
         if let Some(mut program) = self.program.take() {
