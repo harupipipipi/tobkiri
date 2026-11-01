@@ -60,6 +60,31 @@ impl From<OriginalAuthorityError> for BindingFailure {
 }
 
 impl CatalogIo {
+    /// CI-only observation of the actual finite occurrence. Copy-only DATA;
+    /// callers use try_lock and this neither joins IO nor authorizes a read.
+    #[cfg(all(
+        test,
+        feature = "bootstrap-ci",
+        target_os = "macos",
+        target_arch = "aarch64"
+    ))]
+    pub(crate) fn ci_progress(&self) -> (&'static str, usize, usize, usize) {
+        let stage = match self.loader {
+            Loader::Root => "root",
+            Loader::RootSymlink => "root-symlink",
+            Loader::RootResolve => "root-resolve",
+            Loader::LockSymlink => "lock-symlink",
+            Loader::LockRead => "lock-read",
+            Loader::Entries => "entries",
+            Loader::Walk => "walk",
+            Loader::EntryRead => "entry-read",
+            Loader::ArtifactResolve => "artifact-resolve",
+            Loader::Done => "done",
+            Loader::Rejected => "rejected",
+        };
+        (stage, self.entry, self.walk, self.pins)
+    }
+
     pub(crate) fn new<S: crate::BootstrapReviewOwner>(
         owner: &S,
         invocation: &NativeSetupInvocation,

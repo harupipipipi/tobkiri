@@ -10,6 +10,7 @@ from harness_native.dispatcher import (
     Dispatcher,
     MethodRaised,
     NotInitialized,
+    _CatalogDiagnostic,
 )
 from harness_native.value_graph import InvalidFrame, InvalidReference, UnsupportedValue
 from harness_native.init_diagnostic import report_init_checkpoint, report_init_failure
@@ -22,7 +23,7 @@ _dispatcher = Dispatcher(
 )
 
 
-def _invoke(action, *args):
+def _invoke(action, *args, _catalog_diagnostic=None):
     try:
         return action(*args)
     except NotInitialized:
@@ -43,13 +44,26 @@ def _invoke(action, *args):
         raise Err(
             Error(ErrorCode.INVALID_REFERENCE, "invalid native DATA reference", "")
         ) from None
-    except UnsupportedValue:
+    except UnsupportedValue as error:
         raise Err(
-            Error(ErrorCode.UNSUPPORTED_VALUE, "original DATA is not represented", "")
+            Error(ErrorCode.UNSUPPORTED_VALUE, "original DATA is not represented",
+                  _catalog_diagnostic.details(error) if _catalog_diagnostic is not None else "")
         ) from None
     except MethodRaised as error:
         # Empty text means undisclosed, not that the original message is empty.
         raise Err(Error(ErrorCode.METHOD_RAISED, "", error.details)) from None
+
+
+def _invoke_catalog(action, method, payload):
+    """Observe only fixed refusal tags; original classification is unchanged."""
+    diagnostic = _CatalogDiagnostic()
+    try:
+        return _invoke(
+            lambda: action(method, payload, _catalog_diagnostic=diagnostic),
+            _catalog_diagnostic=diagnostic,
+        )
+    finally:
+        diagnostic.clear()
 
 
 class Runtime(wit_world.exports.Runtime):
@@ -98,7 +112,7 @@ class Runtime(wit_world.exports.Runtime):
         return _invoke(_dispatcher.call, "retired_setup_response", payload)
 
     def load_catalog(self, payload: str) -> str:
-        return _invoke(_dispatcher.call, "load_catalog", payload)
+        return _invoke_catalog(_dispatcher.call, "load_catalog", payload)
 
     def catalog_with_packs(self, payload: str) -> str:
         return _invoke(_dispatcher.call, "catalog_with_packs", payload)

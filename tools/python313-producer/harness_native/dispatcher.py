@@ -45,6 +45,73 @@ METHODS = (
 PREFIX = "io.tobkiri.native-"
 
 
+class _CatalogDiagnostic:
+    """Caller-local Copy DATA, never an exception/ref/source carrier."""
+
+    __slots__ = ("phase", "reason")
+    _REASONS = {
+        "unsupported concrete original DATA type": "unrepresented-result-type",
+        "nested or foreign catalog call": "foreign-catalog-context",
+        "native path value is not represented": "path-value",
+        "invalid issued native binding": "binding-shape",
+        "Path constructor input is not represented": "path-constructor",
+        "foreign native Path context": "foreign-path-context",
+        "invalid native inspection response": "response-json",
+        "invalid or foreign native inspection response": "response-frame",
+        "native error disclosure is not connected": "error-codec-not-bound",
+        "native execution failures cannot be domain DATA": "invalid-error-kind",
+        "invalid native inspection result": "result-frame",
+        "native result kind does not match operation": "result-kind",
+        "invalid native path result": "path-result",
+        "catalog path DATA outside its fixed call": "path-call-context",
+        "invalid catalog path DATA": "path-steps",
+        "invalid native scalar result": "scalar-result",
+        "invalid native byte result": "byte-result",
+        "native result value is not represented": "result-value",
+        "unbound lexical Path has no native IO target": "unbound-path",
+    }
+    _PHASES = frozenset({"frame", "argument-binding", "original-call", "result-retain"})
+    MAX_BYTES = 512
+
+    def __init__(self):
+        self.clear()
+
+    def clear(self):
+        self.phase = None
+        self.reason = None
+
+    def record(self, error):
+        if self.reason is not None:
+            return
+        # Only OUR exact bridge exception and its builtin args descriptor.
+        # Unknown content, subclasses, paths and foreign classes stay unknown.
+        args = BaseException.args.__get__(error) if type(error) is UnsupportedValue else None
+        self.reason = (
+            self._REASONS.get(args[0], "unknown")
+            if type(args) is tuple and len(args) == 1 and type(args[0]) is str
+            and len(args[0]) <= 128 else "unknown"
+        )
+
+    def details(self, error):
+        try:
+            self.record(error)
+            # Every value is one of these fixed ASCII literals. No error
+            # object, original argument fragment or class name is serialized.
+            reason = self.reason if self.reason in {
+                *self._REASONS.values(), "unknown", "outside-fixed-method-inventory"
+            } else "unknown"
+            result = wire.dumps({
+                "format": "io.tobkiri.native-catalog-refusal-ci.v1",
+                "phase": self.phase if self.phase in self._PHASES else "unknown",
+                "reason": reason,
+            })
+            if len(result) > self.MAX_BYTES:
+                raise MemoryError("fixed catalog diagnostic exceeds its bound")
+            return result
+        finally:
+            self.clear()
+
+
 class NotInitialized(Exception):
     """No invocation-local registry has been accepted."""
 
@@ -266,7 +333,8 @@ class Dispatcher:
             raise
 
     def _apply_original(self, action: Callable[[], Any], *, identity: bool = False,
-                        caller: str | None = None) -> Any:
+                        caller: str | None = None,
+                        _catalog_diagnostic: _CatalogDiagnostic | None = None) -> Any:
         state = self._current()
         try:
             value = action()
@@ -274,6 +342,11 @@ class Dispatcher:
             raise
         except Exception as error:
             if type(error) not in state.method_errors:
+                if _catalog_diagnostic is not None:
+                    if type(error) is UnsupportedValue:
+                        _catalog_diagnostic.record(error)
+                    else:
+                        _catalog_diagnostic.reason = "outside-fixed-method-inventory"
                 raise UnsupportedValue(
                     "original method failure is not represented"
                 ) from None
@@ -286,14 +359,22 @@ class Dispatcher:
             raise failure from None
         return value
 
-    def call(self, method: str, payload: str) -> str:
+    def call(self, method: str, payload: str, *,
+             _catalog_diagnostic: _CatalogDiagnostic | None = None) -> str:
         """Invoke a fixed export; preserve Python's original argument binding."""
+        if _catalog_diagnostic is not None:
+            if method != "load_catalog" or type(_catalog_diagnostic) is not _CatalogDiagnostic:
+                raise InvalidFrame("invalid private catalog diagnostic caller")
+            _catalog_diagnostic.clear()
+            _catalog_diagnostic.phase = "frame"
         state = self._current()
         if method not in METHODS:
             raise InvalidFrame("method is not a fixed original export")
         frame = self._frame(payload, "call", {"args", "kwargs"})
         if type(frame["args"]) is not list or type(frame["kwargs"]) is not list:
             raise InvalidFrame("invalid original call arguments")
+        if _catalog_diagnostic is not None:
+            _catalog_diagnostic.phase = "argument-binding"
         args = [
             state.registry.borrow(state.registry.reference(ref))
             for ref in frame["args"]
@@ -322,9 +403,14 @@ class Dispatcher:
                 action = lambda: target(*args, **kwargs)
         else:
             action = lambda: target(*args, **kwargs)
-        value = self._apply_original(action, identity=identity, caller=caller)
+        if _catalog_diagnostic is not None:
+            _catalog_diagnostic.phase = "original-call"
+        value = self._apply_original(action, identity=identity, caller=caller,
+                                     _catalog_diagnostic=_catalog_diagnostic)
         message = (args[0] if method == "denied" and len(args) == 1
                    and type(args[0]) is str and not kwargs else None)
+        if _catalog_diagnostic is not None:
+            _catalog_diagnostic.phase = "result-retain"
         return self._result(value, denied_message=message,
                             identity_origin=("getter-returned" if identity else
                                              caller + "-returned" if caller else None))

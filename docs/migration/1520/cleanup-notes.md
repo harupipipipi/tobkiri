@@ -2183,7 +2183,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 022: catalog前半のIO所有とJSON parseを二重frameworkにしない
 
-- 状態: **Sol6.1 xhigh実装Source確定。原本参照9件は両OS成功、native比較は未実行**。
+- 状態: **原本参照9件は両OS成功、native機構7件成功。実catalog呼出しは表現未対応で失敗**。
 - 場所: `bootstrap_catalog.rs`/`original_profile_catalog_io.rs`、既存NativePath/dispatcher、
   `tools/original_catalog_prefix_reference.py`。
 - 整理: 同journal guardで元bundle/dev選択→resource bindingの実walk/read/hash→実
@@ -2196,7 +2196,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   既存decoderの過大なbyte一律予約は、実Vec容量と成長時同居を含むprivate上界へ置換。
   数値は旧単位を保ち、到達したkey比較も同NativeWorkへ課金する。旧journal/Authorityの
   入口・予約量と64MiB/2B/絶対30秒は維持する。Rust7件とGuest6件の新検証Sourceがあり、
-  CIで原本9件→実Wasm正常1件→独立比較を行う準備ができたが、まだnative実証はない。
+  CI41322731594で機構7件、metadata5/preparation5/policy6/実init1/Core owner2は成功。
+  実catalog1件はslot7でunsupported-valueを返し未達。実finish/OS lock解放、Source破棄、
+  DATA解放/reap後0bytes/0reservations、原本state/key一致は観測したが、catalog成功とはしない。
 - 原本: a0971c4b5のCI41282428075は両OS9件成功。verbatim staged Pythonと実root getters/
   catalogを通し、constructor呼出aliasだけsentinelで停止した（本体0）。packaged入力、
   artifact-root不在、CRLF、dev-bundledは到達、manifest/UTF8/JSON/schema/unlisted失敗は
@@ -2209,10 +2211,16 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   実fieldを両APIが借り、Work/AppHandleがcleanupまで保持するSource契約を根拠とする。
   非object manifest、非ASCII filename repr、複合IO context、dev resolve競合、深い例外と
   rare Join不確定は未閉鎖であり、既存getter/正常fixtureの資格を流用しない。
+  slot7の停止地点を観測するcatalog専用phase/reason診断はAstra high承認の固定tagのみ。
+  このexportのdetailsだけを意図的に変え、通常Dispatcher.callと他exportのopaque ABI、
+  fatal/MethodRaised分類を維持する。診断は512B以内で権限/成功判定に使わない。
+  別のSource欠落として、Native `_ModuleLoader` wrapperが実captured loaderのschema
+  resource-owner accessor/identityを維持していない。今回unsupportedの原因とは未断定で、
+  単純forwardやPath fallbackで済ませず、実owner/spec.loader/__loader__対応の閉鎖が必要。
 
 ## 024: frozen component checkpointを現在のProfileへ誤照合しない
 
-- 状態: **Source-only修正。現在の実component構築CIは未完**。
+- 状態: **12fe74c93で修正。原本checkpoint16件と現native component構築がCIで成功**。
 - 場所: producerの`component_inputs`、`test_build_components`、
   `original_component_checkpoint.py`。
 - 問題: 2026-10-20の固定five-component planは、当時のProfileを含むinventoryに
@@ -2261,9 +2269,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - lock: 既存private helperをpublication/definitionの固定二filenameへ限定して再用し、
   元のfullfilename process key・journal→definition順を維持する。各migrationの再lock/readを
   省略しない。同一filenameの一般RLock再入、atomic replace、migration本体は未実装。
-- 検証予定: 原本の実ctor/listを13件の制御入力で動かし、最初の2migrationの入口だけを
+- 原本検証: 実ctor/listを13件の制御入力で動かし、最初の2migrationの入口だけを
   sentinelで止める。実definition lock解放とjournal保持、state/key・closeを別に観測する。
-  新reference tool/workflowはASTのみで、原本/Nativeの実行成功をまだ示さない。
+  CI41323891367は両OS13件成功。正常4枝/負例9枝と実lock lifetimeを観測し、135,961Bの
+  選択JSONのみ保存した。migration本体0、Native比較は未実行であり、製品採用の証拠ではない。
 - 未完: outer catch対象のSecurePersistence/ActiveProfileStore/Timeoutの有限class実bindingは
   必須残件。Astra highに従い既存typed-request投影は未資格と明記し、実同Storeのfactory/
   cause/context成功へ読み替えない。接続済factoryの失敗からのfallbackや別builtin合成はしない。

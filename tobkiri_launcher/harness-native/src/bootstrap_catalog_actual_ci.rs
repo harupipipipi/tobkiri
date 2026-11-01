@@ -238,8 +238,16 @@ async fn original_catalog_component_driver() -> Result<()> {
         cleanup_probe = runtime.original_review_uncertain_cleanup();
         if let BootstrapReviewFailure::ObservationRefused(failure) = error {
             let native = failure.error();
+            let catalog_progress = runtime
+                .work
+                .get()
+                .catalog
+                .try_lock()
+                .ok()
+                .and_then(|current| current.as_ref().map(|io| io.ci_progress()));
             observed = Some(json!({"outcome":"observation-refused",
                 "stage":format!("{:?}",failure.stage()),"origin":failure.origin(),
+                "catalog_progress_copy_only":catalog_progress,
                 "native_code":diagnostic_text(native.code()),
                 "native_message":diagnostic_text(native.message()),
                 "native_details":native.details().map(diagnostic_text),

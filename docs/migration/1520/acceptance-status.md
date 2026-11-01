@@ -141,7 +141,19 @@ comparison of that larger boundary are still pending; fixture artifact directori
 do not establish actual installed executable or GUI qualification. The same-guard
 Rust catalog adapter, fixed same-Store manifest parse and independent actual-component
 comparison driver are now implemented in source; their compilation and execution
-remain unverified. Constructor/migration bodies and outer Authority remain unbound.
+were exercised in [CI41322731594](https://github.com/harupipipipi/tobkiri/actions/runs/41322731594).
+All7 new native mechanism tests and existing init/metadata/preparation/policy/owner
+checks passed, but the actual catalog call returned `unsupported-value` at slot7.
+State/key immutability, actual cleanup, Source destruction and0-byte/0-reservation
+reap were observed; catalog completion remains unqualified. A bounded phase/reason
+diagnostic is being added without changing failure classification or resource limits.
+Constructor/migration bodies and outer Authority remain unqualified.
+
+The independent original constructor/list reference subsequently passed13 controlled
+cases on each OS in [CI41323891367](https://github.com/harupipipipi/tobkiri/actions/runs/41323891367):
+4 positive migration-entry boundaries and9 invalid-state/file cases, with the actual
+definition lock released while the journal stayed held. Only the two first-migration
+entries use sentinels; no migration body or native/factory qualification is claimed.
 
 Saved Project parity source at `eb5dabff0` restores existing owner-based membership
 and exact mutation acknowledgements while preserving the conversation execution

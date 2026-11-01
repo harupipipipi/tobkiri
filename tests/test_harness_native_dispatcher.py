@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import sys
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +26,7 @@ from harness_native.dispatcher import (  # noqa: E402
     NotInitialized,
     OriginalRuntime,
     PREFIX,
+    _CatalogDiagnostic,
 )
 from harness_native.value_graph import (  # noqa: E402
     InvalidFrame,
@@ -112,6 +114,151 @@ class FixedManifestParseTests(unittest.TestCase):
         self.assertEqual(fields["encoding"]["codepoints"], list(map(ord, actual.encoding)))
         self.assertEqual(fields["reason"]["codepoints"], list(map(ord, actual.reason)))
         self.assertEqual(view["exception"]["recovery_catch"], "value-error")
+
+
+class CatalogDiagnosticTests(unittest.TestCase):
+    """Controlled wrapper ABI only, not actual original loader/Wasm proof."""
+
+    def setUp(self):
+        # Execute the EXACT two thin adapter functions with WIT result stubs.
+        # No original module, file IO import or Native permission is supplied.
+        class AbiErr(Exception):
+            def __init__(self, value):
+                super().__init__()
+                self.value = value
+
+        codes = ("NOT_INITIALIZED", "ALREADY_INITIALIZED", "INVALID_FRAME",
+                 "INVALID_REFERENCE", "UNSUPPORTED_VALUE", "METHOD_RAISED")
+        self.namespace = {
+            "Err": AbiErr, "Error": lambda *args: SimpleNamespace(
+                code=args[0], message=args[1], details=args[2]),
+            "ErrorCode": SimpleNamespace(**{name: name for name in codes}),
+            "NotInitialized": NotInitialized, "AlreadyInitialized": AlreadyInitialized,
+            "InvalidFrame": InvalidFrame, "InvalidReference": InvalidReference,
+            "UnsupportedValue": UnsupportedValue, "MethodRaised": MethodRaised,
+            "_CatalogDiagnostic": _CatalogDiagnostic,
+        }
+        tree = ast.parse((ROOT / "tools/python313-producer/harness_native/app.py").read_text())
+        selected = ast.Module(body=[node for node in tree.body
+                                   if isinstance(node, ast.FunctionDef)
+                                   and node.name in {"_invoke", "_invoke_catalog"}],
+                              type_ignores=[])
+        exec(compile(selected, "actual-catalog-thin-wrapper-functions", "exec"), self.namespace)
+        self.abi_error = AbiErr
+
+    def setup_dispatcher(self):
+        class Runtime:
+            failure = None
+            value = "actual controlled return"
+
+            def load_catalog(self, root):
+                if self.failure is not None:
+                    raise self.failure
+                return self.value
+
+        self.runtime = Runtime()
+        self.scope = Scope(1, 2, 3, 4)
+        self.dispatcher = Dispatcher(lambda _scope: OriginalRuntime(
+            self.runtime, (RecordType("native-path", NativePath, native_binding=True),
+                           RecordType("value-error", ValueError)), (ValueError,)))
+        self.dispatcher.init(wire.dumps({"format": PREFIX + "init.v1",
+                                        "scope": self.scope.wire()}))
+        registry = self.dispatcher._current().registry
+        root = registry.retain("controlled argument DATA")
+        self.payload = wire.dumps({"format": PREFIX + "call.v1", "scope": self.scope.wire(),
+                                   "args": [root.wire()], "kwargs": []})
+        self.observed = []
+
+        def diagnostic():
+            value = _CatalogDiagnostic()
+            self.observed.append(value)
+            return value
+
+        self.namespace["_CatalogDiagnostic"] = diagnostic
+
+    def call_catalog(self):
+        return self.namespace["_invoke_catalog"](
+            self.dispatcher.call, "load_catalog", self.payload)
+
+    def test_known_unknown_and_nonexact_bridge_args_are_only_fixed_tags(self):
+        class Subclass(UnsupportedValue):
+            def __str__(self):
+                raise AssertionError("must not format diagnostic exception")
+
+            def __repr__(self):
+                raise AssertionError("must not render diagnostic exception")
+
+        for error, expected in (
+            (UnsupportedValue("invalid native inspection result"), "result-frame"),
+            (UnsupportedValue("private path/value must never be echoed"), "unknown"),
+            (UnsupportedValue("invalid native inspection result", "extra"), "unknown"),
+            (Subclass("invalid native inspection result"), "unknown"),
+        ):
+            diagnostic = _CatalogDiagnostic()
+            diagnostic.phase = "original-call"
+            details = diagnostic.details(error)
+            self.assertLessEqual(len(details), _CatalogDiagnostic.MAX_BYTES)
+            self.assertEqual(json.loads(details), {
+                "format": "io.tobkiri.native-catalog-refusal-ci.v1",
+                "phase": "original-call", "reason": expected})
+            self.assertNotIn("private", details)
+            self.assertEqual((diagnostic.phase, diagnostic.reason), (None, None))
+
+    def test_original_classification_and_return_retaining_have_distinct_phases(self):
+        self.setup_dispatcher()
+        for error, expected in (
+            (UnsupportedValue("invalid native inspection result"), "result-frame"),
+            (UnsupportedValue("unreviewed private reason"), "unknown"),
+            (LookupError("outside inventory must not be disclosed"), "outside-fixed-method-inventory"),
+        ):
+            self.runtime.failure = error
+            with self.assertRaises(UnsupportedValue):
+                self.dispatcher.call("load_catalog", self.payload)
+            with self.assertRaises(self.abi_error) as caught:
+                self.call_catalog()
+            self.assertEqual(caught.exception.value.code, "UNSUPPORTED_VALUE")
+            self.assertEqual(caught.exception.value.message, "original DATA is not represented")
+            self.assertEqual(json.loads(caught.exception.value.details)["phase"], "original-call")
+            self.assertEqual(json.loads(caught.exception.value.details)["reason"], expected)
+            self.assertEqual((self.observed[-1].phase, self.observed[-1].reason), (None, None))
+        self.runtime.failure = None
+        self.runtime.value = object()
+        with self.assertRaises(self.abi_error) as caught:
+            self.call_catalog()
+        self.assertEqual(json.loads(caught.exception.value.details)["phase"], "result-retain")
+        self.assertEqual(json.loads(caught.exception.value.details)["reason"], "unrepresented-result-type")
+
+    def test_normal_methodraised_and_fatal_calls_clear_without_changing_classification(self):
+        self.setup_dispatcher()
+        packet = json.loads(self.call_catalog())
+        registry = self.dispatcher._current().registry
+        self.assertIs(registry.borrow(registry.reference(packet["root"])), self.runtime.value)
+        self.assertEqual((self.observed[-1].phase, self.observed[-1].reason), (None, None))
+        self.runtime.failure = ValueError("actual domain object")
+        with self.assertRaises(self.abi_error) as caught:
+            self.call_catalog()
+        self.assertEqual(caught.exception.value.code, "METHOD_RAISED")
+        packet = json.loads(caught.exception.value.details)
+        self.assertIs(registry.borrow(registry.reference(packet["root"])), self.runtime.failure)
+        self.assertEqual((self.observed[-1].phase, self.observed[-1].reason), (None, None))
+        for error in (MemoryError("fatal"), RecursionError("fatal"), KeyboardInterrupt()):
+            self.runtime.failure = error
+            with self.assertRaises(type(error)):
+                self.call_catalog()
+            self.assertEqual((self.observed[-1].phase, self.observed[-1].reason), (None, None))
+
+    def test_diagnostic_encoding_failure_remains_fatal_and_clears_copy_data(self):
+        diagnostic = _CatalogDiagnostic()
+        self.namespace["_CatalogDiagnostic"] = lambda: diagnostic
+
+        def refusal(_method, _payload, *, _catalog_diagnostic):
+            _catalog_diagnostic.phase = "original-call"
+            raise UnsupportedValue("invalid native inspection result")
+
+        with patch("harness_native.dispatcher.wire.dumps", side_effect=MemoryError("encode fault")):
+            with self.assertRaises(MemoryError):
+                self.namespace["_invoke_catalog"](refusal, "load_catalog", "DATA")
+        self.assertEqual((diagnostic.phase, diagnostic.reason), (None, None))
 
 
 class PrivateError(Exception):
