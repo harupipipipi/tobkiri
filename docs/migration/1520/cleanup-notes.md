@@ -2253,6 +2253,13 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   79f4780faのCI41341812508はunittest収集器がtest moduleに直接importされたVIEWへ
   isinstance用の__class__照会を行って停止し、169件は未実行。testだけを通常module alias
   経由へ直し、製品の属性拒否を維持した。__class__拒否も既存test vectorへ追加する。
+  修正943a4b102のCI41342226932は169件、frozen16、現component構築と既存native群が成功。
+  実catalogは26.33秒でWasm fuel2Bを使い切りouter trapとなった。typed outcomeと
+  Catalog成功は未観測で、当該呼出しの最初の不足moduleまで解消したとは認定しない。
+  before-finish32,945,579B、実finish後0B/1reservation→reap0/0、Source破棄とOS lock解放は
+  観測した。一方cleanup_probeをtyped return後だけ取得するdriverはouter trapで未取得のため、
+  cleanup_verifiedはfalse。0/0やlock解放をIO Join receiptへ読み替えない。上限を保って
+  実燃料消費箇所とtrap時の既存cleanup ledger保持を次に確認する。
   将来の整理は未接続HostコードをGuest closureから外して実Rustへ移すことだが、今回の
   依存置換の成功だけでSource削除や後続activation機能の達成を認定しない。
 

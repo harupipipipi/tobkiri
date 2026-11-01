@@ -177,6 +177,14 @@ Thirteen new Source tests include normal/failure catalog paths and owner/cleanup
 drift refusals. Compilation, runtime and resource limits await CI. This qualifies
 only bodies under an explicit dependency replacement if verified, rather than
 the original import environment, initialization effects or real persistence.
+At `943a4b102`, [CI41342226932](https://github.com/harupipipipi/tobkiri/actions/runs/41342226932)
+passed169 Harness source tests, the frozen16 checkpoint, the current component
+build and existing native checks. Actual catalog exhausted the original2B Wasm
+fuel and trapped after26.33 seconds; it did not reach constructor entry. Finish,
+Source destruction, OS-lock release and reap0/0 were observed. The early-trap
+driver did not capture its existing cleanup probe, so `cleanup_verified=false`
+remains unqualified rather than being inferred from those separate observations.
+Fuel profiling and early cleanup custody are the next work; limits remain unchanged.
 
 The independent original constructor/list reference subsequently passed13 controlled
 cases on each OS in [CI41323891367](https://github.com/harupipipipi/tobkiri/actions/runs/41323891367):
