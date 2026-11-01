@@ -106,8 +106,15 @@ The App canonical adapter at `835ed9818` subsequently passed8 unit tests and
 all58 returned-getter comparisons in
 [CI41266515519](https://github.com/harupipipipi/tobkiri/actions/runs/41266515519)
 on both platforms. It preserves exact ProtocolError messages and input identity;
-the11 raw getter errors are outside this adapter. The actual component getter
-comparison and the same-guard recovery continuation remain separate gates.
+the11 raw getter errors are outside this adapter.
+[Actual component CI41266520979](https://github.com/harupipipipi/tobkiri/actions/runs/41266520979)
+also passed137 Harness tests and actual construction, then observed the unmodified
+default getter on one real Store: fuel decreased, the original deadline and
+scope were preserved, and actual finish/data release/reap left0 bytes and0
+reservations with source destruction and owner reopen. The same-guard recovery
+continuation remains unconnected. New26 finite Launcher caller cases are being
+checked in [Desktop CI41267778512](https://github.com/harupipipipi/tobkiri/actions/runs/41267778512);
+their success has not yet been observed.
 [Original continuous-boundary CI41266973919](https://github.com/harupipipipi/tobkiri/actions/runs/41266973919)
 passed147 original cases at `cf4acd29f`:77 previous inputs,69 controlled getters
 and one candidate mismatch. It reaches the original catalog call entry after

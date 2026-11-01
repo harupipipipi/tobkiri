@@ -2084,7 +2084,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   選択JSON150,205Bを保存。raw getter例外11件はこのadapter外と明示する。
   Tauriへ同じ規約を二重実装せず、今はmigration専用App moduleのcfg(test)内で比較する。
   実getter/opaque causeは別のSol実装で有限観測とrunner-held custodyを追加したが、
-  7 caller/6 Guest回帰・実component/default getter driverは次CIで確認する。
+  Guest6回帰を含む137 Harness testと実component生成は835のCI41266520979で成功。
+  実default getter driverも20.78秒で成功し、fuel1,440,919,069→1,436,898,024、元deadline/
+  sameScope/extra inspection0を確認。finish後4,218B/1予約、DATA解放後0B/1予約、実reap1後
+  0B/0予約、Source destructor・owner再openまで成功した。必要JSON4,033Bのみ保存。
+  新caller7を含むfinite26はDesktop CI41267778512で検証中であり、未成功として扱う。
   canonical adapter・実factory・同journal guardをつなぐwholeunitの完成には数えない。
   次の原本連続区間もcf4acd29f/CI41266973919で両OS147入力が成功した（native比較なし）。
   旧77入力を保持し、raw69とcandidate mismatch1を追加。元helper/factory/比較後の
