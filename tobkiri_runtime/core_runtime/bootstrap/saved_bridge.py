@@ -328,19 +328,22 @@ class SavedBridgeCallbacks:
                 return value
 
             profile_id = getattr(getattr(outer, "context", None), "profile_id", "")
-            if effect_snapshot is None:
-                conversation = resolve_saved_project(
-                    conversation, profile_id=profile_id,
-                    presentation_owner=(self._presentation_owner(outer)
-                                        if requires_project_owner(conversation)
-                                        and self._presentation_owner is not None else ("", "")),
-                    read_owner=read_project,
-                    guard=lambda: self._require_targets(outer, (PROJECT_TARGET,)),
-                )
-            else:
-                conversation = retain_saved_project_effect_snapshot(
-                    conversation, effect_snapshot, profile_id=profile_id,
-                )
+            try:
+                if effect_snapshot is None:
+                    conversation = resolve_saved_project(
+                        conversation, profile_id=profile_id,
+                        presentation_owner=(self._presentation_owner(outer)
+                                            if requires_project_owner(conversation)
+                                            and self._presentation_owner is not None else ("", "")),
+                        read_owner=read_project,
+                        guard=lambda: self._require_targets(outer, (PROJECT_TARGET,)),
+                    )
+                else:
+                    conversation = retain_saved_project_effect_snapshot(
+                        conversation, effect_snapshot, profile_id=profile_id,
+                    )
+            except PermissionError as error:
+                raise AuthorityDenied(str(error)) from error
             def read_binding(payload: Mapping[str, Any]) -> Mapping[str, Any]:
                 self._require_targets(outer, (WORKSPACE_TARGET,))
                 outcome = self._dispatch(
@@ -366,7 +369,7 @@ class SavedBridgeCallbacks:
             if type(pin) is SavedWorkspacePins:
                 pin.accept(resolution)
             return conversation
-        except (ValueError, PermissionError) as error:
+        except ValueError as error:
             raise AuthorityDenied(str(error)) from error
 
     def _read_conversation(self, outer: object, conversation_id: str) -> Mapping[str, Any]:

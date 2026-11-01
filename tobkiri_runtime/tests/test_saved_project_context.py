@@ -380,7 +380,7 @@ def test_actual_workspace_replacement_still_rejects_group_coding(tmp_path):
     root = tmp_path / "workspace-one"
     root.rename(tmp_path / "old-workspace-one")
     root.mkdir()
-    with pytest.raises(AuthorityDenied):
+    with pytest.raises(PermissionError, match="changed"):
         fixture.exchange.step()
     assert fixture.exchange.store.get("conversation-1")["messages"] == []
 
