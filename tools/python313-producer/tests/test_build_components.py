@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import build_components
 from build_native import GIB, sandbox_command
 import component_inputs
+import original_component_checkpoint
 from fetch_sdk import inventory
 import fetch_validation_tools as validation
 
@@ -245,12 +246,15 @@ class ComponentBuildTests(unittest.TestCase):
             'packs/local.ai-tool-bridge-ordered-python/wit/pack-v2.wit')
 
     def test_complete_graph_reuses_exact_bridge_and_caller_source_stagers(self):
-        repo = component_inputs.HERE.parents[1]
         original_path = sys.path[:]
-        for name, count in (('bridge-v2', 12), ('caller', 10)):
-            raw, captures, receipt = component_inputs.capture(repo, name)
-            self.assertEqual(len(captures), count)
-            self.assertEqual(hashlib.sha256(raw).hexdigest(), receipt['plan_sha256'])
+        # These plan hashes identify the historical checkpoint, whose source
+        # inventories include the old Profile. Current application changes do
+        # not rewrite that provenance or inherit its artifact qualification.
+        report = original_component_checkpoint.capture()
+        self.assertEqual(report['captured_members'], {'bridge-v2': 12, 'caller': 10})
+        self.assertFalse(report['current_source_qualification'])
+        self.assertFalse(report['build_performed'])
+        self.assertFalse(report['wasm_execution_performed'])
         self.assertEqual(sys.path, original_path)
         self.assertEqual(len(component_inputs.plans(True)), 5)
         self.assertEqual(len(component_inputs.plans()), 3)

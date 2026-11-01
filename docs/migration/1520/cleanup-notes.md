@@ -2210,6 +2210,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   非object manifest、非ASCII filename repr、複合IO context、dev resolve競合、深い例外と
   rare Join不確定は未閉鎖であり、既存getter/正常fixtureの資格を流用しない。
 
+## 024: frozen component checkpointを現在のProfileへ誤照合しない
+
+- 状態: **Source-only修正。現在の実component構築CIは未完**。
+- 場所: producerの`component_inputs`、`test_build_components`、
+  `original_component_checkpoint.py`。
+- 問題: 2026-10-20の固定five-component planは、当時のProfileを含むinventoryに
+  結び付く。現在の正規Profile更新後へ同じplanを適用すると、無関係なnative Harnessの
+  producerテストまで止まり、古い証拠とcurrent-source検証を混同する。
+- 整理: plan/82件の全source hash/過去oracle/観測/生成物は改変せず、既に当該producerが
+  通ったc6d700124のgit sourceを固定した一時capsuleで、現producerの同capture処理を実行。
+  別processでstager module globalsのcurrent/historical混在を避ける。ローカル確認は
+  82件/1,349,035Bのgit blob照合とASTだけで、runtime/componentは実行していない。
+- 限界/削除前提: 当時のplan再現だけの検証であり、古いartifactを現在のProfileの証拠に
+  しない。現在の全five-component構成へ必要な新plan/build/replayは引き続き未完。
+  今回のnative Harnessは別の現source closureから実componentを構築・検証する。
+
 ## 023: 保存全履歴とモデルへ渡す文脈の200件上限を分ける
 
 - 状態: **修正c2037a10f、生成物取込02dcbdf25。両OSで新43ケース込み483件成功**。
