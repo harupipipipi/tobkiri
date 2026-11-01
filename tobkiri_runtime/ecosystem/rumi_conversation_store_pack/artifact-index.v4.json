@@ -1,18 +1,18 @@
 {
-  "artifact_set_digest": "sha256:6496bcd4845992d21f5aa7135bfdfe236b04a053d2ccc3dd56a1a37d10b8e46e",
+  "artifact_set_digest": "sha256:539a4b9781eaf6f888591b744d9f37b46581626761ce982077c4edb64254cc9b",
   "artifacts": [
     {
-      "digest": "sha256:89c9efabb2e3f7ab9d84ae98bc32945f9065e502f1758bad33e2b68deb90d359",
+      "digest": "sha256:455ccb8d64b1d0b8067bc42698fd3ec3c6d25d13ae4b92f4edb31f88aaeba0a7",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:013d3570b240c44214a2a3834ed9d7fb6c28cfeb261e1da13b449dba05aa9e73",
+      "digest": "sha256:69436dce929cbb98edb7801097829f92c8800affabdd0090962d8b2bb5f3f98d",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:77bfb507a5b508129e17573f5549ffc54f961b1affadb9d4316b98d7cebc5920",
+      "digest": "sha256:1b427fa503bdd0eca45dc37901aa02c9fcd09a5e29250c2fc7851154a242ab5f",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -37,7 +37,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:e4f8763040b57b54d86f609804993d5c2935506d67e0566cbf7783fb2e992062",
+      "digest": "sha256:3ece1aac3b0c0b23b27e6b45978028eb7aeaed6087c4afee49685489bde87958",
       "path": "runtime/host.py",
       "role": "runtime"
     },
@@ -49,6 +49,11 @@
     {
       "digest": "sha256:406bb346b44fe05e4bb8c00d30b27f3bc504d0d346edd5139e81105230fb57fe",
       "path": "runtime/message_host.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:2d23700b575e5a8cb7d52e63f070a2dd2c7a1d4eee6abecf1eff3adcc5f66a95",
+      "path": "runtime/saved_project_context.py",
       "role": "runtime"
     },
     {
@@ -65,8 +70,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:1e03d7a8ffc394d03ec55423ba26e46d197af8576791ea41c00875c57d037716"
+    "signed_digest": "sha256:2895b4628d19f9afb36fe76a4e4eb8bd01fa62b4ef50dca28fc98bac094d6dc4"
   },
   "pack_id": "rumi_conversation_store_pack",
-  "source_identity": "sha256:1604b7ef13940ce148988aff908ad7506d6b5152d1e33e06f3d284f669d21d0e"
+  "source_identity": "sha256:6973b40cd4407b7b6c9deb9a06c6724b7434be2d583b4b71b9704cfdd5e5339c"
 }

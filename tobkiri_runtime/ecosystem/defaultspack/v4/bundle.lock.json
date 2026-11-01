@@ -459,12 +459,12 @@
     {
       "path": "packs/rumi_conversation_store_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:724ff68ddb72ad081ff06e83e531f763f87d80b914e82fae41a1d4e8d9f92589"
+      "digest": "sha256:e4da1dfea05437de7e6b8b9388e610acee6efade1b29ca6402bb171b246c5203"
     },
     {
       "path": "packs/rumi_conversation_store_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:186c8d0626fa8c689594a7898e9aa33eb3bd1804a7f737cdc0aaa5f308be24e6"
+      "digest": "sha256:18409dd1423b76d86aa66f0503a3c3163522526722180220da6d3aec2c76f321"
     },
     {
       "path": "packs/rumi_credential_broker_pack.executables.v4.json",
@@ -1349,12 +1349,12 @@
     {
       "path": "packs/rumi_turn_runtime_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:78f86b15464a16048fb7759553ee1a4ec28f17b829461e5982301b95b493596b"
+      "digest": "sha256:b2e5457d22479d1518e31b2ba55ac9fd9c9b0191918b8ba1e40fbc8e6db74eeb"
     },
     {
       "path": "packs/rumi_turn_runtime_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:57d5cfa9ce5ee9f5629a71c01f6e133bc4aa8ab51b6c13ab7ed121962360f7c0"
+      "digest": "sha256:9e09059568e7fc17b321b5eaa996635f73ffeeb6662cdc3681363d7784d7812f"
     },
     {
       "path": "packs/rumi_voice_mobile_pack.executables.v4.json",
@@ -1489,12 +1489,12 @@
     {
       "path": "packs/tobkiri_ui_settings_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:6e09d2e9f783fde6ce2cea15c52657063a1278d032806bc2a5519c5be37bfcac"
+      "digest": "sha256:e8bb1696478976521d494d9a227e11f631ee36c359a6a1ff81140797eddcd1fd"
     },
     {
       "path": "packs/tobkiri_ui_settings_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:5782879440719ac28f318be9dc1bfe1a16e4737cbdc53104340dbb72542af447"
+      "digest": "sha256:c82a047b6fe690d0bc9f7a5f81da18fe689dde10d5426b9d66ad2c134da1e196"
     },
     {
       "path": "packs/tobkiri_workflow_pack.executables.v4.json",

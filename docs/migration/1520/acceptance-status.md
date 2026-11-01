@@ -122,13 +122,23 @@ does not qualify controlled69/native147, the catalog/Authority bodies or GUI ado
 The26 finite Launcher caller cases passed in
 [Desktop CI41267778512](https://github.com/harupipipipi/tobkiri/actions/runs/41267778512),
 with652 library,123 build-script and18 resource tests, packaging, cold boot and DMG
-checks. This does not qualify the9 subsequently added cases or complete GUI adoption.
+checks. The9 later cases also passed, with all35 source-matched finite cases,
+661 library/123 build-script/18 resource tests and packaging/coldboot/DMG in
+[Desktop CI41279048043](https://github.com/harupipipipi/tobkiri/actions/runs/41279048043)
+at `7cdb66411`. This remains a candidate CI result, without complete native GUI adoption.
 [Original continuous-boundary CI41266973919](https://github.com/harupipipipi/tobkiri/actions/runs/41266973919)
 passed147 original cases at `cf4acd29f`:77 previous inputs,69 controlled getters
 and one candidate mismatch. It reaches the original catalog call entry after
 workspace Path/runtime preparation, without entering catalog/Authority bodies.
 This reference does not establish native continuation, product adoption or any
 new completed acceptance item.
+
+The next original reference at `a0971c4b5` passed9 catalog-prefix resource fixtures
+on both platforms in [CI41282428075](https://github.com/harupipipipi/tobkiri/actions/runs/41282428075).
+It executes unchanged original getters/catalog to a constructor-entry sentinel,
+with no ProfileDefinitionStore body or outer Authority. Native implementation and
+comparison of that larger boundary are still pending; fixture artifact directories
+do not establish actual installed executable or GUI qualification.
 
 Saved Project parity source at `eb5dabff0` restores existing owner-based membership
 and exact mutation acknowledgements while preserving the conversation execution

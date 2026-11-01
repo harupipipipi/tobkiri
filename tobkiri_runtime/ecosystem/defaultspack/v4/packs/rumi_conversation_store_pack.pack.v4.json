@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:724ff68ddb72ad081ff06e83e531f763f87d80b914e82fae41a1d4e8d9f92589",
+      "digest": "sha256:e4da1dfea05437de7e6b8b9388e610acee6efade1b29ca6402bb171b246c5203",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -26,7 +26,7 @@
       "path": "runtime/completion_host.py"
     },
     {
-      "digest": "sha256:e4f8763040b57b54d86f609804993d5c2935506d67e0566cbf7783fb2e992062",
+      "digest": "sha256:3ece1aac3b0c0b23b27e6b45978028eb7aeaed6087c4afee49685489bde87958",
       "kind": "executable",
       "path": "runtime/host.py"
     },
@@ -39,6 +39,11 @@
       "digest": "sha256:406bb346b44fe05e4bb8c00d30b27f3bc504d0d346edd5139e81105230fb57fe",
       "kind": "executable",
       "path": "runtime/message_host.py"
+    },
+    {
+      "digest": "sha256:2d23700b575e5a8cb7d52e63f070a2dd2c7a1d4eee6abecf1eff3adcc5f66a95",
+      "kind": "sidecar",
+      "path": "runtime/saved_project_context.py"
     },
     {
       "digest": "sha256:76f288670824bf0b4da4d546ea92e800ff4428a9602f01e875ba1f8bf2fc2f63",
@@ -166,7 +171,7 @@
     {
       "contract_revision_digest": "sha256:254d3ee4bdbe11bf21f658bbb3b89a1d6510ef7dbf77fb9108dcc4b426496156",
       "id": "rumi_conversation_store_pack.conversation-store.resource",
-      "implementation_digest": "sha256:e4f8763040b57b54d86f609804993d5c2935506d67e0566cbf7783fb2e992062",
+      "implementation_digest": "sha256:3ece1aac3b0c0b23b27e6b45978028eb7aeaed6087c4afee49685489bde87958",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_conversation_store_pack.conversation-resource"
@@ -175,8 +180,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:77bfb507a5b508129e17573f5549ffc54f961b1affadb9d4316b98d7cebc5920",
-    "artifact_set_digest": "sha256:061f7bc5c85a405154166107b3e3d0eff5ce93c9ab44c3ceb3eff4b8263bce3d",
+    "source_identity": "sha256:1b427fa503bdd0eca45dc37901aa02c9fcd09a5e29250c2fc7851154a242ab5f",
+    "artifact_set_digest": "sha256:d7a0399c7a27e0f03d699d3688fcb983807067d781401fe48d72da349288a1a2",
     "contract_catalog_digest": "sha256:62b87907e530059c088451d2ecf95fc79b6ec23bf3e506dfc71f520750d79300"
   },
   "migration": {
@@ -252,26 +257,26 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:6496bcd4845992d21f5aa7135bfdfe236b04a053d2ccc3dd56a1a37d10b8e46e",
+    "artifact_digest": "sha256:539a4b9781eaf6f888591b744d9f37b46581626761ce982077c4edb64254cc9b",
     "display_name": "Rumi Conversation Store",
     "id": "rumi_conversation_store_pack",
     "kind": "host_extension",
-    "version": "1.0.0"
+    "version": "1.0.1"
   },
   "pack_api_version": "io.tobkiri.pack.v4",
   "provenance": {
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_conversation_store_pack/pack.v4.json",
-    "source_digest": "sha256:77bfb507a5b508129e17573f5549ffc54f961b1affadb9d4316b98d7cebc5920",
+    "source_digest": "sha256:1b427fa503bdd0eca45dc37901aa02c9fcd09a5e29250c2fc7851154a242ab5f",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:b1a2f406513dfe356ae07c56ffa8382de3ce8fb30e1130fc00585ecabf3d7161",
+    "content_root_digest": "sha256:0ae635ed835e86aec12e0d095b288ed0266c3e17ccba0363413f281eb9a34155",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:72e5fe4e8f670a1618d79b16dfc9896b6e9f4276616d87632022b726ec01735a",
-    "input_inventory_digest": "sha256:dc300fd2d8bf83b7fead416543533d5a0739e210d5a1399bb65c23b2d88ff262",
+    "input_inventory_digest": "sha256:7a7f92384049b20d1ac92cd6c816457dd2b9f3f365adfa5309acd58b7aa642f5",
     "normative": true,
     "evidence": [
       {
@@ -282,7 +287,7 @@
       {
         "path": "ecosystem/rumi_conversation_store_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:77bfb507a5b508129e17573f5549ffc54f961b1affadb9d4316b98d7cebc5920"
+        "digest": "sha256:1b427fa503bdd0eca45dc37901aa02c9fcd09a5e29250c2fc7851154a242ab5f"
       }
     ]
   },

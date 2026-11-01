@@ -2094,8 +2094,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   連続区間CI41275395353は通常default getterのvalid/mismatch計2操作で成功した。
   別FDでfinish前のlock保持・finish後の取得、元deadline/1Store/account/0reset、
   原本とのstate/file/key比較、DATA解放/実reap後0B/0予約・Source destructor/reopenを確認。
-  選択JSON5,635Bを保存。controlled69や全147のnative比較、新caller9を含む35件の
-  Desktop成功、catalog/Authority以降や通常GUI採用には読み替えない。
+  選択JSON5,635Bを保存。後続Desktop CI41279048043は7cdb66411で実661 library /
+  123 build-script /18 resource、Sourceにあるfinite35件すべて、packaging/coldboot/DMGが成功。
+  artifact13073996617（280,685,998B）はmetadataのみ、選択証拠20,515Bを保存した。
+  controlled69/全147native比較、catalog/Authority以降や通常GUI採用は未達のまま。
   次の原本連続区間もcf4acd29f/CI41266973919で両OS147入力が成功した（native比較なし）。
   旧77入力を保持し、raw69とcandidate mismatch1を追加。元helper/factory/比較後の
   workspace Path純構築・immutable runtime取得まで実行し、host_profile_catalog入口で
@@ -2171,3 +2173,31 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   会計ではない。port参照解放をSource最終解放と読まず、汎用Python lease/frameworkを新設しない。
   実Rust Host owner/funding/retireとWasm App policyの同等性を閉じてから撤去する。
   今回はcode closureとDATA分離だけで、64MiB達成/Native採用/製品Python廃止を認定しない。
+  実装be5b0727c後の生成ではexplicit same-owner adapter4件のstale pinを検知し、7d18039cfで
+  legacy identity/期待値を変えず実implementation bytesのdigestだけ更新した。
+  CI41283183002はfrontend59/既存lint/UIbuild/全生成・strict integrityが成功。
+  artifact13073823619（15,597B）をRAM検証し、23 JSON/patch135,968BをSource/hash/path照合して
+  取り込んだ。実capture16ケースと旧suiteのclean-source回帰はこれからである。
+
+## 022: catalog前半のIO所有とJSON parseを二重frameworkにしない
+
+- 状態: **Sol6.1 xhighがRust実装中。原本参照9件は両OS成功、native比較は未実行**。
+- 場所: `bootstrap_catalog.rs`/`original_profile_catalog_io.rs`、既存NativePath/dispatcher、
+  `tools/original_catalog_prefix_reference.py`。
+- 整理: 同journal guardで元bundle/dev選択→resource bindingの実walk/read/hash→実
+  load_catalog→元user-data取得→ProfileDefinitionStore constructor入口までを次unitとする。
+  読取資格は同AppHandleの実originを借り、Guest path/digest/env DATAから作らない。
+  child専用の元RUMI_ENVIRONMENT/RUMI_APP_DIRは同AppConfig/Kernel条件から借用し、
+  native processのambient envへ置き換えない。別occurrence再読取や元close地点を維持する。
+- JSON: 新parser/文言推測を増やさず、Hostが当該時点で読んだmanifestを同Storeの固定pure
+  parseへ渡す案。元UTF8/read_text/newline/json.loadsと実例外/catch/causeを保持する。
+  既存decoderの過大なbyte一律予約は、実alloc上界を保ったprivate見積りだけを検討し、
+  旧journal/Authority入口や64MiB/2B/絶対30秒を変更しない。まだnative実証はない。
+- 原本: a0971c4b5のCI41282428075は両OS9件成功。verbatim staged Pythonと実root getters/
+  catalogを通し、constructor呼出aliasだけsentinelで停止した（本体0）。packaged入力、
+  artifact-root不在、CRLF、dev-bundledは到達、manifest/UTF8/JSON/schema/unlisted失敗は
+  実typed cause/位置とファイル状態を観測。69,427Bの選択JSONのみ保存した。
+- 限界/削除前提: resource fixtureはartifact directoryだけで、実installed executable、
+  constructor移行/初期登録、outer Authority、GUI、native実行の成功ではない。
+  正常IO Joinと希少Join不確定のcustodyを分け、未完をcompleted flagやmutex取得で完了にしない。
+  型/資金/capacity不足は未達を残し、正規移行writeの省略や新cache/grant/allowanceで隠さない。
