@@ -158,6 +158,13 @@ its exact underlying failure remains under investigation. Cleanup, state/key,
 Source destruction and zero-capacity reap passed independently. The source fix
 does not establish catalog success or whole-closure compatibility.
 Actual-component constructor/migration bodies and outer Authority remain unqualified.
+The next fixed diagnostic cohort at `4ef660dae` passed156 Harness tests, the current
+component build and existing native checks in
+[CI41333994269](https://github.com/harupipipipi/tobkiri/actions/runs/41333994269).
+The actual catalog failure is now an exact `ModuleNotFoundError`, with inspection
+counts7→10 and the same RootSymlink reachpoint. Source investigation is examining
+the captured service's transitive Host-only imports; no dependency or IO fallback
+is enabled by these diagnostics. Cleanup/reap still passed independently.
 
 The independent original constructor/list reference subsequently passed13 controlled
 cases on each OS in [CI41323891367](https://github.com/harupipipipi/tobkiri/actions/runs/41323891367):
@@ -190,6 +197,13 @@ passed10 cases on both OSes at `257a45d40`: controlled actual original cause cla
 unchanged recovery catch, actual denied factory and journal finally. Native-origin
 class projection plus actual same-Store Guest denied/Host-edge comparison is being
 implemented separately; native custom causes do not require Guest class regeneration.
+At `4ce888ec7`, [CI41335501380](https://github.com/harupipipipi/tobkiri/actions/runs/41335501380)
+passed the updated original10, native portable6, all11 graph cases and strict Clippy
+on both OSes. An actual-component eight-case driver and independent comparer now
+cover six real factory calls and two raw-registry cases in source, with the original
+budget, separate Host cause edges and unchanged returned intrinsics. Execution is
+pending. The two controlled builtin-timeout inputs remain explicitly excluded;
+actual native IO origins, factory throws, catalog and GUI adoption are separate gaps.
 
 Saved Project parity source at `eb5dabff0` restores existing owner-based membership
 and exact mutation acknowledgements while preserving the conversation execution

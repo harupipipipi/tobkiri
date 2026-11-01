@@ -261,6 +261,36 @@ jobs:
           --fixtures "$RUNNER_TEMP/original-denied-factory-reference/fixtures.json"
           --observations "$RUNNER_TEMP/original-denied-factory-reference/native-observations.json"
           --output "$RUNNER_TEMP/original-denied-factory-reference/comparison.json"
+      - name: Prepare fresh original recovery cause observations
+        id: recovery_error_reference
+        if: ${{ !cancelled() && inputs.verification == 'denied-factory' && steps.original_reference_dependencies.conclusion == 'success' }}
+        run: |
+          python3 -B tools/original_catalog_prefix_reference.py prepare \
+            --original-root "$GITHUB_WORKSPACE/original-denied-factory-source" \
+            --output "$RUNNER_TEMP/original-recovery-catalog-prefix"
+          python3 -B tools/original_recovery_error_reference.py prepare \
+            --original-root "$GITHUB_WORKSPACE/original-denied-factory-source" \
+            --catalog-fixtures "$RUNNER_TEMP/original-recovery-catalog-prefix/summary.json" \
+            --output "$RUNNER_TEMP/original-recovery-errors"
+      - name: Execute native recovery causes with the actual same-Store factory
+        id: recovery_error_native
+        if: ${{ !cancelled() && steps.recovery_error_reference.conclusion == 'success' }}
+        env:
+          TOBKIRI_ORIGINAL_RECOVERY_ERROR_FIXTURES: ${{ runner.temp }}/original-recovery-errors/summary.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-recovery-factory.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          bootstrap_runtime::catalog::recovery_cause::actual_ci::actual_recovery_factory_driver
+          -- --ignored --exact --test-threads=1 --nocapture
+      - name: Independently compare native causes and actual factory Host edges
+        if: ${{ !cancelled() && steps.recovery_error_reference.conclusion == 'success' && steps.recovery_error_native.outcome != 'skipped' }}
+        run: >-
+          python3 -B tools/original_recovery_error_reference.py compare
+          --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
+          --fixtures "$RUNNER_TEMP/original-recovery-errors/summary.json"
+          --observations "$RUNNER_TEMP/original-recovery-errors/native-recovery-observations.json"
+          --output "$RUNNER_TEMP/original-recovery-errors/native-comparison.json"
       - name: Prepare fresh original bootstrap identity observations
         id: identity_reference
         if: ${{ !cancelled() && inputs.verification == 'bootstrap-identity' && steps.original_reference_dependencies.conclusion == 'success' }}
@@ -371,6 +401,10 @@ jobs:
             ${{ runner.temp }}/original-denied-factory-reference/summary.json
             ${{ runner.temp }}/original-denied-factory-reference/native-observations.json
             ${{ runner.temp }}/original-denied-factory-reference/comparison.json
+            ${{ runner.temp }}/harness-native-recovery-factory.log*
+            ${{ runner.temp }}/original-recovery-errors/summary.json
+            ${{ runner.temp }}/original-recovery-errors/native-recovery-observations.json
+            ${{ runner.temp }}/original-recovery-errors/native-comparison.json
             ${{ runner.temp }}/harness-native-bootstrap-identity.log*
             ${{ runner.temp }}/original-bootstrap-identity-reference/summary.json
             ${{ runner.temp }}/original-bootstrap-identity-reference/actual-getter-observations.json

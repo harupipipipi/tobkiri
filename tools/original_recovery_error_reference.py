@@ -272,6 +272,7 @@ def compare(original: Path, fixtures: Path, observations: Path, output: Path) ->
     native_cases = {row["name"]: row for row in actual["cases"]}
     if (len(expected["cases"]) != 10 or set(original_cases) != set(CASES)
             or len(actual["cases"]) != 8 or set(native_cases) != set(NATIVE_CASES)
+            or len(actual.get("excluded_cases", [])) != 2
             or set(actual.get("excluded_cases", [])) != set(EXCLUDED_NATIVE_CASES)):
         raise ValueError("closed recovery case inventory differs")
     lifecycle = (
@@ -279,9 +280,15 @@ def compare(original: Path, fixtures: Path, observations: Path, output: Path) ->
         and actual.get("source_destructor_reached") is True
         and actual.get("physical_owner_reopened") is True
         and actual.get("same_store") is True
-        and actual.get("budget_resets") == 0
+        and type(actual.get("budget_resets")) is int and actual["budget_resets"] == 0
         and actual.get("original_deadline_preserved") is True
         and actual.get("capacity", {}).get("after_reap") == {"bytes": 0, "reservations": 0}
+        and actual.get("factory_calls") == 6 and actual.get("fresh_factory_refs") == 6
+        and type(actual.get("fuel", {}).get("before")) is int
+        and type(actual.get("fuel", {}).get("after")) is int
+        and 0 < actual["fuel"]["after"] < actual["fuel"]["before"] <= 2_000_000_000
+        and type(actual.get("inspection_attempts", {}).get("before")) is int
+        and actual["inspection_attempts"]["before"] == actual["inspection_attempts"].get("after")
     )
     rows = []
     for name in NATIVE_CASES:

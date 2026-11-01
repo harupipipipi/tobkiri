@@ -13,6 +13,15 @@ use tobkiri_gate::{CapacityKind, NativeSetupInvocation};
 #[path = "bootstrap_recovery_error_tests.rs"]
 mod tests;
 
+#[cfg(all(
+    test,
+    feature = "bootstrap-ci",
+    target_os = "macos",
+    target_arch = "aarch64"
+))]
+#[path = "bootstrap_recovery_error_actual_ci.rs"]
+mod actual_ci;
+
 const MAX_NODES: usize = 64;
 const ERROR_TEXT_BYTES: usize = 4096;
 pub(super) const MESSAGE: &str = "Profile publication recovery failed closed";

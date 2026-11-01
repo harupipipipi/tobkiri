@@ -2233,6 +2233,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   focused診断は7件。CI driverの既存inspection_attempts前後の2整数もCopyするが、
   成功したIO・owner admission・Joinの証拠にはしない。なおunknownならallowlistを
   増やし続けず、実観測した区間の固定bridge境界を一度だけ細分化する。
+  4ef660daeのCI41333994269はHarness156/現component/既存native群が成功し、実catalogは
+  exact ModuleNotFoundErrorを返した。inspection前7→後10、Host進行root-symlinkのまま。
+  次の固定IO入口前のlazy import経路をSourceで調べる。service/App moduleはcapture済みで、
+  transitive secure_persistence→secrets/ctypesとHost-only責務の分離を検討中。ctypesの
+  Python部分だけ追加してC拡張や元IO動作まで実装できたとはしない。
 
 ## 024: frozen component checkpointを現在のProfileへ誤照合しない
 
@@ -2316,7 +2321,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   CI41333706776は両OS10件成功。args/MRO/OS fields/同nodeのcause-context/suppressionと
   raw registry2枝を確認した。後続のNative比較用chain入力は任意文言でなく実os.strerrorを使い、
   初回257a45d40の証拠は保持する。Native projection/同policy rebindはSol6.1 xhighが実装し、
-  portable6件と既存graph7＋新4件、独立8ケースの実component driverは次CIで検証する。
+  CI41335501380は4ce888ec7の両OSで原本10/portable6/既存graph7＋新4/strict Clippyが成功。
+  独立8ケースの実component driverと独立comparerのSourceも追加した。操作入力だけを使い、
+  実factory6回とraw registry2枝、同Store/元予算/Host edges/元intrinsics/解放0/0を比較する。
+  timeout2入力はnative caller provenanceの対象外として明示除外する。実行は次CI待ち。
   同じJSON文字列/整数の出力処理がcatalog/recoveryに分かれる点は将来の整理候補だが、
   App mappingとprivate policyをCoreへ広げず、同資金・エラー順の一致を示してから共通化する。
   native IO原因・Guest class実生成・実factory failure・GUIの証拠へ範囲を拡大しない。
