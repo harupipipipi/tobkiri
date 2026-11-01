@@ -201,8 +201,16 @@ At `4ce888ec7`, [CI41335501380](https://github.com/harupipipipi/tobkiri/actions/
 passed the updated original10, native portable6, all11 graph cases and strict Clippy
 on both OSes. An actual-component eight-case driver and independent comparer now
 cover six real factory calls and two raw-registry cases in source, with the original
-budget, separate Host cause edges and unchanged returned intrinsics. Execution is
-pending. The two controlled builtin-timeout inputs remain explicitly excluded;
+budget, separate Host cause edges and unchanged returned intrinsics.
+[Actual CI41336707940](https://github.com/harupipipipi/tobkiri/actions/runs/41336707940)
+at `aa017d720` completed successfully: old factory8, controlled recovery8 and both
+independent comparisons. Six fresh references share one Store, inspections stay7→7,
+fuel decreases1,441,118,112→1,400,550,752 and the original deadline is preserved.
+Actual finish/DATA release/reap0/0, Source destruction and owner reopen passed.
+Selected JSON72,864 bytes was retained from a verified RAM-only archive; the
+9,910,225-byte component remained metadata-only. Same-source portable6/graph11/
+strict Clippy also passed on both OSes in CI41336708015.
+The two controlled builtin-timeout inputs remain explicitly excluded;
 actual native IO origins, factory throws, catalog and GUI adoption are separate gaps.
 
 Saved Project parity source at `eb5dabff0` restores existing owner-based membership

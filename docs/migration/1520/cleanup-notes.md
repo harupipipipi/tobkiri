@@ -2324,7 +2324,15 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   CI41335501380は4ce888ec7の両OSで原本10/portable6/既存graph7＋新4/strict Clippyが成功。
   独立8ケースの実component driverと独立comparerのSourceも追加した。操作入力だけを使い、
   実factory6回とraw registry2枝、同Store/元予算/Host edges/元intrinsics/解放0/0を比較する。
-  timeout2入力はnative caller provenanceの対象外として明示除外する。実行は次CI待ち。
+  timeout2入力はnative caller provenanceの対象外として明示除外する。aa017d720の
+  CI41336707940は既存factory8、新controlled8、独立比較、既存native群を全て成功した。
+  実Store内の6fresh refs、Host cause/context同一、元intrinsics、追加inspection0、
+  fuel1,441,118,112→1,400,550,752、元30秒、実finish/DATA解放/reap0/0/owner再openを確認。
+  検証済みRAM ZIPから選択JSON72,864Bを保存し、component9,910,225Bはmetadataのみ。
+  同aaの両OS再検証CI41336708015も原本10/portable6/graph11/strict Clippyが成功した。
+  direct Native13をwhole Storeへ含める際は、特に二重Profile負例のDoc/index/canonicalと
+  Guest保持分の同居peakが64MiB内か未資格。必要なら単一duplicate keyのrepr予約を
+  全文字列合計から最大1文字列へ絞る余地があるが、現成功資格だけで最適化しない。
   同じJSON文字列/整数の出力処理がcatalog/recoveryに分かれる点は将来の整理候補だが、
   App mappingとprivate policyをCoreへ広げず、同資金・エラー順の一致を示してから共通化する。
   native IO原因・Guest class実生成・実factory failure・GUIの証拠へ範囲を拡大しない。
