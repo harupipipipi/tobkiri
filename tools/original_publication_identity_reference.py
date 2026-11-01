@@ -16,7 +16,10 @@ import shutil
 import sys
 
 from original_authority_reference import ORIGINAL_HEAD, error_graph, write_json
-from original_bootstrap_identity_reference import controlled_getter, return_cases, raised_cases
+from original_bootstrap_identity_reference import (
+    controlled_getter, exception_graph as raw_exception_graph,
+    return_cases, raised_cases, returned_value,
+)
 from original_publication_reference import (
     CASES as PREVIOUS_CASES, SOURCES as PREVIOUS_SOURCES, filesystem, seed,
     ACTIVE_PROFILE_CASES, original_activation_writer, seed_current,
@@ -25,12 +28,37 @@ from original_setup_review_reference import check_original
 
 
 FORMAT = "io.tobkiri.original-publication-identity-reference.v1"
+GETTER_INPUT_FORMAT = "io.tobkiri.publication-identity-getter-fixture.v1"
 SOURCES = (*PREVIOUS_SOURCES, "core_runtime/profile_runtime_port.py",
            "ecosystem/defaultspack/defaultspack/profile_runtime_composition.py")
 
 
 class RecoveryCatalogBoundary(BaseException):
     """A test stop at a natural call boundary, never an original typed error."""
+
+
+def getter_fixture(controlled):
+    """Keep controlled inputs separate from the observed Host outcomes.
+
+    Non-string contents are outside the original Host type-check reachpoint.
+    A native controlled-component fixture needs only that exact top-level kind;
+    this does not qualify equality of the original object graph. Strings keep
+    all input codepoints here, before the bridge's 129 length sentinel. Raised
+    objects keep their original intrinsic edges before recovery can add a Host
+    wrapper. These are CI inputs, never a runtime configuration or authority.
+    """
+    if controlled is None:
+        return {"format": GETTER_INPUT_FORMAT, "mode": "unmodified-default"}
+    value, raised = controlled
+    if raised:
+        error = raw_exception_graph(value, lambda e: type(e).__module__ + "." + type(e).__qualname__)
+        return {"format": GETTER_INPUT_FORMAT, "mode": "controlled-raised",
+                "intrinsic_error": error}
+    observed = returned_value(value)
+    if type(value) is str:
+        observed["codepoints"] = [ord(c) for c in value]
+    return {"format": GETTER_INPUT_FORMAT, "mode": "controlled-returned",
+            "value": observed, "non_string_top_level_only": type(value) is not str}
 
 
 def observe(root, name, capture, journal_type, port, controlled=None):
@@ -117,6 +145,7 @@ def prepare(original: Path, destination: Path) -> None:
         raise AssertionError("closed larger-boundary case inventory changed")
     reports = []
     for name, seed_name, controlled in inventory:
+        raw_input = getter_fixture(controlled)
         directory = destination / name
         directory.mkdir(mode=0o700)
         seed_root = directory / "seed"
@@ -139,11 +168,24 @@ def prepare(original: Path, destination: Path) -> None:
         if any(row["path"].split("/")[0] == "authority" for row in state["files"]):
             raise AssertionError("reference crossed the Authority constructor")
         reports.append({"name": name, "user_data_dir": str(native),
+                        "getter_fixture": raw_input,
                         "controlled_raw_getter": controlled is not None,
                         "after_lock_remove_intent": name == "intent-disappears-after-lock",
                         "between_calls_install_intent": name == "current-stale-installed-between-recovery-calls",
                         "expected": outcome, "reference_state": state})
     by_name = {row["name"]: row for row in reports}
+    input_modes = {mode: sum(row["getter_fixture"]["mode"] == mode for row in reports)
+                   for mode in ("unmodified-default", "controlled-returned", "controlled-raised")}
+    if input_modes != {"unmodified-default": 78, "controlled-returned": 58, "controlled-raised": 11}:
+        raise AssertionError("closed native controlled-input inventory changed")
+    for row in reports:
+        item = row["getter_fixture"]
+        if item["format"] != GETTER_INPUT_FORMAT:
+            raise AssertionError("input fixture format differs")
+        if item["mode"] == "controlled-returned" and item["value"]["kind"] == "str":
+            value = item["value"]
+            if len(value["codepoints"]) != value["length"]:
+                raise AssertionError("input string was clipped before native bridge observation")
     for name in ("valid", "profiles-broad-mode", "key-unicode-valid", "key-unicode-whitespace",
                  "current-absent", "current-same-parent", "current-immediately-published",
                  "snapshot-wrapper-envelope", "identity-returned-defaults"):
@@ -161,6 +203,8 @@ def prepare(original: Path, destination: Path) -> None:
                             for name in SOURCES}, "cases": reports,
                 "original_previous_inputs_retained": 77, "controlled_raw_getter_cases": 69,
                 "candidate_mismatch_cases": 1, "reference_checks_passed": True,
+                "getter_fixture_format": GETTER_INPUT_FORMAT,
+                "getter_fixture_modes": input_modes,
                 "native_comparison": False, "qualification": False, "production_enabled": False,
                 "catalog_body_executed": False, "authority_constructor_executed": False,
                 "scope": "same original publication guard through getter/canonical/identity "
