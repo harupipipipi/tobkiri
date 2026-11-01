@@ -2250,6 +2250,9 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   同class別instanceと偽属性を拒否し、closeは既存ownfinder除去と追加borrow解放だけを行う。
   13新検証Source（6catalog正常/失敗subcase、実captured owner、偽装/poison、Source drift、
   init/import失敗）を追加し、Root CIで実依存もlock固定する。実component/予算検証は未実行。
+  79f4780faのCI41341812508はunittest収集器がtest moduleに直接importされたVIEWへ
+  isinstance用の__class__照会を行って停止し、169件は未実行。testだけを通常module alias
+  経由へ直し、製品の属性拒否を維持した。__class__拒否も既存test vectorへ追加する。
   将来の整理は未接続HostコードをGuest closureから外して実Rustへ移すことだが、今回の
   依存置換の成功だけでSource削除や後続activation機能の達成を認定しない。
 

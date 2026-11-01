@@ -35,12 +35,13 @@ import plistlib  # noqa: E402, F401
 from schema_probe.captured_loader import Finder, Loader, Tree, install  # noqa: E402
 from harness_native import persistence_guard as guard  # noqa: E402
 from harness_native import bootstrap  # noqa: E402
+from harness_native import persistence_view  # noqa: E402
 from harness_native.dispatcher import (  # noqa: E402
     AlreadyInitialized, Dispatcher, OriginalRuntime, PREFIX,
 )
 from harness_native.native_module_loader import ModulePathBindings  # noqa: E402
 from harness_native.native_path import PathBridge  # noqa: E402
-from harness_native.persistence_view import VIEW, SecurePersistenceError  # noqa: E402
+from harness_native.persistence_view import SecurePersistenceError  # noqa: E402
 from harness_native.source_package import assemble  # noqa: E402
 from harness_native.value_graph import Registry, Scope, UnsupportedValue  # noqa: E402
 import prepare_harness_native as prepare  # noqa: E402
@@ -341,7 +342,8 @@ class CatalogPersistenceBoundaryTests(unittest.TestCase):
                 exports = ("SecureDirectory", "SecurePersistenceError")
 
                 def check(_root):
-                    self.assertIs(scoped(SECURE, vars(module), None, exports, 0), VIEW)
+                    self.assertIs(scoped(SECURE, vars(module), None, exports, 0),
+                                  persistence_view.VIEW)
                     for names in (("*",), ("SecureDirectory",),
                                   (*exports, "extra"), list(exports)):
                         with self.assertRaises(UnsupportedValue):
@@ -377,14 +379,15 @@ class CatalogPersistenceBoundaryTests(unittest.TestCase):
                 self.assertNotIn(SECURE, sys.modules)
 
     def test_unavailable_marker_and_unreviewed_view_fields_never_succeed(self):
-        directory = VIEW.SecureDirectory
+        directory = persistence_view.VIEW.SecureDirectory
         for use in (
             lambda: directory("/not-authority"),
             lambda: directory.open_lock,
             lambda: setattr(directory, "root", "/not-authority"),
             lambda: bool(directory),
             lambda: iter(directory),
-            lambda: VIEW.unreviewed_export,
+            lambda: persistence_view.VIEW.unreviewed_export,
+            lambda: persistence_view.VIEW.__class__,
         ):
             with self.subTest(use=use), self.assertRaises(UnsupportedValue):
                 use()
@@ -392,7 +395,8 @@ class CatalogPersistenceBoundaryTests(unittest.TestCase):
                          "harness_native.persistence_view")
         self.assertNotEqual(SecurePersistenceError.__module__, SECURE)
         registry = Registry(Scope(1, 2, 3, 4))
-        for value in (directory, VIEW, SecurePersistenceError("unqualified")):
+        for value in (directory, persistence_view.VIEW,
+                      SecurePersistenceError("unqualified")):
             with self.assertRaises(UnsupportedValue):
                 registry.retain(value)
 
