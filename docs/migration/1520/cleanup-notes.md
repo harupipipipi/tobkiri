@@ -2248,3 +2248,22 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - 限界: 全ID投影が512KiBを超える巨大graphは保存前に明示拒否し、owner照会への
   置換は別の未完移行項目。後で確定するassistant本文/tool結果等は到達点の既存制限を
   維持する。全容量失敗の保存前拒否、履歴削除、上限引上げ、新budgetを実装したとはしない。
+
+## 025: registryのdeepcopyを重複したnative保持へ移さない
+
+- 状態: **Sol6.1 xhighのdefinition接続Sourceが確定した未コミットWIP。実行未検証**。
+- 場所: `original_profile_definitions{,_model,_tests}.rs`、既存publication IO/JSON、
+  `tools/original_profile_definition_prefix_reference.py`。
+- 整理: 元snapshotの厳密JSON/digest/全state・履歴・ID検証とnormal postyield検証を保ち、
+  definition lockを実closeした後にlist変換/sort、空の場合だけlegacy fileの実statを行う。
+  aliasのないfunded owned arenaからの固定native viewにより、Pythonの物理deepcopyと
+  detached dict再作成を重複実装しない。viewは外へ返さず、後段currentnessにも使わない。
+- lock: 既存private helperをpublication/definitionの固定二filenameへ限定して再用し、
+  元のfullfilename process key・journal→definition順を維持する。各migrationの再lock/readを
+  省略しない。同一filenameの一般RLock再入、atomic replace、migration本体は未実装。
+- 検証予定: 原本の実ctor/listを13件の制御入力で動かし、最初の2migrationの入口だけを
+  sentinelで止める。実definition lock解放とjournal保持、state/key・closeを別に観測する。
+  新reference tool/workflowはASTのみで、原本/Nativeの実行成功をまだ示さない。
+- 未完: outer catch対象のSecurePersistence/ActiveProfileStore/Timeoutの有限class実bindingは
+  必須残件。Astra highに従い既存typed-request投影は未資格と明記し、実同Storeのfactory/
+  cause/context成功へ読み替えない。接続済factoryの失敗からのfallbackや別builtin合成はしない。
