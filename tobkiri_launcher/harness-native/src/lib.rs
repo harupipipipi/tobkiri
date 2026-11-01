@@ -37,8 +37,10 @@ pub use bootstrap_metadata::{
     BootstrapInputOwner, BootstrapModule, BootstrapModuleIndex, BootstrapRoots,
 };
 pub use bootstrap_runtime::{
-    BootstrapCleanupFailure, BootstrapDenied, BootstrapDeniedFailure, BootstrapDeniedRaise,
-    BootstrapDeniedStage, BootstrapDomainCleanupFailure, NativeBootstrap,
+    BootstrapBuiltinKind, BootstrapCleanupFailure, BootstrapDenied, BootstrapDeniedFailure,
+    BootstrapDeniedRaise, BootstrapDeniedStage, BootstrapDomainCleanupFailure,
+    BootstrapGetterError, BootstrapIdentityFailure, BootstrapIdentityOutcome,
+    BootstrapIdentityStage, BootstrapIdentityValue, BootstrapRecoveryCatch, NativeBootstrap,
 };
 pub use init_diagnostic::OriginalInitializationFailure;
 pub use init_trace::{InitializationRejection, InitializationTrace};
@@ -70,3 +72,6 @@ pub use fd_stat::write_fd_stat;
 mod unicode15_1;
 #[cfg(test)]
 mod unicode15_1_data;
+// Original App policy stays separate from generic Unicode/Core mechanisms.
+#[cfg(test)]
+mod app_bootstrap_identity;

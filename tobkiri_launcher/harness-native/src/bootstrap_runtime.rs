@@ -32,6 +32,7 @@ const BUNDLE_ROOT: u8 = 4;
 const CLOSED: u8 = 5;
 const REVIEW: u8 = 6;
 const DENIED: u8 = 7;
+const IDENTITY: u8 = 8;
 const INTERFACE: &str = "tobkiri-native:harness/bindings@1.0.0";
 const RUNTIME: &str = "tobkiri-ui:harness-native/runtime@1.0.0";
 const TRANSPORT: &str = "tobkiri-ui:harness-native/transport@1.0.0";
@@ -40,6 +41,12 @@ const TRANSPORT: &str = "tobkiri-ui:harness-native/transport@1.0.0";
 mod denied;
 pub use denied::{
     BootstrapDenied, BootstrapDeniedFailure, BootstrapDeniedRaise, BootstrapDeniedStage,
+};
+#[path = "bootstrap_identity_observation.rs"]
+mod identity_observation;
+pub use identity_observation::{
+    BootstrapBuiltinKind, BootstrapGetterError, BootstrapIdentityFailure, BootstrapIdentityOutcome,
+    BootstrapIdentityStage, BootstrapIdentityValue, BootstrapRecoveryCatch,
 };
 
 /// Preserve both the original execution failure and failed physical cleanup.
@@ -388,6 +395,7 @@ pub struct NativeBootstrap<S: BootstrapInputOwner> {
     // CoreBuffer/cause DATA only; no extra source or IO capability. Keep it
     // outside caught/dropped child futures until actual retire/finish.
     denied_pending: Option<denied::DeniedCallCustody>,
+    identity_pending: Option<identity_observation::IdentityCallCustody>,
 }
 
 impl<S: BootstrapInputOwner> NativeBootstrap<S> {
@@ -535,6 +543,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             cancellation,
             review: None,
             denied_pending: None,
+            identity_pending: None,
         };
         runner
             .work
@@ -704,6 +713,18 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
 
     async fn retire_failure(&mut self, original: anyhow::Error) -> anyhow::Error {
         #[cfg(debug_assertions)]
+        let rejected_identity_view = self
+            .identity_pending
+            .as_ref()
+            .is_some_and(identity_observation::IdentityCallCustody::view_rejected);
+        #[cfg(debug_assertions)]
+        if rejected_identity_view {
+            self.identity_pending
+                .as_ref()
+                .expect("rejected getter custody")
+                .assert_rejected_outputs_live();
+        }
+        #[cfg(debug_assertions)]
         let rejected_factory_view = self
             .denied_pending
             .as_ref()
@@ -725,6 +746,13 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                     "rejected factory Store was not physically retired"
                 );
             }
+            #[cfg(debug_assertions)]
+            if rejected_identity_view {
+                assert!(
+                    program.observation().store_retired,
+                    "rejected getter Store was not physically retired"
+                );
+            }
         }
         let outcome = match self.io.retire_and_wait().await {
             Ok(()) => original,
@@ -742,6 +770,14 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
                 .assert_rejected_outputs_live();
         }
         drop(self.denied_pending.take());
+        #[cfg(debug_assertions)]
+        if rejected_identity_view {
+            self.identity_pending
+                .as_ref()
+                .expect("rejected getter custody survived IO wait")
+                .assert_rejected_outputs_live();
+        }
+        drop(self.identity_pending.take());
         outcome
     }
 
@@ -853,6 +889,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         }
         self.io.retire_and_wait().await?;
         drop(self.denied_pending.take());
+        drop(self.identity_pending.take());
         if let Some(review) = &self.review {
             let receipt = review.receipt();
             if !receipt.verified() {
@@ -899,6 +936,14 @@ mod denied_actual_ci;
 #[cfg(all(test, target_os = "macos"))]
 #[path = "bootstrap_domain_cleanup_tests.rs"]
 mod domain_cleanup_tests;
+#[cfg(all(
+    test,
+    feature = "bootstrap-ci",
+    target_os = "macos",
+    target_arch = "aarch64"
+))]
+#[path = "bootstrap_identity_actual_ci.rs"]
+mod identity_actual_ci;
 #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
 #[path = "bootstrap_policy_tests.rs"]
 mod policy_tests;

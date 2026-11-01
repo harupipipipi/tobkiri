@@ -38,6 +38,8 @@ pub(crate) enum OriginalOperation {
     VerifyDenied(bool),
     #[cfg(test)]
     VerifyDeniedCodec,
+    #[cfg(test)]
+    VerifyIdentity(IdentityProbe),
     /// Reject before owner/Engine construction. This is not a native binding.
     Unbound(UnboundOperation),
 }
@@ -51,6 +53,8 @@ pub(super) enum AdmittedOperation {
     VerifyDenied(bool),
     #[cfg(test)]
     VerifyDeniedCodec,
+    #[cfg(test)]
+    VerifyIdentity(IdentityProbe),
 }
 impl OriginalOperation {
     pub(super) fn admit(self) -> std::result::Result<AdmittedOperation, DetachedFailure> {
@@ -74,6 +78,8 @@ impl OriginalOperation {
             Self::VerifyDenied(from_host) => Ok(AdmittedOperation::VerifyDenied(from_host)),
             #[cfg(test)]
             Self::VerifyDeniedCodec => Ok(AdmittedOperation::VerifyDeniedCodec),
+            #[cfg(test)]
+            Self::VerifyIdentity(probe) => Ok(AdmittedOperation::VerifyIdentity(probe)),
             Self::Unbound(operation) => Err(DetachedFailure::integration(
                 IntegrationFailure::OperationNotBound(operation),
             )),
@@ -112,6 +118,9 @@ impl Failure {
                     }
                     DeniedFunding::CodecRejected(error) => {
                         let _ = error;
+                    }
+                    DeniedFunding::Identity(value) => {
+                        let _ = value;
                     }
                 }
                 DetachedFailure::Execution {
@@ -227,6 +236,17 @@ pub(super) async fn execute<
 ) -> std::result::Result<Observations, Failed> {
     let getters = match operation {
         #[cfg(test)]
+        AdmittedOperation::VerifyIdentity(probe) => {
+            return Err(Failed {
+                failure: Failure::DeniedFunding(
+                    identity_funding(runner, probe)
+                        .await
+                        .expect("small component raw getter observation contract"),
+                ),
+                _completed: Observations([None, None, None]),
+            });
+        }
+        #[cfg(test)]
         AdmittedOperation::VerifyDeniedCodec => {
             let error = match runner
                 .denied(
@@ -312,6 +332,131 @@ enum DeniedFunding {
     Returned(tobkiri_harness_native::BootstrapDenied),
     Raised(tobkiri_harness_native::BootstrapDeniedFailure),
     CodecRejected(anyhow::Error),
+    Identity(tobkiri_harness_native::BootstrapIdentityOutcome),
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum IdentityProbe {
+    String,
+    NonString,
+    ValueError,
+    OsError,
+    FactoryRaised,
+    CodecRejected,
+    Refused,
+}
+
+#[cfg(test)]
+async fn identity_funding<S: BootstrapInputOwner>(
+    runner: &mut NativeBootstrap<S>,
+    probe: IdentityProbe,
+) -> anyhow::Result<DeniedFunding> {
+    use tobkiri_harness_native::{
+        BootstrapBuiltinKind, BootstrapDeniedRaise, BootstrapIdentityOutcome,
+        BootstrapIdentityStage, BootstrapRecoveryCatch,
+    };
+    let outcome = runner.observe_bootstrap_profile_id().await;
+    if probe == IdentityProbe::CodecRejected {
+        let error = match outcome {
+            Err(error) => error,
+            Ok(_) => panic!("malformed getter view was not a contract rejection"),
+        };
+        assert_eq!(error.to_string(), "raw getter codepoint count differs");
+        assert!(runner.fuel_remaining().is_err());
+        return Ok(DeniedFunding::CodecRejected(error));
+    }
+    let outcome = outcome?;
+    match (&outcome, probe) {
+        (BootstrapIdentityOutcome::Returned(value), IdentityProbe::String) => {
+            assert_eq!(value.builtin_kind(), BootstrapBuiltinKind::Str);
+            assert_eq!(value.string_length(), Some(2));
+            let points = value.codepoints().unwrap();
+            let points = points.array().unwrap();
+            assert_eq!(points.get(0).unwrap().as_i64(), Some(0xd800));
+            assert_eq!(points.get(1).unwrap().as_i64(), Some(0x10400));
+            return Ok(DeniedFunding::Identity(outcome));
+        }
+        (BootstrapIdentityOutcome::Returned(value), IdentityProbe::NonString) => {
+            assert_eq!(value.builtin_kind(), BootstrapBuiltinKind::Dict);
+            assert_eq!(value.string_length(), None);
+            assert!(value.codepoints().is_none());
+            return Ok(DeniedFunding::Identity(outcome));
+        }
+        (BootstrapIdentityOutcome::Refused(value), IdentityProbe::Refused) => {
+            assert_eq!(value.stage(), BootstrapIdentityStage::Describe);
+            assert_eq!(value.error().code().as_str()?, "unsupported-value");
+            assert_eq!(
+                value.getter_error().unwrap().code().as_str()?,
+                "method-raised"
+            );
+            assert!(
+                runner.fuel_remaining().is_ok(),
+                "ABI refusal retired a healthy Store"
+            );
+            return Ok(DeniedFunding::Identity(outcome));
+        }
+        (
+            BootstrapIdentityOutcome::GetterRaised(value),
+            IdentityProbe::ValueError | IdentityProbe::OsError | IdentityProbe::FactoryRaised,
+        ) => {
+            assert_eq!(
+                value.recovery_catch(),
+                if probe == IdentityProbe::OsError {
+                    BootstrapRecoveryCatch::OsError
+                } else {
+                    BootstrapRecoveryCatch::ValueError
+                }
+            );
+        }
+        _ => panic!("unexpected raw getter outcome for controlled fixture"),
+    }
+    let BootstrapIdentityOutcome::GetterRaised(error) = outcome else {
+        unreachable!()
+    };
+    let actual_view = error.view().as_bytes().as_ptr() as usize;
+    let actual_ref = error.error().details().unwrap().as_bytes().as_ptr() as usize;
+    // This fixed test raise site proves Host carrier identity only. It does
+    // not put raw getter errors through canonical validation/recovery yet.
+    match runner
+        .denied(
+            WORKER_DENIED_MESSAGE,
+            BootstrapDeniedRaise::OpaqueGetter(error),
+        )
+        .await?
+    {
+        Ok(value) => {
+            assert_ne!(probe, IdentityProbe::FactoryRaised);
+            let cause = value.opaque_cause().unwrap();
+            assert!(std::ptr::eq(cause, value.opaque_context().unwrap()));
+            assert_eq!(cause.view().as_bytes().as_ptr() as usize, actual_view);
+            assert_eq!(
+                cause.error().details().unwrap().as_bytes().as_ptr() as usize,
+                actual_ref
+            );
+            assert!(value.cause().is_none() && value.context().is_none());
+            assert!(value.suppress_context());
+            Ok(DeniedFunding::Returned(value))
+        }
+        Err(value) => {
+            assert_eq!(probe, IdentityProbe::FactoryRaised);
+            assert!(value.factory_raised());
+            assert!(value.host_except_context().is_none());
+            assert!(value
+                .error()
+                .details()
+                .unwrap()
+                .as_str()?
+                .contains("\"object\":\"ee5\""));
+            let context = value.opaque_except_context().unwrap();
+            assert_eq!(context.view().as_bytes().as_ptr() as usize, actual_view);
+            assert_eq!(
+                context.error().details().unwrap().as_bytes().as_ptr() as usize,
+                actual_ref
+            );
+            Ok(DeniedFunding::Raised(value))
+        }
+    }
 }
 #[cfg(test)]
 async fn denied_funding<S: BootstrapInputOwner>(

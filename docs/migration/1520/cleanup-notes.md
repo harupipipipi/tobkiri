@@ -318,7 +318,8 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   保持する契約であり、Work/source/IO循環ではなかった。Nativeを変更せずdriverが元reapを
   完了するよう修正し、assertは維持。必要JSON14,226Bのみ保存、Wasm binaryは未取得。
   owner gate修正bc3eのDesktop CI41256412808も641/123/18・finite15・DMGまで全成功。
-  新factory4を含むfinite19は同178のDesktop CI41262201810で検証中。
+  新factory4を含むfinite19も同178のDesktop CI41262201810で全成功。実645/123/18、
+  coldboot/DMG/mounted検証まで通過し、artifact280,225,007Bはmetadataのみ確認した。
   追加の削減候補: 新Reviewは同invocationの固定bodyを直接呼ぶ。別jobを作る旧試作の
   read_original_authority_snapshot/OriginalAuthorityJob/Dataは現在のtracked callerがなく、
   将来のsnapshot接続後も独立prefetchとして使わない。直接snapshot接続と実caller回帰を
@@ -2074,3 +2075,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   cause・async journal/getter・製品採用の成功には読み替えない。
   原本getter/Host検証は別toolの69入力で観測し、元のport/factory/validatorを保持する。
   同一test Source destructor witnessは実factory/getter driver間で共有し重複を減らす。
+- 次のApp adapterもSol6.1 xhighが`app_bootstrap_identity.rs`へ隔離して実装した。
+  同じUnicode helperとfunded writerを使い、元のtype/empty→length→NFC→lower/prefix→
+  ASCII fullmatchと5種のProtocolError messageを保持する。成功は元slice、処理/資金/
+  transport failureは別のouter errorとし、ID不正へ丸めない。通常8単体とRootの原本
+  returned58比較driverは実行待ち。raw getter例外11件はこのadapter外と明示する。
+  Tauriへ同じ規約を二重実装せず、今はmigration専用App moduleのcfg(test)内で比較する。
+  実getter/opaque causeは別のSol実装で有限観測とrunner-held custodyを追加したが、
+  7 caller/6 Guest回帰・実component/default getter driverは次CIで確認する。
+  canonical adapter・実factory・同journal guardをつなぐwholeunitの完成には数えない。

@@ -81,8 +81,11 @@ component driver were prepared. The [actual factory comparison at `178c6341b`](h
 passed all eight same-Store cases and physical finish/data release. The existing
 allocator custody record is collected through its real uniqueness-checked reap;
 charged bytes and reservations both reach zero, with source destruction and
-owner reopen confirmed. The new four Tauri cases remain under verification in
-[Desktop CI41262201810](https://github.com/harupipipipi/tobkiri/actions/runs/41262201810).
+owner reopen confirmed. The new four Tauri cases and all19 finite caller cases
+passed in [Desktop CI41262201810](https://github.com/harupipipipi/tobkiri/actions/runs/41262201810):
+645 library,123 build-script and18 resource tests, sealed packaging, cold boot,
+DMG creation and mounted verification all succeeded. The280,225,007-byte
+artifact was metadata-only; distribution still contains product Python/PackVM.
 The Host's
 cause/context remain separate from the Guest exception's observed fields.
 This does not yet connect async recovery or qualify the product factory/GUI.

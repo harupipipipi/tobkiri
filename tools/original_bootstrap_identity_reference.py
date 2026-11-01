@@ -230,6 +230,8 @@ def prepare(original: Path, destination: Path) -> None:
         raise AssertionError("controlled getter restoration failed")
     destination.mkdir(parents=True, mode=0o700, exist_ok=False)
     report = {"format": FORMAT, "original_head": ORIGINAL_HEAD, "python": "3.13.16",
+              "protocol_error": {"type": ProtocolError.__module__ + "." + ProtocolError.__qualname__,
+                                 "code": ProtocolError.code},
               "sources": {name: hashlib.sha256((runtime / name).read_bytes()).hexdigest()
                           for name in SOURCES},
               "unmodified_default_getter_before_and_after": before,

@@ -25,9 +25,17 @@ impl Drop for SourceDropped {
         self.0.store(true, Ordering::Release);
     }
 }
-struct ObservedSource {
+pub(super) struct ObservedSource {
     source: SelectedRuntime,
     _dropped: SourceDropped,
+}
+impl ObservedSource {
+    pub(super) fn new(source: SelectedRuntime, dropped: Arc<AtomicBool>) -> Self {
+        Self {
+            source,
+            _dropped: SourceDropped(dropped),
+        }
+    }
 }
 impl BootstrapInputOwner for ObservedSource {
     fn original_module_metadata_policy(&self) -> Option<&'static crate::ModuleMetadataPolicy> {
@@ -95,10 +103,7 @@ async fn original_reference_driver() -> Result<()> {
         process: std::process::id(),
     };
     let source_dropped = Arc::new(AtomicBool::new(false));
-    let source = ObservedSource {
-        source: selected_source,
-        _dropped: SourceDropped(source_dropped.clone()),
-    };
+    let source = ObservedSource::new(selected_source, source_dropped.clone());
     let scratch = tempfile::tempdir()?;
     let owner_path = scratch.path().canonicalize()?.join("native-factory");
     let owner = RuntimeOwner::open(&owner_path)?;

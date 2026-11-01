@@ -140,6 +140,7 @@ fn expected_getters(operation: OriginalOperation) -> Vec<OriginalGetter> {
         OriginalOperation::ReviewListing(_) => vec![],
         OriginalOperation::VerifyDenied(_) => vec![],
         OriginalOperation::VerifyDeniedCodec => vec![],
+        OriginalOperation::VerifyIdentity(_) => vec![],
     }
 }
 fn scope(invocation: &NativeSetupInvocation) -> serde_json::Value {
@@ -188,9 +189,16 @@ fn component(
     scenario: Scenario,
 ) -> Vec<u8> {
     let actual_scope = scope(invocation);
+    let identity = match &operation {
+        OriginalOperation::VerifyIdentity(probe) => Some(*probe),
+        _ => None,
+    };
     let denied = matches!(
         &operation,
         OriginalOperation::VerifyDenied(_) | OriginalOperation::VerifyDeniedCodec
+    ) || matches!(
+        identity,
+        Some(IdentityProbe::ValueError | IdentityProbe::OsError | IdentityProbe::FactoryRaised)
     );
     let denied_codec = matches!(&operation, OriginalOperation::VerifyDeniedCodec);
     let mut memory = String::new();
@@ -199,12 +207,12 @@ fn component(
         "{{\"format\":\"io.tobkiri.native-call.v1\",\"scope\":{actual_scope},\"args\":[],\"kwargs\":[]}}"
     );
     let (call_ptr, call_len) = data(&mut memory, &mut offset, call.as_bytes());
-    let message = if denied {
+    let message = if denied || identity.is_some() {
         ""
     } else {
         "actual second getter refusal λ"
     };
-    let details = if denied {
+    let details = if denied || identity.is_some() {
         serde_json::json!({"format":"io.tobkiri.native-value-result.v1","scope":actual_scope,"root":{"scope":actual_scope,"object":"ee3"},"owned":["ee3"]}).to_string()
     } else {
         " { \"after\": \"profile-description\" }\n".to_owned()
@@ -219,6 +227,9 @@ fn component(
         OriginalGetter::HostResourceRoot,
         OriginalGetter::BundledProfileRoot,
     ] {
+        if identity.is_some() && getter == OriginalGetter::BootstrapProfileId {
+            continue;
+        }
         let name = match getter {
             OriginalGetter::BootstrapProfileId => "profile",
             OriginalGetter::HostResourceRoot => "host",
@@ -275,7 +286,73 @@ fn component(
             stage + 2,
         ));
     }
+    if let Some(probe) = identity {
+        let root = serde_json::json!({"scope":actual_scope,"object":"ee3"});
+        let returned = serde_json::json!({"format":"io.tobkiri.native-value-result.v1","scope":actual_scope,"root":root,"owned":["ee3"]}).to_string();
+        let describe = format!(
+            r#"{{"format":"io.tobkiri.native-bootstrap-identity-describe.v1","scope":{actual_scope},"root":{root}}}"#
+        );
+        let (result_ptr, result_len) = data(&mut memory, &mut offset, returned.as_bytes());
+        let raised = matches!(
+            probe,
+            IdentityProbe::ValueError
+                | IdentityProbe::OsError
+                | IdentityProbe::FactoryRaised
+                | IdentityProbe::Refused
+        );
+        let body = if raised {
+            "call $refuse".to_owned()
+        } else {
+            format!("i32.const {result_ptr} i32.const {result_len} call $emit")
+        };
+        getters.push_str(&format!(
+            "(func (export \"profile\") (param $p i32) (param $n i32) (result i32)
+            global.get $stage i32.const 0 i32.ne if unreachable end
+            local.get $p local.get $n i32.const {call_ptr} i32.const {call_len} call $check
+            i32.const 1 global.set $stage {body})\n"
+        ));
+        let os = probe == IdentityProbe::OsError;
+        let kind = if raised {
+            if os {
+                "os-error"
+            } else {
+                "value-error"
+            }
+        } else if probe == IdentityProbe::NonString {
+            "dict"
+        } else {
+            "str"
+        };
+        let exception = if raised {
+            let none = serde_json::json!({"kind":"none","value":null});
+            let raw =
+                serde_json::json!({"kind":"str","value":{"length":3,"codepoints":[114,97,119]}});
+            serde_json::json!({"recovery_catch":if os {"os-error"} else {"value-error"},
+                "args":[raw],"cause":root,"context":root,"suppress_context":false,
+                "os_fields":if os {serde_json::json!({"errno":{"kind":"int","value":"2"},"strerror":raw,"filename":none,"filename2":none})} else {serde_json::Value::Null}})
+        } else {
+            serde_json::Value::Null
+        };
+        let viewed = serde_json::json!({"format":"io.tobkiri.native-bootstrap-identity-view.v1",
+            "scope":actual_scope,"root":root,"origin":if raised {"getter-raised"} else {"getter-returned"},
+            "kind":kind,"registered_builtin_kind":if raised {"record"} else {kind},
+            "string":if kind == "str" {serde_json::json!({"length":if probe == IdentityProbe::CodecRejected {1} else {2},"codepoints":[55296,66560]})} else {serde_json::Value::Null},
+            "exception":exception,"owned":[]}).to_string();
+        let (input_ptr, input_len) = data(&mut memory, &mut offset, describe.as_bytes());
+        let (output_ptr, output_len) = data(&mut memory, &mut offset, viewed.as_bytes());
+        let described = if probe == IdentityProbe::Refused {
+            "call $unsupported return".to_owned()
+        } else {
+            format!("i32.const {output_ptr} i32.const {output_len} call $emit return")
+        };
+        descriptions.push_str(&format!(
+            "global.get $stage i32.const 1 i32.eq if
+            local.get $p local.get $n i32.const {input_ptr} i32.const {input_len} call $check
+            i32.const 2 global.set $stage {described} end\n"
+        ));
+    }
     if denied {
+        let first_stage = if identity.is_some() { 2 } else { 0 };
         let argument = serde_json::json!({"scope":actual_scope,"object":"ee1"});
         let root = serde_json::json!({"scope":actual_scope,"object":"ee2"});
         let import = format!(
@@ -296,12 +373,19 @@ fn component(
         };
         let viewed = serde_json::json!({"format":"io.tobkiri.native-value-view.v1","scope":actual_scope,"root":root,"owned":[],"nodes":[{"ref":root,"kind":"profile-resolution-denied","opaque_native_binding":false,"fields":[],"factory_denied":{"args":[observed_message],"cause":null,"context":null,"suppress_context":false}}]}).to_string();
         for (name, stage, input, output) in [
-            ("import", 0, import, imported),
-            ("denied", 1, factory, returned),
+            ("import", first_stage, import, imported),
+            ("denied", first_stage + 1, factory, returned),
         ] {
             let (input_ptr, input_len) = data(&mut memory, &mut offset, input.as_bytes());
             let (output_ptr, output_len) = data(&mut memory, &mut offset, output.as_bytes());
-            let body = if name == "denied" && matches!(scenario, Scenario::HostDomain) {
+            let body = if name == "denied" && identity == Some(IdentityProbe::FactoryRaised) {
+                // A distinct actual factory throw; the original getter's ee3
+                // carrier remains ambient Host context, never a replacement
+                // factory error or a second freshly issued hold on ee3.
+                let details = serde_json::json!({"format":"io.tobkiri.native-value-result.v1","scope":actual_scope,"root":{"scope":actual_scope,"object":"ee5"},"owned":["ee5"]}).to_string();
+                let (ptr, len) = data(&mut memory, &mut offset, details.as_bytes());
+                format!("call $refuse i32.const 144 i32.const {ptr} i32.store i32.const 148 i32.const {len} i32.store")
+            } else if name == "denied" && matches!(scenario, Scenario::HostDomain) {
                 "call $refuse".to_owned()
             } else {
                 format!("i32.const {output_ptr} i32.const {output_len} call $emit")
@@ -316,9 +400,11 @@ fn component(
         }
         let (input_ptr, input_len) = data(&mut memory, &mut offset, describe.as_bytes());
         let (output_ptr, output_len) = data(&mut memory, &mut offset, viewed.as_bytes());
-        descriptions.push_str(&format!("global.get $stage i32.const 2 i32.eq if
+        let describe_stage = first_stage + 2;
+        let finished_stage = first_stage + 3;
+        descriptions.push_str(&format!("global.get $stage i32.const {describe_stage} i32.eq if
             local.get $p local.get $n i32.const {input_ptr} i32.const {input_len} call $check
-            i32.const 3 global.set $stage i32.const {output_ptr} i32.const {output_len} call $emit return end\n"));
+            i32.const {finished_stage} global.set $stage i32.const {output_ptr} i32.const {output_len} call $emit return end\n"));
     } else {
         getters.push_str("(func (export \"import\") (param i32 i32) (result i32) unreachable)\n(func (export \"denied\") (param i32 i32) (result i32) unreachable)\n");
     }
@@ -356,6 +442,8 @@ fn component(
           i32.const 140 i32.const @MESSAGE_LEN@ i32.store
           i32.const 144 i32.const @DETAILS_PTR@ i32.store
           i32.const 148 i32.const @DETAILS_LEN@ i32.store i32.const 128)
+        (func $unsupported (result i32)
+          call $refuse i32.const 132 i32.const 4 i32.store)
         (func (export "init") (param i32 i32) (result i32)
           i32.const 128 i32.const 0 i32.store i32.const 128)
         @GETTERS@
@@ -595,6 +683,63 @@ fn denied_host_from_cause_and_context_share_identity_through_finish() {
 #[test]
 fn denied_factory_throw_keeps_ambient_context_without_applying_host_from() {
     denied_worker(true, Scenario::HostDomain);
+}
+
+#[test]
+fn identity_raw_string_preserves_surrogates_through_finish() {
+    identity_worker(IdentityProbe::String);
+}
+
+#[test]
+fn identity_non_string_is_top_level_only_and_remains_distinct_from_none() {
+    identity_worker(IdentityProbe::NonString);
+}
+
+#[test]
+fn identity_actual_value_error_becomes_the_same_opaque_host_cause_and_context() {
+    identity_worker(IdentityProbe::ValueError);
+}
+
+#[test]
+fn identity_actual_os_error_keeps_its_classification_and_opaque_cause() {
+    identity_worker(IdentityProbe::OsError);
+}
+
+#[test]
+fn identity_factory_throw_keeps_the_original_opaque_ambient_context_only() {
+    identity_worker(IdentityProbe::FactoryRaised);
+}
+
+#[test]
+fn identity_codec_rejection_keeps_pending_outputs_until_store_and_io_retire() {
+    identity_worker(IdentityProbe::CodecRejected);
+}
+
+#[test]
+fn identity_observation_refusal_keeps_the_actual_getter_error_until_finish() {
+    identity_worker(IdentityProbe::Refused);
+}
+
+fn identity_worker(probe: IdentityProbe) {
+    let running = launch(
+        OriginalOperation::VerifyIdentity(probe),
+        Scenario::Normal,
+        0,
+        false,
+    );
+    let invocation = receive(&running.ready);
+    let deadline = invocation.deadline().unwrap();
+    let output = tauri::async_runtime::block_on(running.waiter.result());
+    assert!(matches!(
+        output,
+        Err(DetachedFailure::Execution {
+            stage: Stage::Operation,
+            source: SourceRecord::Unsupported(Unsupported::AnyhowBoundary)
+        })
+    ));
+    assert_eq!(invocation.deadline().unwrap(), deadline);
+    assert_eq!(receive(&running.published), (true, true));
+    drain(&running.jobs, &running.controls, &invocation, true);
 }
 
 #[test]

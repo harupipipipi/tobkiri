@@ -17,6 +17,7 @@ import ordered_json_v2 as wire
 
 _INPUT = "io.tobkiri.native-value-input.v1"
 _VIEW = "io.tobkiri.native-value-view.v1"
+_IDENTITY_VIEW = "io.tobkiri.native-bootstrap-identity-view.v1"
 _U64 = (1 << 64) - 1
 _U32 = (1 << 32) - 1
 _HEX = re.compile(r"^(?:0|[1-9a-f][0-9a-f]*)$")
@@ -150,6 +151,10 @@ class Registry:
         # per fresh factory result, referencing its existing string, not a new
         # native allowance or external table. Release/rollback/retire erase it.
         self._denied: dict[int, str] = {}
+        # Issued only by the fixed raw getter's actual call/throw. This small
+        # registry-local table uses the same guest heap and loses its entries
+        # with their original holds; it grants no native operation.
+        self._bootstrap_identity: dict[int, str] = {}
         self._next = 1
         self._retired = False
 
@@ -220,6 +225,7 @@ class Registry:
             self._identity.pop(identity)
             self._permissions.pop(reference.object_id)
             self._denied.pop(reference.object_id, None)
+            self._bootstrap_identity.pop(reference.object_id, None)
 
     @staticmethod
     def _denied_fields(value: BaseException, message: str) -> dict[str, Any] | None:
@@ -299,6 +305,7 @@ class Registry:
             del self._identity[id(value)]
             del self._permissions[number]
             self._denied.pop(number, None)
+            self._bootstrap_identity.pop(number, None)
 
     def retire(self) -> None:
         """Invalidate the whole original scope without creating a fresh budget."""
@@ -307,6 +314,98 @@ class Registry:
         self._identity.clear()
         self._permissions.clear()
         self._denied.clear()
+        self._bootstrap_identity.clear()
+
+    @staticmethod
+    def _identity_string(value: str, limit: int) -> dict[str, Any]:
+        # Python len/iteration preserve lone surrogate codepoints. Never encode,
+        # normalize, lowercase or replace the raw value before its validator.
+        length = len(value)
+        return {"length": min(length, limit + 1),
+                "codepoints": [ord(c) for c in value] if length <= limit else []}
+
+    @classmethod
+    def _identity_scalar(cls, value: Any) -> dict[str, Any]:
+        # Exception DATA is deliberately shallow and finite. Unsupported args
+        # are an ABI gap, not a fabricated Python message or canonical denial.
+        kind = _KINDS.get(type(value))
+        if kind == "none":
+            return {"kind": kind, "value": None}
+        if kind == "bool":
+            return {"kind": kind, "value": value}
+        if kind == "int" and value.bit_length() <= 4096:
+            return {"kind": kind, "value": ("-" if value < 0 else "")
+                    + format(abs(value), "x")}
+        if kind == "float":
+            return {"kind": kind, "value": struct.pack(">d", value).hex()}
+        if kind == "str" and len(value) <= 4096:
+            return {"kind": kind, "value": cls._identity_string(value, 4096)}
+        raise UnsupportedValue("raw getter exception scalar is outside the finite ABI")
+
+    def describe_bootstrap_identity(self, root: Reference) -> str:
+        """Observe one actual raw getter result, with no contents/graph walk.
+
+        Non-string values disclose their trusted exact top-level type only.
+        A real getter throw additionally discloses fixed builtin descriptors;
+        its intrinsic edges remain opaque actual refs, with no recursive view.
+        """
+        value = self.borrow(root)
+        origin = self._bootstrap_identity.get(root.object_id)
+        if origin not in {"getter-returned", "getter-raised"}:
+            raise InvalidReference("reference has no actual raw getter origin")
+        kind = self._kind(value)
+        if issubclass(type(value), str) and type(value) is not str:
+            raise UnsupportedValue("raw getter str subclass is outside the finite ABI")
+        created: list[tuple[Reference, int]] = []
+
+        def edge(error: BaseException | None) -> dict[str, Any] | None:
+            if error is None:
+                return None
+            if not issubclass(type(error), BaseException):
+                raise UnsupportedValue("raw getter intrinsic edge is not an exception")
+            self._kind(error)  # Exact trusted inventory, not a claimed kind.
+            reference, _ = self._retain(error, created=created)
+            return reference.wire()
+
+        try:
+            exception = None
+            if origin == "getter-raised":
+                if not issubclass(type(value), BaseException):
+                    raise InvalidReference("raw getter throw is not an actual exception")
+                args = BaseException.args.__get__(value)
+                if type(args) is not tuple or len(args) > 8:
+                    raise UnsupportedValue("raw getter exception args exceed the finite ABI")
+                # The inheritance test uses the actual registered class. It
+                # does not trust a frame or infer a catch from a kind string.
+                catch = ("os-error" if issubclass(type(value), OSError) else
+                         "value-error" if issubclass(type(value), ValueError) else "none")
+                os_fields = None
+                if catch == "os-error":
+                    os_fields = {
+                        "errno": self._identity_scalar(OSError.errno.__get__(value)),
+                        "strerror": self._identity_scalar(OSError.strerror.__get__(value)),
+                        "filename": self._identity_scalar(OSError.filename.__get__(value)),
+                        "filename2": self._identity_scalar(OSError.filename2.__get__(value)),
+                    }
+                exception = {
+                    "recovery_catch": catch,
+                    "args": [self._identity_scalar(item) for item in args],
+                    "cause": edge(BaseException.__cause__.__get__(value)),
+                    "context": edge(BaseException.__context__.__get__(value)),
+                    "suppress_context": BaseException.__suppress_context__.__get__(value),
+                    "os_fields": os_fields,
+                }
+            return wire.dumps({
+                "format": _IDENTITY_VIEW, "scope": self.scope.wire(),
+                "root": root.wire(), "origin": origin, "kind": kind,
+                "registered_builtin_kind": _KINDS.get(type(value), "record"),
+                "string": self._identity_string(value, 128) if type(value) is str else None,
+                "exception": exception,
+                "owned": [format(ref.object_id, "x") for ref, _ in created],
+            })
+        except BaseException:
+            self._rollback(created)
+            raise
 
     def append(self, target: Reference, item: Reference) -> None:
         """Apply only an explicitly permitted original list append, atomically."""

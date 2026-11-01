@@ -98,7 +98,7 @@ class FactoryDeniedFixture(Exception):
         raise AssertionError("factory observations must not format exceptions")
 
     def __getattribute__(self, name):
-        if name in {"args", "__cause__", "__context__", "__suppress_context__"}:
+        if name in {"args", "__cause__", "__context__", "__suppress_context__", "__class__"}:
             raise AssertionError("factory observations must use builtin descriptors")
         return super().__getattribute__(name)
 
@@ -121,6 +121,213 @@ class FactoryRuntimeFixture:
 
     def setup_preview(self):
         return [self.last]
+
+
+class IdentityRuntimeFixture:
+    """Controlled raw getter inputs, not the original Pack implementation."""
+
+    def __init__(self):
+        self.value = "fixture-id"
+        self.failure = None
+
+    def bootstrap_profile_id(self):
+        if self.failure is not None:
+            raise self.failure
+        return self.value
+
+    def setup_preview(self):
+        return self.value if self.failure is None else self.failure
+
+
+class IdentityObservationTransportTests(unittest.TestCase):
+    """Top-level/provenance ABI; original validator and native proof are separate."""
+
+    def setUp(self):
+        self.runtime = IdentityRuntimeFixture()
+        self.scope = Scope(1, 2, 3, 4)
+        self.errors = (ValueError, OSError, FileNotFoundError, TypeError,
+                       RuntimeError, KeyError, FactoryDeniedFixture)
+        self.dispatcher = Dispatcher(lambda _scope: OriginalRuntime(
+            self.runtime,
+            tuple(RecordType(kind, cls) for kind, cls in zip((
+                "value-error", "os-error", "file-not-found-error", "type-error",
+                "runtime-error", "key-error", "profile-resolution-denied"), self.errors)),
+            self.errors,
+        ))
+        self.dispatcher.init(self.frame("init"))
+        self.registry = self.dispatcher._current().registry
+
+    def frame(self, kind, **fields):
+        return wire.dumps({"format": PREFIX + kind + ".v1",
+                           "scope": self.scope.wire(), **fields})
+
+    def packet(self):
+        call = self.frame("call", args=[], kwargs=[])
+        if self.runtime.failure is None:
+            return json.loads(self.dispatcher.call("bootstrap_profile_id", call))
+        with self.assertRaises(MethodRaised) as caught:
+            self.dispatcher.call("bootstrap_profile_id", call)
+        return json.loads(caught.exception.details)
+
+    def view(self, packet):
+        return json.loads(self.dispatcher.describe_value(
+            self.frame("bootstrap-identity-describe", root=packet["root"])))
+
+    def test_actual_string_codepoints_preserve_surrogates_and_129_length_branch(self):
+        for value in ("", "a", "e\u0301", "İΣ", "\ud800x\udfff", "𐀀" * 128, "x" * 129,
+                      "secret contents" * 1000):
+            self.runtime.value = value
+            packet = self.packet()
+            view = self.view(packet)
+            self.assertEqual(view, {
+                "format": PREFIX + "bootstrap-identity-view.v1",
+                "scope": self.scope.wire(), "root": packet["root"],
+                "origin": "getter-returned", "kind": "str",
+                "registered_builtin_kind": "str", "exception": None, "owned": [],
+                "string": {"length": min(len(value), 129),
+                           "codepoints": list(map(ord, value)) if len(value) <= 128 else []},
+            })
+
+    def test_non_strings_disclose_only_top_level_type_without_visiting_contents(self):
+        private = object()
+        for value, kind in ((None, "none"), (False, "bool"), (10**500, "int"),
+                            (float("nan"), "float"), ([private], "list"),
+                            ((private,), "tuple"), ({private: private}, "dict"),
+                            ({private}, "set"), (frozenset({private}), "frozenset"),
+                            (FactoryDeniedFixture(private), "record")):
+            self.runtime.value = value
+            view = self.view(self.packet())
+            self.assertEqual(view["registered_builtin_kind"], kind)
+            self.assertIsNone(view["string"])
+            self.assertIsNone(view["exception"])
+            self.assertEqual(view["owned"], [])
+
+    def test_only_actual_getter_origin_and_live_same_scope_are_observable(self):
+        ref = self.registry.retain("not a getter call")
+        with self.assertRaises(InvalidReference):
+            self.view({"root": ref.wire()})
+        packet = self.packet()
+        # Returning the same actual object through another export invalidates
+        # its getter origin, even though its issued registry hold remains live.
+        self.dispatcher.call("setup_preview", self.frame("call", args=[], kwargs=[]))
+        with self.assertRaises(InvalidReference):
+            self.view(packet)
+        packet = self.packet()
+        foreign = {**packet["root"], "scope": ["1", "2", "9", "4"]}
+        with self.assertRaises(InvalidReference):
+            self.view({"root": foreign})
+        self.dispatcher.release_values(self.frame("values-release", refs=[packet["root"]]))
+        self.assertNotIn(int(packet["root"]["object"], 16), self.registry._bootstrap_identity)
+        with self.assertRaises(InvalidReference):
+            self.view(packet)
+        self.packet()
+        self.registry.retire()
+        self.assertEqual(self.registry._bootstrap_identity, {})
+
+    def test_actual_exception_class_catch_and_opaque_intrinsic_edge_identity(self):
+        for error, catch in ((ValueError("value\ud800"), "value-error"),
+                             (TypeError("type"), "none"), (KeyError("key"), "none"),
+                             (FactoryDeniedFixture("denied"), "none"),
+                             (FileNotFoundError(2, "missing", "private/path"), "os-error")):
+            edge = RuntimeError("opaque edge is never walked")
+            edge.args = (object(),)
+            edge.__cause__ = error
+            BaseException.__cause__.__set__(error, edge)
+            BaseException.__context__.__set__(error, edge)
+            self.runtime.failure = error
+            packet = self.packet()
+            view = self.view(packet)
+            fields = view["exception"]
+            self.assertEqual(fields["recovery_catch"], catch)
+            self.assertEqual(fields["cause"], fields["context"])
+            self.assertEqual(view["owned"], [fields["cause"]["object"]])
+            self.assertIs(self.registry.borrow(self.registry.reference(fields["cause"])), edge)
+            self.assertNotIn("nodes", view)
+            if catch == "os-error":
+                self.assertEqual(fields["os_fields"]["errno"], {"kind": "int", "value": "2"})
+                self.assertEqual(fields["os_fields"]["filename"]["value"]["codepoints"],
+                                 list(map(ord, "private/path")))
+            else:
+                self.assertIsNone(fields["os_fields"])
+
+    def test_outside_inventory_or_finite_diagnostics_are_explicit_abi_gaps(self):
+        for value in (b"bytes", object()):
+            self.runtime.value = value
+            with self.assertRaises(UnsupportedValue):
+                self.packet()
+        class StringSubclass(str):
+            pass
+
+        runtime = IdentityRuntimeFixture()
+        runtime.value = StringSubclass("same contents are not an exact str observation")
+        dispatcher = Dispatcher(lambda _scope: OriginalRuntime(
+            runtime, (RecordType("str-subclass", StringSubclass),), ()))
+        dispatcher.init(self.frame("init"))
+        packet = json.loads(dispatcher.call("bootstrap_profile_id", self.frame(
+            "call", args=[], kwargs=[])))
+        with self.assertRaises(UnsupportedValue):
+            dispatcher.describe_value(self.frame("bootstrap-identity-describe", root=packet["root"]))
+        for args in (([],), ("x" * 4097,), (1 << 4096,), tuple(range(9))):
+            self.runtime.failure = ValueError(*args)
+            packet = self.packet()
+            with self.assertRaises(UnsupportedValue):
+                self.view(packet)
+        self.runtime.failure = ValueError("root")
+        self.runtime.failure.__cause__ = PrivateError("not registered")
+        packet = self.packet()
+        before = set(self.registry._objects)
+        with self.assertRaises(UnsupportedValue):
+            self.view(packet)
+        self.assertEqual(set(self.registry._objects), before)
+
+    def test_rollback_reused_error_and_fake_kind_cannot_manufacture_classification(self):
+        self.runtime.failure = ValueError("actual")
+        packet = self.packet()
+        self.dispatcher.call("setup_preview", self.frame("call", args=[], kwargs=[]))
+        with self.assertRaises(InvalidReference):
+            self.view(packet)
+        self.runtime.failure = None
+        self.runtime.value = "new failing publication"
+        payload = self.frame("call", args=[], kwargs=[])
+        before = set(self.registry._objects)
+        with patch("harness_native.dispatcher.wire.dumps", side_effect=MemoryError):
+            with self.assertRaises(MemoryError):
+                self.dispatcher.call("bootstrap_profile_id", payload)
+        self.assertEqual(set(self.registry._objects), before)
+        self.runtime.failure = ValueError("new intrinsic edge")
+        self.runtime.failure.__cause__ = RuntimeError("must not leak a new hold")
+        packet = self.packet()
+        request = self.frame("bootstrap-identity-describe", root=packet["root"])
+        before = set(self.registry._objects)
+        with patch("harness_native.value_graph.wire.dumps", side_effect=MemoryError):
+            with self.assertRaises(MemoryError):
+                self.dispatcher.describe_value(request)
+        self.assertEqual(set(self.registry._objects), before)
+
+        class FailingMarker(dict):
+            def __setitem__(self, key, value):
+                super().__setitem__(key, value)
+                raise MemoryError
+
+        self.registry._bootstrap_identity = FailingMarker(self.registry._bootstrap_identity)
+        self.runtime.failure = None
+        self.runtime.value = "new marker allocation failure"
+        before = set(self.registry._objects)
+        with self.assertRaises(MemoryError):
+            self.packet()
+        self.assertEqual(set(self.registry._objects), before)
+        # A trusted test inventory with a deliberately false tag cannot change
+        # the actual class test. Native validation separately rejects the lie.
+        runtime = IdentityRuntimeFixture()
+        runtime.failure = RuntimeError("not a ValueError")
+        dispatcher = Dispatcher(lambda _scope: OriginalRuntime(
+            runtime, (RecordType("value-error", RuntimeError),), (RuntimeError,)))
+        dispatcher.init(self.frame("init"))
+        with self.assertRaises(MethodRaised) as caught:
+            dispatcher.call("bootstrap_profile_id", payload)
+        view = json.loads(dispatcher.describe_value(self.frame(
+            "bootstrap-identity-describe", root=json.loads(caught.exception.details)["root"])))
+        self.assertEqual(view["exception"]["recovery_catch"], "none")
 
 
 class DeniedFactoryTransportTests(unittest.TestCase):

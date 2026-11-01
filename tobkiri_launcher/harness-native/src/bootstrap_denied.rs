@@ -10,8 +10,8 @@ const IMPORT_SLOT: usize = 6;
 // particular a codec rejection cannot destroy a real factory output before
 // retire_failure has retired the Store and awaited its physical IO owner.
 pub(super) struct DeniedCallCustody {
-    message: CoreBuffer,
-    input: CoreBuffer,
+    message: Option<CoreBuffer>,
+    input: Option<CoreBuffer>,
     host_raise: BootstrapDeniedRaise,
     imported: Option<CoreBuffer>,
     result: Option<CoreBuffer>,
@@ -45,12 +45,16 @@ impl DeniedCallCustody {
 pub enum BootstrapDeniedRaise {
     Plain,
     ExplicitFrom(NativeErrorGraph),
+    /// The same actual raw-getter exception, with a separate native Host edge.
+    /// Its intrinsic guest cause/context are neither sent back nor overwritten.
+    OpaqueGetter(BootstrapGetterError),
 }
 impl std::fmt::Debug for BootstrapDeniedRaise {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         out.write_str(match self {
             Self::Plain => "Plain",
             Self::ExplicitFrom(_) => "ExplicitFrom",
+            Self::OpaqueGetter(_) => "OpaqueGetter",
         })
     }
 }
@@ -81,13 +85,23 @@ impl BootstrapDenied {
         match &self.host_raise {
             BootstrapDeniedRaise::Plain => None,
             BootstrapDeniedRaise::ExplicitFrom(error) => Some(error),
+            BootstrapDeniedRaise::OpaqueGetter(_) => None,
         }
     }
     pub fn context(&self) -> Option<&NativeErrorGraph> {
         self.cause()
     }
     pub fn suppress_context(&self) -> bool {
-        self.cause().is_some()
+        !matches!(&self.host_raise, BootstrapDeniedRaise::Plain)
+    }
+    pub fn opaque_cause(&self) -> Option<&BootstrapGetterError> {
+        match &self.host_raise {
+            BootstrapDeniedRaise::OpaqueGetter(error) => Some(error),
+            _ => None,
+        }
+    }
+    pub fn opaque_context(&self) -> Option<&BootstrapGetterError> {
+        self.opaque_cause()
     }
 }
 impl std::fmt::Debug for BootstrapDenied {
@@ -135,6 +149,19 @@ impl BootstrapDeniedFailure {
         match &self.pending_raise {
             BootstrapDeniedRaise::Plain => None,
             BootstrapDeniedRaise::ExplicitFrom(error) => Some(error),
+            BootstrapDeniedRaise::OpaqueGetter(_) => None,
+        }
+    }
+    /// Factory throws precede the Host explicit-from statement. The real
+    /// getter exception is ambient Host context only; intrinsic suppression is
+    /// not changed or inferred by this native relationship.
+    pub fn opaque_except_context(&self) -> Option<&BootstrapGetterError> {
+        if !self.factory_raised() {
+            return None;
+        }
+        match &self.pending_raise {
+            BootstrapDeniedRaise::OpaqueGetter(error) => Some(error),
+            _ => None,
         }
     }
 }
@@ -157,32 +184,15 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         message: &str,
         host_raise: BootstrapDeniedRaise,
     ) -> Result<std::result::Result<BootstrapDenied, BootstrapDeniedFailure>> {
-        if self.work.get().phase.load(Ordering::Acquire) != READY
-            || self.denied_pending.is_some()
-            || message.len() > MAX_BYTES
-        {
+        if self.work.get().phase.load(Ordering::Acquire) != READY || self.denied_pending.is_some() {
             bail!("native denied factory is unavailable or exceeds the envelope");
         }
-        self.work.get().source.check_live()?;
-        // Incoming cause is DATA. Rebind its finite buffers to this existing
-        // codec account before the factory call; never retain a foreign budget
-        // or introduce another account/deadline. Graph IDs/edges stay intact.
-        let host_raise = match host_raise {
-            BootstrapDeniedRaise::Plain => BootstrapDeniedRaise::Plain,
-            BootstrapDeniedRaise::ExplicitFrom(error) => {
-                let code = error.code().try_copy_to(&self.input_budget)?;
-                let message = error.message().try_copy_to(&self.input_budget)?;
-                let details = error.details().try_copy_to(&self.input_budget)?;
-                let bound = NativeErrorGraph::decode(code, message, details, &self.input_budget)?;
-                drop(error);
-                BootstrapDeniedRaise::ExplicitFrom(bound)
-            }
-        };
-        let message = CoreBuffer::copy_from(message.as_bytes(), &self.input_budget)?;
-        let input = import_message(self, message.as_str()?)?;
+        // Move even an opaque actual getter cause into runner custody BEFORE
+        // input/codec/source validation. Every admission failure then retires
+        // this same Store and awaits IO before dropping that original carrier.
         self.denied_pending = Some(DeniedCallCustody {
-            message,
-            input,
+            message: None,
+            input: None,
             host_raise,
             imported: None,
             result: None,
@@ -191,6 +201,9 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             #[cfg(debug_assertions)]
             view_rejected: false,
         });
+        if let Err(error) = self.denied_admit(message) {
+            return Err(self.retire_failure(error).await);
+        }
         let mut guard = RootCallGuard {
             work: self.work.clone(),
             io: self.io.clone(),
@@ -208,6 +221,50 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         result
     }
 
+    fn denied_admit(&mut self, message: &str) -> Result<()> {
+        if message.len() > MAX_BYTES {
+            bail!("native denied factory exceeds the envelope");
+        }
+        self.work.get().source.check_live()?;
+        // Incoming cause is DATA. Rebind its finite buffers to this existing
+        // codec account before the factory call; never retain a foreign budget
+        // or introduce another account/deadline. Graph IDs/edges stay intact.
+        let rebound = match &self
+            .denied_pending
+            .as_ref()
+            .expect("admitted factory")
+            .host_raise
+        {
+            BootstrapDeniedRaise::Plain => None,
+            BootstrapDeniedRaise::ExplicitFrom(error) => {
+                let code = error.code().try_copy_to(&self.input_budget)?;
+                let message = error.message().try_copy_to(&self.input_budget)?;
+                let details = error.details().try_copy_to(&self.input_budget)?;
+                let bound = NativeErrorGraph::decode(code, message, details, &self.input_budget)?;
+                Some(BootstrapDeniedRaise::ExplicitFrom(bound))
+            }
+            BootstrapDeniedRaise::OpaqueGetter(error) => {
+                let scope = CoreValue::parse_guest(self.call.as_bytes(), &self.input_budget)?
+                    .get_key("scope")
+                    .context("original call scope missing")?;
+                error.check_store(&self.input_budget, &scope)?;
+                None
+            }
+        };
+        if let Some(rebound) = rebound {
+            self.denied_pending
+                .as_mut()
+                .expect("admitted factory")
+                .host_raise = rebound;
+        }
+        let message = CoreBuffer::copy_from(message.as_bytes(), &self.input_budget)?;
+        let input = import_message(self, message.as_str()?)?;
+        let custody = self.denied_pending.as_mut().expect("admitted factory");
+        custody.message = Some(message);
+        custody.input = Some(input);
+        Ok(())
+    }
+
     async fn denied_in_phase(
         &mut self,
     ) -> Result<std::result::Result<BootstrapDenied, BootstrapDeniedFailure>> {
@@ -216,6 +273,8 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             .as_ref()
             .expect("admitted factory")
             .input
+            .as_ref()
+            .expect("admitted factory input")
             .clone();
         let imported = match self
             .string_call_in_phase(IMPORT_SLOT, &input, DENIED)
@@ -310,6 +369,8 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
             .as_ref()
             .expect("admitted factory")
             .message
+            .as_ref()
+            .expect("admitted factory message")
             .clone();
         if let Err(error) =
             validate_view(&view, &root, &scope, message.as_str()?, &self.input_budget)
@@ -326,7 +387,7 @@ impl<S: BootstrapInputOwner> NativeBootstrap<S> {
         Ok(Ok(BootstrapDenied {
             result: custody.result.expect("observed factory result"),
             view: custody.view.expect("observed factory view"),
-            message: custody.message,
+            message: custody.message.expect("observed factory message"),
             host_raise: custody.host_raise,
         }))
     }
@@ -358,7 +419,7 @@ fn import_message<S: BootstrapInputOwner>(
     out.append(b"}],\"root\":{\"node\":0}}")?;
     Ok(out.finish()?)
 }
-fn frame<S: BootstrapInputOwner, const N: usize>(
+pub(super) fn frame<S: BootstrapInputOwner, const N: usize>(
     runner: &NativeBootstrap<S>,
     format: &str,
     values: [(&str, CoreValue); N],
@@ -378,12 +439,12 @@ fn frame<S: BootstrapInputOwner, const N: usize>(
     out.append(b"}")?;
     Ok(out.finish()?)
 }
-fn field(value: &CoreValue, name: &str) -> Result<CoreValue> {
+pub(super) fn field(value: &CoreValue, name: &str) -> Result<CoreValue> {
     value
         .get_key(name)
         .context("denied factory DATA field missing")
 }
-fn exact(value: &CoreValue, names: &[&str]) -> Result<()> {
+pub(super) fn exact(value: &CoreValue, names: &[&str]) -> Result<()> {
     if value
         .object()
         .is_none_or(|object| object.len() != names.len())
@@ -393,7 +454,7 @@ fn exact(value: &CoreValue, names: &[&str]) -> Result<()> {
     }
     Ok(())
 }
-fn same_scope(left: &CoreValue, right: &CoreValue) -> bool {
+pub(super) fn same_scope(left: &CoreValue, right: &CoreValue) -> bool {
     let (Some(left), Some(right)) = (left.array(), right.array()) else {
         return false;
     };
@@ -406,7 +467,7 @@ fn same_scope(left: &CoreValue, right: &CoreValue) -> bool {
             left.as_str().is_some() && left.as_str() == right.as_str()
         })
 }
-fn reference(value: &CoreValue, scope: &CoreValue) -> Result<()> {
+pub(super) fn reference(value: &CoreValue, scope: &CoreValue) -> Result<()> {
     exact(value, &["scope", "object"])?;
     if !same_scope(&field(value, "scope")?, scope) {
         bail!("denied factory reference scope differs");
@@ -427,7 +488,7 @@ fn reference(value: &CoreValue, scope: &CoreValue) -> Result<()> {
     }
     Ok(())
 }
-fn same_reference(left: &CoreValue, right: &CoreValue) -> Result<bool> {
+pub(super) fn same_reference(left: &CoreValue, right: &CoreValue) -> Result<bool> {
     exact(left, &["scope", "object"])?;
     exact(right, &["scope", "object"])?;
     Ok(
@@ -435,7 +496,7 @@ fn same_reference(left: &CoreValue, right: &CoreValue) -> Result<bool> {
             && same_scope(&field(left, "scope")?, &field(right, "scope")?),
     )
 }
-fn result(
+pub(super) fn result(
     bytes: &CoreBuffer,
     format: &str,
     scope: &CoreValue,
@@ -451,7 +512,7 @@ fn result(
     reference(&field(&value, "root")?, scope)?;
     Ok(value)
 }
-fn ownership(value: &CoreValue, root: &CoreValue, require_fresh: bool) -> Result<()> {
+pub(super) fn ownership(value: &CoreValue, root: &CoreValue, require_fresh: bool) -> Result<()> {
     let owned = field(value, "owned")?;
     let owned = owned
         .array()

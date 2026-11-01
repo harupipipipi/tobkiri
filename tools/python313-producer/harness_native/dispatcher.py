@@ -233,17 +233,22 @@ class Dispatcher:
         return frame
 
     def _result(self, value: Any, *, set_items: bool = False,
-                denied_message: str | None = None) -> str:
+                denied_message: str | None = None,
+                identity_origin: str | None = None) -> str:
         state = self._current()
         created: list[tuple[Reference, int]] = []
+        ref = None
         try:
             ref, fresh = state.registry._retain(value, set_items=set_items, created=created)
             # Only a fresh value returned by the actual fixed denied call may
             # gain this finite observation. Reusing/raising an existing object
             # removes its old provenance; no new authority is issued.
             state.registry._denied.pop(ref.object_id, None)
+            state.registry._bootstrap_identity.pop(ref.object_id, None)
             if fresh and denied_message is not None:
                 state.registry._mark_denied(ref, denied_message)
+            if identity_origin is not None:
+                state.registry._bootstrap_identity[ref.object_id] = identity_origin
             return wire.dumps(
                 {
                     "format": PREFIX + "value-result.v1",
@@ -253,10 +258,12 @@ class Dispatcher:
                 }
             )
         except BaseException:
+            if ref is not None:
+                state.registry._bootstrap_identity.pop(ref.object_id, None)
             state.registry._rollback(created)
             raise
 
-    def _apply_original(self, action: Callable[[], Any]) -> Any:
+    def _apply_original(self, action: Callable[[], Any], *, identity: bool = False) -> Any:
         state = self._current()
         try:
             value = action()
@@ -267,9 +274,11 @@ class Dispatcher:
                 raise UnsupportedValue(
                     "original method failure is not represented"
                 ) from None
-            # No str/repr, traceback, args, filename or cause/context disclosure.
+            # The ordinary ABI stays opaque. Only the actual fixed raw getter
+            # may later request its separate finite builtin observation.
             failure = MethodRaised("")
-            failure.details = self._result(error)
+            failure.details = self._result(
+                error, identity_origin="getter-raised" if identity else None)
             raise failure from None
         return value
 
@@ -296,10 +305,12 @@ class Dispatcher:
                 raise InvalidFrame("invalid or duplicate original keyword")
             kwargs[item[0]] = state.registry.borrow(state.registry.reference(item[1]))
         target = getattr(state.runtime, method)
-        value = self._apply_original(lambda: target(*args, **kwargs))
+        identity = method == "bootstrap_profile_id" and not args and not kwargs
+        value = self._apply_original(lambda: target(*args, **kwargs), identity=identity)
         message = (args[0] if method == "denied" and len(args) == 1
                    and type(args[0]) is str and not kwargs else None)
-        return self._result(value, denied_message=message)
+        return self._result(value, denied_message=message,
+                            identity_origin="getter-returned" if identity else None)
 
     def import_values(self, payload: str) -> str:
         """Import only builtin DATA and existing issued references."""
@@ -345,9 +356,21 @@ class Dispatcher:
 
     def describe_value(self, payload: str) -> str:
         """Describe reviewed DATA fields, never arbitrary reflection."""
-        frame = self._frame(payload, "value-describe", {"root"})
-        registry = self._current().registry
-        return registry.describe(registry.reference(frame["root"]))
+        state = self._current()
+        frame = self._load(payload)
+        if (set(frame) != {"format", "scope", "root"}
+                or frame["scope"] != state.registry.scope.wire()
+                or type(frame["format"]) is not str
+                or frame["format"] not in {PREFIX + "value-describe.v1",
+                                           PREFIX + "bootstrap-identity-describe.v1"}):
+            raise InvalidFrame("invalid or foreign transport frame")
+        # A closed request on the existing export, not general exception field
+        # permission. Registry provenance is checked again against the actual
+        # issued ref; passing a kind/path/metadata cannot manufacture origin.
+        root = state.registry.reference(frame["root"])
+        if frame["format"] == PREFIX + "bootstrap-identity-describe.v1":
+            return state.registry.describe_bootstrap_identity(root)
+        return state.registry.describe(root)
 
     def copy_data_dictionary(self, payload: str) -> str:
         """Create the original caller's fresh outer dict, retaining nested aliases."""

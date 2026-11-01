@@ -33,9 +33,9 @@ on:
   workflow_dispatch:
     inputs:
       verification:
-        description: Original runtime regression or additional actual denial factory comparison
+        description: Original runtime regression or additional actual factory/getter comparison
         type: choice
-        options: [bootstrap, denied-factory]
+        options: [bootstrap, denied-factory, bootstrap-identity]
         default: bootstrap
 
 permissions:
@@ -203,16 +203,16 @@ jobs:
           cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
           bootstrap_runtime::actual_ci::actual_original_component_initializes_and_returns_original_profile_id
           -- --nocapture
-      - name: Checkout pinned original denial factory reference
-        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.verification == 'denied-factory' && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+      - name: Checkout pinned original factory and identity references
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         uses: actions/checkout@v4
         with:
           ref: 1cf025f1eeab31a3daa2861b1f26a025c6954b6e
           path: original-denied-factory-source
           persist-credentials: false
-      - name: Prepare fresh original denial factory observations
-        id: factory_reference
-        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.verification == 'denied-factory' && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+      - name: Install original reference dependencies once
+        id: original_reference_dependencies
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         run: |
           python3 -B tools/original_setup_review_reference.py requirements \
             --original-root "$GITHUB_WORKSPACE/original-denied-factory-source" \
@@ -220,9 +220,13 @@ jobs:
           python3 -m pip install --disable-pip-version-check --ignore-installed \
             --only-binary=:all: --require-hashes \
             -r "$RUNNER_TEMP/original-denied-factory-requirements.txt"
-          python3 -B tools/original_denied_factory_reference.py prepare \
-            --original-root "$GITHUB_WORKSPACE/original-denied-factory-source" \
-            --output "$RUNNER_TEMP/original-denied-factory-reference"
+      - name: Prepare fresh original denial factory observations
+        id: factory_reference
+        if: ${{ !cancelled() && inputs.verification == 'denied-factory' && steps.original_reference_dependencies.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/original_denied_factory_reference.py prepare
+          --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
+          --output "$RUNNER_TEMP/original-denied-factory-reference"
       - name: Compare every fresh denial through the actual same-Store factory
         id: factory_native
         if: ${{ !cancelled() && steps.factory_reference.conclusion == 'success' }}
@@ -241,6 +245,23 @@ jobs:
           --fixtures "$RUNNER_TEMP/original-denied-factory-reference/fixtures.json"
           --observations "$RUNNER_TEMP/original-denied-factory-reference/native-observations.json"
           --output "$RUNNER_TEMP/original-denied-factory-reference/comparison.json"
+      - name: Prepare fresh original bootstrap identity observations
+        id: identity_reference
+        if: ${{ !cancelled() && inputs.verification == 'bootstrap-identity' && steps.original_reference_dependencies.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/original_bootstrap_identity_reference.py
+          --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
+          --output "$RUNNER_TEMP/original-bootstrap-identity-reference"
+      - name: Observe the unmodified getter through the actual same Store
+        if: ${{ !cancelled() && steps.identity_reference.conclusion == 'success' }}
+        env:
+          TOBKIRI_ORIGINAL_BOOTSTRAP_IDENTITY_REFERENCE: ${{ runner.temp }}/original-bootstrap-identity-reference/summary.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-bootstrap-identity.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          bootstrap_runtime::identity_actual_ci::original_getter_driver
+          -- --ignored --exact --test-threads=1 --nocapture
       - name: Retain resolved and actually compiled runtime features
         if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
         run: |
@@ -280,4 +301,7 @@ jobs:
             ${{ runner.temp }}/original-denied-factory-reference/summary.json
             ${{ runner.temp }}/original-denied-factory-reference/native-observations.json
             ${{ runner.temp }}/original-denied-factory-reference/comparison.json
+            ${{ runner.temp }}/harness-native-bootstrap-identity.log*
+            ${{ runner.temp }}/original-bootstrap-identity-reference/summary.json
+            ${{ runner.temp }}/original-bootstrap-identity-reference/actual-getter-observations.json
           if-no-files-found: warn
