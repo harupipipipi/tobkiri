@@ -41,7 +41,7 @@
     },
     {
       "function_id": "rumi_conversation_store_pack.conversation-store.resource",
-      "implementation_digest": "sha256:e4f8763040b57b54d86f609804993d5c2935506d67e0566cbf7783fb2e992062",
+      "implementation_digest": "sha256:3ece1aac3b0c0b23b27e6b45978028eb7aeaed6087c4afee49685489bde87958",
       "implementation_path": "runtime/host.py",
       "legacy": {
         "contract_id": "tobkiri.resource.conversation.v1",
@@ -137,7 +137,7 @@
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
-      "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
+      "implementation_digest": "sha256:a3a56be2860d7a8a349db18c288bad3b8cc780d0bec80cc64f4f0d9248b04799",
       "implementation_path": "runtime/host.py",
       "legacy": {
         "contract_id": "tobkiri.event.turn.v1",
@@ -153,7 +153,7 @@
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
-      "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
+      "implementation_digest": "sha256:a3a56be2860d7a8a349db18c288bad3b8cc780d0bec80cc64f4f0d9248b04799",
       "implementation_path": "runtime/host.py",
       "legacy": {
         "contract_id": "tobkiri.action.turn.lifecycle.v1",
@@ -169,7 +169,7 @@
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
-      "implementation_digest": "sha256:b65710b3293322123e606b332fbfc33c944dde881ab5f14e3d566b5d42cf5726",
+      "implementation_digest": "sha256:a3a56be2860d7a8a349db18c288bad3b8cc780d0bec80cc64f4f0d9248b04799",
       "implementation_path": "runtime/host.py",
       "legacy": {
         "contract_id": "tobkiri.resource.turn.v1",

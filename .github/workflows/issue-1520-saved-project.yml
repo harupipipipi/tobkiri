@@ -32,6 +32,7 @@ on:
       - tobkiri_runtime/tests/test_saved_project_context.py
       - tobkiri_runtime/tests/test_saved_context_capture.py
       - tobkiri_runtime/tests/saved_context_capture_support.py
+      - tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json
       - tobkiri_runtime/tests/test_side_chat_pack.py
       - tobkiri_runtime/schemas/pack_v4_catalog.v1.json
       - tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json
