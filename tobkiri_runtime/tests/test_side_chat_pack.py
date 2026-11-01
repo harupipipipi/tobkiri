@@ -252,6 +252,10 @@ def test_stale_or_different_context_binding_is_unavailable(
         {"model_reference": "other-model"},
         {"agent_id": "agent"},
         {"metadata": {"workspace_root": "/outside"}},
+        {"metadata": {"workspace_bindings": [{"workspace_id": "other", "workspace_label": "Other", "workspace_root": "/other"}]}},
+        {"metadata": {"workspaceBindings": [{"workspaceId": "other", "workspaceLabel": "Other", "workspaceRoot": "/other"}]}},
+        {"metadata": {"workspaceLabel": "Other"}},
+        {"metadata": {"group_title": "Other"}},
         {"metadata": {"tool_selection": {"mode": "auto"}}},
     ],
 )
@@ -272,13 +276,12 @@ def test_child_cannot_override_parent_execution_context(
 @pytest.mark.parametrize(
     "parent_patch",
     [
-        {"metadata": {"workspace_id": "workspace"}},
         {"agent_id": "agent"},
         {"conversation_kind": "coding"},
         {"metadata": {"shared_read_only": True}},
     ],
 )
-def test_unresolved_workspace_agent_or_restricted_parent_truthfully_unavailable(
+def test_agent_or_restricted_parent_truthfully_unavailable(
     service: Any,
     parent_patch: Any,
 ) -> None:
@@ -290,6 +293,30 @@ def test_unresolved_workspace_agent_or_restricted_parent_truthfully_unavailable(
     with pytest.raises(ValueError, match="resolution"):
         side.ensure("conversation-1", 2)
     assert len(client.store.snapshot()["conversations"]) == 1
+
+
+def test_readonly_child_workspace_shape_does_not_mint_a_send_resolution(service: Any) -> None:
+    side, client = service
+    client.store.update("conversation-1", {
+        "conversation_kind": "coding", "metadata": {
+            "mode": "coding", "workspace_id": "workspace",
+        },
+    }, expected_conversation_revision=1)
+    child = side.ensure("conversation-1", 2)
+    assert child["status"] == "available"
+    # The read-only view has no workspace owner edge or proof. Actual sending
+    # delegates to the ordinary coordinator/bridge and still fails unresolved.
+    from tobkiri_host.saved_workspace_context import WORKSPACE_TARGET
+    dispatch = client.exchange.callback._dispatch
+    def unavailable_workspace(outer, target, payload):
+        if target == WORKSPACE_TARGET:
+            return {"status": "error", "error": {"code": "WORKSPACE_UNAVAILABLE"}}
+        return dispatch(outer, target, payload)
+    client.exchange.callback._dispatch = unavailable_workspace
+    with pytest.raises(AuthorityDenied):
+        side.send({"conversation_id": child["conversation_id"], "expected_child_revision": 1,
+                   "expected_parent_revision": 3, "turn_id": "side-turn", "content": "Hi"})
+    assert client.store.get(child["conversation_id"])["messages"] == []
 
 
 def test_saved_turn_uses_parent_model_and_only_separate_child_history(
@@ -491,7 +518,8 @@ def test_parent_change_during_prompt_read_rejects_before_effect(service: Any, st
     assert not any(target == saved.TARGETS[2] for target, _ in exchange.calls)
 
 
-def test_parent_change_at_append_admission_is_atomically_rejected(service: Any) -> None:
+@pytest.mark.parametrize("change", ["model", "bindings", "membership"])
+def test_parent_change_at_append_admission_is_atomically_rejected(service: Any, change: str) -> None:
     side, client = service
     child = side.ensure("conversation-1", 1)
     exchange = client.exchange
@@ -505,8 +533,15 @@ def test_parent_change_at_append_admission_is_atomically_rejected(service: Any) 
 
     def mutate_before_append(outer: Any, target: Any, payload: Any) -> Any:
         if target == saved.TARGETS[1]:
+            patch = {"model_reference": "changed-model"} if change == "model" else (
+                {"group_id": "other-group"} if change == "membership" else {"metadata": {
+                    "workspace_id": "other-workspace", "workspace_bindings": [{
+                        "workspace_id": "other-workspace", "workspace_label": "Other", "workspace_root": "/other",
+                    }],
+                }}
+            )
             client.store.update(
-                "conversation-1", {"model_reference": "changed-model"},
+                "conversation-1", patch,
                 expected_conversation_revision=2,
             )
         return dispatch(outer, target, payload)

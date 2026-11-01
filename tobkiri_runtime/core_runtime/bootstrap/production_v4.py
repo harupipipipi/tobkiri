@@ -2730,7 +2730,7 @@ def capture_production_dispatch(
                 raise AuthorityDenied("saved bridge initial input is missing")
             arguments["operation"] = "append_saved"
             arguments["saved_input"] = validate_saved_conversation_input(initial)
-        if target[0] in {"tobkiri.resource.conversation.v1", "tobkiri.action.message.manage.v1", "tobkiri.resource.workspace.v1"}:
+        if target[0] in {"tobkiri.resource.conversation.v1", "tobkiri.action.message.manage.v1", "tobkiri.resource.workspace.v1", "tobkiri.resource.project.state.v1"}:
             arguments["profile_id"] = profile["profile_id"]
         runtime.composition.catalog.validate_input(edge.resolved_binding, arguments)
         return invoke_bridge_provider(
@@ -2786,6 +2786,7 @@ def capture_production_dispatch(
         saved_stream_available,
         saved_workspace_execution_registry,
         saved_selected_workspace,
+        presentation_owner=lambda outer: presentation_owner_for(outer),
     )
 
     def saved_capability_bridge(
@@ -3078,6 +3079,14 @@ def capture_production_dispatch(
             self.plan_digest = str(plan["plan_digest"])
             self.profile_revision = str(plan["profile_revision"])
             self.activation_id = str(active.activation["activation_id"])
+
+        @property
+        def presentation_owner_principal_id(self) -> str:
+            return self._presentation_owner[0]
+
+        @property
+        def presentation_owner_session_id(self) -> str:
+            return self._presentation_owner[1]
 
         def provider_metadata(self, contract_id: str) -> tuple[Mapping[str, Any], ...]:
             capture_invocation_scope(self._envelope).assert_current()

@@ -1,0 +1,186 @@
+name: Issue 1520 saved Project parity
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/issue-1520-native-shared-state]
+    paths:
+      - .github/workflows/issue-1520-saved-project.yml
+      - tobkiri_runtime/core_runtime/bootstrap/saved_bridge.py
+      - tobkiri_runtime/core_runtime/bootstrap/production_v4.py
+      - tobkiri_runtime/tobkiri_host/saved_workspace_context.py
+      - tobkiri_runtime/tobkiri_protocol/saved_conversation.py
+      - tobkiri_runtime/tobkiri_protocol/conversation_context.py
+      - tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/runtime/saved_project_context.py
+      - tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/saved.py
+      - tobkiri_runtime/ecosystem/tobkiri_side_chat_pack/runtime/side_chat.py
+      - tobkiri_runtime/ecosystem/defaultspack/webapp/src/App.tsx
+      - tobkiri_runtime/ecosystem/defaultspack/webapp/src/lib/historyMembership*
+      - tobkiri_runtime/ecosystem/defaultspack/webapp/src/lib/savedCodingContext*
+      - tobkiri_runtime/ecosystem/defaultspack/webapp/src/lib/savedProjectSendPreflight.ts
+      - tobkiri_runtime/tests/test_saved_project_context.py
+      - tobkiri_runtime/tests/test_side_chat_pack.py
+      - tobkiri_runtime/schemas/pack_v4_catalog.v1.json
+      - tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-1520-saved-project-${{ github.sha }}
+  cancel-in-progress: false
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  saved-owner-boundaries:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: tobkiri_runtime
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.16"
+      - name: Install the existing locked runtime and test dependencies in CI
+        run: >-
+          python -m pip install --require-hashes --no-compile
+          -r requirements.txt -r requirements-dev.txt
+      - name: Exercise actual saved owners, exchange, workspace guards and linked views
+        run: |
+          python -m pytest -q \
+            tests/test_saved_project_context.py \
+            tests/test_side_chat_pack.py \
+            tests/test_saved_workspace_context.py \
+            tests/test_saved_workspace_owner_identity.py \
+            tests/test_saved_workspace_boundary.py \
+            tests/test_saved_bridge_callbacks.py \
+            tests/test_saved_turn_coordinator.py \
+            tests/test_saved_conversation_steps.py \
+            tests/test_saved_host_exchange.py \
+            tests/test_chat_reference_identity.py \
+            tests/test_project_state_owner.py
+
+  saved-composer-boundaries:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: tobkiri_runtime/ecosystem/defaultspack/webapp
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install the existing frontend lock in CI
+        run: npm ci --no-audit --no-fund
+      - name: Check exact acknowledgements, membership races and existing folder semantics
+        run: |
+          npx --no-install tsx --test \
+            src/lib/savedCodingContext.test.ts \
+            src/lib/historyMembership.test.ts \
+            src/lib/historyMembershipMove.test.ts \
+            src/lib/conversationMutationBarrier.test.ts \
+            src/features/projects/projectStorage.test.ts \
+            src/lib/projectFolderDraft.test.ts \
+            src/lib/projectWorkspaceMount.test.ts
+      - name: Preserve frontend type and boundary checks
+        run: npm run lint
+
+  generated-source:
+    needs: [saved-owner-boundaries, saved-composer-boundaries]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.16"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install existing locked generation dependencies in CI
+        run: >-
+          python -m pip install --require-hashes --no-compile
+          -r tobkiri_runtime/requirements.txt -r tobkiri_runtime/requirements-dev.txt
+      - name: Compile the unchanged frontend build contract
+        working-directory: tobkiri_runtime/ecosystem/defaultspack/webapp
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+      - name: Generate candidate Pack, executable, Profile and bundle artifacts
+        working-directory: tobkiri_runtime
+        run: |
+          python -B scripts/compiled_ui_artifacts_v4.py \
+            --catalog schemas/pack_v4_catalog.v1.json \
+            --ui-root ecosystem/defaultspack/ui --version 4.0.2
+          python -B scripts/generate_executable_source_registry_v1.py
+          python -B scripts/migrate_pack_artifacts_v4.py
+          python -B scripts/generate_executable_catalogs_v4.py
+          python -B scripts/generate_defaultspack_v4_bundle.py
+          python -B scripts/generator_source_manifest.py --write
+      - name: Verify regenerated source without changing stored expectations
+        working-directory: tobkiri_runtime
+        run: |
+          python -B scripts/generate_executable_source_registry_v1.py --check
+          python -B scripts/migrate_pack_artifacts_v4.py --check
+          python -B scripts/generate_executable_catalogs_v4.py --check
+          python -B scripts/generate_defaultspack_v4_bundle.py --check
+          python -B scripts/generator_source_manifest.py --check
+          python -B ecosystem/defaultspack/quality/scan_integrity.py --strict
+      - name: Export bounded generated text for review and source integration
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+
+          def git(*args):
+              return subprocess.check_output(["git", *args])
+
+          new = git("ls-files", "--others", "--exclude-standard", "-z").split(b"\0")
+          allowed = {".json", ".js", ".mjs", ".css", ".html", ".svg"}
+          for raw in new:
+              if not raw:
+                  continue
+              name = raw.decode("utf-8")
+              path = Path(name)
+              assert name.startswith("tobkiri_runtime/"), name
+              assert path.suffix in allowed and path.is_file() and not path.is_symlink(), name
+              path.read_text(encoding="utf-8")
+              subprocess.run(["git", "add", "--intent-to-add", "--", name], check=True)
+          names = [p.decode("utf-8") for p in git("diff", "--name-only", "-z").split(b"\0") if p]
+          for name in names:
+              assert name.startswith("tobkiri_runtime/") and Path(name).suffix in allowed, name
+          patch = git("diff", "--no-ext-diff", "--no-color", "--binary")
+          assert len(patch) <= 16 * 1024 * 1024, "generated source exceeds bounded review artifact"
+          assert b"GIT binary patch" not in patch, "only generated text is exported"
+          patch.decode("utf-8")
+          output = Path(os.environ["RUNNER_TEMP"]) / "generated-source"
+          output.mkdir()
+          (output / "generated-source.patch").write_bytes(patch)
+          receipt = {"source_commit": os.environ["GITHUB_SHA"], "run_id": os.environ["GITHUB_RUN_ID"],
+                     "paths": names, "patch_bytes": len(patch), "patch_sha256": hashlib.sha256(patch).hexdigest(),
+                     "scope": "generated candidate text only; no signing, installation, approval or deployment"}
+          (output / "generated-source-manifest.json").write_text(json.dumps(receipt, indent=2) + "\n")
+          print(json.dumps(receipt))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: saved-project-generated-source-${{ github.sha }}
+          path: ${{ runner.temp }}/generated-source/
+          if-no-files-found: error
+          retention-days: 7

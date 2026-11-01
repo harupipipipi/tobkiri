@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import re
 from typing import Any
 
-from .canonical import canonical_json, strict_loads
+from .canonical import canonical_digest, canonical_json, strict_loads
 from .saved_tools import validate_tool_selection
 from .saved_context import saved_prompt_reference
 from .saved_task_context import validate_saved_task_context
@@ -170,6 +170,86 @@ class SavedWorkspaceResolution:
     root_st_ino: int
 
 
+@dataclass(frozen=True)
+class SavedOwnedContextResolution:
+    """Host-local checked DATA scope; never a serialized grant or allow flag."""
+
+    profile_id: str
+    conversation_id: str
+    conversation_revision: int
+    context_digest: str
+
+
+class ResolvedSavedConversation(dict[str, Any]):
+    """Retain native owner-read evidence across pure context projections."""
+
+    def __init__(
+        self, conversation: Mapping[str, Any],
+        resolution: SavedWorkspaceResolution | None = None,
+        *, owned_context_resolution: SavedOwnedContextResolution | None = None,
+        owned_context_owner: object | None = None,
+    ) -> None:
+        super().__init__(conversation)
+        self.workspace_resolution = resolution
+        self.owned_context_resolution = owned_context_resolution
+        self.owned_context_owner = owned_context_owner
+
+
+def owned_context_digest(conversation: Mapping[str, Any]) -> str:
+    """Bind actual context DATA without message history or execution authority."""
+    return canonical_digest({
+        "id": conversation.get("id"),
+        "conversation_revision": conversation.get("conversation_revision"),
+        "conversation_kind": conversation.get("conversation_kind"),
+        "group_id": conversation.get("group_id"),
+        "metadata": conversation.get("metadata") or {},
+    })
+
+
+def owned_context_resolution(
+    conversation: Mapping[str, Any],
+) -> SavedOwnedContextResolution | None:
+    return (
+        conversation.owned_context_resolution
+        if type(conversation) is ResolvedSavedConversation else None
+    )
+
+
+def validate_saved_conversation_shape(conversation: Mapping[str, Any]) -> None:
+    """Check display/lineage shape without claiming an execution resolution.
+
+    Read-only linked views need no Project/workspace read grant. A send still
+    must pass the full owner-resolution checks in the ordinary coordinator.
+    """
+    saved_prompt_reference(conversation)
+    metadata = conversation.get("metadata") or {}
+    tags = conversation.get("tags") or []
+    if not isinstance(metadata, Mapping) or not isinstance(tags, list):
+        raise ValueError("saved bridge owned context is invalid")
+    kind, mode = conversation.get("conversation_kind"), metadata.get("mode")
+    if (conversation.get("agent_id") or metadata.get("agent_id") or metadata.get("agentId")
+            or metadata.get("shared_read_only")
+            or kind not in (None, "", "chat", "coding")
+            or mode not in (None, "", "chat", "coding")
+            or metadata.get("profile_id") in (
+                "defaultspack.operations_company", "defaultspack.mimo_coding_company",
+            )
+            or any(tag in tags for tag in ("operations-company", "mimo-coding-company"))):
+        raise ValueError("saved bridge context resolution is required")
+    workspace = metadata.get("workspace_id")
+    if workspace not in (None, "") and (type(workspace) is not str or not _ID.fullmatch(workspace)):
+        raise ValueError("saved workspace identity is invalid")
+    if (kind == "coding" or mode == "coding") and (
+        kind != "coding" or mode != "coding" or not workspace
+    ):
+        raise ValueError("saved bridge coding context resolution is incomplete")
+    memberships = [conversation.get("group_id"), metadata.get("group_id"), metadata.get("groupId")]
+    present = [value for value in memberships if value is not None]
+    if (any(type(value) is not str or not _ID.fullmatch(value) for value in present)
+            or len(set(present)) > 1):
+        raise ValueError("conversation group membership conflicts")
+
+
 def validate_saved_conversation_context(
     conversation: Mapping[str, Any], *,
     workspace_resolution: SavedWorkspaceResolution | None = None,
@@ -179,7 +259,7 @@ def validate_saved_conversation_context(
     A prompt reference still needs an authenticated owner read before claiming
     a new turn. Syntax validation is not evidence that the prompt is available.
     """
-    saved_prompt_reference(conversation)
+    validate_saved_conversation_shape(conversation)
     metadata = conversation.get("metadata") or {}
     tags = conversation.get("tags") or []
     if not isinstance(metadata, Mapping) or not isinstance(tags, list):
@@ -188,6 +268,17 @@ def validate_saved_conversation_context(
     conversation_kind = conversation.get("conversation_kind")
     mode = metadata.get("mode")
     coding_context = conversation_kind == "coding" or mode == "coding"
+    owned = owned_context_resolution(conversation)
+    owned_resolved = (
+        type(owned) is SavedOwnedContextResolution
+        and owned.conversation_id == conversation.get("id")
+        and type(owned.conversation_revision) is int
+        and owned.conversation_revision >= 1
+        and owned.conversation_revision == conversation.get("conversation_revision")
+        and type(owned.profile_id) is str
+        and _ID.fullmatch(owned.profile_id) is not None
+        and owned.context_digest == owned_context_digest(conversation)
+    )
     if coding_context and (
         conversation_kind != "coding"
         or mode != "coding"
@@ -218,19 +309,13 @@ def validate_saved_conversation_context(
     if (
         conversation.get("agent_id")
         or conversation_kind not in (None, "", "chat", "coding")
-        or conversation.get("group_id")
         or any(
             metadata.get(key)
             for key in (
-                "group_id",
-                "groupId",
                 "group_ids",
                 "groupIds",
                 "agent_id",
                 "agentId",
-                "workspaceId",
-                "workspace_root",
-                "workspaceRoot",
                 "workspace_path",
                 "workspacePath",
                 "project_root",
@@ -240,16 +325,12 @@ def validate_saved_conversation_context(
                 "workspaces",
                 "primary_workspace_id",
                 "primaryWorkspaceId",
-                "rootPath",
                 "root_path",
                 "canonical_root",
                 "canonicalRoot",
                 "host_path",
                 "path",
                 "directory",
-                "rumi_data_path",
-                "rumiDataPath",
-                "rumi_dp_path",
                 "shared_read_only",
             )
         )
@@ -262,6 +343,15 @@ def validate_saved_conversation_context(
         or any(tag in tags for tag in ("operations-company", "mimo-coding-company"))
     ):
         raise ValueError("saved bridge context resolution is required")
+    if (conversation.get("group_id") or any(
+        key in metadata and metadata[key] is not None
+        for key in (
+            "group_id", "groupId", "workspaceId", "workspace_root", "workspaceRoot",
+            "rootPath", "rumi_data_path", "rumiDataPath", "rumi_dp_path",
+            "workspace_bindings", "workspaceBindings",
+        )
+    )) and not owned_resolved:
+        raise ValueError("saved bridge owned context resolution is required")
 
 
 def validate_chat_references(

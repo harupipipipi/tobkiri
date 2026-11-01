@@ -112,9 +112,12 @@ also passed137 Harness tests and actual construction, then observed the unmodifi
 default getter on one real Store: fuel decreased, the original deadline and
 scope were preserved, and actual finish/data release/reap left0 bytes and0
 reservations with source destruction and owner reopen. The same-guard recovery
-continuation remains unconnected. New26 finite Launcher caller cases are being
-checked in [Desktop CI41267778512](https://github.com/harupipipipi/tobkiri/actions/runs/41267778512);
-their success has not yet been observed.
+continuation is implemented at `c6d700124` and its actual continuous execution is
+being checked in [CI41275395353](https://github.com/harupipipipi/tobkiri/actions/runs/41275395353).
+The26 finite Launcher caller cases passed in
+[Desktop CI41267778512](https://github.com/harupipipipi/tobkiri/actions/runs/41267778512),
+with652 library,123 build-script and18 resource tests, packaging, cold boot and DMG
+checks. This does not qualify the9 subsequently added cases or complete GUI adoption.
 [Original continuous-boundary CI41266973919](https://github.com/harupipipipi/tobkiri/actions/runs/41266973919)
 passed147 original cases at `cf4acd29f`:77 previous inputs,69 controlled getters
 and one candidate mismatch. It reaches the original catalog call entry after

@@ -22,6 +22,8 @@ _CONTEXT_FIELDS = (
 )
 _METADATA_FIELDS = (
     "workspace_id",
+    "workspace_label",
+    "workspaceLabel",
     "workspaceId",
     "workspace_root",
     "workspaceRoot",
@@ -31,6 +33,10 @@ _METADATA_FIELDS = (
     "rumi_dp_path",
     "group_id",
     "groupId",
+    "group_title",
+    "groupTitle",
+    "workspace_bindings",
+    "workspaceBindings",
     "mode",
     "profile_id",
     "shared_read_only",

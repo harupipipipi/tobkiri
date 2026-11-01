@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canonicalChatGroupUpdate, commitHistoryMembershipMove, type HistoryMembershipConversation } from "./historyMembership";
+import { canonicalChatGroupUpdate, commitHistoryMembershipMove, HistoryMembershipMutations, type HistoryMembershipConversation } from "./historyMembership";
+import { ConversationMutationBarrier } from "./conversationMutationBarrier";
 
 test("membership set removes stale aliases and titles without mutating source", () => {
   const nested = { one: true };
@@ -72,4 +73,120 @@ test("wrong acknowledgement identity, revision or membership is rejected", async
       ...ports(), update: async (...args) => ({ ...await ports().update(...args), ...patch }),
     }), /acknowledgement/);
   }
+});
+
+test("membership lookup and ACK settle before a same-conversation send reads its context", async () => {
+  const mutations = new HistoryMembershipMutations();
+  let acknowledge!: () => void;
+  let current: HistoryMembershipConversation = source;
+  const write = new Promise<void>((resolve) => { acknowledge = resolve; }).then(() => {
+    current = { ...source, group_id: "group-new", conversation_revision: 4 };
+  });
+  mutations.record("store", source.id, "group-new", write);
+  let reads = 0;
+  const send = mutations.settleAndRead("store", source.id, async () => { reads += 1; return current; });
+  await Promise.resolve();
+  assert.equal(reads, 0);
+  acknowledge();
+  const result = await send;
+  assert.equal(result.conversation.id, source.id);
+  assert.equal(result.conversation.group_id, "group-new");
+  assert.equal(result.failure, undefined);
+});
+
+test("model writes begun during membership lookup settle before the controller owner read", async () => {
+  const memberships = new HistoryMembershipMutations();
+  const models = new ConversationMutationBarrier();
+  let acknowledgeMembership!: () => void;
+  let acknowledgeModel!: () => void;
+  memberships.record("store", source.id, "group-new", new Promise<void>((resolve) => { acknowledgeMembership = resolve; }));
+  let reads = 0;
+  const sending = memberships.settleAndRead("store", source.id, async () => {
+    await models.wait("store", source.id);
+    reads += 1;
+    return { ...source, group_id: "group-new", conversation_revision: 5 };
+  });
+  models.record("store", source.id, new Promise<void>((resolve) => { acknowledgeModel = resolve; }));
+  acknowledgeMembership();
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(reads, 0);
+  acknowledgeModel();
+  assert.equal((await sending).conversation.conversation_revision, 5);
+  assert.equal(reads, 1);
+});
+
+test("failed ACK stops once only after fresh reconciliation, and read failure keeps the intent", async () => {
+  const mutations = new HistoryMembershipMutations();
+  mutations.record("store", source.id, "group-new", Promise.reject(new Error("CAS conflict")));
+  await assert.rejects(mutations.settleAndRead("store", source.id, async () => { throw new Error("owner unavailable"); }), /owner unavailable/);
+  const stopped = await mutations.settleAndRead("store", source.id, async () => source);
+  assert.match(String(stopped.failure), /CAS conflict/);
+  const retry = await mutations.settleAndRead("store", source.id, async () => source);
+  assert.equal(retry.failure, undefined);
+});
+
+test("late obsolete ACK failure cannot overwrite a newer successful membership operation", async () => {
+  const mutations = new HistoryMembershipMutations();
+  let rejectOld!: (error: Error) => void;
+  const old = mutations.record("store", source.id, "old-target", new Promise((_, reject) => { rejectOld = reject; }));
+  const latest = mutations.record("store", source.id, "group-new", Promise.resolve());
+  const sending = mutations.settleAndRead("store", source.id, async () => ({ ...source, group_id: "group-new" }));
+  await Promise.resolve();
+  rejectOld(new Error("obsolete failure"));
+  assert.equal(mutations.isCurrent(old), false);
+  assert.equal(mutations.isCurrent(latest), true);
+  assert.equal((await sending).failure, undefined);
+});
+
+test("membership writes added while waiting are drained before the fresh revision read", async () => {
+  const mutations = new HistoryMembershipMutations();
+  let first!: () => void;
+  let second!: () => void;
+  mutations.record("store", source.id, "first", new Promise<void>((resolve) => { first = resolve; }));
+  let reads = 0;
+  const waiting = mutations.settleAndRead("store", source.id, async () => { reads += 1; return { ...source, group_id: "second" }; });
+  mutations.record("store", source.id, "second", new Promise<void>((resolve) => { second = resolve; }));
+  first(); await Promise.resolve(); await Promise.resolve();
+  assert.equal(reads, 0);
+  second();
+  assert.equal((await waiting).conversation.group_id, "second");
+});
+
+test("a membership operation recorded during owner refetch invalidates the older read", async () => {
+  const mutations = new HistoryMembershipMutations();
+  let reads = 0;
+  const result = await mutations.settleAndRead("store", source.id, async () => {
+    reads += 1;
+    if (reads === 1) {
+      mutations.record("store", source.id, "latest", Promise.resolve());
+      return source;
+    }
+    return { ...source, group_id: "latest", conversation_revision: 5 };
+  });
+  assert.equal(reads, 2);
+  assert.equal(result.conversation.group_id, "latest");
+});
+
+test("failure reconciliation for an older intent cannot clear a newer successful intent", async () => {
+  const mutations = new HistoryMembershipMutations();
+  mutations.record("store", source.id, "failed-target", Promise.reject(new Error("failed")));
+  let reads = 0;
+  const result = await mutations.settleAndRead("store", source.id, async () => {
+    reads += 1;
+    if (reads === 1) {
+      mutations.record("store", source.id, "new-success", Promise.resolve());
+      return source;
+    }
+    return { ...source, group_id: "new-success", conversation_revision: 5 };
+  });
+  assert.equal(result.failure, undefined);
+  assert.equal(result.conversation.group_id, "new-success");
+});
+
+test("a mismatched owner read never reconciles away the failed intended membership", async () => {
+  const mutations = new HistoryMembershipMutations();
+  mutations.record("store", source.id, "intended", Promise.reject(new Error("write failed")));
+  await assert.rejects(mutations.settleAndRead("store", source.id, async () => ({ ...source, id: "other" })), /another identity/);
+  const result = await mutations.settleAndRead("store", source.id, async () => source);
+  assert.match(String(result.failure), /write failed/);
 });

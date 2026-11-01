@@ -2088,10 +2088,42 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   実default getter driverも20.78秒で成功し、fuel1,440,919,069→1,436,898,024、元deadline/
   sameScope/extra inspection0を確認。finish後4,218B/1予約、DATA解放後0B/1予約、実reap1後
   0B/0予約、Source destructor・owner再openまで成功した。必要JSON4,033Bのみ保存。
-  新caller7を含むfinite26はDesktop CI41267778512で検証中であり、未成功として扱う。
-  canonical adapter・実factory・同journal guardをつなぐwholeunitの完成には数えない。
+  新caller7を含むfinite26はDesktop CI41267778512で全件成功した。実測652 library /
+  123 build-script /18 resourceとpackaging・cold boot・DMG検証も成功し、選択JSON13,235Bを保存。
+  canonical adapter・実factory・同journal guardの接続はc6d700124で実装したが、実Wasmの
+  連続区間CI41275395353は検証中。新caller9を含む35件の成功には読み替えない。
   次の原本連続区間もcf4acd29f/CI41266973919で両OS147入力が成功した（native比較なし）。
   旧77入力を保持し、raw69とcandidate mismatch1を追加。元helper/factory/比較後の
   workspace Path純構築・immutable runtime取得まで実行し、host_profile_catalog入口で
   明示Boundary停止する。sys.settrace/別catalog実装を増やさず、元の自然な呼出し境界を
   使う。Boundaryはtyped errorではなく到達状態/cleanup用で、catalog/Authority以降は未接続。
+
+## 020: Project所属を一律拒否する保存送信と所属変更の待機漏れ
+
+- 状態: **Sol6.1 xhighによる修正ソースあり。回帰実行・生成物同期は未確認**。
+- 場所: `saved_bridge.py`、`rumi_turn_runtime_pack/runtime/saved.py`、
+  `tobkiri_protocol/saved_conversation.py`、`saved_project_context.py`、
+  defaultspackの`App.tsx`/`historyMembership.ts`/`savedCodingContext.ts`。
+- 問題: 保存送信の一律Project拒否は、元のGroup会話・複数フォルダの表示と会話継続を
+  失わせる。History所属変更のProject照会/CAS/ACKと、既存モデル変更の保存待機を
+  終える前に捕捉した文脈で送信すると、表示した所属と実送信がずれる。
+- 整理: 既存の署名済みProject owner readを共有し、canonical membership/aliasと
+  owner-persisted DATAを照合する。新Operation、UIからの権限/承認flag、参照snapshotの
+  send権限昇格は追加しない。2つのsaved callerにoptional consumesと既存readへの
+  requested Profile edgeを宣言するだけで、実grantは既存承認経路を必要とする。
+  Sourceはcanonical catalogとProfile intentを先に更新し、manifest/sidecar/index/
+  executable/profile lock/bundleは既存generatorで生成する。生成manifestをauthor sourceにしない。
+- 維持: Historyの所属move/clearは会話のexecution workspace・全binding・順序・primaryを
+  変えない。Composerで新Projectを明示選択した場合は、元の操作が保存したworkspaceを
+  使用する。Project自身のprimaryと会話のworkspaceを等しいと要求しない。No Projectや
+  完全なbinding配列だけのinert chat DATAから、primaryやtool権限を新しく合成しない。
+  実filesystem効果は従来の会話execution workspace owner・mount lease・Gateで判定する。
+  Linked childは既存のparent linkからその都度解決し、childへ権限や文脈copyを永続化しない。
+- 競合: 既存mutation barrierとoperation identityで実ACKを待ち、canonical会話を再読して
+  contextを導出する。失敗した試行は停止し、fresh owner DATAで表示を戻す。自動再送や
+  恒久的な新UI modeを作らない。各effectの最後のProject readをそのeffectのsnapshotとし、
+  次のeffectは再読する。別owner間の原子性・事後の遡及取消は保証せず、既存revocationと
+  append CASは保持する。DATA marker/digest自体をcurrentnessやauthorityにしない。
+- 削除前提: 追加したPython App policyは既存Wasm Pack内の責務。Rust Hostへの全移植や
+  製品Python/PackVM廃止の完了を意味しない。旧拒否経路の廃止にはowner/linked/workspace/
+  ACK race回帰、実生成物のdigest整合、通常GUIでの同じ機能を確認する。全受入条件は未完。

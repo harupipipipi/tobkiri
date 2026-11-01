@@ -13,7 +13,9 @@ from typing import Any, Iterator
 
 from tobkiri_protocol.canonical import canonical_json
 from tobkiri_protocol.saved_conversation import (
+    ResolvedSavedConversation,
     SavedWorkspaceResolution,
+    owned_context_resolution,
     validate_saved_conversation_context,
 )
 
@@ -34,14 +36,7 @@ class _SavedWorkspaceOwnerRecheck:
     active: bool = True
 
 
-class ResolvedWorkspaceConversation(dict[str, Any]):
-    """Private owner projection, never serialized into a saved request."""
-
-    def __init__(
-        self, conversation: Mapping[str, Any], resolution: SavedWorkspaceResolution
-    ) -> None:
-        super().__init__(conversation)
-        self.workspace_resolution = resolution
+ResolvedWorkspaceConversation = ResolvedSavedConversation
 
 
 def workspace_resolution(
@@ -104,11 +99,14 @@ def resolve_saved_workspace(
         conversation_revision,
         **dict(binding),
     )
-    validate_saved_conversation_context(
-        conversation,
-        workspace_resolution=resolution,
+    result = ResolvedWorkspaceConversation(
+        conversation, resolution,
+        owned_context_resolution=owned_context_resolution(conversation),
+        owned_context_owner=(conversation.owned_context_owner
+                             if type(conversation) is ResolvedSavedConversation else None),
     )
-    return ResolvedWorkspaceConversation(conversation, resolution)
+    validate_saved_conversation_context(result, workspace_resolution=resolution)
+    return result
 
 
 def recheck_saved_workspace(

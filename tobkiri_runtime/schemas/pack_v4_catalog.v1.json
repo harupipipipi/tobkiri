@@ -1534,7 +1534,7 @@
         "owner": "defaultspack",
         "source_format": "pack.v4.json"
       },
-      "version": "4.0.1",
+      "version": "4.0.2",
       "workspace_boundary": "pack_local"
     },
     {
@@ -27303,6 +27303,15 @@
           "contract_id": "tobkiri.resource.workspace.v1",
           "optional": false,
           "version_range": "^1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.project.state.v1",
+          "operations": [
+            "tobkiri_ui_settings_pack.projects-read"
+          ],
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
         }
       ],
       "runtime_artifacts": [
@@ -27327,7 +27336,7 @@
           "path": "runtime/durable.py"
         },
         {
-          "digest": "sha256:b78e923cb23e5d96d209dd743e954b71b746ecc56b9035386b07975cd8152890",
+          "digest": "sha256:6b4cb34c141928dd860c552cd1ddca4ea8d15fde5027df375e33727fbb682901",
           "kind": "executable",
           "path": "runtime/saved.py"
         },
@@ -27381,7 +27390,7 @@
         "owner": "rumi_turn_runtime_pack",
         "source_format": "rumi.pack.v3.json"
       },
-      "version": "1.0.0",
+      "version": "1.0.1",
       "workspace_boundary": "host_brokered"
     },
     {
@@ -31238,6 +31247,15 @@
           "contract_id": "tobkiri.resource.workspace.v1",
           "optional": true,
           "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.project.state.v1",
+          "operations": [
+            "tobkiri_ui_settings_pack.projects-read"
+          ],
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
         }
       ],
       "runtime_artifacts": [
@@ -31276,7 +31294,7 @@
         "owner": "tobkiri_conversation_orchestration_pack",
         "source_format": "pack.v4.json"
       },
-      "version": "1.0.0",
+      "version": "1.0.1",
       "workspace_boundary": "pack_local"
     },
     {
@@ -32679,7 +32697,7 @@
           "path": "runtime/host.py"
         },
         {
-          "digest": "sha256:cd2e2b0d7da5097556df9604447004691249a47ac3525bc601c6f3bf37c9b255",
+          "digest": "sha256:cb300e8a3aa23e6fc32e66727ef06871d04cd3a6c11e5d414c91049aa778dbdc",
           "kind": "sidecar",
           "path": "runtime/side_chat.py"
         },
@@ -32708,7 +32726,7 @@
         "owner": "tobkiri_side_chat_pack",
         "source_format": "pack.v4.json"
       },
-      "version": "1.0.0",
+      "version": "1.0.1",
       "workspace_boundary": "host_brokered"
     },
     {
@@ -33616,9 +33634,9 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
+          "digest": "sha256:504473c89cad6d7c0e3ec471447aa7561771b7b26e5fa8f193cb9700fbeb1faf",
           "kind": "executable",
-          "path": "runtime/state_changes.py"
+          "path": "runtime/model_search.py"
         },
         {
           "digest": "sha256:0242b933fcb15b9747624523fc614903ae298e117a70bfbf62410e8cdefd0987",
@@ -33626,24 +33644,29 @@
           "path": "runtime/projects.py"
         },
         {
+          "digest": "sha256:b2c913039a4bd94928ac698ac9f3c9795208251bddac9afe795c040ae72901b3",
+          "kind": "asset",
+          "path": "runtime/public-settings-fields.v1.json"
+        },
+        {
+          "digest": "sha256:da6623be00fb7d6b5e60df732e5620f1a7fc226730b62f4d76f28430e9b1b878",
+          "kind": "sidecar",
+          "path": "runtime/saved_project_context.py"
+        },
+        {
           "digest": "sha256:ccdcab6cea03aca6af9939c9cfc5bc9cbcc61ed9e90e0285e0aa6130b8e2fec8",
           "kind": "executable",
           "path": "runtime/settings.py"
         },
         {
-          "digest": "sha256:504473c89cad6d7c0e3ec471447aa7561771b7b26e5fa8f193cb9700fbeb1faf",
+          "digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
           "kind": "executable",
-          "path": "runtime/model_search.py"
+          "path": "runtime/state_changes.py"
         },
         {
           "digest": "sha256:4b1813a4c9059254dcbd7b23234ca4b7ddcae1184aa806ffdcb3d290b1e223b2",
           "kind": "executable",
           "path": "runtime/store.py"
-        },
-        {
-          "digest": "sha256:b2c913039a4bd94928ac698ac9f3c9795208251bddac9afe795c040ae72901b3",
-          "kind": "asset",
-          "path": "runtime/public-settings-fields.v1.json"
         }
       ],
       "secrets": [],
@@ -33654,7 +33677,7 @@
         "owner": "tobkiri_ui_settings_pack",
         "source_format": "pack.v4.json"
       },
-      "version": "1.0.0",
+      "version": "1.0.1",
       "workspace_boundary": "host_brokered"
     },
     {

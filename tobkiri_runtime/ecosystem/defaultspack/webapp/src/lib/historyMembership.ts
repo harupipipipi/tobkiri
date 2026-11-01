@@ -1,3 +1,5 @@
+import { ConversationMutationBarrier } from "./conversationMutationBarrier";
+
 /** Build inert canonical membership metadata; callers still require owner CAS. */
 export function canonicalChatGroupUpdate(
   metadata: Record<string, unknown> | null | undefined,
@@ -26,6 +28,67 @@ export type HistoryMembershipConversation = {
   group_id?: string | null;
   metadata?: Record<string, unknown> | null;
 };
+
+type MembershipOperation = {
+  key: string;
+  target: string | null;
+  state: "pending" | "acknowledged" | "failed";
+  error?: unknown;
+};
+
+/** The existing barrier plus exact operation identity, scoped to membership.
+ * A rejected intent is cleared only by a fresh canonical read; draining its
+ * Promise alone cannot silently authorize a send with the old membership.
+ */
+export class HistoryMembershipMutations {
+  private barrier = new ConversationMutationBarrier();
+  private latest = new Map<string, MembershipOperation>();
+
+  record(storeId: string, conversationId: string, target: string | null, write: Promise<unknown>): MembershipOperation {
+    const key = `${storeId}\u0000${conversationId}`;
+    const operation: MembershipOperation = { key, target, state: "pending" };
+    this.latest.set(key, operation);
+    const settled = write.then(() => {
+      operation.state = "acknowledged";
+    }, (error: unknown) => {
+      operation.state = "failed";
+      operation.error = error;
+      throw error;
+    });
+    this.barrier.record(storeId, conversationId, settled);
+    return operation;
+  }
+
+  isCurrent(operation: MembershipOperation): boolean {
+    return this.latest.get(operation.key) === operation;
+  }
+
+  async settleAndRead<T extends HistoryMembershipConversation>(
+    storeId: string, conversationId: string, read: () => Promise<T>,
+  ): Promise<{ conversation: T; failure?: unknown }> {
+    const key = `${storeId}\u0000${conversationId}`;
+    for (;;) {
+      try { await this.barrier.wait(storeId, conversationId); } catch { /* Reconcile the latest exact operation below. */ }
+      const operation = this.latest.get(key);
+      const conversation = await read();
+      if (conversation.id !== conversationId) throw new Error("Conversation owner returned another identity.");
+      if (this.latest.get(key) !== operation || operation?.state === "pending") continue;
+      if (operation?.state === "failed") {
+        this.latest.delete(key);
+        return { conversation, failure: operation.error ?? new Error("Project update failed.") };
+      }
+      if (operation && conversation.group_id !== operation.target) {
+        operation.state = "failed";
+        operation.error = new Error("Project membership changed before sending.");
+        // This attempt stops. The verified canonical record reconciles the UI.
+        this.latest.delete(key);
+        return { conversation, failure: operation.error };
+      }
+      if (operation) this.latest.delete(key);
+      return { conversation };
+    }
+  }
+}
 
 /** Commit an inert membership change under caller fences and conversation CAS.
  * Project lookup is not an atomic group-existence precondition. The backend must

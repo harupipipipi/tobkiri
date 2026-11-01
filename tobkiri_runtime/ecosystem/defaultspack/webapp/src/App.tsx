@@ -1,4 +1,4 @@
-import { savedCodingContext, savedCodingContextAfterMutation } from "./lib/savedCodingContext";
+import { savedCodingContext } from "./lib/savedCodingContext";
 import { assertSavedProjectSendSupported } from "./lib/savedProjectSendPreflight";
 import { useToolSelectionControlPreference } from "./lib/toolSelectionControlPreference";
 import { freshPendingTurnSnapshot, publishPendingTerminal, removeObservedPendingTerminal } from "./lib/pendingTerminalObservation";
@@ -7,7 +7,7 @@ import { composerExtensionNeedsSetup } from "./lib/composerWidgets";
 import { useComposerEntityCatalog } from "./features/composer/useComposerEntityCatalog";
 import { confirmedChatReferenceCatalog } from "./lib/chatReferenceCatalog";
 import { prepareComposerReferenceSubmission, requiresComposerReferenceRefresh, isSavedTurnHistoryReferenceWidget, composerSelectableToolSnapshotKey, composerReferencePreflightDraftIsCurrent } from "./lib/composerReferenceSubmission";
-import { commitHistoryMembershipMove } from "./lib/historyMembership";
+import { commitHistoryMembershipMove, HistoryMembershipMutations } from "./lib/historyMembership";
 import { confirmedComposerSkillIds } from "./lib/confirmedComposerReferences";
 import { prepareComposerFollowupInput } from "./lib/composerFollowupInput";
 import { modelProfileConnectionId } from "./features/models/modelSelectionIdentity";
@@ -3257,6 +3257,7 @@ export function ChatApp() {
   const [toolMentionMigrations, setToolMentionMigrations] = useLocalStorage<string[]>("rumi-composer-tool-mention-migrations-v1", []);
   const savedTurnStoreId = savedTurnStoreIdentity(health?.saved_turn_store_id);
   const conversationMutationBarrierRef = useRef(new ConversationMutationBarrier());
+  const historyMembershipMutationsRef = useRef(new HistoryMembershipMutations());
   const savedTurnStoreIdRef = useRef(savedTurnStoreId);
   savedTurnStoreIdRef.current = savedTurnStoreId;
   const pendingStorage = useScopedPendingChat(runtimeProfileId, savedTurnStoreId);
@@ -5677,11 +5678,18 @@ export function ChatApp() {
       if (liveTaskContextRef.current.profileId !== profile) throw new Error("Profile changed during the project move.");
     };
     const ticket = conversationViewLoaderRef.current.capture();
-    const updated = await commitHistoryMembershipMove<Conversation>(source, targetProjectId, {
+    if (!savedTurnStoreId) throw new Error("Conversation owner is unavailable.");
+    const write = commitHistoryMembershipMove<Conversation>(source, targetProjectId, {
       assertCurrent,
       projects: () => api.projects(),
       update: (id, updates, revision) => api.updateConversation(id, updates, revision),
     });
+    const operation = historyMembershipMutationsRef.current.record(savedTurnStoreId, conversationId, targetProjectId, write);
+    const updated = await write.catch((updateError: unknown) => {
+      if (historyMembershipMutationsRef.current.isCurrent(operation)) throw updateError;
+      return null;
+    });
+    if (!updated || !historyMembershipMutationsRef.current.isCurrent(operation)) return;
     assertCurrent();
     setConversations((current) => liveTaskContextRef.current.profileId !== profile ? current : current.map((item) =>
       item.id === updated.id && (item.conversation_revision ?? 0) <= updated.conversation_revision
@@ -5726,11 +5734,15 @@ export function ChatApp() {
     };
     setError(null);
     const ticket = conversationViewLoaderRef.current.capture();
-    void commitHistoryMembershipMove<Conversation>({ ...activeConversation, metadata }, project?.id ?? null, {
+    if (!savedTurnStoreId) { setError("Conversation owner is unavailable."); return; }
+    const write = commitHistoryMembershipMove<Conversation>({ ...activeConversation, metadata }, project?.id ?? null, {
       assertCurrent,
       projects: () => api.projects(),
       update: (id, updates, revision) => api.updateConversation(id, updates, revision),
-    }).then((conversation) => {
+    });
+    const operation = historyMembershipMutationsRef.current.record(savedTurnStoreId, activeConversationId, project?.id ?? null, write);
+    void write.then((conversation) => {
+      if (!historyMembershipMutationsRef.current.isCurrent(operation)) return;
       assertCurrent();
       setConversations((current) => liveTaskContextRef.current.profileId !== profile ? current : current.map((item) =>
         item.id === conversation.id && (item.conversation_revision ?? 0) <= conversation.conversation_revision
@@ -5740,6 +5752,7 @@ export function ChatApp() {
         && current?.id === conversation.id && (current.conversation_revision ?? 0) <= conversation.conversation_revision ? conversation : current);
       if (project?.workspaceId) setSelectedCodingWorkspaceId(project.workspaceId);
     }).catch((updateError) => {
+      if (!historyMembershipMutationsRef.current.isCurrent(operation)) return;
       if (liveTaskContextRef.current.profileId !== profile || !conversationViewLoaderRef.current.matches(ticket)) return;
       setError(updateError instanceof Error ? updateError.message : "Project update failed.");
     });
@@ -8296,13 +8309,13 @@ export function ChatApp() {
     const submittedDroppedWidgets = [...droppedWidgetsForSubmit, ...mentionedToolWidgets, ...mentionedSkillWidgets];
     const submittedMentions = composerMentionMetadataFromWidgets(submittedDroppedWidgets);
     const selectedToolLabels = submittedToolIds.map((toolId) => composerToolById.get(toolId)?.label || toolId);
-    const activeContextForSubmit = workspaceContextFromConversation(activeConversation);
-    const groupIdForSubmit = pendingNewTaskContext?.groupId ?? activeContextForSubmit.groupId;
-    const workspaceIdForSubmit = pendingNewTaskContext?.workspaceId
+    let conversationForSubmit = activeConversation;
+    let activeContextForSubmit = workspaceContextFromConversation(activeConversation);
+    let groupIdForSubmit = pendingNewTaskContext?.groupId ?? activeContextForSubmit.groupId;
+    let workspaceIdForSubmit = pendingNewTaskContext?.workspaceId
       ?? activeContextForSubmit.workspaceId
       ?? (mode === "coding" ? selectedCodingWorkspaceId : null);
-    const rumiDataPathForSubmit = pendingNewTaskContext?.rumiDataPath ?? activeContextForSubmit.rumiDataPath ?? null;
-    const isCodingWorkspaceSubmit = mode === "coding" || Boolean(workspaceIdForSubmit);
+    let isCodingWorkspaceSubmit = mode === "coding" || Boolean(workspaceIdForSubmit);
     let savedSubmissionStarted = false;
     let savedTurnStartRequestFailed = false;
     let savedTurnStartRequestError: unknown;
@@ -8345,42 +8358,6 @@ export function ChatApp() {
 
     try {
       const savedTurnContent = savedTurnContentFromAttachments(userText, submittedAttachments);
-      assertSavedProjectSendSupported({
-        projectId: groupIdForSubmit,
-        pendingWorkspaceBindings: pendingNewTaskContext?.workspaceBindings,
-        conversationWorkspaceBindings: activeConversation?.metadata?.workspace_bindings
-          ?? activeConversation?.metadata?.workspaceBindings
-          ?? activeContextForSubmit.workspaceBindings,
-      });
-      const canonicalCodingContext = savedCodingContext({
-        coding: isCodingWorkspaceSubmit,
-        workspaceId: workspaceIdForSubmit,
-        pending: pendingNewTaskContext as Record<string, unknown> | null,
-        conversation: activeConversation,
-      });
-      if (submittedSkillIds.length
-        || submittedDroppedWidgets.some((widget) => !isSavedTurnToolMentionWidget(widget) && !isSavedTurnHistoryReferenceWidget(widget, referenceProfileId, userText))
-        || groupIdForSubmit || rumiDataPathForSubmit
-        || Object.keys(templateAiInputParams).length || Object.keys(effectiveStructuredComposerValues).length
-        || Object.keys(templatePolicyReferencePayload).length || composerInputMetadata?.id
-        || toolSelectionRequest.mode === "review"
-        || isOperationsConversation(activeConversation) || isMimoCodingConversation(activeConversation)) {
-        throw new Error("スキルまたは特殊な会話コンテキストは保存付き送信に未対応のため、送信前に停止しました。");
-      }
-      if (startsWithoutConversation) {
-        // A new conversation has no owner id until createConversation settles.
-        // This UI-only draft is intentionally unbound until a durable root can
-        // be selected below.
-        setOptimisticSavedTurnOverlays((current) => [
-          ...current,
-          createOptimisticSavedTurnOverlay({
-            clientId: optimisticOverlayClientId,
-            content: savedTurnContent,
-            createdAt: optimisticOverlayCreatedAt,
-            viewTicket: submissionViewTicket,
-          }),
-        ]);
-      }
       const savedToolSelection = {
         mode: toolSelectionRequest.mode === "manual" ? "manual" as const
           : toolSelectionRequest.mode === "none" ? "none" as const : "auto" as const,
@@ -8408,21 +8385,72 @@ export function ChatApp() {
         retainInterruptedDraft();
         return;
       }
-      let conversation = activeConversation;
-      if (conversation) {
-        const existingConversation = conversation;
-        const refreshedContext = await savedCodingContextAfterMutation({
-          coding: isCodingWorkspaceSubmit,
-          workspaceId: workspaceIdForSubmit,
-          pending: pendingNewTaskContext as Record<string, unknown> | null,
-          waitForMutation: () => conversationMutationBarrierRef.current.wait(
-            submissionStoreId!, existingConversation.id,
-          ),
-          refetchConversation: () => api.getConversation(existingConversation.id),
-        });
-        conversation = refreshedContext.conversation;
+      if (conversationForSubmit) {
+        const id = conversationForSubmit.id;
+        await conversationMutationBarrierRef.current.wait(submissionStoreId!, id);
+        const reconciled = await historyMembershipMutationsRef.current.settleAndRead(
+          submissionStoreId!, id, async () => {
+            // Model writes may have started while membership lookup/ACK was
+            // pending. Drain the same existing barrier before the owner read.
+            await conversationMutationBarrierRef.current.wait(submissionStoreId!, id);
+            return api.getConversation(id);
+          },
+        );
         if (!submissionUiIsCurrent()) { retainInterruptedDraft(); return; }
+        conversationForSubmit = reconciled.conversation;
+        setActiveConversation((current) => current?.id === id
+          && (current.conversation_revision ?? 0) <= (reconciled.conversation.conversation_revision ?? 0)
+          ? reconciled.conversation : current);
+        setConversations((current) => current.map((item) => item.id === id
+          && (item.conversation_revision ?? 0) <= (reconciled.conversation.conversation_revision ?? 0)
+          ? { ...reconciled.conversation, messages: [] } : item));
+        if (reconciled.failure !== undefined) throw reconciled.failure;
+        // All context is derived AFTER the exact mutation ACK and fresh owner
+        // read. Never send with pre-wait captured membership or primary hints.
+        activeContextForSubmit = workspaceContextFromConversation(conversationForSubmit);
+        groupIdForSubmit = activeContextForSubmit.groupId;
+        workspaceIdForSubmit = activeContextForSubmit.workspaceId
+          ?? (mode === "coding" ? selectedCodingWorkspaceId : null);
+        isCodingWorkspaceSubmit = mode === "coding" || Boolean(workspaceIdForSubmit);
       }
+      assertSavedProjectSendSupported({
+        projectId: groupIdForSubmit,
+        pendingWorkspaceBindings: conversationForSubmit ? undefined : pendingNewTaskContext?.workspaceBindings,
+        conversationWorkspaceBindings: conversationForSubmit?.metadata?.workspace_bindings
+          ?? conversationForSubmit?.metadata?.workspaceBindings
+          ?? activeContextForSubmit.workspaceBindings,
+      });
+      const canonicalCodingContext = savedCodingContext({
+        coding: isCodingWorkspaceSubmit,
+        workspaceId: workspaceIdForSubmit,
+        pending: conversationForSubmit ? null : pendingNewTaskContext as Record<string, unknown> | null,
+        conversation: conversationForSubmit,
+      });
+      if (submittedSkillIds.length
+        || submittedDroppedWidgets.some((widget) => !isSavedTurnToolMentionWidget(widget) && !isSavedTurnHistoryReferenceWidget(widget, referenceProfileId, userText))
+        || Object.keys(templateAiInputParams).length || Object.keys(effectiveStructuredComposerValues).length
+        || (!groupIdForSubmit && !workspaceIdForSubmit
+          && Boolean((conversationForSubmit ? activeContextForSubmit : pendingNewTaskContext)?.rumiDataPath))
+        || Object.keys(templatePolicyReferencePayload).length || composerInputMetadata?.id
+        || toolSelectionRequest.mode === "review"
+        || isOperationsConversation(conversationForSubmit) || isMimoCodingConversation(conversationForSubmit)) {
+        throw new Error("スキルまたは特殊な会話コンテキストは保存付き送信に未対応のため、送信前に停止しました。");
+      }
+      if (startsWithoutConversation) {
+        // A new conversation has no owner id until createConversation settles.
+        // This UI-only draft is intentionally unbound until a durable root can
+        // be selected below.
+        setOptimisticSavedTurnOverlays((current) => [
+          ...current,
+          createOptimisticSavedTurnOverlay({
+            clientId: optimisticOverlayClientId,
+            content: savedTurnContent,
+            createdAt: optimisticOverlayCreatedAt,
+            viewTicket: submissionViewTicket,
+          }),
+        ]);
+      }
+      let conversation = conversationForSubmit;
       if (!conversation) {
         conversation = await api.createConversation({
           model: preferredModel || "stub/default",
@@ -8432,7 +8460,18 @@ export function ChatApp() {
           conversation_kind: isCodingWorkspaceSubmit ? "coding" : null,
           group_id: groupIdForSubmit ?? null,
           tags: isCodingWorkspaceSubmit ? ["coding"] : undefined,
-          metadata: canonicalCodingContext ?? {},
+          metadata: {
+            ...(canonicalCodingContext ?? {}),
+            ...(groupIdForSubmit ? {
+              group_id: groupIdForSubmit,
+              ...(pendingNewTaskContext?.workspaceLabel ? { workspace_label: pendingNewTaskContext.workspaceLabel } : {}),
+              ...(pendingNewTaskContext?.workspaceRoot ? { workspace_root: pendingNewTaskContext.workspaceRoot } : {}),
+              ...(pendingNewTaskContext?.rumiDataPath ? { rumi_data_path: pendingNewTaskContext.rumiDataPath } : {}),
+              ...(pendingNewTaskContext?.workspaceBindings ? { workspace_bindings: pendingNewTaskContext.workspaceBindings.map((binding) => ({
+                workspace_id: binding.workspaceId, workspace_label: binding.workspaceLabel, workspace_root: binding.workspaceRoot,
+              })) } : {}),
+            } : {}),
+          },
         });
         if (!submissionUiIsCurrent()) {
           retainInterruptedDraft();

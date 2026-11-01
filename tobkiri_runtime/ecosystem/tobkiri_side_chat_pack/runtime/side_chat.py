@@ -15,7 +15,7 @@ from tobkiri_protocol.conversation_context import (
     resolve_linked_conversation,
 )
 from tobkiri_protocol.saved_conversation import (
-    validate_saved_conversation_context,
+    validate_saved_conversation_shape,
     validate_saved_conversation_input,
 )
 
@@ -99,7 +99,7 @@ class SideChat:
         try:
             parent = self._read(parent_id)
             binding = context_binding(parent, self.profile_id)
-            validate_saved_conversation_context(parent)
+            validate_saved_conversation_shape(parent)
             child = self._child(self._snapshot(), parent_id)
             if child is None:
                 return {
@@ -113,7 +113,7 @@ class SideChat:
                 binding,
                 self.profile_id,
             )
-            validate_saved_conversation_context(resolved)
+            validate_saved_conversation_shape(resolved)
             turns = self.client.invoke(
                 *TURN,
                 {
@@ -160,7 +160,7 @@ class SideChat:
         if parent.get("conversation_revision") != expected_parent_revision:
             raise ValueError("parent conversation revision changed")
         binding = context_binding(parent, self.profile_id)
-        validate_saved_conversation_context(parent)
+        validate_saved_conversation_shape(parent)
         snapshot = self._snapshot()
         if self._child(snapshot, parent_id) is None:
             identity = canonical_digest([self.profile_id, parent_id, SLOT])
@@ -234,7 +234,7 @@ class SideChat:
         if binding["parent_revision"] != payload["expected_parent_revision"]:
             raise ValueError("parent conversation revision changed")
         resolved = resolve_linked_conversation(child, parent, binding, self.profile_id)
-        validate_saved_conversation_context(resolved)
+        validate_saved_conversation_shape(resolved)
         initial = validate_saved_conversation_input(
             {
                 "request": {

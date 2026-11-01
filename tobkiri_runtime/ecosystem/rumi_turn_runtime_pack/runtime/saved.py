@@ -10,6 +10,9 @@ from __future__ import annotations
 from tobkiri_host.saved_workspace_context import (
     WORKSPACE_TARGET, resolve_saved_workspace, workspace_resolution,
 )
+from ecosystem.tobkiri_ui_settings_pack.runtime.saved_project_context import (
+    PROJECT_TARGET, resolve_saved_project,
+)
 
 from ecosystem.rumi_turn_runtime_pack.runtime.input_context import execute_with_input_context
 from tobkiri_protocol.saved_conversation import saved_guidance_context
@@ -57,6 +60,7 @@ SAVED_CONTRACTS = frozenset(
         COMPLETION_CONTRACT,
         "tobkiri.resource.chat.reference.v1",
         WORKSPACE_TARGET[0],
+        PROJECT_TARGET[0],
     }
 )
 
@@ -147,6 +151,15 @@ def validate_saved_turn_start(
 
         conversation = resolve_request_context(
             conversation, initial["request"], store.profile_id, read_parent,
+        )
+        conversation = resolve_saved_project(
+            conversation, profile_id=store.profile_id,
+            presentation_owner=(
+                getattr(client.session, "presentation_owner_principal_id", ""),
+                getattr(client.session, "presentation_owner_session_id", ""),
+            ),
+            read_owner=lambda payload: client.invoke(*PROJECT_TARGET, payload),
+            guard=guard,
         )
         conversation = resolve_saved_workspace(
             conversation, profile_id=store.profile_id, guard=guard,

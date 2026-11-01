@@ -13,6 +13,10 @@ from tobkiri_host.saved_workspace_context import (
     SavedWorkspaceExecutionRegistry, SavedWorkspacePins, resolve_saved_workspace,
     workspace_resolution, recheck_saved_workspace,
 )
+from ecosystem.tobkiri_ui_settings_pack.runtime.saved_project_context import (
+    PROJECT_TARGET, requires_project_owner, project_context, resolve_saved_project,
+    retain_saved_project_effect_snapshot,
+)
 
 import json
 import math
@@ -93,7 +97,7 @@ ALLOWED_TARGETS = (
     STRATEGY,
     STRATEGY_CATALOG,
     *TOOL_TARGETS,
-    PROMPT_TARGET, WORKSPACE_TARGET,
+    PROMPT_TARGET, WORKSPACE_TARGET, PROJECT_TARGET,
     AI_STREAM, (ACTION, ACTION_OPERATION), (RESOURCE, RESOURCE_OPERATION),
     WORKFLOW_TARGET,
 )
@@ -262,12 +266,14 @@ class SavedBridgeCallbacks:
         stream_available: Callable[[object, Mapping[str, Any], Mapping[str, Any]], bool] | None = None,
         workspace_execution_registry: SavedWorkspaceExecutionRegistry | None = None,
         selected_workspace: Callable[[], Mapping[str, Any]] | None = None,
+        presentation_owner: Callable[[object], tuple[str, str]] | None = None,
     ) -> None:
         self._dispatch = dispatch
         self._require_targets = require_targets
         self._stream_available = stream_available
         self._workspace_execution_registry = workspace_execution_registry
         self._selected_workspace = selected_workspace
+        self._presentation_owner = presentation_owner
 
     def _stream_ready(
         self, outer: object, request: Mapping[str, Any], conversation: Mapping[str, Any],
@@ -299,7 +305,10 @@ class SavedBridgeCallbacks:
         except (AuthorityDenied, ValueError, RuntimeError):
             return False
 
-    def _conversation(self, outer: object, request: Mapping[str, Any]) -> Mapping[str, Any]:
+    def _conversation(
+        self, outer: object, request: Mapping[str, Any], *,
+        effect_snapshot: Mapping[str, Any] | None = None,
+    ) -> Mapping[str, Any]:
         conversation = self._read_conversation(outer, request["conversation_id"])
         try:
             conversation = resolve_request_context(
@@ -307,6 +316,31 @@ class SavedBridgeCallbacks:
                 getattr(getattr(outer, "context", None), "profile_id", ""),
                 lambda parent_id: self._read_conversation(outer, parent_id),
             )
+            def read_project(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+                self._require_targets(outer, (PROJECT_TARGET,))
+                outcome = self._dispatch(
+                    outer, PROJECT_TARGET,
+                    {key: value for key, value in payload.items() if key != "profile_id"},
+                )
+                value = outcome.get("value")
+                if outcome.get("status") != "ok" or not isinstance(value, Mapping):
+                    raise AuthorityDenied("saved Project owner is unavailable")
+                return value
+
+            profile_id = getattr(getattr(outer, "context", None), "profile_id", "")
+            if effect_snapshot is None:
+                conversation = resolve_saved_project(
+                    conversation, profile_id=profile_id,
+                    presentation_owner=(self._presentation_owner(outer)
+                                        if requires_project_owner(conversation)
+                                        and self._presentation_owner is not None else ("", "")),
+                    read_owner=read_project,
+                    guard=lambda: self._require_targets(outer, (PROJECT_TARGET,)),
+                )
+            else:
+                conversation = retain_saved_project_effect_snapshot(
+                    conversation, effect_snapshot, profile_id=profile_id,
+                )
             def read_binding(payload: Mapping[str, Any]) -> Mapping[str, Any]:
                 self._require_targets(outer, (WORKSPACE_TARGET,))
                 outcome = self._dispatch(
@@ -332,7 +366,7 @@ class SavedBridgeCallbacks:
             if type(pin) is SavedWorkspacePins:
                 pin.accept(resolution)
             return conversation
-        except ValueError as error:
+        except (ValueError, PermissionError) as error:
             raise AuthorityDenied(str(error)) from error
 
     def _read_conversation(self, outer: object, conversation_id: str) -> Mapping[str, Any]:
@@ -356,10 +390,12 @@ class SavedBridgeCallbacks:
 
     def _recheck_linked_context(
         self, outer: object, request: Mapping[str, Any], conversation: Mapping[str, Any],
-    ) -> None:
-        """Fence dependency-read changes immediately before effect admission."""
-        if context_link(conversation) is None and workspace_resolution(conversation) is None:
-            return
+    ) -> Mapping[str, Any]:
+        """Adopt the last owner snapshot immediately before effect admission."""
+        if (context_link(conversation) is None
+                and workspace_resolution(conversation) is None
+                and project_context(conversation) is None):
+            return conversation
         fresh = self._conversation(outer, request)
         try:
             recheck_saved_workspace(conversation, fresh)
@@ -370,6 +406,7 @@ class SavedBridgeCallbacks:
             for field in ("conversation_revision", "current_node_id")
         ):
             raise AuthorityDenied("saved bridge linked conversation changed before effect")
+        return fresh
 
     def _tools(self, outer: object, request: Mapping[str, Any]) -> Mapping[str, Any]:
         if request.get("tool_selection", {}).get("mode", "none") == "none":
@@ -487,7 +524,7 @@ class SavedBridgeCallbacks:
                 raise AuthorityDenied(
                     "saved bridge selected AI strategy is unavailable"
                 )
-            self._recheck_linked_context(outer, request, conversation)
+            conversation = self._recheck_linked_context(outer, request, conversation)
             return
         owner_messages = _messages(conversation, system_prompt=prompt)
         requires_image_input = _contains_inline_images(
@@ -512,7 +549,7 @@ class SavedBridgeCallbacks:
         }
         if len(canonical_json(payload)) > MAX_SAVED_INPUT_BYTES:
             raise AuthorityDenied("saved bridge readiness input exceeds budget")
-        self._recheck_linked_context(outer, request, conversation)
+        conversation = self._recheck_linked_context(outer, request, conversation)
         outcome = self._dispatch(outer, READINESS, payload)
         value = outcome.get("value")
         if (
@@ -777,7 +814,7 @@ class SavedBridgeCallbacks:
                 if strategy_reference is not None
                 else arguments
             )
-            self._recheck_linked_context(outer, request, conversation)
+            conversation = self._recheck_linked_context(outer, request, conversation)
             if target == AI_STREAM:
                 outer_context = getattr(outer, "context", None)
                 arguments["request_id"] = str(getattr(outer_context, "request_id", ""))
@@ -858,7 +895,7 @@ class SavedBridgeCallbacks:
                 def read_acknowledged_owner() -> Mapping[str, Any]:
                     pin_token = _WORKSPACE_PIN.set(workspace_owner)
                     try:
-                        fresh = self._conversation(outer, request)
+                        fresh = self._conversation(outer, request, effect_snapshot=conversation)
                         self._require_acknowledged_branch(
                             fresh, owner_revision, owner_current_node_id
                         )
@@ -927,7 +964,7 @@ class SavedBridgeCallbacks:
                 except Exception:
                     # Provisional display failure cannot prevent or retry the effect.
                     pass
-        self._recheck_linked_context(outer, request, conversation)
+        conversation = self._recheck_linked_context(outer, request, conversation)
         if stage == "tool" and workspace_execution is not None:
             assert self._workspace_execution_registry is not None
             with self._workspace_execution_registry.register(workspace_execution):

@@ -1,4 +1,4 @@
-/** Build only the canonical single-workspace saved context; Host owns authority. */
+/** Keep the existing scalar primary; all Project folder hints remain inert. */
 export function savedCodingContext(input: {
   coding: boolean;
   workspaceId: string | null;
@@ -14,6 +14,12 @@ export function savedCodingContext(input: {
   if (!id || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,255}$/.test(id)) {
     throw new Error("コード作業を送信するには、作業フォルダを1つ選んでください。");
   }
+  const contexts = [input.pending, input.conversation?.metadata];
+  const memberships = [input.conversation?.group_id, ...contexts.flatMap((context) => [context?.group_id, context?.groupId])]
+    .filter((value) => value != null && value !== "");
+  if (memberships.some((value) => typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(value))
+    || new Set(memberships).size > 1) throw new Error("Projectの所属情報が一致しません。会話を開き直してください。");
+  const project = memberships.length > 0;
   const forbidden = ["group_id", "groupId", "workspace_root", "workspaceRoot",
     "rootPath", "rumi_data_path", "rumiDataPath", "rumi_dp_path",
     "workspace_bindings", "workspaceBindings", "workspaceId", "shared_read_only"];
@@ -27,6 +33,12 @@ export function savedCodingContext(input: {
   }
   for (const context of [input.pending, input.conversation?.metadata]) {
     if (context && forbidden.some((key) => context[key] != null
+      && !(context === input.conversation?.metadata && context.workspace_id === id
+        && ["workspace_root", "workspaceRoot", "rootPath", "rumi_data_path", "rumiDataPath",
+          "rumi_dp_path", "workspace_bindings", "workspaceBindings"].includes(key))
+      && !(project && ["group_id", "groupId", "workspace_root", "workspaceRoot", "rootPath",
+        "rumi_data_path", "rumiDataPath", "rumi_dp_path", "workspace_bindings", "workspaceBindings"].includes(key))
+      && !(project && key === "workspaceId" && context[key] === id)
       && !(context === input.pending && (
         (key === "workspaceId" && context[key] === id)
         || ((key === "workspaceRoot" || key === "workspaceLabel")
@@ -36,9 +48,9 @@ export function savedCodingContext(input: {
     }
   }
   const conversation = input.conversation;
-  if (conversation && (conversation.group_id
-    || ![null, undefined, "", "chat", "coding"].includes(conversation.conversation_kind)
-    || conversation.metadata?.workspace_id !== id
+  if (conversation && (![null, undefined, "", "chat", "coding"].includes(conversation.conversation_kind)
+    || (project ? conversation.metadata?.workspace_id ?? conversation.metadata?.workspaceId
+      : conversation.metadata?.workspace_id) !== id
     || (conversation.conversation_kind === "coding" && conversation.metadata?.mode !== "coding")
     || (conversation.metadata?.mode === "coding" && conversation.conversation_kind !== "coding")
     || (conversation.metadata?.mode != null && conversation.metadata.mode !== "coding"))) {
