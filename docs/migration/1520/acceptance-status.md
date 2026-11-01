@@ -145,8 +145,18 @@ were exercised in [CI41322731594](https://github.com/harupipipipi/tobkiri/action
 All7 new native mechanism tests and existing init/metadata/preparation/policy/owner
 checks passed, but the actual catalog call returned `unsupported-value` at slot7.
 State/key immutability, actual cleanup, Source destruction and0-byte/0-reservation
-reap were observed; catalog completion remains unqualified. A bounded phase/reason
-diagnostic is being added without changing failure classification or resource limits.
+reap were observed; catalog completion remains unqualified. The bounded phase/reason
+diagnostic at `ec1736d87` subsequently identified an outside-fixed-method refusal
+during the original call in [CI41326572035](https://github.com/harupipipipi/tobkiri/actions/runs/41326572035).
+The original captured loader execution and owner identity are restored in source at
+`b61ebc7e0`, with six independent loader integration cases and finite builtin tags.
+Its current component build, all154 Harness tests and existing native init/metadata/
+preparation/policy/owner checks passed in
+[CI41330673707](https://github.com/harupipipipi/tobkiri/actions/runs/41330673707).
+The actual catalog call still failed with the bounded tag `outside_builtin=unknown`;
+its exact underlying failure remains under investigation. Cleanup, state/key,
+Source destruction and zero-capacity reap passed independently. The source fix
+does not establish catalog success or whole-closure compatibility.
 Constructor/migration bodies and outer Authority remain unqualified.
 
 The independent original constructor/list reference subsequently passed13 controlled
@@ -154,6 +164,21 @@ cases on each OS in [CI41323891367](https://github.com/harupipipipi/tobkiri/acti
 4 positive migration-entry boundaries and9 invalid-state/file cases, with the actual
 definition lock released while the journal stayed held. Only the two first-migration
 entries use sentinels; no migration body or native/factory qualification is claimed.
+The subsequent native direct comparison at `89e20ab26` ran all13 fixtures in
+[CI41329148126](https://github.com/harupipipipi/tobkiri/actions/runs/41329148126).
+Portable mechanism6 tests and strict Clippy passed on both OSes. Native macOS matched7
+cases and failed6 at the unchanged64MiB capacity gate, because the old per-byte
+allocation reservation exceeds87MB for a real approximately190KB Profile index.
+All13 cleanup, zero-capacity reap and physical-owner reopen checks passed, but this
+does not qualify the failed cases. A private allocation-bound correction now covers
+partial parsing, actual Vec growth, fixed model insertions and diagnostic scratch,
+with four new focused cases and strengthened existing model checks awaiting CI.
+Old strict decoder/catalog reservations and original expectations are unchanged.
+Actual AppHandle/Wasm, exception-factory and async-Join parity remain separate.
+Fresh Authority93, publication77 and cancellation/same-invocation regressions at the
+same source passed in [Authority CI41329148085](https://github.com/harupipipipi/tobkiri/actions/runs/41329148085),
+[publication CI41329148081](https://github.com/harupipipipi/tobkiri/actions/runs/41329148081) and
+[handoff CI41329148083](https://github.com/harupipipipi/tobkiri/actions/runs/41329148083).
 
 Saved Project parity source at `eb5dabff0` restores existing owner-based membership
 and exact mutation acknowledgements while preserving the conversation execution

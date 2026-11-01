@@ -2219,10 +2219,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   単純forwardやPath fallbackで済ませず、実owner/spec.loader/__loader__対応の閉鎖が必要。
   Sol6.1 xhighが実original.exec_moduleを一度だけ実行する修正と、実CapturedFinderを使う
   独立6件を用意した。module-local import viewを先に設置し、本来の__file__/loader/
-  成功weakrefを原本ownerに生成させる。shared loaderのguard/APIを緩めず、まだ実行未検証。
+  成功weakrefを原本ownerに生成させる。shared loaderのguard/APIを緩めず、154件のHarness
+  検証にこの独立6件を含めて成功した。
   finder.closeは従来の自分finder除去だけとし、whole-scope/Host retirement拒否と分ける。
-  catalog診断は既存outside分類でexact builtin6種の固定tagだけ追加（512B内）。この修正群の
-  実catalog解消と全closureの__file__互換は、それぞれ別に実証する。
+  catalog診断は既存outside分類でexact builtin6種の固定tagだけ追加（512B内）。b61ebc7e0の
+  CI41330673707で現component構築と既存metadata5/preparation5/policy6/init1/owner2は成功。
+  実catalogはoriginal-call/outside-fixed-method-inventory/outside_builtin=unknownで未達。
+  実cleanup・state/key・Source破棄・reap0/0は成功したが、修正を今回の停止原因の解消と
+  読み替えない。native import側の有限エラーを次に調べ、全closure互換も別に実証する。
 
 ## 024: frozen component checkpointを現在のProfileへ誤照合しない
 
@@ -2265,7 +2269,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 025: registryのdeepcopyを重複したnative保持へ移さない
 
-- 状態: **Sol6.1 xhighのdefinition接続と独立driverのSourceが確定。Native実行未検証**。
+- 状態: **89e20ab26で接続。両OSの機構6件成功、実Native13件は7一致・6容量拒否で未達**。
 - 場所: `original_profile_definitions{,_model,_tests}.rs`、既存publication IO/JSON、
   `tools/original_profile_definition_prefix_reference.py`。
 - 整理: 元snapshotの厳密JSON/digest/全state・履歴・ID検証とnormal postyield検証を保ち、
@@ -2278,11 +2282,19 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 - 原本検証: 実ctor/listを13件の制御入力で動かし、最初の2migrationの入口だけを
   sentinelで止める。実definition lock解放とjournal保持、state/key・closeを別に観測する。
   CI41323891367は両OS13件成功。正常4枝/負例9枝と実lock lifetimeを観測し、135,961Bの
-  選択JSONのみ保存した。migration本体0、Native比較は未実行であり、製品採用の証拠ではない。
-  同じ13件のNative direct区間を別のSol6.1 xhighが実装したdriverで比較する。
-  既存1account/1Storeの実budget、journal保持/definition解放、元state/key、実close、
-  DATA解放/reap0/0、physical owner再openを検証予定。実AppHandle/Wasm全catalog/
-  Guest factory/非同期Joinの資格はこの同期mechanics driverへ含めない。
+  選択JSONのみ保存した。migration本体0であり、製品採用の証拠ではない。
+  別のSol6.1 xhighが実装した同13件のNative direct比較はCI41329148126で実行した。
+  両OSのnormal機構6件とstrict Clippyは成功。macOSの実Native13件は7一致、実packaged
+  Profileを含む6件はAuditのnative-capacityで失敗し、独立比較も失敗した。既存decoderの
+  (入力長+1024)×旧単位という一律予約が、約190KBのJSONに87MB以上を要求していた。
+  修正では64MiB/2B/絶対30秒を保ち、registry専用の実allocation上界を実装した。
+  全raw bytesの計数で未完/invalidの途中Text・frame・各Vec成長と同居を含め、後段の
+  bootstrap/tombstone/fallback object・digest文字列とduplicate error scratchも予約する。
+  旧decode/decode_strict/catalog予約・厳密解析順は変更しない。新focused4件と既存2件の
+  model実容量assert強化はSource確定、CI未検証。旧normal6件/原本13件の期待値は保つ。
+  13件全てで既存1account/1Store、journal保持/definition解放、元state/key、実close、
+  DATA解放/reap0/0、physical owner再openは確認した。失敗6件を成功へ数えない。
+  実AppHandle/Wasm全catalog/Guest factory/非同期Joinの資格はこの同期mechanics driverへ含めない。
 - 未完: outer catch対象のSecurePersistence/ActiveProfileStore/Timeoutの有限class実bindingは
   必須残件。Astra highに従い既存typed-request投影は未資格と明記し、実同Storeのfactory/
   cause/context成功へ読み替えない。接続済factoryの失敗からのfallbackや別builtin合成はしない。

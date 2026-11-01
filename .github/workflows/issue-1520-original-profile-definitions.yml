@@ -62,6 +62,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.94.0
         with:
           components: clippy
+      - name: Verify private definition JSON capacity and unchanged strict errors
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-definitions-json.log" --expected-passed 4 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::json::definitions_funding_tests::
+          -- --test-threads=1 --nocapture
       - name: Verify native definition constructors and held journal lock mechanics
         run: >-
           python3 -B tools/quality/issue_1520_ci.py cargo-test
@@ -104,6 +111,7 @@ jobs:
             ${{ runner.temp }}/original-profile-definitions/native-observations.json
             ${{ runner.temp }}/original-profile-definitions/comparison.json
             ${{ runner.temp }}/native-definitions-unit.log*
+            ${{ runner.temp }}/native-definitions-json.log*
             ${{ runner.temp }}/native-definitions-reference.log*
             ${{ runner.temp }}/original-catalog-prefix/summary.json
           if-no-files-found: warn

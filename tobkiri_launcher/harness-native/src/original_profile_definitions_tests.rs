@@ -184,6 +184,7 @@ async fn registry_list_validates_history_sorts_and_keeps_legacy_bootstrap_upgrad
         write_index(source, &bytes);
         let op = operation(read, source, cancel);
         let mut model = definitions_model::load(&op, Some(&bytes), budget).unwrap();
+        assert!(model.doc.actual_storage_bytes() <= model.doc.storage_bound());
         let rows = definitions_model::list(&op, &mut model, budget).unwrap();
         let ids: Vec<_> = rows
             .value
@@ -194,6 +195,7 @@ async fn registry_list_validates_history_sorts_and_keeps_legacy_bootstrap_upgrad
             })
             .collect();
         assert_eq!(ids, ["earlier", "alpha", "beta"]);
+        assert!(model.doc.actual_storage_bytes() <= model.doc.storage_bound());
         drop(rows);
         drop(model);
         assert_eq!(
@@ -258,6 +260,27 @@ async fn registry_tombstones_keep_the_prior_document_and_check_parent_before_dig
                 .string_is(model.doc.get(payload, "display_name").unwrap(), "alpha")
         );
         drop((rows, model));
+        // A first tombstone has no earlier document: the actual list builds
+        // its fixed profile_id-only fallback in the same funded arena.
+        let mut orphan = entry("orphan", 0);
+        let orphan_digest = digest(&json!({"schema":"io.tobkiri.profile-tombstone.v1",
+            "profile_id":"orphan","parent_revision":null}));
+        orphan["current_revision"] = json!(orphan_digest);
+        orphan["tombstone"] = json!(true);
+        orphan["revisions"] = json!([{"profile_revision":orphan["current_revision"],
+            "parent_revision":null,"profile":null,"created_at":10,"updated_at":10,
+            "tombstone":true}]);
+        let orphan_bytes = sealed(state(vec![orphan]));
+        let mut orphan_model = definitions_model::load(&op, Some(&orphan_bytes), budget).unwrap();
+        let orphan_rows = definitions_model::list(&op, &mut orphan_model, budget).unwrap();
+        let fallback = orphan_rows.value[0].references[2];
+        assert_eq!(orphan_model.doc.entries(fallback).unwrap().len(), 1);
+        assert!(orphan_model.doc.string_is(
+            orphan_model.doc.get(fallback, "profile_id").unwrap(),
+            "orphan"
+        ));
+        assert!(orphan_model.doc.actual_storage_bytes() <= orphan_model.doc.storage_bound());
+        drop((orphan_rows, orphan_model));
         profile["revisions"][1]["parent_revision"] = Value::Null;
         write_index(source, &sealed(state(vec![profile])));
         let error = run(read, source, cancel, budget).unwrap_err();

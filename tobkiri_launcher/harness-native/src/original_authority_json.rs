@@ -44,6 +44,26 @@ impl Document {
     pub fn storage_bound(&self) -> usize {
         self.allocation_bound
     }
+    #[cfg(test)]
+    pub fn actual_storage_bytes(&self) -> usize {
+        let mut total = self.nodes.capacity() * std::mem::size_of::<Node>();
+        for node in &self.nodes {
+            total += match node {
+                Node::String(text) => text.0.capacity() * std::mem::size_of::<u32>(),
+                Node::Array(items) => items.capacity() * std::mem::size_of::<usize>(),
+                Node::Object(items) => {
+                    items.capacity() * std::mem::size_of::<(Text, usize)>()
+                        + items
+                            .iter()
+                            .map(|(key, _)| key.0.capacity() * std::mem::size_of::<u32>())
+                            .sum::<usize>()
+                }
+                Node::Scalar(CanonValue::BigInt(value)) => value.capacity(),
+                _ => 0,
+            };
+        }
+        total
+    }
     pub fn node_count(&self) -> usize {
         self.nodes.len()
     }
@@ -158,14 +178,33 @@ pub(super) fn decode_catalog_lock<S: OriginalAuthorityOwner>(
     decode_metered_strict(input, op, budget)
 }
 
-/// The fixed registry read retains the old strict allocation reservation and
-/// charges its reached duplicate-key comparisons to the existing native work.
+/// Only the fixed registry constructor/first-list caller uses this bound.
+/// Unlike the catalog manifest it has no prior Guest parse: the census bounds
+/// every reached allocation, including invalid/unfinished JSON prefixes. It
+/// never validates, skips a value or changes the strict decoder's error order.
 pub(super) fn decode_profile_definitions<S: OriginalAuthorityOwner>(
     input: &[u8],
     op: &Operation<'_, S>,
     budget: &std::sync::Arc<dyn tobkiri_canon::AllocationBudget>,
 ) -> Result<Funded<Document>> {
-    decode_metered_strict(input, op, budget)
+    if input.len() > tobkiri_canon::MAX_BYTES {
+        return Err(strict_error("json input exceeds size limit"));
+    }
+    budget
+        .reserve(tobkiri_canon::AllocationRequest {
+            kind: tobkiri_canon::AllocationKind::Temporary,
+            bytes: 0,
+            elements: 0,
+            depth: 0,
+            work: input.len() as u64 * 8,
+        })
+        .map_err(|_| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
+    let bound = definition_allocation_bound(input)
+        .ok_or_else(|| OriginalAuthorityError::capacity(OriginalAuthorityStage::Audit))?;
+    let doc =
+        decode_inner(input, op, true, Some((bound, budget.clone()))).map_err(strict_parse_error)?;
+    validate_strict(&doc, op)?;
+    Ok(doc)
 }
 
 fn decode_metered_strict<S: OriginalAuthorityOwner>(
@@ -304,6 +343,124 @@ fn catalog_allocation_bound(input: &[u8]) -> Option<usize> {
         .checked_add(8192)
 }
 
+fn definition_allocation_bound(input: &[u8]) -> Option<usize> {
+    let (mut atoms, mut containers, mut strings, mut text, mut numeric) =
+        (0_usize, 0_usize, 0_usize, 0_usize, 0_usize);
+    let (mut quoted, mut escaped, mut scalar) = (false, false, false);
+    for &byte in input {
+        if quoted {
+            if !escaped && byte == b'"' {
+                quoted = false;
+            } else {
+                text = text.checked_add(1)?;
+                if escaped {
+                    escaped = false;
+                } else if byte == b'\\' {
+                    escaped = true;
+                }
+            }
+        } else {
+            match byte {
+                b'"' => {
+                    strings = strings.checked_add(1)?;
+                    atoms = atoms.checked_add(1)?;
+                    quoted = true;
+                    scalar = false;
+                }
+                b'{' | b'[' => {
+                    containers = containers.checked_add(1)?;
+                    atoms = atoms.checked_add(1)?;
+                    scalar = false;
+                }
+                b'}' | b']' | b':' | b',' | b' ' | b'\t' | b'\r' | b'\n' => scalar = false,
+                _ => {
+                    numeric = numeric.checked_add(1)?;
+                    if !scalar {
+                        atoms = atoms.checked_add(1)?;
+                        scalar = true;
+                    }
+                }
+            }
+        }
+    }
+    // No completion/syntax check here. A final partial Text is live in text()
+    // even though it never becomes a Node, and an ObjectValue frame can own a
+    // key before its value parses. Count every quoted key/value and raw byte,
+    // including escaped quotes, invalid escapes and lone surrogate spellings.
+    // Each decoded u32 consumes >=1 of these bytes. Every reached Node/frame
+    // and edge likewise consumes a counted atom/container/string start.
+    //
+    // Post-decode registry edits are also prepaid: missing bootstrap adds
+    // three nodes/one object/three pairs; tombstone hashing temporarily adds
+    // two nodes/one object/three pairs. set_digest adds one 71-point Text.
+    // First-list fallback adds at most one object/pair/"profile_id" Text per
+    // ORIGINAL node (using atoms avoids any early schema-dependent discount).
+    let fallback = atoms;
+    let nodes = atoms.checked_add(fallback)?.checked_add(5)?;
+    let objects = containers.checked_add(fallback)?.checked_add(2)?;
+    let edges = atoms
+        .checked_add(strings)?
+        .checked_add(fallback)?
+        .checked_add(6)?;
+    let texts = strings.checked_add(fallback)?.checked_add(9)?;
+    let fixed_points = "not_required".len()
+        + "state".len()
+        + "template_profile_revision".len()
+        + "bootstrap".len()
+        + "sha256:".len()
+        + 64
+        + "io.tobkiri.profile-tombstone.v1".len()
+        + "schema".len()
+        + "profile_id".len()
+        + "parent_revision".len();
+    let points = text
+        .checked_add(fallback.checked_mul("profile_id".len())?)?
+        .checked_add(fixed_points)?;
+    // All these non-byte Vecs have minimum capacity four and geometric
+    // doubling. 3*n+4 covers old+new allocation at a growth; summing per-object
+    // and per-Text minima gives 4*objects/4*texts. Source key Text moves from
+    // the temporary/frame to its pair, never clones. Arrays use the larger
+    // object-pair element size here. Frames never exceed source containers.
+    let arena = nodes
+        .checked_mul(3)?
+        .checked_add(4)?
+        .checked_mul(std::mem::size_of::<Node>())?;
+    let frames = containers
+        .checked_mul(3)?
+        .checked_add(4)?
+        .checked_mul(std::mem::size_of::<Frame>())?;
+    let pairs = edges
+        .checked_mul(3)?
+        .checked_add(objects.checked_mul(4)?)?
+        .checked_mul(std::mem::size_of::<(Text, usize)>())?;
+    let points = points
+        .checked_mul(3)?
+        .checked_add(texts.checked_mul(4)?)?
+        .checked_mul(std::mem::size_of::<u32>())?;
+    // A duplicate-key error can coexist with the arena. repr_text emits at
+    // most 10 bytes/u32 plus quotes. Its retained String uses <=2*r+8 bytes;
+    // format!'s old+new String uses <=3*(r+prefix)+8. Their simultaneous bound
+    // is 5*r+3*prefix+16, including diagnostic growth, without reading args or
+    // changing the original duplicate-before-strict-scalar validation order.
+    let repr_bytes = text.checked_mul(10)?.checked_add(2)?;
+    let duplicate_scratch = repr_bytes
+        .checked_mul(5)?
+        .checked_add("duplicate JSON object key: ".len().checked_mul(3)?)?
+        .checked_add(16)?;
+    arena
+        .checked_add(frames)?
+        .checked_add(pairs)?
+        .checked_add(points)?
+        .checked_add(duplicate_scratch)?
+        // Scalar conversion keeps the ORIGINAL per-byte numeric provision;
+        // the old fixed 1024 units are retained for fixed scratch/insertions.
+        .checked_add(
+            numeric
+                .checked_add(1024)?
+                .checked_mul(legacy_allocation_unit())?,
+        )
+}
+
 const fn legacy_allocation_unit() -> usize {
     std::mem::size_of::<Node>() * 3
         + std::mem::size_of::<Frame>() * 3
@@ -316,6 +473,10 @@ const fn legacy_allocation_unit() -> usize {
 #[cfg(test)]
 #[path = "original_catalog_json_tests.rs"]
 mod catalog_funding_tests;
+
+#[cfg(test)]
+#[path = "original_profile_definitions_json_tests.rs"]
+mod definitions_funding_tests;
 
 fn decode_inner<S: OriginalAuthorityOwner>(
     input: &[u8],

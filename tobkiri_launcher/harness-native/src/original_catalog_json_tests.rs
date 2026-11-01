@@ -18,7 +18,7 @@ impl NativeSetupLease for Portable {
         Digest::hash(b"catalog-json-accounting-test-not-source-authority")
     }
 }
-struct Source;
+pub(super) struct Source;
 impl OriginalAuthorityOwner for Source {
     fn with_original_user_data<R>(
         &self,
@@ -48,7 +48,7 @@ impl AllocationBudget for Meter {
         self.inner.release(bytes);
     }
 }
-fn with_operation(
+pub(super) fn with_operation(
     run: impl FnOnce(&Operation<'_, Source>, &Arc<dyn AllocationBudget>, &AtomicU64),
 ) {
     let control = CoreControl::default();
@@ -84,26 +84,10 @@ fn with_operation(
     let remaining = account.snapshot().unwrap();
     assert_eq!((remaining.charged_bytes, remaining.reservations), (0, 0));
 }
-fn actual_retained_capacity(doc: &Document) -> usize {
-    let mut total = doc.nodes.capacity() * std::mem::size_of::<Node>();
-    for node in &doc.nodes {
-        total += match node {
-            Node::String(text) => text.0.capacity() * std::mem::size_of::<u32>(),
-            Node::Array(items) => items.capacity() * std::mem::size_of::<usize>(),
-            Node::Object(items) => {
-                items.capacity() * std::mem::size_of::<(Text, usize)>()
-                    + items
-                        .iter()
-                        .map(|(key, _)| key.0.capacity() * std::mem::size_of::<u32>())
-                        .sum::<usize>()
-            }
-            Node::Scalar(CanonValue::BigInt(value)) => value.capacity(),
-            _ => 0,
-        };
-    }
-    total
+pub(super) fn actual_retained_capacity(doc: &Document) -> usize {
+    doc.actual_storage_bytes()
 }
-fn same_data(left: &Document, right: &Document) {
+pub(super) fn same_data(left: &Document, right: &Document) {
     assert_eq!(
         (left.root, left.nodes.len()),
         (right.root, right.nodes.len())
