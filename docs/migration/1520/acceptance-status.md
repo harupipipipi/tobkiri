@@ -74,7 +74,13 @@ The next finite denial-factory implementation connects the existing import,
 factory and limited-description exports on the same Store. Its original eight
 reference cases passed, including the application's actual denial classifier.
 Five transport and four worker/funding regressions plus an independent actual
-component driver have been prepared; native execution is pending. The Host's
+component driver were prepared. The [actual factory comparison at `178c6341b`](https://github.com/harupipipipi/tobkiri/actions/runs/41260909785)
+passed all eight same-Store cases and physical finish/data release. The existing
+allocator custody record is collected through its real uniqueness-checked reap;
+charged bytes and reservations both reach zero, with source destruction and
+owner reopen confirmed. The new four Tauri cases remain under verification in
+[Desktop CI41262201810](https://github.com/harupipipipi/tobkiri/actions/runs/41262201810).
+The Host's
 cause/context remain separate from the Guest exception's observed fields.
 This does not yet connect async recovery or qualify the product factory/GUI.
 

@@ -311,6 +311,14 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   追加、独立actual component8比較を既存producer/consumer CIへ配線した。Source/AST/
   8adapter inventory/format/YAMLのみ確認済みで、実Rust/Guest/新19finiteはまだ未実行。
   async journal/getter接続、NFC、完全panic/cancel/IO fault、製品採用とは分ける。
+  実factory区分は`178c6341b`のCI41260909785で成功。原本8件と実Wasmが一致し、
+  before finishは22,218,403B/3予約、finish後は5,618B/1予約かつSource destructor済、
+  DATA破棄後0B/1予約、既存allocator実reap1後0B/0予約・再openまで確認した。
+  先の895 CIは最終予約0検査だけで失敗。既存CUSTODYはArc/Weak唯一性の確認まで0B予約を
+  保持する契約であり、Work/source/IO循環ではなかった。Nativeを変更せずdriverが元reapを
+  完了するよう修正し、assertは維持。必要JSON14,226Bのみ保存、Wasm binaryは未取得。
+  owner gate修正bc3eのDesktop CI41256412808も641/123/18・finite15・DMGまで全成功。
+  新factory4を含むfinite19は同178のDesktop CI41262201810で検証中。
   追加の削減候補: 新Reviewは同invocationの固定bodyを直接呼ぶ。別jobを作る旧試作の
   read_original_authority_snapshot/OriginalAuthorityJob/Dataは現在のtracked callerがなく、
   将来のsnapshot接続後も独立prefetchとして使わない。直接snapshot接続と実caller回帰を
@@ -2043,3 +2051,20 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   snapshot/epoch/source能力を得る正規経路を先に閉じる。実recovery write/同じcandidate/
   resolve/catalog/listingの順序・typed error・cancel/finish/Joinを保つ。必要ABIだけ接続し、
   全19/7wrapperの追加を進捗に数えない。元guest予算未達のまま製品経路を有効化しない。
+
+## 019: ID検証に必要なUnicode処理と生成表の重複
+
+- 状態: **Unicode primitiveのSol6.1 xhigh実装と原本表の生成済み、Rust比較は未実行**。
+- 場所: harness-nativeの`unicode15_1.rs`/`unicode15_1_data.rs`、
+  `tools/unicode15_1_reference.py`、既存`packs/ordered-python-compat/src/unicode15_1.json`。
+- 問題: Core ProfileIdの別規約やHostのUnicode版を流用すると、元canonical IDの
+  codepoint長→NFC→lower/prefix→regexの順序・診断が変わる。既存15.1表はprintable/
+  space/decimalだけでNFCを持たず、新たなPython Host往復も不要。
+- 整理: CPython3.13.16/Unicode15.1から静的NFD/CCC/composition/lower/printable配列を
+  CI生成し、Rustは呼出元scratch・元work meter・funded writerだけを使う。表の実行時
+  parse/cache、新account、別allowanceは追加しない。printable表の生成元共有は今後の
+  削減候補だが、旧Guest表の廃止は既存全consumerとの一致を確認してから。
+- 維持: surrogate、NFC composition blocking/exclusions/Hangul、文脈Sigma、Python repr。
+  生成CI41263883959は成功し、公式19,074行の36,482 unique NFC入力、全1,114,112
+  codepoint、32contextの原本観測と104,440Bの固定表を生成。Rust11単体/全域digest比較は
+  次CIで検査し、型観測・opaque cause・async journal/getterや製品採用とは分ける。

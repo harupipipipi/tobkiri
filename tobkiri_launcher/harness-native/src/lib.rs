@@ -64,3 +64,9 @@ pub use fd_protocol::{NativeFdOutcome, NativeFdProtocol};
 pub use fd_read::write_fd_read;
 #[cfg(unix)]
 pub use fd_stat::write_fd_stat;
+
+// Stage pure Unicode parity independently; product validation is not adopted.
+#[cfg(test)]
+mod unicode15_1;
+#[cfg(test)]
+mod unicode15_1_data;
