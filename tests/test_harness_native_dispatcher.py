@@ -146,7 +146,7 @@ class CatalogDiagnosticTests(unittest.TestCase):
         exec(compile(selected, "actual-catalog-thin-wrapper-functions", "exec"), self.namespace)
         self.abi_error = AbiErr
 
-    def setup_dispatcher(self):
+    def setup_dispatcher(self, *, errors=(("value-error", ValueError),), codec_error=None):
         class Runtime:
             failure = None
             value = "actual controlled return"
@@ -160,7 +160,8 @@ class CatalogDiagnosticTests(unittest.TestCase):
         self.scope = Scope(1, 2, 3, 4)
         self.dispatcher = Dispatcher(lambda _scope: OriginalRuntime(
             self.runtime, (RecordType("native-path", NativePath, native_binding=True),
-                           RecordType("value-error", ValueError)), (ValueError,)))
+                           *(RecordType(kind, cls) for kind, cls in errors)),
+            tuple(cls for _, cls in errors), _catalog_codec_error=codec_error))
         self.dispatcher.init(wire.dumps({"format": PREFIX + "init.v1",
                                         "scope": self.scope.wire()}))
         registry = self.dispatcher._current().registry
@@ -250,7 +251,7 @@ class CatalogDiagnosticTests(unittest.TestCase):
             self.assertEqual((self.observed[-1].phase, self.observed[-1].reason), (None, None))
             self.assertIsNone(self.observed[-1].outside_builtin)
 
-    def test_outside_inventory_tags_only_six_exact_builtins_and_never_their_args(self):
+    def test_outside_inventory_tags_only_fixed_exact_builtins_and_never_their_args(self):
         self.setup_dispatcher()
 
         class Secret:
@@ -266,6 +267,11 @@ class CatalogDiagnosticTests(unittest.TestCase):
             (NameError, "name-error"), (ImportError, "import-error"),
             (NotImplementedError, "not-implemented-error"),
             (AssertionError, "assertion-error"),
+            (ModuleNotFoundError, "module-not-found-error"),
+            (KeyError, "key-error"), (IndexError, "index-error"),
+            (StopIteration, "stop-iteration"), (OSError, "os-error"),
+            (FileNotFoundError, "file-not-found-error"),
+            (PermissionError, "permission-error"),
         ):
             class Subclass(builtin):
                 def __getattribute__(self, name):
@@ -276,9 +282,7 @@ class CatalogDiagnosticTests(unittest.TestCase):
             cases.extend(((builtin(Secret()), tag), (Subclass(Secret()), "unknown")))
         cases.append((LookupError(Secret()), "unknown"))
         for error, expected in cases:
-            with self.subTest(expected=expected, exact_builtin=type(error) in
-                              (TypeError, AttributeError, NameError, ImportError,
-                               NotImplementedError, AssertionError)):
+            with self.subTest(expected=expected):
                 self.runtime.failure = error
                 with self.assertRaises(UnsupportedValue):
                     self.dispatcher.call("load_catalog", self.payload)
@@ -303,6 +307,86 @@ class CatalogDiagnosticTests(unittest.TestCase):
         self.assertEqual(caught.exception.value.code, "METHOD_RAISED")
         self.assertEqual((self.observed[-1].phase, self.observed[-1].reason,
                           self.observed[-1].outside_builtin), (None, None, None))
+
+    def test_codec_diagnostic_requires_trusted_exact_binding_without_changing_priority(self):
+        class CodecError(Exception):
+            def __getattribute__(self, name):
+                if name == "args":
+                    raise AssertionError("must not inspect original codec args")
+                return super().__getattribute__(name)
+
+            def __str__(self):
+                raise AssertionError("must not format original codec error")
+
+            def __repr__(self):
+                raise AssertionError("must not render original codec error")
+
+        class Subclass(CodecError):
+            pass
+
+        class OtherError(Exception):
+            pass
+
+        for binding in (None, CodecError):
+            self.setup_dispatcher(codec_error=binding)
+            self.assertIs(self.dispatcher._current()._catalog_codec_error, binding)
+            for error, tag in ((CodecError(), "native-exception-codec" if binding else "unknown"),
+                               (Subclass(), "unknown"), (OtherError(), "unknown")):
+                self.runtime.failure = error
+                with self.assertRaises(UnsupportedValue):
+                    self.dispatcher.call("load_catalog", self.payload)
+                with self.assertRaises(self.abi_error) as caught:
+                    self.call_catalog()
+                value = caught.exception.value
+                self.assertEqual((value.code, value.message),
+                                 ("UNSUPPORTED_VALUE", "original DATA is not represented"))
+                self.assertEqual(json.loads(value.details)["outside_builtin"], tag)
+                self.assertLessEqual(len(value.details), _CatalogDiagnostic.MAX_BYTES)
+                self.assertEqual((self.observed[-1].phase, self.observed[-1].reason,
+                                  self.observed[-1].outside_builtin), (None, None, None))
+        # A registered exact exception still takes the ORIGINAL MethodRaised
+        # path even when a private diagnostic binding names that same type.
+        self.setup_dispatcher(errors=(("codec-fixture", CodecError),), codec_error=CodecError)
+        error = CodecError()
+        self.runtime.failure = error
+        with self.assertRaises(self.abi_error) as caught:
+            self.call_catalog()
+        self.assertEqual(caught.exception.value.code, "METHOD_RAISED")
+        packet = json.loads(caught.exception.value.details)
+        registry = self.dispatcher._current().registry
+        self.assertIs(registry.borrow(registry.reference(packet["root"])), error)
+        self.assertEqual((self.observed[-1].phase, self.observed[-1].reason,
+                          self.observed[-1].outside_builtin), (None, None, None))
+        for invalid in ("UnsupportedNativeException", object()):
+            dispatcher = Dispatcher(lambda _scope: OriginalRuntime(
+                object(), (), (), _catalog_codec_error=invalid))
+            with self.assertRaises(UnsupportedValue):
+                dispatcher.init(wire.dumps({"format": PREFIX + "init.v1",
+                                            "scope": self.scope.wire()}))
+
+    def test_bootstrap_binds_existing_codec_class_only_as_private_diagnostic_reference(self):
+        tree = ast.parse((ROOT / "tools/python313-producer/harness_native/bootstrap.py").read_text())
+        (load,) = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                   and node.name == "_load_bound_runtime"]
+        (normal_import,) = [node for node in load.body if isinstance(node, ast.ImportFrom)
+                            and node.module == "exception_graph"]
+        self.assertEqual(normal_import.level, 1)
+        self.assertEqual([(item.name, item.asname) for item in normal_import.names],
+                         [("_FIXED_EXCEPTION_CLASSES", None), ("UnsupportedNativeException", None)])
+        (returned,) = [node.value for node in load.body if isinstance(node, ast.Return)]
+        self.assertIsInstance(returned, ast.Call)
+        self.assertEqual(returned.func.id, "OriginalRuntime")
+        self.assertEqual([(keyword.arg, keyword.value.id) for keyword in returned.keywords],
+                         [("_catalog_codec_error", "UnsupportedNativeException")])
+        for assignment in (node for node in load.body if isinstance(node, ast.Assign)):
+            if any(isinstance(target, ast.Name) and target.id in {"errors", "records"}
+                   for target in assignment.targets):
+                self.assertFalse(any(isinstance(node, ast.Name)
+                                     and node.id == "UnsupportedNativeException"
+                                     for node in ast.walk(assignment.value)))
+        self.assertEqual(ast.dump(returned.args[2], include_attributes=False),
+                         ast.dump(ast.parse("tuple(cls for _, cls in errors)", mode="eval").body,
+                                  include_attributes=False))
 
     def test_diagnostic_encoding_failure_remains_fatal_and_clears_copy_data(self):
         diagnostic = _CatalogDiagnostic()

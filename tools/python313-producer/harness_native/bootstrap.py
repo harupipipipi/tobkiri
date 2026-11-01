@@ -41,7 +41,7 @@ def _load_bound_runtime(inputs) -> OriginalRuntime:
         DefaultProfileV4Error,
     )
 
-    from .exception_graph import _FIXED_EXCEPTION_CLASSES
+    from .exception_graph import _FIXED_EXCEPTION_CLASSES, UnsupportedNativeException
 
     errors = (
         ("type-error", TypeError),
@@ -89,5 +89,5 @@ def _load_bound_runtime(inputs) -> OriginalRuntime:
     )
     return OriginalRuntime(
         _DEFAULTSPACK_PROFILE_RUNTIME, records, tuple(cls for _, cls in errors),
-        inputs.inputs,
+        inputs.inputs, _catalog_codec_error=UnsupportedNativeException,
     )

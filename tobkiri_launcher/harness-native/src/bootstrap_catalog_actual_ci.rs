@@ -210,6 +210,9 @@ async fn original_catalog_component_driver() -> Result<()> {
         Err(_) => bail!("actual catalog initialization refused"),
     };
     let fuel_before = runtime.fuel_remaining()?;
+    // Copy-only reachpoint diagnostics. Counts do not establish successful
+    // inspection, IO completion, owner admission or physical cleanup.
+    let inspections_before_review = runtime.inspection_attempts();
     let mut held_failure = None;
     let mut held_success = None;
     let mut cleanup_probe = None;
@@ -249,6 +252,8 @@ async fn original_catalog_component_driver() -> Result<()> {
                 .and_then(|current| current.as_ref().map(|io| io.ci_progress()));
             observed = Some(json!({"outcome":"observation-refused",
                 "stage":format!("{:?}",failure.stage()),"origin":failure.origin(),
+                "inspection_attempts_before_review":inspections_before_review,
+                "inspection_attempts_after_review":runtime.inspection_attempts(),
                 "catalog_progress_copy_only":catalog_progress,
                 "native_code":diagnostic_text(native.code()),
                 "native_message":diagnostic_text(native.message()),
@@ -279,6 +284,8 @@ async fn original_catalog_component_driver() -> Result<()> {
         observed = Some(
             json!({"outcome":"integration-boundary", "stage":"profile-definition-store-entry",
             "fuel_before":fuel_before,"fuel_after":fuel_after,"budget_resets":0,
+            "inspection_attempts_before_review":inspections_before_review,
+            "inspection_attempts_after_review":runtime.inspection_attempts(),
             "same_original_deadline":true,"journal_lock_held_before_finish":true,
             "actual_host_root_retained":true,"actual_bundle_root_retained":true,
             "actual_catalog_retained":true}),

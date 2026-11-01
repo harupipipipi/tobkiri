@@ -2227,6 +2227,12 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   実catalogはoriginal-call/outside-fixed-method-inventory/outside_builtin=unknownで未達。
   実cleanup・state/key・Source破棄・reap0/0は成功したが、修正を今回の停止原因の解消と
   読み替えない。native import側の有限エラーを次に調べ、全closure互換も別に実証する。
+  次の診断ではAstra highの回答に従いexact builtin13種と、正常bootstrapで既に取得する
+  実codec classだけを固定tagで区別する。subclass/未知型はunknown、例外中のimportや
+  名前検索・args/str/repr/traceback・method_errors追加は行わない。Sourceに新2件を加え、
+  focused診断は7件。CI driverの既存inspection_attempts前後の2整数もCopyするが、
+  成功したIO・owner admission・Joinの証拠にはしない。なおunknownならallowlistを
+  増やし続けず、実観測した区間の固定bridge境界を一度だけ細分化する。
 
 ## 024: frozen component checkpointを現在のProfileへ誤照合しない
 

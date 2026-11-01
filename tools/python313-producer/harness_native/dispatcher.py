@@ -78,6 +78,13 @@ class _CatalogDiagnostic:
         (ImportError, "import-error"),
         (NotImplementedError, "not-implemented-error"),
         (AssertionError, "assertion-error"),
+        (ModuleNotFoundError, "module-not-found-error"),
+        (KeyError, "key-error"),
+        (IndexError, "index-error"),
+        (StopIteration, "stop-iteration"),
+        (OSError, "os-error"),
+        (FileNotFoundError, "file-not-found-error"),
+        (PermissionError, "permission-error"),
     )
     MAX_BYTES = 512
 
@@ -89,7 +96,7 @@ class _CatalogDiagnostic:
         self.reason = None
         self.outside_builtin = None
 
-    def record_outside(self, error_type):
+    def record_outside(self, error_type, codec_error_type=None):
         # Only Copy tags at the existing outside-inventory classification.
         # Identity checks do not invoke a foreign class's hash/equality hooks.
         self.outside_builtin = "unknown"
@@ -97,6 +104,11 @@ class _CatalogDiagnostic:
             if error_type is builtin:
                 self.outside_builtin = tag
                 break
+        else:
+            # Supplied once by the trusted normal bootstrap, never obtained
+            # from an exception or frame. The carrier keeps only this tag.
+            if codec_error_type is not None and error_type is codec_error_type:
+                self.outside_builtin = "native-exception-codec"
 
     def record(self, error):
         if self.reason is not None:
@@ -126,9 +138,10 @@ class _CatalogDiagnostic:
             if reason == "outside-fixed-method-inventory":
                 frame["outside_builtin"] = (
                     self.outside_builtin if type(self.outside_builtin) is str
-                    and self.outside_builtin in {
-                        tag for _, tag in self._OUTSIDE_BUILTINS
-                    } else "unknown"
+                    and (self.outside_builtin == "native-exception-codec"
+                         or self.outside_builtin in {
+                             tag for _, tag in self._OUTSIDE_BUILTINS
+                         }) else "unknown"
                 )
             result = wire.dumps(frame)
             if len(result) > self.MAX_BYTES:
@@ -164,6 +177,9 @@ class OriginalRuntime:
     # None means actual native input admission is not connected. An explicit
     # tuple contains only preexisting opaque proxies supplied by bootstrap.
     native_inputs: tuple[tuple[str, Any], ...] | None = None
+    # Exact class from the existing normal codec import. Diagnostic identity
+    # only: never a record, method-error admission, exception field or grant.
+    _catalog_codec_error: type[Exception] | None = None
 
 
 @dataclass(frozen=True)
@@ -172,6 +188,7 @@ class _State:
     registry: Registry
     method_errors: tuple[type[Exception], ...]
     native_inputs: tuple[tuple[str, Any], ...] | None
+    _catalog_codec_error: type[Exception] | None
 
 
 class Dispatcher:
@@ -274,6 +291,8 @@ class Dispatcher:
         if (
             type(original) is not OriginalRuntime
             or type(original.method_errors) is not tuple
+            or (original._catalog_codec_error is not None
+                and type(original._catalog_codec_error) is not type)
         ):
             raise UnsupportedValue("invalid trusted original runtime bundle")
         for cls in original.method_errors:
@@ -313,7 +332,8 @@ class Dispatcher:
                     raise UnsupportedValue("native input must be an opaque proxy")
                 names.add(item[0])
         return _State(
-            original.runtime, registry, original.method_errors, original.native_inputs
+            original.runtime, registry, original.method_errors, original.native_inputs,
+            original._catalog_codec_error,
         )
 
     def _frame(self, payload: str, kind: str, fields: set[str]) -> dict[str, Any]:
@@ -373,7 +393,8 @@ class Dispatcher:
                         _catalog_diagnostic.record(error)
                     else:
                         _catalog_diagnostic.reason = "outside-fixed-method-inventory"
-                        _catalog_diagnostic.record_outside(type(error))
+                        _catalog_diagnostic.record_outside(
+                            type(error), state._catalog_codec_error)
                 raise UnsupportedValue(
                     "original method failure is not represented"
                 ) from None
