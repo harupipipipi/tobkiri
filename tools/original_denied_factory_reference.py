@@ -19,7 +19,7 @@ from original_authority_reference import (
 from original_setup_review_reference import check_original
 
 
-FORMAT = "io.tobkiri.original-denied-factory-fixtures.v1"
+FORMAT = "io.tobkiri.original-denied-factory-fixtures.v2"
 CASES = (
     ("empty", ""),
     ("publication-identity", "Profile publication identity changed"),
@@ -37,7 +37,7 @@ SOURCES = (
 )
 
 
-def returned_exception(error: BaseException) -> dict:
+def returned_exception(error: BaseException, kind: str) -> tuple[dict, str]:
     """Observe the fixed factory's actual builtin exception storage only."""
     args = BaseException.args.__get__(error)
     cause = BaseException.__cause__.__get__(error)
@@ -47,9 +47,10 @@ def returned_exception(error: BaseException) -> dict:
             or cause is not None or context is not None or suppressed is not False):
         raise AssertionError("original fresh-factory contract differs")
     cls = type(error)
-    return {"outcome": "factory-returned", "type": cls.__module__ + "." + cls.__qualname__,
-            "args": list(args), "cause": None, "context": None,
-            "suppress_context": False}
+    return ({"outcome": "factory-returned", "kind": kind,
+             "factory_denied": {"args": list(args), "cause": None,
+                                "context": None, "suppress_context": False}},
+            cls.__module__ + "." + cls.__qualname__)
 
 
 def prepare(original: Path, destination: Path) -> None:
@@ -68,11 +69,17 @@ def prepare(original: Path, destination: Path) -> None:
         if not isinstance(error, BaseException) or any(error is prior for prior in retained):
             raise AssertionError("real factory must return a fresh exception")
         retained.append(error)
-        observation = returned_exception(error)
-        if observation["args"] != [message]:
+        # Use the actual application's original classifier, matching the
+        # existing adapter kind. Never populate a native observation's class
+        # by copying an expected class name from this reference.
+        if port.is_resolution_denied(error) is not True:
+            raise AssertionError("original port did not classify its returned denial")
+        observation, original_type = returned_exception(error, "profile-resolution-denied")
+        if observation["factory_denied"]["args"] != [message]:
             raise AssertionError("original factory changed its supplied message")
-        results.append({"name": name, "message": message, "expected": observation})
-    if len({row["expected"]["type"] for row in results}) != 1:
+        results.append({"name": name, "message": message, "expected": observation,
+                        "original_type": original_type})
+    if len({row["original_type"] for row in results}) != 1:
         raise AssertionError("fixed original factory changed its actual type")
     destination.mkdir(parents=True, mode=0o700, exist_ok=False)
     metadata = {"format": FORMAT, "original_head": ORIGINAL_HEAD, "python": "3.13.16",
@@ -84,7 +91,8 @@ def prepare(original: Path, destination: Path) -> None:
                          "recovery, product adoption or GUI qualification"}
     write_json(destination / "fixtures.json", metadata)
     summary = {key: value for key, value in metadata.items() if key != "cases"}
-    summary["cases"] = [{"name": row["name"], "observation": row["expected"]}
+    summary["cases"] = [{"name": row["name"], "observation": row["expected"],
+                         "original_type": row["original_type"]}
                         for row in results]
     write_json(destination / "summary.json", summary)
     print(json.dumps({"original_factory_cases": len(CASES), "native_comparison": False,
@@ -96,7 +104,7 @@ def compare(fixtures: Path, observations: Path, output: Path) -> None:
     expected, native = load_json(fixtures), load_json(observations)
     if (expected["format"] != FORMAT or expected["original_head"] != ORIGINAL_HEAD
             or expected["python"] != "3.13.16" or expected["reference_checks_passed"] is not True
-            or native["format"] != "io.tobkiri.original-denied-factory-native-observations.v1"):
+            or native["format"] != "io.tobkiri.original-denied-factory-native-observations.v2"):
         raise ValueError("fresh original/native factory observations required")
     names = {name for name, _ in CASES}
     by_name = {row["name"]: row for row in native["cases"]}
@@ -104,7 +112,7 @@ def compare(fixtures: Path, observations: Path, output: Path) -> None:
     if (set(by_name) != names or set(original) != names
             or len(native["cases"]) != len(CASES) or len(expected["cases"]) != len(CASES)):
         raise ValueError("exact finite factory case inventory required")
-    report = {"format": "io.tobkiri.original-denied-factory-comparison.v1",
+    report = {"format": "io.tobkiri.original-denied-factory-comparison.v2",
               "original_head": ORIGINAL_HEAD, "cases": [], "matched": False,
               "native_comparison": True, "qualification": False, "production_enabled": False,
               "scope": expected["scope"]}
