@@ -9,6 +9,7 @@ import re
 import shlex
 import shutil
 import subprocess
+from pathlib import Path
 from typing import Any, Sequence
 import urllib.error
 import urllib.request
@@ -34,8 +35,9 @@ def cloudflare_environment_status(
     api_fetcher: CloudflareAPIFetcher | None = None,
     api_token: str | None = None,
     env: Mapping[str, str] | None = None,
+    connector_root: Path | None = None,
 ) -> dict[str, Any]:
-    """Return a redacted Cloudflare readiness report for Rumi continuation.
+    """Return a redacted Cloudflare readiness report for a Pack continuation.
 
     The lightweight default avoids network/process-heavy checks during normal
     settings rendering. Passing active=True probes Wrangler, cloudflared,
@@ -45,7 +47,7 @@ def cloudflare_environment_status(
     environ = env or os.environ
     runner = command_runner or _run_command
     fetcher = api_fetcher or _cloudflare_api_get_json
-    wrangler_cmd = _wrangler_command(environ)
+    wrangler_cmd = _wrangler_command(environ, connector_root=connector_root)
     cloudflared_cmd = _tool_command("cloudflared")
     docker_cmd = _tool_command("docker")
 
@@ -96,16 +98,16 @@ def cloudflare_environment_status(
         "checks": checks,
         "blockers": blockers,
         "deployment": {
-            "sandbox_bridge_scaffold": "tobkiri_runtime/ecosystem/defaultspack/cloudflare/sandbox_bridge",
+            "sandbox_bridge_scaffold": "connector://cloudflare/sandbox_bridge",
             "sandbox_bridge_url_env": "RUMI_CLOUDFLARE_SANDBOX_BRIDGE_URL",
             "sandbox_bridge_api_key_env": "RUMI_CLOUDFLARE_SANDBOX_API_KEY",
-            "pc_tunnel_scaffold": "tobkiri_runtime/ecosystem/defaultspack/cloudflare/pc_tunnel",
+            "pc_tunnel_scaffold": "connector://cloudflare/pc_tunnel",
             "pc_tunnel_hostname_env": "RUMI_CLOUDFLARE_PC_TUNNEL_HOSTNAME",
             "pc_tunnel_origin_url_env": "RUMI_CLOUDFLARE_PC_TUNNEL_ORIGIN_URL",
             "pc_tunnel_config_env": "RUMI_CLOUDFLARE_PC_TUNNEL_CONFIG",
             "pc_tunnel_zone_id_env": "RUMI_CLOUDFLARE_ZONE_ID",
             "stable_pc_tunnel": "named_cloudflare_tunnel_with_dns_hostname",
-            "pc_tool_bridge_scaffold": "tobkiri_runtime/ecosystem/defaultspack/cloudflare/pc_tool_bridge",
+            "pc_tool_bridge_scaffold": "connector://cloudflare/pc_tool_bridge",
             "pc_tool_bridge_url_env": "RUMI_CLOUDFLARE_PC_TOOL_BRIDGE_URL",
             "pc_tool_bridge_token_env": "RUMI_PC_TOOL_BRIDGE_TOKEN",
             "pc_tool_bridge_pc_origin_env": "RUMI_PC_ORIGIN",
@@ -133,14 +135,19 @@ def cloudflare_environment_status(
     }
 
 
-def _wrangler_command(env: Mapping[str, str]) -> list[str]:
+def _wrangler_command(
+    env: Mapping[str, str],
+    *,
+    connector_root: Path | None = None,
+) -> list[str]:
+    """Return an explicit or caller-captured local Wrangler command."""
     explicit = str(env.get("RUMI_WRANGLER_COMMAND") or "").strip()
     if explicit:
         return shlex.split(explicit)
     wrangler = shutil.which("wrangler")
     if wrangler:
         return [wrangler]
-    local_wrangler = _local_wrangler_command()
+    local_wrangler = _local_wrangler_command(connector_root)
     if local_wrangler:
         return local_wrangler
     return []
@@ -151,33 +158,19 @@ def _tool_command(name: str) -> list[str]:
     return [path] if path else []
 
 
-def _local_wrangler_command() -> list[str]:
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+def _local_wrangler_command(connector_root: Path | None) -> list[str]:
+    """Locate Wrangler only inside the caller's explicitly captured Pack."""
+
+    if connector_root is None:
+        return []
+
     candidates = [
-        os.path.join(
-            repo_root,
-            "ecosystem",
-            "defaultspack",
-            "cloudflare",
-            "pc_tool_bridge",
-            "node_modules",
-            ".bin",
-            "wrangler",
-        ),
-        os.path.join(
-            repo_root,
-            "ecosystem",
-            "defaultspack",
-            "cloudflare",
-            "sandbox_bridge",
-            "node_modules",
-            ".bin",
-            "wrangler",
-        ),
+        connector_root / "cloudflare" / "pc_tool_bridge" / "node_modules" / ".bin" / "wrangler",
+        connector_root / "cloudflare" / "sandbox_bridge" / "node_modules" / ".bin" / "wrangler",
     ]
     for candidate in candidates:
-        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-            return [candidate]
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return [str(candidate)]
     return []
 
 

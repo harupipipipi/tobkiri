@@ -1,0 +1,22 @@
+{
+  "version": "rumi.ui.contribution.v1",
+  "id": "rumi_deepthink_pack.deepthink",
+  "kind": "ai_strategy",
+  "mode": "declarative",
+  "label": "DeepThink",
+  "description": "Use a bounded, budgeted deliberation strategy for tasks that need extra review.",
+  "priority": 0,
+  "strategy_reference": "rumi_deepthink_pack.deepthink.execute",
+  "command": {
+    "name": "deepthink",
+    "label": "DeepThink",
+    "description": "Use the DeepThink strategy for this request.",
+    "aliases": [
+      "dt"
+    ]
+  },
+  "accessibility": {
+    "name": "DeepThink",
+    "keyboard": true
+  }
+}

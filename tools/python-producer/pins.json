@@ -1,0 +1,122 @@
+{
+  "compiler_dependencies": {
+    "component-init-transform": "0.2.0",
+    "component-init-transform-crate-sha256": "905e0d94b9dce0ad90bf44b5dedaab3f1a8275964d5012fec8e91656ad91d81e",
+    "component-init-transform-inspected-lib-sha256": "43d074c1f66a191e61e6b5f56ca06b4bed9c2e3a1704ffd1f007aa68a6d5e0d1",
+    "libc": "=0.2.190",
+    "patched_lock_sha256": null,
+    "serde_json": "=1.0.154",
+    "sha2": "=0.10.9",
+    "wasmtime": "46.0.1",
+    "wasmtime-wasi": "46.0.1"
+  },
+  "compiler_wasi_patch": {
+    "commit": "823d1b8f251494a06288194d0df746191f535ff7",
+    "global_cache_mutation": false,
+    "review_root_mapping": "wasmtime-wasi/ source-review label maps to sibling wasmtime-wasi-46.0.1 in a future complete producer source tree",
+    "scope": "pub constructor exposure only; same nominal type/ABI/version",
+    "version": "46.0.1"
+  },
+  "cpython": {
+    "commit": "0e13686da8bb881b059d35e23c32bcd2e6440099",
+    "full_tree_pin_status": "pending; selected original source hashes are not a full archive pin",
+    "full_tree_sha256": null,
+    "version": "3.14.0-wasi-sdk-30"
+  },
+  "format": "tobkiri.python-producer-source-pins/1",
+  "patches": {
+    "patches/componentize-py-0001.patch": {
+      "bytes": 117565,
+      "sha256": "b94a8fe872788cdb4597b61085021e81d9bef1dc917afc99dd989ecf8affbf32"
+    },
+    "patches/cpython-0001.patch": {
+      "bytes": 18292,
+      "sha256": "f9370b89053d65d49949b84a011ec0df5c4a4a18b45f1c86973323eebba5e8bc"
+    },
+    "patches/wasmtime-wasi-0001.patch": {
+      "bytes": 392,
+      "sha256": "d8867a3004bb8665b3cc34af41dc24093cc5d84e25b9eddee2962f0ebc8496ce"
+    }
+  },
+  "producer": {
+    "commit": "c0949b19d464f5d70bc1051195a3ae0e6a012df9",
+    "version": "0.25.0"
+  },
+  "runtime_toolchain": {
+    "rust": "pending compiler toolchain selection/compatibility proof",
+    "wasi_sdk": "34.0-arm64-macos reuse approved; sdk34-pins.json actual read/hash; native OS closure and flags pending"
+  },
+  "source_only": true,
+  "sources": {
+    "componentize-py/Cargo.toml": {
+      "bytes": 2216,
+      "sha256": "52e951de8e10ff3d59283986763fbcde9e5992fd6bdc3e56adf48950afd53079",
+      "url": "https://raw.githubusercontent.com/bytecodealliance/componentize-py/c0949b19d464f5d70bc1051195a3ae0e6a012df9/Cargo.toml"
+    },
+    "componentize-py/build.rs": {
+      "bytes": 27668,
+      "sha256": "095f36269e52f90b720c8920b3991b472ea8826333957e390638ab31428cf96c",
+      "url": "https://raw.githubusercontent.com/bytecodealliance/componentize-py/c0949b19d464f5d70bc1051195a3ae0e6a012df9/build.rs"
+    },
+    "componentize-py/runtime/src/lib.rs": {
+      "bytes": 70993,
+      "sha256": "5cf3f0561aa1063ac8475fec88dc2233df9953ea9f0bc73f178c5c669b2ad86b",
+      "url": "https://raw.githubusercontent.com/bytecodealliance/componentize-py/c0949b19d464f5d70bc1051195a3ae0e6a012df9/runtime/src/lib.rs"
+    },
+    "componentize-py/src/command.rs": {
+      "bytes": 22765,
+      "sha256": "888452c41a1582551766c5bc1ce094226d2e0d8b06e64b8b99dd0727e62cbc62",
+      "url": "https://raw.githubusercontent.com/bytecodealliance/componentize-py/c0949b19d464f5d70bc1051195a3ae0e6a012df9/src/command.rs"
+    },
+    "componentize-py/src/lib.rs": {
+      "bytes": 43334,
+      "sha256": "8c22edf4ed2a7eb0b1e7497c96c433aa9eb7fff1ac7d105b7b1fd240e0f0cfcc",
+      "url": "https://raw.githubusercontent.com/bytecodealliance/componentize-py/c0949b19d464f5d70bc1051195a3ae0e6a012df9/src/lib.rs"
+    },
+    "componentize-py/src/prelink.rs": {
+      "bytes": 11254,
+      "sha256": "e02e424d67ef38600a514ea476ab07689aa12c2c8f3dfd1afc42edef35cc46c7",
+      "url": "https://raw.githubusercontent.com/bytecodealliance/componentize-py/c0949b19d464f5d70bc1051195a3ae0e6a012df9/src/prelink.rs"
+    },
+    "componentize-py/src/python.rs": {
+      "bytes": 4706,
+      "sha256": "f4bc765df8f853a84e37cde7f04c8e75b37617a52a8235ae626477feabca987c",
+      "url": "https://raw.githubusercontent.com/bytecodealliance/componentize-py/c0949b19d464f5d70bc1051195a3ae0e6a012df9/src/python.rs"
+    },
+    "componentize-py/src/summary.rs": {
+      "bytes": 100834,
+      "sha256": "1a5ad23f5ab74818e4a05cc9dd35d8a4616be441cd73bcc0b846fae1832a5260",
+      "url": "https://raw.githubusercontent.com/bytecodealliance/componentize-py/c0949b19d464f5d70bc1051195a3ae0e6a012df9/src/summary.rs"
+    },
+    "cpython/Lib/random.py": {
+      "bytes": 37259,
+      "sha256": "62dca8cdae7482513b99bb093ff038afd5131954e7eb78166d673a772cee871c",
+      "url": "https://raw.githubusercontent.com/dicej/cpython/0e13686da8bb881b059d35e23c32bcd2e6440099/Lib/random.py"
+    },
+    "cpython/Makefile.pre.in": {
+      "bytes": 131351,
+      "sha256": "f3a1350ddbf951719fa779fa8c506dba6521fbb0b6d3b1d46f1bf5dd3418f269",
+      "url": "https://raw.githubusercontent.com/dicej/cpython/0e13686da8bb881b059d35e23c32bcd2e6440099/Makefile.pre.in"
+    },
+    "cpython/Modules/_randommodule.c": {
+      "bytes": 19061,
+      "sha256": "1e4e48b0831d77fe1f8cfe20ff9c4236f417e158f6e686d3bb685f78d62f0f6d",
+      "url": "https://raw.githubusercontent.com/dicej/cpython/0e13686da8bb881b059d35e23c32bcd2e6440099/Modules/_randommodule.c"
+    },
+    "cpython/Python/bootstrap_hash.c": {
+      "bytes": 18372,
+      "sha256": "9edb0fc9f584f3f4534c58fca3d9a113a1ea00e7801de71c2cc5dad1c8f8cd05",
+      "url": "https://raw.githubusercontent.com/dicej/cpython/0e13686da8bb881b059d35e23c32bcd2e6440099/Python/bootstrap_hash.c"
+    },
+    "wasmtime-wasi/src/p2/filesystem.rs": {
+      "bytes": 15272,
+      "sha256": "f499e18b15a0c9930a5c19cf394bc59976b9c40782251505d6cf1d2bf4b07328",
+      "url": "https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/crates/wasi/src/p2/filesystem.rs"
+    }
+  },
+  "validation_tools": {
+    "wac": "0.12.0",
+    "wac_aarch64_apple_darwin_sha256": "891af0e6d591481daed3a7c52a3dc20fd34cc326e6e955d4c8fd85c4b1835e3d",
+    "wasmtime-python": "48.0.0"
+  }
+}

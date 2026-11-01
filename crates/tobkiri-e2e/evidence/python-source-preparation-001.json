@@ -1,0 +1,124 @@
+{
+  "capacity_build_hold": true,
+  "checks": {
+    "native_sdk_tests": 27,
+    "original_primary_file_count": 12,
+    "patch_checker_tests": 8,
+    "patched_or_added_file_count": 16,
+    "python_stdlib_syntax_files": 1,
+    "rust_source_syntax_files": 9
+  },
+  "commands": [
+    {
+      "argv": [
+        "python3",
+        "-B",
+        "tools/python-producer/apply_patch.py",
+        "--source",
+        "../.work/evidence/python-producer-patch-inputs-001"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/python-producer/tests",
+        "-v"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "sdk/python/tests",
+        "-v"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "deferred_gates": [
+    "FS-01",
+    "DECL-01",
+    "ACT-01",
+    "RNG-01",
+    "CACHE-01",
+    "SEED-01",
+    "SEED-02",
+    "RNG-02",
+    "LIFE-01",
+    "BUILD-01",
+    "BUILD-02",
+    "REPRO-01",
+    "ABI-01",
+    "PARITY-01"
+  ],
+  "disk_free_bytes_after": 6433943552,
+  "execution_exclusions": {
+    "c_source_compiled": false,
+    "cargo_invoked": false,
+    "compiler_built": false,
+    "guest_executed": false,
+    "legacy_91_replayed": false,
+    "live_model_retake": false,
+    "pi_retake": false,
+    "reproducibility_proved": false,
+    "runtime_guard_proved": false
+  },
+  "format": "tobkiri.python-source-preparation/1",
+  "frozen_legacy_policy_sha256": "4474513154ced3474da4db2d6bf90ece67c0da9406ee3ac392660d7bd9ddcf51",
+  "legacy_inventory": {
+    "claim": "all inventory parity remains todo",
+    "sha256": "a179b9bb62bb1ee234412daecb5839bdfb55e959afa9d6489e4b733ba87e1590",
+    "status_counts": {
+      "todo": 837
+    }
+  },
+  "observed_source_identity": true,
+  "scope": "source patch application/syntax and native SDK tests only",
+  "sdk34_sharing": "not yet approved",
+  "source_after": {
+    "sdk/python/PATCH_PLAN.md": "fc210b7c164d0897e8cfda8b1c4eb554d4d3191e5ca5ba1b2b5c224c486469ca",
+    "tools/python-producer/GAPS.md": "6b96afa43098c2d38e98e6d22c17207bc69e20a080d5e3289e528ad28675a78a",
+    "tools/python-producer/README.md": "56bf3102e6ad92b59a7e0851d736b356a1aabe920bdf843886f8945ac4ab9fc2",
+    "tools/python-producer/TEST_PLAN.md": "b01ef0a27188478bd3fb969fcc63a350d13fa60b7cf12f593ee7646facec9807",
+    "tools/python-producer/apply_patch.py": "6e8e79d2cbf9a1a2136ab638755dcbb27d31b2eb72cd5c491917c94eb8f46728",
+    "tools/python-producer/make_patch.py": "4ba4c00c9fc83911d6a3359eab0e6188654dc170cd62635d7c37ec813c5faa08",
+    "tools/python-producer/overlay/componentize-py/runtime/src/tobkiri_preinit.rs": "b1e67f6413eebf8c661d383a382047176329f0b757b95457e2d9fde4c4a4b032",
+    "tools/python-producer/overlay/componentize-py/src/tobkiri_preinit.rs": "76a829222c912972a4aaae6dd2b4ae0350cab2d5f6bed7797f6cb0a34734e0c8",
+    "tools/python-producer/overlay/cpython/Include/internal/pycore_tobkiri_entropy.h": "8c1bc0f8d970c5219e60b450e5e9234294cd85bb76e95942a2413c0c2874c6eb",
+    "tools/python-producer/overlay/cpython/Python/tobkiri_entropy.c": "129c6873c2adf57f994598be247d67a300f0d14c473855ccac10289c5f832ee8",
+    "tools/python-producer/patches/componentize-py-0001.patch": "68512717723ba8abf8197cdb2fd8e29cc0b23798c70af3055d3865f2da0b227f",
+    "tools/python-producer/patches/cpython-0001.patch": "ab56b8321470e91b5f22440a5265665f4a29316ab9301d5e64f87e3e297dab35",
+    "tools/python-producer/pins.json": "a58436e13618452d3b0278a8608bc21e6923be8e5a2389a8303f95f42ce48fb5",
+    "tools/python-producer/source-delta.json": "0a3c7a1563ef97e191e57cd824754386aafe0562adb66b5a6ccf11b87fe7f61b",
+    "tools/python-producer/tests/test_source_patch.py": "ed59219b8686f3c4a5ae9b999ca9d88a381c0d900a0c1d95abe16dba62d2f48a"
+  },
+  "source_before": {
+    "sdk/python/PATCH_PLAN.md": "fc210b7c164d0897e8cfda8b1c4eb554d4d3191e5ca5ba1b2b5c224c486469ca",
+    "tools/python-producer/GAPS.md": "6b96afa43098c2d38e98e6d22c17207bc69e20a080d5e3289e528ad28675a78a",
+    "tools/python-producer/README.md": "56bf3102e6ad92b59a7e0851d736b356a1aabe920bdf843886f8945ac4ab9fc2",
+    "tools/python-producer/TEST_PLAN.md": "b01ef0a27188478bd3fb969fcc63a350d13fa60b7cf12f593ee7646facec9807",
+    "tools/python-producer/apply_patch.py": "6e8e79d2cbf9a1a2136ab638755dcbb27d31b2eb72cd5c491917c94eb8f46728",
+    "tools/python-producer/make_patch.py": "4ba4c00c9fc83911d6a3359eab0e6188654dc170cd62635d7c37ec813c5faa08",
+    "tools/python-producer/overlay/componentize-py/runtime/src/tobkiri_preinit.rs": "b1e67f6413eebf8c661d383a382047176329f0b757b95457e2d9fde4c4a4b032",
+    "tools/python-producer/overlay/componentize-py/src/tobkiri_preinit.rs": "76a829222c912972a4aaae6dd2b4ae0350cab2d5f6bed7797f6cb0a34734e0c8",
+    "tools/python-producer/overlay/cpython/Include/internal/pycore_tobkiri_entropy.h": "8c1bc0f8d970c5219e60b450e5e9234294cd85bb76e95942a2413c0c2874c6eb",
+    "tools/python-producer/overlay/cpython/Python/tobkiri_entropy.c": "129c6873c2adf57f994598be247d67a300f0d14c473855ccac10289c5f832ee8",
+    "tools/python-producer/patches/componentize-py-0001.patch": "68512717723ba8abf8197cdb2fd8e29cc0b23798c70af3055d3865f2da0b227f",
+    "tools/python-producer/patches/cpython-0001.patch": "ab56b8321470e91b5f22440a5265665f4a29316ab9301d5e64f87e3e297dab35",
+    "tools/python-producer/pins.json": "a58436e13618452d3b0278a8608bc21e6923be8e5a2389a8303f95f42ce48fb5",
+    "tools/python-producer/source-delta.json": "0a3c7a1563ef97e191e57cd824754386aafe0562adb66b5a6ccf11b87fe7f61b",
+    "tools/python-producer/tests/test_source_patch.py": "ed59219b8686f3c4a5ae9b999ca9d88a381c0d900a0c1d95abe16dba62d2f48a"
+  },
+  "timestamp_utc": "2026-10-15T01:07:46.306446+00:00"
+}

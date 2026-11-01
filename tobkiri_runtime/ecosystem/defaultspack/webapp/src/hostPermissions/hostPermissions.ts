@@ -1,6 +1,6 @@
 import type { AuthorityRequest } from "../lib/api";
 import type { DesktopHostPermissionStatus, DesktopPermissionStatus, DesktopSystemInfo, HostPermissionId } from "../lib/desktopSystemInfo";
-import hostPermissionRegistry from "./hostPermissionRegistry.json";
+import hostPermissionRegistry from "./hostPermissionRegistry.json" with { type: "json" };
 
 export type HostPermissionBucket = "approved" | "pending" | "missing" | "denied" | "blocked" | "unsupported" | "unknown";
 export type HostPermissionRisk = "low" | "medium" | "high" | "critical" | string;

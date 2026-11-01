@@ -1,0 +1,71 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:acc7e0a832020baaa533cde967d4adb4ecaf44af0e41ad46623a39bd8ffc6469",
+      "kind": "asset",
+      "path": "catalog/acceptance_rubric.yaml"
+    },
+    {
+      "digest": "sha256:a718b4057b10b36a46b5f307036179255bd46385ea87d037bf47e7e64ddcf9ae",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    }
+  ],
+  "contracts": [],
+  "functions": [],
+  "integrity": {
+    "artifact_set_digest": "sha256:abcb0c1344c8d52c2574e5d030453b3a14b07db68aa296ff1a9235658f225669",
+    "contract_catalog_digest": "sha256:2d1f6ca4d89308bb287ed32bebe0607865a94c6268d1ae53014e13cb5d3a5671",
+    "source_identity": "sha256:e9ec387606be0d381be02c533ae1dbdf5b664323b7638fd826bb0ba1e6502d59"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi:ecosystem/rumi_agentic_qa_pack",
+      "rumi_agentic_qa_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [],
+  "pack": {
+    "artifact_digest": "sha256:abcb0c1344c8d52c2574e5d030453b3a14b07db68aa296ff1a9235658f225669",
+    "display_name": "Rumi Agentic QA Pack",
+    "id": "rumi_agentic_qa_pack",
+    "kind": "application",
+    "version": "0.1.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:e9ec387606be0d381be02c533ae1dbdf5b664323b7638fd826bb0ba1e6502d59",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:e9ec387606be0d381be02c533ae1dbdf5b664323b7638fd826bb0ba1e6502d59",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_agentic_qa_pack"
+  },
+  "provider_catalog": [],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [],
+    "contract_dependencies": [],
+    "execution_boundary": "declarative_only",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

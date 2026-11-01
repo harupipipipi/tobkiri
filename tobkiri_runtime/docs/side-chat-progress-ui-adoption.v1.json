@@ -1,0 +1,41 @@
+{
+  "version": "tobkiri.side-chat-progress-ui-adoption.v1",
+  "stacked_base": "5d7d8fe0e",
+  "scope": "source and local mocked headless fixture only; installed/native/model execution unverified",
+  "descriptor": "ecosystem/tobkiri_side_chat_pack/frontend/contributions/side-chat.json",
+  "definition": "view.conversation_thread.progress",
+  "public_wire": "docs/pack-live-streaming-adoption.v1.json#/public_progress_read",
+  "target": {
+    "contribution_id": "pack.rumi_turn_runtime_pack.rumi_turn_runtime_pack.turn-progress-resource",
+    "contract_id": "tobkiri.resource.turn.progress.v1",
+    "version": "1.0.0",
+    "operation_id": "rumi_turn_runtime_pack.turn-progress-resource"
+  },
+  "input": {
+    "conversation_id": "exact retained canonical child",
+    "turn_id": "retained send ticket",
+    "cursor": "last accepted contiguous cursor, initially zero"
+  },
+  "first_page_witness": [
+    "Protected current Side Chat source is available under the same view capture.",
+    "Protected owner Turn matches retained turn_id/conversation_id and supplies the accepted input_digest.",
+    "Current canonical user head/revision, user metadata.turn_id and exact draft match the retained ticket.",
+    "First protected progress page matches that turn/conversation/parent/revision/input digest.",
+    "Broker request_id and ai_input_digest come only from that authenticated first page; durable saved-turn request_id is not substituted."
+  ],
+  "pinned_fields": [
+    "turn_id", "conversation_id", "parent_id", "conversation_revision",
+    "input_digest", "request_id", "ai_input_digest", "expires_at_ms"
+  ],
+  "capture_deadlines": "Host-issued deadlines on the view, source and exact progress target can only shorten the original retained deadline during refresh. Page TTL is immutable and never renewed.",
+  "display": "Append only actual text_delta in escaped plain text. All thinking_delta text is suppressed because this wire has no approved safe-summary provenance. Finish/provider_complete/canonical_turn_status do not provide a saved receipt or clear drafts.",
+  "canonical_completion": "Existing owner receipt and canonical child history must agree before clearing the matching draft/ticket. Explicit reconcile remains available without automatic AI retry.",
+  "unavailable": "Missing exact selected target, Host pure/read evidence, protected witness, current capture or valid unexpired page keeps live progress unavailable and preserves canonical recovery state.",
+  "integration_owner": "ROOT adopts the optional Application frontend signed resource edge, finite input/output schemas, read effect/capability, Profile selection and canonical artifacts. This proposal cannot grant authority or readiness.",
+  "validation": {
+    "unit": "src/host/threadProgressState.test.ts",
+    "grammar": "tests/test_thread_progress_view_contract.py",
+    "headless_mock": "e2e/side-chat-progress.config.ts",
+    "external_traffic": "blocked by the fixture; no provider, key, Docker or Native PackVM execution"
+  }
+}

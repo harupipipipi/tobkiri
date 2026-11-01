@@ -1,0 +1,80 @@
+{
+  "format": "tobkiri.python-toolchain-lock/1",
+  "source": "https://pypi.org/",
+  "tools": {
+    "componentize-py": {
+      "version": "0.25.0",
+      "wheels": {
+        "cp39-abi3-manylinux_2_28_aarch64": {
+          "filename": "componentize_py-0.25.0-cp39-abi3-manylinux_2_28_aarch64.whl",
+          "sha256": "7a3c378af2fe9026c07899e9b92a94725346355185c247d28570a359f05373cb"
+        },
+        "cp39-abi3-manylinux_2_28_x86_64": {
+          "filename": "componentize_py-0.25.0-cp39-abi3-manylinux_2_28_x86_64.whl",
+          "sha256": "d40832bc690ef244f219ae7e2d428c7b8754d23e011db99892205642a243ecda"
+        },
+        "cp39-abi3-macosx_10_12_x86_64": {
+          "filename": "componentize_py-0.25.0-cp39-abi3-macosx_10_12_x86_64.whl",
+          "sha256": "9940df0d2408ec7e9c1a7d3645fd7c25926759867b28709b89fca007fc879d0e"
+        },
+        "cp39-abi3-macosx_11_0_arm64": {
+          "filename": "componentize_py-0.25.0-cp39-abi3-macosx_11_0_arm64.whl",
+          "sha256": "cc085b1b92213aa2f0747e80c144a7e80922430c0d4caa787045bf6ae58935d1"
+        },
+        "cp39-abi3-win_amd64": {
+          "filename": "componentize_py-0.25.0-cp39-abi3-win_amd64.whl",
+          "sha256": "a5f0c0ec5c451d3d9f238aa41b00ab91af1f340054b7f5e3e8b0c04d5c77e10c"
+        }
+      }
+    },
+    "wasmtime": {
+      "version": "48.0.0",
+      "wheels": {
+        "py3-none-android_26_arm64_v8a": {
+          "filename": "wasmtime-48.0.0-py3-none-android_26_arm64_v8a.whl",
+          "sha256": "a55abf132fe238b843a963c68cd1a30d8f686c1bc75d8fbf042d8b7a1d51ee36"
+        },
+        "py3-none-android_26_x86_64": {
+          "filename": "wasmtime-48.0.0-py3-none-android_26_x86_64.whl",
+          "sha256": "d8e94276ff6c0c5ce73ee16ccbacb00b3512a4b3a664749380705d81ee06a23c"
+        },
+        "py3-none-manylinux1_x86_64": {
+          "filename": "wasmtime-48.0.0-py3-none-manylinux1_x86_64.whl",
+          "sha256": "58544d539053dff7bd4cf30c40d7a540862d683013c0dfa6ba46a063f5b682f7"
+        },
+        "py3-none-manylinux2014_aarch64": {
+          "filename": "wasmtime-48.0.0-py3-none-manylinux2014_aarch64.whl",
+          "sha256": "26fce3613fefbe29a28e9d659dca3326e800593858e5758cad086eb802b3b766"
+        },
+        "py3-none-macosx_10_13_x86_64": {
+          "filename": "wasmtime-48.0.0-py3-none-macosx_10_13_x86_64.whl",
+          "sha256": "50e1ea81a3bec537d00e076722dfdc48978a56ea24619d8153aa1f75b11796b9"
+        },
+        "py3-none-macosx_11_0_arm64": {
+          "filename": "wasmtime-48.0.0-py3-none-macosx_11_0_arm64.whl",
+          "sha256": "ea69889a3c51702e9da5f5f441027ca934f7758f8926a4ed167b0d6877f092e8"
+        },
+        "py3-none-musllinux_1_2_aarch64": {
+          "filename": "wasmtime-48.0.0-py3-none-musllinux_1_2_aarch64.whl",
+          "sha256": "77f6b75db20be065e205e7af814d4e4f06784c3a00eb346e8c76148ecb4afe5a"
+        },
+        "py3-none-musllinux_1_2_x86_64": {
+          "filename": "wasmtime-48.0.0-py3-none-musllinux_1_2_x86_64.whl",
+          "sha256": "62b241c8d5dfb59ff8af1ccaa5351f0ab7aba8cc872f7d80e0e3c95d54c13562"
+        },
+        "py3-none-win_amd64": {
+          "filename": "wasmtime-48.0.0-py3-none-win_amd64.whl",
+          "sha256": "21fa500e70f3819a8c0539c3f0be6b3b81ec3c630bb90c47dba4d8a2c1d4c698"
+        },
+        "py3-none-win_arm64": {
+          "filename": "wasmtime-48.0.0-py3-none-win_arm64.whl",
+          "sha256": "09cd5e14df80a3a8d447428a548583181c568ea2e617419d23600deff21d4b82"
+        },
+        "py3-none-any": {
+          "filename": "wasmtime-48.0.0-py3-none-any.whl",
+          "sha256": "49c9ee43e9cf59ad7453ac65dce0cc4b885837904dd3cfd45faafe930defe14a"
+        }
+      }
+    }
+  }
+}

@@ -22,7 +22,13 @@ def test_content_delta_maps_to_legacy_delta():
         data={"delta": "hello"},
     )
 
-    assert to_legacy_chat_stream_event(event) == {"type": "delta", "delta": "hello"}
+    assert to_legacy_chat_stream_event(event) == {
+        "type": "delta",
+        "delta": "hello",
+        "run_id": "run_1",
+        "conversation_id": "conv_1",
+        "seq": 1,
+    }
 
 
 def test_browser_state_snapshot_maps_to_legacy_event():
@@ -44,6 +50,9 @@ def test_browser_state_snapshot_maps_to_legacy_event():
     assert legacy["tool_call_id"] == "call_1"
     assert legacy["state_revision"] == 7
     assert legacy["snapshot"] == {"active_window": {"title": "Example"}}
+    assert legacy["run_id"] == "run_1"
+    assert legacy["conversation_id"] == "conv_1"
+    assert legacy["seq"] == 7
 
 
 def test_tool_display_fields_survive_legacy_mapping():

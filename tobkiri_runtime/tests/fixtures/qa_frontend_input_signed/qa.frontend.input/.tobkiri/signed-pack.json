@@ -1,0 +1,61 @@
+{
+  "api_version": "tobkiri.signed-pack/v1",
+  "authority_granted": false,
+  "build_provenance": {},
+  "contract_versions": {},
+  "core_compatibility": ">=0",
+  "created_at": "2026-09-28T10:51:17.936924+00:00",
+  "files": [
+    {
+      "mode": 420,
+      "path": "README.md",
+      "sha256": "0b0d1988e2ad0e7380119c898eee9e10dbbc8da8731053b6b8f73e62f6c4c2d2",
+      "size": 706
+    },
+    {
+      "mode": 420,
+      "path": "artifact-index.v4.json",
+      "sha256": "b20d069c6f129f894027b130fd4236dcd45d47dbbc8d4c94f2a2cea1fc1851e0",
+      "size": 1485
+    },
+    {
+      "mode": 420,
+      "path": "contracts.v4.json",
+      "sha256": "0d426a80ecfa140bdfa4805844ae17bcb63af4c5803e0bc8c72328c30f8b3a82",
+      "size": 216
+    },
+    {
+      "mode": 420,
+      "path": "executables.v4.json",
+      "sha256": "1b228ae3eb4daefcd12a19d8ad3d914f1c58b39a880ed0d7aea0d160de51f3c3",
+      "size": 307
+    },
+    {
+      "mode": 420,
+      "path": "frontend/contributions/input.json",
+      "sha256": "cbcfba34dd16e88e4777b513cbcf547381e8311aeb78fd91f095a9a0bbe385be",
+      "size": 495
+    },
+    {
+      "mode": 420,
+      "path": "pack.v4.json",
+      "sha256": "2b52956c0eee4ca18a02e47ee09d84f259896191095f713916893d3ff751457c",
+      "size": 2560
+    },
+    {
+      "mode": 420,
+      "path": "scaffold-source.v1.json",
+      "sha256": "54d947269d4c6d02e0dc28ffc531c7017a40de64b0940f15f0066cd9c26a8a82",
+      "size": 223
+    }
+  ],
+  "pack_id": "qa.frontend.input",
+  "publisher_id": "publisher.qa.frontend",
+  "requested_capabilities": [],
+  "signature": {
+    "algorithm": "Ed25519",
+    "key_id": "654364fbced9736557df3a62899dedd3",
+    "value": "P2suvvI-I4ceGXscfy57EmLGh3QuMHKgoUtuCQLlJpKoWT9xFC32BIdfc9aniAiENYZpXb0RQdWNI2F76oYfBA"
+  },
+  "version": "0.1.0"
+}

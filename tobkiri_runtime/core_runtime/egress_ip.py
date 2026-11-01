@@ -57,13 +57,13 @@ def is_internal_ip(ip_str: str) -> Tuple[bool, str]:
         if isinstance(ip, ipaddress.IPv4Address):
             if ip in BLOCKED_IPV4_ADDRESSES:
                 return True, f"IP {ip} is a broadcast address"
-            for net in BLOCKED_IPV4_NETWORKS:
-                if ip in net:
-                    return True, f"IP {ip} is in blocked range {net}"
+            for ipv4_network in BLOCKED_IPV4_NETWORKS:
+                if ip in ipv4_network:
+                    return True, f"IP {ip} is in blocked range {ipv4_network}"
         else:
-            for net in BLOCKED_IPV6_NETWORKS:
-                if ip in net:
-                    return True, f"IP {ip} is in blocked range {net}"
+            for ipv6_network in BLOCKED_IPV6_NETWORKS:
+                if ip in ipv6_network:
+                    return True, f"IP {ip} is in blocked range {ipv6_network}"
 
         return False, ""
     except ValueError as e:
@@ -92,7 +92,7 @@ def resolve_and_check_ip(hostname: str) -> Tuple[bool, str, List[str]]:
 
     try:
         results = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
-        resolved_ips = list(set(r[4][0] for r in results))
+        resolved_ips = sorted({str(result[4][0]) for result in results})
 
         if not resolved_ips:
             return True, f"DNS resolution failed: no addresses for {hostname}", []

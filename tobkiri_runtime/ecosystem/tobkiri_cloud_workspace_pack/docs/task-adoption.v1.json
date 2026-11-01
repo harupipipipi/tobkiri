@@ -1,0 +1,100 @@
+{
+  "version": "tobkiri.workspace-task-adoption-proposal.v1",
+  "activation": "optional-source-proposal-only",
+  "effect_kind": "workspace_task",
+  "required_root_tcb": "PR1506 plus workspace_task_effect checked coordinator/schema checkpoint",
+  "shared_protocols": [
+    "tobkiri_protocol/workspace_capsule_v1.py",
+    "tobkiri_protocol/workspace_task_v1.py"
+  ],
+  "edges": [
+    {
+      "consumer_function_id": "tobkiri_cloud_workspace_pack.manage",
+      "provider_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "contract_id": "tobkiri.service.interactive-effect.v1",
+      "operation_ids": [
+        "interactive_effect.manage"
+      ],
+      "cardinality": "one",
+      "reviewed_authority": "ROOT must bind exact current artifacts/Function principals; source proposal grants no authority"
+    },
+    {
+      "consumer_function_id": "tobkiri_cloud_workspace_pack.manage",
+      "provider_function_id": "rumi_coding_sandbox_service_pack.task-resource",
+      "contract_id": "tobkiri.resource.workspace.container-task.v1",
+      "operation_ids": [
+        "rumi_coding_sandbox_service_pack.task-resource"
+      ],
+      "cardinality": "one",
+      "reviewed_authority": "ROOT must bind exact current artifacts/Function principals; source proposal grants no authority"
+    },
+    {
+      "consumer_function_id": "tobkiri_cloud_workspace_pack.resource",
+      "provider_function_id": "rumi_coding_sandbox_service_pack.task-resource",
+      "contract_id": "tobkiri.resource.workspace.container-task.v1",
+      "operation_ids": [
+        "rumi_coding_sandbox_service_pack.task-resource"
+      ],
+      "cardinality": "one",
+      "reviewed_authority": "ROOT must bind exact current artifacts/Function principals; source proposal grants no authority"
+    },
+    {
+      "consumer_function_id": "rumi_coding_sandbox_service_pack.task-prepare",
+      "provider_function_id": "tobkiri_cloud_workspace_pack.resource",
+      "contract_id": "tobkiri.resource.cloud.workspace.v1",
+      "operation_ids": [
+        "tobkiri_cloud_workspace_pack.workspace-resource"
+      ],
+      "cardinality": "one",
+      "reviewed_authority": "ROOT must bind exact current artifacts/Function principals; source proposal grants no authority"
+    },
+    {
+      "consumer_function_id": "rumi_coding_sandbox_service_pack.task-execute",
+      "provider_function_id": "tobkiri_cloud_workspace_pack.resource",
+      "contract_id": "tobkiri.resource.cloud.workspace.v1",
+      "operation_ids": [
+        "tobkiri_cloud_workspace_pack.workspace-resource"
+      ],
+      "cardinality": "one",
+      "reviewed_authority": "ROOT must bind exact current artifacts/Function principals; source proposal grants no authority"
+    },
+    {
+      "consumer_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "provider_function_id": "rumi_coding_sandbox_service_pack.task-prepare",
+      "contract_id": "tobkiri.action.workspace.container.v1",
+      "operation_ids": [
+        "rumi_coding_sandbox_service_pack.task-prepare"
+      ],
+      "cardinality": "one",
+      "reviewed_authority": "ROOT must bind exact current artifacts/Function principals; source proposal grants no authority"
+    },
+    {
+      "consumer_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "provider_function_id": "rumi_coding_sandbox_service_pack.task-execute",
+      "contract_id": "tobkiri.action.workspace.container.v1",
+      "operation_ids": [
+        "rumi_coding_sandbox_service_pack.task-execute"
+      ],
+      "cardinality": "one",
+      "reviewed_authority": "ROOT must bind exact current artifacts/Function principals; source proposal grants no authority"
+    }
+  ],
+  "declared_data": [
+    {
+      "consumer_pack_id": "rumi_coding_sandbox_service_pack",
+      "source_pack_id": "tobkiri_cloud_workspace_pack",
+      "path_prefix": "container/",
+      "required_files": [
+        "container/task-recipe.v1.json"
+      ]
+    }
+  ],
+  "failure_policy": [
+    "No cached digest-pinned image: unavailable; no pull",
+    "No Cloud task source/recipe selection: captured provider unavailable",
+    "No workspace_task approved signed coordinator route: unavailable; no legacy receipt fallback",
+    "Expired task plan/current Profile Plan or writer fence: reject; no container run",
+    "Daemon cleanup not proven: ambiguous; no output capsule",
+    "Concurrent checkpoint change: CAS reject; retain isolated result"
+  ]
+}

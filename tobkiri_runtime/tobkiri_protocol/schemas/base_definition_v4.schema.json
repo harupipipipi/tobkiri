@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/base-definition.v4.schema.json",
+  "title": "Tobkiri BaseDefinition v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["base_api_version", "pack_id", "artifact_digest", "definition_revision", "capability_foundation", "policy_foundation", "dependencies", "shell_requirements", "state_owners", "provenance"],
+  "properties": {
+    "base_api_version": {"const": "io.tobkiri.base.v4"},
+    "pack_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+    "artifact_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "definition_revision": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "capability_foundation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provided_contracts", "required_contracts"],
+      "properties": {
+        "provided_contracts": {"type": "array", "uniqueItems": true, "items": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/contractId"}},
+        "required_contracts": {"type": "array", "uniqueItems": true, "items": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/contractId"}}
+      }
+    },
+    "policy_foundation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy_digest", "network_default", "host_effect_default"],
+      "properties": {
+        "policy_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+        "network_default": {"enum": ["deny", "lease_only"]},
+        "host_effect_default": {"enum": ["deny", "lease_only"]}
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pack_id", "artifact_digest"],
+        "properties": {
+          "pack_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+          "artifact_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"}
+        }
+      }
+    },
+    "shell_requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "presentation_families", "required_capabilities"],
+      "properties": {
+        "mode": {"enum": ["interactive", "headless"]},
+        "presentation_families": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["graphical", "terminal", "headless"]}},
+        "required_capabilities": {"type": "array", "uniqueItems": true, "items": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"}}
+      }
+    },
+    "state_owners": {"type": "array", "uniqueItems": true, "items": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"}},
+    "provenance": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/provenance"}
+  }
+}

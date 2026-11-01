@@ -1,0 +1,93 @@
+package tobkiri-ui:harness-native@1.0.0;
+
+/// Original method ABI for the whole native harness.
+interface runtime {
+  /// Closed transport failures. method-raised requires the exact supported
+  /// original exception representation; a returned exception is a normal value.
+  enum error-code {
+    not-initialized,
+    already-initialized,
+    invalid-frame,
+    invalid-reference,
+    unsupported-value,
+    method-raised,
+  }
+
+  /// `method-raised` retains the actual original exception under a scoped ref.
+  /// Its empty message is undisclosed text. Class/args/cause/context stay in the
+  /// original Store; cross-boundary restoration is not established by the ref.
+  /// Dedicated field disclosure/restoration must be proven before parity use.
+  /// Do not translate native accounting and panic failures into method errors.
+  record error {
+    code: error-code,
+    message: string,
+    details: string,
+  }
+
+  /// Initialize the invocation-local typed graph transport.
+  init: func(payload: string) -> result<_, error>;
+
+  /// Call the existing Profile port getters. Results retain the original opaque
+  /// native-path reference; getter success proves no final parent or resource IO.
+  bundled-profile-root: func(payload: string) -> result<string, error>;
+  host-resource-root: func(payload: string) -> result<string, error>;
+
+  /// Payload is a closed frame containing scope, version, and typed graph refs.
+  /// It is not a flat JSON namespace: omitted arguments and explicit nulls stay
+  /// distinct, and string results preserve graph refs and aliases.
+  /// Original Python signatures and bodies are assembled verbatim from source.
+  /// Normal values (including `denied` exception objects) stay distinct from
+  /// transport errors in the result channel.
+  bootstrap-profile-id: func(payload: string) -> result<string, error>;
+  setup-profile-preview: func(payload: string) -> result<string, error>;
+  confirmation: func(payload: string) -> result<string, error>;
+  bootstrap-confirmation: func(payload: string) -> result<string, error>;
+  profile-confirmation: func(payload: string) -> result<string, error>;
+  setup-listing: func(payload: string) -> result<string, error>;
+  setup-preview: func(payload: string) -> result<string, error>;
+  setup-activation-decision: func(payload: string) -> result<string, error>;
+  setup-activation-success: func(payload: string) -> result<string, error>;
+  setup-activation-failure: func(payload: string) -> result<string, error>;
+  retired-setup-response: func(payload: string) -> result<string, error>;
+  load-catalog: func(payload: string) -> result<string, error>;
+  catalog-with-packs: func(payload: string) -> result<string, error>;
+  catalog-with-profiles: func(payload: string) -> result<string, error>;
+  resolve-profile: func(payload: string) -> result<string, error>;
+  dynamic-profile-edges: func(payload: string) -> result<string, error>;
+  denied: func(payload: string) -> result<string, error>;
+}
+
+/// Local transport helpers for the nativeKit-only DATA world. Mutations require
+/// issued references with matching scope and actual type, and are limited to
+/// permitted DATA. They cannot change or create nativeRoot, binding, owner, or
+/// grant state; input frames cannot synthesize arbitrary classes.
+interface transport {
+  use runtime.{error};
+
+  /// Import per-store values while retaining original classes, collections,
+  /// and graph aliases.
+  import-values: func(payload: string) -> result<string, error>;
+  /// Describe a retained value; descriptions are not re-importable values.
+  describe-value: func(payload: string) -> result<string, error>;
+  /// Shallow-copy the original mapping while retaining nested aliases.
+  copy-data-dictionary: func(payload: string) -> result<string, error>;
+  /// Release only this transport's holds, not the referenced source objects.
+  release-values: func(payload: string) -> result<_, error>;
+  /// Append only to the referenced permitted DATA collection of its actual type.
+  append-data-item: func(payload: string) -> result<_, error>;
+  /// Set only a referenced permitted DATA item; no authority is created.
+  set-data-item: func(payload: string) -> result<_, error>;
+  /// Expose the actual native input proxy already retained by trusted
+  /// bootstrap after init. The payload contains only its format and scope;
+  /// this does not select paths, rediscover the proxy, perform I/O, or grant
+  /// permissions. Repeated calls refer to the same proxy. `owned` contains
+  /// only transport holds newly issued by this call; after release, the same
+  /// proxy may receive a new ID. IDs are transport references, not authority.
+  native-inputs: func(payload: string) -> result<string, error>;
+}
+
+world harness-native {
+  import tobkiri-native:harness/bindings@1.0.0;
+  export runtime;
+  export transport;
+}

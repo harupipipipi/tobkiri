@@ -5,7 +5,7 @@ export type ExtraLocale = "zh" | "ko" | "es" | "fr" | "de";
 
 export const frontendLocaleOverrides = {
   zh: {
-    "promptStudio.title": "提示词工作室",
+    "promptStudio.title": "AI Input Studio",
     "promptStudio.back": "返回聊天",
     "promptStudio.refresh": "刷新",
     "promptStudio.searchPlaceholder": "搜索提示词",
@@ -123,7 +123,7 @@ export const frontendLocaleOverrides = {
     "promptStudio.verdict.safetyPassive": "提示词文本保持为被动文本：它没有授予权限、附加工具、调用工具或改变聊天状态。",
   },
   ko: {
-    "promptStudio.title": "프롬프트 스튜디오",
+    "promptStudio.title": "AI Input Studio",
     "promptStudio.back": "채팅으로 돌아가기",
     "promptStudio.refresh": "새로고침",
     "promptStudio.searchPlaceholder": "프롬프트 검색",
@@ -241,7 +241,7 @@ export const frontendLocaleOverrides = {
     "promptStudio.verdict.safetyPassive": "프롬프트 텍스트는 수동 텍스트로 유지됩니다. 권한 부여, 도구 첨부, 도구 호출, 채팅 상태 변경을 하지 않았습니다.",
   },
   es: {
-    "promptStudio.title": "Estudio de prompts",
+    "promptStudio.title": "AI Input Studio",
     "promptStudio.back": "Volver al chat",
     "promptStudio.refresh": "Actualizar",
     "promptStudio.searchPlaceholder": "Buscar prompts",
@@ -359,7 +359,7 @@ export const frontendLocaleOverrides = {
     "promptStudio.verdict.safetyPassive": "El texto del prompt permaneció pasivo: no concedió permisos, adjuntó herramientas, llamó herramientas ni mutó el estado del chat.",
   },
   fr: {
-    "promptStudio.title": "Studio de prompts",
+    "promptStudio.title": "AI Input Studio",
     "promptStudio.back": "Retour au chat",
     "promptStudio.refresh": "Actualiser",
     "promptStudio.searchPlaceholder": "Rechercher des prompts",
@@ -477,7 +477,7 @@ export const frontendLocaleOverrides = {
     "promptStudio.verdict.safetyPassive": "Le texte du prompt est resté passif : il n'a accordé aucune permission, attaché aucun outil, appelé aucun outil ni modifié l'état du chat.",
   },
   de: {
-    "promptStudio.title": "Prompt Studio",
+    "promptStudio.title": "AI Input Studio",
     "promptStudio.back": "Zurück zum Chat",
     "promptStudio.refresh": "Aktualisieren",
     "promptStudio.searchPlaceholder": "Prompts suchen",

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/architecture-inventory.v1.schema.json",
+  "title": "Tobkiri architecture inventory v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "scanner_version", "repository", "inputs", "records", "findings"],
+  "properties": {
+    "schema": {"const": "io.tobkiri.architecture.inventory.v1"},
+    "scanner_version": {"type": "string", "minLength": 1},
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "tree_digest"],
+      "properties": {
+        "commit": {"type": "string", "pattern": "^(working-tree|[0-9a-f]{40})$"},
+        "tree_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["included_paths", "excluded_paths", "normative_documents", "external_inputs"],
+      "properties": {
+        "included_paths": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "excluded_paths": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "normative_documents": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["path", "digest", "normative"], "properties": {"path": {"type": "string"}, "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "normative": {"const": true}}}},
+        "external_inputs": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["name", "tracked", "normative"], "properties": {"name": {"type": "string"}, "tracked": {"const": false}, "normative": {"const": false}, "reason": {"type": "string"}}}}
+      }
+    },
+    "records": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifacts", "manifests", "execution_routes", "state_owners"],
+      "properties": {
+        "artifacts": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["path", "kind", "digest", "identity"], "properties": {"path": {"type": "string"}, "kind": {"type": "string"}, "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "identity": {"type": "string"}, "version": {"type": ["string", "null"]}, "legacy": {"type": "boolean"}}}},
+        "manifests": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["path", "pack_id", "version", "manifest_digest", "legacy"], "properties": {"path": {"type": "string"}, "pack_id": {"type": "string"}, "version": {"type": ["string", "null"]}, "manifest_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "legacy": {"type": "boolean"}}}},
+        "execution_routes": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["path", "rule_id", "line", "evidence_digest"], "properties": {"path": {"type": "string"}, "rule_id": {"type": "string"}, "line": {"type": "integer", "minimum": 1}, "evidence_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}}}},
+        "state_owners": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["path", "owner", "namespace", "schema_revision"], "properties": {"path": {"type": "string"}, "owner": {"type": "string"}, "namespace": {"type": "string"}, "schema_revision": {"type": "string"}}}}
+      }
+    },
+    "findings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v4", "legacy", "duplicates", "fallbacks"],
+      "properties": {
+        "v4": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["rule_id", "path", "line", "message", "evidence"], "properties": {"rule_id": {"type": "string"}, "path": {"type": "string"}, "line": {"type": "integer", "minimum": 1}, "message": {"type": "string"}, "evidence": {"type": "string"}}}},
+        "legacy": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["rule_id", "path", "line", "message", "evidence"], "properties": {"rule_id": {"type": "string"}, "path": {"type": "string"}, "line": {"type": "integer", "minimum": 1}, "message": {"type": "string"}, "evidence": {"type": "string"}}}},
+        "duplicates": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["rule_id", "path", "line", "message", "evidence"], "properties": {"rule_id": {"type": "string"}, "path": {"type": "string"}, "line": {"type": "integer", "minimum": 1}, "message": {"type": "string"}, "evidence": {"type": "string"}}}},
+        "fallbacks": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["rule_id", "path", "line", "message", "evidence"], "properties": {"rule_id": {"type": "string"}, "path": {"type": "string"}, "line": {"type": "integer", "minimum": 1}, "message": {"type": "string"}, "evidence": {"type": "string"}}}}
+      }
+    }
+  }
+}

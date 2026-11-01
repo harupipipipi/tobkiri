@@ -1,9 +1,6 @@
 import json
-import os
-import sys
 from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import error, ok
 from domain.context_engine.compact_packet import build_compact_packet

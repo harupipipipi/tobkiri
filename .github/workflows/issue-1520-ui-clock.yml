@@ -1,0 +1,223 @@
+name: Issue 1520 UI wall-clock producer candidate
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-ui-clock.yml'
+      - 'tools/python313-producer/ui_clock_source.py'
+      - 'tools/python313-producer/build_cli.py'
+      - 'tools/python313-producer/tests/test_ui_clock_source.py'
+      - 'tools/python313-producer/tests/fixtures/stubwasi-c0949b19.rs.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: issue-1520-ui-clock-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ui-clock-producer:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Test source acquisition and staging boundaries
+        run: python3 -B -m unittest discover -s tools/python313-producer/tests
+      - name: Fetch exactly the recorded four source archives
+        run: >-
+          python3 -B tools/python313-producer/fetch_sources.py
+          --destination "$RUNNER_TEMP/python313-archives"
+      - name: Verify complete archives and stage the exact reviewed patch
+        run: >-
+          python3 -B tools/python313-producer/stage_sources.py
+          --archives "$RUNNER_TEMP/python313-archives"
+          --cpython-archive "$RUNNER_TEMP/python313-archives/Python-3.13.16.tar.xz"
+          --destination "$RUNNER_TEMP/python313-source"
+      - name: Restore and verify the original registry dependency closure
+        run: >-
+          python3 -B tools/python313-producer/fetch_registry.py
+          --source "$RUNNER_TEMP/python313-source"
+          --destination "$RUNNER_TEMP/python313-registry"
+      - name: Restore verified Rust compiler and host and WASI target inputs
+        run: >-
+          python3 -B tools/python313-producer/fetch_toolchain.py
+          --destination "$RUNNER_TEMP/python313-rust"
+      - name: Restore the pinned Git dependency and its exact testsuite gitlink
+        run: >-
+          python3 -B tools/python313-producer/fetch_git.py
+          --destination "$RUNNER_TEMP/python313-git"
+      - name: Install the Linux build isolation tool
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+      - name: Rebuild native Python from the exact recorded staged recipe
+        run: >-
+          python3 -B tools/python313-producer/build_native.py
+          --source "$RUNNER_TEMP/python313-source"
+          --destination "$RUNNER_TEMP/python313-native"
+      - name: Restore the pinned SDK and rebuild original WASI libraries
+        run: >-
+          python3 -B tools/python313-producer/build_wasi.py
+          --source "$RUNNER_TEMP/python313-source"
+          --native "$RUNNER_TEMP/python313-native"
+          --destination "$RUNNER_TEMP/python313-wasi"
+      - name: Prime Cargo without networking and rebuild original Wasm runtimes
+        run: >-
+          python3 -B tools/python313-producer/build_runtimes.py
+          --source "$RUNNER_TEMP/python313-source"
+          --registry "$RUNNER_TEMP/python313-registry"
+          --rust "$RUNNER_TEMP/python313-rust"
+          --git "$RUNNER_TEMP/python313-git"
+          --wasi "$RUNNER_TEMP/python313-wasi"
+          --destination "$RUNNER_TEMP/python313-runtimes"
+      - name: Build the verified packager and package thirteen real assets
+        run: >-
+          python3 -B tools/python313-producer/build_assets.py
+          --source "$RUNNER_TEMP/python313-source"
+          --registry "$RUNNER_TEMP/python313-registry"
+          --rust "$RUNNER_TEMP/python313-rust"
+          --git "$RUNNER_TEMP/python313-git"
+          --wasi "$RUNNER_TEMP/python313-wasi"
+          --runtimes "$RUNNER_TEMP/python313-runtimes"
+          --destination "$RUNNER_TEMP/python313-assets"
+      - name: Rebuild the original publishing CLI with the verified real assets
+        run: >-
+          python3 -B tools/python313-producer/build_cli.py
+          --source "$RUNNER_TEMP/python313-source"
+          --registry "$RUNNER_TEMP/python313-registry"
+          --rust "$RUNNER_TEMP/python313-rust"
+          --git "$RUNNER_TEMP/python313-git"
+          --wasi "$RUNNER_TEMP/python313-wasi"
+          --runtimes "$RUNNER_TEMP/python313-runtimes"
+          --assets "$RUNNER_TEMP/python313-assets"
+          --destination "$RUNNER_TEMP/python313-cli"
+          --allow-ui-wall-clock
+      - name: Retain the separate clock producer without replacing historical artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python313-ui-wall-clock-producer-cli
+          path: |
+            ${{ runner.temp }}/python313-cli/work/target/release/componentize-py
+            ${{ runner.temp }}/python313-cli/cli-build.json
+            ${{ runner.temp }}/python313-cli/cli-source.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retain fresh producer source and build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-wall-clock-producer-evidence
+          path: |
+            ${{ runner.temp }}/python313-source/stage-manifest.json
+            ${{ runner.temp }}/python313-native/native-build.json
+            ${{ runner.temp }}/python313-wasi/wasi-build.json
+            ${{ runner.temp }}/python313-runtimes/runtimes-build.json
+            ${{ runner.temp }}/python313-assets/assets-build.json
+            ${{ runner.temp }}/python313-cli/cli-build.json
+            ${{ runner.temp }}/python313-cli/cli-source.json
+            ${{ runner.temp }}/python313-cli/ui-clock-cli.sh
+            ${{ runner.temp }}/python313-cli/producer-cli/
+            ${{ runner.temp }}/python313-cli/cli-startup/
+          if-no-files-found: warn
+          retention-days: 14
+
+  schema-comparison:
+    needs: ui-clock-producer
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      RPDS_RUN: '40182231971'
+      RPDS_HEAD: 53163ed815c62c4853bbed3d8a082c0764e3084f
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Check the original source and clock translation envelopes
+        run: python3 -B -m unittest discover -s tools/python313-producer/tests -p 'test_schema_*.py'
+      - name: Install the unchanged build isolation tool
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+      - uses: actions/download-artifact@v4
+        with:
+          name: python313-ui-wall-clock-producer-cli
+          path: ${{ runner.temp }}/python313-cli
+      - name: Restore executable mode of the same-run verified producer
+        run: chmod 755 "$RUNNER_TEMP/python313-cli/work/target/release/componentize-py"
+      - name: Authenticate successful genuine rpds predecessor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RPDS_RUN" > "$RUNNER_TEMP/schema-rpds-run.json"
+          python3 -B - "$RUNNER_TEMP/schema-rpds-run.json" "$RPDS_HEAD" <<'PY'
+          import json, sys
+          from pathlib import Path
+          value = json.loads(Path(sys.argv[1]).read_bytes())
+          if value['head_sha'] != sys.argv[2] or value['status'] != 'completed' or value['conclusion'] != 'success':
+              raise SystemExit('genuine rpds predecessor identity/outcome differs')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui-rpds-inactive-component
+          repository: ${{ github.repository }}
+          run-id: ${{ env.RPDS_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/schema-rpds
+      - name: Restore complete original schema source and pinned validation tools
+        run: |
+          python3 -B tools/python313-producer/fetch_schema.py --destination "$RUNNER_TEMP/schema-inputs"
+          python3 -B tools/python313-producer/fetch_schema_stdlib.py --destination "$RUNNER_TEMP/schema-stdlib"
+          python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/schema-validation"
+      - name: Compare original schema behavior with the narrow real-clock candidate
+        run: >-
+          python3 -B tools/python313-producer/build_schema.py
+          --inputs "$RUNNER_TEMP/schema-inputs"
+          --producer "$RUNNER_TEMP/python313-cli"
+          --rpds "$RUNNER_TEMP/schema-rpds"
+          --validation "$RUNNER_TEMP/schema-validation"
+          --stdlib "$RUNNER_TEMP/schema-stdlib"
+          --destination "$RUNNER_TEMP/schema-candidate"
+          --allow-ui-wall-clock
+      - name: Retain candidate derivation, clock and denied-IO evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-wall-clock-candidate-evidence
+          path: |
+            ${{ runner.temp }}/python313-cli/cli-build.json
+            ${{ runner.temp }}/python313-cli/cli-source.json
+            ${{ runner.temp }}/schema-inputs/schema-inputs.json
+            ${{ runner.temp }}/schema-stdlib/stdlib-inputs.json
+            ${{ runner.temp }}/schema-candidate/schema-build.json
+            ${{ runner.temp }}/schema-candidate/native/
+            ${{ runner.temp }}/schema-candidate/wasm/
+            ${{ runner.temp }}/schema-candidate/work/native.json
+            ${{ runner.temp }}/schema-candidate/work/wasm-observation.json
+            ${{ runner.temp }}/schema-candidate/work/schema.json
+            ${{ runner.temp }}/schema-candidate/work/stage-inputs.json
+            ${{ runner.temp }}/schema-candidate/work/ui-clock-probes.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Retain inactive clock candidate only on actual comparison success
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-wall-clock-inactive-component
+          path: |
+            ${{ runner.temp }}/schema-candidate/work/stage/outer.wasm
+            ${{ runner.temp }}/schema-candidate/work/schema.json
+            ${{ runner.temp }}/schema-candidate/schema-build.json
+          if-no-files-found: error
+          retention-days: 14

@@ -17,6 +17,7 @@ pytestmark = pytest.mark.contract
 ROOT = Path(__file__).resolve().parent.parent
 PACK_ID = "rumi_agentic_qa_pack"
 PACK_DIR = ROOT / "ecosystem" / PACK_ID
+V4_AUTHORITY_ARTIFACTS = {"pack.v4.json", "contracts.v4.json", "artifact-index.v4.json"}
 SETUP_PACK_JSON = ROOT / "ecosystem" / "setup_pack" / PACK_ID / "pack.json"
 
 
@@ -53,7 +54,8 @@ def test_pack_required_assets_and_metadata() -> None:
     assert ecosystem["pack_identity"] == f"rumi:ecosystem/{PACK_ID}"
     assert "depends_on" not in ecosystem
     assert "optional_integrations" not in ecosystem
-    assert ecosystem["dependencies"] == {"defaultspack": ">=2.0.0"}
+    assert ecosystem["dependencies"] == {}
+    assert all((PACK_DIR / name).is_file() for name in V4_AUTHORITY_ARTIFACTS)
     assert set(ecosystem["vocabulary"]["types"]) >= {"qa", "catalog", "policy", "checklist", "ledger", "template"}
     assert ecosystem["metadata"]["required_secrets"] == []
     assert ecosystem["metadata"]["network_policy"] == "none_by_default"
@@ -118,18 +120,18 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     assert candidate.overlap_policy["model_scoring"] == "handoff_to_rumi_model_evals_pack"
     assert candidate.overlap_policy["qa_routing_matrix"] == "owned_by_rumi_agentic_qa_pack"
     assert candidate.overlap_policy["acceptance_rubric"] == "owned_by_rumi_agentic_qa_pack"
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert "acceptance and triage contract pack" in candidate.defaultspack_promotion["reason"]
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert "acceptance and triage contract pack" in candidate.base_pack_promotion["reason"]
     assert {
         "no_executable_runtime",
         "qa_contract_only",
         "requires_external_owner_for_browser_replay",
         "requires_external_owner_for_model_scoring",
-    } <= set(candidate.defaultspack_promotion["promotion_blockers"])
+    } <= set(candidate.base_pack_promotion["promotion_blockers"])
     assert {
         "stable_replay_integration_surface",
         "observability_evidence_for_scenario_runs",
-    } <= set(candidate.defaultspack_promotion["promotion_evidence_required"])
+    } <= set(candidate.base_pack_promotion["promotion_evidence_required"])
     assert candidate.marketplace["id"].startswith("rumi.")
     assert candidate.marketplace["registry"] == "bundled"
     assert candidate.marketplace["publisher"] == "rumi-ai"

@@ -1,0 +1,65 @@
+{
+  "allowed_imports": [
+    "tobkiri:core/types@1.0.0",
+    "tobkiri:core/flow@1.0.0",
+    "tobkiri:core/clock@1.0.0",
+    "tobkiri:core/random@1.0.0",
+    "tobkiri:core/audit@1.0.0"
+  ],
+  "entrypoint": "app",
+  "format": "tobkiri.python-build/3",
+  "outer_exports": [
+    "tobkiri:core/lifecycle@1.0.0",
+    "local:ai-usage-cost-python/usage-cost@1.0.0"
+  ],
+  "sources": [
+    {
+      "destination": "app.py",
+      "sha256": "2226cb07e6b0b6af8a9f8285f0fbebc75b041c7472cf506c8284e5f10a5c204f",
+      "source": "python/app.py"
+    },
+    {
+      "destination": "inventory.json",
+      "sha256": "af5dd63cae7fc513d378d937d6777e0a0ae3992dd600a7e28bd465ae47be6d80",
+      "source": "python/inventory.json"
+    },
+    {
+      "destination": "ordered_json.py",
+      "sha256": "7df89c2e5275fdc795c13e0d70d6ec69f7f022aa968c58a3c1b1637e0eee2158",
+      "source": "python/ordered_json.py"
+    },
+    {
+      "destination": "ordered_json_v2.py",
+      "sha256": "495b613a37807cf10e831a2332b7f401148d3aaec29ec84c16a22f0a2c05d3a2",
+      "source": "python/ordered_json_v2.py"
+    },
+    {
+      "destination": "original_usage_cost.py",
+      "sha256": "b4eccb3633fba3341599ed017271c427a20b5628a8629fe7e4c626b6261b4954",
+      "source": "python/original_usage_cost.py"
+    },
+    {
+      "destination": "provenance.json",
+      "sha256": "4448fe4fec7acdaf1b77aa0a52703ad459eb26396ad769f86fa6db15f2900322",
+      "source": "python/provenance.json"
+    },
+    {
+      "destination": "usage_cost_adapter.py",
+      "sha256": "e300acb490bbc851971c7972be299ae7634949a350644f2b34087e6c382ea2b8",
+      "source": "python/usage_cost_adapter.py"
+    },
+    {
+      "destination": "wit/deps/tobkiri-core/core.wit",
+      "sha256": "f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "source": "wit/deps/tobkiri-core/core.wit"
+    },
+    {
+      "destination": "wit/pack.wit",
+      "sha256": "196a11e594cc85d0213a6ad6e5d62e3e5b8921e78e24a75fef647acd28d59e50",
+      "source": "wit/pack.wit"
+    }
+  ],
+  "stub_wasi": true,
+  "wit": "wit/pack.wit",
+  "world": "pack"
+}

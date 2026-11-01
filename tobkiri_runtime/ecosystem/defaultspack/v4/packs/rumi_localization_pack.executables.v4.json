@@ -1,0 +1,8 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "rumi_localization_pack",
+  "source_identity": "sha256:161866d73b8f00d568a6a8c3efa3aaf0a62eb6b3e1082d754bbdaea20ced41d8",
+  "variants": [],
+  "materialization_catalog_digest": "sha256:e8c01ebed4fe7b59c9dc707c427dc7c27998c5087f67b20fa1090fdcf39aa7c0",
+  "catalog_digest": "sha256:7048954efc08cd72bdc5295f13f67bc2ca1eacebe895c3cfd32ec7ed49255f2b"
+}

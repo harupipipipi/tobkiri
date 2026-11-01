@@ -1,0 +1,79 @@
+{
+  "id": "chat_send_message",
+  "category": "tool",
+  "version": "1",
+  "display_name": "Send Message to Tobkiri Chats",
+  "description": "Send exact content to approved Tobkiri chat recipients.",
+  "enabled": true,
+  "config": {
+    "name": "chat_send_message",
+    "summary": "Send exact content to approved Tobkiri chat recipients.",
+    "tags": [
+      "chat",
+      "group",
+      "message"
+    ],
+    "ui": {
+      "group_id": "chat/messages",
+      "group_label": "Chat",
+      "group_icon": "message",
+      "drop_capabilities": [
+        "composer.toggle_chip"
+      ],
+      "widget_kind": "tool_toggle",
+      "settings_fields": []
+    },
+    "tool_category": "chat_message",
+    "action_type": "send",
+    "risk": "high",
+    "approval_policy": "ask",
+    "capability_grants": [
+      "service.mutate"
+    ],
+    "write_action": true,
+    "requires_approval": true,
+    "schema": {
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "target_kind": {
+            "enum": [
+              "chat",
+              "group"
+            ]
+          },
+          "target_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16384
+          },
+          "delivery": {
+            "type": "string",
+            "enum": [
+              "steer",
+              "interrupt"
+            ],
+            "default": "steer"
+          }
+        },
+        "required": [
+          "target_kind",
+          "target_id",
+          "content"
+        ]
+      }
+    },
+    "execution": {
+      "type": "global_contract",
+      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "provider_instance_id": "rumi_default_tools_pack.chat-message-tool",
+      "operation": "rumi_default_tools_pack.chat-message-operation"
+    }
+  }
+}

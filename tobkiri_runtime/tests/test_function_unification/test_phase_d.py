@@ -1,101 +1,40 @@
-"""test_phase_d.py - Phase D regression tests"""
-import ast, sys, unittest
-from pathlib import Path
-from unittest.mock import MagicMock
+"""Physical retirement and fail-closed tests for the removed v3 authority."""
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-_CR = _REPO_ROOT / "core_runtime"
+from __future__ import annotations
 
-class TestFileDeletion(unittest.TestCase):
-    def test_handler_registry_deleted(self):
-        self.assertFalse((_CR / "capability_handler_registry.py").exists())
-    def test_handler_registry_not_importable(self):
-        with self.assertRaises((ImportError, ModuleNotFoundError)):
-            from core_runtime.capability_handler_registry import CapabilityHandlerRegistry
-    def test_builtin_handlers_deleted(self):
-        self.assertFalse((_CR / "builtin_capability_handlers").exists())
-    def test_docker_handlers_deleted(self):
-        self.assertFalse((_CR / "core_pack" / "core_docker_capability" / "share" / "capability_handlers").exists())
+from tests.legacy_authority_contracts import (
+    assert_legacy_service_fails_closed,
+    assert_profile_resolver_requires_authority_snapshot,
+    assert_retired_module_absent,
+)
 
-class TestSourceCleanup(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        with open(_CR / "capability_executor.py", encoding="utf-8") as f: cls.src = f.read()
-        with open(_CR / "function_registry.py", encoding="utf-8") as f: cls.fr_src = f.read()
-    def test_no_legacy_methods(self):
-        for n in ast.walk(ast.parse(self.src)):
-            if isinstance(n, ast.FunctionDef) and n.name == "_legacy_execute":
-                self.fail(f"Legacy method: {n.name}")
-    def test_no_handler_to_manifest_adapter_executor(self):
-        self.assertNotIn("handler_to_manifest_adapter", self.src)
-    def test_no_handler_to_manifest_adapter_registry(self):
-        self.assertIn("handler_to_manifest_adapter", self.fr_src)
-    def test_no_capability_handler_registry_import(self):
-        self.assertNotIn("capability_handler_registry", self.src)
-    def test_no_register_builtin(self):
-        self.assertNotIn("_register_builtin_handlers", self.src)
-    def test_no_strict_legacy(self):
-        self.assertNotIn("RUMI_STRICT_LEGACY", self.src)
-    def test_no_handler_registry_attr(self):
-        self.assertIn("_handler_registry", self.src)
-    def test_unified_execute_exists(self):
-        self.assertIn("def _unified_execute", self.src)
-    def test_compute_sha256_reexport_exists(self):
-        tree = ast.parse(self.src)
-        imports_compute = any(
-            isinstance(n, ast.ImportFrom)
-            and any(alias.name == "compute_file_sha256" for alias in n.names)
-            and (
-                n.module == "core_runtime.crypto_utils"
-                or (n.level == 1 and n.module == "crypto_utils")
-            )
-            for n in ast.walk(tree)
-        )
-        defines_compute = any(
-            isinstance(n, ast.FunctionDef) and n.name == "compute_file_sha256"
-            for n in ast.walk(tree)
-        )
-        self.assertTrue(imports_compute)
-        self.assertFalse(defines_compute)
-    def test_manifest_registry_alias(self):
-        self.assertIn("ManifestRegistry = FunctionRegistry", self.fr_src)
 
-class TestBehavior(unittest.TestCase):
-    def test_unknown_permission_handler_not_found(self):
-        try:
-            sys.path.insert(0, str(_REPO_ROOT))
-            from core_runtime.capability_executor import CapabilityExecutor
-            ex = CapabilityExecutor(); ex._initialized = True
-            ex._function_registry = MagicMock(); ex._function_registry.resolve_by_alias.return_value = None
-            r = ex.execute("p", {"permission_id": "x.y", "args": {}})
-            self.assertFalse(r.success); self.assertEqual(r.error_type, "handler_not_found")
-        except ImportError: self.skipTest("import failed")
-        finally:
-            if str(_REPO_ROOT) in sys.path: sys.path.remove(str(_REPO_ROOT))
-    def test_function_call_no_registry(self):
-        try:
-            sys.path.insert(0, str(_REPO_ROOT))
-            from core_runtime.capability_executor import CapabilityExecutor
-            ex = CapabilityExecutor(); ex._initialized = True; ex._function_registry = None
-            r = ex.execute("p", {"type": "function.call", "qualified_name": "a:b", "args": {}})
-            self.assertFalse(r.success); self.assertEqual(r.error_type, "function_registry_unavailable")
-        except ImportError: self.skipTest("import failed")
-        finally:
-            if str(_REPO_ROOT) in sys.path: sys.path.remove(str(_REPO_ROOT))
-    def test_resolve_by_alias_called(self):
-        try:
-            sys.path.insert(0, str(_REPO_ROOT))
-            from core_runtime.capability_executor import CapabilityExecutor
-            ex = CapabilityExecutor(); ex._initialized = True
-            m = MagicMock(); e = MagicMock(); e.vocab_aliases = ["t.p"]; e.qualified_name = "p:f"
-            e.pack_id = "core_t"; e.main_py_path = None; e.grant_config = None
-            e.calling_convention = None; e.entrypoint = "main.py:run"; e.function_dir = "/tmp/x"; e.is_builtin = False
-            m.resolve_by_alias.return_value = e
-            ex._function_registry = m; ex._trust_store = MagicMock(); ex._grant_manager = MagicMock()
-            ex.execute("p", {"permission_id": "t.p", "args": {}})
-            m.resolve_by_alias.assert_called_once_with("t.p")
-        except ImportError: self.skipTest("import failed")
-        finally:
-            if str(_REPO_ROOT) in sys.path: sys.path.remove(str(_REPO_ROOT))
+RETIRED = (
+    "core_runtime.capability_executor",
+    "core_runtime.function_registry",
+    "core_runtime.interface_registry",
+    "core_runtime.kernel",
+    "core_runtime.kernel_core",
+    "core_runtime.kernel_handlers_system",
+    "core_runtime.permission_manager",
+    "core_runtime.component_lifecycle",
+    "core_runtime.ecosystem_nodes",
+)
 
-if __name__ == "__main__": unittest.main()
+
+def test_all_pre_v4_authority_modules_are_physically_absent() -> None:
+    for module_name in RETIRED:
+        assert_retired_module_absent(module_name)
+
+
+def test_legacy_authority_service_is_not_a_fallback() -> None:
+    assert_legacy_service_fails_closed()
+
+
+def test_profile_resolver_replaces_legacy_manifest_registry() -> None:
+    assert_profile_resolver_requires_authority_snapshot()
+
+
+def test_v4_migration_does_not_reintroduce_legacy_alias_modules() -> None:
+    assert_retired_module_absent("domain.function_runtime.bridge")
+    assert_retired_module_absent("domain.pack_architecture")

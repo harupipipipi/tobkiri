@@ -26,7 +26,10 @@ class GenericConnectionAdapter:
         credential_bundle: CredentialBundle,
         secret_material: dict[str, Any],
     ) -> dict[str, Any]:
-        credentials = secret_material.get("credentials") if isinstance(secret_material.get("credentials"), dict) else {}
+        raw_credentials = secret_material.get("credentials")
+        credentials: dict[str, Any] = (
+            raw_credentials if isinstance(raw_credentials, dict) else {}
+        )
         metadata = dict(credential_bundle.token_metadata)
         scopes = credential_bundle.scopes or _normalize_scopes(metadata.get("scope") or metadata.get("scopes") or credentials.get("scope"))
         expires_at = credential_bundle.expires_at or str(metadata.get("expires_at") or "").strip()

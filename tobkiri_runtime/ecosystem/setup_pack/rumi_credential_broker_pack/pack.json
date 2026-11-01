@@ -1,0 +1,18 @@
+{
+  "pack_id": "rumi_credential_broker_pack",
+  "display_name": "Rumi Credential Broker Pack",
+  "description": "Encrypted caller-, provider-, scope-, and expiry-bound opaque credential handles.",
+  "target_pack_id": "rumi_credential_broker_pack",
+  "version": "1.0.0",
+  "recommended": true,
+  "risk_level": "high",
+  "supports_all_ok": false,
+  "depends_on": [],
+  "required_permissions": ["credential.resolve", "credential.manage", "credential.migrate", "credential.status.read"],
+  "conflicts_with": [],
+  "compatibility": {"python": ">=3.10", "platforms": ["macos", "linux", "windows"]},
+  "marketplace": {"id": "rumi.credential_broker", "registry": "bundled", "publisher": "rumi-ai", "status": "verified", "category": "security", "channel": "experimental"},
+  "signing": {"mode": "repository_reviewed", "verified": true},
+  "security_notes": ["Secret material is encrypted at rest.", "Management requires approval.", "Status and diagnostics are redacted."]
+}
+

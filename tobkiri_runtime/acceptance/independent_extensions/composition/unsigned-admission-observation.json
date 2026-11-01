@@ -1,0 +1,40 @@
+{
+  "schema": "tobkiri.independent-extension.public-denial-observation.v1",
+  "documented_public_api": "core_runtime.external_pack_catalog_v4.admit_signed_external_pack",
+  "rows": [
+    {
+      "source_pack": "cli_presentation/acceptance.cli.presentation",
+      "source_file_hashes": {
+        "README.md": "0d6c0c642fba9fe103798f9cde35600b2137b855a077c1dab86482f09505ddf5",
+        "artifact-index.v4.json": "d5935f58eff7e4626ea18514af38ae4b00b66cb87d8b89e3565e9cfc3d5ea4de",
+        "contracts.v4.json": "d81024768d055315ae40acde36aba208923b5405ac41cade8112013c9e1b64ae",
+        "executables.v4.json": "c501f69809fea7a6a09f9991cc29a23307ff1fb87830a68c73bb120c31eea154",
+        "pack.v4.json": "995054336c4466d8e82afed8be3ab98c2908d882d9efedc4fe2c31f1c3cf7291",
+        "scaffold-source.v1.json": "d798797e859f99626911e42ccd06e6c73155cfa5736bae04af65859acdf38cc3"
+      },
+      "outcome": "denied",
+      "exception_type": "ExternalPackCatalogDenied",
+      "reason": "external Pack policy transaction is unsafe",
+      "source_unchanged": true
+    },
+    {
+      "source_pack": "temporal_context/acceptance.temporal.context",
+      "source_file_hashes": {
+        "README.md": "72282db53fb1eeb255de51d6ed9009a966a7b723d0a4c0badc6ab5154815e0a8",
+        "artifact-index.v4.json": "0f3180c9cc6bee5caa3265567f5265654361d70fdb93d98615fac96fb40b0c67",
+        "contracts.v4.json": "7ac4e76c5082cdda68750eb056b5f2c30651d2d0604a734584d9d37d0ccbf03b",
+        "executables.v4.json": "32839b0fe8ee63d1cc5c73cddbedd65b8cd089cb5e136b39e6df3faf2cf4fe11",
+        "pack.v4.json": "bcdee67fcb111c7ac90b2aa7a43604dce45c7356a25d956cf4c72bad2b34422d",
+        "scaffold-source.v1.json": "2b991adeb7175b48480c9a75373b26c0f9bede308611a07c5a58714155883377"
+      },
+      "outcome": "denied",
+      "exception_type": "ExternalPackCatalogDenied",
+      "reason": "external Pack policy transaction is unsafe",
+      "source_unchanged": true
+    }
+  ],
+  "policy_supplied": false,
+  "native_consent_or_activation": false,
+  "production_execution": false,
+  "limits": "Actual denial is the absent/unsafe Host publisher-policy transaction, before signature/executable validation. This does not establish signature checking, executable capture or selection/composition acceptance."
+}

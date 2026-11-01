@@ -6,12 +6,9 @@ All operations use ChatStore's existing public API without modifying it.
 """
 
 import copy
-import sys
 import time
 import uuid
-import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
 from blocks.chat._prompt_helpers import build_text_from_content
 

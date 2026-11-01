@@ -1,0 +1,15 @@
+{
+  "artifacts": [
+    {
+      "path": "runtime/compiler.py",
+      "role": "runtime",
+      "sha256": "sha256:e9eb41aacc4a25834a846926bc35ac423dcb77a811a32215c3232951d0a74bc9"
+    },
+    {
+      "path": "runtime/topology.py",
+      "role": "runtime",
+      "sha256": "sha256:ff18e35ef82970ccea62c2296b8b9ffabd1a0a1819818216571d6ffb5fd70227"
+    }
+  ],
+  "schema_version": "rumi.artifact-manifest.v1"
+}

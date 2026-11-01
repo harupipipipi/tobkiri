@@ -1,0 +1,236 @@
+{
+  "contracts": {
+    "provides": [],
+    "requires": []
+  },
+  "entrypoints": [],
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": false,
+      "manifest": {
+        "components": {},
+        "connectivity": {
+          "provides": [],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Artifact application workflow and UI content without host authority.",
+        "display_name": "Rumi Artifact App Runtime Content",
+        "host_execution": false,
+        "load_order": [],
+        "metadata": {
+          "asset_index": {
+            "catalog": [
+              "catalog/handoff_matrix.yaml",
+              "catalog/quality_matrix.yaml",
+              "catalog/renderer_capability_catalog.yaml",
+              "catalog/taxonomy.yaml",
+              "catalog/workflows.yaml"
+            ],
+            "checklist": [
+              "checklists/review.checklist.yaml"
+            ],
+            "docs": [
+              "docs/README.md",
+              "docs/architecture.md",
+              "docs/interfaces.md",
+              "docs/operations.md",
+              "docs/security.md"
+            ],
+            "example": [
+              "examples/export_package.example.yaml",
+              "examples/mcp_approval_prompt.example.yaml",
+              "examples/sample_calculator_manifest.example.yaml",
+              "examples/version_rollback.example.yaml"
+            ],
+            "fixtures": [
+              "fixtures/contract_fixture.yaml",
+              "fixtures/negative_cases.yaml"
+            ],
+            "index": [
+              "asset_index.json",
+              "asset_index.yaml"
+            ],
+            "ledger": [
+              "ledgers/evidence_ledger.schema.yaml"
+            ],
+            "policy": [
+              "policies/handoff.policy.yaml",
+              "policies/safety.policy.yaml",
+              "policies/sandbox_renderer.policy.yaml",
+              "policies/tool_mcp_approval.policy.yaml"
+            ],
+            "presets": [
+              "presets/handoff_review.preset.yaml",
+              "presets/quality_gate.preset.yaml",
+              "presets/safe_default.preset.yaml"
+            ],
+            "profiles": [
+              "profiles/artifact_runtime_reviewer.profile.yaml"
+            ],
+            "prompts": [
+              "prompts/artifact_runtime_reviewer.system.md"
+            ],
+            "readme": [
+              "README.md"
+            ],
+            "schema": [
+              "schemas/artifact_app_error.schema.json",
+              "schemas/artifact_app_manifest.schema.json",
+              "schemas/artifact_state_snapshot.schema.json",
+              "schemas/export_package.schema.json",
+              "schemas/renderer_sandbox_contract.schema.json",
+              "schemas/runtime_error_boundary.schema.json",
+              "schemas/share_package.schema.json",
+              "schemas/storage_version_selector.schema.json",
+              "schemas/tool_approval_prompt.schema.json",
+              "schemas/version_record.schema.json"
+            ],
+            "template": [
+              "templates/handoff.template.md",
+              "templates/review_report.template.md",
+              "templates/ui_contract.template.md"
+            ]
+          },
+          "base_pack_promotion_eligible": false,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:e8ac7c313c1fd92ea14abd709107d7e33c22f10f8f8f6e9f5a00ef7e65dc2450",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:26b8f081f5ba81132a181b449b9a01982c5eb87059fc430c7b9df03353638edc"
+          },
+          "consumes_existing_sources_only": true,
+          "declarative_only": true,
+          "executable_code": false,
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "legacy_annotations": {
+            "runtime_dependency_aliases": [
+              "defaultspack"
+            ]
+          },
+          "network_policy": "none_by_default",
+          "non_owner_surfaces": [
+            "frontend design generation",
+            "file persistence",
+            "sandbox isolation runtime",
+            "MCP execution",
+            "API execution",
+            "media transforms",
+            "browser automation"
+          ],
+          "optional_integrations": [
+            {
+              "pack_id": "rumi_frontend_design_pack",
+              "reason": "Owns frontend design generation and UI review workflows for artifact runtime contracts."
+            },
+            {
+              "pack_id": "defaultspack",
+              "reason": "Owns artifact persistence, sandbox execution, MCP and API execution, share-link creation, and media/runtime delivery."
+            },
+            {
+              "pack_id": "rumi_default_tools_pack",
+              "reason": "Owns browser automation and operator-side inspection tools used around artifact apps."
+            }
+          ],
+          "output_effect": "draft_and_handoff_only",
+          "owner_surfaces": [
+            "artifact_app_manifest",
+            "sandbox_renderer_contract",
+            "artifact_state_snapshot",
+            "artifact_version_selector",
+            "tool_mcp_approval_prompt",
+            "runtime_error_boundary",
+            "share_export_manifest",
+            "artifact_runtime_ui_contract"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "required_secrets": [],
+          "runtime_type": "declarative_setup_pack"
+        },
+        "pack_id": "rumi_artifact_app_runtime_pack",
+        "pack_identity": "rumi:ecosystem/rumi_artifact_app_runtime_pack",
+        "provenance": {
+          "build_identity": "rumi_artifact_app_runtime_pack:1.0.0",
+          "content_hash": "sha256:90cd3bf8eb21fdd99c63359b5111631ff18ddb715d8b6864ba5a1a3e3bea0583",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [
+          "frontend/contributions/artifact-app-runtime.json"
+        ],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "catalog",
+            "schema",
+            "policy",
+            "checklist",
+            "ledger",
+            "template",
+            "fixture",
+            "profile",
+            "prompt",
+            "preset",
+            "example"
+          ]
+        }
+      },
+      "pack_id": "rumi_artifact_app_runtime_pack"
+    },
+    "rumi.product_content.boundary": {
+      "host_authority": false,
+      "host_imports": false,
+      "product": "artifact_app_runtime",
+      "profile_scoped": true
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_artifact_app_runtime_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:26b8f081f5ba81132a181b449b9a01982c5eb87059fc430c7b9df03353638edc"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.webapp.artifact_apps"
+    ],
+    "removal_wave": 10,
+    "rollback": "Remove the selected product pack projection; no host state is owned.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Artifact application workflow and UI content without host authority.",
+    "display_name": "Rumi Artifact App Runtime Content",
+    "id": "rumi.artifact_app_runtime",
+    "kind": "content",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [],
+  "provenance": {
+    "build_identity": "rumi_artifact_app_runtime_pack:1.0.0",
+    "content_hash": "sha256:90cd3bf8eb21fdd99c63359b5111631ff18ddb715d8b6864ba5a1a3e3bea0583",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [
+    {
+      "content_hash": "sha256:095f3b32b86ba30a7c3be6b9fad208ef31721027440250d6d536335916c29355",
+      "id": "frontend/contributions/artifact-app-runtime.json",
+      "kind": "ui.contribution"
+    }
+  ],
+  "storage": []
+}

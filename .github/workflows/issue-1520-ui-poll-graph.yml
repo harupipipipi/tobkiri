@@ -1,0 +1,115 @@
+name: Issue 1520 actual complete core module graph observations
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-ui-poll-graph.yml'
+      - 'tools/component-unbundle/**'
+      - 'tools/quality/component_module_inventory.py'
+      - 'tools/python313-producer/poll_graph_inputs.py'
+      - 'tools/python313-producer/poll-graph-inputs.json'
+      - 'tools/python313-producer/tests/test_graph_*.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: issue-1520-ui-poll-graph-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  actual-module-graph:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-target-graph
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          components: rustfmt
+      - name: Test index namespaces and tiny module coverage without executing guests
+        run: |
+          python3 -B -m unittest discover -s tools/python313-producer/tests -p 'test_graph_*.py'
+          python3 -B -m unittest discover -s tools/component-unbundle -p 'test_graph_*.py'
+          cargo fmt --manifest-path tools/component-unbundle/Cargo.toml -- --check
+          cargo test --locked --manifest-path tools/component-unbundle/Cargo.toml
+      - name: Load complete committed linked-component identities
+        id: inputs
+        run: |
+          python3 -B - <<'PY'
+          import os, sys
+          sys.path.insert(0, 'tools/python313-producer')
+          import poll_graph_inputs as graph
+          pins = graph.read_json(graph.PINS)
+          graph.validate(pins)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              for name in ('run', 'job', 'artifact'):
+                  print(f'{name}={pins[name]}', file=out)
+          PY
+      - name: Authenticate actual C predecessor run job and linked-component artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ steps.inputs.outputs.run }}
+          SOURCE_JOB: ${{ steps.inputs.outputs.job }}
+          SOURCE_ARTIFACT: ${{ steps.inputs.outputs.artifact }}
+        run: |
+          mkdir -m 700 "$RUNNER_TEMP/graph-auth"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" > "$RUNNER_TEMP/graph-auth/run.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$SOURCE_JOB" > "$RUNNER_TEMP/graph-auth/job.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT" > "$RUNNER_TEMP/graph-auth/artifact.json"
+          python3 -B - "$RUNNER_TEMP/graph-auth" <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'tools/python313-producer')
+          import poll_graph_inputs as graph
+          graph.authenticate(graph.read_json(graph.PINS), Path(sys.argv[1]))
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ steps.inputs.outputs.artifact }}
+          merge-multiple: true
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.inputs.outputs.run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/graph-bundle
+      - name: Rehash all 31 decoded inputs including every small linker library
+        run: |
+          python3 -B - "$RUNNER_TEMP/graph-bundle" <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'tools/python313-producer')
+          import poll_graph_inputs as graph
+          graph.verify_bundle(Path(sys.argv[1]), graph.read_json(graph.PINS))
+          PY
+      - name: Build the exact diagnostic parser with the existing locked dependencies
+        run: cargo build --locked --release --manifest-path tools/component-unbundle/Cargo.toml
+      - name: Record all final module namespaces and selected function metadata
+        run: >-
+          python3 -B tools/component-unbundle/graph_report.py
+          --bundle "$RUNNER_TEMP/graph-bundle"
+          --authentication "$RUNNER_TEMP/graph-auth"
+          --worker "$CARGO_TARGET_DIR/release/tobkiri-component-unbundle"
+          --destination "$RUNNER_TEMP/graph-observations"
+          --full-modules 3,10,12
+      - name: Keep read-only graph observations without compiled components
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-empty-poll-all-module-graph-evidence
+          path: |
+            ${{ runner.temp }}/graph-auth/
+            ${{ runner.temp }}/graph-observations/*.json
+            ${{ runner.temp }}/graph-observations/*.jsonl
+          if-no-files-found: warn
+          retention-days: 14

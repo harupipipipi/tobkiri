@@ -1,0 +1,123 @@
+{
+  "actual_checks": [
+    {
+      "changed_or_new_files": 23,
+      "command": "python3 -B tools/python-producer/make_patch.py --source ../.work/evidence/python-producer-patch-inputs-001",
+      "exit": 0
+    },
+    {
+      "command": "python3 -B tools/python-producer/check_source.py --source ../.work/evidence/python-producer-patch-inputs-001 --receipt ../.work/evidence/python-producer-source-check-002.json",
+      "exit": 0,
+      "python_ast_only_files": 7,
+      "rustfmt_syntax_only_files": 13,
+      "strict_apply_files": 23
+    },
+    {
+      "command": "python3 -B -m unittest discover -s tools/python-producer/tests -v",
+      "exit": 0,
+      "passed": 8,
+      "scope": "unified-diff engine boundaries, not captured FS/runtime tests"
+    },
+    {
+      "command": "python3 -B -m unittest discover -s sdk/python/tests -v",
+      "exit": 0,
+      "passed": 27,
+      "scope": "native stdlib SDK tests with generated/test doubles, not guest/backend proof"
+    }
+  ],
+  "capacity": {
+    "hard_floor_bytes": 5368709120,
+    "notes": "SDK34 reuse requires no additional SDK copy. Sequential single target avoids duplicate targets; build costs remain unmeasured and no lease or capacity release is inferred.",
+    "observed_free_bytes_before_receipt": 5882302464,
+    "preparation_ordinary_file_bytes": 298923,
+    "required_free_including_floor_GiB": [
+      13,
+      17
+    ],
+    "unmeasured_additional_build_reservation_GiB": [
+      8,
+      12
+    ]
+  },
+  "delta_path": "tools/python-producer/source-delta.json",
+  "format": "tobkiri.python-source-preparation/2",
+  "gates": {
+    "ACT-01": "no private Core activation/epoch bridge; public runtime requires Active and denies",
+    "BUILD-01": "pending full source/lock/tool/OS closure/flags pins; recipe status pending",
+    "BUILD-02": "original build.rs rejects; staging prototypes not connected or executed",
+    "FS-01": "unconditional reject; captured adapters uncompiled and unproved"
+  },
+  "not_executed": [
+    "Cargo/compiler build or typecheck",
+    "C compilation",
+    "native CPython/tool execution",
+    "patched original preinit",
+    "guest/runtime/lifecycle/RNG proof",
+    "stage package verification/install",
+    "new Pi or live1B retake",
+    "91-case parity"
+  ],
+  "patches": {
+    "patches/componentize-py-0001.patch": {
+      "bytes": 117565,
+      "sha256": "b94a8fe872788cdb4597b61085021e81d9bef1dc917afc99dd989ecf8affbf32"
+    },
+    "patches/cpython-0001.patch": {
+      "bytes": 18292,
+      "sha256": "f9370b89053d65d49949b84a011ec0df5c4a4a18b45f1c86973323eebba5e8bc"
+    },
+    "patches/wasmtime-wasi-0001.patch": {
+      "bytes": 392,
+      "sha256": "d8867a3004bb8665b3cc34af41dc24093cc5d84e25b9eddee2962f0ebc8496ce"
+    }
+  },
+  "pins_path": "tools/python-producer/pins.json",
+  "preserved": {
+    "legacy_expected_cases": 91,
+    "legacy_policy_sha256": "4474513154ced3474da4db2d6bf90ece67c0da9406ee3ac392660d7bd9ddcf51",
+    "migration_todo_rows": 837,
+    "old_M2_Pi_repro_receipts": "unchanged"
+  },
+  "sdk34": {
+    "entries": 18243,
+    "failed_attempt": "first inventory attempt rejected metadata size before output; aggregate-only rerun succeeded",
+    "full_inventory_omitted": "exceeds 3MiB private inventory budget; canonical aggregate and counts retained",
+    "full_metadata_bytes": 3782542,
+    "mode": "existing tree read/hash only; 1MiB buffers; no tool execution/copy/extract",
+    "ordinary_file_bytes": 595535658,
+    "selected_hashes_path": "tools/python-producer/sdk34-pins.json",
+    "sysroot_sha256": "bace9d3c060d5b4bb66fae320f8d06c2901879a07dc7f963d5e9b0c5096bc9cc",
+    "system_native_closure_verified": false,
+    "tree_sha256": "d1fd7fa0f954d59a14309bd23b29483ebfeecf551d8deebb2d280b730f919f6d"
+  },
+  "source_before_equals_after": true,
+  "source_check_receipt_sha256": "9c05724da75bf4e905e52cfcdbc74ef36fdc7c07c07ecabab8a41da7f32ccb7d",
+  "source_identity_scope": "all ordinary tools/python-producer files excluding __pycache__; canonical sorted compact JSON {relative_path:{bytes,sha256}}",
+  "source_identity_sha256": "124bc3e83799ea3629d8f2a7fed111d0df5b04ac2782054d8143ee3a59c829ed",
+  "specific_remaining_gaps": [
+    "captured filesystem full original preinit and deny/perturb/lifetime proof",
+    "WASI IO pollable subscription accounting bound",
+    "staging prototype parent-fd/no-follow reader, complete source file-set and streaming hashes, verifier import boundary",
+    "all C and Rust typecheck/compilation",
+    "raw C/GC/finalizer provenance and audited module/cache admission",
+    "private Core entropy activation/reseed/epoch/shutdown connection",
+    "two independent clean SDK34 inner/outer reproducibility and strict outer ABI/resource proof",
+    "unchanged 91 expected cases actual Rust replay"
+  ],
+  "status": "source-only checkpoint; frozen, uncompiled",
+  "validated_review": {
+    "rejected_findings": [
+      "B1 original WASI46 clock returns Duration, not SystemTime",
+      "B2 unsafe extern supported; original producer/runtime edition is 2024",
+      "B8 insecure_rng and insecure_seed are independent original WASI46 fields"
+    ],
+    "source_fixes_uncompiled": [
+      "B3 early no-plan API errors",
+      "B4 explicit audited stdlib preload before application import",
+      "B5 SystemRandom stateless reseed rejection",
+      "B6 null activation fill callback immediate failure",
+      "B7 invalidate build state/counters/private callbacks",
+      "guard original Python::attach and PyO3 entry bodies"
+    ]
+  }
+}

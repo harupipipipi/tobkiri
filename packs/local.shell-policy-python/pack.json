@@ -1,0 +1,107 @@
+{
+  "files": [
+    {
+      "path": "component.build.json",
+      "sha256": "sha256:2c22cf046406a92400eb764cbcc769a3af92eac113e06d1b06d55db8e55690d4",
+      "size": 1930
+    },
+    {
+      "path": "component.wasm",
+      "sha256": "sha256:f52c3750b7e6b88982a42b0d744236a3f1eb515a63fed85e353397a01163c853",
+      "size": 18434345
+    },
+    {
+      "path": "config.json",
+      "sha256": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "size": 3
+    },
+    {
+      "path": "tests/inspection.json",
+      "sha256": "sha256:504e542a6e4cec983e402753db7a3bf93a96f394b69400249d353d1e7442edd5",
+      "size": 59881
+    },
+    {
+      "path": "wit/deps/core.wit",
+      "sha256": "sha256:f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "size": 5732
+    },
+    {
+      "path": "wit/pack.wit",
+      "sha256": "sha256:30ae8aafcba5845e7ebbc76c69f5e9abc48fbb54b7bdc76fe80efaf84013ea7e",
+      "size": 246
+    },
+    {
+      "path": "wit/policy.shape.json",
+      "sha256": "sha256:13ad1eb78e64898d5799ede85fe7c2c96dbb1eca0122ed4c0e99c5d2f4b3c140",
+      "size": 105
+    }
+  ],
+  "flows": [],
+  "format": "tobkiri.pack/1",
+  "id": "local.shell-policy-python",
+  "overlays": [],
+  "permissions": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 16,
+      "max_wall_ms": 300000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": []
+    },
+    "ports": [],
+    "proc": [],
+    "pty": false,
+    "secrets": [],
+    "storage": {
+      "private": false,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  },
+  "ports": {
+    "consumes": [],
+    "provides": [
+      {
+        "optional": false,
+        "shape": "local.shell-policy-python.policy",
+        "version": "1.0"
+      }
+    ],
+    "untyped": []
+  },
+  "publisher_key": null,
+  "runtime": {
+    "component": "component.wasm",
+    "config": {
+      "path": "config.json"
+    },
+    "kind": "wasm",
+    "toolchain": "componentize-py/0.25.0"
+  },
+  "shapes": [
+    {
+      "kind": "port",
+      "name": "local.shell-policy-python.policy",
+      "version": "1.0",
+      "wit": "wit/pack.wit"
+    }
+  ],
+  "stores": [],
+  "ui": null,
+  "version": "0.1.0"
+}

@@ -1,0 +1,438 @@
+"""Captured tool composition; these doubles do not claim native acceptance."""
+
+from dataclasses import replace
+from types import SimpleNamespace
+
+import pytest
+
+from core_runtime.host_provider_backend_v4 import HostProviderCaptureContextV4
+from ecosystem.rumi_tool_broker_pack.runtime import broker
+from ecosystem.rumi_tool_registry_pack.runtime.registry import _definition
+from ecosystem.rumi_tool_result_pack.runtime.normalizer import create_normalize_operation
+from ecosystem.rumi_tool_validation_pack.runtime.validator import create_validate_operation
+from tests.test_mcp_connection_owner import _Invocation
+from tobkiri_host.models import OpaqueAuthorityRef
+from tobkiri_protocol.canonical import canonical_digest
+
+
+@pytest.fixture
+def tool_host(tmp_path):
+    factory = broker.HOST_PROVIDER_FACTORY
+    binding = SimpleNamespace(
+        function=SimpleNamespace(function_id=factory.function_id, implementation_digest="impl"),
+        operation=SimpleNamespace(
+            contract_id=broker.CONTRACT, operation_id=broker.OPERATION, contract_version="1.0.0",
+        ),
+        principal_ref=OpaqueAuthorityRef("tool-broker"),
+        artifact=SimpleNamespace(digest="artifact"),
+    )
+    context = HostProviderCaptureContextV4(
+        profile_id="defaults", plan_digest="plan", security_epoch=1,
+        activation={"activation_id": "active"}, state_root=tmp_path,
+        provider_bindings=(binding,), catalog_bindings=(),
+        domain_ids={(broker.CONTRACT, broker.OPERATION, "tool-broker"): "domain"},
+    )
+    provider = factory.capture(context)
+    client = _Client()
+
+    def invoke(payload=None, *, change=None, stale=False):
+        payload = payload if payload is not None else {
+            "tool_id": "alias", "tool_call_id": "call-1", "arguments": {"value": 3},
+        }
+        invocation = _Invocation(broker.OPERATION, payload)
+        invocation.envelope.context.activation_digest = canonical_digest(dict(context.activation))
+        invocation.envelope = replace(
+            invocation.envelope, contract_id=broker.CONTRACT,
+            target_principal=binding.principal_ref,
+        )
+        if change:
+            invocation.envelope = replace(invocation.envelope, **change)
+        invocation.stale = stale
+
+        def contract_client(**kwargs):
+            assert kwargs == {
+                "allowed_contract_ids": frozenset({
+                    broker.DEFINITION, broker.VALIDATE, broker.EXECUTE, broker.NORMALIZE,
+                    broker.ACTION, "tobkiri.resource.chat.reference.v1",
+                }),
+                "consumer_pack_id": broker.PACK_ID, "include_credentials": False,
+            }
+            return client
+
+        invocation.contract_client = contract_client
+        return provider.contributions[0].invoke(broker.OPERATION, payload, invocation)
+
+    yield invoke, client, provider, context
+    provider.close()
+
+
+class _Client:
+    def __init__(self):
+        self.calls = []
+        self.selected = True
+        self.failure = None
+        self.execute_callback = None
+        self.progress_failure = None
+        self.definition = _definition({
+            "tool_id": "sample", "authority": "file.read",
+            "input_schema": {
+                "type": "object", "properties": {"value": {"type": "integer"}},
+                "required": ["value"], "additionalProperties": False,
+            },
+            "execution": {"kind": "local", "contract_id": "tobkiri.service.tool.local.operation.v1"},
+        })
+
+    def providers(self, contract):
+        assert contract == broker.EXECUTE
+        return ({
+            "function_id": "rumi_tool_local_executor_pack.tool-executor.local",
+            "operation_id": "rumi_tool_local_executor_pack.tool-local-execute",
+            "provider_instance_id": "tool-executor.local", "backend_id": "test",
+            "implementation_digest": "selected-impl",
+        },) if self.selected else ()
+
+    def invoke(self, contract, operation, payload, **kwargs):
+        self.calls.append((contract, operation, payload, kwargs))
+        if contract == broker.ACTION:
+            if self.progress_failure:
+                raise self.progress_failure
+            return {"bound": True}
+        if contract == broker.DEFINITION:
+            assert payload == {"operation": "resolve", "tool_id": "alias"}
+            return {"found": True, "resolved_tool_id": "sample", "definition": self.definition}
+        if contract == broker.VALIDATE:
+            return create_validate_operation(None)("validate", payload)
+        if contract == broker.EXECUTE:
+            assert kwargs == {"provider_instance_id": "tool-executor.local"}
+            if self.execute_callback:
+                self.execute_callback()
+            if self.failure:
+                raise self.failure
+            if hasattr(self, "result_override"):
+                return self.result_override
+            return {"result": {"value": payload["arguments"]["value"], "token": "private"}}
+        assert contract == broker.NORMALIZE
+        assert operation == "rumi_tool_result_pack.tool-result-normalize"
+        return create_normalize_operation(None)("normalize", payload)
+
+
+def test_owner_resolved_arguments_reach_exact_executor_and_redacted_result(tool_host):
+    invoke, client, _, _ = tool_host
+    result = invoke()
+    assert result["tool_id"] == "sample" and result["tool_call_id"] == "call-1"
+    assert result["result"] == {"value": 3, "token": "[REDACTED]"}
+    assert [item[0] for item in client.calls] == [
+        broker.DEFINITION, broker.VALIDATE, broker.EXECUTE, broker.NORMALIZE,
+    ]
+    request = client.calls[2][2]
+    assert set(request) == {"tool_id", "tool_call_id", "arguments", "definition"}
+    assert result["executor"]["content_hash"] == "selected-impl"
+
+
+def test_selected_definition_hash_is_rechecked_before_validation_or_execution(tool_host):
+    invoke, client, _, _ = tool_host
+    payload = {"tool_id": "alias", "tool_call_id": "call-1", "arguments": {"value": 3},
+               "expected_definition_hash": client.definition["definition_hash"]}
+    invoke(payload)
+    client.calls.clear()
+    client.definition = _definition({**client.definition, "description": "Changed after selection"})
+    with pytest.raises(PermissionError):
+        invoke(payload)
+    assert [item[0] for item in client.calls] == [broker.DEFINITION]
+
+
+@pytest.mark.parametrize("field", [
+    "approved", "approval_token", "approval_request_id", "caller_id", "profile_id",
+    "deadline", "cancelled", "definition", "provider_instance_id", "_contract_consumer_pack_id",
+])
+def test_serialized_authority_cannot_enter_tool_composition(tool_host, field):
+    invoke, client, _, _ = tool_host
+    with pytest.raises(ValueError, match="payload"):
+        invoke({"tool_id": "alias", "tool_call_id": "call-1", "arguments": {}, field: True})
+    assert client.calls == []
+
+
+def test_authority_denial_is_not_retried_or_hidden_as_tool_success(tool_host):
+    invoke, client, _, _ = tool_host
+    client.failure = PermissionError("actual Host denial")
+    with pytest.raises(PermissionError, match="actual Host denial"):
+        invoke()
+    assert sum(item[0] == broker.EXECUTE for item in client.calls) == 1
+    assert all(item[0] != broker.NORMALIZE for item in client.calls)
+
+
+def test_unknown_executor_has_no_legacy_fallback(tool_host):
+    invoke, client, _, _ = tool_host
+    client.selected = False
+    with pytest.raises(PermissionError, match="executor is unavailable"):
+        invoke()
+    assert all(item[0] != broker.EXECUTE for item in client.calls)
+
+
+def test_argument_validation_failure_precedes_executor(tool_host):
+    invoke, client, _, _ = tool_host
+    with pytest.raises(ValueError, match="arguments"):
+        invoke({"tool_id": "alias", "tool_call_id": "call-1", "arguments": {"value": True}})
+    assert all(item[0] != broker.EXECUTE for item in client.calls)
+
+
+def test_recursive_tool_composition_fails_without_blocking_broker_workers(tool_host):
+    invoke, client, _, _ = tool_host
+    def nested():
+        with pytest.raises(PermissionError, match="busy"):
+            invoke()
+    client.execute_callback = nested
+    assert invoke()["status"] == "success"
+    assert sum(item[0] == broker.EXECUTE for item in client.calls) == 1
+
+
+@pytest.mark.parametrize("change", [
+    {"contract_id": "foreign"}, {"contract_version": "2.0.0"},
+    {"operation_id": "foreign"}, {"target_principal": OpaqueAuthorityRef("foreign")},
+    {"target_domain": OpaqueAuthorityRef("foreign")},
+    {"payload": {}},
+])
+def test_changed_host_envelope_never_enters_owner_code(tool_host, change):
+    invoke, client, _, _ = tool_host
+    with pytest.raises(PermissionError, match="binding changed"):
+        invoke(change=change)
+    assert client.calls == []
+
+
+def test_closed_and_cancelled_invocations_do_not_enter_owner_code(tool_host):
+    invoke, client, provider, _ = tool_host
+    with pytest.raises(PermissionError, match="stale"):
+        invoke(stale=True)
+    provider.close()
+    with pytest.raises(PermissionError, match="binding changed"):
+        invoke()
+    assert client.calls == []
+
+
+@pytest.mark.parametrize("schema", [
+    {"pattern": ".*"}, {"$ref": "https://example.test/schema"},
+    {"anyOf": [{"type": "integer"}]}, {"type": "unknown"},
+    {"properties": {"child": {"format": "email"}}}, {"required": "name"},
+    {"items": False}, {"maxLength": True},
+])
+def test_unsupported_schema_constraints_fail_before_execution(schema):
+    with pytest.raises(ValueError, match="schema"):
+        create_validate_operation(None)("validate", {"schema": schema, "arguments": {}})
+
+
+def test_boolean_enum_does_not_accept_integer_and_mcp_identity_is_preserved():
+    validate = create_validate_operation(None)
+    assert not validate("validate", {"schema": {"enum": [True]}, "arguments": 1})["valid"]
+    source = {
+        "tool_id": "mcp.ping", "authority": "mcp.invoke",
+        "execution": {"kind": "mcp", "contract_id": "tobkiri.service.mcp.tool.call.v1",
+                      "connection_id": "connection-1"},
+    }
+    assert _definition(source)["execution"]["connection_id"] == "connection-1"
+
+
+@pytest.mark.parametrize("change", [
+    {}, {"provider_instance_id": "foreign"}, {"contract_id": "foreign"},
+    {"connection_id": ""}, {"namespace": "foreign"}, {"operation": ""},
+])
+def test_mcp_execution_keeps_captured_gateway_and_connection_identity(tool_host, change):
+    _, _, _, context = tool_host
+    gateway = SimpleNamespace(
+        operation=SimpleNamespace(
+            contract_id="tobkiri.service.mcp.tool.call.v1",
+            operation_id="rumi_mcp_gateway_pack.mcp-tool-call",
+        ),
+        function=SimpleNamespace(function_id="rumi_mcp_gateway_pack.gateway"),
+        artifact=SimpleNamespace(pack_id="rumi_mcp_gateway_pack"),
+    )
+    context = replace(context, catalog_bindings=(gateway,))
+    execution = {
+        "contract_id": "tobkiri.service.mcp.tool.call.v1", "provider_instance_id": "gateway",
+        "namespace": "mcp.sample", "connection_id": "connection-1", "operation": "ping",
+        **change,
+    }
+    if change:
+        with pytest.raises(ValueError, match="descriptor"):
+            broker._mcp_request(context, execution, {"value": 3})
+    else:
+        assert broker._mcp_request(context, execution, {"value": 3}) == {
+            "connection_id": "connection-1", "tool": "ping", "arguments": {"value": 3},
+        }
+
+
+def test_saved_tool_progress_is_exact_and_effect_executes_once(tool_host):
+    invoke, client, _, _ = tool_host
+    result = invoke(
+        {
+            "tool_id": "alias",
+            "tool_call_id": "call-1",
+            "arguments": {"value": 3},
+            "progress_id": "stage",
+        }
+    )
+    progress = [call[2] for call in client.calls if call[0] == broker.ACTION]
+    assert [item["phase"] for item in progress] == ["tool_bind", "tool_publish", "tool_publish"]
+    assert progress[1]["event"] == {
+        "type": "tool_started",
+        "tool_id": "alias",
+        "tool_call_id": "call-1",
+        "arguments": {"value": 3},
+    }
+    assert progress[2]["event"]["status"] == result["status"]
+    assert '"token":"[REDACTED]"' in progress[2]["event"]["content"]
+    assert sum(call[0] == broker.EXECUTE for call in client.calls) == 1
+
+
+def test_progress_denial_preserves_actual_result_without_replay(tool_host):
+    invoke, client, _, _ = tool_host
+    client.progress_failure = PermissionError("producer denied")
+    assert (
+        invoke(
+            {
+                "tool_id": "alias",
+                "tool_call_id": "call-1",
+                "arguments": {"value": 3},
+                "progress_id": "stage",
+            }
+        )["status"]
+        == "success"
+    )
+    assert sum(call[0] == broker.EXECUTE for call in client.calls) == 1
+
+
+def test_actual_denial_does_not_publish_fake_completion(tool_host):
+    invoke, client, _, _ = tool_host
+    client.failure = PermissionError("approval held")
+    with pytest.raises(PermissionError, match="approval held"):
+        invoke(
+            {
+                "tool_id": "alias",
+                "tool_call_id": "call-1",
+                "arguments": {"value": 3},
+                "progress_id": "stage",
+            }
+        )
+    events = [call[2].get("event") for call in client.calls if call[0] == broker.ACTION]
+    assert not any(event and event["type"] == "tool_completed" for event in events)
+    assert sum(call[0] == broker.EXECUTE for call in client.calls) == 1
+
+
+@pytest.mark.parametrize("failure", ["arguments", "definition", "executor"])
+def test_invalid_or_unavailable_tool_never_publishes_execution_progress(tool_host, failure):
+    invoke, client, _, _ = tool_host
+    payload = {"tool_id": "alias", "tool_call_id": "call-1",
+               "arguments": {"value": 3}, "progress_id": "stage"}
+    if failure == "arguments":
+        payload["arguments"] = {"value": True}
+    elif failure == "definition":
+        payload["expected_definition_hash"] = "0" * 64
+    else:
+        client.selected = False
+    with pytest.raises((ValueError, PermissionError)):
+        invoke(payload)
+    assert all(call[0] not in {broker.ACTION, broker.EXECUTE, broker.NORMALIZE}
+               for call in client.calls)
+
+
+@pytest.mark.parametrize("schema,raw,expected", [
+    ({"type": "string"}, {"result": "five"}, "five"),
+    ({"type": "object"}, {"result": {"value": 5}}, {"value": 5}),
+    ({"type": "object", "properties": {"token": {"type": "string"}}},
+     {"result": {"token": 123}}, {"token": "[REDACTED]"}),
+])
+def test_declared_result_schema_validates_normalized_redacted_value(tool_host, schema, raw, expected):
+    invoke, client, _, _ = tool_host
+    client.definition = _definition({**client.definition, "result_schema": schema, "result_schema_format": "normalized-result.v1"})
+    client.result_override = raw
+    result = invoke()
+    assert result["result"] == expected
+    assert [call[0] for call in client.calls] == [
+        broker.DEFINITION, broker.VALIDATE, broker.VALIDATE,
+        broker.EXECUTE, broker.NORMALIZE, broker.VALIDATE,
+    ]
+    assert client.calls[-1][2]["arguments"] == expected
+
+
+@pytest.mark.parametrize("schema,raw", [
+    ({"type": "string"}, {"result": {"value": 5}}),
+    ({"type": "object", "properties": {"token": {"type": "integer"}}}, {"result": {"token": 123}}),
+    ({"type": "string"}, {"result": None, "is_error": True}),
+])
+def test_invalid_or_error_result_never_published_as_a_typed_success(tool_host, schema, raw):
+    invoke, client, _, _ = tool_host
+    client.definition = _definition({**client.definition, "result_schema": schema, "result_schema_format": "normalized-result.v1"})
+    client.result_override = raw
+    with pytest.raises(ValueError, match="result does not match"):
+        invoke()
+    assert sum(call[0] == broker.EXECUTE for call in client.calls) == 1
+
+
+def test_unsupported_result_schema_fails_before_executor_effects(tool_host):
+    invoke, client, _, _ = tool_host
+    client.definition = _definition({**client.definition, "result_schema": {"$ref": "https://example.invalid/schema"}, "result_schema_format": "normalized-result.v1"})
+    with pytest.raises(ValueError, match="unsupported"):
+        invoke()
+    assert all(call[0] != broker.EXECUTE for call in client.calls)
+
+
+def test_result_schema_change_invalidates_saved_tool_definition_hash(tool_host):
+    invoke, client, _, _ = tool_host
+    old_hash = client.definition["definition_hash"]
+    client.definition = _definition({**client.definition, "result_schema": {"type": "object"}, "result_schema_format": "normalized-result.v1"})
+    with pytest.raises(PermissionError, match="definition changed"):
+        invoke({"tool_id": "alias", "tool_call_id": "call-1", "arguments": {"value": 3},
+                "expected_definition_hash": old_hash})
+    assert len(client.calls) == 1
+
+
+
+def test_legacy_advisory_result_schema_is_not_reinterpreted_after_execution(tool_host):
+    invoke, client, _, _ = tool_host
+    client.definition = _definition({**client.definition, "result_schema": {"type": "string"}})
+    result = invoke()
+    assert isinstance(result["result"], dict)
+    assert [call[0] for call in client.calls] == [broker.DEFINITION, broker.VALIDATE, broker.EXECUTE, broker.NORMALIZE]
+
+
+def test_schema_valid_error_remains_explicitly_an_error_result(tool_host):
+    invoke, client, _, _ = tool_host
+    client.definition = _definition({**client.definition, "result_schema": {"type": "string"},
+                                     "result_schema_format": "normalized-result.v1"})
+    client.result_override = {"result": "invalid expression", "is_error": True}
+    result = invoke()
+    assert result["is_error"] is True and result["status"] == "error"
+    assert result["result"] == "invalid expression"
+
+
+def test_advisory_definition_hash_matches_pre_typed_result_fixture():
+    definition = _definition({'tool_id': 'compat.test', 'authority': 'service.invoke',
+                              'execution': {'kind': 'local', 'contract_id': 'example.operation.v1'},
+                              'result_schema': {'type': 'object'}})
+    # Independently captured from previous checkpoint implementation at 3fbe19d38.
+    assert definition['definition_hash'] == '8e0bf57766274892316d09195fb5b0208339489adc6c2ffd60a629326cdc3d83'
+    assert 'result_schema_format' not in definition
+
+
+def test_unknown_result_format_is_rejected_before_executor(tool_host):
+    invoke, client, _, _ = tool_host
+    with pytest.raises(ValueError, match='format is unsupported'):
+        _definition({**client.definition, 'result_schema_format': 'unknown.v1'})
+    client.definition['result_schema_format'] = 'unknown.v1'
+    with pytest.raises(ValueError, match='format is unsupported'):
+        invoke()
+    assert all(call[0] != broker.EXECUTE for call in client.calls)
+
+
+def test_invalid_typed_result_never_publishes_completion_or_replays(tool_host):
+    invoke, client, _, _ = tool_host
+    client.definition = _definition({
+        **client.definition, "result_schema": {"type": "string"},
+        "result_schema_format": "normalized-result.v1",
+    })
+    client.result_override = {"result": {"value": 5}}
+    with pytest.raises(ValueError, match="result does not match"):
+        invoke({"tool_id": "alias", "tool_call_id": "call-1",
+                "arguments": {"value": 3}, "progress_id": "stage"})
+    assert sum(call[0] == broker.EXECUTE for call in client.calls) == 1
+    events = [call[2].get("event") for call in client.calls if call[0] == broker.ACTION]
+    assert not any(event and event["type"] == "tool_completed" for event in events)

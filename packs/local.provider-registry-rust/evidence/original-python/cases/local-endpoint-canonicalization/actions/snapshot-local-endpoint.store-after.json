@@ -1,0 +1,28 @@
+{
+  "version": "rumi.provider-registry.store.v1",
+  "profile_id": "defaults",
+  "revision": 1,
+  "providers": {
+    "local/model": {
+      "provider_instance_id": "local/model",
+      "adapter_id": "local-openai-compatible",
+      "display_name": "Work connection",
+      "credential_handle": null,
+      "endpoint": "http://[::1]:1234/v1",
+      "enabled": true,
+      "data_residency": "unknown",
+      "health_evidence": {
+        "status": "unknown",
+        "observed_at": null,
+        "verified": false
+      },
+      "metadata": {
+        "catalog_provider_id": "vendor"
+      },
+      "created_at": "2026-10-25T14:54:55Z",
+      "updated_at": "2026-10-25T14:54:55Z",
+      "record_revision": 1
+    }
+  },
+  "migration": null
+}

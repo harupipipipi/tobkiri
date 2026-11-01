@@ -1,0 +1,140 @@
+{
+  "acceptance": {
+    "Rust_Core_91_case_replay": "pending",
+    "all_837_inventory_rows": "todo",
+    "deterministic_preinit": false,
+    "nominal_resource_fixture": true,
+    "typed_outer_abi_and_world_validation": true
+  },
+  "blocker": "Pinned componentize-py CLI owns its WASI init context and does not pass host PYTHONHASHSEED to guest; --stub-wasi explicitly bakes a build-time generated PRNG seed. Deterministic supported producer route awaits review. No compiler fork, binary modification, native runtime fallback or host ABI exception.",
+  "build_attempts": [
+    {
+      "build_plan_sha256": "83bd68dfe619a71494ff44acc33a76e609acc69eae485871d53cba7672b0121e",
+      "command": "sdk/python/.venv/bin/python -B sdk/python/build_component.py --plan packs/local.shell-policy-python/python-build.json --composer ../.work/toolchains/wac-cli-0.12.0-aarch64-apple-darwin --output ../.work/evidence/python-outer-clean-001.wasm",
+      "compiler_runtime_extension_sha256": "ed0c430f2eeae820263cdc5980094f5c64eef710fe9a2004fc52eea78b3eaad0",
+      "exit_code": 0,
+      "inner": {
+        "artifact_bytes": 18430416,
+        "artifact_sha256": "85d66462323efe00eee714576e878d4c1491255536351cee789135c7462ccc8e",
+        "exports": [
+          "exports",
+          "local:shell-policy-python/policy@1.0.0",
+          "tobkiri:core/lifecycle@1.0.0"
+        ],
+        "imports": [
+          "tobkiri:core/audit@1.0.0",
+          "tobkiri:core/clock@1.0.0",
+          "tobkiri:core/flow@1.0.0",
+          "tobkiri:core/random@1.0.0",
+          "tobkiri:core/types@1.0.0"
+        ]
+      },
+      "outer": {
+        "bytes": 18431852,
+        "exports": [
+          "local:shell-policy-python/policy@1.0.0",
+          "tobkiri:core/lifecycle@1.0.0"
+        ],
+        "imports": [
+          "tobkiri:core/audit@1.0.0",
+          "tobkiri:core/clock@1.0.0",
+          "tobkiri:core/flow@1.0.0",
+          "tobkiri:core/random@1.0.0",
+          "tobkiri:core/types@1.0.0"
+        ],
+        "sha256": "0ea6f1857d7171c55da41cfe5c7c38534aa67f009b33739b50aea8ab8f789705"
+      }
+    },
+    {
+      "build_plan_sha256": "83bd68dfe619a71494ff44acc33a76e609acc69eae485871d53cba7672b0121e",
+      "command": "sdk/python/.venv/bin/python -B sdk/python/build_component.py --plan packs/local.shell-policy-python/python-build.json --composer ../.work/toolchains/wac-cli-0.12.0-aarch64-apple-darwin --output ../.work/evidence/python-outer-clean-002.wasm",
+      "compiler_runtime_extension_sha256": "ed0c430f2eeae820263cdc5980094f5c64eef710fe9a2004fc52eea78b3eaad0",
+      "exit_code": 0,
+      "inner": {
+        "artifact_bytes": 18443911,
+        "artifact_sha256": "ab5930fdf1c1525cc0cf29266bf74c7826a0df15f12572d79666d6a57e0aeec8",
+        "exports": [
+          "exports",
+          "local:shell-policy-python/policy@1.0.0",
+          "tobkiri:core/lifecycle@1.0.0"
+        ],
+        "imports": [
+          "tobkiri:core/audit@1.0.0",
+          "tobkiri:core/clock@1.0.0",
+          "tobkiri:core/flow@1.0.0",
+          "tobkiri:core/random@1.0.0",
+          "tobkiri:core/types@1.0.0"
+        ]
+      },
+      "outer": {
+        "bytes": 18445347,
+        "exports": [
+          "local:shell-policy-python/policy@1.0.0",
+          "tobkiri:core/lifecycle@1.0.0"
+        ],
+        "imports": [
+          "tobkiri:core/audit@1.0.0",
+          "tobkiri:core/clock@1.0.0",
+          "tobkiri:core/flow@1.0.0",
+          "tobkiri:core/random@1.0.0",
+          "tobkiri:core/types@1.0.0"
+        ],
+        "sha256": "3b0264d2e3f93ed4a4a7303edd794b6693e973a7dd3af4e4a960124a3fedcfe1"
+      }
+    }
+  ],
+  "clean_inner_identity": false,
+  "clean_outer_identity": false,
+  "format": "tobkiri.python-producer-pending/1",
+  "frozen_legacy_expected_cases_modified": false,
+  "previous_attempt": "m4-pending.json",
+  "resource_proof": {
+    "checks": {
+      "borrow_preserves_owner": true,
+      "consume_own": true,
+      "cross_interface_nominal_alias": true,
+      "drop_exactly_once": true,
+      "foreign_nominal_resource_denied": true,
+      "own": true,
+      "private_initializer_inaccessible": true
+    },
+    "command": "sdk/python/.venv/bin/python -B sdk/python/tools/prove_outer_resources.py --composer ../.work/toolchains/wac-cli-0.12.0-aarch64-apple-darwin --output ../.work/evidence/python-outer-resources-001.json",
+    "composition": {
+      "composition_source": "package local:sdk-python-outer;\nlet implementation = new local:python-inner { ... };\nexport implementation[\"local:outer-resource-proof/objects@1.0.0\"];\nexport implementation[\"local:outer-resource-proof/observer@1.0.0\"];\n",
+      "composition_source_sha256": "24dedecb35f201a8a03f2ae138e71203022282610a97a86d7bb532fb260060b5",
+      "flags": {
+        "ambient_dependency_directory": false,
+        "define_components": true,
+        "validate": true
+      },
+      "tool": "wac-cli",
+      "tool_sha256": "891af0e6d591481daed3a7c52a3dc20fd34cc326e6e955d4c8fd85c4b1835e3d",
+      "version": "0.12.0"
+    },
+    "core_runtime_acceptance": false,
+    "drop_count": 2,
+    "exit_code": 0,
+    "exports": [
+      "local:outer-resource-proof/objects@1.0.0",
+      "local:outer-resource-proof/observer@1.0.0"
+    ],
+    "format": "tobkiri.outer-resource-proof/1",
+    "imports": [],
+    "inner_sha256": "a8966d310e3ffd710ddaf47649753d5c252197f6d976c38db44835c673d809e1",
+    "outer_sha256": "22a540bf2e8d560bdc1b3bfd5e784716949ea3d8501e0ef61a1c56146011770c",
+    "source_hashes": {
+      "inner.wat": "17153dc3d7291cfe280ea6ec3c3498263869ddf44b4bd43ec11d12fba869047d",
+      "pack.wit": "877702c58ff23e1199ed95c7be6aa5ae7f846d60d4987661fffeddee5b70f6cb"
+    }
+  },
+  "runtime_pack_artifact_replaced": false,
+  "source_hashes_after_execution": {
+    "packs/local.shell-policy-python/python-build.json": "sha256:83bd68dfe619a71494ff44acc33a76e609acc69eae485871d53cba7672b0121e",
+    "packs/local.shell-policy-python/tests/inspection.json": "sha256:504e542a6e4cec983e402753db7a3bf93a96f394b69400249d353d1e7442edd5",
+    "sdk/python/build_component.py": "sha256:cdd70dc8cc5a586e540c976b4dda67567e33a59d669adf255edcebaa81e68226",
+    "sdk/python/composition.py": "sha256:605855cafdf0734a55d715c6022b789161e1afc98f081fc967bbd5dab84b9b30",
+    "sdk/python/tools/prove_outer_resources.py": "sha256:589de1c08f00f7c591d376ac235b73426fc0d147e2f294289a5d03f5d499f1b3",
+    "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/runtime/policy.py": "sha256:4474513154ced3474da4db2d6bf90ece67c0da9406ee3ac392660d7bd9ddcf51"
+  },
+  "source_identity_before_after": "not captured or claimed"
+}

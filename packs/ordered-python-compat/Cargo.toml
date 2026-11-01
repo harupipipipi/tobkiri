@@ -1,0 +1,10 @@
+[package]
+name = "ordered-python-compat"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "MIT"
+
+[dependencies]
+serde_json = { version = "=1.0.154", features = ["raw_value"] }
+tobkiri-canon = { path = "../../crates/tobkiri-canon" }

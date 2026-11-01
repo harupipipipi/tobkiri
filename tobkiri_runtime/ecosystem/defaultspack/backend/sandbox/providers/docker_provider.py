@@ -418,6 +418,12 @@ class DockerGuestAgent:
         for operation in operations:
             path = str(operation["path"])
             content = operation["content"]
+            if not isinstance(content, bytes):
+                raise SandboxContractError(
+                    "INVALID_SANDBOX_FILE_PATCH",
+                    "Sandbox file patch content must be bytes.",
+                    status_code=400,
+                )
             parent = _container_parent(path)
             if parent:
                 mkdir = self._runner(
@@ -893,7 +899,7 @@ def _port_number(value: object) -> int:
     if isinstance(value, bool):
         raise SandboxContractError("INVALID_SANDBOX_PORT", "Sandbox port must be an integer.", status_code=400)
     try:
-        port = int(value or 0)
+        port = int(_numeric_value(value) or 0)
     except (TypeError, ValueError) as exc:
         raise SandboxContractError("INVALID_SANDBOX_PORT", "Sandbox port must be an integer.", status_code=400) from exc
     if port < 1 or port > 65535:
@@ -940,7 +946,7 @@ def _bounded_output(value: str, max_bytes: int | None) -> tuple[str, bool]:
 
 def _positive_int(value: object) -> int | None:
     try:
-        parsed = int(value or 0)
+        parsed = int(_numeric_value(value) or 0)
     except (TypeError, ValueError):
         return None
     return parsed if parsed > 0 else None
@@ -948,7 +954,11 @@ def _positive_int(value: object) -> int | None:
 
 def _positive_float(value: object) -> float | None:
     try:
-        parsed = float(value or 0)
+        parsed = float(_numeric_value(value) or 0)
     except (TypeError, ValueError):
         return None
     return parsed if parsed > 0 else None
+
+
+def _numeric_value(value: object) -> int | float | str:
+    return value if isinstance(value, (int, float, str)) else 0

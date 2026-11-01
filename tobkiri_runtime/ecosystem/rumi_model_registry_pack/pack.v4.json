@@ -1,0 +1,237 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:67edf6002fbc73f9b91c30e90c0484ed8f45362bd804411933d9e5bcad37ae97",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:70a156cfce2e38caa85cd299302c8161d958fbc60947f80e1e6bfd8bf373029b",
+      "kind": "executable",
+      "path": "runtime/__init__.py"
+    },
+    {
+      "digest": "sha256:a61f6058b3cbdc86fee44d5b43b8570839a47a93d6998fea569da9a2b6d92b6a",
+      "kind": "executable",
+      "path": "runtime/process.py"
+    },
+    {
+      "digest": "sha256:e80b6c16c13fdc69318477b6db8392d951094d5cbaf23db454a1d101a625fa9c",
+      "kind": "executable",
+      "path": "runtime/registry.py"
+    },
+    {
+      "digest": "sha256:3dce098c50a5268c87231e9ac55590e03d1ebe493d4729470fbf1d86ed3aacc5",
+      "kind": "executable",
+      "path": "runtime/service.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.ai.model.profile.manage.v1",
+      "operations": [
+        "rumi_model_registry_pack.model-profile-manage"
+      ],
+      "revision_digest": "sha256:e6a4c0eb6f5dd04d117aa8343af2319b3d5d06a502b14ecebfbba08e0b2dd052"
+    },
+    {
+      "contract_id": "tobkiri.action.ai.model.registry.migrate.v1",
+      "operations": [
+        "rumi_model_registry_pack.model-registry-migrate"
+      ],
+      "revision_digest": "sha256:b7e14ee169e31ca35d182ae238a5d001fd81bd36276393c4755c80b424f1d62d"
+    },
+    {
+      "contract_id": "tobkiri.resource.ai.model.profile.v1",
+      "operations": [
+        "rumi_model_registry_pack.model-profile-resource",
+        "rumi_model_registry_pack.model-profile-resource.generate",
+        "rumi_model_registry_pack.model-profile-resource.stream"
+      ],
+      "revision_digest": "sha256:2604f5c72ce089f2cfcc4c4561c4b7ac04119c64b52ac1f495ac013d1a946658"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:e6a4c0eb6f5dd04d117aa8343af2319b3d5d06a502b14ecebfbba08e0b2dd052",
+      "id": "rumi_model_registry_pack.model-registry.manage",
+      "implementation_digest": "sha256:a61f6058b3cbdc86fee44d5b43b8570839a47a93d6998fea569da9a2b6d92b6a",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_model_registry_pack.model-profile-manage"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:b7e14ee169e31ca35d182ae238a5d001fd81bd36276393c4755c80b424f1d62d",
+      "id": "rumi_model_registry_pack.model-registry.migrate",
+      "implementation_digest": "sha256:a61f6058b3cbdc86fee44d5b43b8570839a47a93d6998fea569da9a2b6d92b6a",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_model_registry_pack.model-registry-migrate"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:2604f5c72ce089f2cfcc4c4561c4b7ac04119c64b52ac1f495ac013d1a946658",
+      "id": "rumi_model_registry_pack.model-registry.profile",
+      "implementation_digest": "sha256:a61f6058b3cbdc86fee44d5b43b8570839a47a93d6998fea569da9a2b6d92b6a",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_model_registry_pack.model-profile-resource",
+        "rumi_model_registry_pack.model-profile-resource.generate",
+        "rumi_model_registry_pack.model-profile-resource.stream"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:c95b95f67be8612f70a6bc92053d6d39b669a3afff2d1350a763cc565a0dd6f5",
+    "contract_catalog_digest": "sha256:a0a1217e1b73eb233481816097f3444f5dffb6450eddc9e2d2b05b81f4a7e6c4",
+    "source_identity": "sha256:8582e08d2adb70de3128a25398a5ea403e59d905e3a9cac9b9d7e385e74294cb"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.ai.model.profile.manage.v1",
+      "rumi.action.ai.model.registry.migrate.v1",
+      "rumi.resource.ai.model.profile.v1",
+      "rumi:ecosystem/rumi_model_registry_pack",
+      "rumi_model_registry_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.action.ai.model.profile.manage.v1",
+      "effect_ceiling": [
+        "capability:ai.model.profile.manage",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_model_registry_pack.model-profile-manage",
+      "owner": "rumi_model_registry_pack",
+      "provider_id": "rumi_model_registry_pack.model-registry.manage",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.ai.model.profile.v1",
+      "effect_ceiling": [
+        "capability:ai.model.profile.read"
+      ],
+      "operation_id": "rumi_model_registry_pack.model-profile-resource",
+      "owner": "rumi_model_registry_pack",
+      "provider_id": "rumi_model_registry_pack.model-registry.profile",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.ai.model.profile.v1",
+      "effect_ceiling": [
+        "capability:ai.model.profile.read"
+      ],
+      "operation_id": "rumi_model_registry_pack.model-profile-resource.generate",
+      "owner": "rumi_model_registry_pack",
+      "provider_id": "rumi_model_registry_pack.model-registry.profile",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.ai.model.profile.v1",
+      "effect_ceiling": [
+        "capability:ai.model.profile.read"
+      ],
+      "operation_id": "rumi_model_registry_pack.model-profile-resource.stream",
+      "owner": "rumi_model_registry_pack",
+      "provider_id": "rumi_model_registry_pack.model-registry.profile",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.action.ai.model.registry.migrate.v1",
+      "effect_ceiling": [
+        "capability:ai.model.profile.migrate",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_model_registry_pack.model-registry-migrate",
+      "owner": "rumi_model_registry_pack",
+      "provider_id": "rumi_model_registry_pack.model-registry.migrate",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:c95b95f67be8612f70a6bc92053d6d39b669a3afff2d1350a763cc565a0dd6f5",
+    "display_name": "Rumi Model Registry",
+    "id": "rumi_model_registry_pack",
+    "kind": "host_extension",
+    "version": "1.0.1"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:8582e08d2adb70de3128a25398a5ea403e59d905e3a9cac9b9d7e385e74294cb",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:8582e08d2adb70de3128a25398a5ea403e59d905e3a9cac9b9d7e385e74294cb",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_model_registry_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.action.ai.model.profile.manage.v1",
+      "operations": [
+        "rumi_model_registry_pack.model-profile-manage"
+      ],
+      "owner": "rumi_model_registry_pack",
+      "provider_id": "rumi_model_registry_pack.model-registry.manage"
+    },
+    {
+      "contract_reference": "tobkiri.action.ai.model.registry.migrate.v1",
+      "operations": [
+        "rumi_model_registry_pack.model-registry-migrate"
+      ],
+      "owner": "rumi_model_registry_pack",
+      "provider_id": "rumi_model_registry_pack.model-registry.migrate"
+    },
+    {
+      "contract_reference": "tobkiri.resource.ai.model.profile.v1",
+      "operations": [
+        "rumi_model_registry_pack.model-profile-resource",
+        "rumi_model_registry_pack.model-profile-resource.generate",
+        "rumi_model_registry_pack.model-profile-resource.stream"
+      ],
+      "owner": "rumi_model_registry_pack",
+      "provider_id": "rumi_model_registry_pack.model-registry.profile"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "ai.model.profile.manage",
+      "ai.model.profile.migrate",
+      "ai.model.profile.read"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

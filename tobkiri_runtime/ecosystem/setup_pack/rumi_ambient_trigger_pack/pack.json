@@ -47,7 +47,7 @@
     "frontend": "add_small_control_window_and_settings_section",
     "defaultspack_core": "do_not_override"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "High-risk ambient capture should remain opt-in until permission and audit UX is stable."
   }

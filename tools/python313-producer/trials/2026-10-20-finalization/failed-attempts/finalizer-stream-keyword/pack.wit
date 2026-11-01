@@ -1,0 +1,23 @@
+package local:ai-gateway-finalizer-python@1.0.0;
+
+/// Bounded response finalization only, not the complete original Gateway.
+/// DATA strings use the hash-bound ordered-finite-json-v2 staged codec.
+interface finalizer {
+  use tobkiri:core/types@1.0.0.{error};
+  /// An original Gateway domain rejection, never an imported Core failure.
+  record domain-error { code: string, message: string }
+  variant finalization-outcome {
+    finalized(string),
+    domain-rejected(domain-error),
+  }
+  runtime-info: func() -> string;
+  generate: func(payload: string) -> result<finalization-outcome, error>;
+  stream: func(payload: string) -> result<finalization-outcome, error>;
+}
+world pack {
+  include tobkiri:core/pack-minimal@1.0.0;
+  import local:ai-gateway-tool-caller-python/caller@1.0.0;
+  import local:ai-usage-cost-python/usage-cost@1.0.0;
+  import local:ai-stream-normalizer-python/stream-normalizer@1.0.0;
+  export finalizer;
+}

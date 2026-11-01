@@ -1,0 +1,117 @@
+{
+  "actual_checks": [
+    {
+      "command": "python3 -B -m unittest discover -s packs/tests -v",
+      "exit": 0,
+      "passed": 3
+    },
+    {
+      "command": "rustfmt --check --edition 2024 --config skip_children=true crates/tobkiri-profile/src/lib.rs crates/tobkiri-profile/src/compile.rs crates/tobkiri-profile/src/wire.rs crates/tobkiri-profile/tests/compiler.rs crates/tobkiri-profile/tests/input_entry_wire.rs crates/tobkiri-profile/tests/input_entry_compile.rs crates/tobkiri-manifest/src/lib.rs crates/tobkiri-manifest/src/package.rs crates/tobkiri-manifest/tests/contracts.rs crates/tobkiri-e2e/tests/support/mod.rs",
+      "exit": 0,
+      "rust_syntax_and_format_only": 10
+    }
+  ],
+  "capacity": {
+    "estimate_measured": false,
+    "estimated_additional_warm_foundation_test_artifacts_MiB": [
+      100,
+      250
+    ],
+    "free_bytes_before_receipt": 6008950784,
+    "hard_floor_GiB": 5,
+    "new_targets_or_dependencies": 0
+  },
+  "cargo_manifests_or_dependencies_changed": false,
+  "cargo_or_compiler_native_download_execution": false,
+  "fixture_migration_receipt": "crates/tobkiri-e2e/evidence/native-input-entry-source-migration-001.json",
+  "format": "tobkiri.native-input-source-check/1",
+  "legacy_837_todo_and_91_expected_unchanged": true,
+  "producer_checkpoint_002_source_identity_verified": "124bc3e83799ea3629d8f2a7fed111d0df5b04ac2782054d8143ee3a59c829ed",
+  "public_api": {
+    "CompiledInputEntry": [
+      "selection()",
+      "source_pack()",
+      "exact_input_view()",
+      "operation()",
+      "source_hash()",
+      "profile_revision()",
+      "function()",
+      "arguments()",
+      "flow_routes()"
+    ],
+    "CompiledProfile": "native_inputs; input_entries(); input_entry(source,view,op)",
+    "InputEntry": [
+      "source_pack:PackId",
+      "exact_input_view:ShapeRef",
+      "operation:OpName"
+    ],
+    "PackManifest.inputs": "Vec<InputDeclaration>; optional/default-empty; empty serialization omitted",
+    "Startup.inputs": "Vec<InputEntry>"
+  },
+  "remaining": [
+    "Root confirmation of direct-return/multiple-empty-record signature policy; current source is explicit and conservative",
+    "Root leased cargo test -p tobkiri-manifest -p tobkiri-profile --locked",
+    "D/C/B end-to-end exact descriptor/approval/epoch/physical-read/ingress integration and native replay"
+  ],
+  "rust_test_sources_unrun": {
+    "manifest_additions": 3,
+    "profile_compile": 7,
+    "profile_wire": 5
+  },
+  "signature_source": "zero parameters or one explicit empty WIT record; typed direct/result payload; no implicit defaults or physical stream/callback payload handles",
+  "source_files": {
+    "crates/tobkiri-e2e/tests/support/mod.rs": {
+      "bytes": 12762,
+      "sha256": "2c03c93ba025df01191dc202e8d9a2cc3a4208b304f283c3ab92747fe367b63f"
+    },
+    "crates/tobkiri-manifest/src/lib.rs": {
+      "bytes": 9276,
+      "sha256": "8cd234d65c0102dc2c69e85d0840c2fc6a41049fae0e59b058ab7236a793ee74"
+    },
+    "crates/tobkiri-manifest/src/package.rs": {
+      "bytes": 16917,
+      "sha256": "3ae985d8e755f98ca5f24c47fd47faa02987503688d9e580701ab7ebadb66f9a"
+    },
+    "crates/tobkiri-manifest/tests/contracts.rs": {
+      "bytes": 18026,
+      "sha256": "38be0a68cbc2e2c83fb78259475e868cde644c5eb072b77f549acbd4d13f8547"
+    },
+    "crates/tobkiri-profile/src/compile.rs": {
+      "bytes": 50591,
+      "sha256": "f57e4705f3f67d40c7cabed55e08815e8053bb40efdec7093f0a9f713514de27"
+    },
+    "crates/tobkiri-profile/src/lib.rs": {
+      "bytes": 15783,
+      "sha256": "c88149ed7b0a9a3b1428ba63a66f654685efa515a5585d4aa78a2b8f6ba38c3e"
+    },
+    "crates/tobkiri-profile/src/wire.rs": {
+      "bytes": 6609,
+      "sha256": "fba5aab0fb1cc802d457a57f71ea14fe24270810235d5ceec6ec8a0f7bac9b05"
+    },
+    "crates/tobkiri-profile/tests/compiler.rs": {
+      "bytes": 38686,
+      "sha256": "0911d775bbbbfac4534c2f1f9bdfe6b8d161876295626c4c23fc690a68c70385"
+    },
+    "crates/tobkiri-profile/tests/input_entry_compile.rs": {
+      "bytes": 9608,
+      "sha256": "dcf0f84eddfe255ab00af7f4fb69a3a2b7202989f861506e4e403cc9997f133d"
+    },
+    "crates/tobkiri-profile/tests/input_entry_wire.rs": {
+      "bytes": 2497,
+      "sha256": "e0cd07e1524dc8d1bf295fbe23ddb779f041b6ed56caa5516d24c4e5f5f9a250"
+    },
+    "docs/migration/1520/native-input-entry.md": {
+      "bytes": 2540,
+      "sha256": "a6ff3f53a71ed9b1b75957b23f55c384b58f8cda0b6ca50c3b57b052d39ff9c2"
+    },
+    "packs/build.py": {
+      "bytes": 21428,
+      "sha256": "8ae8e78523fdb02be83f34b93488e8358eea0285667a6d5bd1ddd835042b5222"
+    },
+    "packs/tests/test_input_entries.py": {
+      "bytes": 3835,
+      "sha256": "a6a4ac2db80238ed199ce86391db0a4717a4f1c9a8eb768696ab52ce6d611232"
+    }
+  },
+  "status": "source checkpoint; Rust compilation/runtime acceptance pending"
+}

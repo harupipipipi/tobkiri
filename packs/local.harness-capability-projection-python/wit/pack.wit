@@ -1,0 +1,11 @@
+package local:harness-capability-projection-python@1.0.0;
+
+interface projection {
+  use tobkiri:core/types@1.0.0.{error};
+  project: func(payload: string) -> result<string, error>;
+}
+
+world pack {
+  include tobkiri:core/pack-minimal@1.0.0;
+  export projection;
+}

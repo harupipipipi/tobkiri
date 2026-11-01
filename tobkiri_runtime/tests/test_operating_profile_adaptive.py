@@ -218,7 +218,7 @@ def test_signed_plan_apply_and_undo_persist_profile_scoped_files(tmp_path: Path)
 
     apply_result = store.apply_plan(second_plan)
     active_path = Path(apply_result["path"])
-    profile_root = tmp_path / "profiles" / "p8"
+    profile_root = tmp_path / "workspaces" / "p8"
     assert active_path == profile_root / "operating_profile" / "active.json"
     assert active_path.is_file()
 

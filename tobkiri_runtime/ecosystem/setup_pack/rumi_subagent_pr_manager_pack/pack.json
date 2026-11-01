@@ -24,7 +24,7 @@
     "evidence_ledger": "owned_by_rumi_subagent_pr_manager_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Subagent PR management is a governance overlay for optional pack PRs and must not replace defaultspack runtime startup or tool ownership.",
     "criteria": [

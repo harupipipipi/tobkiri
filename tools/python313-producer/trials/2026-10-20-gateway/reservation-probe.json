@@ -1,0 +1,21 @@
+{
+  "scope": "synthetic-official-wasmtime-memory-bounds-only",
+  "memory_reservation": 134217728,
+  "memory_size_limit": 134217728,
+  "two_instances": [
+    {
+      "in_bounds_read": true,
+      "out_of_bounds_trapped": true,
+      "growth_beyond_store_limit_denied": true,
+      "pages_after_denied_growth": 1
+    },
+    {
+      "in_bounds_read": true,
+      "out_of_bounds_trapped": true,
+      "growth_beyond_store_limit_denied": true,
+      "pages_after_denied_growth": 1
+    }
+  ],
+  "custom_component_executed": false,
+  "production_config_changed": false
+}

@@ -1,0 +1,54 @@
+name: Issue 1520 original Setup review reference
+
+'on':
+  push:
+    branches: [codex/issue-1520-native-shared-state]
+    paths:
+      - tools/original_setup_review_reference.py
+      - tools/original_setup_review_observer.py
+      - .github/workflows/issue-1520-original-setup-reference.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-1520-original-setup-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  unchanged-original:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 1cf025f1eeab31a3daa2861b1f26a025c6954b6e
+          path: original-setup-source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Install only original-lock-pinned reference dependencies
+        run: |
+          python3 -B tools/original_setup_review_reference.py requirements \
+            --original-root "$GITHUB_WORKSPACE/original-setup-source" \
+            --output "$RUNNER_TEMP/original-setup-requirements.txt"
+          python3 -m pip install --disable-pip-version-check --ignore-installed \
+            --only-binary=:all: --require-hashes \
+            -r "$RUNNER_TEMP/original-setup-requirements.txt"
+      - name: Execute the unchanged original packaged-fixture review regressions
+        run: >-
+          python3 -B tools/original_setup_review_reference.py run-tests
+          --original-root "$GITHUB_WORKSPACE/original-setup-source"
+          --output "$RUNNER_TEMP/original-setup-reference"
+      - name: Retain bounded reference metadata only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-setup-review-reference
+          path: ${{ runner.temp }}/original-setup-reference/summary.json
+          if-no-files-found: warn

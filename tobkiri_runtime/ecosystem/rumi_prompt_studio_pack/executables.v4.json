@@ -1,0 +1,178 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:6145f7480ba0ca22f0d90471734dc74d6be35c2a4b73024cada7d3da4f7aab78",
+  "pack_id": "rumi_prompt_studio_pack",
+  "source_identity": "sha256:e34fe3ce74298d3fd7e48784d9823f5d9916da7aa3b8f564d0fbbaccdf1f8c89",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_prompt_studio_pack.prompt-studio.author",
+      "implementation_digest": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1",
+      "implementation_path": "runtime/process.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.prompt.author.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_prompt_studio_pack.prompt-studio-runtime",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:27332f83287a0b22c85f08c8439ab2e110d4757fe32ce3ae576740e8ecc12503",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_prompt_studio_pack.prompt-studio.author.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_prompt_studio_pack.prompt-studio.migrate",
+      "implementation_digest": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1",
+      "implementation_path": "runtime/process.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.prompt.migrate.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_prompt_studio_pack.prompt-studio-migrate",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:91bf8d5b3e38a0721753f9d92e59b1067e818c6b0f98e14afd419196eee176c1",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_prompt_studio_pack.prompt-studio.migrate.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_prompt_studio_pack.prompt-studio.resource",
+      "implementation_digest": "sha256:59ffc5cca912ad719cdec4accc0f7822baa7c0d5d639338c9c4474071865480c",
+      "implementation_path": "runtime/resource_host.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.prompt.studio.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_prompt_studio_pack.prompt-studio-resource",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:8e4a5e863a872e5d26bd84d7d4e128c6f465755841fda7a205b281d2c793a478",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_prompt_studio_pack.prompt-studio.resource.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_prompt_studio_pack.prompt-studio.test",
+      "implementation_digest": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1",
+      "implementation_path": "runtime/process.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.prompt.test.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_prompt_studio_pack.prompt-studio-test",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:f19c73ddc2a6605a334c5246c59807893909d5f54bb9973cf98e35688846babb",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_prompt_studio_pack.prompt-studio.test.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_prompt_studio_pack.prompt-studio.version",
+      "implementation_digest": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1",
+      "implementation_path": "runtime/process.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.prompt.version.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_prompt_studio_pack.prompt-studio-version",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:9d0cf032fe65eb4cffca42d0c56eb29dc5d1aff310696611a3c7753307efd9e6",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_prompt_studio_pack.prompt-studio.version.python"
+    }
+  ]
+}

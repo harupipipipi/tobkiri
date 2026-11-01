@@ -1,0 +1,102 @@
+{
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "pack": {
+    "id": "conformance.minimal.echo",
+    "version": "1.0.0",
+    "kind": "normal_sandbox",
+    "artifact_digest": "sha256:7ea147ccb4770b0d912aaafb961b1b29f41f6a9449b966aeceaa204dc86462cc",
+    "display_name": "Minimal Echo Pack",
+    "publisher_id": "tobkiri.conformance"
+  },
+  "functions": [
+    {
+      "id": "conformance.echo",
+      "implementation_digest": "sha256:db83893c95d81c118325596551b3c2a60263dcbffa80da4ea7610d95ac518073",
+      "contract_revision_digest": "sha256:cf05b46110ba2e9012aa9182230b6ee636d662673532fe95fe9a660dc1f4a7c0",
+      "operations": ["echo"],
+      "role": "pure",
+      "isolation": "wasm_component"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "io.tobkiri.conformance.echo.v1",
+      "revision_digest": "sha256:cf05b46110ba2e9012aa9182230b6ee636d662673532fe95fe9a660dc1f4a7c0",
+      "operations": ["echo"]
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "executables.v4.json",
+      "digest": "sha256:d212a08d0c758df5aae66ad80f9d2bf20c36b7461e35c18e75543be09ef6932d",
+      "kind": "sidecar"
+    },
+    {
+      "path": "runtime/echo.py",
+      "digest": "sha256:db83893c95d81c118325596551b3c2a60263dcbffa80da4ea7610d95ac518073",
+      "kind": "executable",
+      "platform": "conformance",
+      "entrypoint": "echo"
+    }
+  ],
+  "requirements": {
+    "pack_dependencies": {},
+    "contract_dependencies": [],
+    "capabilities": [],
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "secrets": [],
+    "execution_boundary": "sandbox",
+    "approval_policy": "none",
+    "workspace_boundary": "pack_local"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "echo",
+      "owner": "conformance.minimal.echo",
+      "contract_reference": "io.tobkiri.conformance.echo.v1",
+      "provider_id": "conformance.echo",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": ["operation.invoke"]
+    }
+  ],
+  "provider_catalog": [
+    {
+      "provider_id": "conformance.echo",
+      "owner": "conformance.minimal.echo",
+      "contract_reference": "io.tobkiri.conformance.echo.v1",
+      "operations": ["echo"]
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:c4a09bb78ff098244d7aeab1d7a6415f190b5539478733f8d30468eab7fb589c",
+    "artifact_set_digest": "sha256:7ea147ccb4770b0d912aaafb961b1b29f41f6a9449b966aeceaa204dc86462cc",
+    "contract_catalog_digest": "sha256:f424879f1d0f385b6d69b5ab184a3a77936f9e508cacad8ff092e4bc11c3b5a1"
+  },
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v1",
+    "source_kind": "generated",
+    "source_path": "tobkiri_runtime/tests/fixtures/conformance_minimal_echo_pack/pack.v4.json",
+    "source_digest": "sha256:c4a09bb78ff098244d7aeab1d7a6415f190b5539478733f8d30468eab7fb589c",
+    "repository_commit": "working-tree",
+    "repository_tree": "0000000000000000000000000000000000000000000000000000000000000000",
+    "generator": "tobkiri.conformance.minimal_profile",
+    "generator_version": "1.0.0",
+    "normative": false,
+    "evidence": [
+      {
+        "path": "runtime/echo.py",
+        "rule_id": "minimal-pack-runtime",
+        "digest": "sha256:db83893c95d81c118325596551b3c2a60263dcbffa80da4ea7610d95ac518073"
+      }
+    ]
+  },
+  "migration": {
+    "compatibility": "none",
+    "legacy_ids": [],
+    "removal_wave": 0,
+    "sunset_at": "2099-12-31"
+  }
+}

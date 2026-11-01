@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import secrets
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -114,6 +115,11 @@ _OAUTH_RUNTIME_PROVIDER_IDS = {"cloudflare", "google"}
 _PENDING_STATE_TTL_SECONDS = 600
 _ACCESS_TOKEN_SKEW_SECONDS = 60
 _pending_states: dict[str, dict[str, Any]] = {}
+_connection_cache_lock = threading.RLock()
+_connection_registry_cache: dict[str, tuple[tuple[Any, ...], Any]] = {}
+_connection_manifest_signature_cache: dict[
+    str, tuple[tuple[Any, ...], tuple[tuple[str, int, int], ...]]
+] = {}
 
 
 def _pack_root() -> Path:
@@ -127,14 +133,101 @@ def _connection_manifest_root(pack_root: Path | None = None) -> Path:
     return _pack_root() / "config" / "settings_control_center" / "providers"
 
 
+def _connection_manifest_signature(
+    root: Path,
+) -> tuple[tuple[str, int, int], ...]:
+    """Return a manifest signature without rescanning an unchanged tree.
+
+    The registry is read on several provider-status paths.  The fast path
+    checks the known files and directories with ``stat``; a recursive scan is
+    only needed after a directory changes.  This still notices additions,
+    removals, and edits to manifests while avoiding repeated JSON loading.
+    """
+    cache_key = str(root)
+    try:
+        root.stat()
+    except OSError:
+        with _connection_cache_lock:
+            _connection_manifest_signature_cache.pop(cache_key, None)
+            _connection_registry_cache.pop(cache_key, None)
+        return ()
+
+    with _connection_cache_lock:
+        cached = _connection_manifest_signature_cache.get(cache_key)
+        if cached is not None:
+            tree_signature, manifest_signature = cached
+            tree_unchanged = True
+            for relative_path, mtime_ns, size in tree_signature:
+                path = root / relative_path
+                try:
+                    stat = path.stat()
+                except OSError:
+                    tree_unchanged = False
+                    break
+                if stat.st_mtime_ns != mtime_ns or stat.st_size != size:
+                    tree_unchanged = False
+                    break
+            if tree_unchanged:
+                for relative_path, mtime_ns, size in manifest_signature:
+                    path = root / relative_path
+                    try:
+                        stat = path.stat()
+                    except OSError:
+                        tree_unchanged = False
+                        break
+                    if stat.st_mtime_ns != mtime_ns or stat.st_size != size:
+                        tree_unchanged = False
+                        break
+            if tree_unchanged:
+                return manifest_signature
+
+        from core_runtime.connections.registry import discover_connection_manifests
+
+        manifest_paths = discover_connection_manifests(root)
+        directories = sorted({root, *(path.parent for path in manifest_paths)})
+        tree_entries: list[tuple[str, int, int]] = []
+        for directory in directories:
+            try:
+                stat = directory.stat()
+            except OSError:
+                continue
+            relative_path = str(directory.relative_to(root))
+            tree_entries.append((relative_path, stat.st_mtime_ns, stat.st_size))
+
+        manifest_entries: list[tuple[str, int, int]] = []
+        for path in manifest_paths:
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            manifest_entries.append(
+                (str(path.relative_to(root)), stat.st_mtime_ns, stat.st_size)
+            )
+
+        tree_signature = tuple(sorted(set(tree_entries)))
+        manifest_signature = tuple(sorted(manifest_entries))
+        _connection_manifest_signature_cache[cache_key] = (
+            tree_signature,
+            manifest_signature,
+        )
+        return manifest_signature
+
+
 def _connection_registry(pack_root: Path | None = None):
     from core_runtime.connections.registry import ConnectionsRegistry
 
-    registry = ConnectionsRegistry()
     root = _connection_manifest_root(pack_root)
-    if root.exists():
-        registry.load_manifest_dir(root)
-    return registry
+    signature = _connection_manifest_signature(root)
+    cache_key = str(root)
+    with _connection_cache_lock:
+        cached = _connection_registry_cache.get(cache_key)
+        if cached is not None and cached[0] == signature:
+            return cached[1]
+        registry = ConnectionsRegistry()
+        if signature:
+            registry.load_manifest_dir(root)
+        _connection_registry_cache[cache_key] = (signature, registry)
+        return registry
 
 
 def _connection_provider(provider_id: str, *, pack_root: Path | None = None):
@@ -148,19 +241,12 @@ def _connection_provider(provider_id: str, *, pack_root: Path | None = None):
 
 
 def _connection_provider_ids(*, pack_root: Path | None = None) -> set[str]:
-    root = _connection_manifest_root(pack_root)
-    ids: set[str] = set()
-    if not root.exists():
-        return ids
-    for path in root.rglob("*.connection.json"):
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        provider_id = str(payload.get("provider_id") or "").strip()
-        if provider_id:
-            ids.add(provider_id)
-    return ids
+    return {
+        str(item.get("provider_id") or item.get("providerId") or "").strip()
+        for item in _connection_registry(pack_root).list_providers()
+        if isinstance(item, dict)
+        and str(item.get("provider_id") or item.get("providerId") or "").strip()
+    }
 
 
 def _dotenv_candidates(pack_root: Path | None = None) -> list[Path]:
@@ -173,19 +259,21 @@ def _dotenv_candidates(pack_root: Path | None = None) -> list[Path]:
     seen: set[Path] = set()
     ordered: list[Path] = []
     for candidate in candidates:
-        try:
-            resolved = candidate.resolve()
-        except OSError:
-            resolved = candidate
-        if resolved in seen:
+        # Do not resolve filesystem links merely to deduplicate a fixed list
+        # of dotenv candidates.  ``resolve()`` can traverse a symlinked or
+        # unavailable mount and block provider discovery for every model.
+        lexical_path = candidate.expanduser().absolute()
+        if lexical_path in seen:
             continue
-        seen.add(resolved)
+        seen.add(lexical_path)
         ordered.append(candidate)
     return ordered
 
 
 def _parse_dotenv_file(path: Path) -> dict[str, str]:
     try:
+        if path.is_symlink() or not path.is_file():
+            return {}
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError:
         return {}
@@ -216,13 +304,11 @@ def _env_value(name: str, *, pack_root: Path | None = None) -> str:
     name = str(name or "").strip()
     if not name:
         return ""
-    value = os.environ.get(name, "").strip()
+    from core_runtime.host_contract import host_contract_value
+
+    value = host_contract_value(name)
     if value:
         return value
-    for path in _dotenv_candidates(pack_root):
-        value = str(_parse_dotenv_file(path).get(name) or "").strip()
-        if value:
-            return value
     return ""
 
 
@@ -289,9 +375,18 @@ def _provider_context_from_env(provider_id: str, *, pack_root: Path | None = Non
 
 
 def _secrets_dir(pack_root: Path | None = None) -> Path:
-    override = _env_value("RUMI_DEFAULTSPACK_SECRETS_DIR", pack_root=pack_root).strip()
+    # A path override only selects the persistent store.  It is intentionally
+    # separate from _env_value(), which resolves credential material solely
+    # through the explicit host contract.
+    override = ""
+    if pack_root is None:
+        override = os.getenv("RUMI_DEFAULTSPACK_SECRETS_DIR", "").strip()
     if override:
         return Path(override)
+    if pack_root is None:
+        configured_user_data = os.getenv("RUMI_USER_DATA", "").strip()
+        if configured_user_data:
+            return Path(configured_user_data).expanduser() / "secrets"
     return (pack_root or _pack_root()) / "user_data" / "secrets"
 
 
@@ -469,7 +564,12 @@ def _provider_granted_capabilities(provider_id: str, token_metadata: dict[str, A
 
 def _read_provider_oauth_bundle_value(provider_id: str, suffix: str, *, pack_root: Path | None = None) -> str:
     payload = _read_connection_credential(provider_id, _OAUTH_TOKEN_MATERIAL_TYPE, pack_root=pack_root)
-    credentials = payload.get("credentials") if isinstance(payload.get("credentials"), dict) else {}
+    credentials_value = payload.get("credentials")
+    credentials: dict[str, object] = (
+        {str(key): value for key, value in credentials_value.items()}
+        if isinstance(credentials_value, dict)
+        else {}
+    )
     lookup = {
         "ACCESS_TOKEN": "access_token",
         "REFRESH_TOKEN": "refresh_token",
@@ -555,14 +655,25 @@ def _google_scope_mode_rows(*, pack_root: Path | None = None) -> list[dict[str, 
         "google_gmail_readonly",
         "google_ai",
     ):
-        details = dict(_GOOGLE_SCOPE_MODE_DETAILS[mode])
+        details_value = _GOOGLE_SCOPE_MODE_DETAILS[mode]
+        details: dict[str, object] = (
+            {str(key): item for key, item in details_value.items()}
+            if isinstance(details_value, dict)
+            else {}
+        )
         rows.append(
             {
                 "id": mode,
                 "label": str(details.get("label") or mode),
                 "description": str(details.get("description") or ""),
                 "scopes": _default_scopes("google", mode, pack_root=pack_root),
-                "services": list(details.get("services") or []),
+                "services": (
+                    list(services_value)
+                    if isinstance(
+                        services_value := details.get("services"), list
+                    )
+                    else []
+                ),
                 "restricted": bool(details.get("restricted")),
                 "warning": str(details.get("warning") or ""),
                 "surface": str(details.get("surface") or ""),
@@ -797,8 +908,10 @@ def clear_provider_oauth_client_config(provider_id: str, *, pack_root: Path | No
 
 def _provider_bundle_metadata(provider_id: str, *, pack_root: Path | None = None) -> dict[str, Any]:
     payload = _read_connection_credential(provider_id, _OAUTH_TOKEN_MATERIAL_TYPE, pack_root=pack_root)
-    token_metadata = payload.get("token_metadata") if isinstance(payload.get("token_metadata"), dict) else {}
-    return dict(token_metadata)
+    token_metadata_value = payload.get("token_metadata")
+    if not isinstance(token_metadata_value, dict):
+        return {}
+    return {str(key): item for key, item in token_metadata_value.items()}
 
 
 def _provider_metadata(provider_id: str, *, pack_root: Path | None = None) -> dict[str, Any]:
@@ -868,7 +981,18 @@ def save_provider_oauth_connection(
         "has_refresh_token": bool(refresh_token or existing.get("has_refresh_token")),
     }
     capability_metadata = {**metadata, "credential_kind": _OAUTH_TOKEN_MATERIAL_TYPE}
-    requested_capabilities = _provider_granted_capabilities(provider_id, capability_metadata, pack_root=pack_root)
+    explicit_requested_capabilities = _normalize_scope_list(
+        token_data.get("requested_capabilities")
+        or token_data.get("requestedCapabilities")
+    )
+    requested_capabilities = (
+        explicit_requested_capabilities
+        or _provider_granted_capabilities(
+            provider_id,
+            capability_metadata,
+            pack_root=pack_root,
+        )
+    )
     if requested_capabilities:
         capability_metadata["requested_capabilities"] = requested_capabilities
     resolved = _resolve_connection_capabilities(provider_id, capability_metadata, pack_root=pack_root)
@@ -1005,7 +1129,13 @@ def start_provider_oauth(
         return {"success": False, "provider_id": provider_id, "error": "missing scope config", "status": "missing_scope_config"}
     requested_services = _normalize_requested_services(services)
     if provider_id == "google" and not requested_services:
-        requested_services = list(_GOOGLE_SCOPE_MODE_DETAILS.get(resolved_scope_mode, {}).get("services") or [])
+        scope_details = _GOOGLE_SCOPE_MODE_DETAILS.get(resolved_scope_mode)
+        if isinstance(scope_details, dict):
+            requested_services = [
+                str(item)
+                for item in scope_details.get("services", [])
+                if str(item or "").strip()
+            ]
     redirect_uri = _build_redirect_uri(provider_id, request_headers=request_headers, pack_root=pack_root)
     state = secrets.token_urlsafe(32)
     code_verifier = _generate_code_verifier() if provider.oauth.pkce_supported else ""
@@ -1398,7 +1528,9 @@ def provider_oauth_status(
     cloudflare_environment = {}
     if provider_id == "cloudflare":
         try:
-            from core_runtime.cloudflare.sdk_client import cloudflare_sdk_status
+            from core_runtime.cloudflare.sdk_client import (
+                cloudflare_sdk_status,
+            )
 
             cloudflare_sdk = cloudflare_sdk_status()
         except Exception:
@@ -1409,7 +1541,9 @@ def provider_oauth_status(
                 "detail": "Cloudflare Python SDK status could not be loaded.",
             }
         try:
-            from core_runtime.cloudflare.diagnostics import cloudflare_environment_status
+            from core_runtime.cloudflare.diagnostics import (
+                cloudflare_environment_status,
+            )
 
             active = active_diagnostics or str(os.environ.get("RUMI_CLOUDFLARE_ACTIVE_DIAGNOSTICS") or "").strip().lower() in {
                 "1",
@@ -1417,7 +1551,11 @@ def provider_oauth_status(
                 "yes",
             }
             cloudflare_api_token = get_provider_access_token(provider_id, pack_root=pack_root) if active else None
-            cloudflare_environment = cloudflare_environment_status(active=active, api_token=cloudflare_api_token)
+            cloudflare_environment = cloudflare_environment_status(
+                active=active,
+                api_token=cloudflare_api_token,
+                connector_root=pack_root or _pack_root(),
+            )
         except Exception:
             cloudflare_environment = {
                 "schema": "rumi.cloudflare.environment.v1",

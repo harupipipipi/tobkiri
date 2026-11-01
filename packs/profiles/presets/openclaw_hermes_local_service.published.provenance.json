@@ -1,0 +1,53 @@
+{
+  "format": "tobkiri.preset-migration/1",
+  "legacy": {
+    "behavior": [
+      "local_orchestrator",
+      "explicit_handoffs",
+      "audit_trail",
+      "conservative_autonomy"
+    ],
+    "enabled_capabilities": [
+      "planning",
+      "subagent_coordination",
+      "coding_workspace",
+      "artifact_delivery",
+      "safety_review"
+    ],
+    "id": "openclaw_hermes_local_service",
+    "name": "OpenClaw/Hermes Style Local Service",
+    "policy": {
+      "file_write_requires_approval": true,
+      "network_default": "deny",
+      "subagents_require_approval": true,
+      "terminal_requires_approval": true
+    },
+    "profile": "rumi_agent_services.service_director",
+    "task_defaults": {
+      "output": {
+        "type": "audited_work_package_summary"
+      }
+    },
+    "ui_panels": [
+      "chat",
+      "plan",
+      "workers",
+      "diffs",
+      "artifacts"
+    ],
+    "workflow": "autonomous_project_service"
+  },
+  "legacy_path": "tobkiri_runtime/profile_projections/agent-services/presets/openclaw_hermes_local_service.preset.yaml",
+  "legacy_sha256": "d2bbe364eb4c36a80159d484f3b37dfd051b2d40fe709e907fc77c9a00cb709e",
+  "name": "OpenClaw/Hermes Style Local Service",
+  "pending_capabilities": [
+    "planning",
+    "subagent_coordination",
+    "coding_workspace",
+    "artifact_delivery",
+    "safety_review"
+  ],
+  "prompt_pack": "local.preset-openclaw-hermes-local-service",
+  "published_profile": "packs/profiles/presets/openclaw_hermes_local_service.published.json",
+  "status": "style-defaults-published; legacy capability parity todo"
+}

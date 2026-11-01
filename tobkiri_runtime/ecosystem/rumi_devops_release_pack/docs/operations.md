@@ -37,6 +37,6 @@ python -m pytest tobkiri_runtime/tests/test_rumi_devops_release_pack_contract.py
 
 - Required docs exist.
 - `ecosystem.json` and setup `pack.json` agree on ID, target, version, and dependencies.
-- `defaultspack_promotion.eligible` remains false.
+- `base_pack_promotion.eligible` remains false.
 - `overlap_policy` mentions defaultspack, code pack, and agent services pack boundaries.
 - Focused contract test passes.

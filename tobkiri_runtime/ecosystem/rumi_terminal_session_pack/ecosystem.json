@@ -1,0 +1,73 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.terminal.session.v1",
+      "rumi.resource.terminal.session.v1"
+    ],
+    "requires": [
+      "rumi.resource.workspace.v1",
+      "rumi.service.host.authorize.v1",
+      "rumi.service.shell.inspect.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+    "rumi_shell_policy_pack": ">=1.0.0,<2.0.0",
+    "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Bounded observable and receipt-controlled terminal sessions.",
+  "display_name": "Rumi Terminal Session",
+  "host_execution": true,
+  "metadata": {
+    "authority_split": [
+      "observe",
+      "control"
+    ],
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:3cdcc4ddee72a21de63c97cd823638d040cad4912fefaec802d233939991a289",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:fc5d8a706c178869e1093e1423415b3d160b7bfb44bc7458ad1a886985b55f96"
+    },
+    "control_receipt_required": true,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:fc5d8a706c178869e1093e1423415b3d160b7bfb44bc7458ad1a886985b55f96"
+    },
+    "manifest_authority": "v4-authoritative",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "tool_or_ui_registry_imports": false
+  },
+  "pack_id": "rumi_terminal_session_pack",
+  "pack_identity": "rumi:ecosystem/rumi_terminal_session_pack",
+  "provenance": {
+    "build_identity": "rumi_terminal_session_pack:1.0.0",
+    "content_hash": "sha256:4363d9f58c34afaf7a3ca8117f81f2fc986ea9c80f71d6429454118d2c35269f",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "host.authority.consume",
+    "shell.inspect",
+    "terminal.session.control",
+    "terminal.session.observe",
+    "workspace.metadata.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

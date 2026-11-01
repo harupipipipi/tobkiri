@@ -1,0 +1,58 @@
+{
+  "format": "tobkiri.preset-migration/1",
+  "legacy": {
+    "behavior": [
+      "service_director_loop",
+      "evidence_first",
+      "browser_optional",
+      "final_review"
+    ],
+    "enabled_capabilities": [
+      "intake",
+      "planning",
+      "deep_research",
+      "browser_operator",
+      "artifact_delivery",
+      "safety_review"
+    ],
+    "id": "chatgpt_agent_deep_research_service",
+    "name": "ChatGPT Agent + Deep Research Style Service",
+    "policy": {
+      "browser_requires_approval": true,
+      "network_default": "deny"
+    },
+    "profile": "rumi_agent_services.service_director",
+    "task_defaults": {
+      "output": {
+        "type": "markdown_report"
+      },
+      "source_policy": {
+        "local_sources": "preferred",
+        "official_docs": "preferred",
+        "web": "optional_with_approval"
+      }
+    },
+    "ui_panels": [
+      "chat",
+      "plan",
+      "tool_calls",
+      "source_cards",
+      "artifacts"
+    ],
+    "workflow": "deep_research_report"
+  },
+  "legacy_path": "tobkiri_runtime/profile_projections/agent-services/presets/chatgpt_agent_deep_research_service.preset.yaml",
+  "legacy_sha256": "36de05072956d46d76ce11675f16deb24230b17705e2c40fd3dd7cbb6e83181a",
+  "name": "ChatGPT Agent + Deep Research Style Service",
+  "pending_capabilities": [
+    "intake",
+    "planning",
+    "deep_research",
+    "browser_operator",
+    "artifact_delivery",
+    "safety_review"
+  ],
+  "prompt_pack": "local.preset-chatgpt-agent-deep-research-service",
+  "published_profile": "packs/profiles/presets/chatgpt_agent_deep_research_service.published.json",
+  "status": "style-defaults-published; legacy capability parity todo"
+}

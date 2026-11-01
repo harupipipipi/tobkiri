@@ -1,0 +1,47 @@
+{
+  "format": "tobkiri.preset-migration/1",
+  "legacy": {
+    "behavior": [
+      "source_card_grid",
+      "structured_report",
+      "caveats_visible"
+    ],
+    "enabled_capabilities": [
+      "deep_research",
+      "source_cards",
+      "artifact_delivery",
+      "safety_review"
+    ],
+    "id": "genspark_report_service",
+    "name": "Genspark Style Report Builder",
+    "policy": {
+      "network_default": "deny",
+      "web_requires_approval": true
+    },
+    "profile": "rumi_agent_services.synthesis_writer",
+    "task_defaults": {
+      "output": {
+        "type": "report_with_source_cards"
+      }
+    },
+    "ui_panels": [
+      "chat",
+      "source_cards",
+      "outline",
+      "artifacts"
+    ],
+    "workflow": "deep_research_report"
+  },
+  "legacy_path": "tobkiri_runtime/profile_projections/agent-services/presets/genspark_report_service.preset.yaml",
+  "legacy_sha256": "48683ce93d8ea83b8cd37c243f0032e18751698f9a9200d0994716991e0413dc",
+  "name": "Genspark Style Report Builder",
+  "pending_capabilities": [
+    "deep_research",
+    "source_cards",
+    "artifact_delivery",
+    "safety_review"
+  ],
+  "prompt_pack": "local.preset-genspark-report-service",
+  "published_profile": "packs/profiles/presets/genspark_report_service.published.json",
+  "status": "style-defaults-published; legacy capability parity todo"
+}

@@ -82,7 +82,7 @@ def test_multimodal_media_setup_pack_is_discoverable_and_boundary_scoped() -> No
     assert candidate.depends_on == [{"pack_id": "defaultspack", "version": ">=2.0.0"}]
     assert candidate.overlap_policy["workspace_artifacts"] == "handoff_final_exports_to_rumi_workspace_pack"
     assert candidate.overlap_policy["generated_media"] == "require_asset_ledger_before_delivery"
-    assert candidate.defaultspack_promotion["eligible"] is False
+    assert candidate.base_pack_promotion["eligible"] is False
 
 
 def test_multimodal_media_docs_have_overlap_notes_and_no_secret_literals() -> None:

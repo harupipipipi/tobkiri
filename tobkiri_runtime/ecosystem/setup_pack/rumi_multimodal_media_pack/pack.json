@@ -20,7 +20,7 @@
     "tool_aliases": "prefer_explicit_pack_namespace",
     "generated_media": "require_asset_ledger_before_delivery"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "criteria": [
       "rights_privacy_review",

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { mobileApiResources, type MobilePairingApi, type MobilePairingReview, type MobilePairingStatus } from "../features/mobile/resources/mobileApiResources";
 import { PairingRequestGate, pairingDecisionReason, pairingErrorCode, pairingSettlement, type PairingDecision, type PairingSettlement } from "../features/mobile/mobilePairingReview";
+import { ErrorNotice } from "./ErrorNotice";
 
 type Props = {
   pairingId: string;
@@ -147,10 +148,14 @@ export function MobilePairingApproval({ pairingId, api = mobileApiResources, onC
 
       {loading && !review ? <p role="status" className="mt-4">authoritative stateを確認しています…</p> : null}
       {pollError ? (
-        <div role="alert" className="mt-4 rounded border border-amber-500/30 p-3">
-          <p>接続状態を確認できません。要求は変更されていません。</p>
+        <ErrorNotice
+          className="mt-4"
+          copyLabel="接続状態エラーをコピー"
+          message={`接続状態を確認できません。要求は変更されていません。 ${pollError}`}
+          severity="warning"
+        >
           <button type="button" disabled={busy || loading} onClick={() => void refresh()} className="mt-2 underline">再試行</button>
-        </div>
+        </ErrorNotice>
       ) : null}
       {review ? (
         <dl className="mt-4 grid gap-2 text-sm">
@@ -160,7 +165,13 @@ export function MobilePairingApproval({ pairingId, api = mobileApiResources, onC
         </dl>
       ) : null}
       {busy ? <p role="status" aria-live="assertive" className="mt-4">{decision === "approve" ? "承認" : "拒否"}を処理中です。この画面は閉じられません。</p> : null}
-      {decisionError ? <p role="alert" className="mt-4 text-red-300">{decisionError}。状態を再確認してから再試行できます。</p> : null}
+      {decisionError ? (
+        <ErrorNotice
+          className="mt-4 text-sm"
+          copyLabel="ペアリング処理エラーをコピー"
+          message={`${decisionError}。状態を再確認してから再試行できます。`}
+        />
+      ) : null}
       <div className="mt-5 flex flex-wrap gap-2">
         <button type="button" disabled={busy || !review || Boolean(pollError)} onClick={() => void settle("approve")} className="rounded bg-emerald-300 px-3 py-2 text-zinc-950 disabled:opacity-40">承認</button>
         <button type="button" disabled={busy} onClick={() => void settle("reject")} className="rounded border border-red-400/40 px-3 py-2 text-red-200 disabled:opacity-40">要求を拒否</button>

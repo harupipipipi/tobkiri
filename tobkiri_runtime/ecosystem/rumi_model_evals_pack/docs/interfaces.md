@@ -2,11 +2,16 @@
 
 ## Flows
 
-This pack does not add executable flows or modifiers. It declares eval suite specs and recipes that existing or future runtimes may interpret.
+This pack does not execute provider calls or model samples. It declares eval
+suite specs and recipes, and exposes verified operations that read the pinned
+catalog, produce non-executing approval-required plans, and deterministically
+score observations supplied by another runtime.
 
 ## Functions And Handlers
 
-This pack does not add functions, handlers, provider adapters, eval runners, scripts, notebooks, or tool manifests.
+The only executable functions are the artifact-bound catalog, plan, and local
+score operations in `runtime/evaluator.py`. It adds no provider adapter, remote
+eval runner, shell script, notebook, or tool manifest.
 
 ## Routes
 

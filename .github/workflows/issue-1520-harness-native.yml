@@ -1,0 +1,470 @@
+name: Issue 1520 whole native Harness component
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-harness-native.yml'
+      - 'scripts/wasm/prepare_harness_native.py'
+      - 'scripts/wasm/stage_harness_native.py'
+      - 'tools/python313-producer/harness_native/**'
+      - 'tools/python313-producer/build_components.py'
+      - 'tools/python313-producer/component_inputs.py'
+      - 'tools/python313-producer/component_driver.py'
+      - 'tools/python313-producer/harness_native_dependencies.py'
+      - 'tools/python313-producer/harness_native_ci_inputs.py'
+      - 'tools/python313-producer/schema_probe/captured_loader.py'
+      - 'tobkiri_launcher/harness-native/**'
+      - 'crates/tobkiri-core/**'
+      - 'crates/tobkiri-wasm/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'tools/python313-producer/tests/test_build_components.py'
+      - 'tools/python313-producer/tests/test_harness_native_dependencies.py'
+      - 'tools/python313-producer/tests/test_schema_compressed_loader.py'
+      - 'tools/quality/test_harness_native_workflow.py'
+      - 'tobkiri_runtime/core_runtime/**'
+      - 'tobkiri_runtime/tobkiri_protocol/**'
+      - 'tobkiri_runtime/ecosystem/defaultspack/defaultspack/profile_runtime_composition.py'
+      - 'tobkiri_runtime/ecosystem/defaultspack/domain/profile_resolution.py'
+      - 'tobkiri_runtime/ecosystem/defaultspack/domain/_profile_runtime_records.py'
+      - 'tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/**'
+      - 'sdk/python/**'
+  workflow_dispatch:
+    inputs:
+      verification:
+        description: Original runtime regression or additional actual factory/getter comparison
+        type: choice
+        options: [bootstrap, denied-factory, bootstrap-identity, review-identity, catalog-prefix]
+        default: bootstrap
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: issue-1520-harness-native-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-whole-native-harness:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      PRODUCER_RUN: '39956025119'
+      PRODUCER_HEAD: ae7f83080a36e823ac330342584210243dc38050
+      RPDS_RUN: '40182231971'
+      RPDS_HEAD: 53163ed815c62c4853bbed3d8a082c0764e3084f
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Fetch the original source for the frozen producer checkpoint
+        run: git fetch --no-tags --depth=1 origin c6d7001249c661552416672448bda123c59b33ca
+      - name: Install lock-pinned Host dependencies for real catalog source tests
+        run: |
+          python3 -B - "$RUNNER_TEMP/native-source-test-requirements.txt" <<'PY'
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, "tools")
+          from original_authority_reference import requirements
+          # Host test dependencies use this checkout's lock. Independent
+          # original references still require their separate clean checkout.
+          requirements(Path.cwd(), Path(sys.argv[1]), packages=(
+              "jsonschema", "attrs", "jsonschema-specifications", "referencing",
+              "rpds-py", "packaging", "typing-extensions",
+          ), versions={"rpds-py": "2026.6.3"})
+          PY
+          python3 -m pip install --disable-pip-version-check --ignore-installed \
+            --only-binary=:all: --require-hashes \
+            -r "$RUNNER_TEMP/native-source-test-requirements.txt"
+      - name: Verify actual whole-component sources and native-only boundary
+        run: |
+          python3 -B tools/quality/test_harness_native_workflow.py
+          python3 -B -m unittest discover -s tests -p 'test_harness_native_*.py'
+          python3 -B -m unittest discover -s tools/python313-producer/tests -p test_build_components.py
+          python3 -B -m unittest discover -s tools/python313-producer/tests -p test_harness_native_dependencies.py
+          python3 -B -m unittest discover -s tools/python313-producer/tests -p test_schema_loader.py
+          python3 -B -m unittest discover -s tools/python313-producer/tests -p test_schema_compressed_loader.py
+      - name: Authenticate the existing successful custom producer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" > "$RUNNER_TEMP/producer-run.json"
+          python3 -B - "$RUNNER_TEMP/producer-run.json" "$PRODUCER_HEAD" <<'PY'
+          import json, sys
+          from pathlib import Path
+          run = json.loads(Path(sys.argv[1]).read_bytes())
+          if (run['head_sha'] != sys.argv[2] or run['status'] != 'completed'
+                  or run['conclusion'] != 'success'):
+              raise ValueError('producer identity or completion differs')
+          PY
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RPDS_RUN" > "$RUNNER_TEMP/rpds-run.json"
+          python3 -B - "$RUNNER_TEMP/rpds-run.json" "$RPDS_HEAD" <<'PY'
+          import json, sys
+          from pathlib import Path
+          run = json.loads(Path(sys.argv[1]).read_bytes())
+          if (run['head_sha'] != sys.argv[2] or run['status'] != 'completed'
+                  or run['conclusion'] != 'success'):
+              raise ValueError('genuine rpds predecessor differs')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: python313-producer-cli
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PRODUCER_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/harness-producer
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui-rpds-inactive-component
+          repository: ${{ github.repository }}
+          run-id: ${{ env.RPDS_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/schema-rpds
+      - name: Prepare pinned tools inside CI only
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          chmod 755 "$RUNNER_TEMP/harness-producer/work/target/release/componentize-py"
+          python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/harness-validation"
+          python3 -B tools/python313-producer/fetch_schema.py --destination "$RUNNER_TEMP/schema-inputs"
+          python3 -B tools/python313-producer/fetch_schema_stdlib.py --destination "$RUNNER_TEMP/schema-stdlib"
+      - name: Build the actual native Harness dispatcher and original module closure
+        run: >-
+          python3 -B tools/python313-producer/build_components.py --harness-native
+          --producer "$RUNNER_TEMP/harness-producer"
+          --validation "$RUNNER_TEMP/harness-validation"
+          --destination "$RUNNER_TEMP/harness-native"
+          --schema-inputs "$RUNNER_TEMP/schema-inputs"
+          --stdlib "$RUNNER_TEMP/schema-stdlib"
+          --rpds "$RUNNER_TEMP/schema-rpds"
+      - name: Retain actual component and bounded build receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: whole-native-harness-component
+          path: |
+            ${{ runner.temp }}/producer-run.json
+            ${{ runner.temp }}/rpds-run.json
+            ${{ runner.temp }}/harness-native/components-build.json
+            ${{ runner.temp }}/harness-native/harness-native/inputs/plan.json
+            ${{ runner.temp }}/harness-native/harness-native/inputs/provenance.json
+            ${{ runner.temp }}/harness-native/harness-native/build/
+            ${{ runner.temp }}/harness-native/harness-native/work/component.build.json
+            ${{ runner.temp }}/harness-native/harness-native/work/generated-bindings/
+            ${{ runner.temp }}/harness-native/harness-native/work/component.wasm
+          if-no-files-found: warn
+
+  execute-original-native-bootstrap:
+    needs: build-whole-native-harness
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-harness-native
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require original supported physical ownership platform
+        id: native_platform
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          device="$(df -P "$GITHUB_WORKSPACE" | awk 'NR == 2 {print $1}')"
+          diskutil info "$device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - uses: actions/download-artifact@v4
+        with:
+          name: whole-native-harness-component
+          path: ${{ runner.temp }}/harness-built
+      - name: Bind the actual component, original modules and native index
+        id: native_inputs
+        run: >-
+          python3 -B tools/python313-producer/harness_native_ci_inputs.py
+          --artifact "$RUNNER_TEMP/harness-built/harness-native/harness-native/work/component.wasm"
+          --output "$RUNNER_TEMP/harness-native-inputs" --github-env "$GITHUB_ENV"
+      - name: Verify actual source metadata operations without general source rights
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-source-metadata.log" --expected-passed 5 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          source_resolve::tests:: -- --nocapture
+      - name: Verify shared component preparation preserves source funding and custody
+        if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-preparation.log" --expected-passed 5 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          preparation::tests:: -- --nocapture
+      - name: Preserve init failures and reject unauthorized inspection and cancelled getters
+        if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-inspection-policy.log" --expected-passed 6 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          bootstrap_runtime::policy_tests:: -- --nocapture
+      - name: Run actual original Runtime.init Profile identity and opaque root getters
+        if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-runtime.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          bootstrap_runtime::actual_ci::actual_original_component_initializes_and_returns_original_profile_id
+          -- --nocapture
+      - name: Verify catalog DATA capacity and actual native comparison work
+        if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-catalog-funding.log" --expected-passed 3 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          original_authority::json::catalog_funding_tests:: -- --test-threads=1 --nocapture
+      - name: Verify finite catalog reads preserve occurrences and physical closes
+        if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-catalog-reader.log" --expected-passed 4 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          original_authority::io::publication::catalog::tests:: -- --test-threads=1 --nocapture
+      - name: Checkout pinned original factory and identity references
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity' || inputs.verification == 'review-identity' || inputs.verification == 'catalog-prefix') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        uses: actions/checkout@v4
+        with:
+          ref: 1cf025f1eeab31a3daa2861b1f26a025c6954b6e
+          path: original-denied-factory-source
+          persist-credentials: false
+      - name: Install original reference dependencies once
+        id: original_reference_dependencies
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && (inputs.verification == 'denied-factory' || inputs.verification == 'bootstrap-identity' || inputs.verification == 'review-identity' || inputs.verification == 'catalog-prefix') && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        run: |
+          python3 -B tools/original_setup_review_reference.py requirements \
+            --original-root "$GITHUB_WORKSPACE/original-denied-factory-source" \
+            --output "$RUNNER_TEMP/original-denied-factory-requirements.txt"
+          python3 -m pip install --disable-pip-version-check --ignore-installed \
+            --only-binary=:all: --require-hashes \
+            -r "$RUNNER_TEMP/original-denied-factory-requirements.txt"
+      - name: Prepare fresh original denial factory observations
+        id: factory_reference
+        if: ${{ !cancelled() && inputs.verification == 'denied-factory' && steps.original_reference_dependencies.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/original_denied_factory_reference.py prepare
+          --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
+          --output "$RUNNER_TEMP/original-denied-factory-reference"
+      - name: Compare every fresh denial through the actual same-Store factory
+        id: factory_native
+        if: ${{ !cancelled() && steps.factory_reference.conclusion == 'success' }}
+        env:
+          TOBKIRI_ORIGINAL_DENIED_FACTORY_FIXTURES: ${{ runner.temp }}/original-denied-factory-reference/fixtures.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-denied-factory.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          bootstrap_runtime::denied_actual_ci::original_reference_driver
+          -- --ignored --exact --test-threads=1 --nocapture
+      - name: Independently compare actual factory DATA with the original port
+        if: ${{ !cancelled() && steps.factory_native.outcome != 'skipped' && steps.factory_reference.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/original_denied_factory_reference.py compare
+          --fixtures "$RUNNER_TEMP/original-denied-factory-reference/fixtures.json"
+          --observations "$RUNNER_TEMP/original-denied-factory-reference/native-observations.json"
+          --output "$RUNNER_TEMP/original-denied-factory-reference/comparison.json"
+      - name: Prepare fresh original recovery cause observations
+        id: recovery_error_reference
+        if: ${{ !cancelled() && inputs.verification == 'denied-factory' && steps.original_reference_dependencies.conclusion == 'success' }}
+        run: |
+          python3 -B tools/original_catalog_prefix_reference.py prepare \
+            --original-root "$GITHUB_WORKSPACE/original-denied-factory-source" \
+            --output "$RUNNER_TEMP/original-recovery-catalog-prefix"
+          python3 -B tools/original_recovery_error_reference.py prepare \
+            --original-root "$GITHUB_WORKSPACE/original-denied-factory-source" \
+            --catalog-fixtures "$RUNNER_TEMP/original-recovery-catalog-prefix/summary.json" \
+            --output "$RUNNER_TEMP/original-recovery-errors"
+      - name: Execute native recovery causes with the actual same-Store factory
+        id: recovery_error_native
+        if: ${{ !cancelled() && steps.recovery_error_reference.conclusion == 'success' }}
+        env:
+          TOBKIRI_ORIGINAL_RECOVERY_ERROR_FIXTURES: ${{ runner.temp }}/original-recovery-errors/summary.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-recovery-factory.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          bootstrap_runtime::catalog::recovery_cause::actual_ci::actual_recovery_factory_driver
+          -- --ignored --exact --test-threads=1 --nocapture
+      - name: Independently compare native causes and actual factory Host edges
+        if: ${{ !cancelled() && steps.recovery_error_reference.conclusion == 'success' && steps.recovery_error_native.outcome != 'skipped' }}
+        run: >-
+          python3 -B tools/original_recovery_error_reference.py compare
+          --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
+          --fixtures "$RUNNER_TEMP/original-recovery-errors/summary.json"
+          --observations "$RUNNER_TEMP/original-recovery-errors/native-recovery-observations.json"
+          --output "$RUNNER_TEMP/original-recovery-errors/native-comparison.json"
+      - name: Prepare fresh original bootstrap identity observations
+        id: identity_reference
+        if: ${{ !cancelled() && inputs.verification == 'bootstrap-identity' && steps.original_reference_dependencies.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/original_bootstrap_identity_reference.py
+          --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
+          --output "$RUNNER_TEMP/original-bootstrap-identity-reference"
+      - name: Observe the unmodified getter through the actual same Store
+        if: ${{ !cancelled() && steps.identity_reference.conclusion == 'success' }}
+        env:
+          TOBKIRI_ORIGINAL_BOOTSTRAP_IDENTITY_REFERENCE: ${{ runner.temp }}/original-bootstrap-identity-reference/summary.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-bootstrap-identity.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          bootstrap_runtime::identity_actual_ci::original_getter_driver
+          -- --ignored --exact --test-threads=1 --nocapture
+      - name: Prepare fresh original continuous recovery observations
+        id: review_identity_reference
+        if: ${{ !cancelled() && inputs.verification == 'review-identity' && steps.original_reference_dependencies.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/original_publication_identity_reference.py prepare
+          --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
+          --output "$RUNNER_TEMP/original-publication-identity-reference"
+      - name: Execute actual same-guard getter comparison and factory branches
+        id: review_identity_native
+        if: ${{ !cancelled() && steps.review_identity_reference.conclusion == 'success' }}
+        env:
+          TOBKIRI_ORIGINAL_PUBLICATION_IDENTITY_FIXTURES: ${{ runner.temp }}/original-publication-identity-reference/fixtures.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-review-identity.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          bootstrap_runtime::review_identity_actual_ci::original_default_component_driver
+          -- --ignored --exact --test-threads=1 --nocapture
+      - name: Independently compare actual continuous recovery with the original
+        if: ${{ !cancelled() && steps.review_identity_native.outcome != 'skipped' && steps.review_identity_reference.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/original_publication_identity_reference.py compare-actual-default
+          --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
+          --fixtures "$RUNNER_TEMP/original-publication-identity-reference/fixtures.json"
+          --observations "$RUNNER_TEMP/original-publication-identity-reference/actual-default-review-observations.json"
+          --output "$RUNNER_TEMP/original-publication-identity-reference/actual-default-comparison.json"
+      - name: Prepare independent original catalog resource fixtures
+        id: catalog_prefix_reference
+        if: ${{ !cancelled() && inputs.verification == 'catalog-prefix' && steps.original_reference_dependencies.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/original_catalog_prefix_reference.py prepare
+          --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
+          --output "$RUNNER_TEMP/original-catalog-prefix"
+      - name: Execute the actual same-guard catalog to constructor entry
+        id: catalog_prefix_native
+        if: ${{ !cancelled() && steps.catalog_prefix_reference.conclusion == 'success' }}
+        env:
+          TOBKIRI_ORIGINAL_CATALOG_PREFIX_FIXTURES: ${{ runner.temp }}/original-catalog-prefix/summary.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-catalog-prefix.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          bootstrap_runtime::catalog_actual_ci::original_catalog_component_driver
+          -- --ignored --exact --test-threads=1 --nocapture
+      - name: Independently compare actual catalog reachpoint and effects
+        if: ${{ !cancelled() && steps.catalog_prefix_native.outcome != 'skipped' && steps.catalog_prefix_reference.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/original_catalog_prefix_reference.py compare-actual
+          --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
+          --fixtures "$RUNNER_TEMP/original-catalog-prefix/summary.json"
+          --observations "$RUNNER_TEMP/original-catalog-prefix/actual-catalog-observations.json"
+          --output "$RUNNER_TEMP/original-catalog-prefix/actual-catalog-comparison.json"
+      - name: Prepare fresh independent original nine-case catalog fixtures
+        id: catalog_nine_reference
+        if: ${{ !cancelled() && inputs.verification == 'catalog-prefix' && steps.original_reference_dependencies.conclusion == 'success' }}
+        # The one-case operation already mutated its own native fixture tree.
+        # All nine operations need fresh, independently prepared originals.
+        run: >-
+          python3 -B tools/original_catalog_prefix_reference.py prepare
+          --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
+          --output "$RUNNER_TEMP/original-catalog-nine-prefix"
+      - name: Execute all nine actual same-guard catalog operations
+        id: catalog_nine_native
+        if: ${{ !cancelled() && steps.catalog_nine_reference.conclusion == 'success' }}
+        env:
+          TOBKIRI_ORIGINAL_CATALOG_PREFIX_FIXTURES: ${{ runner.temp }}/original-catalog-nine-prefix/summary.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-catalog-nine-prefix.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          bootstrap_runtime::catalog_parity_actual_ci::original_catalog_nine_driver
+          -- --ignored --exact --test-threads=1 --nocapture
+      - name: Independently compare all nine catalog outcomes and effects
+        if: ${{ !cancelled() && steps.catalog_nine_native.outcome != 'skipped' && steps.catalog_nine_reference.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/original_catalog_prefix_reference.py compare-nine-actual
+          --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
+          --fixtures "$RUNNER_TEMP/original-catalog-nine-prefix/summary.json"
+          --observations "$RUNNER_TEMP/original-catalog-nine-prefix/actual-catalog-nine-observations.json"
+          --output "$RUNNER_TEMP/original-catalog-nine-prefix/actual-catalog-nine-comparison.json"
+      - name: Retain resolved and actually compiled runtime features
+        # Each compared operation compiles and initializes under its own
+        # original clock, one account and one actual Store.
+        if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        run: |
+          evidence="$RUNNER_TEMP/harness-native-runtime-features"
+          mkdir "$evidence"
+          rustc --version --verbose > "$evidence/rustc.txt"
+          cargo tree --locked --offline -p tobkiri-harness-native --features bootstrap-ci \
+            --target aarch64-apple-darwin --edges features --invert wasmtime@47.0.4 \
+            > "$evidence/resolved-wasmtime-features.txt"
+          for fingerprint in "$CARGO_TARGET_DIR"/debug/.fingerprint/wasmtime-*/lib-wasmtime.json; do
+            test -f "$fingerprint"
+            test -s "${fingerprint%.json}"
+            identity="$(basename "$(dirname "$fingerprint")")"
+            cp "$fingerprint" "$evidence/$identity.json"
+          done
+      - name: Preserve the actual native owner when Core adopts it
+        if: ${{ !cancelled() && steps.native_platform.conclusion == 'success' && steps.native_inputs.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-owner-transfer.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-core --lib
+          core::runtime_owner_tests:: -- --nocapture
+      - name: Retain actual native execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: whole-native-harness-runtime
+          path: |
+            ${{ runner.temp }}/harness-native-inputs/
+            ${{ runner.temp }}/harness-native-runtime.log*
+            ${{ runner.temp }}/harness-native-source-metadata.log*
+            ${{ runner.temp }}/harness-native-inspection-policy.log*
+            ${{ runner.temp }}/harness-native-preparation.log*
+            ${{ runner.temp }}/harness-native-owner-transfer.log*
+            ${{ runner.temp }}/harness-native-runtime-features/
+            ${{ runner.temp }}/harness-native-denied-factory.log*
+            ${{ runner.temp }}/original-denied-factory-reference/summary.json
+            ${{ runner.temp }}/original-denied-factory-reference/native-observations.json
+            ${{ runner.temp }}/original-denied-factory-reference/comparison.json
+            ${{ runner.temp }}/harness-native-recovery-factory.log*
+            ${{ runner.temp }}/original-recovery-errors/summary.json
+            ${{ runner.temp }}/original-recovery-errors/native-recovery-observations.json
+            ${{ runner.temp }}/original-recovery-errors/native-comparison.json
+            ${{ runner.temp }}/harness-native-bootstrap-identity.log*
+            ${{ runner.temp }}/original-bootstrap-identity-reference/summary.json
+            ${{ runner.temp }}/original-bootstrap-identity-reference/actual-getter-observations.json
+            ${{ runner.temp }}/harness-native-review-identity.log*
+            ${{ runner.temp }}/original-publication-identity-reference/summary.json
+            ${{ runner.temp }}/original-publication-identity-reference/actual-default-review-observations.json
+            ${{ runner.temp }}/original-publication-identity-reference/actual-default-comparison.json
+            ${{ runner.temp }}/harness-native-catalog-prefix.log*
+            ${{ runner.temp }}/harness-native-catalog-funding.log*
+            ${{ runner.temp }}/harness-native-catalog-reader.log*
+            ${{ runner.temp }}/original-catalog-prefix/summary.json
+            ${{ runner.temp }}/original-catalog-prefix/actual-catalog-observations.json
+            ${{ runner.temp }}/original-catalog-prefix/actual-catalog-comparison.json
+            ${{ runner.temp }}/harness-native-catalog-nine-prefix.log*
+            ${{ runner.temp }}/original-catalog-nine-prefix/summary.json
+            ${{ runner.temp }}/original-catalog-nine-prefix/actual-catalog-nine-observations.json
+            ${{ runner.temp }}/original-catalog-nine-prefix/actual-catalog-nine-comparison.json
+          if-no-files-found: warn

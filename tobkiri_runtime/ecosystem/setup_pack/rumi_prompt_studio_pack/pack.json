@@ -1,17 +1,17 @@
 {
   "pack_id": "rumi_prompt_studio_pack",
   "display_name": "Rumi Prompt Studio Pack",
-  "description": "Declarative prompt library, prompt linting, custom instruction migration, and fixture dry-run contract pack.",
+  "description": "Optional authoritative prompt authoring, versioning, migration, testbench, and isolated UI pack.",
   "target_pack_id": "rumi_prompt_studio_pack",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "recommended": false,
-  "risk_level": "low",
+  "risk_level": "medium",
   "supports_all_ok": false,
-  "depends_on": [
-    {
-      "pack_id": "defaultspack",
-      "version": ">=2.0.0"
-    }
+  "depends_on": [],
+  "required_permissions": [
+    "profile.prompt.author.read",
+    "profile.prompt.author.write",
+    "profile.prompt.author.migrate"
   ],
   "conflicts_with": [],
   "compatibility": {
@@ -35,9 +35,9 @@
     "prompt_version_ledger": "owned_by_rumi_prompt_studio_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
-    "reason": "Rumi Prompt Studio Pack is a declarative domain contract pack; promotion is blocked until runtime owners prove the adjacent execution and audit evidence outside this pack.",
+    "reason": "Prompt authoring remains optional and independently removable from the default facade.",
     "criteria": [
       "contract_tests_pass",
       "overlap_policy_reviewed",
@@ -45,7 +45,6 @@
       "promotion_requires_real_world_success_cases"
     ],
     "promotion_blockers": [
-      "no_runtime_prompt_executor",
       "prompt_preferences_are_user_specific",
       "requires_fixture_import_export_contract",
       "model_scoring_owned_by_rumi_model_evals_pack",
@@ -73,7 +72,7 @@
   },
   "security_notes": [
     "No secrets are bundled.",
-    "No executable code is included.",
+    "Runtime code executes through a verified single-request subprocess.",
     "Network is none by default."
   ],
   "conflict_notes": [

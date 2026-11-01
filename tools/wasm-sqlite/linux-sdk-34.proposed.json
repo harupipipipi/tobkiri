@@ -1,0 +1,11 @@
+{
+  "status": "superseded by verified archive/tool hashes; Linux compiler/module equality unexecuted",
+  "host_profile": "host-toolchain-sdk34-x86_64-linux.json",
+  "ci_entry": "build-linux.py",
+  "archive_sha256": "b761e3a0721dbae9c09a0059e5fdb2bf917d1b4a8a7b430fb3b5aafb0984b2c4",
+  "compiler_sha256": "061f88b9f4c48f3742434c2513d5038ab7fa4dc27abff5cb13b5eaedcb51d6ea",
+  "linker_sha256": "ec1daef61bc84256bf7c4a8491b3ea9abcc7163d9aaf6aa8e8bc6faa18f99043",
+  "wasip1_libc_sha256": "a9aff53312240258085fd94da05e18545f4c98b2f6a91ce4985b519eb8159fb9",
+  "required_module_sha256": "d52e4d9ec0ee1d6bee0cb26918d907d96722442950787a5c45656d674e3ccc02",
+  "local_actions": "Full official archive streamed and hashed; no archive/SDK/binary saved, extracted, installed or executed."
+}

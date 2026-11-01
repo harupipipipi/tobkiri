@@ -4,13 +4,16 @@ export async function loadConversationForRefresh({
   locationChatId,
   listedConversations,
   loadConversation,
+  isCurrentView = () => true,
 }: {
   preferredId?: string | null;
   activeConversationId?: string | null;
   locationChatId?: string | null;
   listedConversations: Array<{ id: string }>;
   loadConversation: (conversationId: string | null) => Promise<void>;
+  isCurrentView?: () => boolean;
 }): Promise<void> {
+  if (!isCurrentView()) return;
   const targetId = preferredId ?? locationChatId ?? activeConversationId ?? listedConversations[0]?.id ?? null;
   if (!targetId) {
     await loadConversation(null);
@@ -25,6 +28,7 @@ export async function loadConversationForRefresh({
   try {
     await loadConversation(targetId);
   } catch {
+    if (!isCurrentView()) return;
     await loadConversation(listedConversations[0]?.id ?? null);
   }
 }

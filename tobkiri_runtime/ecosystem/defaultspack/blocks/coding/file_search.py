@@ -1,8 +1,7 @@
 """defaults.coding.file_search — ファイル検索ブロック"""
 
 from blocks._common import ok, error
-from blocks.coding._workspace import resolve_workspace, with_workspace, workspace_error_response
-from domain.coding.file_ops import FileOps
+from domain.coding.contract_adapter import FILE_INSPECT, invoke_coding_contract, workspace_id
 
 
 def run(input_data, context=None):
@@ -22,13 +21,18 @@ def run(input_data, context=None):
     directory = input_data.get("directory", ".")
 
     try:
-        workspace = resolve_workspace(input_data, context, allow_cwd_fallback=True)
-        ops = FileOps(workspace.root_path)
-        matches = ops.search_files(pattern, directory)
-        return ok(with_workspace({
-            "pattern": pattern,
-            "matches": matches,
-        }, workspace))
+        selected_workspace_id = workspace_id(input_data)
+        result = invoke_coding_contract(
+            FILE_INSPECT,
+            "search",
+            {
+                "workspace_id": selected_workspace_id,
+                "pattern": pattern,
+                "directory": directory,
+            },
+        )
+        result["workspace_id"] = selected_workspace_id
+        return ok(result)
     except NotADirectoryError as e:
         return error(str(e), code="DIR_NOT_FOUND")
     except PermissionError as e:
@@ -36,7 +40,4 @@ def run(input_data, context=None):
     except ValueError as e:
         return error(str(e), code="PATH_TRAVERSAL")
     except Exception as e:
-        workspace_error = workspace_error_response(e, error)
-        if workspace_error:
-            return workspace_error
         return error(str(e), code="SEARCH_ERROR")

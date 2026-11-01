@@ -5,15 +5,17 @@ from __future__ import annotations
 import json
 import threading
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
-from .ai_profile import AIProfile, AIProfileManager, ModelProfile, ModelProfileManager
-from .base_provider import ProviderAdapter, RetryPolicy
+from .ai_profile import ModelProfile, ModelProfileManager
 from ...domain.ai_client.providers import (
     build_profile_catalog,
     get_all_known_models,
     get_provider_catalog,
 )
+
+if TYPE_CHECKING:
+    from .router import ModelRouter
 
 
 class ProviderRegistry:
@@ -24,7 +26,7 @@ class ProviderRegistry:
         self._profiles = ModelProfileManager(self.storage_dir / "profiles" if self.storage_dir is not None else None)
         self._model_uuid_map: Dict[str, str] = {}
         self._provider_models: Dict[str, List[str]] = {}
-        self._router = None
+        self._router: ModelRouter | None = None
         if self.storage_dir is not None:
             self.storage_dir.mkdir(parents=True, exist_ok=True)
             self._load_index()

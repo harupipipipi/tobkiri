@@ -57,13 +57,6 @@
     filter var(--rumi-dur-base) var(--rumi-ease-out);
 }
 
-#root button:not(:disabled):active,
-#root [role="button"]:not([aria-disabled="true"]):active,
-#root summary:active {
-  transform: translateY(0.5px) scale(0.985);
-  transition-duration: var(--rumi-dur-fast);
-}
-
 #root button:not(:disabled):hover,
 #root [role="button"]:not([aria-disabled="true"]):hover,
 #root a:hover {
@@ -129,6 +122,17 @@
   0%   { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.45); }
   70%  { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
   100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}
+
+@keyframes rumi-widget-attention-pulse {
+  0%, 100% {
+    opacity: 1;
+    filter: drop-shadow(0 0 0 currentColor);
+  }
+  50% {
+    opacity: 0.62;
+    filter: drop-shadow(0 0 4px currentColor);
+  }
 }
 
 /* Utility classes (auto-play on mount) */
@@ -205,6 +209,10 @@
 
 .rumi-anim-pulse-ring {
   animation: rumi-pulse-ring 1.8s var(--rumi-ease-out) infinite;
+}
+
+.rumi-widget-attention-pulse {
+  animation: rumi-widget-attention-pulse 2.4s var(--rumi-ease-in-out) infinite;
 }
 
 /* Skeleton / shimmer placeholder. Apply to a rectangular element. */

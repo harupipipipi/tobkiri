@@ -1,0 +1,309 @@
+name: Issue 1520 actual private schema kernel Wasm probe
+'on':
+  push:
+    branches:
+    - codex/issue-1520-native-shared-state
+    paths:
+    - tools/python313-producer/build_schema_kernel.py
+    - tools/python313-producer/schema_kernel/src/**
+    - tools/python313-producer/schema_kernel/adapter.py
+    - tools/python313-producer/schema_kernel/Cargo.toml
+    - tools/python313-producer/schema_kernel/Cargo.lock
+    - tools/python313-producer/schema_kernel_observation.py
+    - tools/python313-producer/schema_kernel_api_checks.py
+    - tools/python313-producer/schema_urljoin_checks.py
+    - tools/python313-producer/schema_descend_checks.py
+    - tools/python313-producer/schema_callable_checks.py
+    - tools/python313-producer/schema_coerce_checks.py
+    - tools/python313-producer/tests/test_schema_epoch_observation.py
+    - tools/python313-producer/schema_kernel_translate.py
+    - tools/python313-producer/schema_kernel_oracle.py
+    - tools/python313-producer/schema_kernel_native_check.py
+    - crates/tobkiri-wasm/src/native_data_schema_probe.rs
+    - crates/tobkiri-wasm/src/native_setup_store.rs
+    - crates/tobkiri-wasm/src/native_epoch_observation.rs
+    - .github/workflows/issue-1520-schema-kernel-probe.yml
+  workflow_dispatch:
+    inputs:
+      diagnostic_progress:
+        description: Same-Store progress diagnosis only; never one-shot qualification
+        type: boolean
+        default: false
+      epoch_observation:
+        description: Bounded fuel/time epoch observation only; requires progress diagnosis
+        type: boolean
+        default: false
+      native_profile_only:
+        description: Native call profile only; skips Core/Wasm, no qualification
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: issue-1520-schema-kernel-probe-${{ github.ref }}-${{ github.sha }}-${{ inputs.epoch_observation && 'epoch-fuel-time' || inputs.native_profile_only && 'native-profile' || inputs.diagnostic_progress && 'progress' || 'qualification' }}
+  cancel-in-progress: false
+jobs:
+  actual-extension:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      PRODUCER_RUN: '39956025119'
+      PRODUCER_HEAD: ae7f83080a36e823ac330342584210243dc38050
+      RPDS_RUN: '40182231971'
+      RPDS_HEAD: 53163ed815c62c4853bbed3d8a082c0764e3084f
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+    steps:
+    - name: Keep explicit diagnosis modes separate
+      env:
+        CONFLICTING_MODES: ${{ inputs.native_profile_only && inputs.diagnostic_progress && '1' || '0' }}
+        EPOCH_OBSERVATION: ${{ inputs.epoch_observation && '1' || '0' }}
+        DIAGNOSTIC_PROGRESS: ${{ inputs.diagnostic_progress && '1' || '0' }}
+      run: |
+        set -euo pipefail
+        test "$CONFLICTING_MODES" = '0'
+        if [ "$EPOCH_OBSERVATION" = '1' ]; then
+          test "$DIAGNOSTIC_PROGRESS" = '1'
+        fi
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@v5
+      with:
+        python-version: 3.13.16
+    - uses: dtolnay/rust-toolchain@1.94.0
+    - name: Reject malformed epoch observation metadata
+      run: python3 -B tools/python313-producer/tests/test_schema_epoch_observation.py
+    - name: Authenticate the saved producer before restoring it
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" > "$RUNNER_TEMP/schema-producer-run.json"
+        python3 -B - <<'PYAUTH'
+        import json, os
+        from pathlib import Path
+        v=json.loads((Path(os.environ['RUNNER_TEMP'])/'schema-producer-run.json').read_bytes())
+        assert v['head_sha']==os.environ['PRODUCER_HEAD']
+        assert v['status']=='completed' and v['conclusion']=='success'
+        PYAUTH
+        gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RPDS_RUN" > "$RUNNER_TEMP/schema-rpds-run.json"
+        python3 -B - <<'PYRPDS'
+        import json, os
+        from pathlib import Path
+        v=json.loads((Path(os.environ['RUNNER_TEMP'])/'schema-rpds-run.json').read_bytes())
+        assert v['head_sha']==os.environ['RPDS_HEAD']
+        assert v['status']=='completed' and v['conclusion']=='success'
+        PYRPDS
+    - uses: actions/download-artifact@v4
+      with:
+        name: python313-producer-cli
+        repository: ${{ github.repository }}
+        run-id: ${{ env.PRODUCER_RUN }}
+        github-token: ${{ github.token }}
+        path: ${{ runner.temp }}/schema-producer
+    - uses: actions/download-artifact@v4
+      with:
+        name: ui-rpds-inactive-component
+        repository: ${{ github.repository }}
+        run-id: ${{ env.RPDS_RUN }}
+        github-token: ${{ github.token }}
+        path: ${{ runner.temp }}/schema-rpds
+    - uses: actions/checkout@v4
+      with:
+        ref: 54e7da008997a3eb45876cbe18459dba9902cc9d
+        path: schema-oracle-original
+        persist-credentials: false
+    - name: Restore checksum-bound compiler SDK and validation tools
+      run: |
+        set -euo pipefail
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends bubblewrap
+        chmod 755 "$RUNNER_TEMP/schema-producer/work/target/release/componentize-py"
+        python3 -B tools/python313-producer/fetch_toolchain.py --destination "$RUNNER_TEMP/schema-rust"
+        python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/schema-validation"
+        python3 -B tools/python313-producer/fetch_schema.py --destination "$RUNNER_TEMP/schema-inputs"
+        python3 -B tools/python313-producer/fetch_schema_stdlib.py --destination "$RUNNER_TEMP/schema-stdlib"
+        python3 -B - <<'PYSDK'
+        from pathlib import Path
+        import os, sys
+        sys.path.insert(0, 'tools/python313-producer')
+        from fetch_sdk import acquire
+        acquire(Path(os.environ['RUNNER_TEMP'])/'schema-sdk')
+        PYSDK
+    - name: Observe all 64 actual original selfchecks before the Rust comparison
+      run: |
+        set -euo pipefail
+        python3 -B - <<'PYORACLE'
+        import os, subprocess, sys
+        from pathlib import Path
+        root = Path(os.environ['RUNNER_TEMP'])
+        packages = root / 'schema-inputs/packages'
+        env = {**os.environ, 'PYTHONHASHSEED': '0',
+               'PYTHONPATH': os.pathsep.join(str(p) for p in sorted(packages.iterdir()) if p.is_dir())}
+        subprocess.run([sys.executable, '-S', '-B', 'tools/python313-producer/schema_kernel_oracle.py',
+                        '--source', str(Path(os.environ['GITHUB_WORKSPACE']) / 'schema-oracle-original/tobkiri_runtime'),
+                        '--output', str(root / 'schema-kernel-reference.json')], env=env, check=True)
+        subprocess.run([sys.executable, '-S', '-B', 'tools/python313-producer/schema_kernel_api_checks.py'],
+                       env=env, check=True)
+        PYORACLE
+    - name: Fetch locked registry archives on CI only
+      run: |
+        set -euo pipefail
+        export CARGO_HOME="$RUNNER_TEMP/schema-cargo-home"
+        cargo fetch --locked --manifest-path tools/python313-producer/schema_kernel/Cargo.toml
+        mkdir "$RUNNER_TEMP/schema-archives"
+        python3 -B - <<'PYCRATES'
+        from pathlib import Path
+        import os, shutil
+        root=Path(os.environ['RUNNER_TEMP'])
+        for p in (root/'schema-cargo-home/registry/cache').glob('*/*.crate'):
+            target=root/'schema-archives'/p.name
+            if target.exists():
+                raise ValueError('ambiguous registry archive name')
+            shutil.copyfile(p,target)
+        PYCRATES
+    - name: Verify archive-derived vendor inputs before compiling Core
+      run: |
+        set -euo pipefail
+        python3 -B - <<'PYVERIFY'
+        from pathlib import Path
+        import os, sys
+        sys.path.insert(0, 'tools/python313-producer')
+        from build_schema_kernel import restore_registry_vendor
+        root = Path(os.environ['RUNNER_TEMP'])
+        restore_registry_vendor(Path('tools/python313-producer/schema_kernel').resolve(), root/'schema-archives', root/'schema-archive-vendor')
+        PYVERIFY
+    - name: Compare the actual native Rust extension before the Wasm budget probe
+      env:
+        NATIVE_PROFILE_ONLY: ${{ inputs.native_profile_only && '1' || '0' }}
+      run: |
+        set -euo pipefail
+        export PYTHONHASHSEED=0
+        export PYTHONPATH=''
+        profile_flags=()
+        if [ "$NATIVE_PROFILE_ONLY" = '1' ]; then
+          profile_flags+=(--profile-calls)
+        fi
+        python3 -S -B tools/python313-producer/schema_kernel_native_check.py \
+          "${profile_flags[@]}" \
+          --source "$GITHUB_WORKSPACE/tools/python313-producer/schema_kernel" \
+          --vendor "$RUNNER_TEMP/schema-archive-vendor" \
+          --inputs "$RUNNER_TEMP/schema-inputs" \
+          --reference "$RUNNER_TEMP/schema-kernel-reference.json" \
+          --cargo-home "$RUNNER_TEMP/schema-cargo-home" \
+          --destination "$RUNNER_TEMP/schema-native"
+    - name: Restore native compiler outputs on GitHub only
+      if: ${{ !inputs.native_profile_only }}
+      id: native-rust-cache
+      uses: actions/cache/restore@v5
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: issue1520-native-consumer-${{ runner.os }}-${{ runner.arch }}-rust194-testdebug0-${{ hashFiles('Cargo.lock',
+          'Cargo.toml', 'crates/**/Cargo.toml') }}
+    - name: Build the actual native64 DATA consumer from this source
+      if: ${{ !inputs.native_profile_only }}
+      run: |
+        cargo test --locked -p tobkiri-wasm --lib --no-run --message-format=json > "$RUNNER_TEMP/native-data-build.jsonl"
+        python3 -B - <<'PY'
+        import hashlib, json, os, shutil
+        from pathlib import Path
+        root = Path(os.environ['RUNNER_TEMP'])
+        rows = [json.loads(line) for line in (root / 'native-data-build.jsonl').read_text().splitlines()]
+        artifacts = [row['executable'] for row in rows
+                     if row.get('reason') == 'compiler-artifact'
+                     and row.get('target', {}).get('name') == 'tobkiri_wasm'
+                     and row.get('profile', {}).get('test') is True and row.get('executable')]
+        if len(artifacts) != 1:
+            raise ValueError('exactly one actual library test consumer required')
+        destination = root / 'native-data-consumer'
+        shutil.copyfile(artifacts[0], destination)
+        destination.chmod(0o500)
+        digest = hashlib.sha256()
+        with destination.open('rb') as source:
+            for block in iter(lambda: source.read(262144), b''):
+                digest.update(block)
+        (root / 'native-data-consumer-build.json').write_text(json.dumps({
+            'format': 'tobkiri.native-data-consumer-build/1',
+            'source_head': os.environ['GITHUB_SHA'], 'sha256': digest.hexdigest(),
+            'memory_bytes': 64 * 1024 * 1024,
+            'test': 'native_setup_store::entry::schema_probe::native_schema_component',
+            'portable_owner_fixture': True, 'actual_os_owner_proof': False,
+            'production_enabled': False}, indent=2) + '\n')
+        PY
+      id: native-consumer
+    - name: Retain successful native build before the guest probe
+      if: steps.native-consumer.outcome == 'success' && steps.native-rust-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ steps.native-rust-cache.outputs.cache-primary-key }}
+    - name: Verify fixed epoch observer capacity and refund
+      if: ${{ !inputs.native_profile_only }}
+      run: |
+        python3 -B tools/quality/issue_1520_ci.py cargo-test \
+          --log "$RUNNER_TEMP/schema-epoch-unit.log" --expected-passed 6 -- \
+          cargo test --locked -p tobkiri-wasm --lib \
+          native_setup_store::epoch_observation::tests -- --test-threads=1
+    - name: Build import and call the real private Wasm extension
+      if: ${{ !inputs.native_profile_only }}
+      env:
+        DIAGNOSTIC_PROGRESS: ${{ inputs.diagnostic_progress && '1' || '0' }}
+        EPOCH_OBSERVATION: ${{ inputs.epoch_observation && '1' || '0' }}
+      run: |
+        set -euo pipefail
+        mode_flags=()
+        if [ "$DIAGNOSTIC_PROGRESS" = '1' ]; then
+          mode_flags+=(--diagnostic-progress)
+        fi
+        if [ "$EPOCH_OBSERVATION" = '1' ]; then
+          mode_flags+=(--diagnostic-epoch-observation)
+        fi
+        python3 -B tools/python313-producer/build_schema_kernel.py \
+          "${mode_flags[@]}" \
+          --source "$GITHUB_WORKSPACE/tools/python313-producer/schema_kernel" \
+          --vendor "$RUNNER_TEMP/schema-archive-vendor" \
+          --archives "$RUNNER_TEMP/schema-archives" \
+          --rust "$RUNNER_TEMP/schema-rust" \
+          --sdk "$RUNNER_TEMP/schema-sdk" \
+          --producer "$RUNNER_TEMP/schema-producer" \
+          --validation "$RUNNER_TEMP/schema-validation" \
+          --native-data-consumer "$RUNNER_TEMP/native-data-consumer" \
+          --schema-inputs "$RUNNER_TEMP/schema-inputs" \
+          --stdlib "$RUNNER_TEMP/schema-stdlib" \
+          --rpds "$RUNNER_TEMP/schema-rpds" \
+          --reference "$RUNNER_TEMP/schema-kernel-reference.json" \
+          --destination "$RUNNER_TEMP/schema-candidate"
+    - name: Retain actual build and bounded execution evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: schema-kernel-build-evidence
+        path: |
+          ${{ runner.temp }}/schema-candidate/schema-kernel-build.json
+          ${{ runner.temp }}/schema-candidate/build/
+          ${{ runner.temp }}/schema-candidate/probe/
+          ${{ runner.temp }}/schema-candidate/work/probe.json
+          ${{ runner.temp }}/schema-candidate/work/progress-summary.json
+          ${{ runner.temp }}/schema-candidate/work/native-data-observation.json
+          ${{ runner.temp }}/schema-candidate/work/native-data-observation.epochs.json
+          ${{ runner.temp }}/schema-candidate/work/native-data-control.json
+          ${{ runner.temp }}/schema-candidate/work/native-data-control.log
+          ${{ runner.temp }}/schema-candidate/work/native-data-observation.log
+          ${{ runner.temp }}/native-data-consumer-build.json
+          ${{ runner.temp }}/schema-epoch-unit.log
+          ${{ runner.temp }}/schema-epoch-unit.receipt.json
+          ${{ runner.temp }}/schema-kernel-reference.json
+          ${{ runner.temp }}/schema-native/schema-kernel-native-check.json
+          ${{ runner.temp }}/schema-native/cargo.jsonl
+          ${{ runner.temp }}/schema-native/cargo.log
+        if-no-files-found: warn
+        retention-days: 14

@@ -1,0 +1,217 @@
+{
+  "id": "python_sandbox_execute",
+  "category": "tool",
+  "version": "1",
+  "display_name": "Run Python in the saved workspace",
+  "description": "Run a Python script or unittest target using a snapshot of the approved workspace, with execution time and output limits.",
+  "enabled": true,
+  "config": {
+    "name": "python_sandbox_execute",
+    "summary": "Run a Python script or unittest target in the saved workspace.",
+    "tags": [
+      "coding",
+      "python",
+      "sandbox"
+    ],
+    "ui": {
+      "group_id": "coding/python",
+      "group_label": "Coding",
+      "group_icon": "terminal",
+      "drop_capabilities": [
+        "composer.toggle_chip"
+      ],
+      "widget_kind": "tool_toggle",
+      "settings_fields": []
+    },
+    "tool_category": "sandbox",
+    "action_type": "execute",
+    "risk": "high",
+    "approval_policy": "ask",
+    "capability_grants": [
+      "tool.local.operation"
+    ],
+    "write_action": true,
+    "requires_approval": true,
+    "schema": {
+      "parameters": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "urn:tobkiri:proposal:python_sandbox_execute.input.v1",
+        "title": "python_sandbox_execute arguments",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "enum": [
+              "script",
+              "unittest"
+            ]
+          },
+          "script_path": {
+            "type": "string",
+            "maxLength": 512,
+            "description": "Relative .py file; Host enforces a 512-byte UTF-8 path limit against the bound workspace."
+          },
+          "test_targets": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 16,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "description": "Dotted unittest module identifiers.",
+            "uniqueItems": true
+          },
+          "arguments": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "maxLength": 1024,
+              "minLength": 1
+            },
+            "description": "Script args only; Host rejects empty/NUL values and caps each value at 1 KiB UTF-8 and total args at 16 KiB UTF-8."
+          },
+          "cwd": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "default": ".",
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).*$",
+            "description": "Relative working directory; Host enforces a 512-byte UTF-8 path limit."
+          },
+          "stdin": {
+            "type": "string",
+            "maxLength": 16384,
+            "description": "Script mode only; Host caps UTF-8 input at 16 KiB."
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60
+          }
+        },
+        "required": [
+          "mode",
+          "cwd",
+          "timeout_seconds"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "mode": {
+                  "const": "script"
+                }
+              },
+              "required": [
+                "mode"
+              ]
+            },
+            "then": {
+              "required": [
+                "script_path",
+                "arguments",
+                "stdin"
+              ],
+              "properties": {
+                "arguments": {
+                  "type": "array",
+                  "maxItems": 32,
+                  "items": {
+                    "type": "string",
+                    "maxLength": 1024,
+                    "minLength": 1
+                  }
+                },
+                "stdin": {
+                  "type": "string",
+                  "maxLength": 16384
+                },
+                "script_path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512,
+                  "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+\\.py$"
+                }
+              },
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "test_targets"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "workspace_snapshot"
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "mode": {
+                  "const": "unittest"
+                }
+              },
+              "required": [
+                "mode"
+              ]
+            },
+            "then": {
+              "required": [
+                "test_targets"
+              ],
+              "properties": {
+                "test_targets": {
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+                  },
+                  "uniqueItems": true
+                }
+              },
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "script_path"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "arguments"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "stdin"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "workspace_snapshot"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "execution": {
+      "type": "global_contract",
+      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "provider_instance_id": "rumi_default_tools_pack.python-sandbox-execute-tool",
+      "operation": "rumi_default_tools_pack.python-sandbox-execute-operation"
+    }
+  }
+}

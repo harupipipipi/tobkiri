@@ -1,0 +1,168 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.tool.invoke.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:tool.invoke",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:15259e0e2ef99622b5e502c79687a1f93f6212ee87277502b2c6d8cd931e5758",
+          "operation_id": "rumi_tool_broker_pack.tool-invoke",
+          "output_schema_digest": "sha256:7ba1096b8103f388e8b83f753a4d3848d8a4573d9f73ffdaad037c48f32a975b",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_tool_broker_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:c7c97a242ce5382384582c6491e8b23c5fe5b85eb7d6b2c50e4b17a9f29da197",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:c7c97a242ce5382384582c6491e8b23c5fe5b85eb7d6b2c50e4b17a9f29da197",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_tool_broker_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "caller",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_tool_broker_pack.tool-broker.invoke",
+        "required_capabilities": [
+          "tool.invoke"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:93d9e0cd24e5192e86cc868ca6d8cf6b51599467796e4db864517b0fd0aa25e6",
+      "schema_catalog": {
+        "sha256:15259e0e2ef99622b5e502c79687a1f93f6212ee87277502b2c6d8cd931e5758": {
+          "additionalProperties": false,
+          "properties": {
+            "arguments": {
+              "title": "引数",
+              "type": "object"
+            },
+            "expected_definition_hash": {
+              "pattern": "^[0-9a-f]{64}$(?![\\s\\S])",
+              "title": "選択したツール定義のハッシュ",
+              "type": "string",
+              "x-tobkiri-flow-role": "configuration"
+            },
+            "tool_call_id": {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$(?![\\s\\S])",
+              "title": "呼び出しID",
+              "type": "string",
+              "x-tobkiri-flow-role": "configuration"
+            },
+            "tool_id": {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$(?![\\s\\S])",
+              "title": "登録済みツールID",
+              "type": "string",
+              "x-tobkiri-flow-role": "configuration",
+              "x-tobkiri-selector": "tool-definition"
+            }
+          },
+          "required": [
+            "tool_id",
+            "tool_call_id",
+            "arguments"
+          ],
+          "type": "object"
+        },
+        "sha256:7ba1096b8103f388e8b83f753a4d3848d8a4573d9f73ffdaad037c48f32a975b": {
+          "additionalProperties": false,
+          "properties": {
+            "error": {
+              "title": "エラー"
+            },
+            "executor": {
+              "additionalProperties": false,
+              "properties": {
+                "content_hash": {
+                  "type": "string"
+                },
+                "provider_instance_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider_instance_id",
+                "content_hash"
+              ],
+              "type": "object",
+              "x-tobkiri-flow-role": "metadata"
+            },
+            "is_error": {
+              "type": "boolean"
+            },
+            "result": {
+              "title": "結果"
+            },
+            "status": {
+              "enum": [
+                "success",
+                "error"
+              ],
+              "type": "string",
+              "x-tobkiri-flow-role": "metadata"
+            },
+            "tool_call_id": {
+              "type": "string",
+              "x-tobkiri-flow-role": "metadata"
+            },
+            "tool_id": {
+              "type": "string",
+              "x-tobkiri-flow-role": "metadata"
+            },
+            "widget": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "x-tobkiri-flow-role": "metadata"
+            }
+          },
+          "required": [
+            "tool_call_id",
+            "tool_id",
+            "status",
+            "is_error",
+            "result",
+            "error",
+            "widget",
+            "executor"
+          ],
+          "type": "object"
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    }
+  ],
+  "pack_id": "rumi_tool_broker_pack",
+  "source_identity": "sha256:c7c97a242ce5382384582c6491e8b23c5fe5b85eb7d6b2c50e4b17a9f29da197"
+}

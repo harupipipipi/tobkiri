@@ -13,7 +13,7 @@ taxonomy:
   - escalation_record
   handoff_targets:
   - defaultspack
-  - rumi_local_agent_pack
+  - rumi_meeting_intelligence_pack
   - rumi_operations_company_pack
   forbidden_ownership:
   - actual dialing

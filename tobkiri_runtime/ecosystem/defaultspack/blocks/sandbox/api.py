@@ -5,7 +5,7 @@ import json
 import platform
 import threading
 import uuid
-from dataclasses import asdict, is_dataclass
+from dataclasses import fields, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -56,6 +56,7 @@ from ecosystem.defaultspack.backend.sandbox.providers import (
 from ecosystem.defaultspack.backend.sandbox.sandbox_manager import SandboxManager
 from ecosystem.defaultspack.backend.sandbox.template_catalog import sandbox_template_catalog
 from ecosystem.defaultspack.domain.artifact.store import ArtifactStore
+from ecosystem.defaultspack.domain.tool.schema_adapter import list_or_empty, mapping_or_empty
 
 
 RUNTIME_NOT_READY = "MANAGED_RUNTIME_NOT_READY"
@@ -575,13 +576,13 @@ def _status_is_desktop_ready(status: RuntimeProviderStatus) -> bool:
 
 
 def _provider_payload_supports_desktop(provider: dict[str, Any]) -> bool:
-    capabilities = provider.get("capabilities") if isinstance(provider.get("capabilities"), list) else []
+    capabilities = list_or_empty(provider.get("capabilities"))
     return DESKTOP_RUNTIME_CAPABILITIES.issubset({str(capability) for capability in capabilities})
 
 
 def _sandbox_create(service: _SandboxApiService, payload: dict[str, Any], context: dict[str, Any], *, display: bool):
-    resolution = payload.get("resolution") if isinstance(payload.get("resolution"), dict) else {}
-    access = payload.get("access") if isinstance(payload.get("access"), dict) else {}
+    resolution = mapping_or_empty(payload.get("resolution"))
+    access = mapping_or_empty(payload.get("access"))
     rules = payload.get("rules")
     provisioning = payload.get("provisioning") if isinstance(payload.get("provisioning"), dict) else None
     starter = str(payload.get("starter") or "")
@@ -884,7 +885,7 @@ def _desktop_rules_update(service: _SandboxApiService, payload: dict[str, Any], 
     access_error = _desktop_access_error(service, seat_id, "desktop.rules.update", payload, context)
     if access_error is not None:
         return access_error
-    access = payload.get("access") if isinstance(payload.get("access"), dict) else {}
+    access = mapping_or_empty(payload.get("access"))
     changes_access_policy = bool(access) or any(
         key in payload for key in ("access_mode", "access_request_required")
     )
@@ -1159,9 +1160,9 @@ def _desktop_id(item: dict[str, Any], *, seat_id: str) -> str:
 def _desktop_payload(service: _SandboxApiService, item: dict[str, Any]) -> dict[str, Any]:
     seat_id = _desktop_seat_id(item)
     desktop_id = _desktop_id(item, seat_id=seat_id)
-    desktop = item.get("desktop_spec") if isinstance(item.get("desktop_spec"), dict) else {}
-    opaque = item.get("provider_opaque_state") if isinstance(item.get("provider_opaque_state"), dict) else {}
-    metadata = opaque.get("metadata") if isinstance(opaque.get("metadata"), dict) else {}
+    desktop = mapping_or_empty(item.get("desktop_spec"))
+    opaque = mapping_or_empty(item.get("provider_opaque_state"))
+    metadata = mapping_or_empty(opaque.get("metadata"))
     startup = _desktop_startup_payload(opaque=opaque, metadata=metadata)
     startup_status = opaque.get("startup_status")
     if startup_status is None and isinstance(metadata.get("startup_status"), dict):
@@ -1169,11 +1170,11 @@ def _desktop_payload(service: _SandboxApiService, item: dict[str, Any]) -> dict[
     state = str(item.get("state") or item.get("status") or "unknown")
     frame = service.frame_cache.last_metadata(seat_id)
     lease = service.lease_manager.active_lease(seat_id)
-    access = item.get("desktop_access") if isinstance(item.get("desktop_access"), dict) else {}
-    rules = item.get("desktop_rules") if isinstance(item.get("desktop_rules"), dict) else {}
-    provisioning = item.get("desktop_provisioning") if isinstance(item.get("desktop_provisioning"), dict) else {}
-    workspace = item.get("workspace_binding") if isinstance(item.get("workspace_binding"), dict) else {}
-    network = item.get("network_policy") if isinstance(item.get("network_policy"), dict) else {}
+    access = mapping_or_empty(item.get("desktop_access"))
+    rules = mapping_or_empty(item.get("desktop_rules"))
+    provisioning = mapping_or_empty(item.get("desktop_provisioning"))
+    workspace = mapping_or_empty(item.get("workspace_binding"))
+    network = mapping_or_empty(item.get("network_policy"))
     network_mode = str(network.get("mode") or "off")
     return {
         "id": desktop_id,
@@ -1306,7 +1307,7 @@ def _desktop_payload_error(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def _desktop_input_payload(result: dict[str, Any], *, seat_id: str, actor: str) -> dict[str, Any]:
-    rules = result.get("desktop_rules") if isinstance(result.get("desktop_rules"), dict) else {}
+    rules = mapping_or_empty(result.get("desktop_rules"))
     return {
         "accepted": True,
         "seat_id": seat_id,
@@ -1451,25 +1452,25 @@ def _provider_isolation(provider_id: str, ready: bool) -> dict[str, Any]:
             "mode": "lima_vm" if ready else "lima_pending",
             "vm": True,
             "container": False,
-            "security_boundary": False,
+            "security_boundary": True,
             "separate_workdirs": True,
             "shared_guest_identity": True,
             "host_process_namespace": False,
             "host_filesystem_shared": False,
             "host_network_shared": False,
-            "sandbox_workspace_shared": True,
-            "sandbox_process_namespace_shared": True,
-            "sandbox_network_namespace_shared": True,
-            "sandbox_cgroup_scope": "not_claimed",
+            "sandbox_workspace_shared": False,
+            "sandbox_process_namespace_shared": False,
+            "sandbox_network_namespace_shared": False,
+            "sandbox_cgroup_scope": "guest_prlimit",
             "sandbox_operation_binding": "provider_instance_id",
-            "process_cleanup": "best_effort",
-            "untrusted_pack_boundary": False,
-            "pack_isolation_boundary": "docker_or_profiled_provider_required",
-            "summary": "macOS provider uses one Rumi-owned Lima Ubuntu VM as a convenience desktop/runtime. Instances get separate work directories, but they share the guest Unix identity and kernel namespaces; it is not a sandbox security boundary.",
+            "process_cleanup": "pid_namespace",
+            "untrusted_pack_boundary": True,
+            "pack_isolation_boundary": "lima_vm_plus_guest_bubblewrap",
+            "desktop_security_boundary": False,
+            "summary": "macOS command and Pack execution runs in an attested Lima VZ virtual machine and a per-operation Bubblewrap user, PID, filesystem, and network namespace. Desktop GUI processes still share the managed guest identity.",
             "warnings": [
-                "Managed Ubuntu does not claim cross-sandbox filesystem isolation or read-only mount enforcement.",
-                "Managed Ubuntu process cleanup is best effort after crashes or guest-side failures.",
-                "Use Docker for container-level workspace, process, and network isolation.",
+                "Desktop GUI processes share the managed guest identity and are not an untrusted application boundary.",
+                "Guest prlimit enforces memory, process, and CPU-time ceilings; it is not a dedicated per-operation cgroup.",
             ],
         }
     if provider_id == "windows_wsl":
@@ -1537,13 +1538,13 @@ def _template_summaries() -> list[dict[str, Any]]:
         template_id = str(template.get("id") or template.get("template_id") or "")
         if not template_id:
             continue
-        policy = template.get("policy") if isinstance(template.get("policy"), dict) else {}
-        runtime = template.get("runtime") if isinstance(template.get("runtime"), dict) else {}
-        provisioning = template.get("provisioning") if isinstance(template.get("provisioning"), dict) else {}
-        filesystem = policy.get("filesystem") if isinstance(policy.get("filesystem"), dict) else {}
-        workspace = filesystem.get("workspace") if isinstance(filesystem.get("workspace"), dict) else {}
-        network = policy.get("network") if isinstance(policy.get("network"), dict) else {}
-        desktop = policy.get("desktop") if isinstance(policy.get("desktop"), dict) else {}
+        policy = mapping_or_empty(template.get("policy"))
+        runtime = mapping_or_empty(template.get("runtime"))
+        provisioning = mapping_or_empty(template.get("provisioning"))
+        filesystem = mapping_or_empty(policy.get("filesystem"))
+        workspace = mapping_or_empty(filesystem.get("workspace"))
+        network = mapping_or_empty(policy.get("network"))
+        desktop = mapping_or_empty(policy.get("desktop"))
         summaries.append({
             "template_id": template_id,
             "name": template.get("display_name") or template_id,
@@ -1600,8 +1601,10 @@ def _api_error(message: str, code: str, status_code: int = 400, *, details: Any 
 
 
 def _jsonable(value: Any) -> Any:
-    if is_dataclass(value):
-        return _jsonable(asdict(value))
+    if is_dataclass(value) and not isinstance(value, type):
+        return _jsonable(
+            {field_info.name: getattr(value, field_info.name) for field_info in fields(value)}
+        )
     if isinstance(value, dict):
         return {str(key): _jsonable(item) for key, item in value.items()}
     if isinstance(value, (list, tuple, set, frozenset)):
@@ -1746,7 +1749,7 @@ def _desktop_running_error(service: _SandboxApiService, seat_id: str) -> dict[st
 
 
 def _session_credential(payload: dict[str, Any]) -> str | None:
-    headers = payload.get("_headers") if isinstance(payload.get("_headers"), dict) else {}
+    headers = mapping_or_empty(payload.get("_headers"))
     for value in (
         payload.get("desktop_session_credential"),
         headers.get("X-Rumi-Desktop-Session-Credential"),
@@ -1759,8 +1762,8 @@ def _session_credential(payload: dict[str, Any]) -> str | None:
 
 
 def _has_legacy_desktop_key(payload: dict[str, Any]) -> bool:
-    access = payload.get("access") if isinstance(payload.get("access"), dict) else {}
-    headers = payload.get("_headers") if isinstance(payload.get("_headers"), dict) else {}
+    access = mapping_or_empty(payload.get("access"))
+    headers = mapping_or_empty(payload.get("_headers"))
     return any(value is not None for value in (
         payload.get("access_key"),
         access.get("access_key"),

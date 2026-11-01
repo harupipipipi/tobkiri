@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from urllib.parse import urlsplit
 
-from blocks._common import error, ok
-from domain.media.processor import write_clipboard
+from blocks._common import error
+from domain.media.contract_adapter import (
+    CLIPBOARD_WRITE,
+    execute_ui_host_contract,
+)
 
 _MAX_CLIPBOARD_CHARS = 1_000_000
 _LOCAL_ORIGIN_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -46,7 +49,12 @@ def run(input_data, context):
         return error("content is too large for clipboard", "CLIPBOARD_TOO_LARGE")
 
     try:
-        write_clipboard(text)
+        return execute_ui_host_contract(
+            CLIPBOARD_WRITE,
+            "write",
+            {"text": text},
+            source_function_id="defaults.ui.clipboard_write",
+            context=context,
+        )
     except Exception as exc:
         return error(str(exc), "CLIPBOARD_WRITE_ERROR")
-    return ok({"written": True})

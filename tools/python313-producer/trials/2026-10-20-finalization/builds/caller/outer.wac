@@ -1,0 +1,4 @@
+package local:sdk-python-outer;
+let implementation = new local:python-inner { ... };
+export implementation["tobkiri:core/lifecycle@1.0.0"];
+export implementation["local:ai-gateway-tool-caller-python/caller@1.0.0"];

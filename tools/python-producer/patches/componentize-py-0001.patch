@@ -1,0 +1,3189 @@
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -26,7 +26,7 @@
+         component::{Component, Instance, Linker, ResourceTable, ResourceType},
+     },
+     wasmtime_wasi::{
+-        DirPerms, FilePerms, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView,
++        WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView,
+         p2::pipe::{MemoryInputPipe, MemoryOutputPipe},
+     },
+     wit_component::metadata,
+@@ -41,6 +41,9 @@
+ pub mod command;
+ mod link;
+ mod prelink;
++pub mod tobkiri_preinit;
++mod captured_inputs;
++mod captured_wasi;
+ #[cfg(feature = "pyo3")]
+ mod python;
+ mod stubwasi;
+@@ -65,6 +68,7 @@
+ pub struct Ctx {
+     wasi: WasiCtx,
+     table: ResourceTable,
++    captured: captured_wasi::CapturedAdapter,
+ }
+ 
+ impl WasiView for Ctx {
+@@ -285,6 +289,18 @@
+ 
+ impl ComponentGenerator<'_> {
+     pub async fn generate(&self) -> Result<()> {
++        anyhow::bail!("Unavailable: explicit deterministic preinit declaration required (PLAN-01)")
++    }
++
++    /// Source-patched original initializer, never a second initializer.
++    pub async fn generate_deterministic(&self, plan: &tobkiri_preinit::PreinitPlan) -> Result<()> {
++        ensure!(self.stub_wasi && self.add_to_linker.is_none(), "deterministic preinit requires closed original linker");
++        plan.verify_options(self)?;
++        plan.require_input_admission(self.python_path, self.wit_paths)?;
++        self.generate_with_plan(Some(plan)).await
++    }
++
++    async fn generate_with_plan(&self, plan: Option<&tobkiri_preinit::PreinitPlan>) -> Result<()> {
+         // This is a _big_ function.  Here's an overview of what it does.
+         //
+         // Our goal here is to collect one or more WIT paths, parse them, and
+@@ -325,14 +341,11 @@
+ 
+         // Remove non-existent elements from `python_path` so we don't choke on them
+         // later:
+-        let python_path = &self
+-            .python_path
+-            .iter()
+-            .filter_map(|&s| Path::new(s).exists().then_some(s))
+-            .collect::<Vec<_>>();
+-
+-        let embedded_python_standard_lib = prelink::embedded_python_standard_library()?;
+-        let embedded_helper_utils = prelink::embedded_helper_utils()?;
++        let python_path = self.python_path;
++        let scratch = plan.ok_or_else(|| anyhow!("PLAN-01 missing declaration"))?.scratch()?;
++
++        let embedded_python_standard_lib = prelink::embedded_python_standard_library(scratch)?;
++        let embedded_helper_utils = prelink::embedded_helper_utils(scratch)?;
+ 
+         let (configs, libraries) = prelink::search_for_libraries_and_configs(
+             python_path,
+@@ -672,27 +685,18 @@
+         let stderr = MemoryOutputPipe::new(10000);
+ 
+         let mut wasi = WasiCtxBuilder::new();
++        let mut capture_mounts = Vec::new();
+         wasi.stdin(MemoryInputPipe::new(Bytes::new()))
+             .stdout(stdout.clone())
+             .stderr(stderr.clone())
+             .env("PYTHONUNBUFFERED", "1")
+-            .env("PYTHONHOME", "/python")
+-            .preopened_dir(
+-                embedded_python_standard_lib.path(),
+-                "python",
+-                DirPerms::all(),
+-                FilePerms::all(),
+-            )?
+-            .preopened_dir(
+-                embedded_helper_utils.path(),
+-                "bundled",
+-                DirPerms::all(),
+-                FilePerms::all(),
+-            )?;
++            .env("PYTHONHOME", "/python");
++        capture_mounts.push(captured_inputs::Mount { guest_path: "python".into(), source: embedded_python_standard_lib.path().to_owned() });
++        capture_mounts.push(captured_inputs::Mount { guest_path: "bundled".into(), source: embedded_helper_utils.path().to_owned() });
+ 
+         // Generate guest mounts for each host directory in `python_path`.
+         for (index, path) in python_path.iter().enumerate() {
+-            wasi.preopened_dir(path, index.to_string(), DirPerms::all(), FilePerms::all())?;
++            capture_mounts.push(captured_inputs::Mount { guest_path: index.to_string(), source: Path::new(path).to_owned() });
+         }
+ 
+         // For each Python module with a `componentize-py.toml` file that
+@@ -726,7 +730,7 @@
+ 
+             let binding_module = paths.first().unwrap().1.replace('/', ".");
+ 
+-            let world_dir = tempfile::tempdir()?;
++            let world_dir = tempfile::tempdir_in(scratch)?;
+ 
+             summary.generate_code(
+                 world_dir.path(),
+@@ -749,7 +753,7 @@
+         // modules we visited above.
+         if let Some(world) = world_to_generate {
+             let module = self.world_module.unwrap_or(DEFAULT_WORLD_MODULE);
+-            let world_dir = tempfile::tempdir()?;
++            let world_dir = tempfile::tempdir_in(scratch)?;
+             let module_path = world_dir.path().join(module);
+             fs::create_dir_all(&module_path)?;
+             summary.generate_code(&module_path, world, module, &mut locations, false)?;
+@@ -760,8 +764,10 @@
+             // name.
+             fn replace(path: &Path, pattern: &str, replacement: &str) -> Result<()> {
+                 if path.is_dir() {
+-                    for entry in fs::read_dir(path)? {
+-                        replace(&entry?.path(), pattern, replacement)?;
++                    let mut entries = fs::read_dir(path)?.collect::<std::io::Result<Vec<_>>>()?;
++                    entries.sort_by_key(|entry| entry.file_name());
++                    for entry in entries {
++                        replace(&entry.path(), pattern, replacement)?;
+                     }
+                 } else {
+                     fs::write(
+@@ -785,7 +791,7 @@
+                         world_dir.path().display()
+                     );
+                 }
+-                wasi.preopened_dir(world_dir.path(), mount, DirPerms::all(), FilePerms::all())?;
++                capture_mounts.push(captured_inputs::Mount { guest_path: mount.to_owned(), source: world_dir.path().to_owned() });
+             }
+         }
+ 
+@@ -807,6 +813,9 @@
+             .collect::<Vec<_>>()
+             .join(":");
+ 
++        let plan = plan.ok_or_else(|| anyhow!("PLAN-01 missing declaration"))?;
++        let captured = captured_wasi::CapturedAdapter::new(plan.capture_inputs(&capture_mounts)?, scratch)?;
++        plan.configure(&mut wasi)?;
+         let table = ResourceTable::new();
+         let wasi = wasi
+             .env(
+@@ -816,6 +825,7 @@
+             .build();
+ 
+         let mut config = Config::new();
++        config.parallel_compilation(false);
+         config.wasm_component_model(true);
+         config.wasm_component_model_async(true);
+ 
+@@ -829,7 +839,7 @@
+             false
+         };
+ 
+-        let mut store = Store::new(&engine, Ctx { wasi, table });
++        let mut store = Store::new(&engine, Ctx { wasi, table, captured });
+ 
+         let stub_wasi = self.stub_wasi;
+         let app_name = self.app_name.to_owned();
+@@ -849,6 +859,7 @@
+                         )?;
+                     }
+ 
++                    captured_wasi::install(&mut linker)?;
+                     let pre = InitPre::new(linker.instantiate_pre(component)?)?;
+                     let instance = pre.instance_pre.instantiate_async(&mut store).await?;
+                     let guest = pre.indices.interface0.load(&mut store, &instance)?;
+--- a/src/command.rs
++++ b/src/command.rs
+@@ -9,7 +9,6 @@
+         path::{Path, PathBuf},
+         process, str,
+     },
+-    tokio::runtime::Runtime,
+ };
+ 
+ /// A utility to convert Python apps into Wasm components
+@@ -115,6 +114,10 @@
+ 
+ #[derive(clap::Args, Debug)]
+ pub struct Componentize {
++    /// Explicit reviewed declaration; disables all ambient package discovery.
++    #[arg(long)]
++    pub deterministic_preinit: Option<PathBuf>,
++
+     /// The name of a Python module containing the app to wrap.
+     ///
+     /// Note that this should not match (any of) the world name(s) you are
+@@ -246,7 +249,11 @@
+ fn componentize(common: Common, componentize: Componentize) -> Result<()> {
+     let mut python_path = componentize.python_path;
+ 
+-    for site_packages in find_site_packages()? {
++    let plan = componentize.deterministic_preinit.as_deref()
++        .map(crate::tobkiri_preinit::PreinitPlan::read).transpose()?;
++    anyhow::ensure!(plan.is_some(), "Unavailable: --deterministic-preinit required (PLAN-01)");
++    let site_packages = if plan.is_some() { Vec::new() } else { find_site_packages()? };
++    for site_packages in site_packages {
+         python_path.push(
+             site_packages
+                 .to_str()
+@@ -255,8 +262,8 @@
+         );
+     }
+ 
+-    Runtime::new()?.block_on(
+-        ComponentGenerator {
++    tokio::runtime::Builder::new_current_thread().enable_all().build()?.block_on(async {
++        let generator = ComponentGenerator {
+             wit_paths: &common
+                 .wit_path
+                 .iter()
+@@ -295,9 +302,10 @@
+                 .collect(),
+             full_names: common.full_names,
+             intersect_world: componentize.intersect_world.as_deref(),
+-        }
+-        .generate(),
+-    )?;
++        };
++        if let Some(plan) = plan.as_ref() { generator.generate_deterministic(plan).await }
++        else { generator.generate().await }
++    })?;
+ 
+     if !common.quiet {
+         println!("Component built successfully");
+--- a/src/prelink.rs
++++ b/src/prelink.rs
+@@ -28,10 +28,10 @@
+ type ConfigsMatchedWorlds<'a> =
+     IndexMap<String, (ConfigContext<ComponentizePyConfig>, &'a [&'a str])>;
+ 
+-pub fn embedded_python_standard_library() -> Result<TempDir> {
++pub fn embedded_python_standard_library(scratch: &Path) -> Result<TempDir> {
+     // Untar the embedded copy of the Python standard library into a temporary
+     // directory
+-    let stdlib = tempfile::tempdir()?;
++    let stdlib = tempfile::tempdir_in(scratch)?;
+ 
+     Archive::new(Decoder::new(Cursor::new(include_bytes!(concat!(
+         env!("OUT_DIR"),
+@@ -43,9 +43,9 @@
+     Ok(stdlib)
+ }
+ 
+-pub fn embedded_helper_utils() -> Result<TempDir> {
++pub fn embedded_helper_utils(scratch: &Path) -> Result<TempDir> {
+     // Untar the embedded copy of helper utilities into a temporary directory
+-    let bundled = tempfile::tempdir()?;
++    let bundled = tempfile::tempdir_in(scratch)?;
+ 
+     Archive::new(Decoder::new(Cursor::new(include_bytes!(concat!(
+         env!("OUT_DIR"),
+@@ -238,8 +238,11 @@
+     modules_seen: &mut HashSet<String>,
+ ) -> Result<()> {
+     if path.is_dir() {
+-        for entry in fs::read_dir(path).with_context(|| path.display().to_string())? {
+-            search_directory(root, &entry?.path(), libraries, configs, modules_seen)?;
++        let mut entries = fs::read_dir(path).with_context(|| path.display().to_string())?
++            .collect::<std::io::Result<Vec<_>>>()?;
++        entries.sort_by_key(|entry| entry.file_name());
++        for entry in entries {
++            search_directory(root, &entry.path(), libraries, configs, modules_seen)?;
+         }
+     } else if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
+         if NATIVE_EXTENSION_SUFFIXES
+--- a/src/summary.rs
++++ b/src/summary.rs
+@@ -216,11 +216,13 @@
+         me.types = me.types_sorted();
+ 
+         me.imported_interface_names = me.interface_names(
+-            me.imported_interfaces.keys().copied(),
++            { let mut ids = me.imported_interfaces.keys().copied().collect::<Vec<_>>();
++              ids.sort_by_key(|id| id.index()); ids.into_iter() },
+             import_interface_names,
+         );
+         me.exported_interface_names = me.interface_names(
+-            me.exported_interfaces.keys().copied(),
++            { let mut ids = me.exported_interfaces.keys().copied().collect::<Vec<_>>();
++              ids.sort_by_key(|id| id.index()); ids.into_iter() },
+             export_interface_names,
+         );
+ 
+--- a/src/python.rs
++++ b/src/python.rs
+@@ -12,13 +12,12 @@
+         types::{PyAnyMethods, PyModule, PyModuleMethods},
+     },
+     std::{ffi::OsString, path::PathBuf},
+-    tokio::runtime::Runtime,
+ };
+ 
+ #[allow(clippy::too_many_arguments)]
+ #[pyo3::pyfunction]
+ #[pyo3(name = "componentize")]
+-#[pyo3(signature = (wit_path, worlds, features, all_features, world_module, python_path, module_worlds, app_name, output_path, stub_wasi, import_interface_names, export_interface_names, full_names, intersect_world))]
++#[pyo3(signature = (wit_path, worlds, features, all_features, world_module, python_path, module_worlds, app_name, output_path, stub_wasi, import_interface_names, export_interface_names, full_names, intersect_world, deterministic_preinit=None))]
+ fn python_componentize(
+     wit_path: Vec<PathBuf>,
+     worlds: Vec<String>,
+@@ -34,10 +33,14 @@
+     export_interface_names: Vec<(PyBackedStr, PyBackedStr)>,
+     full_names: bool,
+     intersect_world: Option<&str>,
++    deterministic_preinit: Option<PathBuf>,
+ ) -> PyResult<()> {
+     (|| {
+-        Runtime::new()?.block_on(
+-            ComponentGenerator {
++        let plan = deterministic_preinit.as_deref()
++            .map(crate::tobkiri_preinit::PreinitPlan::read).transpose()?;
++        anyhow::ensure!(plan.is_some(), "Unavailable: deterministic_preinit required (PLAN-01)");
++        tokio::runtime::Builder::new_current_thread().enable_all().build()?.block_on(async {
++            let generator = ComponentGenerator {
+                 wit_paths: &wit_path.iter().map(|v| v.as_path()).collect::<Vec<_>>(),
+                 worlds: &worlds.iter().map(|v| v.as_str()).collect::<Vec<_>>(),
+                 features: &features.iter().map(|v| v.as_str()).collect::<Vec<_>>(),
+@@ -65,9 +68,10 @@
+                     .collect(),
+                 full_names,
+                 intersect_world,
+-            }
+-            .generate(),
+-        )
++            };
++            if let Some(plan) = plan.as_ref() { generator.generate_deterministic(plan).await }
++            else { generator.generate().await }
++        })
+     })()
+     .map_err(|e| PyAssertionError::new_err(format!("{e:?}")))
+ }
+--- a/runtime/src/lib.rs
++++ b/runtime/src/lib.rs
+@@ -15,7 +15,6 @@
+             self as exp, Constructor, FunctionExportKind, Guest, OptionKind, ResultRecord,
+             ReturnStyle, Static, Symbols,
+         },
+-        wasi::cli0_2_0::environment,
+     },
+     num_bigint::BigUint,
+     once_cell::sync::OnceCell,
+@@ -33,13 +32,13 @@
+         iter,
+         marker::PhantomData,
+         mem, slice, str,
+-        sync::Once,
+     },
+     wit_dylib_ffi::{
+         self as wit, Call, ExportFunction, Interpreter, List, Type, Wit, WitOption, WitResult,
+     },
+ };
+ 
++mod tobkiri_preinit;
+ mod bindings {
+     wit_bindgen::generate!({
+         world: "init",
+@@ -53,7 +52,6 @@
+ }
+ 
+ static WIT: OnceCell<Wit> = OnceCell::new();
+-static STUB_WASI: OnceCell<bool> = OnceCell::new();
+ static EXPORTS: OnceCell<Vec<Export>> = OnceCell::new();
+ static RESOURCES: OnceCell<Vec<Resource>> = OnceCell::new();
+ static RECORDS: OnceCell<Vec<Record>> = OnceCell::new();
+@@ -69,7 +67,6 @@
+ static ERR_CONSTRUCTOR: OnceCell<Py<PyAny>> = OnceCell::new();
+ static FINALIZE: OnceCell<Py<PyAny>> = OnceCell::new();
+ static DROP_RESOURCE: OnceCell<Py<PyAny>> = OnceCell::new();
+-static SEED: OnceCell<Py<PyAny>> = OnceCell::new();
+ static ARGV: OnceCell<Py<PyList>> = OnceCell::new();
+ 
+ struct Borrow {
+@@ -182,6 +179,7 @@
+     index: u32,
+     params: Vec<Bound<'a, PyAny>>,
+ ) -> Bound<'a, PyAny> {
++    crate::tobkiri_preinit::require_scope();
+     let py = module.py();
+     let func = WIT
+         .get()
+@@ -236,6 +234,7 @@
+ #[pyo3::pyfunction]
+ #[pyo3(pass_module)]
+ fn drop_resource(_module: &Bound<PyModule>, index: usize, handle: u32) -> PyResult<()> {
++    crate::tobkiri_preinit::require_scope();
+     unsafe {
+         mem::transmute::<usize, unsafe extern "C" fn(u32)>(index)(handle);
+     }
+@@ -313,6 +312,7 @@
+         event: u32,
+         promise: usize,
+     ) -> Bound<'a, PyAny> {
++    crate::tobkiri_preinit::require_scope();
+         let py = module.py();
+         let mut promise = unsafe { Box::from_raw(promise as *mut Promise) };
+ 
+@@ -401,6 +401,7 @@
+ 
+     #[pyo3::pyfunction]
+     fn waitable_set_new() -> u32 {
++    crate::tobkiri_preinit::require_scope();
+         #[link(wasm_import_module = "$root")]
+         unsafe extern "C" {
+             #[link_name = "[waitable-set-new]"]
+@@ -412,6 +413,7 @@
+ 
+     #[pyo3::pyfunction]
+     fn waitable_join(waitable: u32, set: u32) {
++    crate::tobkiri_preinit::require_scope();
+         #[link(wasm_import_module = "$root")]
+         unsafe extern "C" {
+             #[link_name = "[waitable-join]"]
+@@ -423,6 +425,7 @@
+ 
+     #[pyo3::pyfunction]
+     fn context_set(value: Bound<PyAny>) {
++    crate::tobkiri_preinit::require_scope();
+         #[link(wasm_import_module = "$root")]
+         unsafe extern "C" {
+             #[link_name = "[context-set-0]"]
+@@ -441,6 +444,7 @@
+     #[pyo3::pyfunction]
+     #[pyo3(pass_module)]
+     fn context_get<'a>(module: Bound<'a, PyModule>) -> Bound<'a, PyAny> {
++    crate::tobkiri_preinit::require_scope();
+         #[link(wasm_import_module = "$root")]
+         unsafe extern "C" {
+             #[link_name = "[context-get-0]"]
+@@ -461,6 +465,7 @@
+ 
+     #[pyo3::pyfunction]
+     fn subtask_drop(task: u32) {
++    crate::tobkiri_preinit::require_scope();
+         #[link(wasm_import_module = "$root")]
+         unsafe extern "C" {
+             #[link_name = "[subtask-drop]"]
+@@ -472,6 +477,7 @@
+ 
+     #[pyo3::pyfunction]
+     fn waitable_set_drop(set: u32) {
++    crate::tobkiri_preinit::require_scope();
+         #[link(wasm_import_module = "$root")]
+         unsafe extern "C" {
+             #[link_name = "[waitable-set-drop]"]
+@@ -484,6 +490,7 @@
+     #[pyo3::pyfunction]
+     #[pyo3(pass_module)]
+     fn call_task_return(module: Bound<PyModule>, index: u32, borrows: usize, result: Bound<PyAny>) {
++    crate::tobkiri_preinit::require_scope();
+         let py = module.py();
+         let index = usize::try_from(index).unwrap();
+         let func = WIT.get().unwrap().export_func(index);
+@@ -505,6 +512,7 @@
+ 
+     #[pyo3::pyfunction]
+     fn stream_new(ty: usize) -> u64 {
++    crate::tobkiri_preinit::require_scope();
+         unsafe { WIT.get().unwrap().stream(ty).new()() }
+     }
+ 
+@@ -516,6 +524,7 @@
+         handle: u32,
+         max_count: u32,
+     ) -> PyResult<Bound<'a, PyAny>> {
++    crate::tobkiri_preinit::require_scope();
+         let py = module.py();
+         let ty = WIT.get().unwrap().stream(ty);
+         let mut call = MyCall::new(Vec::new());
+@@ -598,6 +607,7 @@
+         handle: u32,
+         values: Bound<'a, PyAny>,
+     ) -> PyResult<Bound<'a, PyAny>> {
++    crate::tobkiri_preinit::require_scope();
+         let py = module.py();
+         let ty = WIT.get().unwrap().stream(ty);
+         if let Some(Type::U8 | Type::S8) = ty.ty() {
+@@ -717,16 +727,19 @@
+ 
+     #[pyo3::pyfunction]
+     fn stream_drop_readable(ty: usize, handle: u32) {
++    crate::tobkiri_preinit::require_scope();
+         unsafe { WIT.get().unwrap().stream(ty).drop_readable()(handle) };
+     }
+ 
+     #[pyo3::pyfunction]
+     fn stream_drop_writable(ty: usize, handle: u32) {
++    crate::tobkiri_preinit::require_scope();
+         unsafe { WIT.get().unwrap().stream(ty).drop_writable()(handle) };
+     }
+ 
+     #[pyo3::pyfunction]
+     fn future_new(ty: usize) -> u64 {
++    crate::tobkiri_preinit::require_scope();
+         unsafe { WIT.get().unwrap().future(ty).new()() }
+     }
+ 
+@@ -737,6 +750,7 @@
+         ty: usize,
+         handle: u32,
+     ) -> PyResult<Bound<'a, PyAny>> {
++    crate::tobkiri_preinit::require_scope();
+         let py = module.py();
+         let ty = WIT.get().unwrap().future(ty);
+         let mut call = MyCall::new(Vec::new());
+@@ -797,6 +811,7 @@
+         handle: u32,
+         value: Bound<'a, PyAny>,
+     ) -> PyResult<Bound<'a, PyAny>> {
++    crate::tobkiri_preinit::require_scope();
+         let py = module.py();
+         let ty = WIT.get().unwrap().future(ty);
+         let mut call = MyCall::new(vec![value.unbind()]);
+@@ -862,11 +877,13 @@
+ 
+     #[pyo3::pyfunction]
+     fn future_drop_readable(ty: usize, handle: u32) {
++    crate::tobkiri_preinit::require_scope();
+         unsafe { WIT.get().unwrap().future(ty).drop_readable()(handle) };
+     }
+ 
+     #[pyo3::pyfunction]
+     fn future_drop_writable(ty: usize, handle: u32) {
++    crate::tobkiri_preinit::require_scope();
+         unsafe { WIT.get().unwrap().future(ty).drop_writable()(handle) };
+     }
+ 
+@@ -904,15 +921,21 @@
+     Ok(())
+ }
+ 
+-fn do_init(app_name: String, symbols: Symbols, stub_wasi: bool) -> Result<(), String> {
++fn do_init(app_name: String, symbols: Symbols, _stub_wasi: bool) -> Result<(), String> {
+     pyo3::append_to_inittab!(componentize_py_module);
+ 
++    tobkiri_preinit::begin_build()?;
+     Python::initialize();
+ 
+     let init = |py: Python| {
++        let flags = py.import("sys")?.getattr("flags")?;
++        if flags.getattr("hash_randomization")?.extract::<u32>()? != 0 ||
++           flags.getattr("dont_write_bytecode")?.extract::<u32>()? != 1 {
++            return Err(anyhow::anyhow!("guest preinit hash/bytecode flags mismatch"));
++        }
++        for module in tobkiri_preinit::audited_stdlib().map_err(anyhow::Error::msg)? { py.import(module.as_str())?; }
+         let app = py.import(app_name.as_str())?;
+ 
+-        STUB_WASI.set(stub_wasi).unwrap();
+ 
+         EXPORTS
+             .set(
+@@ -1109,8 +1132,6 @@
+             )
+             .unwrap();
+ 
+-        SEED.set(py.import("random")?.getattr("seed")?.into())
+-            .unwrap();
+ 
+         #[cfg(feature = "async")]
+         {
+@@ -1156,7 +1177,7 @@
+         Ok::<_, Error>(())
+     };
+ 
+-    Python::attach(|py| {
++    tobkiri_preinit::attach(|py| {
+         init(py).map_err(|e| {
+             if let Some(e) = e.downcast_ref::<PyErr>() {
+                 e.print(py);
+@@ -1171,6 +1192,8 @@
+ impl Guest for MyExports {
+     fn init(app_name: String, symbols: Symbols, stub_wasi: bool) -> Result<(), String> {
+         let result = do_init(app_name, symbols, stub_wasi);
++        let result = result.and_then(|()| tobkiri_preinit::seal());
++        if result.is_err() { tobkiri_preinit::abort(); }
+ 
+         // This tells the WASI Preview 1 component adapter to reset its state.
+         // In particular, we want it to forget about any open handles and
+@@ -1203,28 +1226,8 @@
+ 
+ impl MyInterpreter {
+     fn export_call_(func: ExportFunction, cx: &mut MyCall<'_>, async_: bool) -> u32 {
+-        Python::attach(|py| {
+-            if !*STUB_WASI.get().unwrap() {
+-                static ONCE: Once = Once::new();
+-                ONCE.call_once(|| {
+-                    // We must call directly into the host to get the runtime
+-                    // environment since libc's version will only contain the
+-                    // build-time pre-init snapshot.
+-                    let environ = ENVIRON.get().unwrap().bind(py);
+-                    for (k, v) in environment::get_environment() {
+-                        environ.set_item(k, v).unwrap();
+-                    }
+-
+-                    // Likewise for CLI arguments.
+-                    for arg in environment::get_arguments() {
+-                        ARGV.get().unwrap().bind(py).append(arg).unwrap();
+-                    }
+-
+-                    // Call `random.seed()` to ensure we get a fresh seed rather
+-                    // than the one that got baked in during pre-init.
+-                    SEED.get().unwrap().call0(py).unwrap();
+-                });
+-            }
++        tobkiri_preinit::require_active();
++        tobkiri_preinit::attach(|py| {
+ 
+             if async_ {
+                 cx.stack.push(
+@@ -1315,6 +1318,7 @@
+     }
+ 
+     fn export_start<'a>(_: Wit, _: ExportFunction) -> Box<MyCall<'a>> {
++        tobkiri_preinit::require_active();
+         Box::new(MyCall::new(Vec::new()))
+     }
+ 
+@@ -1335,9 +1339,10 @@
+     }
+ 
+     fn export_async_callback(event0: u32, event1: u32, event2: u32) -> u32 {
++        tobkiri_preinit::require_active();
+         #[cfg(feature = "async")]
+         {
+-            Python::attach(|py| {
++            tobkiri_preinit::attach(|py| {
+                 async_::CALLBACK
+                     .get()
+                     .unwrap()
+@@ -1441,63 +1446,63 @@
+     }
+ 
+     fn pop_u8(&mut self) -> u8 {
+-        Python::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
++        tobkiri_preinit::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
+     }
+ 
+     fn pop_u16(&mut self) -> u16 {
+-        Python::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
++        tobkiri_preinit::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
+     }
+ 
+     fn pop_u32(&mut self) -> u32 {
+-        Python::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
++        tobkiri_preinit::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
+     }
+ 
+     fn pop_u64(&mut self) -> u64 {
+-        Python::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
++        tobkiri_preinit::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
+     }
+ 
+     fn pop_s8(&mut self) -> i8 {
+-        Python::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
++        tobkiri_preinit::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
+     }
+ 
+     fn pop_s16(&mut self) -> i16 {
+-        Python::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
++        tobkiri_preinit::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
+     }
+ 
+     fn pop_s32(&mut self) -> i32 {
+-        Python::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
++        tobkiri_preinit::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
+     }
+ 
+     fn pop_s64(&mut self) -> i64 {
+-        Python::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
++        tobkiri_preinit::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
+     }
+ 
+     fn pop_bool(&mut self) -> bool {
+-        Python::attach(|py| self.stack.pop().unwrap().is_truthy(py).unwrap())
++        tobkiri_preinit::attach(|py| self.stack.pop().unwrap().is_truthy(py).unwrap())
+     }
+ 
+     fn pop_char(&mut self) -> char {
+-        let value = Python::attach(|py| self.stack.pop().unwrap().extract::<String>(py).unwrap());
++        let value = tobkiri_preinit::attach(|py| self.stack.pop().unwrap().extract::<String>(py).unwrap());
+         assert!(value.chars().count() == 1);
+         value.chars().next().unwrap()
+     }
+ 
+     fn pop_f32(&mut self) -> f32 {
+-        Python::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
++        tobkiri_preinit::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
+     }
+ 
+     fn pop_f64(&mut self) -> f64 {
+-        Python::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
++        tobkiri_preinit::attach(|py| self.stack.pop().unwrap().extract(py).unwrap())
+     }
+ 
+     fn pop_string(&mut self) -> &str {
+-        let value = Python::attach(|py| self.stack.pop().unwrap().extract::<String>(py).unwrap());
++        let value = tobkiri_preinit::attach(|py| self.stack.pop().unwrap().extract::<String>(py).unwrap());
+         self.strings.push(value);
+         self.strings.last().unwrap()
+     }
+ 
+     fn pop_borrow(&mut self, ty: wit::Resource) -> u32 {
+-        Python::attach(|py| {
++        tobkiri_preinit::attach(|py| {
+             let value = self.stack.pop().unwrap();
+             if let Some(new) = ty.new() {
+                 // exported resource type
+@@ -1510,7 +1515,7 @@
+     }
+ 
+     fn pop_own(&mut self, ty: wit::Resource) -> u32 {
+-        Python::attach(|py| {
++        tobkiri_preinit::attach(|py| {
+             let value = self.stack.pop().unwrap();
+             if let Some(new) = ty.new() {
+                 // exported resource type
+@@ -1523,7 +1528,7 @@
+     }
+ 
+     fn pop_enum(&mut self, _ty: wit::Enum) -> u32 {
+-        Python::attach(|py| {
++        tobkiri_preinit::attach(|py| {
+             let value = self.stack.pop().unwrap();
+             let value = value.bind(py);
+             value
+@@ -1535,7 +1540,7 @@
+     }
+ 
+     fn pop_flags(&mut self, _ty: wit::Flags) -> u32 {
+-        Python::attach(|py| {
++        tobkiri_preinit::attach(|py| {
+             let value = self.stack.pop().unwrap();
+             let value = value.bind(py);
+             // See the comment in `Self::push_flags` about using `num-bigint`
+@@ -1552,7 +1557,7 @@
+     }
+ 
+     fn pop_future(&mut self, _ty: wit::Future) -> u32 {
+-        Python::attach(|py| {
++        tobkiri_preinit::attach(|py| {
+             let value = self.stack.pop().unwrap();
+ 
+             self.imported_resource_to_canon(py, value, true)
+@@ -1560,7 +1565,7 @@
+     }
+ 
+     fn pop_stream(&mut self, _ty: wit::Stream) -> u32 {
+-        Python::attach(|py| {
++        tobkiri_preinit::attach(|py| {
+             let value = self.stack.pop().unwrap();
+ 
+             self.imported_resource_to_canon(py, value, true)
+@@ -1568,7 +1573,7 @@
+     }
+ 
+     fn pop_option(&mut self, ty: WitOption) -> u32 {
+-        Python::attach(|py| {
++        tobkiri_preinit::attach(|py| {
+             if self.stack.last().unwrap().is_none(py) {
+                 self.stack.pop().unwrap();
+                 0
+@@ -1591,7 +1596,7 @@
+     fn pop_result(&mut self, ty: WitResult) -> u32 {
+         let &ResultRecord { has_ok, has_err } = &RESULTS.get().unwrap()[ty.index()];
+ 
+-        Python::attach(|py| {
++        tobkiri_preinit::attach(|py| {
+             let value = self.stack.pop().unwrap();
+             let value = value.bind(py);
+ 
+@@ -1630,7 +1635,7 @@
+             cases,
+         } = &VARIANTS.get().unwrap()[ty.index()];
+ 
+-        Python::attach(|py| {
++        tobkiri_preinit::attach(|py| {
+             let value = self.stack.pop().unwrap();
+             let value = value.bind(py);
+ 
+@@ -1653,7 +1658,7 @@
+     fn pop_record(&mut self, ty: wit::Record) {
+         let Record { fields, .. } = &RECORDS.get().unwrap()[ty.index()];
+ 
+-        Python::attach(|py| {
++        tobkiri_preinit::attach(|py| {
+             let value = self.stack.pop().unwrap();
+             self.stack.extend(
+                 fields
+@@ -1667,7 +1672,7 @@
+     fn pop_tuple(&mut self, ty: wit::Tuple) {
+         let &Tuple { count } = &TUPLES.get().unwrap()[ty.index()];
+ 
+-        Python::attach(|py| {
++        tobkiri_preinit::attach(|py| {
+             let value = self.stack.pop().unwrap();
+             let value = value.cast_bound::<PyTuple>(py).unwrap();
+ 
+@@ -1681,7 +1686,7 @@
+ 
+     unsafe fn maybe_pop_list(&mut self, ty: List) -> Option<(*const u8, usize)> {
+         if let Type::U8 | Type::S8 = ty.ty() {
+-            Python::attach(|py| {
++            tobkiri_preinit::attach(|py| {
+                 let src = self.stack.pop().unwrap();
+                 let src = src.cast_bound::<PyBytes>(py).unwrap();
+                 let len = src.len().unwrap();
+@@ -1698,7 +1703,7 @@
+     }
+ 
+     fn pop_list(&mut self, _ty: List) -> usize {
+-        Python::attach(|py| {
++        tobkiri_preinit::attach(|py| {
+             self.iter_stack.push(0);
+             let value = self.stack.last().unwrap();
+             value.cast_bound::<PyList>(py).unwrap().len()
+@@ -1706,7 +1711,7 @@
+     }
+ 
+     fn pop_iter_next(&mut self, _ty: List) {
+-        Python::attach(|py| {
++        tobkiri_preinit::attach(|py| {
+             let index = *self.iter_stack.last().unwrap();
+             let element = self
+                 .stack
+@@ -1723,19 +1728,19 @@
+ 
+     fn pop_iter(&mut self, _ty: List) {
+         self.iter_stack.pop().unwrap();
+-        Python::attach(|py| {
++        tobkiri_preinit::attach(|py| {
+             self.stack.pop().unwrap().drop_ref(py);
+         })
+     }
+ 
+     fn push_bool(&mut self, val: bool) {
+-        self.stack.push(Python::attach(|py| {
++        self.stack.push(tobkiri_preinit::attach(|py| {
+             PyBool::new(py, val).to_owned().into_any().unbind()
+         }))
+     }
+ 
+     fn push_char(&mut self, val: char) {
+-        self.stack.push(Python::attach(|py| {
++        self.stack.push(tobkiri_preinit::attach(|py| {
+             val.to_string()
+                 .into_pyobject(py)
+                 .unwrap()
+@@ -1745,67 +1750,67 @@
+     }
+ 
+     fn push_u8(&mut self, val: u8) {
+-        self.stack.push(Python::attach(|py| {
++        self.stack.push(tobkiri_preinit::attach(|py| {
+             val.into_pyobject(py).unwrap().into_any().unbind()
+         }))
+     }
+ 
+     fn push_s8(&mut self, val: i8) {
+-        self.stack.push(Python::attach(|py| {
++        self.stack.push(tobkiri_preinit::attach(|py| {
+             val.into_pyobject(py).unwrap().into_any().unbind()
+         }))
+     }
+ 
+     fn push_u16(&mut self, val: u16) {
+-        self.stack.push(Python::attach(|py| {
++        self.stack.push(tobkiri_preinit::attach(|py| {
+             val.into_pyobject(py).unwrap().into_any().unbind()
+         }))
+     }
+ 
+     fn push_s16(&mut self, val: i16) {
+-        self.stack.push(Python::attach(|py| {
++        self.stack.push(tobkiri_preinit::attach(|py| {
+             val.into_pyobject(py).unwrap().into_any().unbind()
+         }))
+     }
+ 
+     fn push_u32(&mut self, val: u32) {
+-        self.stack.push(Python::attach(|py| {
++        self.stack.push(tobkiri_preinit::attach(|py| {
+             val.into_pyobject(py).unwrap().into_any().unbind()
+         }));
+     }
+ 
+     fn push_s32(&mut self, val: i32) {
+-        self.stack.push(Python::attach(|py| {
++        self.stack.push(tobkiri_preinit::attach(|py| {
+             val.into_pyobject(py).unwrap().into_any().unbind()
+         }))
+     }
+ 
+     fn push_u64(&mut self, val: u64) {
+-        self.stack.push(Python::attach(|py| {
++        self.stack.push(tobkiri_preinit::attach(|py| {
+             val.into_pyobject(py).unwrap().into_any().unbind()
+         }))
+     }
+ 
+     fn push_s64(&mut self, val: i64) {
+-        self.stack.push(Python::attach(|py| {
++        self.stack.push(tobkiri_preinit::attach(|py| {
+             val.into_pyobject(py).unwrap().into_any().unbind()
+         }))
+     }
+ 
+     fn push_f32(&mut self, val: f32) {
+-        self.stack.push(Python::attach(|py| {
++        self.stack.push(tobkiri_preinit::attach(|py| {
+             val.into_pyobject(py).unwrap().into_any().unbind()
+         }))
+     }
+ 
+     fn push_f64(&mut self, val: f64) {
+-        self.stack.push(Python::attach(|py| {
++        self.stack.push(tobkiri_preinit::attach(|py| {
+             val.into_pyobject(py).unwrap().into_any().unbind()
+         }))
+     }
+ 
+     fn push_string(&mut self, val: String) {
+-        self.stack.push(Python::attach(|py| {
++        self.stack.push(tobkiri_preinit::attach(|py| {
+             val.into_pyobject(py).unwrap().into_any().unbind()
+         }))
+     }
+@@ -1820,7 +1825,7 @@
+             .stack
+             .drain(self.stack.len().checked_sub(fields.len()).unwrap()..);
+ 
+-        let result = Python::attach(|py| {
++        let result = tobkiri_preinit::attach(|py| {
+             constructor
+                 .call1(py, PyTuple::new(py, elements).unwrap())
+                 .unwrap()
+@@ -1836,7 +1841,7 @@
+             .stack
+             .drain(self.stack.len().checked_sub(count).unwrap()..);
+ 
+-        let result = Python::attach(|py| {
++        let result = tobkiri_preinit::attach(|py| {
+             PyTuple::new(py, elements)
+                 .unwrap()
+                 .to_owned()
+@@ -1863,7 +1868,7 @@
+         // TODO: If it's unlikely that the spec will ever support more than 32
+         // bits, remove the `num-bigint` dependency and simplify the code here
+         // and in `summary.rs`.
+-        let result = Python::attach(|py| {
++        let result = tobkiri_preinit::attach(|py| {
+             constructor
+                 .call1(
+                     py,
+@@ -1888,13 +1893,13 @@
+ 
+         assert!(usize::try_from(discriminant).unwrap() < count);
+ 
+-        let result = Python::attach(|py| constructor.call1(py, (discriminant,)).unwrap());
++        let result = tobkiri_preinit::attach(|py| constructor.call1(py, (discriminant,)).unwrap());
+ 
+         self.stack.push(result);
+     }
+ 
+     fn push_borrow(&mut self, ty: wit::Resource, handle: u32) {
+-        Python::attach(|py| {
++        tobkiri_preinit::attach(|py| {
+             self.stack.push(if ty.rep().is_some() {
+                 // exported resource type
+                 unsafe { Bound::<PyAny>::from_borrowed_ptr(py, handle as usize as _) }.unbind()
+@@ -1914,7 +1919,7 @@
+     }
+ 
+     fn push_own(&mut self, ty: wit::Resource, handle: u32) {
+-        Python::attach(|py| {
++        tobkiri_preinit::attach(|py| {
+             self.stack.push(if let Some(rep) = ty.rep() {
+                 // exported resource type
+                 let rep = unsafe { rep(handle) };
+@@ -1941,7 +1946,7 @@
+     fn push_future(&mut self, ty: wit::Future, handle: u32) {
+         #[cfg(feature = "async")]
+         {
+-            let result = Python::attach(|py| {
++            let result = tobkiri_preinit::attach(|py| {
+                 async_::FUTURE_READER_CONSTRUCTOR
+                     .get()
+                     .unwrap()
+@@ -1961,7 +1966,7 @@
+     fn push_stream(&mut self, ty: wit::Stream, handle: u32) {
+         #[cfg(feature = "async")]
+         {
+-            let result = Python::attach(|py| {
++            let result = tobkiri_preinit::attach(|py| {
+                 if let Some(Type::U8 | Type::S8) = ty.ty() {
+                     async_::BYTE_STREAM_READER_CONSTRUCTOR.get()
+                 } else {
+@@ -1984,7 +1989,7 @@
+     fn push_variant(&mut self, ty: wit::Variant, discriminant: u32) {
+         let Variant { cases, .. } = &VARIANTS.get().unwrap()[ty.index()];
+ 
+-        let result = Python::attach(|py| {
++        let result = tobkiri_preinit::attach(|py| {
+             let case = &cases[usize::try_from(discriminant).unwrap()];
+             if case.has_payload {
+                 let payload = self.stack.pop().unwrap();
+@@ -1999,7 +2004,7 @@
+     }
+ 
+     fn push_option(&mut self, ty: WitOption, is_some: bool) {
+-        Python::attach(|py| {
++        tobkiri_preinit::attach(|py| {
+             if is_some {
+                 match &OPTIONS.get().unwrap()[ty.index()] {
+                     OptionKind::NonNesting => {
+@@ -2025,7 +2030,7 @@
+     fn push_result(&mut self, ty: WitResult, is_err: bool) {
+         let &ResultRecord { has_ok, has_err } = &RESULTS.get().unwrap()[ty.index()];
+ 
+-        Python::attach(|py| {
++        tobkiri_preinit::attach(|py| {
+             let (constructor, has_payload) = if is_err {
+                 (ERR_CONSTRUCTOR.get().unwrap(), has_err)
+             } else {
+@@ -2044,7 +2049,7 @@
+ 
+     unsafe fn push_raw_list(&mut self, ty: List, src: *mut u8, len: usize) -> bool {
+         if let Type::U8 | Type::S8 = ty.ty() {
+-            self.stack.push(Python::attach(|py| unsafe {
++            self.stack.push(tobkiri_preinit::attach(|py| unsafe {
+                 let value = PyBytes::new(py, slice::from_raw_parts(src, len))
+                     .to_owned()
+                     .into_any()
+@@ -2059,13 +2064,13 @@
+     }
+ 
+     fn push_list(&mut self, _ty: List, _capacity: usize) {
+-        self.stack.push(Python::attach(|py| {
++        self.stack.push(tobkiri_preinit::attach(|py| {
+             PyList::empty(py).to_owned().into_any().unbind()
+         }));
+     }
+ 
+     fn list_append(&mut self, _ty: List) {
+-        Python::attach(|py| {
++        tobkiri_preinit::attach(|py| {
+             let element = self.stack.pop().unwrap();
+             self.stack
+                 .last()
+--- a/build.rs
++++ b/build.rs
+@@ -160,6 +160,7 @@
+ }
+ 
+ fn package_all_the_things(out_dir: &Path) -> Result<()> {
++    tobkiri_require_runtime_stage()?;
+     let repo_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+ 
+     let wasi_sdk = find_wasi_sdk(out_dir)?;
+@@ -307,6 +308,7 @@
+ 
+ fn maybe_make_cpython(repo_dir: &Path, wasi_sdk: &Path) -> Result<()> {
+     let cpython_dir = repo_dir.join("cpython");
++    anyhow::ensure!(cpython_dir.exists(), "patched producer requires explicitly pinned, patched local CPython source; download disabled");
+     if !cpython_dir.exists() {
+         let url = &env::var("CPYTHON_TARBALL_URL").unwrap_or_else(|_| CPYTHON_TARBALL_URL.into());
+         let base_dir = &env::var_os("CPYTHON_TARBALL_BASE_DIR")
+@@ -818,3 +820,7 @@
+ 
+     Ok(output)
+ }
++
++fn tobkiri_require_runtime_stage() -> Result<()> {
++    bail!("Unavailable: verified sequential shared-target runtime stage is not implemented (BUILD-02); original nested sync/async target builds are disabled")
++}
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -11,6 +11,9 @@
+ crate-type = ["cdylib", "rlib"]
+ 
+ [dependencies]
++sha2 = "=0.10.9"
++serde_json = "=1.0.154"
++libc = "=0.2.190"
+ anyhow = { version = "1.0.91", features = ["backtrace"] }
+ clap = { version = "4.5.20", features = ["derive"] }
+ tar = "0.4.42"
+@@ -90,3 +93,7 @@
+ package.license = "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
+ package.repository = "https://github.com/bytecodealliance/componentize-py"
+ members = ["runtime", "test-generator"]
++
++[patch.crates-io]
++# Producer-only original WASI46 ctor exposure; root host47 is unchanged.
++wasmtime-wasi = { path = "../wasmtime-wasi-46.0.1" }
+--- /dev/null
++++ b/producer-recipe-v2.json
+@@ -0,0 +1,17 @@
++{
++  "format": "tobkiri.original-python-recipe/2",
++  "gaps": [
++    "BUILD-01 full source/dependency/tool/native-closure pins unverified",
++    "BUILD-02 stage hook unconnected and receipt not produced",
++    "prototype receipt reader parent-fd/no-follow admission and complete-source inventory pending"
++  ],
++  "native_python": {
++    "path": null,
++    "sha256": null
++  },
++  "sdk_pin": "sdk34-pins.json",
++  "sdk_reuse_approved": true,
++  "stage_verifier_sha256": null,
++  "status": "pending",
++  "system_native_closure_verified": false
++}
+--- /dev/null
++++ b/runtime/src/tobkiri_preinit.rs
+@@ -0,0 +1,97 @@
++//! Private implementation symbols, not a new WIT interface or Python API.
++//! No Core activation bridge is installed by this patch. Runtime entries deny.
++use super::bindings::wasi::cli0_2_0::environment;
++use pyo3::Python;
++
++unsafe extern "C" {
++    fn _PyTobkiri_EntropyBeginBuild(seed: *const u8) -> i32;
++    fn _PyTobkiri_EntropySeal() -> i32;
++    fn _PyTobkiri_EntropyRequireActive() -> i32;
++    fn _PyTobkiri_EntropyInvalidate();
++    fn _PyTobkiri_EntropyIsBuild() -> i32;
++}
++
++pub fn begin_build() -> Result<(), String> {
++    let values = environment::get_environment();
++    let seed = values
++        .iter()
++        .find(|(key, _)| key == "TOBKIRI_PUBLIC_PREINIT_SEED")
++        .ok_or("missing explicit public preinit seed")?
++        .1
++        .as_bytes();
++    if seed.len() != 64
++        || !seed
++            .iter()
++            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(b))
++    {
++        return Err("invalid public preinit seed".into());
++    }
++    let mut bytes = [0u8; 32];
++    for (output, pair) in bytes.iter_mut().zip(seed.chunks_exact(2)) {
++        *output = u8::from_str_radix(std::str::from_utf8(pair).map_err(|e| e.to_string())?, 16)
++            .map_err(|e| e.to_string())?;
++    }
++    if unsafe { _PyTobkiri_EntropyBeginBuild(bytes.as_ptr()) } != 0 {
++        return Err("preinit cannot reopen sealed entropy mode".into());
++    }
++    Ok(())
++}
++
++pub fn seal() -> Result<(), String> {
++    if unsafe { _PyTobkiri_EntropySeal() } != 0 {
++        return Err("unproved retained RNG state prevents snapshot admission".into());
++    }
++    Ok(())
++}
++
++pub fn require_active() {
++    // The missing owner/epoch/Core callback bridge cannot silently activate.
++    assert_eq!(
++        unsafe { _PyTobkiri_EntropyRequireActive() },
++        0,
++        "Unavailable: private Core entropy activation bridge is not connected (ACT-01)"
++    );
++}
++
++pub fn abort() {
++    unsafe { _PyTobkiri_EntropyInvalidate() };
++}
++
++pub fn audited_stdlib() -> Result<Vec<String>, String> {
++    let values = environment::get_environment();
++    let value = values
++        .iter()
++        .find(|(key, _)| key == "TOBKIRI_PREINIT_STDLIB")
++        .ok_or("missing audited preinit module declaration")?
++        .1
++        .as_str();
++    if value.is_empty() {
++        return Ok(Vec::new());
++    }
++    let modules = value.split(',').map(str::to_owned).collect::<Vec<_>>();
++    if modules
++        .iter()
++        .any(|module| !["random", "secrets"].contains(&module.as_str()))
++        || modules.windows(2).any(|pair| pair[0] >= pair[1])
++    {
++        return Err("invalid audited preinit module declaration".into());
++    }
++    Ok(modules)
++}
++
++/// Every original attach path, including lifting/drop/finalization, uses this
++/// boundary. Build mode is only available in the original init invocation;
++/// sealed runtime states must pass the private owner/epoch live check.
++pub fn attach<F, R>(function: F) -> R
++where
++    F: for<'py> FnOnce(Python<'py>) -> R,
++{
++    require_scope();
++    Python::attach(function)
++}
++
++pub fn require_scope() {
++    if unsafe { _PyTobkiri_EntropyIsBuild() } != 1 {
++        require_active();
++    }
++}
+--- /dev/null
++++ b/src/captured_inputs.rs
+@@ -0,0 +1,458 @@
++//! Producer-only immutable input capture. No native source is reopened by WASI.
++//! Unix capture uses no-follow, descriptor-relative traversal at every component.
++use anyhow::{Result, bail, ensure};
++use bytes::Bytes;
++use serde::{Deserialize, Serialize};
++use sha2::{Digest, Sha256};
++use std::{
++    collections::{BTreeMap, BTreeSet},
++    path::{Path, PathBuf},
++};
++
++pub const MAX_ENTRIES: usize = 32_768;
++pub const MAX_TOTAL_BYTES: usize = 128 * 1024 * 1024;
++pub const MAX_FILE_BYTES: usize = 8 * 1024 * 1024;
++pub const MAX_METADATA_BYTES: usize = 4 * 1024 * 1024;
++pub const MAX_PATH_BYTES: usize = 4096;
++pub const MAX_READ_BYTES: usize = 1024 * 1024;
++
++#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
++#[serde(rename_all = "lowercase")]
++pub enum Kind {
++    File,
++    Directory,
++}
++
++#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
++#[serde(deny_unknown_fields)]
++pub struct Entry {
++    pub guest_path: String,
++    pub kind: Kind,
++    pub size: u64,
++    /// Files: exact content digest; directories: sha256 of empty content.
++    pub sha256: String,
++}
++
++pub struct Mount {
++    pub guest_path: String,
++    pub source: PathBuf,
++}
++pub struct Node {
++    pub entry: Entry,
++    pub bytes: Bytes,
++    pub inode: u64,
++}
++pub struct CapturedInputs {
++    pub nodes: BTreeMap<String, Node>,
++    pub roots: Vec<String>,
++    pub epoch: u64,
++}
++
++pub fn canonical_path(path: &str) -> Result<()> {
++    ensure!(
++        !path.is_empty()
++            && path.len() <= MAX_PATH_BYTES
++            && !path.contains(['\\', '\0'])
++            && !path.starts_with('/'),
++        "invalid captured guest path"
++    );
++    ensure!(
++        path.split('/')
++            .all(|part| !part.is_empty() && part != "." && part != ".."),
++        "noncanonical captured path"
++    );
++    ensure!(path.split('/').count() <= 32, "captured path depth");
++    Ok(())
++}
++
++impl CapturedInputs {
++    pub fn capture(expected: &[Entry], mounts: &[Mount], epoch: u64) -> Result<Self> {
++        ensure!(
++            epoch < 1u64 << 63 && !mounts.is_empty() && mounts.len() <= 128,
++            "capture limits"
++        );
++        ensure!(
++            expected.len() <= MAX_ENTRIES
++                && serde_json::to_vec(expected)?.len() <= MAX_METADATA_BYTES,
++            "capture metadata limit"
++        );
++        let mut declaration = BTreeMap::new();
++        for entry in expected {
++            canonical_path(&entry.guest_path)?;
++            ensure!(
++                entry.sha256.len() == 64
++                    && entry
++                        .sha256
++                        .bytes()
++                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
++                "capture digest spelling"
++            );
++            ensure!(entry.size <= MAX_FILE_BYTES as u64, "capture file limit");
++            ensure!(
++                entry.kind != Kind::Directory
++                    || (entry.size == 0 && entry.sha256 == hex_digest(&[])),
++                "directory declaration"
++            );
++            ensure!(
++                declaration
++                    .insert(entry.guest_path.clone(), entry.clone())
++                    .is_none(),
++                "duplicate captured path"
++            );
++        }
++        ensure!(
++            expected
++                .windows(2)
++                .all(|pair| pair[0].guest_path < pair[1].guest_path),
++            "manifest order"
++        );
++        let mut roots = BTreeSet::new();
++        for mount in mounts {
++            canonical_path(&mount.guest_path)?;
++            ensure!(roots.insert(mount.guest_path.clone()), "duplicate mount");
++        }
++        let mut nodes = BTreeMap::new();
++        let mut total = 0usize;
++        for mount in mounts {
++            capture_root(mount, &roots, &declaration, &mut nodes, &mut total)?;
++        }
++        ensure!(
++            nodes.len() == declaration.len() && nodes.keys().eq(declaration.keys()),
++            "missing/undeclared capture entry"
++        );
++        let mut seen_inodes = BTreeSet::new();
++        for (index, (path, node)) in nodes.iter_mut().enumerate() {
++            if let Some((parent, _)) = path.rsplit_once('/') {
++                ensure!(
++                    declaration
++                        .get(parent)
++                        .is_some_and(|entry| entry.kind == Kind::Directory),
++                    "missing captured parent"
++                );
++            }
++            node.inode = u64::try_from(index)?
++                .checked_add(1)
++                .ok_or_else(|| anyhow::anyhow!("inode exhausted"))?;
++            ensure!(seen_inodes.insert(node.inode), "captured inode collision");
++        }
++        Ok(Self {
++            nodes,
++            roots: roots.into_iter().collect(),
++            epoch,
++        })
++    }
++
++    pub fn child_path(&self, base: &str, relative: &str) -> Result<String> {
++        // WASI open-at commonly uses "."; it names exactly the current captured
++        // directory. Parent traversal and absolute paths are always rejected.
++        if relative == "." {
++            return Ok(base.to_owned());
++        }
++        canonical_path(relative)?;
++        let path = format!("{base}/{relative}");
++        canonical_path(&path)?;
++        ensure!(self.nodes.contains_key(&path), "undeclared captured path");
++        Ok(path)
++    }
++}
++
++fn hex_digest(bytes: &[u8]) -> String {
++    Sha256::digest(bytes)
++        .iter()
++        .map(|b| format!("{b:02x}"))
++        .collect()
++}
++
++#[cfg(any(target_os = "macos", target_os = "linux"))]
++pub(crate) fn physical_directory(path: &Path) -> Result<std::os::fd::OwnedFd> {
++    use std::{
++        ffi::CString,
++        os::{
++            fd::{AsRawFd, FromRawFd, OwnedFd},
++            unix::ffi::OsStrExt,
++        },
++        path::Component,
++    };
++    ensure!(
++        path.is_absolute(),
++        "capture source must be an explicit physical absolute path"
++    );
++    let root = unsafe {
++        libc::open(
++            c"/".as_ptr(),
++            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
++        )
++    };
++    ensure!(root >= 0, "capture root open failed");
++    let mut fd = unsafe { OwnedFd::from_raw_fd(root) };
++    for component in path.components() {
++        let part = match component {
++            Component::RootDir => continue,
++            Component::Normal(part) => part,
++            _ => bail!("noncanonical capture source"),
++        };
++        let name = CString::new(part.as_bytes())?;
++        let next = unsafe {
++            libc::openat(
++                fd.as_raw_fd(),
++                name.as_ptr(),
++                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
++            )
++        };
++        ensure!(next >= 0, "capture source component denied");
++        fd = unsafe { OwnedFd::from_raw_fd(next) };
++    }
++    Ok(fd)
++}
++
++#[cfg(any(target_os = "macos", target_os = "linux"))]
++fn capture_root(
++    mount: &Mount,
++    roots: &BTreeSet<String>,
++    expected: &BTreeMap<String, Entry>,
++    nodes: &mut BTreeMap<String, Node>,
++    total: &mut usize,
++) -> Result<()> {
++    walk(
++        physical_directory(&mount.source)?,
++        &mount.guest_path,
++        &mount.guest_path,
++        roots,
++        expected,
++        nodes,
++        total,
++    )
++}
++
++#[cfg(not(any(target_os = "macos", target_os = "linux")))]
++fn capture_root(
++    _: &Mount,
++    _: &BTreeSet<String>,
++    _: &BTreeMap<String, Entry>,
++    _: &mut BTreeMap<String, Node>,
++    _: &mut usize,
++) -> Result<()> {
++    bail!(
++        "Unavailable: producer no-follow capture requires audited Unix handles (CAPTURE-WINDOWS-01)"
++    )
++}
++
++#[cfg(any(target_os = "macos", target_os = "linux"))]
++pub(crate) fn read_bounded(path: &Path, bound: usize) -> Result<Vec<u8>> {
++    use std::{
++        ffi::CString,
++        io::Read,
++        os::{
++            fd::{AsRawFd, FromRawFd, OwnedFd},
++            unix::ffi::OsStrExt,
++        },
++    };
++    let absolute = std::path::absolute(path)?;
++    let parent = physical_directory(
++        absolute
++            .parent()
++            .ok_or_else(|| anyhow::anyhow!("file parent required"))?,
++    )?;
++    let name = CString::new(
++        absolute
++            .file_name()
++            .ok_or_else(|| anyhow::anyhow!("file name required"))?
++            .as_bytes(),
++    )?;
++    let descriptor = unsafe {
++        libc::openat(
++            parent.as_raw_fd(),
++            name.as_ptr(),
++            libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK,
++        )
++    };
++    ensure!(descriptor >= 0, "bounded input open denied");
++    let mut file = std::fs::File::from(unsafe { OwnedFd::from_raw_fd(descriptor) });
++    let before = file.metadata()?;
++    ensure!(
++        before.is_file() && before.len() <= bound as u64,
++        "bounded input type/size"
++    );
++    let mut bytes = Vec::new();
++    (&mut file).take(bound as u64 + 1).read_to_end(&mut bytes)?;
++    let after = file.metadata()?;
++    ensure!(
++        bytes.len() <= bound
++            && after.len() == before.len()
++            && before.modified()? == after.modified()?,
++        "bounded input changed"
++    );
++    Ok(bytes)
++}
++
++#[cfg(not(any(target_os = "macos", target_os = "linux")))]
++pub(crate) fn read_bounded(_: &Path, _: usize) -> Result<Vec<u8>> {
++    bail!("Unavailable: audited no-follow input reader requires macOS/Linux")
++}
++
++#[cfg(any(target_os = "macos", target_os = "linux"))]
++fn walk(
++    fd: std::os::fd::OwnedFd,
++    guest: &str,
++    own_root: &str,
++    roots: &BTreeSet<String>,
++    expected: &BTreeMap<String, Entry>,
++    nodes: &mut BTreeMap<String, Node>,
++    total: &mut usize,
++) -> Result<()> {
++    use std::{
++        ffi::CString,
++        io::Read,
++        os::fd::{AsRawFd, FromRawFd, OwnedFd},
++    };
++    let declaration = expected
++        .get(guest)
++        .ok_or_else(|| anyhow::anyhow!("undeclared captured directory"))?;
++    ensure!(declaration.kind == Kind::Directory, "captured type differs");
++    ensure!(
++        nodes
++            .insert(
++                guest.to_owned(),
++                Node {
++                    entry: declaration.clone(),
++                    bytes: Bytes::new(),
++                    inode: 0
++                }
++            )
++            .is_none(),
++        "capture path collision"
++    );
++    let before = directory_names(fd.as_raw_fd())?;
++    for name in &before {
++        let path = format!("{guest}/{name}");
++        canonical_path(&path)?;
++        // Generated nested mounts replace their whole declared subtree before
++        // capture. They are visited exactly once by their own mount, not merged
++        // with mutable pregenerated bindings in a parent source directory.
++        if path != own_root && roots.contains(&path) {
++            continue;
++        }
++        let declaration = expected
++            .get(&path)
++            .ok_or_else(|| anyhow::anyhow!("undeclared capture entry"))?;
++        let name = CString::new(name.as_bytes())?;
++        let flags = libc::O_RDONLY
++            | libc::O_NOFOLLOW
++            | libc::O_CLOEXEC
++            | libc::O_NONBLOCK
++            | if declaration.kind == Kind::Directory {
++                libc::O_DIRECTORY
++            } else {
++                0
++            };
++        let child = unsafe { libc::openat(fd.as_raw_fd(), name.as_ptr(), flags) };
++        ensure!(child >= 0, "capture entry denied");
++        let child = unsafe { OwnedFd::from_raw_fd(child) };
++        if declaration.kind == Kind::Directory {
++            walk(child, &path, own_root, roots, expected, nodes, total)?;
++            continue;
++        }
++        let mut file = std::fs::File::from(child);
++        let before = file.metadata()?;
++        ensure!(
++            before.is_file() && before.len() == declaration.size,
++            "capture file type/size differs"
++        );
++        let size = usize::try_from(declaration.size)?;
++        *total = total
++            .checked_add(size)
++            .ok_or_else(|| anyhow::anyhow!("capture total overflow"))?;
++        ensure!(*total <= MAX_TOTAL_BYTES, "capture total limit");
++        let mut bytes = Vec::with_capacity(size);
++        (&mut file)
++            .take(u64::try_from(size)?.checked_add(1).unwrap())
++            .read_to_end(&mut bytes)?;
++        let after = file.metadata()?;
++        ensure!(
++            bytes.len() == size
++                && after.len() == before.len()
++                && after.modified()? == before.modified()?
++                && hex_digest(&bytes) == declaration.sha256,
++            "capture content changed or differs"
++        );
++        ensure!(
++            nodes
++                .insert(
++                    path,
++                    Node {
++                        entry: declaration.clone(),
++                        bytes: Bytes::from(bytes),
++                        inode: 0
++                    }
++                )
++                .is_none(),
++            "capture path collision"
++        );
++    }
++    ensure!(
++        directory_names(fd.as_raw_fd())? == before,
++        "capture directory changed"
++    );
++    Ok(())
++}
++
++#[cfg(any(target_os = "macos", target_os = "linux"))]
++fn directory_names(fd: std::os::fd::RawFd) -> Result<Vec<String>> {
++    use std::ffi::CStr;
++    let duplicate = unsafe { libc::dup(fd) };
++    ensure!(duplicate >= 0, "capture directory duplicate failed");
++    let pointer = unsafe { libc::fdopendir(duplicate) };
++    if pointer.is_null() {
++        unsafe { libc::close(duplicate) };
++        bail!("capture directory iterator failed");
++    }
++    struct Directory(*mut libc::DIR);
++    impl Drop for Directory {
++        fn drop(&mut self) {
++            unsafe { libc::closedir(self.0) };
++        }
++    }
++    let directory = Directory(pointer);
++    unsafe { libc::rewinddir(directory.0) };
++    let mut names = Vec::new();
++    loop {
++        #[cfg(target_os = "macos")]
++        unsafe {
++            *libc::__error() = 0
++        };
++        #[cfg(target_os = "linux")]
++        unsafe {
++            *libc::__errno_location() = 0
++        };
++        let entry = unsafe { libc::readdir(directory.0) };
++        if entry.is_null() {
++            #[cfg(target_os = "macos")]
++            ensure!(
++                unsafe { *libc::__error() } == 0,
++                "capture directory read failed"
++            );
++            #[cfg(target_os = "linux")]
++            ensure!(
++                unsafe { *libc::__errno_location() } == 0,
++                "capture directory read failed"
++            );
++            break;
++        }
++        let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) }.to_str()?;
++        if name == "." || name == ".." {
++            continue;
++        }
++        ensure!(
++            !name.is_empty() && !name.contains('/'),
++            "capture entry name"
++        );
++        names.push(name.to_owned());
++        ensure!(names.len() <= MAX_ENTRIES, "capture listing limit");
++    }
++    names.sort();
++    ensure!(
++        names.windows(2).all(|pair| pair[0] != pair[1]),
++        "duplicate directory entry"
++    );
++    Ok(names)
++}
+--- /dev/null
++++ b/src/captured_wasi.rs
+@@ -0,0 +1,611 @@
++//! Original WASI46 nominal resources, entirely captured filesystem semantics.
++//! No method delegates to a native filesystem Host implementation.
++use crate::{
++    Ctx,
++    captured_inputs::{CapturedInputs, Kind, MAX_METADATA_BYTES, MAX_READ_BYTES},
++};
++use anyhow::{Result, ensure};
++use bytes::Bytes;
++use std::{
++    collections::{BTreeMap, VecDeque},
++    sync::{
++        Arc, Mutex,
++        atomic::{AtomicUsize, Ordering},
++    },
++};
++use wasmtime::component::{HasData, Linker, Resource, ResourceTable};
++use wasmtime_wasi::{
++    DirPerms, FilePerms,
++    filesystem::{Descriptor, Dir, OpenMode},
++    p2::{
++        DynInputStream, DynOutputStream, FsError, FsResult, InputStream, Pollable, ReaddirIterator,
++        StreamError,
++        bindings::{
++            clocks::wall_clock,
++            filesystem::{preopens, types},
++        },
++    },
++};
++
++const MAX_DESCRIPTORS: usize = 1024;
++const MAX_STREAMS: usize = 256;
++const MAX_ITERATORS: usize = 128;
++
++struct OpenDescriptor {
++    path: String,
++    flags: types::DescriptorFlags,
++}
++struct Listing {
++    queue: Arc<Mutex<VecDeque<types::DirectoryEntry>>>,
++    charged: usize,
++}
++
++pub struct CapturedAdapter {
++    pub inputs: CapturedInputs,
++    descriptors: BTreeMap<u32, OpenDescriptor>,
++    listings: BTreeMap<u32, Listing>,
++    listing_bytes: usize,
++    stream_count: Arc<AtomicUsize>,
++    nominal_dir: Dir,
++    // Empty private backing holds only nominal Descriptor identity. Guest
++    // read/stat/list/open results never touch this OS directory.
++    _nominal_backing: tempfile::TempDir,
++}
++
++impl CapturedAdapter {
++    pub fn new(inputs: CapturedInputs, scratch: &std::path::Path) -> Result<Self> {
++        let backing = tempfile::tempdir_in(scratch)?;
++        let directory =
++            cap_std::fs::Dir::open_ambient_dir(backing.path(), cap_std::ambient_authority())?;
++        Ok(Self {
++            inputs,
++            descriptors: BTreeMap::new(),
++            listings: BTreeMap::new(),
++            listing_bytes: 0,
++            stream_count: Arc::new(AtomicUsize::new(0)),
++            nominal_dir: Dir::new(
++                directory,
++                DirPerms::READ,
++                FilePerms::READ,
++                OpenMode::READ,
++                true,
++            ),
++            _nominal_backing: backing,
++        })
++    }
++}
++
++pub struct CapturedView<'a> {
++    pub state: &'a mut CapturedAdapter,
++    pub table: &'a mut ResourceTable,
++}
++struct CapturedData;
++impl HasData for CapturedData {
++    type Data<'a> = CapturedView<'a>;
++}
++
++pub fn install(linker: &mut Linker<Ctx>) -> Result<()> {
++    // Replace the complete types/preopens interfaces, including resource drop,
++    // with the same imported aliases. This is producer-only; Core's host/linker
++    // and ABI admission have no exception or extra interface.
++    linker.allow_shadowing(true);
++    let result = (|| {
++        types::add_to_linker::<Ctx, CapturedData>(linker, |ctx| CapturedView {
++            state: &mut ctx.captured,
++            table: &mut ctx.table,
++        })?;
++        preopens::add_to_linker::<Ctx, CapturedData>(linker, |ctx| CapturedView {
++            state: &mut ctx.captured,
++            table: &mut ctx.table,
++        })?;
++        Ok(())
++    })();
++    linker.allow_shadowing(false);
++    result
++}
++
++impl CapturedView<'_> {
++    fn descriptor(&self, resource: &Resource<Descriptor>) -> FsResult<&OpenDescriptor> {
++        self.table.get(resource)?; // Validate actual nominal resource before rep.
++        self.state
++            .descriptors
++            .get(&resource.rep())
++            .ok_or_else(|| types::ErrorCode::BadDescriptor.into())
++    }
++    fn directory(&self, resource: &Resource<Descriptor>) -> FsResult<String> {
++        let descriptor = self.descriptor(resource)?;
++        if self.state.inputs.nodes[&descriptor.path].entry.kind != Kind::Directory {
++            return Err(types::ErrorCode::NotDirectory.into());
++        }
++        if !descriptor.flags.contains(types::DescriptorFlags::READ) {
++            return Err(types::ErrorCode::NotPermitted.into());
++        }
++        Ok(descriptor.path.clone())
++    }
++    fn file_bytes(&self, resource: &Resource<Descriptor>) -> FsResult<Bytes> {
++        let descriptor = self.descriptor(resource)?;
++        let node = &self.state.inputs.nodes[&descriptor.path];
++        if node.entry.kind != Kind::File {
++            return Err(types::ErrorCode::IsDirectory.into());
++        }
++        if !descriptor.flags.contains(types::DescriptorFlags::READ) {
++            return Err(types::ErrorCode::NotPermitted.into());
++        }
++        Ok(node.bytes.clone())
++    }
++    fn at(&self, resource: &Resource<Descriptor>, path: &str) -> FsResult<String> {
++        let base = self.directory(resource)?;
++        self.state
++            .inputs
++            .child_path(&base, path)
++            .map_err(|_| types::ErrorCode::NoEntry.into())
++    }
++    fn allocate(
++        &mut self,
++        path: String,
++        flags: types::DescriptorFlags,
++    ) -> FsResult<Resource<Descriptor>> {
++        if self.state.descriptors.len() >= MAX_DESCRIPTORS {
++            return Err(types::ErrorCode::InsufficientMemory.into());
++        }
++        if !self.state.inputs.nodes.contains_key(&path) {
++            return Err(types::ErrorCode::NoEntry.into());
++        }
++        let resource = self
++            .table
++            .push(Descriptor::Dir(self.state.nominal_dir.clone()))?;
++        if self
++            .state
++            .descriptors
++            .insert(resource.rep(), OpenDescriptor { path, flags })
++            .is_some()
++        {
++            return Err(anyhow::anyhow!("captured descriptor collision").into());
++        }
++        Ok(resource)
++    }
++    fn stat_path(&self, path: &str) -> FsResult<types::DescriptorStat> {
++        let node = self
++            .state
++            .inputs
++            .nodes
++            .get(path)
++            .ok_or(types::ErrorCode::NoEntry)?;
++        let timestamp = wall_clock::Datetime {
++            seconds: self.state.inputs.epoch,
++            nanoseconds: 0,
++        };
++        Ok(types::DescriptorStat {
++            type_: if node.entry.kind == Kind::Directory {
++                types::DescriptorType::Directory
++            } else {
++                types::DescriptorType::RegularFile
++            },
++            link_count: 1,
++            size: node.entry.size,
++            data_access_timestamp: Some(timestamp),
++            data_modification_timestamp: Some(timestamp),
++            status_change_timestamp: Some(timestamp),
++        })
++    }
++    fn hash_path(&self, path: &str) -> FsResult<types::MetadataHashValue> {
++        let node = self
++            .state
++            .inputs
++            .nodes
++            .get(path)
++            .ok_or(types::ErrorCode::NoEntry)?;
++        Ok(types::MetadataHashValue {
++            lower: node.inode,
++            upper: 0,
++        })
++    }
++    fn deny(&self, fd: &Resource<Descriptor>) -> FsResult<()> {
++        self.descriptor(fd)?;
++        Err(types::ErrorCode::NotPermitted.into())
++    }
++}
++
++impl preopens::Host for CapturedView<'_> {
++    fn get_directories(&mut self) -> wasmtime::Result<Vec<(Resource<Descriptor>, String)>> {
++        let roots = self.state.inputs.roots.clone();
++        ensure!(
++            self.state
++                .descriptors
++                .len()
++                .checked_add(roots.len())
++                .is_some_and(|count| count <= MAX_DESCRIPTORS),
++            "captured descriptor limit"
++        );
++        let mut output = Vec::with_capacity(roots.len());
++        for root in roots {
++            let resource = self
++                .allocate(root.clone(), types::DescriptorFlags::READ)
++                .map_err(|error| anyhow::anyhow!("{error:?}"))?;
++            output.push((resource, root));
++        }
++        Ok(output)
++    }
++}
++impl types::Host for CapturedView<'_> {
++    fn convert_error_code(&mut self, error: FsError) -> wasmtime::Result<types::ErrorCode> {
++        error.downcast()
++    }
++    fn filesystem_error_code(
++        &mut self,
++        error: Resource<wasmtime::Error>,
++    ) -> wasmtime::Result<Option<types::ErrorCode>> {
++        self.table.get(&error)?;
++        Ok(None) // No captured stream ever embeds an OS/path error.
++    }
++}
++impl types::HostDescriptor for CapturedView<'_> {
++    async fn advise(
++        &mut self,
++        fd: Resource<Descriptor>,
++        offset: u64,
++        len: u64,
++        _advice: types::Advice,
++    ) -> FsResult<()> {
++        self.file_bytes(&fd)?;
++        offset.checked_add(len).ok_or(types::ErrorCode::Overflow)?;
++        Ok(())
++    }
++    async fn sync_data(&mut self, fd: Resource<Descriptor>) -> FsResult<()> {
++        self.descriptor(&fd)?;
++        Ok(())
++    }
++    async fn get_flags(&mut self, fd: Resource<Descriptor>) -> FsResult<types::DescriptorFlags> {
++        Ok(self.descriptor(&fd)?.flags)
++    }
++    async fn get_type(&mut self, fd: Resource<Descriptor>) -> FsResult<types::DescriptorType> {
++        let path = &self.descriptor(&fd)?.path;
++        Ok(
++            if self.state.inputs.nodes[path].entry.kind == Kind::Directory {
++                types::DescriptorType::Directory
++            } else {
++                types::DescriptorType::RegularFile
++            },
++        )
++    }
++    async fn set_size(&mut self, fd: Resource<Descriptor>, _size: u64) -> FsResult<()> {
++        self.deny(&fd)
++    }
++    async fn set_times(
++        &mut self,
++        fd: Resource<Descriptor>,
++        _atim: types::NewTimestamp,
++        _mtim: types::NewTimestamp,
++    ) -> FsResult<()> {
++        self.deny(&fd)
++    }
++    async fn read(
++        &mut self,
++        fd: Resource<Descriptor>,
++        len: u64,
++        offset: u64,
++    ) -> FsResult<(Vec<u8>, bool)> {
++        let bytes = self.file_bytes(&fd)?;
++        let Ok(start) = usize::try_from(offset) else {
++            return Ok((Vec::new(), true));
++        };
++        if start >= bytes.len() {
++            return Ok((Vec::new(), true));
++        }
++        let amount = usize::try_from(len)
++            .unwrap_or(usize::MAX)
++            .min(MAX_READ_BYTES)
++            .min(bytes.len() - start);
++        Ok((
++            bytes[start..start + amount].to_vec(),
++            start + amount == bytes.len(),
++        ))
++    }
++    async fn write(
++        &mut self,
++        fd: Resource<Descriptor>,
++        _buffer: Vec<u8>,
++        _offset: u64,
++    ) -> FsResult<u64> {
++        self.deny(&fd)?;
++        unreachable!()
++    }
++    async fn read_directory(
++        &mut self,
++        fd: Resource<Descriptor>,
++    ) -> FsResult<Resource<ReaddirIterator>> {
++        let base = self.directory(&fd)?;
++        if self.state.listings.len() >= MAX_ITERATORS {
++            return Err(types::ErrorCode::InsufficientMemory.into());
++        }
++        let prefix = format!("{base}/");
++        let mut entries = VecDeque::new();
++        let mut charged = 0usize;
++        for (path, node) in self.state.inputs.nodes.range(prefix.clone()..) {
++            if !path.starts_with(&prefix) {
++                break;
++            }
++            let name = &path[prefix.len()..];
++            if name.contains('/') {
++                continue;
++            }
++            charged = charged
++                .checked_add(name.len() + 64)
++                .ok_or(types::ErrorCode::Overflow)?;
++            if self
++                .state
++                .listing_bytes
++                .checked_add(charged)
++                .is_none_or(|size| size > MAX_METADATA_BYTES)
++            {
++                return Err(types::ErrorCode::InsufficientMemory.into());
++            }
++            entries.push_back(types::DirectoryEntry {
++                type_: if node.entry.kind == Kind::Directory {
++                    types::DescriptorType::Directory
++                } else {
++                    types::DescriptorType::RegularFile
++                },
++                name: name.to_owned(),
++            });
++        }
++        let queue = Arc::new(Mutex::new(entries));
++        let captured_queue = queue.clone();
++        // Original constructor exposed by the narrow producer-only WASI46
++        // patch. Same nominal type; iterator closes over captured records only.
++        let iterator = ReaddirIterator::new(std::iter::from_fn(move || {
++            captured_queue.lock().unwrap().pop_front().map(Ok)
++        }));
++        let resource = self.table.push(iterator)?;
++        self.state.listing_bytes += charged;
++        if self
++            .state
++            .listings
++            .insert(resource.rep(), Listing { queue, charged })
++            .is_some()
++        {
++            return Err(anyhow::anyhow!("captured iterator collision").into());
++        }
++        Ok(resource)
++    }
++    async fn sync(&mut self, fd: Resource<Descriptor>) -> FsResult<()> {
++        self.descriptor(&fd)?;
++        Ok(())
++    }
++    async fn create_directory_at(
++        &mut self,
++        fd: Resource<Descriptor>,
++        _path: String,
++    ) -> FsResult<()> {
++        self.deny(&fd)
++    }
++    async fn stat(&mut self, fd: Resource<Descriptor>) -> FsResult<types::DescriptorStat> {
++        self.stat_path(&self.descriptor(&fd)?.path)
++    }
++    async fn stat_at(
++        &mut self,
++        fd: Resource<Descriptor>,
++        _flags: types::PathFlags,
++        path: String,
++    ) -> FsResult<types::DescriptorStat> {
++        let path = self.at(&fd, &path)?;
++        self.stat_path(&path)
++    }
++    async fn set_times_at(
++        &mut self,
++        fd: Resource<Descriptor>,
++        _flags: types::PathFlags,
++        _path: String,
++        _atim: types::NewTimestamp,
++        _mtim: types::NewTimestamp,
++    ) -> FsResult<()> {
++        self.deny(&fd)
++    }
++    async fn link_at(
++        &mut self,
++        fd: Resource<Descriptor>,
++        _flags: types::PathFlags,
++        _old: String,
++        new: Resource<Descriptor>,
++        _path: String,
++    ) -> FsResult<()> {
++        self.descriptor(&new)?;
++        self.deny(&fd)
++    }
++    async fn open_at(
++        &mut self,
++        fd: Resource<Descriptor>,
++        _flags: types::PathFlags,
++        path: String,
++        open: types::OpenFlags,
++        flags: types::DescriptorFlags,
++    ) -> FsResult<Resource<Descriptor>> {
++        if !(open & !types::OpenFlags::DIRECTORY).is_empty()
++            || !(flags & !types::DescriptorFlags::READ).is_empty()
++        {
++            self.descriptor(&fd)?;
++            return Err(types::ErrorCode::NotPermitted.into());
++        }
++        let path = self.at(&fd, &path)?;
++        if open.contains(types::OpenFlags::DIRECTORY)
++            && self.state.inputs.nodes[&path].entry.kind != Kind::Directory
++        {
++            return Err(types::ErrorCode::NotDirectory.into());
++        }
++        self.allocate(path, flags)
++    }
++    fn drop(&mut self, fd: Resource<Descriptor>) -> wasmtime::Result<()> {
++        self.table.get(&fd)?;
++        ensure!(
++            self.state.descriptors.contains_key(&fd.rep()),
++            "unknown captured descriptor"
++        );
++        let id = fd.rep();
++        self.table.delete(fd)?;
++        self.state.descriptors.remove(&id);
++        Ok(())
++    }
++    async fn readlink_at(&mut self, fd: Resource<Descriptor>, path: String) -> FsResult<String> {
++        self.at(&fd, &path)?;
++        Err(types::ErrorCode::Invalid.into())
++    }
++    async fn remove_directory_at(
++        &mut self,
++        fd: Resource<Descriptor>,
++        _path: String,
++    ) -> FsResult<()> {
++        self.deny(&fd)
++    }
++    async fn rename_at(
++        &mut self,
++        fd: Resource<Descriptor>,
++        _path: String,
++        new: Resource<Descriptor>,
++        _new_path: String,
++    ) -> FsResult<()> {
++        self.descriptor(&new)?;
++        self.deny(&fd)
++    }
++    async fn symlink_at(
++        &mut self,
++        fd: Resource<Descriptor>,
++        _source: String,
++        _destination: String,
++    ) -> FsResult<()> {
++        self.deny(&fd)
++    }
++    async fn unlink_file_at(&mut self, fd: Resource<Descriptor>, _path: String) -> FsResult<()> {
++        self.deny(&fd)
++    }
++    fn read_via_stream(
++        &mut self,
++        fd: Resource<Descriptor>,
++        offset: u64,
++    ) -> FsResult<Resource<DynInputStream>> {
++        let bytes = self.file_bytes(&fd)?;
++        let start = usize::try_from(offset)
++            .unwrap_or(usize::MAX)
++            .min(bytes.len());
++        let count = self.state.stream_count.clone();
++        if count
++            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
++                (value < MAX_STREAMS).then_some(value + 1)
++            })
++            .is_err()
++        {
++            return Err(types::ErrorCode::InsufficientMemory.into());
++        }
++        let stream: DynInputStream = Box::new(CapturedStream {
++            bytes: bytes.slice(start..),
++            count,
++        });
++        Ok(self.table.push(stream)?) // failed push drops stream and releases count
++    }
++    fn write_via_stream(
++        &mut self,
++        fd: Resource<Descriptor>,
++        _offset: u64,
++    ) -> FsResult<Resource<DynOutputStream>> {
++        self.deny(&fd)?;
++        unreachable!()
++    }
++    fn append_via_stream(
++        &mut self,
++        fd: Resource<Descriptor>,
++    ) -> FsResult<Resource<DynOutputStream>> {
++        self.deny(&fd)?;
++        unreachable!()
++    }
++    async fn is_same_object(
++        &mut self,
++        a: Resource<Descriptor>,
++        b: Resource<Descriptor>,
++    ) -> wasmtime::Result<bool> {
++        Ok(self
++            .descriptor(&a)
++            .map_err(|error| anyhow::anyhow!("{error:?}"))?
++            .path
++            == self
++                .descriptor(&b)
++                .map_err(|error| anyhow::anyhow!("{error:?}"))?
++                .path)
++    }
++    async fn metadata_hash(
++        &mut self,
++        fd: Resource<Descriptor>,
++    ) -> FsResult<types::MetadataHashValue> {
++        self.hash_path(&self.descriptor(&fd)?.path)
++    }
++    async fn metadata_hash_at(
++        &mut self,
++        fd: Resource<Descriptor>,
++        _flags: types::PathFlags,
++        path: String,
++    ) -> FsResult<types::MetadataHashValue> {
++        let path = self.at(&fd, &path)?;
++        self.hash_path(&path)
++    }
++}
++impl types::HostDirectoryEntryStream for CapturedView<'_> {
++    async fn read_directory_entry(
++        &mut self,
++        stream: Resource<ReaddirIterator>,
++    ) -> FsResult<Option<types::DirectoryEntry>> {
++        self.table.get(&stream)?;
++        let listing = self
++            .state
++            .listings
++            .get_mut(&stream.rep())
++            .ok_or(types::ErrorCode::BadDescriptor)?;
++        let entry = listing.queue.lock().unwrap().pop_front();
++        if let Some(entry) = &entry {
++            let released = entry.name.len() + 64;
++            listing.charged -= released;
++            self.state.listing_bytes -= released;
++        }
++        Ok(entry)
++    }
++    fn drop(&mut self, stream: Resource<ReaddirIterator>) -> wasmtime::Result<()> {
++        self.table.get(&stream)?;
++        ensure!(
++            self.state.listings.contains_key(&stream.rep()),
++            "unknown captured iterator"
++        );
++        let id = stream.rep();
++        self.table.delete(stream)?;
++        let listing = self.state.listings.remove(&id).unwrap();
++        self.state.listing_bytes -= listing.charged;
++        Ok(())
++    }
++}
++
++struct CapturedStream {
++    bytes: Bytes,
++    count: Arc<AtomicUsize>,
++}
++impl Drop for CapturedStream {
++    fn drop(&mut self) {
++        self.count.fetch_sub(1, Ordering::SeqCst);
++    }
++}
++#[async_trait::async_trait]
++impl InputStream for CapturedStream {
++    fn read(&mut self, size: usize) -> std::result::Result<Bytes, StreamError> {
++        if size > MAX_READ_BYTES {
++            return Err(StreamError::Trap(anyhow::anyhow!(
++                "captured read buffer limit"
++            )));
++        }
++        if size == 0 {
++            return Ok(Bytes::new());
++        }
++        if self.bytes.is_empty() {
++            return Err(StreamError::Closed);
++        }
++        Ok(self.bytes.split_to(size.min(self.bytes.len())))
++    }
++}
++#[async_trait::async_trait]
++impl Pollable for CapturedStream {
++    async fn ready(&mut self) {}
++}
+--- /dev/null
++++ b/src/tobkiri_preinit.rs
+@@ -0,0 +1,330 @@
++//! Original-producer preinit inputs. This source has not been compiler-tested.
++//! The filesystem admission gate deliberately remains closed until its typed
++//! metadata/enumeration adapter has a proof; readonly mounts alone are not enough.
++
++use anyhow::{Result, bail, ensure};
++use serde::Deserialize;
++use serde::Serialize;
++use serde_json::Value;
++use sha2::{Digest, Sha256};
++use std::{
++    path::{Path, PathBuf},
++    sync::atomic::{AtomicU64, Ordering},
++    time::Duration,
++};
++use wasmtime_wasi::{
++    WasiCtxBuilder,
++    clocks::{HostMonotonicClock, HostWallClock},
++};
++
++const DOMAIN: &[u8] = b"tobkiri/componentize-py/0.25.0/deterministic-preinit/v1\0";
++const MAX_PLAN_BYTES: usize = 256 * 1024;
++
++#[derive(Deserialize)]
++#[serde(deny_unknown_fields)]
++struct DeclaredPlan {
++    format: String,
++    producer_recipe_sha256: String,
++    stage_receipt_sha256: String,
++    audited_stdlib: Vec<String>,
++    input_manifest_sha256: String,
++    options: GeneratorOptions,
++}
++
++#[derive(Deserialize, Serialize)]
++#[serde(deny_unknown_fields)]
++struct GeneratorOptions {
++    entrypoint: String,
++    worlds: Vec<String>,
++    features: Vec<String>,
++    all_features: bool,
++    world_module: Option<String>,
++    module_worlds: Vec<(String, Vec<String>)>,
++    import_interface_names: std::collections::BTreeMap<String, String>,
++    export_interface_names: std::collections::BTreeMap<String, String>,
++    full_names: bool,
++    intersect_world: Option<String>,
++    stub_wasi: bool,
++}
++
++#[derive(Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct PreinitPlan {
++    pub format: String,
++    /// Exact canonical UTF-8 JSON of {plan: object, source_date_epoch: string}.
++    pub canonical_declaration_hex: String,
++    /// Host locator only; never part of the seed or guest environment.
++    pub input_manifest_path: PathBuf,
++    /// Explicit physical scratch root; no TMPDIR/PATH/home discovery.
++    pub scratch_path: PathBuf,
++    #[serde(skip)]
++    manifest: Vec<crate::captured_inputs::Entry>,
++    #[serde(skip)]
++    manifest_sha256: String,
++}
++
++impl PreinitPlan {
++    pub fn read(path: &Path) -> Result<Self> {
++        let bytes = crate::captured_inputs::read_bounded(path, MAX_PLAN_BYTES)?;
++        ensure!(bytes.len() <= MAX_PLAN_BYTES, "preinit plan too large");
++        let mut plan: Self = toml::from_str(std::str::from_utf8(&bytes)?)?;
++        let metadata = crate::captured_inputs::read_bounded(
++            &plan.input_manifest_path,
++            crate::captured_inputs::MAX_METADATA_BYTES,
++        )?;
++        ensure!(
++            metadata.len() <= crate::captured_inputs::MAX_METADATA_BYTES,
++            "input manifest too large"
++        );
++        let value: Value = serde_json::from_slice(&metadata)?;
++        validate_value(&value, 0)?;
++        ensure!(
++            serde_json::to_vec(&value)? == metadata,
++            "input manifest must be canonical"
++        );
++        plan.manifest = serde_json::from_value(value)?;
++        plan.manifest_sha256 = Sha256::digest(&metadata)
++            .iter()
++            .map(|byte| format!("{byte:02x}"))
++            .collect();
++        plan.declaration()?;
++        Ok(plan)
++    }
++
++    pub(crate) fn scratch(&self) -> Result<&Path> {
++        #[cfg(any(target_os = "macos", target_os = "linux"))]
++        {
++            let _ = crate::captured_inputs::physical_directory(&self.scratch_path)?;
++            Ok(&self.scratch_path)
++        }
++        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
++        bail!("Unavailable: audited producer scratch requires macOS/Linux")
++    }
++
++    fn declaration(&self) -> Result<(Vec<u8>, u64)> {
++        ensure!(
++            self.format == "tobkiri.compiler-init-plan/1",
++            "unknown preinit format"
++        );
++        let bytes = decode_hex(&self.canonical_declaration_hex)?;
++        ensure!(bytes.len() <= MAX_PLAN_BYTES, "declaration too large");
++        let value: Value = serde_json::from_slice(&bytes)?;
++        validate_value(&value, 0)?;
++        // Duplicate keys, whitespace, noncanonical escapes, key order and number
++        // spellings change the input bytes and therefore fail this equality.
++        ensure!(
++            serde_json::to_vec(&value)? == bytes,
++            "declaration is not canonical"
++        );
++        let object = value
++            .as_object()
++            .ok_or_else(|| anyhow::anyhow!("declaration object required"))?;
++        ensure!(
++            object.len() == 2
++                && object.contains_key("plan")
++                && object.contains_key("source_date_epoch"),
++            "declaration fields"
++        );
++        ensure!(object["plan"].is_object(), "plan object required");
++        let plan: DeclaredPlan = serde_json::from_value(object["plan"].clone())?;
++        ensure!(
++            plan.format == "tobkiri.original-python-plan/2" && plan.options.stub_wasi,
++            "unsupported original-producer declaration"
++        );
++        for digest in [
++            &plan.producer_recipe_sha256,
++            &plan.stage_receipt_sha256,
++            &plan.input_manifest_sha256,
++        ] {
++            ensure!(
++                digest.len() == 64 && decode_hex(digest)?.len() == 32,
++                "declaration digest"
++            );
++        }
++        ensure!(
++            self.manifest_sha256 == plan.input_manifest_sha256,
++            "input manifest differs from declaration"
++        );
++        ensure!(
++            plan.audited_stdlib
++                .iter()
++                .all(|module| ["random", "secrets"].contains(&module.as_str()))
++                && plan.audited_stdlib.windows(2).all(|pair| pair[0] < pair[1]),
++            "audited stdlib declaration"
++        );
++        let epoch = object["source_date_epoch"]
++            .as_str()
++            .ok_or_else(|| anyhow::anyhow!("epoch string required"))?;
++        let seconds: u64 = epoch.parse()?;
++        ensure!(
++            seconds < (1u64 << 63) && seconds.to_string() == epoch,
++            "noncanonical epoch"
++        );
++        Ok((bytes, seconds))
++    }
++
++    pub fn configure(&self, wasi: &mut WasiCtxBuilder) -> Result<()> {
++        let (declaration, seconds) = self.declaration()?;
++        let digest = Sha256::digest(&declaration);
++        let mut seed_hash = Sha256::new();
++        seed_hash.update(DOMAIN);
++        seed_hash.update(digest);
++        let seed = seed_hash.finalize();
++        let seed_hex = seed
++            .iter()
++            .map(|byte| format!("{byte:02x}"))
++            .collect::<String>();
++        let value: Value = serde_json::from_slice(&declaration)?;
++        let plan: DeclaredPlan = serde_json::from_value(value["plan"].clone())?;
++        wasi.secure_random(wasmtime_wasi::random::Deterministic::new(seed.to_vec()))
++            .insecure_random(wasmtime_wasi::random::Deterministic::new(seed.to_vec()))
++            // Independent insecure-seed interface; it is not the custom RNG's
++            // constructor seed (pinned ctx.rs lines 328..337).
++            .insecure_random_seed(u128::from_le_bytes(seed[..16].try_into()?))
++            .max_random_size(crate::captured_inputs::MAX_READ_BYTES as u64)
++            .wall_clock(BuildWallClock(seconds))
++            .monotonic_clock(BuildMonotonicClock(AtomicU64::new(0)))
++            .allow_tcp(false)
++            .allow_udp(false)
++            .allow_ip_name_lookup(false)
++            .allow_blocking_current_thread(true)
++            .env("PYTHONHASHSEED", "0")
++            .env("PYTHONDONTWRITEBYTECODE", "1")
++            .env("TZ", "UTC")
++            .env("LANG", "C.UTF-8")
++            .env("LC_ALL", "C.UTF-8")
++            .env("SOURCE_DATE_EPOCH", seconds.to_string())
++            .env("TOBKIRI_PREINIT_STDLIB", plan.audited_stdlib.join(","))
++            .env("TOBKIRI_PUBLIC_PREINIT_SEED", seed_hex);
++        Ok(())
++    }
++
++    pub(crate) fn verify_options(&self, generator: &crate::ComponentGenerator<'_>) -> Result<()> {
++        let (bytes, _) = self.declaration()?;
++        let value: Value = serde_json::from_slice(&bytes)?;
++        let plan: DeclaredPlan = serde_json::from_value(value["plan"].clone())?;
++        let actual = GeneratorOptions {
++            entrypoint: generator.app_name.to_owned(),
++            worlds: generator
++                .worlds
++                .iter()
++                .map(|value| (*value).to_owned())
++                .collect(),
++            features: generator
++                .features
++                .iter()
++                .map(|value| (*value).to_owned())
++                .collect(),
++            all_features: generator.all_features,
++            world_module: generator.world_module.map(str::to_owned),
++            module_worlds: generator
++                .module_worlds
++                .iter()
++                .map(|(module, worlds)| {
++                    (
++                        (*module).to_owned(),
++                        worlds.iter().map(|world| (*world).to_owned()).collect(),
++                    )
++                })
++                .collect(),
++            import_interface_names: generator
++                .import_interface_names
++                .iter()
++                .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
++                .collect(),
++            export_interface_names: generator
++                .export_interface_names
++                .iter()
++                .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
++                .collect(),
++            full_names: generator.full_names,
++            intersect_world: generator.intersect_world.map(str::to_owned),
++            stub_wasi: generator.stub_wasi,
++        };
++        ensure!(
++            serde_json::to_value(actual)? == serde_json::to_value(plan.options)?,
++            "actual producer flags differ from declaration"
++        );
++        Ok(())
++    }
++
++    pub(crate) fn capture_inputs(
++        &self,
++        mounts: &[crate::captured_inputs::Mount],
++    ) -> Result<crate::captured_inputs::CapturedInputs> {
++        let (bytes, epoch) = self.declaration()?;
++        let _ = bytes;
++        crate::captured_inputs::CapturedInputs::capture(&self.manifest, mounts, epoch)
++    }
++
++    pub fn require_input_admission(&self, _python: &[&str], _wit: &[&Path]) -> Result<()> {
++        self.declaration()?;
++        // Fail before CPython or source discovery: this patch must not produce
++        // an artifact from host inode/mtime/order or mutable undeclared input.
++        bail!(
++            "Unavailable: captured WASI source adapter awaits actual original-preinit/deny/perturb/lifetime proof (FS-01)"
++        )
++    }
++}
++
++fn validate_value(value: &Value, depth: usize) -> Result<()> {
++    ensure!(depth <= 32, "declaration depth");
++    match value {
++        Value::Null | Value::Bool(_) | Value::String(_) => (),
++        Value::Number(number) => {
++            let integer = number
++                .as_i64()
++                .ok_or_else(|| anyhow::anyhow!("integer required"))?;
++            ensure!(
++                integer.unsigned_abs() <= 9_007_199_254_740_991,
++                "unsafe integer"
++            );
++        }
++        Value::Array(values) => {
++            for value in values {
++                validate_value(value, depth + 1)?;
++            }
++        }
++        Value::Object(values) => {
++            for value in values.values() {
++                validate_value(value, depth + 1)?;
++            }
++        }
++    }
++    Ok(())
++}
++
++fn decode_hex(hex: &str) -> Result<Vec<u8>> {
++    ensure!(
++        hex.len() % 2 == 0
++            && hex
++                .bytes()
++                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
++        "lowercase hex required"
++    );
++    hex.as_bytes()
++        .chunks_exact(2)
++        .map(|pair| Ok(u8::from_str_radix(std::str::from_utf8(pair)?, 16)?))
++        .collect()
++}
++
++struct BuildWallClock(u64);
++impl HostWallClock for BuildWallClock {
++    fn resolution(&self) -> Duration {
++        Duration::from_nanos(1000)
++    }
++    fn now(&self) -> Duration {
++        Duration::from_secs(self.0)
++    }
++}
++struct BuildMonotonicClock(AtomicU64);
++impl HostMonotonicClock for BuildMonotonicClock {
++    fn resolution(&self) -> u64 {
++        1000
++    }
++    fn now(&self) -> u64 {
++        self.0
++            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_add(1000))
++            .expect("preinit monotonic clock exhausted")
++    }
++}
+--- /dev/null
++++ b/staged_packaging.rs
+@@ -0,0 +1,126 @@
++//! Unconnected source prototype; BUILD-02 remains closed in original build.rs.
++//! Never starts Cargo, compiles CPython, or downloads.
++//! All staging is completed sequentially before the outer Cargo invocation.
++use anyhow::{Context, Result, bail, ensure};
++use sha2::{Digest, Sha256};
++use std::{
++    env, fs,
++    io::Read,
++    path::{Path, PathBuf},
++    process::Command,
++};
++
++fn digest(bytes: &[u8]) -> String {
++    Sha256::digest(bytes)
++        .iter()
++        .map(|byte| format!("{byte:02x}"))
++        .collect()
++}
++
++fn bounded(path: &Path, maximum: usize) -> Result<Vec<u8>> {
++    // Physical locators are operator-only and are not hashed into the semantic
++    // recipe/receipt or passed to the guest. No symlink leaf is admitted.
++    ensure!(
++        path.is_absolute() && !fs::symlink_metadata(path)?.file_type().is_symlink(),
++        "explicit physical stage file required"
++    );
++    let mut file = fs::File::open(path)?;
++    let metadata = file.metadata()?;
++    ensure!(
++        metadata.is_file() && metadata.len() <= maximum as u64,
++        "stage file type/size"
++    );
++    let mut bytes = Vec::new();
++    (&mut file)
++        .take(maximum as u64 + 1)
++        .read_to_end(&mut bytes)?;
++    ensure!(
++        bytes.len() <= maximum && file.metadata()?.len() == metadata.len(),
++        "stage file changed"
++    );
++    Ok(bytes)
++}
++
++pub fn install(output: &Path) -> Result<()> {
++    let recipe_bytes = include_bytes!("producer-recipe-v2.json");
++    let recipe: serde_json::Value = serde_json::from_slice(recipe_bytes)?;
++    // In this source checkpoint full source/lock/OS-native-closure pins are
++    // deliberately incomplete. It cannot launch even the native build tool.
++    ensure!(
++        recipe["status"] == "verified" && recipe["system_native_closure_verified"] == true,
++        "Unavailable: original producer full staging pins/proofs pending (BUILD-01)"
++    );
++    let receipt = PathBuf::from(
++        env::var_os("TOBKIRI_PRODUCER_STAGE_RECEIPT").context("explicit stage receipt required")?,
++    );
++    let expected = env::var("TOBKIRI_PRODUCER_STAGE_SHA256")
++        .context("explicit semantic receipt digest required")?;
++    let receipt_bytes = bounded(&receipt, 4 * 1024 * 1024)?;
++    ensure!(
++        digest(&receipt_bytes) == expected,
++        "actual stage receipt digest differs"
++    );
++    let locators = PathBuf::from(
++        env::var_os("TOBKIRI_PRODUCER_LOCATORS")
++            .context("explicit private role locators required")?,
++    );
++    let locator_bytes = bounded(&locators, 64 * 1024)?;
++    let map: serde_json::Value = serde_json::from_slice(&locator_bytes)?;
++    let native = PathBuf::from(
++        map["native-cpython"]
++            .as_str()
++            .context("native CPython build tool locator required")?,
++    );
++    let executable = native.join(
++        recipe["native_python"]["path"]
++            .as_str()
++            .context("native tool path pin required")?,
++    );
++    let tool = bounded(&executable, 128 * 1024 * 1024)?;
++    ensure!(
++        digest(&tool)
++            == recipe["native_python"]["sha256"]
++                .as_str()
++                .context("native tool digest pin required")?,
++        "native build tool differs"
++    );
++    let producer =
++        PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").context("producer source root required")?);
++    let script = producer.join("tools/stage_verify.py");
++    ensure!(
++        digest(&bounded(&script, 256 * 1024)?)
++            == recipe["stage_verifier_sha256"]
++                .as_str()
++                .context("stage verifier pin required")?,
++        "stage verifier source differs"
++    );
++    let recipe_path = producer.join("producer-recipe-v2.json");
++    ensure!(
++        bounded(&recipe_path, 256 * 1024)? == recipe_bytes,
++        "recipe source differs from compiled recipe"
++    );
++    let status = Command::new(executable)
++        .args(["-E", "-s", "-B", "-S"])
++        .arg(script)
++        .arg("--recipe")
++        .arg(recipe_path)
++        .arg("--receipt")
++        .arg(&receipt)
++        .arg("--receipt-sha256")
++        .arg(expected)
++        .arg("--locators")
++        .arg(&locators)
++        .arg("--output")
++        .arg(output)
++        .env_clear()
++        .env("PYTHONHASHSEED", "0")
++        .env("TZ", "UTC")
++        .env("LANG", "C.UTF-8")
++        .env("LC_ALL", "C.UTF-8")
++        .status()
++        .context("original native CPython stage verifier failed")?;
++    if !status.success() {
++        bail!("stage verification failed; no compiler/runtime fallback");
++    }
++    Ok(())
++}
+--- /dev/null
++++ b/tools/capture_snapshot.py
+@@ -0,0 +1,235 @@
++"""Strict, bounded source/stage capture; no compiler, guest or network execution."""
++from __future__ import annotations
++
++from dataclasses import dataclass
++import hashlib
++import json
++import os
++from pathlib import Path
++import stat
++from types import MappingProxyType
++from typing import Mapping
++
++MAX_ENTRIES = 32_768
++MAX_FILE = 8 * 1024 * 1024
++MAX_TOTAL = 128 * 1024 * 1024
++MAX_METADATA = 4 * 1024 * 1024
++EMPTY_SHA = hashlib.sha256(b"").hexdigest()
++
++
++def canonical(document: object) -> bytes:
++    """Encode only the compiler's bounded canonical JSON subset."""
++    def validate(value: object, depth: int = 0) -> None:
++        if depth > 32:
++            raise ValueError("canonical depth limit")
++        if value is None or type(value) is bool:
++            return
++        if type(value) is int and abs(value) <= 9_007_199_254_740_991:
++            return
++        if type(value) is str:
++            value.encode("utf-8", "strict")
++            return
++        if type(value) is list:
++            for item in value:
++                validate(item, depth + 1)
++            return
++        if type(value) is dict and all(type(key) is str for key in value):
++            for key, item in value.items():
++                validate(key, depth + 1)
++                validate(item, depth + 1)
++            return
++        raise ValueError("canonical value/type limit")
++    validate(document)
++    return json.dumps(document, ensure_ascii=False, sort_keys=True,
++                      allow_nan=False, separators=(",", ":")).encode()
++
++
++def strict_document(data: bytes, bound: int = MAX_METADATA) -> object:
++    """Reject duplicates, floats, invalid Unicode and noncanonical spellings."""
++    if len(data) > bound:
++        raise ValueError("document byte limit")
++    def pairs(items: list[tuple]) -> dict:
++        result = {}
++        for key, value in items:
++            if key in result:
++                raise ValueError("duplicate document key")
++            result[key] = value
++        return result
++    document = json.loads(data.decode("utf-8", "strict"), object_pairs_hook=pairs)
++    if canonical(document) != data:
++        raise ValueError("noncanonical document")
++    return document
++
++
++def guest_path(value: str) -> None:
++    """Admit one normalized, bounded, relative UTF-8 guest path."""
++    if (type(value) is not str or not value or len(value.encode()) > 4096
++            or "\\" in value or "\0" in value or value.startswith("/")):
++        raise ValueError("guest path")
++    parts = value.split("/")
++    if len(parts) > 32 or any(part in ("", ".", "..") for part in parts):
++        raise ValueError("guest path components")
++
++
++def physical_directory(path: Path) -> int:
++    """Open every physical parent with no-follow descriptor-relative traversal."""
++    if not path.is_absolute() or any(part in (".", "..") for part in path.parts):
++        raise ValueError("physical absolute directory required")
++    fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW)
++    try:
++        for part in path.parts[1:]:
++            following = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
++                                | os.O_NOFOLLOW, dir_fd=fd)
++            os.close(fd)
++            fd = following
++        return fd
++    except BaseException:
++        os.close(fd)
++        raise
++
++
++def read_file(path: Path, bound: int = MAX_FILE) -> bytes:
++    """Capture a regular file once; reject symlink parents/leaves and growth."""
++    parent = physical_directory(path.parent)
++    try:
++        fd = os.open(path.name, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW
++                     | os.O_NONBLOCK, dir_fd=parent)
++    finally:
++        os.close(parent)
++    try:
++        return _read_fd(fd, bound)
++    finally:
++        os.close(fd)
++
++
++def _read_fd(fd: int, bound: int) -> bytes:
++    before = os.fstat(fd)
++    if not stat.S_ISREG(before.st_mode) or before.st_size > bound:
++        raise ValueError("regular file/size required")
++    chunks = []
++    remaining = bound + 1
++    while remaining:
++        chunk = os.read(fd, min(remaining, 1024 * 1024))
++        if not chunk:
++            break
++        chunks.append(chunk)
++        remaining -= len(chunk)
++    after = os.fstat(fd)
++    data = b"".join(chunks)
++    if (len(data) > bound or len(data) != before.st_size or
++            (before.st_size, before.st_mtime_ns, before.st_ctime_ns) !=
++            (after.st_size, after.st_mtime_ns, after.st_ctime_ns)):
++        raise ValueError("file changed during capture")
++    return data
++
++
++@dataclass(frozen=True)
++class Node:
++    """Immutable captured content with declaration-derived metadata."""
++    kind: str
++    data: bytes
++    inode: int
++    epoch: int
++
++    def metadata(self) -> dict:
++        """Return stable logical metadata without any host inode or timestamps."""
++        return {"kind": self.kind, "size": len(self.data), "inode": self.inode,
++                "epoch": self.epoch, "mode": "0555" if self.kind == "directory"
++                else "0444"}
++
++
++@dataclass(frozen=True)
++class Snapshot:
++    """A captured tree; every later read/list/stat is in memory."""
++    nodes: Mapping[str, Node]
++    roots: tuple[str, ...]
++
++    def listing(self, path: str) -> tuple[str, ...]:
++        """List captured immediate children in canonical UTF-8 order."""
++        if self.nodes[path].kind != "directory":
++            raise NotADirectoryError(path)
++        prefix = path + "/"
++        return tuple(name[len(prefix):] for name in self.nodes
++                     if name.startswith(prefix) and "/" not in name[len(prefix):])
++
++
++def capture(entries: list[dict], mounts: Mapping[str, Path], epoch: int) -> Snapshot:
++    """Capture exactly a complete declaration; reject missing and extra entries."""
++    if type(epoch) is not int or not 0 <= epoch < 2**63 or not mounts:
++        raise ValueError("capture epoch/mounts")
++    if len(entries) > MAX_ENTRIES or len(canonical(entries)) > MAX_METADATA:
++        raise ValueError("capture metadata limit")
++    expected = {}
++    for entry in entries:
++        if set(entry) != {"guest_path", "kind", "size", "sha256"}:
++            raise ValueError("capture entry fields")
++        path = entry["guest_path"]
++        guest_path(path)
++        if path in expected or entry["kind"] not in ("file", "directory"):
++            raise ValueError("duplicate path/type")
++        if (type(entry["size"]) is not int or not 0 <= entry["size"] <= MAX_FILE
++                or type(entry["sha256"]) is not str or len(entry["sha256"]) != 64
++                or any(ch not in "0123456789abcdef" for ch in entry["sha256"])):
++            raise ValueError("capture size/digest")
++        if entry["kind"] == "directory" and (entry["size"] != 0 or entry["sha256"] != EMPTY_SHA):
++            raise ValueError("directory declaration")
++        expected[path] = entry
++    if list(expected) != sorted(expected):
++        raise ValueError("capture manifest order")
++    for root in mounts:
++        guest_path(root)
++    observed = {}
++    total = 0
++
++    def walk(fd: int, path: str, own_root: str) -> None:
++        nonlocal total
++        entry = expected.get(path)
++        if entry is None or entry["kind"] != "directory" or path in observed:
++            raise ValueError("directory declaration/collision")
++        observed[path] = ("directory", b"")
++        names = sorted(os.listdir(fd))
++        for name in names:
++            child = path + "/" + name
++            guest_path(child)
++            if child in mounts and child != own_root:
++                continue
++            entry = expected.get(child)
++            if entry is None:
++                raise ValueError("undeclared captured entry")
++            flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK
++            if entry["kind"] == "directory":
++                flags |= os.O_DIRECTORY
++            opened = os.open(name, flags, dir_fd=fd)
++            try:
++                if entry["kind"] == "directory":
++                    walk(opened, child, own_root)
++                else:
++                    data = _read_fd(opened, MAX_FILE)
++                    total += len(data)
++                    if (total > MAX_TOTAL or len(data) != entry["size"] or
++                            hashlib.sha256(data).hexdigest() != entry["sha256"]
++                            or child in observed):
++                        raise ValueError("capture content/size/collision")
++                    observed[child] = ("file", data)
++            finally:
++                os.close(opened)
++        if sorted(os.listdir(fd)) != names:
++            raise ValueError("directory changed during capture")
++
++    for root, source in mounts.items():
++        opened = physical_directory(source)
++        try:
++            walk(opened, root, root)
++        finally:
++            os.close(opened)
++    if set(observed) != set(expected):
++        raise ValueError("missing captured entry")
++    for path in observed:
++        parent, _, _ = path.rpartition("/")
++        if parent and (parent not in observed or observed[parent][0] != "directory"):
++            raise ValueError("missing captured parent")
++    nodes = {path: Node(kind, data, index + 1, epoch)
++             for index, (path, (kind, data)) in enumerate(sorted(observed.items()))}
++    if len({node.inode for node in nodes.values()}) != len(nodes):
++        raise ValueError("inode collision")
++    return Snapshot(MappingProxyType(nodes), tuple(sorted(mounts)))
+--- /dev/null
++++ b/tools/stage_verify.py
+@@ -0,0 +1,187 @@
++"""Verify original staged files and install captured compiler bundle bytes.
++
++Run only as an original native CPython build tool after stages are complete.
++This script never compiles, downloads, invokes Cargo, or executes a guest.
++Physical locators are external; the semantic receipt/seed contains logical paths.
++"""
++from __future__ import annotations
++import argparse
++import hashlib
++import os
++from pathlib import Path
++import tempfile
++
++from capture_snapshot import canonical, strict_document, guest_path, read_file
++
++PACKAGES = (
++    "bundled.tar.zst", "libc++.so.zst", "libc++abi.so.zst", "libc.so.zst",
++    "libcomponentize_py_runtime_async.so.zst", "libcomponentize_py_runtime_sync.so.zst",
++    "libpython3.14.so.zst", "libwasi-emulated-getpid.so.zst",
++    "libwasi-emulated-mman.so.zst", "libwasi-emulated-process-clocks.so.zst",
++    "libwasi-emulated-signal.so.zst", "python-lib.tar.zst",
++    "wasi_snapshot_preview1.reactor.wasm.zst",
++)
++STAGES = ("native-cpython", "c-libraries", "wasi-cpython", "runtime-sync",
++          "runtime-async", "packaging")
++
++
++def exact_keys(value: object, keys: set[str]) -> None:
++    """Reject missing and extra fields at every receipt schema boundary."""
++    if type(value) is not dict or set(value) != keys:
++        raise ValueError("stage schema fields")
++
++
++def sha(value: str) -> None:
++    """Require a canonical SHA-256 spelling without a placeholder value."""
++    if (type(value) is not str or len(value) != 64 or
++            any(ch not in "0123456789abcdef" for ch in value)):
++        raise ValueError("stage SHA-256 required")
++
++
++def validate_structure(receipt: dict) -> None:
++    """Validate the semantic stage contract independently of host locators."""
++    exact_keys(receipt, {"format", "recipe_sha256", "sources", "patches", "dependency_lock_sha256",
++                         "environment", "tools", "target", "stages", "packages"})
++    if receipt["format"] != "tobkiri.original-python-stage/2":
++        raise ValueError("stage format")
++    for key in ("recipe_sha256", "dependency_lock_sha256"):
++        sha(receipt[key])
++    if receipt["target"] != {"role": "shared-target", "profile": "release", "jobs": 2,
++                            "incremental": False, "debug": 0}:
++        raise ValueError("one fixed shared target/profile required")
++    if type(receipt["environment"]) is not dict or set(receipt["environment"]) != {
++            "LANG", "LC_ALL", "TZ", "SOURCE_DATE_EPOCH", "PYTHONHASHSEED"}:
++        raise ValueError("stage environment; PATH/ambient overrides denied")
++    environment = receipt["environment"]
++    if (environment["LANG"] != "C.UTF-8" or environment["LC_ALL"] != "C.UTF-8"
++            or environment["TZ"] != "UTC" or environment["PYTHONHASHSEED"] != "0"
++            or not environment["SOURCE_DATE_EPOCH"].isdigit()
++            or str(int(environment["SOURCE_DATE_EPOCH"])) != environment["SOURCE_DATE_EPOCH"]
++            or int(environment["SOURCE_DATE_EPOCH"]) >= 2**63):
++        raise ValueError("stage deterministic environment")
++    if type(receipt["stages"]) is not list or tuple(row.get("name") for row in receipt["stages"]) != STAGES:
++        raise ValueError("original sequential stage order")
++    for row in receipt["stages"]:
++        exact_keys(row, {"name", "commands", "input_sha256", "output_sha256", "exit_codes"})
++        sha(row["input_sha256"])
++        sha(row["output_sha256"])
++        if (not row["commands"] or len(row["commands"]) != len(row["exit_codes"])
++                or any(type(code) is not int or code != 0 for code in row["exit_codes"])):
++            raise ValueError("stage command results")
++        for argv in row["commands"]:
++            if (type(argv) is not list or not argv or any(type(arg) is not str for arg in argv)
++                    or any(arg.startswith("/") or "\0" in arg for arg in argv)):
++                raise ValueError("logical command templates only; no physical paths")
++            # All Cargo invocations happen in these pre-outer stages, with the
++            # one logical target role. No package hook ever starts Cargo.
++            if argv[0] == "${CARGO}":
++                required = {"--locked", "--target=wasm32-wasip2", "--target-dir=${SHARED_TARGET}", "--release", "-j2"}
++                if not required.issubset(argv) or "CARGO_TARGET_DIR" in " ".join(argv):
++                    raise ValueError("staged Cargo target/flags")
++    if type(receipt["packages"]) is not dict or set(receipt["packages"]) != set(PACKAGES):
++        raise ValueError("complete original package output set required")
++    for name, item in receipt["packages"].items():
++        exact_keys(item, {"role", "path", "size", "sha256"})
++        guest_path(item["path"])
++        sha(item["sha256"])
++        if item["role"] != "stage" or type(item["size"]) is not int or not 0 < item["size"] <= 64 * 1024 * 1024:
++            raise ValueError("package size/role")
++    for group in ("sources", "patches", "tools"):
++        if type(receipt[group]) is not dict or not receipt[group]:
++            raise ValueError("complete source/patch/tool inventories required")
++        for role, entries in receipt[group].items():
++            guest_path(role)
++            if type(entries) is not list or not entries:
++                raise ValueError("stage inventory required")
++            prior = ""
++            for item in entries:
++                exact_keys(item, {"path", "size", "sha256"})
++                guest_path(item["path"])
++                sha(item["sha256"])
++                if item["path"] <= prior or type(item["size"]) is not int or item["size"] < 0:
++                    raise ValueError("stage inventory order/size")
++                prior = item["path"]
++
++
++def verify_files(receipt: dict, locators: dict[str, str]) -> dict[str, bytes]:
++    """Read each declared file once; capture package bytes for later installation."""
++    captured = {}
++    observed = {}
++    for group in ("sources", "patches", "tools"):
++        for role, entries in receipt[group].items():
++            if role not in locators:
++                raise ValueError("missing physical role locator")
++            for item in entries:
++                key = (role, item["path"])
++                if key in observed:
++                    if observed[key] != (item["size"], item["sha256"]):
++                        raise ValueError("conflicting file declaration")
++                    continue
++                data = read_file(Path(locators[role]) / item["path"], 512 * 1024 * 1024)
++                actual = (len(data), hashlib.sha256(data).hexdigest())
++                if actual != (item["size"], item["sha256"]):
++                    raise ValueError("actual staged source/patch/tool file differs")
++                observed[key] = actual
++    total = 0
++    for name, item in receipt["packages"].items():
++        if item["role"] not in locators:
++            raise ValueError("missing package role locator")
++        data = read_file(Path(locators[item["role"]]) / item["path"], 64 * 1024 * 1024)
++        if len(data) != item["size"] or hashlib.sha256(data).hexdigest() != item["sha256"]:
++            raise ValueError("actual staged package differs; cache labels are not proof")
++        total += len(data)
++        if total > 128 * 1024 * 1024:
++            raise ValueError("package capture total")
++        captured[name] = data
++    return captured
++
++
++def verify(recipe: dict, receipt: dict, locators: dict) -> dict[str, bytes]:
++    """Deny missing pins, then verify actual outputs against the pinned recipe."""
++    if recipe.get("status") != "verified" or not recipe.get("system_native_closure_verified"):
++        raise ValueError("Unavailable: full source/dependency/native closure pins pending (BUILD-01)")
++    validate_structure(receipt)
++    if hashlib.sha256(canonical(recipe)).hexdigest() != receipt["recipe_sha256"]:
++        raise ValueError("stage recipe digest")
++    for key in ("sources", "patches", "tools", "dependency_lock_sha256", "environment"):
++        if recipe[key] != receipt[key]:
++            raise ValueError("receipt provenance differs from recipe")
++    return verify_files(receipt, locators)
++
++
++def install(captured: dict[str, bytes], output: Path) -> None:
++    """Write only previously captured, verified bytes; never reopen stage sources."""
++    if set(captured) != set(PACKAGES) or output.is_symlink() or not output.is_dir():
++        raise ValueError("package install boundary")
++    for name, data in captured.items():
++        fd, temporary = tempfile.mkstemp(prefix=".verified-stage-", dir=output)
++        try:
++            with os.fdopen(fd, "wb") as file:
++                file.write(data)
++                file.flush()
++                os.fsync(file.fileno())
++            os.chmod(temporary, 0o444)
++            os.replace(temporary, output / name)
++        finally:
++            if os.path.exists(temporary):
++                os.unlink(temporary)
++
++
++def main() -> None:
++    """Verify an explicit pinned semantic receipt and install compiler bundles."""
++    parser = argparse.ArgumentParser(description=__doc__)
++    for key in ("recipe", "receipt", "locators", "output"):
++        parser.add_argument("--" + key, required=True, type=Path)
++    parser.add_argument("--receipt-sha256", required=True)
++    args = parser.parse_args()
++    receipt_bytes = read_file(args.receipt, 4 * 1024 * 1024)
++    if hashlib.sha256(receipt_bytes).hexdigest() != args.receipt_sha256:
++        raise ValueError("explicit semantic receipt pin differs")
++    recipe = strict_document(read_file(args.recipe, 4 * 1024 * 1024))
++    receipt = strict_document(receipt_bytes)
++    locators = strict_document(read_file(args.locators, 64 * 1024))
++    install(verify(recipe, receipt, locators), args.output)
++
++
++if __name__ == "__main__":
++    main()

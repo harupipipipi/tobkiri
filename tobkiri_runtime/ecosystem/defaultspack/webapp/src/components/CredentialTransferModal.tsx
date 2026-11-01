@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertTriangle, Check, Loader2, Send, ShieldCheck, Smartphone, X } from "lucide-react";
+import { Check, Loader2, Send, ShieldCheck, Smartphone, X } from "lucide-react";
 
+import { ErrorNotice } from "./ErrorNotice";
 import { cn } from "../lib/cn";
 import { mobileApiResources } from "../features/mobile/resources/mobileApiResources";
 import type { CredentialTransfer, MobileDevice } from "../lib/api";
@@ -237,7 +238,14 @@ export function CredentialTransferModal({
             ) : (
               <div className="mt-5">
                 <TransferState transfer={transfer} />
-                {recoveryNeeded && <div className="mt-3 flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-5 text-amber-100"><AlertTriangle size={16} className="mt-0.5 shrink-0" /><span>意図しない端末や画面共有が疑われる場合は、端末のペアリングを解除し、provider側でAPI keyをローテーションしてください。</span></div>}
+                {recoveryNeeded && (
+                  <ErrorNotice
+                    className="mt-3 p-3 text-xs leading-5"
+                    copyLabel="転送復旧の注意をコピー"
+                    message="意図しない端末や画面共有が疑われる場合は、端末のペアリングを解除し、provider側でAPI keyをローテーションしてください。"
+                    severity="warning"
+                  />
+                )}
                 <div className="mt-4 flex gap-2">
                   {!terminal && transfer.status !== "accepted" && <button type="button" disabled={busy} onClick={() => void stopTransfer(false)} className="flex-1 rounded-lg border border-rose-500/40 px-4 py-2.5 text-sm text-rose-200 hover:border-rose-400">転送をキャンセル</button>}
                   <button type="button" onClick={requestClose} className="flex-1 rounded-lg border border-zinc-700 px-4 py-2.5 text-sm text-zinc-200 hover:border-zinc-500">閉じる</button>
@@ -245,7 +253,13 @@ export function CredentialTransferModal({
               </div>
             )}
 
-            {error && <div role="alert" className="mt-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{error}</div>}
+            {error && (
+              <ErrorNotice
+                className="mt-3 px-3 py-2 text-xs"
+                copyLabel="認証情報転送エラーをコピー"
+                message={error}
+              />
+            )}
             <p id="credential-transfer-security-note" className="mt-4 text-[11px] leading-5 text-zinc-600">画面やURLにはcredentialを表示しません。転送は端末IDと暗号鍵に結び付き、期限切れまたは1回の受領で無効になります。</p>
           </div>
         </motion.div>

@@ -27,7 +27,6 @@ import time
 import uuid
 
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
 from blocks.chat._prompt_helpers import build_content_classifier_prompt
 
@@ -119,6 +118,7 @@ _AI_JUDGE_SYSTEM = build_content_classifier_prompt(
 class ConsentChecker:
     """同意チェッカー（シングルトン）"""
     _instance = None
+    _initialized: bool
 
     def __new__(cls):
         if cls._instance is None:

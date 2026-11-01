@@ -1,0 +1,7 @@
+package tobkiri-ui:inputs@1.0.0;
+
+// Only an independently sealed nativeKit DATA invocation can bind this import.
+// No guest-selected host paths, descriptors, discovery, writes or capabilities.
+interface captured {
+    read-range: func(ordinal: u32, offset: u64, length: u32) -> list<u8>;
+}

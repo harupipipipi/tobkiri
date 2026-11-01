@@ -1,0 +1,20 @@
+{
+  "authority_references": [],
+  "base": {
+    "artifact_digest": null,
+    "definition_revision": null,
+    "pack_id": "fixture-base",
+    "resolution": "verified_exact_artifact_required"
+  },
+  "catalog_revision": null,
+  "intent_api_version": "io.tobkiri.profile-intent.v1",
+  "mode": "headless",
+  "packs": [
+    {"artifact_digest": null, "pack_id": "fixture_ai_pack", "role": "provider"}
+  ],
+  "profile_id": "fixture-secondary",
+  "profile_authority_snapshot_digest": null,
+  "requested_edges": [],
+  "shell": null,
+  "state": "needs_resolution"
+}

@@ -1,0 +1,88 @@
+name: Issue 1520 pure native DATA handoff
+on:
+  push:
+    branches: [codex/issue-1520-native-shared-state]
+    paths:
+      - 'tobkiri_launcher/harness-native/src/preparation.rs'
+      - 'tobkiri_launcher/harness-native/src/lib.rs'
+      - 'tobkiri_launcher/harness-native/src/bootstrap_runtime.rs'
+      - 'tobkiri_launcher/harness-native/src/bootstrap_domain_cleanup_tests.rs'
+      - 'crates/tobkiri-wasm/src/native_setup_store.rs'
+      - 'crates/tobkiri-wasm/src/native_setup_store_tests.rs'
+      - '.github/workflows/issue-1520-native-data-handoff.yml'
+  workflow_dispatch:
+    inputs:
+      verification:
+        description: Library handoff tests or dependency resolution only
+        type: choice
+        options: [handoff, launcher-lock]
+        default: handoff
+permissions:
+  contents: read
+concurrency:
+  group: issue-1520-native-data-handoff-${{ github.sha }}-${{ github.event_name == 'workflow_dispatch' && inputs.verification || 'handoff' }}
+  cancel-in-progress: false
+env:
+  CARGO_BUILD_JOBS: '1'
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+jobs:
+  launcher-lock:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.verification == 'launcher-lock' }}
+    name: Standalone Launcher dependency graph (no build)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Resolve the exact macOS Launcher graph without changing its lock
+        working-directory: tobkiri_launcher/src-tauri
+        run: >-
+          cargo metadata --locked --format-version 1
+          --filter-platform aarch64-apple-darwin
+          --features native-source-inspection,native-harness-bootstrap
+          > "$RUNNER_TEMP/launcher-dependency-metadata.json"
+      - name: Verify both tracked locks remain unchanged
+        run: git diff --exit-code -- Cargo.lock tobkiri_launcher/src-tauri/Cargo.lock
+  cancellation-lineage:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.verification != 'launcher-lock' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Actual Store cancellation, custody and original-budget regressions
+        run: cargo test --locked -p tobkiri-wasm --lib native_setup_store::tests -- --test-threads=1
+  same-invocation:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.verification != 'launcher-lock' }}
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Actual prepared component and original-owner DATA regressions
+        run: cargo test --locked -p tobkiri-harness-native --lib preparation::tests -- --test-threads=1
+      - name: Preserve actual domain DATA and the original cleanup failure
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-domain-cleanup.log" --expected-passed 2 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          bootstrap_runtime::domain_cleanup_tests -- --test-threads=1
+      - name: Strict library validation
+        run: cargo clippy --locked -p tobkiri-harness-native --lib -- -D warnings

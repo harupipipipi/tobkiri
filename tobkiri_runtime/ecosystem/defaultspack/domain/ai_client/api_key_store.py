@@ -3,26 +3,55 @@ from __future__ import annotations
 import os
 import re
 import json
+import urllib.parse
 from pathlib import Path
 from typing import Any, Dict, List
 
 from .oauth_store import provider_has_oauth_connection, provider_oauth_status
+from .provider_program import provider_program_manifests
 
 
 PROVIDER_SECRET_KEYS: Dict[str, List[str]] = {
     "anthropic": ["ANTHROPIC_API_KEY"],
+    "ai21": ["AI21_API_KEY"],
+    "assemblyai": ["ASSEMBLYAI_API_KEY"],
+    "avian": ["AVIAN_API_KEY"],
+    "azure-openai": ["AZURE_OPENAI_API_KEY"],
+    "baidu-qianfan": ["QIANFAN_API_KEY"],
+    "black-forest-labs": ["BFL_API_KEY"],
+    "alibaba-dashscope": ["DASHSCOPE_API_KEY"],
     "cerebras": ["CEREBRAS_API_KEY"],
+    "cohere": ["COHERE_API_KEY"],
+    "cloudflare-workers-ai": ["CLOUDFLARE_API_TOKEN"],
+    "deepgram": ["DEEPGRAM_API_KEY"],
     "deepseek": ["DEEPSEEK_API_KEY"],
+    "deepinfra": ["DEEPINFRA_API_KEY"],
+    "databricks-model-serving": ["DATABRICKS_TOKEN"],
+    "elevenlabs": ["ELEVENLABS_API_KEY"],
+    "fireworks": ["FIREWORKS_API_KEY"],
+    "fal-ai": ["FAL_KEY", "FAL_AI_API_KEY"],
+    "friendli": ["FRIENDLI_API_KEY"],
+    "github-models": ["GITHUB_TOKEN", "GH_TOKEN"],
     "glm": ["GLM_API_KEY"],
     "groq": ["GROQ_API_KEY"],
+    "hyperbolic": ["HYPERBOLIC_API_KEY"],
+    "ibm-watsonx": ["WATSONX_API_KEY", "IBM_WATSONX_API_KEY"],
+    "huggingface-inference": ["HF_TOKEN", "HUGGINGFACE_API_KEY"],
+    "inference-net": ["INFERENCE_NET_API_KEY", "INFERENCENET_API_KEY"],
+    "jina-ai": ["JINA_API_KEY"],
     "google": ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
+    "google-vertex-ai": ["VERTEX_AI_ACCESS_TOKEN", "GOOGLE_VERTEX_AI_ACCESS_TOKEN"],
     "gitlawb-opengateway": ["GITLAWB_OPENGATEWAY_API_KEY"],
+    "genspark": ["GENSPARK_API_KEY"],
     "llama_cpp": ["LLAMACPP_API_KEY"],
+    "litellm-proxy": ["LITELLM_API_KEY"],
     "lmstudio": ["LMSTUDIO_API_KEY"],
     "longcat": ["LONGCAT_API_KEY"],
     "mistral": ["MISTRAL_API_KEY"],
     "moonshotai": ["MOONSHOT_API_KEY"],
     "nvidia": ["NVIDIA_API_KEY", "NGC_API_KEY"],
+    "nebius": ["NEBIUS_API_KEY"],
+    "novita": ["NOVITA_API_KEY"],
     "ollama": ["OLLAMA_API_KEY"],
     "opencode-go": ["OPENCODE_GO_API_KEY", "OPENCODE_ZEN_API_KEY"],
     "opencode-zen": ["OPENCODE_ZEN_API_KEY"],
@@ -30,8 +59,16 @@ PROVIDER_SECRET_KEYS: Dict[str, List[str]] = {
     "openai_compatible": ["OPENAI_COMPATIBLE_API_KEY"],
     "openrouter": ["OPENROUTER_API_KEY"],
     "perplexity": ["PERPLEXITY_API_KEY"],
+    "portkey-ai-gateway": ["PORTKEY_API_KEY"],
+    "replicate": ["REPLICATE_API_TOKEN"],
+    "sambanova": ["SAMBANOVA_API_KEY"],
+    "siliconflow": ["SILICONFLOW_API_KEY"],
+    "stability-ai": ["STABILITY_API_KEY"],
     "together": ["TOGETHER_API_KEY"],
+    "tencent-hunyuan": ["HUNYUAN_API_KEY", "TENCENT_HUNYUAN_API_KEY"],
+    "upstage": ["UPSTAGE_API_KEY"],
     "vercel-ai-gateway": ["AI_GATEWAY_API_KEY", "VERCEL_AI_GATEWAY_API_KEY"],
+    "voyage-ai": ["VOYAGE_API_KEY"],
     "vllm": ["VLLM_API_KEY"],
     "xai": ["XAI_API_KEY"],
     "xiaomi-token-plan-ams": [
@@ -45,6 +82,7 @@ PROVIDER_SECRET_KEYS: Dict[str, List[str]] = {
         "XIAOMI_MIMO_TOKEN_PLAN_API_KEY",
         "MIMO_API_KEY",
     ],
+    "xiaomi-mimo-global": ["XIAOMI_MIMO_GLOBAL_API_KEY", "MIMO_API_KEY"],
 }
 
 _NAMED_API_PREFIX = "RUMIAPI"
@@ -52,6 +90,8 @@ _SLUG_PATTERN = re.compile(r"[^A-Za-z0-9_]+")
 _KIND_LLM = "llm"
 _KIND_CUSTOM = "custom"
 _VALID_KINDS = {_KIND_LLM, _KIND_CUSTOM}
+_CREDENTIAL_MODE_API_KEY = "api_key"
+_CREDENTIAL_MODE_NONE = "none"
 
 
 def _pack_root() -> Path:
@@ -59,9 +99,16 @@ def _pack_root() -> Path:
 
 
 def _secrets_dir(pack_root: Path | None = None) -> Path:
-    override = os.environ.get("RUMI_DEFAULTSPACK_SECRETS_DIR", "").strip()
-    if override:
-        return Path(override)
+    if pack_root is None:
+        # This is a routing override only; the value is a directory path and
+        # never contains credential material.  Secret values remain broker
+        # backed and are never read from the process environment.
+        configured_override = os.getenv("RUMI_DEFAULTSPACK_SECRETS_DIR", "").strip()
+        if configured_override:
+            return Path(configured_override).expanduser()
+        configured_user_data = os.getenv("RUMI_USER_DATA", "").strip()
+        if configured_user_data:
+            return Path(configured_user_data).expanduser() / "secrets"
     return (pack_root or _pack_root()) / "user_data" / "secrets"
 
 
@@ -76,6 +123,23 @@ def _custom_providers_path(pack_root: Path | None = None) -> Path:
 def _normalize_kind(value: Any) -> str:
     text = str(value or "").strip().lower()
     return text if text in _VALID_KINDS else _KIND_LLM
+
+
+def _normalize_credential_mode(value: Any) -> str:
+    """Keep unauthenticated connections explicit rather than storing a fake key."""
+    return _CREDENTIAL_MODE_NONE if str(value or "").strip().lower() in {
+        "none", "no_auth", "no-auth", "unauthenticated"
+    } else _CREDENTIAL_MODE_API_KEY
+
+
+def _is_loopback_endpoint(value: Any) -> bool:
+    """Only a loopback endpoint may be intentionally saved without a secret."""
+    try:
+        parsed = urllib.parse.urlsplit(str(value or "").strip())
+        host = str(parsed.hostname or "").lower().rstrip(".")
+    except (TypeError, ValueError):
+        return False
+    return host == "localhost" or host == "::1" or host.startswith("127.")
 
 
 def _read_custom_providers(pack_root: Path | None = None) -> dict[str, dict[str, Any]]:
@@ -189,6 +253,7 @@ def _metadata_patch(
     monthly_budget_usd: float | None = None,
     monthly_request_limit: int | None = None,
     kind: str | None = None,
+    credential_mode: str | None = None,
 ) -> dict[str, Any]:
     metadata = dict(existing or {})
     metadata.update(
@@ -248,6 +313,12 @@ def _metadata_patch(
             metadata.pop("kind", None)
         else:
             metadata["kind"] = normalized
+    if credential_mode is not None:
+        normalized_mode = _normalize_credential_mode(credential_mode)
+        if normalized_mode == _CREDENTIAL_MODE_NONE:
+            metadata["credential_mode"] = normalized_mode
+        else:
+            metadata.pop("credential_mode", None)
     return metadata
 
 
@@ -301,9 +372,26 @@ def _provider_from_named_key(key: str) -> str:
     if not key.startswith(prefix):
         return ""
     remainder = key[len(prefix):]
-    provider_slug = remainder.split("_", 1)[0].lower()
-    provider_map = {_slug(provider_id, max_length=18).lower(): provider_id for provider_id in PROVIDER_SECRET_KEYS}
-    return provider_map.get(provider_slug, provider_slug)
+    # Provider ids contain separators (for example ``azure-ai-foundry``).
+    # Splitting on the first underscore silently turned a saved
+    # ``RUMIAPI_AZURE_AI_FOUNDRY_MAIN`` credential into provider ``azure``.
+    # Resolve the longest canonical provider slug instead.  The program list
+    # is deliberately included because it contains providers without a legacy
+    # environment-variable secret name.
+    provider_ids = set(PROVIDER_SECRET_KEYS) | set(provider_program_manifests())
+    candidates = sorted(
+        (
+            (_slug(provider_id, max_length=18).upper(), provider_id)
+            for provider_id in provider_ids
+        ),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    )
+    upper_remainder = remainder.upper()
+    for provider_slug, provider_id in candidates:
+        if upper_remainder == provider_slug or upper_remainder.startswith(provider_slug + "_"):
+            return provider_id
+    return remainder.split("_", 1)[0].lower()
 
 
 def _api_id_from_named_key(key: str, provider_id: str) -> str:
@@ -324,9 +412,6 @@ def provider_secret_keys(provider_id: str) -> List[str]:
 
 
 def _read_secret_value(key: str, caller_id: str, *, pack_root: Path | None = None) -> str:
-    value = os.environ.get(key, "").strip()
-    if value:
-        return value
     return str(
         _get_store(pack_root)._internal_read_value(
             key,
@@ -337,43 +422,30 @@ def _read_secret_value(key: str, caller_id: str, *, pack_root: Path | None = Non
 
 
 def _refresh_provider_env(provider_id: str, *, pack_root: Path | None = None) -> bool:
+    """Invalidate provider instances after a broker-backed update.
+
+    Credentials are intentionally not copied into ``os.environ``.  The old
+    name is retained as a compatibility hook for callers that refresh the
+    provider registry after saving a connection.
+    """
+
     provider_id = str(provider_id or "").strip()
-    keys = provider_secret_keys(provider_id)
-    for key in keys:
-        os.environ.pop(key, None)
-
-    configured = False
-    for key in keys:
-        value = _read_secret_value(key, f"defaultspack.ai_client:{provider_id}:legacy", pack_root=pack_root)
-        if value:
-            os.environ[key] = value
-            configured = True
-
-    if not configured:
-        canonical_key = provider_secret_key(provider_id)
-        for api_key in provider_named_api_keys(provider_id, pack_root=pack_root):
-            value = _read_secret_value(
-                str(api_key.get("key", "")),
-                f"defaultspack.ai_client:{provider_id}:{api_key.get('api_id')}",
-                pack_root=pack_root,
-            )
-            if value and canonical_key:
-                os.environ[canonical_key] = value
-                configured = True
-                break
+    configured = provider_has_api_key(provider_id, pack_root=pack_root)
     _reset_ai_client()
     return configured
 
 
 def provider_has_api_key(provider_id: str, *, pack_root: Path | None = None) -> bool:
+    provider_id = str(provider_id or "").strip()
     keys = provider_secret_keys(provider_id)
+    if provider_id != "xiaomi-token-plan-sgp":
+        # The unqualified MiMo key belongs only to the explicitly selected
+        # SGP token-plan connection; it must not enable another region.
+        keys = [key for key in keys if key != "MIMO_API_KEY"]
     for key in keys:
-        if os.environ.get(key, "").strip():
-            return True
         secret_path = _secrets_dir(pack_root) / f"{key}.json"
         if secret_path.exists() and _get_store(pack_root).has_secret(key):
             return True
-    provider_id = str(provider_id or "").strip()
     for item in provider_named_api_keys(provider_id, pack_root=pack_root):
         if item.get("configured"):
             return True
@@ -395,13 +467,22 @@ def set_provider_api_key(
     monthly_budget_usd: float | None = None,
     monthly_request_limit: int | None = None,
     kind: str | None = None,
+    credential_mode: str | None = None,
 ) -> dict[str, Any]:
-    named = bool(api_id or name)
-    key = named_provider_secret_key(provider_id, api_id=api_id, name=name) if named else provider_secret_key(provider_id)
+    normalized_provider = str(provider_id or "").strip()
+    # Program providers without a legacy ENV variable still need a durable
+    # default connection.  Store it as an explicit named connection rather
+    # than rejecting the provider as "unsupported".
+    program_provider = normalized_provider in provider_program_manifests()
+    named = bool(api_id or name) or (program_provider and not provider_secret_key(normalized_provider))
+    key = (
+        named_provider_secret_key(normalized_provider, api_id=api_id or "DEFAULT", name=name)
+        if named
+        else provider_secret_key(normalized_provider)
+    )
     if not key:
         return {"success": False, "provider_id": provider_id, "error": "unsupported provider"}
-    normalized_provider = str(provider_id or "").strip()
-    is_builtin = normalized_provider in PROVIDER_SECRET_KEYS
+    is_builtin = normalized_provider in PROVIDER_SECRET_KEYS or program_provider
     resolved_kind = _normalize_kind(kind) if kind is not None else None
     if resolved_kind is None:
         # Reuse the previously stored kind if any, otherwise default by provider type.
@@ -422,13 +503,68 @@ def set_provider_api_key(
     display_name = str(name or normalized_api_id or provider_id).strip()
 
     cleaned = str(value or "").strip()
+    resolved_credential_mode = _normalize_credential_mode(credential_mode)
+    if resolved_credential_mode == _CREDENTIAL_MODE_NONE:
+        if not named:
+            return {"success": False, "provider_id": provider_id, "error": "an unauthenticated connection needs a named API entry"}
+        if cleaned:
+            return {"success": False, "provider_id": provider_id, "error": "an unauthenticated connection cannot include an API key"}
+        if not _is_loopback_endpoint(base_url):
+            return {"success": False, "provider_id": provider_id, "error": "an unauthenticated connection must use a loopback base URL"}
+        store = _get_store(pack_root)
+        # First-time endpoint connections have nothing to delete.  Clearing a
+        # prior key is still required when converting an existing entry.
+        if store.has_secret(key):
+            deleted = store.delete_secret(
+                key,
+                actor="defaultspack",
+                reason=f"save unauthenticated {provider_id} connection",
+            )
+            if not deleted.success:
+                return {"success": False, "provider_id": provider_id, "error": deleted.error}
+        metadata = _read_api_metadata(pack_root)
+        metadata[key] = _metadata_patch(
+            provider_id=provider_id,
+            api_id=normalized_api_id,
+            name=display_name,
+            existing=metadata.get(key, {}),
+            base_url=base_url,
+            allowed_models=allowed_models,
+            default_model=default_model,
+            notes=notes,
+            quota_label=quota_label,
+            monthly_budget_usd=monthly_budget_usd,
+            monthly_request_limit=monthly_request_limit,
+            kind=resolved_kind,
+            credential_mode=resolved_credential_mode,
+        )
+        _write_api_metadata(metadata, pack_root)
+        _refresh_provider_env(provider_id, pack_root=pack_root)
+        return {
+            "success": True,
+            "provider_id": provider_id,
+            "api_id": normalized_api_id,
+            "name": display_name,
+            "key": key,
+            "configured": True,
+            "created": False,
+            "kind": resolved_kind,
+            "credential_mode": resolved_credential_mode,
+            "base_url": str(base_url or "").strip(),
+            "allowed_models": _normalize_allowed_models(allowed_models),
+            "default_model": str(default_model or "").strip(),
+            "notes": str(notes or "").strip(),
+            "quota_label": str(quota_label or "").strip(),
+            "monthly_budget_usd": float(monthly_budget_usd) if monthly_budget_usd is not None and float(monthly_budget_usd) > 0 else None,
+            "monthly_request_limit": int(monthly_request_limit) if monthly_request_limit is not None and int(monthly_request_limit) > 0 else None,
+            "error": None,
+        }
     if not cleaned:
         result = _get_store(pack_root).delete_secret(
             key,
             actor="defaultspack",
             reason=f"clear {provider_id} api key",
         )
-        os.environ.pop(key, None)
         if result.success:
             if named:
                 metadata = _read_api_metadata(pack_root)
@@ -469,14 +605,9 @@ def set_provider_api_key(
                 monthly_budget_usd=monthly_budget_usd,
                 monthly_request_limit=monthly_request_limit,
                 kind=resolved_kind,
+                credential_mode=resolved_credential_mode,
             )
             _write_api_metadata(metadata, pack_root)
-        if not named:
-            os.environ[key] = cleaned
-        elif resolved_kind == _KIND_LLM and not os.environ.get(provider_secret_key(provider_id), "").strip():
-            canonical_key = provider_secret_key(provider_id)
-            if canonical_key:
-                os.environ[canonical_key] = cleaned
         _reset_ai_client()
     return {
         "success": bool(result.success),
@@ -487,6 +618,7 @@ def set_provider_api_key(
         "configured": bool(result.success),
         "created": bool(result.created),
         "kind": resolved_kind,
+        "credential_mode": resolved_credential_mode,
         "base_url": str(base_url or "").strip(),
         "allowed_models": _normalize_allowed_models(allowed_models),
         "default_model": str(default_model or "").strip(),
@@ -591,7 +723,6 @@ def rename_provider_api_key(
         reason=f"rename {provider_id} api key",
     )
     if deleted.success:
-        os.environ.pop(old_key, None)
         metadata = _read_api_metadata(pack_root)
         metadata.pop(old_key, None)
         metadata[new_key] = _metadata_patch(
@@ -621,36 +752,16 @@ def rename_provider_api_key(
 
 
 def load_provider_api_keys_into_env(*, pack_root: Path | None = None) -> dict[str, bool]:
-    loaded: dict[str, bool] = {}
-    for provider_id, keys in PROVIDER_SECRET_KEYS.items():
-        configured = False
-        for key in keys:
-            if os.environ.get(key, "").strip():
-                configured = True
-                continue
-            if not (_secrets_dir(pack_root) / f"{key}.json").exists():
-                continue
-            store = _get_store(pack_root)
-            value = store._internal_read_value(
-                key,
-                caller_id=f"defaultspack.ai_client:{provider_id}",
-            )
-            if value:
-                os.environ[key] = value
-                configured = True
-        if not configured:
-            canonical_key = provider_secret_key(provider_id)
-            for api_key in provider_named_api_keys(provider_id, pack_root=pack_root):
-                value = _get_store(pack_root)._internal_read_value(
-                    str(api_key.get("key", "")),
-                    caller_id=f"defaultspack.ai_client:{provider_id}:{api_key.get('api_id')}",
-                )
-                if value and canonical_key:
-                    os.environ[canonical_key] = value
-                    configured = True
-                    break
-        loaded[provider_id] = configured
-    return loaded
+    """Return provider configuration status without mutating process globals.
+
+    The historic function name remains for API compatibility.  It is now a
+    pure status query; host/provider contracts carry material explicitly.
+    """
+
+    return {
+        provider_id: provider_has_api_key(provider_id, pack_root=pack_root)
+        for provider_id in PROVIDER_SECRET_KEYS
+    }
 
 
 def provider_named_api_keys(provider_id: str = "", *, pack_root: Path | None = None) -> list[dict[str, Any]]:
@@ -660,31 +771,41 @@ def provider_named_api_keys(provider_id: str = "", *, pack_root: Path | None = N
     store = _get_store(pack_root)
     metadata = _read_api_metadata(pack_root)
     items: list[dict[str, Any]] = []
-    for meta in store.list_keys():
-        key = str(meta.key or "")
-        if not key.startswith(f"{_NAMED_API_PREFIX}_") or meta.deleted:
-            continue
+    store_metadata = {str(meta.key or ""): meta for meta in store.list_keys()}
+    for key in sorted(set(store_metadata) | set(metadata)):
+        meta = store_metadata.get(key)
         stored_meta = metadata.get(key, {})
+        # A no-auth endpoint deliberately has no secret-store record.  Keep its
+        # metadata-visible connection even if an older secret was deleted.
+        if not key.startswith(f"{_NAMED_API_PREFIX}_") or (
+            meta is not None
+            and meta.deleted
+            and _normalize_credential_mode(stored_meta.get("credential_mode")) != _CREDENTIAL_MODE_NONE
+        ):
+            continue
         key_provider = str(stored_meta.get("provider_id") or _provider_from_named_key(key)).strip()
         if requested_provider and key_provider != requested_provider:
             continue
         api_id = str(stored_meta.get("api_id") or _api_id_from_named_key(key, key_provider)).strip()
         display_name = str(stored_meta.get("name") or api_id.replace("_", " ").title())
+        credential_mode = _normalize_credential_mode(stored_meta.get("credential_mode"))
+        no_auth_connection = credential_mode == _CREDENTIAL_MODE_NONE and bool(str(stored_meta.get("base_url") or "").strip())
         item = {
             "api_id": api_id,
             "name": display_name,
             "provider_id": key_provider,
             "key": key,
             "label": f"{key_provider}:{api_id}:***",
-            "configured": bool(meta.exists),
-            "created_at": meta.created_at,
-            "updated_at": meta.updated_at,
+            "configured": bool(meta and meta.exists) or no_auth_connection,
+            "created_at": getattr(meta, "created_at", ""),
+            "updated_at": getattr(meta, "updated_at", ""),
             "kind": _normalize_kind(stored_meta.get("kind")),
             "base_url": str(stored_meta.get("base_url") or ""),
             "allowed_models": _normalize_allowed_models(stored_meta.get("allowed_models", [])),
             "default_model": str(stored_meta.get("default_model") or ""),
             "notes": str(stored_meta.get("notes") or ""),
             "quota_label": str(stored_meta.get("quota_label") or ""),
+            "credential_mode": credential_mode,
         }
         items.append(item)
     return sorted(items, key=lambda item: (str(item.get("provider_id")), str(item.get("api_id"))))
@@ -713,9 +834,6 @@ def read_provider_api_key(provider_id: str, api_id: str, *, pack_root: Path | No
     if value:
         return value
     for legacy_key in provider_secret_keys(provider_id):
-        value = os.environ.get(legacy_key, "").strip()
-        if value:
-            return value
         value = _get_store(pack_root)._internal_read_value(
             legacy_key,
             caller_id=f"defaultspack.ai_client:{provider_id}:legacy",
@@ -726,14 +844,16 @@ def read_provider_api_key(provider_id: str, api_id: str, *, pack_root: Path | No
 
 
 def provider_key_status(*, pack_root: Path | None = None) -> list[dict[str, Any]]:
+    program_manifests = provider_program_manifests()
+    builtin_provider_ids = sorted(set(PROVIDER_SECRET_KEYS) | set(program_manifests))
     builtin_rows = [
         {
             "provider_id": provider_id,
-            "key": keys[0],
+            "key": keys[0] if keys else named_provider_secret_key(provider_id, api_id="DEFAULT"),
             "keys": list(keys),
             "kind": _KIND_LLM,
             "builtin": True,
-            "label": provider_id,
+            "label": str(program_manifests.get(provider_id, {}).get("display_name") or provider_id),
             "configured": (
                 provider_has_api_key(provider_id, pack_root=pack_root)
                 or provider_has_oauth_connection(provider_id, pack_root=pack_root)
@@ -741,8 +861,8 @@ def provider_key_status(*, pack_root: Path | None = None) -> list[dict[str, Any]
             "apis": provider_named_api_keys(provider_id, pack_root=pack_root),
             "oauth": provider_oauth_status(provider_id, pack_root=pack_root),
         }
-        for provider_id, keys in sorted(PROVIDER_SECRET_KEYS.items())
-        if keys
+        for provider_id in builtin_provider_ids
+        for keys in [PROVIDER_SECRET_KEYS.get(provider_id, [])]
     ]
 
     seen_ids = {row["provider_id"] for row in builtin_rows}
@@ -785,4 +905,4 @@ def provider_key_status(*, pack_root: Path | None = None) -> list[dict[str, Any]
 
 
 def builtin_provider_ids() -> list[str]:
-    return sorted(PROVIDER_SECRET_KEYS.keys())
+    return sorted(set(PROVIDER_SECRET_KEYS) | set(provider_program_manifests()))

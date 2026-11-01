@@ -1,130 +1,59 @@
-"""
-test_wave25_fix_token_log.py - W25-FIX: Token log prefix display tests
+"""Wave 25 token-log coverage updated for panel-session-only Pack v4 auth."""
 
-Tests:
-1. HMAC token log contains 8-char prefix
-2. get_active_key() return value stored in internal_token
-3. Full token not leaked in INFO-level log
-4. Explicit token skips HMAC prefix log
-5. Retrieval instructions (hmac_keys.json) in log
-6. Short token (< 8 chars) does not crash
-7. Empty token does not crash
-"""
 from __future__ import annotations
 
 import logging
-from unittest.mock import MagicMock, patch
+from pathlib import Path
 
 import pytest
 
-from core_runtime.pack_api_server import PackAPIServer
+from core_runtime.pack_api_server import PackAPIHandler, PackAPIServer
 
 
-FAKE_TOKEN = "ABCDEFGHijklmnopqrstuvwxyz0123456789ABCDEF"  # 43 chars, like token_urlsafe(32)
+def _server_source() -> str:
+    path = Path(__file__).resolve().parents[1] / "core_runtime" / "pack_api_server.py"
+    return path.read_text(encoding="utf-8")
 
 
 class TestTokenLogPrefix:
-    """W25-FIX: Token log output tests."""
+    """The retired HMAC-token surface is physically absent and fail-closed."""
 
-    @patch("core_runtime.pack_api_server.get_hmac_key_manager")
-    def test_hmac_token_log_contains_prefix(self, mock_get_hmac, caplog):
-        """Log must contain the first 8 characters of the token as prefix."""
-        mock_mgr = MagicMock()
-        mock_mgr.get_active_key.return_value = FAKE_TOKEN
-        mock_get_hmac.return_value = mock_mgr
-
+    def test_hmac_token_log_contains_prefix(self, caplog):
         with caplog.at_level(logging.DEBUG, logger="core_runtime.pack_api_server"):
-            PackAPIServer()
+            server = PackAPIServer(port=0)
+        assert not hasattr(server, "internal_token")
+        assert "get_hmac_key_manager" not in _server_source()
 
-        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
-        expected_prefix = FAKE_TOKEN[:8] + "..."
-        assert any(expected_prefix in msg for msg in info_messages), (
-            f"Expected prefix {expected_prefix!r} in INFO logs; got {info_messages}"
+    def test_hmac_token_stored_correctly(self):
+        server = PackAPIServer(port=0)
+        assert not hasattr(server, "internal_token")
+        assert not hasattr(PackAPIHandler, "_hmac_key_manager")
+
+    def test_full_token_not_in_info_log(self, caplog):
+        with caplog.at_level(logging.INFO, logger="core_runtime.pack_api_server"):
+            PackAPIServer(port=0)
+        assert all("internal_token" not in record.getMessage() for record in caplog.records)
+        assert all("hmac_keys.json" not in record.getMessage() for record in caplog.records)
+
+    def test_explicit_token_no_hmac_log(self, caplog):
+        with pytest.raises(TypeError):
+            PackAPIServer(port=0, internal_token="explicit-user-token")
+        assert all(
+            "HMAC-managed API token" not in record.getMessage()
+            for record in caplog.records
         )
 
-    @patch("core_runtime.pack_api_server.get_hmac_key_manager")
-    def test_hmac_token_stored_correctly(self, mock_get_hmac):
-        """get_active_key() return value must be stored in server.internal_token."""
-        mock_mgr = MagicMock()
-        mock_mgr.get_active_key.return_value = FAKE_TOKEN
-        mock_get_hmac.return_value = mock_mgr
+    def test_retrieval_instructions_in_log(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="core_runtime.pack_api_server"):
+            PackAPIServer(port=0)
+        assert all("hmac_keys.json" not in record.getMessage() for record in caplog.records)
 
-        server = PackAPIServer()
-        assert server.internal_token == FAKE_TOKEN
+    def test_short_token_no_crash(self):
+        server = PackAPIServer(port=0)
+        assert not hasattr(server, "internal_token")
+        assert "token_urlsafe" not in _server_source()
 
-    @patch("core_runtime.pack_api_server.get_hmac_key_manager")
-    def test_full_token_not_in_info_log(self, mock_get_hmac, caplog):
-        """Full token value must NOT appear in INFO-level log records."""
-        mock_mgr = MagicMock()
-        mock_mgr.get_active_key.return_value = FAKE_TOKEN
-        mock_get_hmac.return_value = mock_mgr
-
-        with caplog.at_level(logging.DEBUG, logger="core_runtime.pack_api_server"):
-            PackAPIServer()
-
-        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
-        for msg in info_messages:
-            assert FAKE_TOKEN not in msg, (
-                f"Full token leaked in INFO log: {msg!r}"
-            )
-
-    @patch("core_runtime.pack_api_server.get_hmac_key_manager")
-    def test_explicit_token_no_hmac_log(self, mock_get_hmac, caplog):
-        """When internal_token is explicitly provided, no HMAC prefix log should appear."""
-        mock_mgr = MagicMock()
-        mock_get_hmac.return_value = mock_mgr
-
-        with caplog.at_level(logging.DEBUG, logger="core_runtime.pack_api_server"):
-            PackAPIServer(internal_token="explicit-user-token")
-
-        all_messages = " ".join(r.message for r in caplog.records)
-        assert "HMAC-managed API token (prefix)" not in all_messages, (
-            "HMAC prefix log should not appear when token is explicitly set"
-        )
-        mock_mgr.get_active_key.assert_not_called()
-
-    @patch("core_runtime.pack_api_server.get_hmac_key_manager")
-    def test_retrieval_instructions_in_log(self, mock_get_hmac, caplog):
-        """Log must contain instructions for retrieving the full token."""
-        mock_mgr = MagicMock()
-        mock_mgr.get_active_key.return_value = FAKE_TOKEN
-        mock_get_hmac.return_value = mock_mgr
-
-        with caplog.at_level(logging.DEBUG, logger="core_runtime.pack_api_server"):
-            PackAPIServer()
-
-        warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-        assert any("hmac_keys.json" in msg for msg in warning_messages), (
-            f"Expected hmac_keys.json reference in WARNING logs; got {warning_messages}"
-        )
-
-    @patch("core_runtime.pack_api_server.get_hmac_key_manager")
-    def test_short_token_no_crash(self, mock_get_hmac, caplog):
-        """Token shorter than 8 chars must not cause an error."""
-        mock_mgr = MagicMock()
-        mock_mgr.get_active_key.return_value = "short"
-        mock_get_hmac.return_value = mock_mgr
-
-        with caplog.at_level(logging.DEBUG, logger="core_runtime.pack_api_server"):
-            server = PackAPIServer()
-
-        assert server.internal_token == "short"
-        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
-        # Short token is printed as-is (no "..." suffix since < 8 chars)
-        assert any("short" in msg for msg in info_messages)
-
-    @patch("core_runtime.pack_api_server.get_hmac_key_manager")
-    def test_empty_token_no_crash(self, mock_get_hmac, caplog):
-        """Empty string from get_active_key() must not crash."""
-        mock_mgr = MagicMock()
-        mock_mgr.get_active_key.return_value = ""
-        mock_get_hmac.return_value = mock_mgr
-
-        with caplog.at_level(logging.DEBUG, logger="core_runtime.pack_api_server"):
-            server = PackAPIServer()
-
-        assert server.internal_token == ""
-        info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
-        assert any("(empty)" in msg for msg in info_messages), (
-            f"Expected (empty) marker in INFO logs for empty token; got {info_messages}"
-        )
+    def test_empty_token_no_crash(self):
+        server = PackAPIServer(port=0)
+        assert not hasattr(server, "internal_token")
+        assert "HMAC-managed API token" not in _server_source()

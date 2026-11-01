@@ -11,6 +11,8 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
+pytestmark = pytest.mark.usefixtures("provider_model_catalog_selected")
+
 
 def test_provider_capability_registry_loads_default_manifests():
     from domain.ai_client.capabilities.registry import default_registry

@@ -13,7 +13,10 @@ sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 from blocks.scheduler.create import run as create_job  # noqa: E402
 from blocks.scheduler.tick import run as tick_scheduler  # noqa: E402
 from blocks.scheduler.update import run as update_job  # noqa: E402
-from domain.scheduler.job_store import SchedulerJobStore  # noqa: E402
+from domain.scheduler.job_store import (  # noqa: E402
+    SchedulerJobStore,
+    default_scheduler_dir,
+)
 from domain.scheduler.schedule_parser import parse_next_run  # noqa: E402
 
 
@@ -25,6 +28,49 @@ def test_scheduler_creates_job(tmp_path, monkeypatch):
     assert result["status"] == "ok"
     assert result["data"]["job_id"].startswith("job_")
     assert SchedulerJobStore().get(result["data"]["job_id"])["schedule"] == "every 30m"
+
+
+def test_scheduler_uses_rumi_user_data_by_default(tmp_path, monkeypatch):
+    user_data = tmp_path / "Library" / "Application Support" / "Tobkiri"
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_SCHEDULER_DIR", raising=False)
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
+    monkeypatch.setenv(
+        "RUMI_DEFAULTSPACK_RUNTIME_CONFIG_PATH", str(tmp_path / "runtime_config.json")
+    )
+
+    store = SchedulerJobStore()
+
+    assert store.root == user_data / "defaultspack" / "shared" / "scheduler"
+    assert store.jobs_path.is_file()
+
+
+def test_scheduler_preserves_explicit_jobs_path_override(tmp_path, monkeypatch):
+    user_data = tmp_path / "Library" / "Application Support" / "Tobkiri"
+    jobs_path = tmp_path / "custom" / "jobs.json"
+    config_path = tmp_path / "runtime_config.json"
+    config_path.write_text(
+        json.dumps({"scheduler": {"jobs_path": str(jobs_path)}}), encoding="utf-8"
+    )
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_SCHEDULER_DIR", raising=False)
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_RUNTIME_CONFIG_PATH", str(config_path))
+
+    store = SchedulerJobStore()
+
+    assert store.root == jobs_path.parent
+    assert store.jobs_path == jobs_path
+
+
+def test_scheduler_keeps_pack_local_default_without_rumi_user_data(tmp_path, monkeypatch):
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_SCHEDULER_DIR", raising=False)
+    monkeypatch.delenv("RUMI_USER_DATA", raising=False)
+    monkeypatch.setenv(
+        "RUMI_DEFAULTSPACK_RUNTIME_CONFIG_PATH", str(tmp_path / "runtime_config.json")
+    )
+
+    assert default_scheduler_dir() == (
+        DEFAULTSPACK_ROOT / "user_data" / "shared" / "scheduler"
+    )
 
 
 def test_scheduler_blocks_no_agent_script_when_shell_disabled(tmp_path, monkeypatch):

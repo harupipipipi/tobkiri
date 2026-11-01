@@ -17,7 +17,15 @@ pytestmark = pytest.mark.contract
 ROOT = Path(__file__).resolve().parent.parent
 PACK_ID = 'rumi_customer_research_pack'
 PACK_DIR = ROOT / "ecosystem" / PACK_ID
+V4_AUTHORITY_ARTIFACTS = {"pack.v4.json", "contracts.v4.json", "artifact-index.v4.json"}
 SETUP_PACK_JSON = ROOT / "ecosystem" / "setup_pack" / PACK_ID / "pack.json"
+PACK_METADATA_FILES = {
+    "ecosystem.json",
+    "rumi.pack.v3.json",
+    "artifact-manifest.json",
+    "executables.v4.json",
+    "frontend/contributions/customer-research.json",
+}
 
 REQUIRED_ASSETS = ['README.md', 'asset_index.yaml', 'catalog/handoff_matrix.yaml', 'catalog/quality_matrix.yaml', 'catalog/taxonomy.yaml', 'catalog/workflows.yaml', 'checklists/review.checklist.yaml', 'docs/README.md', 'docs/architecture.md', 'docs/interfaces.md', 'docs/operations.md', 'examples/feedback_opportunity_card.example.yaml', 'examples/interview_synthesis.example.yaml', 'examples/revoked_consent_filter.example.yaml', 'examples/survey_theme_map.example.yaml', 'fixtures/contract_fixture.yaml', 'fixtures/negative_cases.yaml', 'ledgers/evidence_ledger.schema.yaml', 'policies/handoff.policy.yaml', 'policies/safety.policy.yaml', 'presets/handoff_review.preset.yaml', 'presets/quality_gate.preset.yaml', 'presets/safe_default.preset.yaml', 'profiles/customer_researcher.profile.yaml', 'prompts/insight_synthesizer.system.md', 'schemas/consent_record.schema.json', 'schemas/insight_card.schema.json', 'schemas/interview_evidence.schema.json', 'schemas/opportunity_map.schema.json', 'schemas/participant.schema.json', 'schemas/survey_response.schema.json', 'templates/artifact_card.template.md', 'templates/handoff.template.md', 'templates/review_report.template.md']
 SCHEMA_EXPECTATIONS = {'schemas/participant.schema.json': ['participant_id', 'segment', 'consent_state', 'redaction_state', 'allowed_use', 'source_system'], 'schemas/consent_record.schema.json': ['consent_id', 'participant_id', 'consent_state', 'allowed_use', 'expires_at_state', 'evidence_ids', 'review_owner'], 'schemas/interview_evidence.schema.json': ['interview_id', 'participant_id', 'quotes', 'source_span_ids', 'consent_state', 'redaction_state', 'themes'], 'schemas/survey_response.schema.json': ['response_id', 'survey_id', 'question_id', 'answer', 'consent_state', 'redaction_state', 'weighting_note'], 'schemas/insight_card.schema.json': ['insight_id', 'claim', 'opportunity_area', 'confidence', 'supporting_evidence_ids', 'source_quote_ids', 'counter_evidence_ids', 'redaction_state', 'recommended_handoff'], 'schemas/opportunity_map.schema.json': ['map_id', 'insight_ids', 'opportunity_areas', 'assumptions', 'decision_boundary', 'handoff_owner']}
@@ -46,9 +54,10 @@ def test_pack_required_assets_and_ecosystem_contract() -> None:
     ecosystem = read_json(PACK_DIR / "ecosystem.json")
     assert validate_ecosystem(ecosystem, raise_on_error=False) == []
     assert ecosystem["pack_identity"] == f"rumi:ecosystem/{PACK_ID}"
-    assert ecosystem["dependencies"] == {"defaultspack": ">=2.0.0"}
+    assert ecosystem["dependencies"] == {}
+    assert all((PACK_DIR / name).is_file() for name in V4_AUTHORITY_ARTIFACTS)
     assert ecosystem["connectivity"] == {
-        "requires": ["defaultspack"],
+        "requires": [],
         "provides": [],
     }
     assert ecosystem["required_secrets"] == []
@@ -64,12 +73,18 @@ def test_pack_required_assets_and_ecosystem_contract() -> None:
     assert ecosystem["metadata"]["declarative_only"] is True
     assert ecosystem["metadata"]["consumes_existing_sources_only"] is True
     assert ecosystem["metadata"]["output_effect"] == "draft_and_handoff_only"
-    assert ecosystem["metadata"]["defaultspack_promotion_eligible"] is False
+    assert ecosystem["metadata"]["base_pack_promotion_eligible"] is False
     assert set(ecosystem["metadata"]["owner_surfaces"]) >= OWNER_EXPECTED
     assert set(ecosystem["metadata"]["non_owner_surfaces"]) >= NON_OWNER_EXPECTED
 
     metadata_indexed = {item for values in ecosystem["metadata"]["asset_index"].values() for item in values}
-    actual = {str(path.relative_to(PACK_DIR)).replace("\\", "/") for path in PACK_DIR.rglob("*") if path.is_file() and path.name != "ecosystem.json"}
+    actual = {
+        path.relative_to(PACK_DIR).as_posix()
+        for path in PACK_DIR.rglob("*")
+        if path.is_file()
+        and path.relative_to(PACK_DIR).as_posix() not in PACK_METADATA_FILES
+    }
+    actual -= V4_AUTHORITY_ARTIFACTS
     assert metadata_indexed == actual
     assert set(REQUIRED_ASSETS) == actual
 
@@ -85,7 +100,7 @@ def test_pack_required_assets_and_ecosystem_contract() -> None:
         "executable_code": False,
         "supports_all_ok": False,
         "external_actions_are_handoffs": True,
-        "defaultspack_promotion_eligible": False,
+        "base_pack_promotion_eligible": False,
     }
 
 
@@ -122,9 +137,9 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     assert handed
     assert candidate.overlap_policy["tool_aliases"] == "prefer_explicit_pack_namespace"
 
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert set(candidate.defaultspack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
-    assert set(candidate.defaultspack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert set(candidate.base_pack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
+    assert set(candidate.base_pack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
     assert candidate.marketplace["registry"] == "bundled"
     assert candidate.marketplace["publisher"] == "rumi-ai"
     assert candidate.marketplace["status"] == "verified"

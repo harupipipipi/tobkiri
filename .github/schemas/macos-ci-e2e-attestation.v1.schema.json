@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tobkiri.dev/schemas/macos-ci-e2e-attestation.v1.schema.json",
+  "title": "Tobkiri non-publishable macOS CI/E2E startup attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "policy",
+    "bundle_identifier",
+    "certificate_sha256",
+    "files",
+    "signature"
+  ],
+  "properties": {
+    "schema": {"const": "io.tobkiri.macos-ci-e2e-attestation.v1"},
+    "policy": {"const": "ci-e2e-v1"},
+    "bundle_identifier": {"const": "dev.tobkiri.launcher.ci-e2e"},
+    "certificate_sha256": {"pattern": "^[0-9a-f]{64}$"},
+    "files": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "signature": {"type": "string", "minLength": 88, "maxLength": 88}
+  }
+}

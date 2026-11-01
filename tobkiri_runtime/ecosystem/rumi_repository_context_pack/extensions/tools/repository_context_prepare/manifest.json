@@ -1,0 +1,132 @@
+{
+  "schema_version": "tobkiri.tool/v3",
+  "kind": "tool",
+  "id": "repository_context_prepare",
+  "version": "1.0.0",
+  "enabled": true,
+  "display_name": {
+    "en": "Prepare repository context",
+    "ja": "リポジトリ文脈を事前選別"
+  },
+  "description": {
+    "en": "Use the repository-context Subagent Placement to return relevant files and summaries.",
+    "ja": "repository-context Subagent Placementで関連ファイルと要約を返します。"
+  },
+  "discovery": {
+    "aliases": [
+      "repository context",
+      "find relevant files",
+      "context scout"
+    ],
+    "keywords": [
+      "repository",
+      "debug",
+      "investigate",
+      "relevant files",
+      "context",
+      "cost"
+    ],
+    "activity_ids": ["coding.repository-context"],
+    "service_id": "repository-context",
+    "visibility": "public",
+    "schema_loading": "on_demand"
+  },
+  "contract": {
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query"],
+      "properties": {
+        "query": {"type": "string", "minLength": 1, "maxLength": 12000},
+        "max_candidates": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000,
+          "default": 240
+        },
+        "max_selected": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128,
+          "default": 32
+        },
+        "maximum_cost": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "default": 1
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "summary",
+        "selected_files",
+        "excluded_files",
+        "excluded_reason_counts",
+        "excluded_artifact_ref",
+        "statistics",
+        "bundle_hash"
+      ],
+      "properties": {
+        "schema_version": {"const": "tobkiri.repository-evidence/v1"},
+        "summary": {"type": "string"},
+        "selected_files": {"type": "array"},
+        "excluded_files": {"type": "array"},
+        "excluded_reason_counts": {"type": "object"},
+        "excluded_artifact_ref": {"type": "string"},
+        "statistics": {"type": "object"},
+        "bundle_hash": {"type": "string"}
+      }
+    }
+  },
+  "effects": [
+    {
+      "class": "read",
+      "operation": "workspace.inspect",
+      "reversible": true,
+      "external": false
+    },
+    {
+      "class": "network",
+      "operation": "ai.generate",
+      "reversible": true,
+      "external": true
+    }
+  ],
+  "risk": {
+    "level": "medium",
+    "reasons": [
+      "Reads bounded workspace text and invokes a configured low-cost model"
+    ]
+  },
+  "approval": {"default": "auto", "minimum": "auto"},
+  "execution": {
+    "type": "global_contract",
+    "contract_id": "rumi.service.repository.context.prepare.v1",
+    "provider_instance_id": "repository-context.prepare",
+    "operation": "prepare",
+    "timeout_ms": 600000,
+    "cancellable": true,
+    "idempotency": "keyed",
+    "retry": {"max_attempts": 1, "backoff_ms": 0}
+  },
+  "requirements": {
+    "runtime_capabilities": [
+      "runtime.workspace"
+    ],
+    "model_capabilities": ["model.text", "model.tool_calling"],
+    "connections": [
+      "rumi.service.repository.context.prepare.v1"
+    ],
+    "env": []
+  },
+  "security": {
+    "sandbox": "preferred",
+    "network": "allowlist",
+    "filesystem": "workspace"
+  },
+  "ui": {"icon": "filter_alt", "visibility": "public"}
+}

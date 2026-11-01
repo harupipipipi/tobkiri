@@ -18,6 +18,10 @@ test("crash state is redacted and exposes factual recoverable actions", () => {
   assert.match(html, /この画面を再試行|チャットへ戻る|セーフモード|ページ全体を再読み込み/);
   assert.match(html, /入力をJSONで保存/);
   assert.match(html, /aria-live="assertive"|role="alert"/);
+  assert.match(html, /data-error-icon="application-recovery"/);
+  assert.match(html, /aria-label="クラッシュ情報をコピー"/);
+  assert.match(html, /data-copy-icon=""/);
+  assert.match(html, /role="status" aria-live="polite"/);
   assert.doesNotMatch(html, new RegExp(RAW_SECRET));
   assert.doesNotMatch(html, /private prompt|private draft content|Users\/private/);
 });

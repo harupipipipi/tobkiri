@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from domain.company.models import DEFAULT_CHANNEL_ID
 from domain.company.runtime_store import CompanyRuntimeStore
 from domain.company.store import CompanyStore
@@ -21,9 +23,20 @@ class CreatorService:
         *,
         company_store: CompanyStore | None = None,
         runtime_store: CompanyRuntimeStore | None = None,
+        settings_owner: SettingsOwnerPort | None = None,
     ) -> None:
         self.company_store = company_store or CompanyStore()
         self.runtime_store = runtime_store or CompanyRuntimeStore()
+        self.settings_owner = settings_owner
+
+    def _team_service(self):
+        from .service import SubagentTeamService
+
+        return SubagentTeamService(
+            company_store=self.company_store,
+            runtime_store=self.runtime_store,
+            settings_owner=self.settings_owner,
+        )
 
     def preview(self, company_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
         if self.company_store.get_company(company_id) is None:
@@ -98,41 +111,26 @@ class CreatorService:
             return None
         action = str(preview["action"])
         if action == "status":
-            from .service import SubagentTeamService
-
             return {
                 "preview": preview,
-                "result": SubagentTeamService(
-                    company_store=self.company_store,
-                    runtime_store=self.runtime_store,
-                ).status(company_id),
+                "result": self._team_service().status(company_id),
             }
         if action in {"create_agent", "create_agents", "agent", "agents", "create_team", "team"}:
             return self._request_team_create(company_id, data, preview=preview)
         if action in {"message", "request", "delegate", "route"}:
-            from .service import SubagentTeamService
-
             return {
                 "preview": preview,
-                "result": SubagentTeamService(
-                    company_store=self.company_store,
-                    runtime_store=self.runtime_store,
-                ).send_message(company_id, data, context=context or {}),
+                "result": self._team_service().send_message(company_id, data, context=context or {}),
             }
         if action == "dm_send":
-            from .service import SubagentTeamService
-
             return {
                 "preview": preview,
-                "result": SubagentTeamService(
-                    company_store=self.company_store,
-                    runtime_store=self.runtime_store,
-                ).send_dm(company_id, data, context=context or {}),
+                "result": self._team_service().send_dm(company_id, data, context=context or {}),
             }
         if action == "channel_join":
-            from .service import SubagentTeamService, is_denial
+            from .service import is_denial
 
-            service = SubagentTeamService(company_store=self.company_store, runtime_store=self.runtime_store)
+            service = self._team_service()
             channel_id = str(data.get("channel_id") or data.get("id") or "")
             agent_id = str(data.get("agent_id") or data.get("member_id") or data.get("short_id") or "")
             result = service.join_channel(company_id, channel_id, agent_id, actor_id="subagent_creator")
@@ -140,12 +138,9 @@ class CreatorService:
                 return {"preview": preview, **result}
             return {"preview": preview, "result": result}
         if action in {"create_goal", "goal"}:
-            from .service import SubagentTeamService, is_denial
+            from .service import is_denial
 
-            task = SubagentTeamService(
-                company_store=self.company_store,
-                runtime_store=self.runtime_store,
-            ).create_goal(
+            task = self._team_service().create_goal(
                 company_id,
                 {**data, "metadata": {**(data.get("metadata") if isinstance(data.get("metadata"), dict) else {}), "creator_preview": preview}},
                 context=context or {},
@@ -154,31 +149,23 @@ class CreatorService:
                 return {"preview": preview, **task}
             return {"preview": preview, "goal": task}
         if action in {"goal_approve", "task_complete"}:
-            from .service import SubagentTeamService, is_denial
+            from .service import is_denial
 
             goal_id = str(data.get("goal_id") or data.get("task_id") or data.get("id") or "")
             decision = "approve" if action == "goal_approve" else "task_complete"
-            task = SubagentTeamService(
-                company_store=self.company_store,
-                runtime_store=self.runtime_store,
-            ).decide_goal(company_id, goal_id, decision, data, context=context or {})
+            task = self._team_service().decide_goal(company_id, goal_id, decision, data, context=context or {})
             if is_denial(task):
                 return {"preview": preview, **task}
             return {"preview": preview, "goal": task}
         if action == "channel_check":
-            from .service import SubagentTeamService
-
             return {
                 "preview": preview,
-                "result": SubagentTeamService(
-                    company_store=self.company_store,
-                    runtime_store=self.runtime_store,
-                ).channel_check(company_id, data),
+                "result": self._team_service().channel_check(company_id, data),
             }
         return {"preview": preview, "result": {"status": "preview_only", "action": action}}
 
     def _request_team_create(self, company_id: str, data: dict[str, Any], *, preview: dict[str, Any]) -> dict[str, Any]:
-        from .service import SubagentTeamService, is_denial
+        from .service import is_denial
 
         plan = preview["team_plan"]
         rich_policy = preview["rich_policy"]
@@ -191,7 +178,7 @@ class CreatorService:
                 "message": str(rich_policy.get("reason") or "rich mode required"),
                 "rich_policy": rich_policy,
             }
-        service = SubagentTeamService(company_store=self.company_store, runtime_store=self.runtime_store)
+        service = self._team_service()
         created_agents: list[dict[str, Any]] = []
         existing_short_ids = [
             str((agent.get("metadata") or {}).get("short_id") or agent.get("short_id") or "")

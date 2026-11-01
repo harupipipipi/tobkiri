@@ -4,6 +4,7 @@ export type ProviderKeySaveResult = {
   provider_id: string;
   api_id?: string;
   name?: string;
+  provider_instance_id?: string;
   configured: boolean;
   kind?: string;
   model_availability?: ModelAvailabilityAfterKeySave;

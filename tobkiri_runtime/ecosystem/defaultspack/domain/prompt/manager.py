@@ -1,92 +1,91 @@
-"""Prompt Manager — テンプレートベースのプロンプト管理。
+"""Legacy prompt composition facade with no authoritative local writer.
 
-機能:
-    - インメモリ dict + JSON ファイル永続化
-    - PromptTemplate ベースの管理
-    - コンテキスト変数の自動注入
-    - 後方互換: 旧 create_prompt / get_prompt API はそのまま動作する
-
-永続化先: user_data/shared/prompts/{name}.json
-
-データ形式:
-    {
-        "id":          str,
-        "name":        str,
-        "content":     str,          # body のエイリアス（後方互換）
-        "body":        str,          # テンプレート本文
-        "description": str,
-        "variables":   [{"name": str, "type": str, "default": Any, "required": bool}],
-        "metadata":    dict,
-        "created_at":  str,          # ISO 8601
-        "updated_at":  str           # ISO 8601
-    }
+Pack/component prompt sources remain readable for chat composition. Authored
+records and every mutation are projected through the active global Prompt
+Studio contracts; this module owns no prompt persistence.
 """
 
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
-import time
 import uuid
 from pathlib import Path
 from typing import Any
 
+from core_runtime.resolved_profile_scope import effective_pack_ids
+
 from ..extensions.runtime import get_extension_registry, get_extensions_root
 from .component_prompts import component_prompt_records
+from .studio_client import authored_prompts, write_authored_prompt
 from .template import PromptTemplate
 from .trust import prompt_pack_is_trusted, prompt_pack_source_is_trusted
 
 
-# ---------------------------------------------------------------------------
-# 永続化ディレクトリ
-# ---------------------------------------------------------------------------
-_PROMPTS_DIR: str | None = None
 _PROMPT_ID_SAFE_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_ABSENT_HASH = "sha256:" + hashlib.sha256(b"").hexdigest()
 
 
-def _get_prompts_dir() -> str:
-    """user_data/shared/prompts/ の絶対パスを返す。なければ作成する。
+def _active_profile_required() -> str:
+    from core_runtime.profile_paths import active_profile_id
 
-    基準: このファイルの実体パス（シンボリックリンク解決済み）から
-    ../../user_data/shared/prompts を辿り、Pack ルート内に配置する。
-    """
-    global _PROMPTS_DIR
-    if _PROMPTS_DIR is not None:
-        return _PROMPTS_DIR
-
-    # realpath でシンボリックリンクを解決し、Pack ルートを正確に特定する
-    base = os.path.dirname(os.path.realpath(__file__))
-    prompts_dir = os.path.normpath(
-        os.path.join(base, "..", "..", "user_data", "shared", "prompts")
-    )
-    os.makedirs(prompts_dir, exist_ok=True)
-    _PROMPTS_DIR = prompts_dir
-    return _PROMPTS_DIR
+    profile_id = str(active_profile_id() or "").strip()
+    if not profile_id:
+        raise RuntimeError("active profile is required for prompt authoring")
+    return profile_id
 
 
-def _safe_filename(name: str) -> str:
-    """name をファイル名に安全な形式に変換する。"""
-    safe = "".join(c if (c.isalnum() or c in "-_") else "_" for c in name)
-    return safe or "unnamed"
+def _legacy_prompt(record: dict[str, Any]) -> dict[str, Any]:
+    prompt_id = str(record.get("prompt_id") or "")
+    body = str(record.get("body") or "")
+    return {
+        **record,
+        "id": prompt_id,
+        "name": prompt_id,
+        "content": body,
+        "body": body,
+        "variables": _normalize_variables(record.get("variables") or []),
+    }
 
 
 def _read_pack_id(pack_root: Path) -> str:
     try:
-        raw = json.loads((pack_root / "ecosystem.json").read_text(encoding="utf-8"))
-        pack_id = str(raw.get("pack_id") or "").strip()
+        raw = json.loads((pack_root / "pack.v4.json").read_text(encoding="utf-8"))
+        pack_id = str((raw.get("pack") or {}).get("id") or "").strip()
         if pack_id:
             return pack_id
     except Exception:
         pass
-    return pack_root.name
+    return ""
+
+
+def _safe_extension_prompt_path(
+    extensions_root: Path,
+    prompt_id: str,
+    template_file: str,
+) -> Path | None:
+    """Resolve an extension prompt body below its prompt directory only."""
+    if not prompt_id or not _PROMPT_ID_SAFE_RE.fullmatch(prompt_id):
+        return None
+    relative_file = Path(str(template_file or "prompt.md").strip() or "prompt.md")
+    if relative_file.is_absolute():
+        return None
+    try:
+        prompt_dir = (extensions_root / "prompts" / prompt_id).resolve()
+        candidate = (prompt_dir / relative_file).resolve()
+        candidate.relative_to(prompt_dir)
+    except (OSError, RuntimeError, ValueError):
+        return None
+    return candidate
 
 
 # ---------------------------------------------------------------------------
 # PromptManager
 # ---------------------------------------------------------------------------
 class PromptManager:
-    """プロンプトをインメモリ dict + JSON ファイルで管理する。"""
+    """Compose prompt sources and adapt legacy calls to the global owner."""
 
     def __init__(self):
         self._prompts: dict[str, dict] = {}
@@ -96,52 +95,30 @@ class PromptManager:
 
     # -- 永続化 ---------------------------------------------------------------
     def _ensure_loaded(self) -> None:
-        """初回アクセス時に JSON ファイルからロードする。"""
+        """Load authored records through the optional global owner contract."""
         if self._loaded:
             return
         self._loaded = True
-        prompts_dir = _get_prompts_dir()
-        if not os.path.isdir(prompts_dir):
+        try:
+            from core_runtime.profile_paths import active_profile_id
+
+            profile_id = active_profile_id()
+        except Exception:
+            profile_id = None
+        if not profile_id:
             return
-        for fname in os.listdir(prompts_dir):
-            if not fname.endswith(".json"):
+        for item in authored_prompts(profile_id):
+            prompt_id = str(item.get("prompt_id") or "").strip()
+            if not prompt_id:
                 continue
-            fpath = os.path.join(prompts_dir, fname)
-            try:
-                with open(fpath, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                pid = data.get("id", "")
-                if pid:
-                    self._prompts[pid] = data
-                    name = data.get("name", "")
-                    if name:
-                        self._name_index[name] = pid
-            except (json.JSONDecodeError, OSError):
-                continue
-
-    def _save_prompt(self, prompt: dict) -> None:
-        """プロンプトを JSON ファイルに保存する。"""
-        fpath = self.prompt_path_for_name(str(prompt.get("name") or "unnamed"))
-        tmp_path = fpath.with_suffix(fpath.suffix + f".tmp.{os.getpid()}.{uuid.uuid4().hex}")
-        tmp_path.write_text(
-            json.dumps(prompt, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        tmp_path.replace(fpath)
-
-    def prompt_path_for_name(self, name: str) -> Path:
-        """Return the durable JSON path for a user-owned prompt name."""
-        prompts_dir = Path(_get_prompts_dir())
-        prompts_dir.mkdir(parents=True, exist_ok=True)
-        return prompts_dir / (_safe_filename(name) + ".json")
-
-    def _delete_prompt_file(self, name: str) -> None:
-        """プロンプトの JSON ファイルを削除する。"""
-        prompts_dir = _get_prompts_dir()
-        fname = _safe_filename(name) + ".json"
-        fpath = os.path.join(prompts_dir, fname)
-        if os.path.isfile(fpath):
-            os.remove(fpath)
+            record = {
+                **item,
+                "id": prompt_id,
+                "name": prompt_id,
+                "content": str(item.get("body") or ""),
+            }
+            self._prompts[prompt_id] = record
+            self._name_index[prompt_id] = prompt_id
 
     def _canonical_prompt_path(self, prompt_id: str) -> Path | None:
         """Locate the canonical in-pack prompt file for a given prompt_id.
@@ -180,11 +157,18 @@ class PromptManager:
                 template_file = str(
                     (manifest.get("config", {}) or {}).get("template_file", "prompt.md")
                 ).strip() or "prompt.md"
-                prompt_path = extensions_root / "prompts" / prompt_id / template_file
+                prompt_path = _safe_extension_prompt_path(
+                    extensions_root,
+                    prompt_id,
+                    template_file,
+                )
                 body = ""
                 source = "extension"
-                if prompt_path.is_file():
-                    body = prompt_path.read_text(encoding="utf-8").strip()
+                if prompt_path is not None and prompt_path.is_file():
+                    try:
+                        body = prompt_path.read_text(encoding="utf-8").strip()
+                    except (OSError, UnicodeDecodeError):
+                        body = ""
                 if not body:
                     canonical = self._canonical_prompt_path(prompt_id)
                     if canonical is not None:
@@ -216,13 +200,14 @@ class PromptManager:
         ecosystem_root = Path(__file__).resolve().parents[3]
         if not ecosystem_root.exists():
             return prompts
-        for pack_root in sorted(ecosystem_root.iterdir()):
-            if not pack_root.is_dir() or not (pack_root / "ecosystem.json").exists():
+        for pack_id in sorted(effective_pack_ids()):
+            pack_root = ecosystem_root / pack_id
+            if not pack_root.is_dir() or _read_pack_id(pack_root) != pack_id:
                 continue
             prompt_dir = pack_root / "prompts"
             if not prompt_dir.exists():
                 continue
-            source_pack_id = _read_pack_id(pack_root)
+            source_pack_id = pack_id
             if not prompt_pack_is_trusted(source_pack_id):
                 continue
             for prompt_path in sorted(prompt_dir.glob("*.system.md")):
@@ -300,10 +285,7 @@ class PromptManager:
             作成されたプロンプト dict
         """
         self._ensure_loaded()
-        prompt_id = uuid.uuid4().hex[:8]
-        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-        name = data.get("name", "")
+        name = str(data.get("name") or data.get("prompt_id") or uuid.uuid4().hex[:8])
         body = data.get("body", data.get("content", ""))
         description = data.get("description", "")
         metadata = data.get("metadata", {})
@@ -312,21 +294,22 @@ class PromptManager:
         raw_vars = data.get("variables", [])
         variables = _normalize_variables(raw_vars)
 
-        prompt = {
-            "id": prompt_id,
-            "name": name,
-            "content": body,
-            "body": body,
-            "description": description,
-            "variables": variables,
-            "metadata": metadata,
-            "created_at": now,
-            "updated_at": now,
-        }
-        self._prompts[prompt_id] = prompt
-        if name:
-            self._name_index[name] = prompt_id
-        self._save_prompt(prompt)
+        profile_id = _active_profile_required()
+        result = write_authored_prompt(
+            profile_id,
+            "save",
+            {
+                "prompt_id": name,
+                "body": body,
+                "description": description,
+                "variables": [item["name"] for item in variables],
+                "metadata": metadata,
+                "expected_body_hash": _ABSENT_HASH,
+            },
+        )
+        prompt = _legacy_prompt(result.get("prompt") or {})
+        self._prompts[name] = prompt
+        self._name_index[name] = name
         return prompt
 
     # -- 更新 ---------------------------------------------------------------
@@ -347,31 +330,26 @@ class PromptManager:
         if prompt is None:
             return None
 
-        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        old_name = prompt.get("name", "")
-
-        for key in ("description", "metadata"):
-            if key in updates:
-                prompt[key] = updates[key]
-
-        if "content" in updates or "body" in updates:
-            new_body = updates.get("body", updates.get("content", prompt["body"]))
-            prompt["body"] = new_body
-            prompt["content"] = new_body
-
-        if "variables" in updates:
-            prompt["variables"] = _normalize_variables(updates["variables"])
-
-        if "name" in updates and updates["name"] != old_name:
-            # 名前変更: インデックスと古いファイルを更新
-            self._delete_prompt_file(old_name)
-            del self._name_index[old_name]
-            prompt["name"] = updates["name"]
-            self._name_index[updates["name"]] = pid
-
-        prompt["updated_at"] = now
-        self._save_prompt(prompt)
-        return prompt
+        if updates.get("name") not in (None, name):
+            raise ValueError("prompt rename requires explicit create/delete migration")
+        result = write_authored_prompt(
+            _active_profile_required(),
+            "save",
+            {
+                "prompt_id": name,
+                "body": updates.get("body", updates.get("content", prompt.get("body", ""))),
+                "description": updates.get("description", prompt.get("description", "")),
+                "variables": [
+                    item["name"]
+                    for item in _normalize_variables(updates.get("variables", prompt.get("variables", [])))
+                ],
+                "metadata": updates.get("metadata", prompt.get("metadata", {})),
+                "expected_body_hash": str(prompt.get("body_hash") or _ABSENT_HASH),
+            },
+        )
+        updated = _legacy_prompt(result.get("prompt") or {})
+        self._prompts[pid] = updated
+        return updated
 
     # -- 削除 ---------------------------------------------------------------
     def delete_prompt(self, name: str) -> bool:
@@ -383,7 +361,14 @@ class PromptManager:
         prompt = self._prompts.get(pid)
         if prompt is None:
             return False
-        self._delete_prompt_file(name)
+        write_authored_prompt(
+            _active_profile_required(),
+            "delete",
+            {
+                "prompt_id": name,
+                "expected_body_hash": str(prompt.get("body_hash") or _ABSENT_HASH),
+            },
+        )
         del self._prompts[pid]
         del self._name_index[name]
         return True
@@ -449,10 +434,16 @@ class PromptManager:
     # -- システムプロンプト ---------------------------------------------------
     def get_system_prompt(self) -> str:
         """システムプロンプトを取得する。"""
-        return self._system_prompt
+        prompt = self.get_prompt_by_name("system")
+        return str((prompt or {}).get("body") or self._system_prompt)
 
     def set_system_prompt(self, content: str) -> str:
         """システムプロンプトを設定して返す。"""
+        current = self.get_prompt_by_name("system")
+        if current is None:
+            self.create_prompt({"name": "system", "body": str(content)})
+        else:
+            self.update_prompt("system", {"body": str(content)})
         self._system_prompt = str(content)
         return self._system_prompt
 

@@ -66,7 +66,7 @@ def test_model_type_chat_can_have_vision_and_thinking_capabilities():
     assert "vision_ocr" in fields["allowed_roles"]
 
 
-def test_provider_catalog_enriches_models_and_profiles():
+def test_provider_catalog_enriches_models_and_profiles(provider_model_catalog_selected):
     from ecosystem.defaultspack.backend.ai_client.provider_catalog import list_model_catalog, list_profile_catalog
 
     models = list_model_catalog(provider="google")

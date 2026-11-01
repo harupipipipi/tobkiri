@@ -1,5 +1,5 @@
 from blocks._common import ok, error
-from domain.company.service import CompanyService
+from domain.company.contract_facade import CompanyContractFacade, CompanyFacadeError
 
 from ._helpers import company_id_from, invalid, missing_company, require_dict
 
@@ -11,9 +11,11 @@ def run(input_data, context):
     if not company_id:
         return invalid("company_id is required")
     try:
-        deleted = CompanyService().delete_company(company_id)
+        deleted = CompanyContractFacade(input_data, context).run("delete")
         if not deleted:
             return missing_company(company_id)
         return ok({"deleted": True, "company_id": company_id})
+    except CompanyFacadeError as exc:
+        return error(str(exc), exc.code)
     except Exception as exc:
         return error("company delete failed: " + str(exc), "COMPANY_DELETE_ERROR")

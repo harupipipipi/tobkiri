@@ -1,0 +1,60 @@
+{
+  "source_api_version": "io.tobkiri.pack-source.v1",
+  "pack_id": "example.echo",
+  "version": "1.0.0",
+  "display_name": "Example Echo Pack",
+  "description": "Minimal authored PackVM Pack: echoes the input text verbatim.",
+  "publisher_id": "dev.example",
+  "contracts": [
+    {
+      "contract_id": "example.echo.v1",
+      "version": "1.0.0",
+      "provider_id": "example.echo.provider",
+      "status": "accepted",
+      "security": "restricted",
+      "operations": [
+        {
+          "operation_id": "example.echo",
+          "input_schema": {
+            "type": "object",
+            "required": ["text"],
+            "additionalProperties": false,
+            "properties": {
+              "text": {"type": "string", "maxLength": 4096}
+            }
+          },
+          "output_schema": {
+            "type": "object",
+            "required": ["text"],
+            "properties": {
+              "text": {"type": "string"}
+            }
+          },
+          "error_schema": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": {"type": "string"},
+              "message": {"type": "string"}
+            }
+          },
+          "effect_class": "pure",
+          "effect_ceiling": ["operation.invoke"],
+          "scope_semantics": "declarative",
+          "idempotency": "none",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "function_id": "example.echo.fn",
+      "implementation_path": "runtime/echo.py",
+      "operations": ["example.echo"],
+      "role": "pure",
+      "isolation": "pack_vm"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+minimumLimaVersion: "2.0.0"
+vmType: vz
+arch: {{ARCH}}
+cpus: 2
+memory: "4GiB"
+# Sparse upper bound. Host provisioning reserves the full growth ceiling plus
+# the pinned image and 512 MiB before Lima mutates instance state.
+disk: "{{DISK_SIZE_GIB}}GiB"
+images:
+- location: {{IMAGE_URL}}
+  arch: {{ARCH}}
+  digest: {{IMAGE_DIGEST}}
+mounts: []
+networks: []
+containerd:
+  system: false
+  user: false
+ssh:
+  forwardAgent: false
+  forwardX11: false
+  forwardX11Trusted: false
+propagateProxyEnv: false
+hostResolver:
+  enabled: false
+portForwards:
+- guestIP: 0.0.0.0
+  guestPortRange: [1, 65535]
+  proto: any
+  ignore: true

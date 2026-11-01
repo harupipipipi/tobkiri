@@ -1,0 +1,77 @@
+{
+  "artifact_set_digest": "sha256:2faa895d19886c0dda42ca76a383f7369566a2b5edbc86a30f2d684a6ed3f615",
+  "artifacts": [
+    {
+      "digest": "sha256:75420fa0dc4632836135df7fe98686b5579beb822bcea5c3e447b6aa6a48627e",
+      "path": "catalog/prompt_studio_prompt_library.yaml",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:f0e1aef2b677494a83f856ca8563673f95cb6c9c82d656c5c0ced85dff982ce2",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:781d2aaf8e62bbf7fd080e6c6dc35ce24141a2f6343204e2989e32fd053f7eab",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:7a21d786ce90d54f615b7e85a7317ff7556d82a49a79070407ac65a50b3c6484",
+      "path": "frontend/contributions/prompt-studio.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:1eceeddcdf5347c6ea1165cccb51feba06725fc88cb7b10594d2681760cbf970",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:d90f2cd9fcdb2137fe94c6063de0c9cfbee5addce8ab9f5df74ef4b9f9188c81",
+      "path": "runtime/__init__.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1",
+      "path": "runtime/process.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:59ffc5cca912ad719cdec4accc0f7822baa7c0d5d639338c9c4474071865480c",
+      "path": "runtime/resource_host.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:af96560aebb6abb1bbc422281ddbe9e9db47c1b42313b346612c488cb15fe751",
+      "path": "runtime/service.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:654ae9cee658f80e35b8725db4175151d276b19073e2a7ab0f50a7cb2abfba1a",
+      "path": "runtime/store.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:713c015f4cf70a1afc7e3a2916a5038ad1719c74da038d9b959564f03d23f075",
+      "path": "ui/app.js",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:edb498e8458041b47be2583e2c3be04d35978f0d16f6ebba55c05807b612b0c9",
+      "path": "ui/index.html",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:0374bea6fead5abfd4f82f14203761fa63cd3a3616fa9dea3799c48160c623dd",
+      "path": "ui/style.css",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:5812571cf158789984a305d803ec9ba6723c4b2aabaeb1a907cf58eea6a49102"
+  },
+  "pack_id": "rumi_prompt_studio_pack",
+  "source_identity": "sha256:e34fe3ce74298d3fd7e48784d9823f5d9916da7aa3b8f564d0fbbaccdf1f8c89"
+}

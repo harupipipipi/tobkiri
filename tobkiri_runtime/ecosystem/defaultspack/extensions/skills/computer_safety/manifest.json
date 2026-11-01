@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schemas.tobkiri.dev/skill/v2.json",
+  "schema_version": "tobkiri.skill/v2",
+  "kind": "skill",
+  "id": "computer_safety",
+  "version": "2.0.0",
+  "display_name": {"ja": "Computer Safety", "en": "Computer Safety"},
+  "description": {
+    "ja": "PC・ブラウザ操作の承認境界と結果確認を維持します。",
+    "en": "Preserve approval boundaries and verification for computer actions."
+  },
+  "instructions": {
+    "path": "SKILL.md",
+    "format": "agent-skills",
+    "max_tokens": 800
+  },
+  "activation": {
+    "mode": "auto_or_explicit",
+    "aliases": ["computer-safety"],
+    "positive_examples": ["画面を操作して", "ブラウザを操作して"],
+    "negative_examples": ["PC操作について説明して"]
+  },
+  "scope": {
+    "activity_ids": ["computer", "browser"],
+    "tool_ids": []
+  },
+  "composition": {
+    "class": "safety",
+    "priority": 1000,
+    "requires": [],
+    "conflicts_with": []
+  },
+  "tool_policy": {
+    "allowed_tool_ids": [],
+    "denied_tool_ids": []
+  },
+  "security": {
+    "minimum_trust": "verified",
+    "may_grant_permissions": false
+  },
+  "ui": {
+    "mentionable": false,
+    "developer_visible": true
+  }
+}

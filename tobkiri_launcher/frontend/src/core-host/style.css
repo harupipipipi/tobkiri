@@ -1,0 +1,20 @@
+/* Host-owned layout for the core-host window. Pack documents keep their own
+   styles inside the sandboxed opaque origin; this sheet only sizes the host
+   shell and the isolated frame element. */
+
+body {
+  margin: 0;
+}
+
+#pack-ui {
+  width: 100%;
+}
+
+iframe.pack-ui-frame {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: calc(100vh - 12rem);
+  min-height: 24rem;
+  border: 0;
+}

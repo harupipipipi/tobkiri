@@ -50,12 +50,14 @@ function useModalContract({
   onClose,
   dismissible,
   initialFocusRef,
+  deferEscapeToContent = false,
 }: {
   layerRef: RefObject<HTMLElement | null>;
   panelRef: RefObject<HTMLElement | null>;
   onClose: () => void;
   dismissible: boolean;
   initialFocusRef?: RefObject<HTMLElement | null>;
+  deferEscapeToContent?: boolean;
 }) {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -71,15 +73,16 @@ function useModalContract({
     requestAnimationFrame(() => focusTarget.focus());
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!isTopLayer(token)) return;
+      if (!isTopLayer(token) || event.isComposing || event.keyCode === 229) return;
       if (event.key === "Escape") {
+        if (deferEscapeToContent) return;
         event.preventDefault();
         event.stopPropagation();
         if (dismissible) onCloseRef.current();
         return;
       }
       if (event.key !== "Tab") return;
-      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(focusableSelector)).filter((item) => !item.inert && item.getAttribute("aria-hidden") !== "true");
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(focusableSelector)).filter((item) => item.tabIndex >= 0 && !item.inert && item.getAttribute("aria-hidden") !== "true");
       if (focusable.length === 0) {
         event.preventDefault();
         panel.focus();
@@ -95,15 +98,24 @@ function useModalContract({
         first.focus();
       }
     };
+    const onContentEscape = (event: KeyboardEvent) => {
+      if (!deferEscapeToContent || !isTopLayer(token) || event.defaultPrevented
+        || event.isComposing || event.keyCode === 229 || event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (dismissible) onCloseRef.current();
+    };
     document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("keydown", onContentEscape);
     return () => {
       document.removeEventListener("keydown", onKeyDown, true);
+      document.removeEventListener("keydown", onContentEscape);
       const index = modalStack.lastIndexOf(token);
       if (index >= 0) modalStack.splice(index, 1);
       restoreBackground();
       requestAnimationFrame(() => opener?.isConnected && opener.focus());
     };
-  }, [dismissible, initialFocusRef, layerRef, panelRef]);
+  }, [dismissible, initialFocusRef, layerRef, panelRef, deferEscapeToContent]);
 }
 
 export function ModalFoundation({
@@ -113,6 +125,7 @@ export function ModalFoundation({
   onClose,
   dismissible = true,
   initialFocusRef,
+  deferEscapeToContent = false,
   backdropClassName,
   panelClassName,
   children,
@@ -124,6 +137,8 @@ export function ModalFoundation({
   onClose: () => void;
   dismissible?: boolean;
   initialFocusRef?: RefObject<HTMLElement | null>;
+  /** Let an embedded search dismiss its suggestions before closing this modal. */
+  deferEscapeToContent?: boolean;
   backdropClassName?: string;
   panelClassName?: string;
   children: ReactNode;
@@ -133,7 +148,7 @@ export function ModalFoundation({
   const titleId = useId();
   const descriptionId = useId();
   const isPopover = variant === "popover";
-  useModalContract({ layerRef, panelRef, onClose, dismissible, initialFocusRef });
+  useModalContract({ layerRef, panelRef, onClose, dismissible, initialFocusRef, deferEscapeToContent });
   const role = variant === "alertdialog" ? "alertdialog" : "dialog";
 
   return (

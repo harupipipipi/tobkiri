@@ -10,23 +10,27 @@ _funcs_dir = str(
 )
 
 
-def test_computer_observe_uses_factory():
-    """computer_observe should use the host-backed factory, not an empty registry."""
+def test_computer_observe_uses_host_contract_adapter():
+    """computer_observe should project through the selected host contract."""
     source = (Path(_funcs_dir) / "computer_observe" / "main.py").read_text(encoding="utf-8")
-    assert "create_default_computer_tool_service" in source
+    assert "run_host_contract_action" in source
+    assert "create_default_computer_tool_service" not in source
     assert "DriverRegistry()" not in source
 
 
-def test_computer_semantic_action_uses_approval_router():
+def test_computer_semantic_action_uses_host_contract_adapter():
     source = (Path(_funcs_dir) / "computer_semantic_action" / "main.py").read_text(encoding="utf-8")
-    assert "run_computer_action" in source
+    assert "run_host_contract_action" in source
+    assert "defaultspack.domain" not in source
     assert "svc.semantic_action" not in source
     assert "DriverRegistry()" not in source
 
 
-def test_computer_pid_event_uses_factory():
+def test_computer_pid_event_uses_host_contract_adapter():
     source = (Path(_funcs_dir) / "computer_pid_event" / "main.py").read_text(encoding="utf-8")
-    assert "create_default_computer_tool_service" in source
+    assert "run_host_contract_action" in source
+    assert "create_default_computer_tool_service" not in source
+    assert "defaultspack.domain" not in source
     assert "DriverRegistry()" not in source
 
 

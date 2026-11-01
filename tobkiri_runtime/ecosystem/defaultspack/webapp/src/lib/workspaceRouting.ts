@@ -4,28 +4,44 @@ import {
   type WorkspaceTab,
   type WorkspaceTabKind,
 } from "../components/WorkspaceTabs";
+import {
+  applicationPathname,
+  parseProfileScreenPath,
+  profileScreenPath,
+} from "./profileRoute";
 
 export function workspaceKindForPathname(pathname: string): WorkspaceTabKind | null {
-  const normalized = (pathname || "/").replace(/\/+$/, "") || "/";
+  const routed = applicationPathname(pathname) ?? pathname;
+  const normalized = (routed || "/").replace(/\/+$/, "") || "/";
   if (normalized === "/chat" || normalized === "/defaultspack" || normalized === "/pack/defaultspack" || normalized === "/") {
     return "chat";
   }
   if (normalized === "/coding") return "coding";
   if (normalized === "/calendar") return "calendar";
+  if (normalized === "/kanban") return "kanban";
   if (normalized === "/desktops") return "desktops";
+  if (normalized === "/subagents") return "subagents";
+  if (normalized === "/canvas") return "canvas";
+  if (normalized === "/tools") return "tools";
   return null;
 }
 
 function workspaceRoutePath(kind: WorkspaceTabKind): string {
   if (kind === "coding") return "/coding";
   if (kind === "calendar") return "/calendar";
+  if (kind === "kanban") return "/kanban";
   if (kind === "desktops") return "/desktops";
+  if (kind === "subagents") return "/subagents";
+  if (kind === "canvas") return "/canvas";
+  if (kind === "tools") return "/tools";
   return "/chat";
 }
 
 export function workspaceUrlForKind(kind: WorkspaceTabKind, href: string, conversationId: string | null = null): string {
   const url = new URL(href);
-  url.pathname = workspaceRoutePath(kind);
+  const current = parseProfileScreenPath(url.pathname);
+  if (!current) throw new Error("profile_screen_identity_unavailable");
+  url.pathname = profileScreenPath(current.profileId, workspaceRoutePath(kind));
   if (kind === "chat" || kind === "coding") {
     if (conversationId) url.searchParams.set("chat", conversationId);
     else url.searchParams.delete("chat");

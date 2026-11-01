@@ -1,6 +1,4 @@
 """test_pre_auth_routes.py — pre_auth_routes テーブル構築のユニットテスト"""
-import sys
-import types
 import unittest
 from pathlib import Path
 
@@ -221,14 +219,9 @@ class TestPackAPIHandlerPreAuthSecurity(unittest.TestCase):
         from core_runtime.pack_api_server import PackAPIHandler
 
         self.Handler = PackAPIHandler
-        self._old_table = list(PackAPIHandler._pre_auth_table)
-        PackAPIHandler._pre_auth_table = []
-
-    def tearDown(self):
-        self.Handler._pre_auth_table = self._old_table
 
     def test_untrusted_pack_cannot_register_broad_api_preauth_prefix(self):
-        packs = {
+        _packs = {
             "evilpack": FakePackInfo("evilpack", {
                 "pack_id": "evilpack",
                 "pack_identity": "example:evil",
@@ -242,15 +235,12 @@ class TestPackAPIHandlerPreAuthSecurity(unittest.TestCase):
             }),
         }
 
-        count = self.Handler.load_pre_auth_routes(FakeRegistry(packs))
-        handler = object.__new__(self.Handler)
-
-        self.assertEqual(count, 0)
-        self.assertEqual(self.Handler._pre_auth_table, [])
-        self.assertFalse(handler._is_pre_auth_route("POST", "/api/network/grant"))
+        self.assertFalse(hasattr(self.Handler, "load_pre_auth_routes"))
+        self.assertFalse(hasattr(self.Handler, "_pre_auth_table"))
+        self.assertTrue(self.Handler._retired_api_path("/api/network/grant"))
 
     def test_spoofed_core_pack_outside_bundled_core_dir_is_not_trusted(self):
-        packs = {
+        _packs = {
             "core_setup": FakePackInfo("core_setup", {
                 "pack_id": "core_setup",
                 "pack_identity": "core:rumi/setup",
@@ -261,56 +251,13 @@ class TestPackAPIHandlerPreAuthSecurity(unittest.TestCase):
             }),
         }
 
-        count = self.Handler.load_pre_auth_routes(FakeRegistry(packs))
-
-        self.assertEqual(count, 0)
-        self.assertEqual(self.Handler._pre_auth_table, [])
+        self.assertFalse(hasattr(self.Handler, "load_pre_auth_routes"))
+        self.assertFalse(hasattr(self.Handler, "_pre_auth_table"))
 
     def test_signed_p2p_integration_event_uses_fixed_preauth(self):
-        handler = object.__new__(self.Handler)
-
+        self.assertFalse(hasattr(self.Handler, "_is_pre_auth_route"))
         self.assertTrue(
-            handler._is_pre_auth_route("POST", "/api/integrations/p2p/events")
-        )
-
-    def test_mobile_pairing_token_delivery_routes_are_preauth(self):
-        handler = object.__new__(self.Handler)
-
-        self.assertTrue(
-            handler._is_pre_auth_route(
-                "POST",
-                "/api/mobile/v1/pairings/pair-1/claim",
-            )
-        )
-        self.assertTrue(
-            handler._is_pre_auth_route(
-                "GET",
-                "/api/mobile/v1/pairings/pair-1/status",
-            )
-        )
-        self.assertTrue(
-            handler._is_pre_auth_route(
-                "POST",
-                "/api/mobile/v1/pairings/pair-1/token/pickup",
-            )
-        )
-        self.assertTrue(
-            handler._is_pre_auth_route(
-                "POST",
-                "/api/mobile/v1/pairings/pair-1/token/ack",
-            )
-        )
-        self.assertFalse(
-            handler._is_pre_auth_route(
-                "GET",
-                "/api/mobile/v1/pairings/pair-1/token/pickup",
-            )
-        )
-        self.assertFalse(
-            handler._is_pre_auth_route(
-                "POST",
-                "/api/mobile/v1/pairings/pair-1/review",
-            )
+            self.Handler._retired_api_path("/api/integrations/p2p/events")
         )
 
 

@@ -1,0 +1,211 @@
+{
+  "format": "tobkiri.python313-producer-trial/1",
+  "date": "2026-10-19",
+  "production_enabled": false,
+  "guest_execution": false,
+  "componentization": false,
+  "sources": {
+    "componentize_py_commit": "c0949b19d464f5d70bc1051195a3ae0e6a012df9",
+    "cpython_version": "3.13.16",
+    "approved_wit_dylib_git_commit": "b072b0caa8307779558d96a62bc9522abda6a7fb",
+    "approved_git_tree": "dbc1de5b0219dc5b55e93393bdd190f8faf04b07",
+    "upstream_cargo_lock_sha256": "de6970a5ccef3fd9f5f2454ed38424dde34ea79c71d210107446099119adb9df",
+    "cache_receipt_sha256": "eb9e57457f91481a6880e90d9884d524bc80613ef5ae63c344738c7f767adc48",
+    "registry_packages_verified": 410,
+    "registry_archive_and_unpacked_closure_verified": true
+  },
+  "isolation": {
+    "network": "unshare --user --map-root-user --net, with bubblewrap PID namespace",
+    "environment": "cleared; no host home, secrets or inherited Cargo/Rust flags",
+    "source_toolchain_cache_inputs": "read-only mounts",
+    "output": "fresh dedicated writable scratch per stage",
+    "cargo_jobs": 1,
+    "disk_free_floor_bytes": 8589934592,
+    "normal_top_level_build_rs_executed": false
+  },
+  "runtimes": {
+    "outcome": "success",
+    "seconds": 98.02400957899954,
+    "limits": {
+      "address_space_per_process": 4294967296,
+      "file_size_per_file": 1073741824,
+      "timeout_seconds": 1800,
+      "disk_free_floor": 8589934592,
+      "cargo_jobs": 1
+    },
+    "artifacts": {
+      "sync": {
+        "sha256": "3de5dd573c1cdba0298e3687497c3f83182b6660882c97c088a46576baef3238",
+        "bytes": 382841,
+        "wasmtime_48_validation": "passed",
+        "guest_execution": false
+      },
+      "async": {
+        "sha256": "fda235510acb00cc42ac4062cc416a2bdeeef0f09db8d3cffac8850979cf53c7",
+        "bytes": 439474,
+        "wasmtime_48_validation": "passed",
+        "guest_execution": false
+      }
+    },
+    "first_attempt": {
+      "outcome": "failed before first build-script link",
+      "reason": "cc symlink target was absent in the minimal filesystem",
+      "retry_delta": "explicit existing /usr/bin/gcc host linker and CC/CXX gcc/g++; fresh work directory; no source or isolation change"
+    }
+  },
+  "packaging": {
+    "outcome": "success",
+    "seconds": 30.004722286001197,
+    "limits": {
+      "address_space_per_process": 2147483648,
+      "timeout_seconds": 900,
+      "disk_free_floor": 8589934592
+    },
+    "input_manifest_sha256": "8e463d666b95dfe2cb6c8678305477867feb8a42a42366049dcea9f3f5d9e9be",
+    "input_records": 703,
+    "input_bytes": 52241308,
+    "stdlib_members": 686,
+    "bundled_members": 6,
+    "reproducibility_delta": "sorted tar members, normalized uid/gid/mtime/modes; not byte-identical upstream tar metadata",
+    "validation": {
+      "all_13_assets_verified": true,
+      "guest_execution": false,
+      "package_receipt_sha256": "3e011cf5f317bd69abfee53a2688dabff9a7fbb0b1317750c28dbf18aef5ad11",
+      "assets": {
+        "bundled.tar.zst": {
+          "verified_members": 6,
+          "sha256": "cf9f3435304cd12bb30253233905c3f6cef1c9d10b95cce80148e3870ed16789",
+          "decoded_sha256": "a0c00815ac5d10ef77e9ab94aabd75156625348cdf5c4612c02765c72f835773"
+        },
+        "libc++.so.zst": {
+          "wasmtime48_validation": "passed",
+          "exact_expected_sections": true,
+          "sha256": "a334e6a01bb69c1207f240385dc639bfa5603f9048b6d881cc04ac46c4bc4d84",
+          "decoded_sha256": "65a44e3f7ad79ff246b82b61782789a35d0683f56f823cca22496fd6d597b9f3",
+          "bytes": 1365580
+        },
+        "libc++abi.so.zst": {
+          "wasmtime48_validation": "passed",
+          "exact_expected_sections": true,
+          "sha256": "4c30c9aa8163e233476d222eb3737ee07905226463cca6d49bd887299fa964a1",
+          "decoded_sha256": "f93f92bc4fa31c3ccf86a140e1ba68254b5a937434b41fa0ba8b7feefa7d0e0e",
+          "bytes": 285328
+        },
+        "libc.so.zst": {
+          "wasmtime48_validation": "passed",
+          "exact_expected_sections": true,
+          "sha256": "55eecf0ff724dbaad24d29abd01f709fa294164152448be657fb9854d5865436",
+          "decoded_sha256": "f1b113e24a8c7774f361d7318ababd98124f3b75889f8b5fc0ab10f97c17e42d",
+          "bytes": 652596
+        },
+        "libcomponentize_py_runtime_async.so.zst": {
+          "wasmtime48_validation": "passed",
+          "exact_expected_sections": true,
+          "sha256": "eaada8aff810b26172c10252ce849baf76a7fa4aa213d608d4b9c22ffac0fc42",
+          "decoded_sha256": "eb85fecec1edba00d8695269c37c8588a238806f06fec0f7ef6bf5b5efb8cb59",
+          "bytes": 439120
+        },
+        "libcomponentize_py_runtime_sync.so.zst": {
+          "wasmtime48_validation": "passed",
+          "exact_expected_sections": true,
+          "sha256": "d4d9956b9dae9ebcd6ffd89f13122e542255ed18166c651f04ddf63e204464aa",
+          "decoded_sha256": "1e13f7220eb70009bb85030701d6e83334aeeb673d780dca6e411b52b43c55c7",
+          "bytes": 382487
+        },
+        "libpython3.13.so.zst": {
+          "wasmtime48_validation": "passed",
+          "exact_expected_sections": true,
+          "sha256": "377c3e5d415c1461f49f97951ebcf1c3b8d3c994b89f0d13259813eece1a1c64",
+          "decoded_sha256": "372540f7a87b19cea5413745154fc2d0e08e1ab09aed51cf031b8f7a4b1a093b",
+          "bytes": 9093689
+        },
+        "libwasi-emulated-getpid.so.zst": {
+          "wasmtime48_validation": "passed",
+          "exact_expected_sections": true,
+          "sha256": "3a9aabb5b77f622b36b31f6d66e27a80500ddffb793b69eaf12499ee8899bfcb",
+          "decoded_sha256": "9c09b6361fcf03bfa26a11e39177462472a2c293dbed9d9020b0c08b47166e8b",
+          "bytes": 407
+        },
+        "libwasi-emulated-mman.so.zst": {
+          "wasmtime48_validation": "passed",
+          "exact_expected_sections": true,
+          "sha256": "6bca342a02f99d0581591dd7c0aa69adf91feb846a8a2719eff55a8af5df332b",
+          "decoded_sha256": "2a46491aae39bac9819508c7d95ab1d50d4b152884e48215b264a489caad2d58",
+          "bytes": 1010
+        },
+        "libwasi-emulated-process-clocks.so.zst": {
+          "wasmtime48_validation": "passed",
+          "exact_expected_sections": true,
+          "sha256": "421ef01ec3b17760417d24aa1106f20c1eca75818270a491bfe58ab7a935ab21",
+          "decoded_sha256": "4d9173a2b8dbeaf1f6aca286c50eec651ef03bbe5c4c61cc8e2a5c0f3f3141c0",
+          "bytes": 1072
+        },
+        "libwasi-emulated-signal.so.zst": {
+          "wasmtime48_validation": "passed",
+          "exact_expected_sections": true,
+          "sha256": "d068a4b77a2a71d0a8c473fac1009a189370bafb407415ae1c5884614273a934",
+          "decoded_sha256": "e6758eba79ff4f6daf93e4cab0ea6768ccb0d2657b00369ff4599d0593c1f4e9",
+          "bytes": 3567
+        },
+        "python-lib.tar.zst": {
+          "verified_members": 686,
+          "sha256": "2934cce8f54d4fdffbade2ddf4b609aae5e246d1d56d11de5bf5c0f1a396220f",
+          "decoded_sha256": "9fec2db743b363071d60781d8404060cc2e89a6bc0379d42ea46ff1f50c7bb15"
+        },
+        "wasi_snapshot_preview1.reactor.wasm.zst": {
+          "wasmtime48_validation": "passed",
+          "exact_expected_sections": true,
+          "sha256": "7d85faebd05f098eb245760be0ab143b0472de8263901f1baf2c4263896f88ad",
+          "decoded_sha256": "a97cd69d0efda7e6edc69bccf78382958c9b3480cfc08e041a5fd84ff54ba0d6",
+          "bytes": 96719
+        }
+      }
+    }
+  },
+  "cli": {
+    "outcome": "success",
+    "seconds": 872.1608754539993,
+    "limits": {
+      "address_space_per_process": 4294967296,
+      "file_size_per_file": 1073741824,
+      "timeout_seconds": 3600,
+      "disk_free_floor": 8589934592,
+      "cargo_jobs": 1
+    },
+    "source_delta": "root [package] adds build = \"alt-build.rs\" only; 13 real packaged assets added",
+    "manifest_sha256": "9271eaaba345cf64c67258fb3167fcdef2a98d5b01f5f09eb63c14541beaab7c",
+    "source_receipt_sha256": "62835946f8f980797319d3dcf0b3fd942e960c9a075b3bd9c3b451755c76d942",
+    "all_142_source_asset_files_unchanged_after_build": true,
+    "startup": {
+      "binary_sha256": "ba5ce27a1109faeaf80d0f1fe3491f1863a3bb67db08c11845151e55cd483987",
+      "binary_bytes": 44845144,
+      "results": [
+        {
+          "argument": "--version",
+          "exit_code": 0,
+          "seconds": 0.018188772999565117
+        },
+        {
+          "argument": "--help",
+          "exit_code": 0,
+          "seconds": 0.017274405996431597
+        }
+      ],
+      "guest_execution": false,
+      "componentization": false
+    },
+    "reported_version": "componentize-py 0.25.0"
+  },
+  "script_sha256": {
+    "wasi-runtimes.sh": "5c520870b55b5b48d2e55359dc6435cfbe176066474159f53485354991933b1f",
+    "package-assets.sh": "9b9b00905c79b99a9a27faeaa087e2080413f43aaa97c46f3a78bf8a3c787e73",
+    "producer-cli.sh": "330ccaa93ee1feba18b881eaeac70fc77013bddd8ef2128e9c7fb866528d1fa4"
+  },
+  "pending_gates": [
+    "actual componentization and Python preinitialization",
+    "typed ABI and outer composition validation",
+    "guest runtime-info Python 3.13.16 / Unicode 15.1.0",
+    "33-case typed guest replay",
+    "native Core/Gate/provider/consumer acceptance"
+  ]
+}

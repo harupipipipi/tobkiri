@@ -1,0 +1,8 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "rumi_computer_control_pack",
+  "source_identity": "sha256:c2688da7f5435f69d7154c150777188d36955890e9e217b559f0315f359838a8",
+  "variants": [],
+  "materialization_catalog_digest": "sha256:ad8456dd034db622cbaa711446e2b1eba7d02a04046b8264c0eae33f7f97671b",
+  "catalog_digest": "sha256:749c9803c314bb7af30416e536115b35251f644447184a0f60f4b5c7d0cb3b8c"
+}

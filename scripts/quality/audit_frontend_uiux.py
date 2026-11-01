@@ -34,6 +34,7 @@ class AuditPolicy:
     source_roots: tuple[str, ...]
     extensions: frozenset[str]
     exclude_path_parts: frozenset[str]
+    exclude_globs: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -101,6 +102,43 @@ class ChangedLineMap:
 ALL_SOURCE_EXTENSIONS = frozenset({".ts", ".tsx", ".js", ".jsx", ".html", ".css", ".dart"})
 JSX_EXTENSIONS = frozenset({".tsx", ".jsx"})
 SCRIPT_EXTENSIONS = frozenset({".ts", ".tsx", ".js", ".jsx"})
+QR_EXTENSIONS = SCRIPT_EXTENSIONS | frozenset({".dart"})
+_QR_RULE_ID = "security.plaintext-secret-qr"
+_QR_RULE_SUMMARY = "Long-lived secrets must not be serialized into display QR payloads."
+
+_QR_MARKER_PATTERN = re.compile(
+    r"(?:"
+    r"(?P<encoder>\bQRCode\s*\.\s*(?:toDataURL|toString|toCanvas|create)|"
+    r"\b(?:QrImage(?:View)?|BarcodeWidget|qrCode|qr_code))\s*\(|"
+    r"(?P<payload>\bqr(?:Code|Payload|_payload|_code|Value|Data|Image)\b)"
+    r"(?=\s*[:=,()])"
+    r")",
+    re.IGNORECASE,
+)
+_QR_SECRET_NAMES = (
+    r"(?:"
+    r"api[_-]?(?:key|secret)|"
+    r"access[_-]?(?:key|token|secret)|"
+    r"(?:access|approval|auth|bearer|csrf|device|id|oauth|pairing|refresh|"
+    r"session|user)[_-]?token|"
+    r"(?:client|encryption|private|server|signing)[_-]?key|"
+    r"(?:client|pickup|server)[_-]?secret|"
+    r"credential(?:s)?|secret|token"
+    r")"
+)
+_QR_SECRET_IDENTIFIER_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_])" + _QR_SECRET_NAMES + r"(?![A-Za-z0-9_])",
+    re.IGNORECASE,
+)
+_QR_PAIRING_KIND_PATTERN = re.compile(
+    r"(?:\bkind\b|[\"']kind[\"'])\s*:\s*[\"']rumi_mobile_pair_v1[\"']",
+    re.IGNORECASE,
+)
+_QR_EXPIRY_FIELD_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_])(?:expiresAt|expires_at)\s*(?::|=)",
+    re.IGNORECASE,
+)
+_QR_CONTEXT_RADIUS = 900
 
 
 def rx(pattern: str, *, flags: int = 0) -> re.Pattern[str]:
@@ -139,17 +177,6 @@ REGEX_RULES: tuple[RegexRule, ...] = (
         SCRIPT_EXTENSIONS,
     ),
     RegexRule(
-        "security.plaintext-secret-qr",
-        "error",
-        "Long-lived secrets must not be serialized into display QR payloads.",
-        rx(
-            r"(?:QRCode|qrCode|qr_payload|qrPayload)[\s\S]{0,900}?"
-            r"(?:api[_-]?key|access[_-]?key|token|secret)",
-            flags=re.IGNORECASE,
-        ),
-        frozenset({".ts", ".tsx", ".js", ".jsx", ".dart"}),
-    ),
-    RegexRule(
         "security.unsafe-html",
         "error",
         "Raw HTML insertion requires a reviewed sanitizer and isolated rendering boundary.",
@@ -161,8 +188,10 @@ REGEX_RULES: tuple[RegexRule, ...] = (
         "error",
         "Script-enabled inline documents require a dedicated origin and explicit sandbox policy.",
         rx(
-            r"(?:<iframe\b[\s\S]{0,600}?(?:srcDoc|srcdoc)[\s\S]{0,600}?allow-scripts|"
-            r"sandbox\s*=\s*['\"][^'\"]*allow-scripts)",
+            r"<iframe\b"
+            r"(?=[^>]{0,900}?\b(?:srcDoc|srcdoc)\s*=)"
+            r"(?=[^>]{0,900}?\bsandbox\s*=\s*['\"][^'\"]*\ballow-scripts\b)"
+            r"[^>]{0,900}?>",
             flags=re.IGNORECASE,
         ),
         frozenset({".tsx", ".jsx", ".html"}),
@@ -247,12 +276,17 @@ def load_policy(path: Path) -> AuditPolicy:
     roots = tuple(str(item).strip("/") for item in payload.get("source_roots", []) if str(item).strip())
     extensions = frozenset(str(item) for item in payload.get("extensions", []))
     excluded = frozenset(str(item) for item in payload.get("exclude_path_parts", []))
+    excluded_globs = tuple(
+        str(item)
+        for item in payload.get("exclude_globs", [])
+        if str(item).strip()
+    )
     if not roots or not extensions:
         raise AuditConfigurationError("Policy must contain source_roots and extensions")
     if not extensions.issubset(ALL_SOURCE_EXTENSIONS):
         unknown = sorted(extensions - ALL_SOURCE_EXTENSIONS)
         raise AuditConfigurationError(f"Unsupported extensions: {unknown}")
-    return AuditPolicy(roots, extensions, excluded)
+    return AuditPolicy(roots, extensions, excluded, excluded_globs)
 
 
 def load_baseline(path: Path, *, today: dt.date | None = None) -> tuple[BaselineEntry, ...]:
@@ -349,32 +383,262 @@ def _scan_regex_rules(path: str, suffix: str, text: str) -> Iterator[Finding]:
             yield _finding(rule.rule_id, rule.severity, rule.summary, path, text, *span)
 
 
-def _iter_opening_tags(text: str, tag: str) -> Iterator[re.Match[str]]:
-    pattern = re.compile(rf"<{tag}\b(?P<attrs>[^>]*)>", re.IGNORECASE | re.DOTALL)
-    yield from pattern.finditer(text)
+def _is_short_lived_pairing_secret(
+    text: str,
+    start: int,
+    end: int,
+    *,
+    context_start: int,
+    context_end: int,
+) -> bool:
+    """Allow only the documented one-time secret in an expiring pairing payload."""
+    key = re.sub(r"[_-]", "", text[start:end]).lower()
+    if key != "pickupsecret":
+        return False
+    return bool(
+        _QR_PAIRING_KIND_PATTERN.search(text, context_start, start)
+        and _QR_EXPIRY_FIELD_PATTERN.search(text, end, context_end)
+    )
+
+
+def _is_import_marker(text: str, position: int) -> bool:
+    """Ignore QR-looking names that are part of an import declaration."""
+    prefix = text[max(0, position - _QR_CONTEXT_RADIUS) : position]
+    boundary = max(prefix.rfind(";"), prefix.rfind("\n\n"))
+    return bool(re.match(r"\s*import\b", prefix[boundary + 1 :]))
+
+
+def _scan_plaintext_secret_qr(path: str, suffix: str, text: str) -> Iterator[Finding]:
+    """Find secrets in QR contexts while honoring the pairing contract."""
+    if suffix not in QR_EXTENSIONS:
+        return
+    for marker in _QR_MARKER_PATTERN.finditer(text):
+        if _is_import_marker(text, marker.start()):
+            continue
+        context_start = marker.end() if marker.group("encoder") else marker.start()
+        context_end = min(len(text), context_start + _QR_CONTEXT_RADIUS)
+        context = text[context_start:context_end]
+        for secret in _QR_SECRET_IDENTIFIER_PATTERN.finditer(context):
+            absolute_start = context_start + secret.start()
+            absolute_end = context_start + secret.end()
+            if marker.group("payload") and _is_short_lived_pairing_secret(
+                text,
+                absolute_start,
+                absolute_end,
+                context_start=context_start,
+                context_end=context_end,
+            ):
+                continue
+            yield _finding(
+                _QR_RULE_ID,
+                "error",
+                _QR_RULE_SUMMARY,
+                path,
+                text,
+                absolute_start,
+                absolute_end,
+            )
+
+
+def _quoted_end(text: str, start: int, limit: int, *, escapes: bool = True) -> int | None:
+    quote = text[start]
+    position = start + 1
+    while position < limit:
+        if escapes and text[position] == "\\":
+            position += 2
+            continue
+        if text[position] == quote:
+            return position + 1
+        position += 1
+    return None
+
+
+def _jsx_expression_end(text: str, start: int, limit: int, nesting: int = 0) -> int | None:
+    """Skip balanced attribute code, including quoted/regex/template braces."""
+    if nesting > 64:
+        return None
+    position, depth, can_start_regex = start + 1, 1, True
+    while position < limit:
+        char = text[position]
+        if char.isspace():
+            position += 1
+            continue
+        if char in {"'", '"'}:
+            end = _quoted_end(text, position, limit)
+            if end is None:
+                return None
+            position, can_start_regex = end, False
+            continue
+        if char == "`":
+            position += 1
+            while position < limit:
+                if text[position] == "\\":
+                    position += 2
+                elif text[position] == "`":
+                    position += 1
+                    break
+                elif text.startswith("${", position):
+                    end = _jsx_expression_end(text, position + 1, limit, nesting + 1)
+                    if end is None:
+                        return None
+                    position = end
+                else:
+                    position += 1
+            else:
+                return None
+            can_start_regex = False
+            continue
+        if text.startswith("//", position):
+            newline = text.find("\n", position + 2, limit)
+            if newline == -1:
+                return None
+            position = newline + 1
+            continue
+        if text.startswith("/*", position):
+            end = text.find("*/", position + 2, limit)
+            if end == -1:
+                return None
+            position = end + 2
+            continue
+        if char == "/" and can_start_regex:
+            end, in_class = position + 1, False
+            while end < limit and text[end] not in "\r\n":
+                token = text[end]
+                if token == "\\":
+                    end += 2
+                    continue
+                if token == "[":
+                    in_class = True
+                elif token == "]":
+                    in_class = False
+                elif token == "/" and not in_class:
+                    end += 1
+                    while end < limit and text[end].isalpha():
+                        end += 1
+                    position, can_start_regex = end, False
+                    break
+                end += 1
+            else:
+                return None
+            continue
+        if char.isalnum() or char in "_$":
+            end = position + 1
+            while end < limit and (text[end].isalnum() or text[end] in "_$"):
+                end += 1
+            can_start_regex = text[position:end] in {
+                "return", "throw", "case", "yield", "await", "typeof", "void", "delete", "in", "of",
+            }
+            position = end
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return position + 1
+        can_start_regex = char not in ")]}."
+        position += 1
+    return None
+
+
+def _iter_opening_tags(text: str, tag: str) -> Iterator[tuple[int, int, str]]:
+    """Keep arrows/comparisons inside JSX attributes out of tag boundaries.
+
+    This is a bounded lexical guard, not a replacement for TypeScript parsing.
+    Unresolved syntax retains the old conservative span rather than hiding tags.
+    """
+    pattern = re.compile(rf"<{re.escape(tag)}\b", re.IGNORECASE)
+    for match in pattern.finditer(text):
+        position = match.end()
+        limit = min(len(text), position + 64 * 1024)
+        while position < limit:
+            char = text[position]
+            if char in {"'", '"'}:
+                end = _quoted_end(text, position, limit, escapes=False)
+                if end is None:
+                    break
+                position = end
+                continue
+            if char == "{":
+                end = _jsx_expression_end(text, position, limit)
+                if end is None:
+                    break
+                position = end
+                continue
+            if char == ">":
+                yield match.start(), position + 1, text[match.end():position]
+                break
+            position += 1
+        else:
+            position = limit
+        if position >= limit or text[position] != ">":
+            fallback = text.find(">", match.end(), limit)
+            if fallback != -1:
+                yield match.start(), fallback + 1, text[match.end():fallback]
+
+
+def _opening_attributes(attrs: str) -> Iterator[tuple[str, str]]:
+    """Read attribute names without treating strings in handlers as actions."""
+    position, limit = 0, len(attrs)
+    name_pattern = re.compile(r"[A-Za-z_:][A-Za-z0-9_:.-]*")
+    while position < limit:
+        if attrs[position].isspace() or attrs[position] == "/":
+            position += 1
+            continue
+        if attrs[position] == "{":
+            if attrs[position + 1:].lstrip().startswith("..."):
+                yield "<spread>", ""
+            end = _jsx_expression_end(attrs, position, limit)
+            if end is None:
+                return
+            position = end
+            continue
+        match = name_pattern.match(attrs, position)
+        if match is None:
+            # Do not harvest identifiers from unsupported handler syntax as
+            # though they were top-level attribute names.
+            return
+        name = match.group().lower()
+        position = match.end()
+        while position < limit and attrs[position].isspace():
+            position += 1
+        value = ""
+        if position < limit and attrs[position] == "=":
+            position += 1
+            while position < limit and attrs[position].isspace():
+                position += 1
+            start = position
+            if position < limit and attrs[position] in {"'", '"'}:
+                end = _quoted_end(attrs, position, limit, escapes=False)
+            elif position < limit and attrs[position] == "{":
+                end = _jsx_expression_end(attrs, position, limit)
+            else:
+                while position < limit and not attrs[position].isspace():
+                    position += 1
+                end = position
+            if end is None:
+                # The attribute name was already lexically established. An
+                # unsupported value expression must not erase a real handler.
+                yield name, ""
+                return
+            value, position = attrs[start:end], end
+        yield name, value
 
 
 def _scan_noop_buttons(path: str, suffix: str, text: str) -> Iterator[Finding]:
     if suffix not in JSX_EXTENSIONS:
         return
-    action_markers = (
-        "onclick",
-        "onpointer",
-        "onmouse",
-        "onkey",
-        "ontouch",
-        "formaction",
-        'type="submit"',
-        "type={'submit'}",
-        'type="reset"',
-        "{...",
-    )
-    for match in _iter_opening_tags(text, "button"):
-        attrs = match.group("attrs")
-        lowered = re.sub(r"\s+", "", attrs.lower())
-        if "disabled" in lowered or "aria-hidden" in lowered:
+    for start, end, attrs in _iter_opening_tags(text, "button"):
+        attributes = dict(_opening_attributes(attrs))
+        if "disabled" in attributes or "aria-hidden" in attributes:
             continue
-        if any(marker in lowered for marker in action_markers):
+        if any(name in {"onclick", "formaction", "<spread>"}
+               or name.startswith(("onpointer", "onmouse", "onkey", "ontouch"))
+               for name in attributes):
+            continue
+        button_type = re.sub(r"\s+", "", attributes.get("type", "").lower())
+        if button_type in {'"submit"', "'submit'", '{"submit"}', "{'submit'}",
+                           '"reset"', "'reset'", '{"reset"}', "{'reset'}"}:
             continue
         yield _finding(
             "ux.enabled-noop-button",
@@ -382,7 +646,8 @@ def _scan_noop_buttons(path: str, suffix: str, text: str) -> Iterator[Finding]:
             "Enabled production buttons must have an intentional, testable action.",
             path,
             text,
-            *match.span(),
+            start,
+            end,
         )
 
 
@@ -452,6 +717,7 @@ def _scan_flutter_target_sizes(path: str, suffix: str, text: str) -> Iterator[Fi
 def scan_text(path: str, text: str) -> list[Finding]:
     suffix = Path(path).suffix.lower()
     findings = [*_scan_regex_rules(path, suffix, text)]
+    findings.extend(_scan_plaintext_secret_qr(path, suffix, text) or ())
     findings.extend(_scan_noop_buttons(path, suffix, text) or ())
     findings.extend(_scan_icon_button_names(path, suffix, text) or ())
     findings.extend(_scan_tabs(path, suffix, text) or ())
@@ -464,7 +730,13 @@ def scan_text(path: str, text: str) -> list[Finding]:
 
 
 def _is_excluded(path: Path, policy: AuditPolicy) -> bool:
-    return any(part in policy.exclude_path_parts for part in path.parts)
+    return (
+        any(part in policy.exclude_path_parts for part in path.parts)
+        or any(
+            fnmatch.fnmatch(path.as_posix(), pattern)
+            for pattern in policy.exclude_globs
+        )
+    )
 
 
 def iter_source_files(root: Path, policy: AuditPolicy, explicit_paths: Sequence[str] | None = None) -> Iterator[Path]:

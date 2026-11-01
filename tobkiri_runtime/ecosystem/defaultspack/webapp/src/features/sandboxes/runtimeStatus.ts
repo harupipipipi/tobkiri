@@ -4,6 +4,7 @@ import type {
   RuntimeDoctorResult,
   RuntimeProviderStatus,
   RuntimeProvidersResponse,
+  RuntimeOperationSupport,
 } from "./types";
 
 const DESKTOP_RUNTIME_CAPABILITIES = [
@@ -24,7 +25,7 @@ export type RuntimeAvailability =
       message: string;
     }
   | {
-      status: "needs_setup" | "checking" | "unavailable" | "error";
+      status: "needs_setup" | "checking" | "unavailable" | "error" | "registered";
       selectedProvider: RuntimeProviderStatus | null;
       providers: RuntimeProviderStatus[];
       missing: RuntimeDoctorIssue[];
@@ -32,7 +33,7 @@ export type RuntimeAvailability =
     };
 
 function providerIsReady(provider: RuntimeProviderStatus): boolean {
-  return provider.ready === true;
+  return provider.ready === true && provider.host_platform_supported !== false && provider.diagnostics?.probe_status !== "not_run";
 }
 
 function providerCapabilities(provider: RuntimeProviderStatus): Set<string> {
@@ -150,6 +151,13 @@ export function runtimeAvailability(
     };
   }
 
+  if (doctor?.diagnostics?.probe_status === "not_run"
+      || providersResponse?.diagnostics?.probe_status === "not_run"
+      || (providers.length > 0 && providers.every((provider) => provider.diagnostics?.probe_status === "not_run"))) {
+    return { status: error ? "error" : "registered", selectedProvider: preferredProvider, providers, missing,
+      message: error ? `登録情報は表示できますが、診断情報の取得に失敗しました。${error}` : "実行環境は登録済みですが、ゲストの動作は未診断です。" };
+  }
+
   if (
     providers.some(providerIsDesktopReady) ||
     (providers.length === 0 &&
@@ -250,4 +258,32 @@ function redactDiagnosticsValueInner(
       redactDiagnosticsValueInner(item, seen, entryKey),
     ]),
   );
+}
+
+/** Explicit host support overrides legacy responses without support metadata. */
+export function runtimeOperationAllowed(support: RuntimeOperationSupport | undefined, operation: keyof RuntimeOperationSupport): boolean {
+  return support?.[operation] !== false;
+}
+
+export const DESKTOP_UNSUPPORTED_REASON = "この画面ではゲストの診断・作成・起動・操作がまだ接続されていません。一覧を更新して接続状況を確認してください。";
+
+export async function runSupportedRuntimeOperation<T>(support: RuntimeOperationSupport | undefined, operation: keyof RuntimeOperationSupport, request: () => Promise<T>): Promise<T> {
+  if (!runtimeOperationAllowed(support, operation)) throw new Error(DESKTOP_UNSUPPORTED_REASON);
+  return request();
+}
+
+export function providerReadinessLabel(provider: RuntimeProviderStatus): string {
+  if (provider.host_platform_supported === false) return "このOS対象外";
+  if (!providerSupportsDesktop(provider)) return "デスクトップ非対応";
+  if (provider.diagnostics?.probe_status === "not_run") return "登録済み・未診断";
+  return provider.status;
+}
+
+/** Unknown metadata cannot authorize requests against saved desktop seats. */
+export function runtimeOperationSupportForMetadata(providers: RuntimeProvidersResponse | null, doctor: RuntimeDoctorResult | null): RuntimeOperationSupport {
+  if (!providers && !doctor) return {
+    create: false, setup: false, lifecycle: false, delete: false,
+    access: false, control: false, frame: false, doctor: false,
+  };
+  return { ...providers?.operation_support, ...doctor?.operation_support };
 }

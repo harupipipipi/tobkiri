@@ -1,0 +1,264 @@
+{
+  "contracts": {
+    "provides": [],
+    "requires": []
+  },
+  "entrypoints": [],
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": false,
+      "manifest": {
+        "author": {
+          "name": "rumi-ai"
+        },
+        "capabilities": [
+          "rumi_office_authoring_pack.slide_deck_authoring_contract",
+          "rumi_office_authoring_pack.slide_storyboard",
+          "rumi_office_authoring_pack.slide_layout_brief",
+          "rumi_office_authoring_pack.speaker_notes_contract",
+          "rumi_office_authoring_pack.spreadsheet_workbook_authoring_contract",
+          "rumi_office_authoring_pack.sheet_tab_plan"
+        ],
+        "components": {},
+        "connectivity": {
+          "provides": [],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Office authoring workflow and UI content without host authority.",
+        "display_name": "Rumi Office Authoring Content",
+        "host_execution": false,
+        "license": "MIT",
+        "load_order": [],
+        "metadata": {
+          "asset_index": {
+            "catalog": [
+              "catalog/handoff_matrix.yaml",
+              "catalog/office_authoring_patterns.yaml",
+              "catalog/quality_matrix.yaml",
+              "catalog/taxonomy.yaml",
+              "catalog/workflows.yaml"
+            ],
+            "checklists": [
+              "checklists/review.checklist.yaml"
+            ],
+            "docs": [
+              "docs/README.md",
+              "docs/architecture.md",
+              "docs/interfaces.md",
+              "docs/operations.md",
+              "docs/overlap_policy.md"
+            ],
+            "examples": [
+              "examples/board_update_deck.example.yaml",
+              "examples/cited_report_to_pdf.example.yaml",
+              "examples/financial_model_workbook.example.yaml",
+              "examples/office_suite_handoff_packet.example.yaml",
+              "examples/policy_brief_doc.example.yaml"
+            ],
+            "fixtures": [
+              "fixtures/contract_fixture.yaml",
+              "fixtures/negative_cases.yaml"
+            ],
+            "ledgers": [
+              "ledgers/authoring_decision_ledger.schema.yaml"
+            ],
+            "policies": [
+              "policies/handoff.policy.yaml",
+              "policies/safety.policy.yaml"
+            ],
+            "presets": [
+              "presets/handoff_review.preset.yaml",
+              "presets/quality_gate.preset.yaml",
+              "presets/safe_default.preset.yaml"
+            ],
+            "profiles": [
+              "profiles/office_authoring_reviewer.profile.yaml"
+            ],
+            "prompts": [
+              "prompts/office_authoring_reviewer.system.md"
+            ],
+            "root": [
+              "README.md",
+              "asset_index.json",
+              "asset_index.yaml"
+            ],
+            "schemas": [
+              "schemas/chart_embedding_contract.schema.json",
+              "schemas/citation_insertion_plan.schema.json",
+              "schemas/doc_authoring_contract.schema.json",
+              "schemas/formula_map.schema.json",
+              "schemas/office_handoff_packet.schema.json",
+              "schemas/office_review_gate.schema.json",
+              "schemas/pdf_export_plan.schema.json",
+              "schemas/slide_deck_contract.schema.json",
+              "schemas/slide_record.schema.json",
+              "schemas/workbook_contract.schema.json"
+            ],
+            "templates": [
+              "templates/handoff.template.md",
+              "templates/review_report.template.md",
+              "templates/ui_contract.template.md"
+            ]
+          },
+          "base_pack_promotion_eligible": false,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:8998dc289dccf150d6ada0bb124019dbf33b0ddb1192563e2d474e9d0c355e18",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:e489b6f68de7fc0f729929d1212c89ee0e4c6902d3b43f6bd7346d28f4affbfd"
+          },
+          "consumes_existing_sources_only": true,
+          "declarative_only": true,
+          "executable_code": false,
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "legacy_annotations": {
+            "runtime_dependency_aliases": [
+              "defaultspack"
+            ]
+          },
+          "network_policy": "none_by_default",
+          "non_owner_surfaces": [
+            "workspace broad artifact catalog and lifecycle",
+            "document parsing and redline understanding",
+            "data cleaning and statistical analysis",
+            "claim graph and citation ledger credibility",
+            "PPTX DOCX XLSX PDF rendering",
+            "artifact app runtime approval",
+            "external retrieval and connectors"
+          ],
+          "optional_integrations": [
+            {
+              "pack_id": "rumi_workspace_pack",
+              "reason": "Adjacent owner named by handoff policy."
+            },
+            {
+              "pack_id": "rumi_document_intelligence_pack",
+              "reason": "Adjacent owner named by handoff policy."
+            },
+            {
+              "pack_id": "rumi_data_analysis_pack",
+              "reason": "Adjacent owner named by handoff policy."
+            },
+            {
+              "pack_id": "rumi_evidence_dossier_pack",
+              "reason": "Adjacent owner named by handoff policy."
+            },
+            {
+              "pack_id": "rumi_artifact_app_runtime_pack",
+              "reason": "Adjacent owner named by handoff policy."
+            },
+            {
+              "pack_id": "rumi_research_pack",
+              "reason": "Adjacent owner named by handoff policy."
+            },
+            {
+              "pack_id": "rumi_connector_gateway_pack",
+              "reason": "Adjacent owner named by handoff policy."
+            }
+          ],
+          "output_effect": "draft_and_handoff_only",
+          "owner_surfaces": [
+            "slide_deck_authoring_contract",
+            "slide_storyboard",
+            "slide_layout_brief",
+            "speaker_notes_contract",
+            "spreadsheet_workbook_authoring_contract",
+            "sheet_tab_plan",
+            "formula_map",
+            "data_validation_plan",
+            "doc_authoring_contract",
+            "document_outline",
+            "style_and_tone_brief",
+            "citation_insertion_plan",
+            "chart_embedding_contract",
+            "pdf_export_plan",
+            "office_review_gate",
+            "office_suite_handoff_packet"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "runtime_type": "declarative_setup_pack"
+        },
+        "pack_id": "rumi_office_authoring_pack",
+        "pack_identity": "rumi:ecosystem/rumi_office_authoring_pack",
+        "provenance": {
+          "build_identity": "rumi_office_authoring_pack:1.0.0",
+          "content_hash": "sha256:39efbe9f26a9c2d0f78f53d176fcaae321ebb7a51791c93362fe1a0fe9fdb13a",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [
+          "frontend/contributions/office-authoring.json"
+        ],
+        "runtime": {
+          "type": "declarative_pack"
+        },
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "capability_provider",
+            "policy_provider",
+            "profile_provider",
+            "schema_contract"
+          ]
+        }
+      },
+      "pack_id": "rumi_office_authoring_pack"
+    },
+    "rumi.product_content.boundary": {
+      "host_authority": false,
+      "host_imports": false,
+      "product": "office_authoring",
+      "profile_scoped": true
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_office_authoring_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:e489b6f68de7fc0f729929d1212c89ee0e4c6902d3b43f6bd7346d28f4affbfd"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.webapp.office_authoring"
+    ],
+    "removal_wave": 10,
+    "rollback": "Remove the selected product pack projection; no host state is owned.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Office authoring workflow and UI content without host authority.",
+    "display_name": "Rumi Office Authoring Content",
+    "id": "rumi.office_authoring",
+    "kind": "content",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [],
+  "provenance": {
+    "build_identity": "rumi_office_authoring_pack:1.0.0",
+    "content_hash": "sha256:39efbe9f26a9c2d0f78f53d176fcaae321ebb7a51791c93362fe1a0fe9fdb13a",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [
+    {
+      "content_hash": "sha256:74dc86809cb8f6212614ce270a420865d1eec2d6dd5c82a5b106c5019755c7c1",
+      "id": "frontend/contributions/office-authoring.json",
+      "kind": "ui.contribution"
+    }
+  ],
+  "storage": []
+}

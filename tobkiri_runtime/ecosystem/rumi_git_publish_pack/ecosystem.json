@@ -1,0 +1,70 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.git.publish.v1"
+    ],
+    "requires": [
+      "rumi.resource.workspace.v1",
+      "rumi.service.git.read.v1",
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_git_read_pack": ">=1.0.0,<2.0.0",
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+    "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Receipt-gated Git branch publication to an exact network remote.",
+  "display_name": "Rumi Git Publish",
+  "host_execution": true,
+  "metadata": {
+    "authority": "publish",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:9a8c3b0bfcafbee9b2551eb7b7125cd1b74311b6bcd119bee7de7913b3e9195d",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:58c687222394c171be7c58ccaf7729de9d5b5256332fd246a492da151e003bb0"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:58c687222394c171be7c58ccaf7729de9d5b5256332fd246a492da151e003bb0"
+    },
+    "local_write": false,
+    "manifest_authority": "v4-authoritative",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "receipt_required": true,
+    "remote_url_hash_required": true,
+    "tool_or_ui_registry_imports": false
+  },
+  "pack_id": "rumi_git_publish_pack",
+  "pack_identity": "rumi:ecosystem/rumi_git_publish_pack",
+  "provenance": {
+    "build_identity": "rumi_git_publish_pack:1.0.0",
+    "content_hash": "sha256:338495006a72fae8648303e808dc6db2de2b53ede646e7e8af787c98c802d405",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "git.publish",
+    "git.read",
+    "host.authority.consume",
+    "workspace.metadata.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

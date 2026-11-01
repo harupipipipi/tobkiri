@@ -1,0 +1,20 @@
+{
+  "format": "tobkiri.ui-schema-poll-reference-inputs/1",
+  "repository": "harupipipipi/tobkiri",
+  "workflow": ".github/workflows/issue-1520-ui-poll-reference.yml",
+  "head": "fba7a92c633048c54118746bc68a8abab5e90cf3",
+  "run": 40222514980,
+  "job": 121256945903,
+  "artifact": 12609927051,
+  "artifact_name": "ui-empty-poll-reference-evidence",
+  "artifact_bytes": 32876,
+  "artifact_sha256": "468b81e38fa001b080e8fdf59045bf1193e2bca25bb3a430c4fdf55672ca6403",
+  "comparison_bytes": 55334,
+  "comparison_sha256": "b1fe73827415f27a3c4245b86cbce2224a618963f6e9e79cd7dd7c4cdc6431bc",
+  "files": {
+    "comparison.json": {
+      "bytes": 55334,
+      "sha256": "b1fe73827415f27a3c4245b86cbce2224a618963f6e9e79cd7dd7c4cdc6431bc"
+    }
+  }
+}

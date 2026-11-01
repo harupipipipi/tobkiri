@@ -38,6 +38,6 @@ def run(context):
     try:
         from domain.scheduler.daemon import start_scheduler_daemon
 
-        start_scheduler_daemon()
+        start_scheduler_daemon(settings_owner=context.get("_settings_owner_port"))
     except Exception:
         pass

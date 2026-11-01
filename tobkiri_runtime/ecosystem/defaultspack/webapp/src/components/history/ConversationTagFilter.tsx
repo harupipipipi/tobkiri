@@ -13,7 +13,7 @@ export function ConversationTagFilter({
 
   return (
     <div className="flex items-center gap-1 overflow-x-auto">
-      <Tag size={12} className="flex-shrink-0 text-zinc-600" />
+      <span className="flex h-8 w-9 shrink-0 items-center justify-center text-zinc-500"><Tag size={14} aria-hidden="true" /></span>
       {tags.slice(0, 10).map((tag) => {
         const active = activeTag === tag;
         return (
@@ -23,7 +23,7 @@ export function ConversationTagFilter({
             onClick={() => onChange(active ? null : tag)}
             className={`h-6 flex-shrink-0 rounded-md border px-1.5 text-[10px] transition-colors ${
               active
-                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                ? "border-zinc-500 bg-zinc-800 text-zinc-100"
                 : "border-zinc-800 bg-zinc-950/50 text-zinc-500 hover:text-zinc-300"
             }`}
             title={`Filter tag: ${tag}`}

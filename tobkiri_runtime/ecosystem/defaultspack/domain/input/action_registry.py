@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable
+from functools import partial
+from typing import Any, Callable, cast
+
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from domain.input.envelope import RumiInputEnvelope
 
@@ -54,8 +57,28 @@ def _default_specs() -> list[InputActionSpec]:
 _DEFAULT_REGISTRY: InputActionRegistry | None = None
 
 
-def get_input_action_registry() -> InputActionRegistry:
+def get_input_action_registry(*, settings_owner: SettingsOwnerPort | None = None) -> InputActionRegistry:
     global _DEFAULT_REGISTRY
     if _DEFAULT_REGISTRY is None:
         _DEFAULT_REGISTRY = InputActionRegistry()
+    if settings_owner is not None:
+        from domain.input.actions.chat_message import handle as handle_chat_message
+        from domain.input.actions.agent_delegate import handle as handle_agent_delegate
+        from domain.input.actions.model_switch import handle as handle_model_switch
+
+        # Preserve registered custom handlers and the existing two-argument ABI.
+        # Bind only our known chat implementation, without mutating the singleton.
+        return InputActionRegistry([
+            InputActionSpec(
+                action_id,
+                partial(cast(Any, handler), settings_owner=settings_owner)
+                if handler in (
+                    handle_chat_message,
+                    handle_agent_delegate,
+                    handle_model_switch,
+                )
+                else handler,
+            )
+            for action_id, handler in _DEFAULT_REGISTRY._actions.items()
+        ])
     return _DEFAULT_REGISTRY

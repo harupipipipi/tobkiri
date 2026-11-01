@@ -1,0 +1,207 @@
+{
+  "VM_Broker_API_execution": false,
+  "all_expected": true,
+  "authority_references": "synthetic offline resolver inputs, never stored or activated",
+  "bundle_lock_sha256": "638a6728f049ffe0fda51f7e15ad97b831e39c78474a5838c810275f40ad5210",
+  "cases": [
+    {
+      "actual": "allow",
+      "case": "compile.author0",
+      "expected": "allow",
+      "pass": true
+    },
+    {
+      "actual": "allow",
+      "case": "signed.admit.author0",
+      "expected": "allow",
+      "pass": true
+    },
+    {
+      "actual": "allow",
+      "case": "signed.admit.idempotent.author0",
+      "expected": "allow",
+      "pass": true
+    },
+    {
+      "actual": "allow",
+      "case": "compile.author1",
+      "expected": "allow",
+      "pass": true
+    },
+    {
+      "actual": "allow",
+      "case": "signed.admit.author1",
+      "expected": "allow",
+      "pass": true
+    },
+    {
+      "actual": "allow",
+      "case": "signed.admit.idempotent.author1",
+      "expected": "allow",
+      "pass": true
+    },
+    {
+      "actual": "allow",
+      "case": "selection.unselected",
+      "expected": "allow",
+      "pass": true,
+      "selected_bindings": []
+    },
+    {
+      "actual": "allow",
+      "case": "routes.unselected",
+      "expected": "allow",
+      "pass": true
+    },
+    {
+      "actual": "allow",
+      "case": "catalog.unselected",
+      "expected": "allow",
+      "pass": true
+    },
+    {
+      "actual": "allow",
+      "case": "selection.acceptance.cli.presentation",
+      "expected": "allow",
+      "pass": true,
+      "selected_bindings": [
+        "acceptance.cli.presentation"
+      ]
+    },
+    {
+      "actual": "allow",
+      "case": "routes.acceptance.cli.presentation",
+      "expected": "allow",
+      "pass": true
+    },
+    {
+      "actual": "allow",
+      "case": "catalog.acceptance.cli.presentation",
+      "expected": "allow",
+      "pass": true
+    },
+    {
+      "actual": "allow",
+      "case": "selection.acceptance.temporal.context",
+      "expected": "allow",
+      "pass": true,
+      "selected_bindings": [
+        "acceptance.temporal.context"
+      ]
+    },
+    {
+      "actual": "allow",
+      "case": "routes.acceptance.temporal.context",
+      "expected": "allow",
+      "pass": true
+    },
+    {
+      "actual": "allow",
+      "case": "catalog.acceptance.temporal.context",
+      "expected": "allow",
+      "pass": true
+    },
+    {
+      "actual": "allow",
+      "case": "selection.acceptance.cli.presentation+acceptance.temporal.context",
+      "expected": "allow",
+      "pass": true,
+      "selected_bindings": [
+        "acceptance.cli.presentation",
+        "acceptance.temporal.context"
+      ]
+    },
+    {
+      "actual": "allow",
+      "case": "routes.acceptance.cli.presentation+acceptance.temporal.context",
+      "expected": "allow",
+      "pass": true
+    },
+    {
+      "actual": "allow",
+      "case": "catalog.acceptance.cli.presentation+acceptance.temporal.context",
+      "expected": "allow",
+      "pass": true
+    },
+    {
+      "actual": "deny",
+      "case": "selection.unapproved",
+      "error_type": "ProfileResolutionDenied",
+      "expected": "deny",
+      "pass": true,
+      "reason": "Pack artifact is not approved: acceptance.cli.presentation"
+    },
+    {
+      "actual": "deny",
+      "case": "selection.unknown-contract",
+      "error_type": "ProfileResolutionDenied",
+      "expected": "deny",
+      "pass": true,
+      "reason": "requested edge shell.tauri.default|rumi_workspace_mount_pack.workspace-mount.resource|unknown.extension.v1|unknown.operation must resolve exactly once; found 0"
+    },
+    {
+      "actual": "deny",
+      "case": "selection.duplicate-id",
+      "error_type": "ProfileResolutionDenied",
+      "expected": "deny",
+      "pass": true,
+      "reason": "additional Pack selection contains a duplicate"
+    },
+    {
+      "actual": "allow",
+      "case": "renamed.signed-admit",
+      "expected": "allow",
+      "pass": true
+    },
+    {
+      "actual": "allow",
+      "case": "renamed.selection",
+      "expected": "allow",
+      "pass": true
+    },
+    {
+      "actual": "deny",
+      "case": "catalog.conflicting-contract",
+      "error_type": "ResolutionError",
+      "expected": "deny",
+      "pass": true,
+      "reason": "ambiguous operation route: ('acceptance.presentation.transcript.v1', 'acceptance.presentation.render')"
+    },
+    {
+      "actual": "deny",
+      "case": "selection.conflicting-function",
+      "error_type": "ProfileResolutionDenied",
+      "expected": "deny",
+      "pass": true,
+      "reason": "requested edge shell.tauri.default|acceptance.cli.presentation.render|acceptance.presentation.transcript.v1|acceptance.presentation.render must resolve exactly once; found 2"
+    },
+    {
+      "actual": "deny",
+      "case": "unsigned.admission",
+      "error_type": "ExternalPackCatalogDenied",
+      "expected": "deny",
+      "pass": true,
+      "reason": "Host JSON file is unreadable: signed-pack.json"
+    },
+    {
+      "actual": "deny",
+      "case": "signed.source-tamper",
+      "error_type": "PackSignatureError",
+      "expected": "deny",
+      "pass": true,
+      "reason": "Pack file manifest mismatch"
+    },
+    {
+      "actual": "deny",
+      "case": "signed.signature-tamper",
+      "error_type": "PackSignatureError",
+      "expected": "deny",
+      "pass": true,
+      "reason": "Pack signature mismatch"
+    }
+  ],
+  "offline": true,
+  "original_inputs_preserved": true,
+  "schema": "tobkiri.independent-extension-offline-boundaries.v1",
+  "test_policy_only": true
+}

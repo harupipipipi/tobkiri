@@ -1,0 +1,417 @@
+[
+  {
+    "path": "crates/tobkiri-canon/src/codec.rs",
+    "bytes": 16519,
+    "sha256": "d1c2491b98e35433792205bf255d0f1ca5bab36600736bc3e03d9052df9f7379"
+  },
+  {
+    "path": "crates/tobkiri-wit/wit/core/core.wit",
+    "bytes": 5732,
+    "sha256": "f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb"
+  },
+  {
+    "path": "packs/local.ai-gateway-finalizer-python/README.md",
+    "bytes": 7999,
+    "sha256": "9ed3d9aeaab169f6156149be9b5ea8eab9b65eb2882e3652632c4c498c890b57"
+  },
+  {
+    "path": "packs/local.ai-gateway-finalizer-python/python/app.py",
+    "bytes": 2517,
+    "sha256": "17de95bc837421e64b9cc6b48830e7dcce270cced8b10e4505eae7c3f8b7c8d9"
+  },
+  {
+    "path": "packs/local.ai-gateway-finalizer-python/python/gateway_finalizer_adapter.py",
+    "bytes": 9464,
+    "sha256": "3292fed55af50ac8252ec6eb3df42b7d884bcc9635df64d25e96759463951a35"
+  },
+  {
+    "path": "packs/local.ai-gateway-finalizer-python/python/inventory.json",
+    "bytes": 12860,
+    "sha256": "5fb62c5dfa9a5fa2aa4b1f62081394e66484da46d9f536f0cf3af0fcb0d292ca"
+  },
+  {
+    "path": "packs/local.ai-gateway-finalizer-python/python/original_gateway_finalizer.py",
+    "bytes": 10394,
+    "sha256": "73ddc86e677f93ced70e0ce2d352b94cd7a5238e15b438d0bc046b31417a01c2"
+  },
+  {
+    "path": "packs/local.ai-gateway-finalizer-python/python/provenance.json",
+    "bytes": 19321,
+    "sha256": "129862fc28f1e37643b13e982813997b0b6722fce52841c3bc66c286744e43c0"
+  },
+  {
+    "path": "packs/local.ai-gateway-finalizer-python/source-cases.json",
+    "bytes": 18451,
+    "sha256": "dbacb05a9e238b425c0910ca239f09aba3dc8c1ac63a32b2c2a6da734f2d9706"
+  },
+  {
+    "path": "packs/local.ai-gateway-finalizer-python/wit/pack.wit",
+    "bytes": 929,
+    "sha256": "b260bfcf0822d4bcd4006ff041625a6cca472d89cb5232c6188deff7a51ff952"
+  },
+  {
+    "path": "packs/local.ai-gateway-tool-caller-python/README.md",
+    "bytes": 6509,
+    "sha256": "650823a3b351a09bfbcddef20fc77e7866d0b4317a04c8610f1dd9c92ea2bab6"
+  },
+  {
+    "path": "packs/local.ai-gateway-tool-caller-python/python/app.py",
+    "bytes": 2474,
+    "sha256": "caf0b4be78264a60588b6f6a85e9e34554440263782e83d0be7047263aaa7081"
+  },
+  {
+    "path": "packs/local.ai-gateway-tool-caller-python/python/gateway_tool_caller_adapter.py",
+    "bytes": 5456,
+    "sha256": "743f3b338ecb8a66031fb5b721a4272773ae24552231e0ec8b6d70659aa412df"
+  },
+  {
+    "path": "packs/local.ai-gateway-tool-caller-python/python/inventory.json",
+    "bytes": 18090,
+    "sha256": "10e299bad241d7460881254d94942b2929c4fe701bbe6a7688a3b1e690f7f12c"
+  },
+  {
+    "path": "packs/local.ai-gateway-tool-caller-python/python/original_gateway_tool_caller.py",
+    "bytes": 2046,
+    "sha256": "9b0d671807095cf2211b8bb51db703cea563133b2e8d935a50e9f77ea40ff1b1"
+  },
+  {
+    "path": "packs/local.ai-gateway-tool-caller-python/python/provenance.json",
+    "bytes": 6148,
+    "sha256": "b41b85456970098f6fb5bddda3d9ad97db3d23f004c0ec88dc1feeb33b95f155"
+  },
+  {
+    "path": "packs/local.ai-gateway-tool-caller-python/wit/pack.wit",
+    "bytes": 731,
+    "sha256": "34cad3a098d41f9103386b0dab1988624c0de7f81721807b4da1e5c0f64bdd41"
+  },
+  {
+    "path": "packs/local.ai-stream-normalizer-python/README.md",
+    "bytes": 6519,
+    "sha256": "187a8c8e5c33132ce3c0d51990236e9345f7981ccf829d3e2162cce880f45112"
+  },
+  {
+    "path": "packs/local.ai-stream-normalizer-python/python/app.py",
+    "bytes": 2211,
+    "sha256": "bfbfc5a8d2d6fa184f162585c370b96eb23b51f46d47a4aa1dd441906eb9e4f2"
+  },
+  {
+    "path": "packs/local.ai-stream-normalizer-python/python/inventory.json",
+    "bytes": 10758,
+    "sha256": "24df2873314ce68f26890fbe2bbb8745dc2de9562f18753917bcaffaf6161bb2"
+  },
+  {
+    "path": "packs/local.ai-stream-normalizer-python/python/original_stream_normalizer.py",
+    "bytes": 3189,
+    "sha256": "611e174b7b101ffe67960b80501421261e6a9322977b2a3c991253a1c28fc38f"
+  },
+  {
+    "path": "packs/local.ai-stream-normalizer-python/python/provenance.json",
+    "bytes": 5399,
+    "sha256": "fd09dff6ce0b82489dec86b1c931dd14050ccfb4a8b2d155bce7bb212657c65f"
+  },
+  {
+    "path": "packs/local.ai-stream-normalizer-python/python/stream_normalizer_adapter.py",
+    "bytes": 2508,
+    "sha256": "c77c5c0f14c28ec60bba0586102743556e0438e7f581792c336371ebc12fed20"
+  },
+  {
+    "path": "packs/local.ai-stream-normalizer-python/wit/pack.wit",
+    "bytes": 474,
+    "sha256": "8a080544d35dfcd2a72d7195954c9a09953f7c1d9fe2619ac42bae8b1933bc07"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/integer-v2.observations.json",
+    "bytes": 60331,
+    "sha256": "438dd64bc9ec1f849739556e2ab25336751022afa24a59fa19ff7e539c22daa8"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/oracle.freeze.json",
+    "bytes": 580,
+    "sha256": "be98b1b5cc6a20dda6b098c8d7e2f378497f80bcaae8ad96a6f18b18d8e40553"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/oracle.json",
+    "bytes": 20051,
+    "sha256": "9aae37387a6b0758451abe3cb6070d8a3d8106b744de053a5bc16e8715f3481d"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json.py",
+    "bytes": 8961,
+    "sha256": "7df89c2e5275fdc795c13e0d70d6ec69f7f022aa968c58a3c1b1637e0eee2158"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/ordered_json_v2.py",
+    "bytes": 8184,
+    "sha256": "495b613a37807cf10e831a2332b7f401148d3aaec29ec84c16a22f0a2c05d3a2"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/python/app.py",
+    "bytes": 1410,
+    "sha256": "13aeb755387089e0151f38d25a3f917b5b417cba7210d91334a5f1e3a1eeb07f"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/python/app_v2.py",
+    "bytes": 1978,
+    "sha256": "0e0ba561b6ea7ce749024b2656384d14e040bca5f1505949ad51322882e29f75"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/python/caller_adapter.py",
+    "bytes": 1477,
+    "sha256": "68f56bae4262eedf4427c63929897597c051a88e347ba96cc970b07eeb101528"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/python/caller_adapter_v2.py",
+    "bytes": 1972,
+    "sha256": "ec5b33231f7226b6040486eb6cd43ff5e39409dd14562927a748915e7511041b"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/python/inventory.json",
+    "bytes": 16854,
+    "sha256": "512332db549b6ea86b8ae11e827cc5feb520724f13a34b0234b110d6e45e861c"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/python/original_bridge.py",
+    "bytes": 2867,
+    "sha256": "4e964fbfa066dc656d36144b96d26a3a03df94295517781cf29815c1f90ba0d6"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/python/provenance.json",
+    "bytes": 5246,
+    "sha256": "4d3d828b00fa49bcba1f2b53a26b0cf98532ebcabaa572602be0738c205ee2d5"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/wit/pack-v2.wit",
+    "bytes": 364,
+    "sha256": "513454d839ac468205bc5b4ed93032625ed4f5d3064aa17f643f907e80bfeb78"
+  },
+  {
+    "path": "packs/local.ai-tool-bridge-ordered-python/wit/pack.wit",
+    "bytes": 364,
+    "sha256": "625952f31c4caffd4d1de6ba682b15662b22c4e10f11c451592d187acad3cb75"
+  },
+  {
+    "path": "packs/local.ai-usage-cost-python/README.md",
+    "bytes": 6392,
+    "sha256": "eda13b3650cf9ca9c0a3c20bb9ca912f76a630da561ae950c2baf6ebaec842b3"
+  },
+  {
+    "path": "packs/local.ai-usage-cost-python/python/app.py",
+    "bytes": 2148,
+    "sha256": "2226cb07e6b0b6af8a9f8285f0fbebc75b041c7472cf506c8284e5f10a5c204f"
+  },
+  {
+    "path": "packs/local.ai-usage-cost-python/python/inventory.json",
+    "bytes": 14406,
+    "sha256": "af5dd63cae7fc513d378d937d6777e0a0ae3992dd600a7e28bd465ae47be6d80"
+  },
+  {
+    "path": "packs/local.ai-usage-cost-python/python/original_usage_cost.py",
+    "bytes": 2334,
+    "sha256": "b4eccb3633fba3341599ed017271c427a20b5628a8629fe7e4c626b6261b4954"
+  },
+  {
+    "path": "packs/local.ai-usage-cost-python/python/provenance.json",
+    "bytes": 4662,
+    "sha256": "4448fe4fec7acdaf1b77aa0a52703ad459eb26396ad769f86fa6db15f2900322"
+  },
+  {
+    "path": "packs/local.ai-usage-cost-python/python/usage_cost_adapter.py",
+    "bytes": 2762,
+    "sha256": "e300acb490bbc851971c7972be299ae7634949a350644f2b34087e6c382ea2b8"
+  },
+  {
+    "path": "packs/local.ai-usage-cost-python/wit/pack.wit",
+    "bytes": 447,
+    "sha256": "196a11e594cc85d0213a6ad6e5d62e3e5b8921e78e24a75fef647acd28d59e50"
+  },
+  {
+    "path": "scripts/wasm/freeze_ordered_tool_bridge.py",
+    "bytes": 5016,
+    "sha256": "83e1093f9a36468786b1f4b05661846f3f3e3b07b5eab1229a941835228faa04"
+  },
+  {
+    "path": "scripts/wasm/observe_gateway_finalizer.py",
+    "bytes": 17500,
+    "sha256": "4e2c8aa20a567a8d49463c9b99803a2f585ee56f9f25cea1c0c6fb3c82d1ac43"
+  },
+  {
+    "path": "scripts/wasm/observe_gateway_tool_caller.py",
+    "bytes": 11676,
+    "sha256": "73393f7f1ff214dec98ead55b7f7b64790c9a6e6125b70d4f825586245f3cef7"
+  },
+  {
+    "path": "scripts/wasm/observe_ordered_integer_v2.py",
+    "bytes": 12396,
+    "sha256": "6949560ac5e901fe0e780fab22ddd20f441295b7fbc0d0f0b91e36941d93f9cb"
+  },
+  {
+    "path": "scripts/wasm/prepare_gateway_finalization_providers.py",
+    "bytes": 23194,
+    "sha256": "d212e0e3fa782a03dcd4d4a772f8ddf7158dad5eb437b7d7373e24939074fa80"
+  },
+  {
+    "path": "scripts/wasm/prepare_gateway_finalizer.py",
+    "bytes": 20404,
+    "sha256": "46c49cd9a1d33bbbde8d11c94dc3bf8a240ba15780f47c99e56eb2167698e20e"
+  },
+  {
+    "path": "scripts/wasm/prepare_gateway_tool_caller.py",
+    "bytes": 21712,
+    "sha256": "9412b61e277e8247b62965bbe8a40ed2027d3cea4ec2259067422f26f8c7069b"
+  },
+  {
+    "path": "scripts/wasm/prepare_ordered_tool_bridge.py",
+    "bytes": 18009,
+    "sha256": "f3034aa6c4296751ba69d820ba8ba688e4c0783f39b48d43e55a2eb38ed3b075"
+  },
+  {
+    "path": "scripts/wasm/replay_gateway_finalizer.py",
+    "bytes": 34631,
+    "sha256": "ef3f90ecdb0b636f86322d62550e688b6cd5c83e044d9e923f520892a9774063"
+  },
+  {
+    "path": "scripts/wasm/replay_gateway_tool_caller.py",
+    "bytes": 36262,
+    "sha256": "839ef1f516856237934c8818d774716d9883c4974d639eb80554575638cb6696"
+  },
+  {
+    "path": "scripts/wasm/replay_gateway_tool_caller_current.py",
+    "bytes": 11101,
+    "sha256": "f3f859a47aa16c45a1c0dc0ee5c8ec19f853fb162b973eb25f4c96066897e2bd"
+  },
+  {
+    "path": "scripts/wasm/replay_ordered_tool_bridge.py",
+    "bytes": 10226,
+    "sha256": "f82c67afb9c9ce38068f5187d5ebf1697cfd0ee3b1bdf5d0830f9e3fd2e8b525"
+  },
+  {
+    "path": "scripts/wasm/replay_ordered_tool_bridge_v2.py",
+    "bytes": 23211,
+    "sha256": "6e1998f03ba74b5939ae57fcf6ab54e31d7aee381ae22ed007979c4ab551d4fe"
+  },
+  {
+    "path": "scripts/wasm/stage_gateway_finalization_providers.py",
+    "bytes": 15906,
+    "sha256": "6599e093b4e6ad7da134d0f6b344f4a24118338a669d89a025e6b7c606d36eeb"
+  },
+  {
+    "path": "scripts/wasm/stage_gateway_finalizer.py",
+    "bytes": 18459,
+    "sha256": "a21694608ff7af5e1f91fca8abfd0a869eaa97bb6e9d95bdd914478cffb3499b"
+  },
+  {
+    "path": "scripts/wasm/stage_gateway_tool_caller.py",
+    "bytes": 13246,
+    "sha256": "ce1e3849868e24b10db1d2f52b07216fee8a8e625d3ee2ace3d1afe7c7e3b0c9"
+  },
+  {
+    "path": "scripts/wasm/stage_ordered_tool_bridge.py",
+    "bytes": 5813,
+    "sha256": "ecc9427fbe1bc2d351e3e50900a716455d47b2cdbc261275e7bc1a9a9cc07554"
+  },
+  {
+    "path": "scripts/wasm/stage_ordered_tool_bridge_v2.py",
+    "bytes": 9320,
+    "sha256": "5fb02eb2aa2b28aec9163e7b00f2da51472feb0293543ce010a3ad77a5766b2d"
+  },
+  {
+    "path": "tobkiri_runtime/core_runtime/global_contract_dispatch.py",
+    "bytes": 17989,
+    "sha256": "f1cc60d7361b0716430c715c529fc36d41d1db5a130e47c2ae835962f6f7d893"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json",
+    "bytes": 220761,
+    "sha256": "a011d0559a5bf485393ed738830e03ab09e54761539ec3c3961feeefc5b9ed29"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json",
+    "bytes": 255256,
+    "sha256": "4c66d34286551d93df2778321a989c81e007c13f03fdec53bf7ad65c4faafdb2"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
+    "bytes": 66097,
+    "sha256": "9df95525a3c467ba3313d8b3ea9bc1ddc7de7f8d1d4a14a9cf8d9f3fa849b208"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/messages_generate.py",
+    "bytes": 4210,
+    "sha256": "594ac440619470486faf827a593e95edafeff5cf28674acc903616ce6b0d3415"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/text_generate.py",
+    "bytes": 5223,
+    "sha256": "7b794e600eb49701a972a142bd2c3c76a5c01e0787446fb0c1b0989f9fe1e5e7"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_stream_pack/contracts.v4.json",
+    "bytes": 2702,
+    "sha256": "ab5aad4f16b9b8cb17cc5ebde231ee5e23346555633695dcfaba872d2fe4e0ae"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_stream_pack/executables.v4.json",
+    "bytes": 1590,
+    "sha256": "cacbd870b832da949051686761f40916685640d1b0984b116d30b1a673e491e8"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_stream_pack/pack.v4.json",
+    "bytes": 4010,
+    "sha256": "1ef0bdb9b50d1b8f86b4c54c0917e28e15b80112ccf62cdbcc8050c8db98b0a9"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_stream_pack/runtime/normalizer.py",
+    "bytes": 5701,
+    "sha256": "ffedc4dc81336ac5e708d7b954af08d83a2c5f0533360e82968699fb096b8a54"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/contracts.v4.json",
+    "bytes": 4108,
+    "sha256": "9a4e26280f902adc8f9b89566715b08f83de247d59bd37b335ed9ad376363cdd"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/executables.v4.json",
+    "bytes": 2998,
+    "sha256": "00617d083d1924da5e121106842cd9a32d19f47dafffb4016d8b569885c7439e"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/pack.v4.json",
+    "bytes": 5453,
+    "sha256": "025005f08eb0afcedd74f52429b6641d5c5e788a778ba2b04de8d2f8a7fa4257"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_tool_bridge_pack/runtime/bridge.py",
+    "bytes": 5407,
+    "sha256": "27c6d726d1c1db4bb7a67565e4d56c9bddaab875d30824f330e15ec5c3e7e6b0"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_usage_pack/contracts.v4.json",
+    "bytes": 6395,
+    "sha256": "6c0f9031258f23d5c8d62b057d879f334c35db679094d0217993aa6e3bee43e1"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_usage_pack/executables.v4.json",
+    "bytes": 4124,
+    "sha256": "a4392ed29609957ed9aff5ab855e5fa19339ae6af295a19c1c379dbe94ac47f0"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_usage_pack/pack.v4.json",
+    "bytes": 6350,
+    "sha256": "44a2d2326460f36b24c4541f045d49f8291ad099bc43e33a7c66e6fff95b06b4"
+  },
+  {
+    "path": "tobkiri_runtime/ecosystem/rumi_ai_usage_pack/runtime/usage.py",
+    "bytes": 6276,
+    "sha256": "16b80027e2859cff8515525ee87e16e4c33a6c222d54168d1f5fa9a145195316"
+  },
+  {
+    "path": "tobkiri_runtime/tobkiri_host/broker.py",
+    "bytes": 78663,
+    "sha256": "5a1e76765a525058268cd62b23bf6bdd460b53eac2198715ecbb44f03244eed9"
+  },
+  {
+    "path": "tobkiri_runtime/tobkiri_protocol/conversation_lifecycle.py",
+    "bytes": 8253,
+    "sha256": "d645ad36d8248516a619c5dbcd4051c782bdbe909df9df5386e7503301c27ece"
+  }
+]

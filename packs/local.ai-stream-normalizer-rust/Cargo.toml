@@ -1,0 +1,17 @@
+[package]
+name = "tobkiri-pack-ai-stream-normalizer-rust"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ordered-python-compat = { path = "../ordered-python-compat" }
+tobkiri-guest-sdk.workspace = true
+wit-bindgen.workspace = true
+
+[dev-dependencies]
+sha2 = "=0.10.9"

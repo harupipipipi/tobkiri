@@ -5,12 +5,9 @@ domain/agent/role_registry.py — ロール定義管理
 ロールごとにシステムプロンプト、利用可能ツール、コンテキスト上限を保持する。
 """
 
-import sys
-import os
 import copy
 import threading
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import gen_id, timestamp
 

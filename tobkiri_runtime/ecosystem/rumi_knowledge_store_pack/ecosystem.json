@@ -1,0 +1,67 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.knowledge.manage.v1",
+      "rumi.action.knowledge.migrate.v1",
+      "rumi.resource.knowledge.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Single-write authoritative source knowledge storage.",
+  "display_name": "Rumi Knowledge Store",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:7ef869be74baf850bb0c244bad81a9abc6d00012e1110644bb70cf827dde43e5",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:e6336b9d1c81b4be1e4cd4673d61c0a5c2936ad22fb1b1d226f8c551c72ab342"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:e6336b9d1c81b4be1e4cd4673d61c0a5c2936ad22fb1b1d226f8c551c72ab342"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "knowledge"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "dual_write": false,
+      "embedding_authoritative": false,
+      "local_first": true
+    }
+  },
+  "pack_id": "rumi_knowledge_store_pack",
+  "pack_identity": "rumi:ecosystem/rumi_knowledge_store_pack",
+  "provenance": {
+    "build_identity": "rumi_knowledge_store_pack:1.0.0",
+    "content_hash": "sha256:1adc7542788dbf49e2ec9a6fdbf4b219913ef53e70c24d4c8a325d2ae929f41e",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "knowledge.manage",
+    "knowledge.migrate",
+    "knowledge.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

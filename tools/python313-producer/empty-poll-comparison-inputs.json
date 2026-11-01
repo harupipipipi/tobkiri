@@ -1,0 +1,49 @@
+{
+  "format": "tobkiri.ui-poll-comparison-inputs/1",
+  "repository": "harupipipipi/tobkiri",
+  "workflow": ".github/workflows/issue-1520-ui-poll-producers.yml",
+  "head": "a12be72a4ebaab44243bc1062cb3a1003debfc2d",
+  "run": 40216589248,
+  "job": 121238933230,
+  "artifact": 12609287567,
+  "artifact_bytes": 37182876,
+  "artifact_sha256": "f24f60e66fe97461f3b1527fb0666595e504955d5fc585a4f08e9f8ac17cf88a",
+  "files": {
+    "poll-producer-pair.json": {
+      "bytes": 154764,
+      "sha256": "e07e2e48ef380263d472eb4ae58c7686a907cc622c23f837a0061e6634449ead"
+    },
+    "ui-poll-c-helper/work/_tobkiri_poll_oracle.abi3.so": {
+      "bytes": 7043,
+      "sha256": "c480e3e86a8419ee96a409096f13643b43abbe0f7b96ee8534057bae9b8cc4f3"
+    },
+    "ui-poll-c-helper/helper-build.json": {
+      "bytes": 4622500,
+      "sha256": "54492ed76691405bee6a9ec703b2af696a7599cbbcde185237e411b58cddec41"
+    },
+    "poll-original-producer/work/target/release/componentize-py": {
+      "bytes": 44823176,
+      "sha256": "f3a457ae5e8ba474c513c909e24e6a82e685b15aeb0f766eeab5c924dbefe24f"
+    },
+    "poll-original-producer/cli-build.json": {
+      "bytes": 7804,
+      "sha256": "1fffce2433d3049c62e83eeb8f6561689c8ac436cccf886f07a24d7c55b2b459"
+    },
+    "poll-original-producer/cli-source.json": {
+      "bytes": 50311,
+      "sha256": "fe628e4a45a949aef782647461ce56bc86cdb4e4e7eb22830f5c33095ef561aa"
+    },
+    "poll-candidate-producer/work/target/release/componentize-py": {
+      "bytes": 44822784,
+      "sha256": "fc4f28568cbee0acf4c492a995f52ea298c47b03e9c62eedc2d36916ab70521c"
+    },
+    "poll-candidate-producer/cli-build.json": {
+      "bytes": 10154,
+      "sha256": "cb26b0e9f34bef0f45986a781f400237fccba6fb5ef48ed22cb2478416ca2086"
+    },
+    "poll-candidate-producer/cli-source.json": {
+      "bytes": 50311,
+      "sha256": "5134f1192b337bda600e43f5c5a605cf42ccc17ef12463e8a05a47544fdcc2f4"
+    }
+  }
+}

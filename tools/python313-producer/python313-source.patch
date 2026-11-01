@@ -1,0 +1,194 @@
+--- a/componentize-py/build.rs
++++ b/componentize-py/build.rs
+@@ -36,11 +36,6 @@
+ #[cfg(not(target_os = "windows"))]
+ const CLANG_EXECUTABLE: &str = "clang";
+ 
+-// TODO: switch to upstream release per
+-// https://github.com/bytecodealliance/componentize-py/issues/215
+-const CPYTHON_TARBALL_URL: &str = "https://github.com/dicej/cpython/tarball/v3.14.0-wasi-sdk-30";
+-const CPYTHON_TARBALL_BASE_DIR: &str = "dicej-cpython-0e13686";
+-
+ fn main() -> Result<()> {
+     println!("cargo:rerun-if-changed=build.rs");
+ 
+@@ -68,7 +63,7 @@
+     let files = [
+         "libcomponentize_py_runtime_sync.so.zst",
+         "libcomponentize_py_runtime_async.so.zst",
+-        "libpython3.14.so.zst",
++        "libpython3.13.so.zst",
+         "libc.so.zst",
+         "libwasi-emulated-mman.so.zst",
+         "libwasi-emulated-process-clocks.so.zst",
+@@ -215,9 +210,9 @@
+         )?;
+     }
+ 
+-    compress(&cpython_wasi_dir, "libpython3.14.so", out_dir, true)?;
+-
+-    let path = repo_dir.join("cpython/builddir/wasi/install/lib/python3.14");
++    compress(&cpython_wasi_dir, "libpython3.13.so", out_dir, true)?;
++
++    let path = repo_dir.join("cpython/builddir/wasi/install/lib/python3.13");
+ 
+     if path.exists() {
+         let mut builder = Builder::new(Encoder::new(
+@@ -308,18 +303,13 @@
+ fn maybe_make_cpython(repo_dir: &Path, wasi_sdk: &Path) -> Result<()> {
+     let cpython_dir = repo_dir.join("cpython");
+     if !cpython_dir.exists() {
+-        let url = &env::var("CPYTHON_TARBALL_URL").unwrap_or_else(|_| CPYTHON_TARBALL_URL.into());
+-        let base_dir = &env::var_os("CPYTHON_TARBALL_BASE_DIR")
+-            .unwrap_or_else(|| CPYTHON_TARBALL_BASE_DIR.into());
+-        println!("cargo:warning=downloading CPython source code from {url}");
+-        fetch_extract(url, repo_dir)?;
+-        fs::rename(repo_dir.join(base_dir), &cpython_dir)?;
++        bail!("source-review prototype requires verified, patched CPython 3.13.16 staged at cpython/");
+     }
+ 
+     let cpython_wasi_dir = cpython_dir.join("builddir/wasi");
+-    if !cpython_wasi_dir.join("libpython3.14.so").exists() {
++    if !cpython_wasi_dir.join("libpython3.13.so").exists() {
+         fs::create_dir_all(&cpython_wasi_dir)?;
+-        if !cpython_wasi_dir.join("libpython3.14.a").exists() {
++        if !cpython_wasi_dir.join("libpython3.13.a").exists() {
+             let cpython_native_dir = repo_dir.join("cpython/builddir/build");
+             if !cpython_native_dir.join(PYTHON_EXECUTABLE).exists() {
+                 fs::create_dir_all(&cpython_native_dir)?;
+@@ -354,7 +344,7 @@
+             run(Command::new("../../Tools/wasm/wasi-env")
+                 .env(
+                     "CONFIG_SITE",
+-                    "../../Tools/wasm/wasi/config.site-wasm32-wasi",
++                    "../../Tools/wasm/config.site-wasm32-wasi",
+                 )
+                 .env(
+                     "CFLAGS",
+@@ -374,6 +364,7 @@
+                     &format!("--with-build-python={dir}/../build/{PYTHON_EXECUTABLE}",),
+                     &format!("--prefix={dir}/install"),
+                     "--disable-test-modules",
++                    "--enable-wasm-dynamic-linking",
+                     "--enable-ipv6",
+                 ]))?;
+ 
+@@ -386,21 +377,16 @@
+                 .args(["build_all", "install"]))?;
+         }
+ 
+-        // Link libpython3.14.so - now includes libsqlite3.a
++        // Link libpython3.13.so - now includes libsqlite3.a
+         run(Command::new(wasi_sdk.join("bin/clang"))
+             .arg("--target=wasm32-wasip2")
+             .arg("-shared")
+             .arg("-o")
+-            .arg(cpython_wasi_dir.join("libpython3.14.so"))
++            .arg(cpython_wasi_dir.join("libpython3.13.so"))
+             .arg("-Wl,--whole-archive")
+-            .arg(cpython_wasi_dir.join("libpython3.14.a"))
++            .arg(cpython_wasi_dir.join("libpython3.13.a"))
+             .arg("-Wl,--no-whole-archive")
+-            .arg(cpython_wasi_dir.join("Modules/_hacl/libHacl_HMAC.a"))
+-            .arg(cpython_wasi_dir.join("Modules/_hacl/libHacl_Hash_BLAKE2.a"))
+-            .arg(cpython_wasi_dir.join("Modules/_hacl/libHacl_Hash_MD5.a"))
+-            .arg(cpython_wasi_dir.join("Modules/_hacl/libHacl_Hash_SHA1.a"))
+             .arg(cpython_wasi_dir.join("Modules/_hacl/libHacl_Hash_SHA2.a"))
+-            .arg(cpython_wasi_dir.join("Modules/_hacl/libHacl_Hash_SHA3.a"))
+             .arg(cpython_wasi_dir.join("Modules/_decimal/libmpdec/libmpdec.a"))
+             .arg(cpython_wasi_dir.join("Modules/expat/libexpat.a"))
+             .arg(cpython_wasi_dir.join("deps/lib/libz.a"))
+@@ -423,7 +409,7 @@
+     let deps_dir = cpython_wasi_dir.join("deps");
+ 
+     // The _sqlite3 module source files (relative to Modules/)
+-    // These are the files that make up the _sqlite3 extension in CPython 3.14
++    // These are the files that make up the _sqlite3 extension in CPython 3.13
+     // Note: blob.c is required - it defines pysqlite_close_all_blobs and pysqlite_blob_setup_types
+     let include_dir = deps_dir.join("include");
+     let lib_dir = deps_dir.join("lib");
+@@ -545,7 +531,7 @@
+              -Clink-args=-Wl,--skip-wit-component \
+              -Clink-args=-shared \
+              -Clink-args=-L{} \
+-             -Clink-args=-lpython3.14 \
++             -Clink-args=-lpython3.13 \
+              -Clink-self-contained=n",
+             cpython_wasi_dir.to_str().unwrap()
+         ),
+--- a/componentize-py/src/prelink.rs
++++ b/componentize-py/src/prelink.rs
+@@ -76,10 +76,10 @@
+             dl_openable: false,
+         },
+         Library {
+-            name: "libpython3.14.so".into(),
+-            module: zstd::decode_all(Cursor::new(include_bytes!(concat!(
+-                env!("OUT_DIR"),
+-                "/libpython3.14.so.zst"
++            name: "libpython3.13.so".into(),
++            module: zstd::decode_all(Cursor::new(include_bytes!(concat!(
++                env!("OUT_DIR"),
++                "/libpython3.13.so.zst"
+             ))))?,
+             dl_openable: false,
+         },
+--- a/componentize-py/pyo3-config.txt
++++ b/componentize-py/pyo3-config.txt
+@@ -1,8 +1,8 @@
+ implementation=CPython
+-version=3.14
++version=3.13
+ shared=true
+ abi3=false
+-lib_name=python3.14
++lib_name=python3.13
+ pointer_width=32
+ build_flags=
+ suppress_build_script_link_lines=false
+--- a/componentize-py/runtime/pyo3-config-clippy.txt
++++ b/componentize-py/runtime/pyo3-config-clippy.txt
+@@ -1,8 +1,8 @@
+ implementation=CPython
+-version=3.14
++version=3.13
+ shared=false
+ abi3=false
+-lib_name=python3.14
++lib_name=python3.13
+ pointer_width=64
+ build_flags=
+ suppress_build_script_link_lines=false
+--- a/componentize-py/alt-build.rs
++++ b/componentize-py/alt-build.rs
+@@ -22,7 +22,7 @@
+         "libc.so.zst",
+         "libcomponentize_py_runtime_async.so.zst",
+         "libcomponentize_py_runtime_sync.so.zst",
+-        "libpython3.14.so.zst",
++        "libpython3.13.so.zst",
+         "libwasi-emulated-getpid.so.zst",
+         "libwasi-emulated-mman.so.zst",
+         "libwasi-emulated-process-clocks.so.zst",
+--- a/cpython/configure
++++ b/cpython/configure
+@@ -7256,7 +7256,7 @@
+   Emscripten) :
+      ;; #(
+   WASI) :
+-    as_fn_error $? "WASI dynamic linking is not implemented yet." "$LINENO" 5 ;; #(
++     ;; #(
+   *) :
+     as_fn_error $? "--enable-wasm-dynamic-linking only applies to Emscripten and WASI" "$LINENO" 5
+    ;;
+--- a/cpython/configure.ac
++++ b/cpython/configure.ac
+@@ -1301,7 +1301,7 @@
+ [
+   AS_CASE([$ac_sys_system],
+     [Emscripten], [],
+-    [WASI], [AC_MSG_ERROR([WASI dynamic linking is not implemented yet.])],
++    [WASI], [],
+     [AC_MSG_ERROR([--enable-wasm-dynamic-linking only applies to Emscripten and WASI])]
+   )
+ ], [

@@ -1,0 +1,13 @@
+[package]
+name = "tobkiri-component-unbundle"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0 WITH LLVM-exception"
+publish = false
+
+[workspace]
+
+[dependencies]
+anyhow = "=1.0.102"
+wasmparser = "=0.245.1"
+wasm-encoder = { version = "=0.245.1", features = ["wasmparser"] }

@@ -54,17 +54,37 @@ def test_pack_required_assets_and_metadata() -> None:
         "examples/chatgpt_custom_instruction_lint.example.yaml",
         "examples/gemini_gem_prompt_normalization.example.yaml",
         "fixtures/prompt_regression_cases.yaml",
+        "rumi.pack.v3.json",
+        "artifact-manifest.json",
+        "runtime/process.py",
+        "runtime/service.py",
+        "runtime/store.py",
+        "frontend/contributions/prompt-studio.json",
+        "ui/index.html",
+        "ui/app.js",
+        "ui/style.css",
     ]
     assert [path for path in required if not (PACK_DIR / path).is_file()] == []
 
     ecosystem = read_json(PACK_DIR / "ecosystem.json")
+    manifest = read_json(PACK_DIR / "pack.v4.json")
     assert validate_ecosystem(ecosystem, raise_on_error=False) == []
     assert ecosystem["pack_identity"] == f"rumi:ecosystem/{PACK_ID}"
-    assert ecosystem["dependencies"] == {"defaultspack": ">=2.0.0"}
-    assert ecosystem["connectivity"] == {
-        "requires": ["defaultspack"],
-        "provides": [],
+    assert ecosystem["dependencies"] == {}
+    assert set(ecosystem["connectivity"]["requires"]) == {
+        "rumi.event.audit.recorded.v1",
+        "rumi.resource.profile.workspace.v1",
     }
+    assert manifest["requirements"]["pack_dependencies"] == {}
+    contract_dependencies = manifest["requirements"]["contract_dependencies"]
+    assert {
+        item["contract_id"] for item in contract_dependencies
+    } == {
+        "tobkiri.event.audit.recorded.v1",
+        "tobkiri.resource.profile.workspace.v1",
+    }
+    assert all(item["optional"] is True for item in contract_dependencies)
+    assert "rumi.resource.prompt.studio.v1" in ecosystem["connectivity"]["provides"]
     assert ecosystem["required_secrets"] == []
     assert ecosystem["required_network"] == {
         "allowed_domains": [],
@@ -72,16 +92,9 @@ def test_pack_required_assets_and_metadata() -> None:
     }
     assert ecosystem["metadata"]["required_secrets"] == []
     assert ecosystem["metadata"]["network_policy"] == "none_by_default"
-    assert ecosystem["metadata"]["executable_code"] is False
-    assert {
-        item["pack_id"] for item in ecosystem["metadata"]["optional_integrations"]
-    } >= {
-        "rumi_model_evals_pack",
-        "rumi_memory_knowledge_pack",
-        "rumi_api_toolsmith_pack",
-        "rumi_code_ide_pack",
-        "rumi_knowledge_marketplace_pack",
-    }
+    assert ecosystem["metadata"]["executable_code"] is True
+    assert ecosystem["host_execution"] is True
+    assert ecosystem["metadata"]["integrity"]["artifact_manifest"] == "artifact-manifest.json"
     assert set(ecosystem["metadata"]["owner_surfaces"]) >= {
         "prompt_artifact_catalog",
         "prompt_lint_rubric",
@@ -94,7 +107,18 @@ def test_pack_required_assets_and_metadata() -> None:
         for values in ecosystem["metadata"]["asset_index"].values()
         for item in values
     }
-    assert set(required) - {"ecosystem.json"} <= indexed
+    runtime_assets = {
+        "rumi.pack.v3.json",
+        "artifact-manifest.json",
+        "runtime/process.py",
+        "runtime/service.py",
+        "runtime/store.py",
+        "frontend/contributions/prompt-studio.json",
+        "ui/index.html",
+        "ui/app.js",
+        "ui/style.css",
+    }
+    assert set(required) - {"ecosystem.json"} - runtime_assets <= indexed
 
 
 def test_pack_yaml_json_assets_parse() -> None:
@@ -110,11 +134,11 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     candidate = {item.pack_id: item for item in selector.scan_candidates()}[PACK_ID]
 
     assert setup["supports_all_ok"] is False
-    assert setup["risk_level"] == "low"
+    assert setup["risk_level"] == "medium"
     assert setup["compatibility"]["python"] == ">=3.9"
-    assert candidate.depends_on == [{"pack_id": "defaultspack", "version": ">=2.0.0"}]
+    assert candidate.depends_on == []
     issues = selector.validate_candidates(
-        installed_packs={"defaultspack": {"version": "2.0.0"}},
+        installed_packs={},
         platform_name="linux",
         python_version="3.11.0",
     )
@@ -130,9 +154,8 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     assert candidate.overlap_policy["prompt_lint_rubric"] == "owned_by_rumi_prompt_studio_pack"
     assert candidate.overlap_policy["fixture_dry_run_contract"] == "owned_by_rumi_prompt_studio_pack"
     assert candidate.overlap_policy["prompt_version_ledger"] == "owned_by_rumi_prompt_studio_pack"
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert set(candidate.defaultspack_promotion["promotion_blockers"]) >= {
-        "no_runtime_prompt_executor",
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert set(candidate.base_pack_promotion["promotion_blockers"]) >= {
         "prompt_preferences_are_user_specific",
         "no_model_router_owner",
         "no_memory_store_owner",
@@ -339,7 +362,11 @@ def test_pack_docs_no_secrets_and_explain_boundaries() -> None:
     ]:
         assert expected in docs
     pattern = re.compile(r"(?i)(api[_-]?key|secret|token|password)\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{12,}")
-    checked = [p for p in PACK_DIR.rglob("*") if p.is_file()] + [SETUP_PACK_JSON]
+    checked = [
+        p
+        for p in PACK_DIR.rglob("*")
+        if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc"
+    ] + [SETUP_PACK_JSON]
     assert [str(p.relative_to(ROOT)) for p in checked if pattern.search(p.read_text(encoding="utf-8"))] == []
     combined = "\n".join(p.read_text(encoding="utf-8") for p in checked)
     for phrase in ["sample user request", "reviewer_ready_plan", "Complementary owner surface"]:

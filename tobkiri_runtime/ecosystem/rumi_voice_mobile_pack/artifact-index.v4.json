@@ -1,0 +1,32 @@
+{
+  "artifact_set_digest": "sha256:a9c2930a6626fa3a5d2028291ba283e8f58306478dcfb61a527edd5fee8770f9",
+  "artifacts": [
+    {
+      "digest": "sha256:c7771a85b8b243d8826ea8cde3d668c71cbd6f53959709b6b7a3dafb1cec8754",
+      "path": "catalog/voice_mobile_workflows.yaml",
+      "role": "asset"
+    },
+    {
+      "digest": "sha256:b996d4defc15d4e67380c03ee75ae3f1623f7a552c1e87d4c7111e4ccf452798",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:00d218f2ea1d964889b08241dbb79ec4a306d7ffd8508ea7bf434e984fc543cf",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:199cc4fa6b2e1265e2c2cc52a1cc952110a8e1d11637f12111e68c05eb1d9b90",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:da453dc38d49019456ece879cbaadaf28cf6ab1ba4af8b39d1576cdac2a1e614"
+  },
+  "pack_id": "rumi_voice_mobile_pack",
+  "source_identity": "sha256:dbcc0e2a7496ae25aa4cfb95c006dbc9fcece7c7b6b53d818e5f301ec2c694e8"
+}

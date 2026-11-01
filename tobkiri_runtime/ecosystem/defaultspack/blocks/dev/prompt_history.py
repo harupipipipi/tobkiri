@@ -9,9 +9,6 @@
 どの会話でどのプロンプトが使われたかを時系列で返す。
 """
 
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from blocks._common import ok, error
 
 from domain.dev.inspector import Inspector

@@ -1,0 +1,843 @@
+{
+  "builds": {
+    "bridge-v1": {
+      "artifact_bytes": 17921530,
+      "artifact_sha256": "9beee26b1ad8229c04571eca1f22d47f9d23e1a8475324919f8c1fc4c7ea1e94",
+      "build_plan_sha256": "2cbcea74445575d81e3595f5f7011d598adef457367edffccc733fbf72af7c19",
+      "build_receipt": "builds/bridge-v1/component.build.json",
+      "build_receipt_sha256": "496d94b8a3ed9b53e97a58c8f58a17f42ea3d5d1837bb1466b039a82ae6d867a",
+      "compiler_executable_sha256": "ba5ce27a1109faeaf80d0f1fe3491f1863a3bb67db08c11845151e55cd483987",
+      "input_records": 1535,
+      "producer_trial_receipt_sha256": "8b0275c76933234f94ba950ec83a217927b5d1bdf2a3a24966ed4aaaaabdd8c3",
+      "source_manifest_sha256": "1bd4fcc804cd78a627d8e53e4f8d3300d6d9545bc41228ec962d61dac222e7d1"
+    },
+    "bridge-v2": {
+      "artifact_bytes": 17910172,
+      "artifact_sha256": "30103a20b3694622a62e50cd57cb52af791cf0936657889811562db06ad3e092",
+      "build_plan_sha256": "4028c00dd67e63c49137440f338fe1995247f9fdbb267a8d0dab7d5cb47b347e",
+      "build_receipt": "builds/bridge-v2/component.build.json",
+      "build_receipt_sha256": "01f8d3b20b5bcd46d16d1fae1265b16155237fef3ce2163c0cfa47e32c23a14d",
+      "compiler_executable_sha256": "ba5ce27a1109faeaf80d0f1fe3491f1863a3bb67db08c11845151e55cd483987",
+      "input_records": 1538,
+      "producer_trial_receipt_sha256": "8b0275c76933234f94ba950ec83a217927b5d1bdf2a3a24966ed4aaaaabdd8c3",
+      "source_manifest_sha256": "243e0040c4731b3c4cd898fca4112b3e6f861a7815656d793f354bde8772fc72"
+    },
+    "caller": {
+      "artifact_bytes": 17888679,
+      "artifact_sha256": "cb561cb9b9b85aaf1de9cb74a57ffece061bd4b8100d6030b5aabc79b2cb7fc1",
+      "build_plan_sha256": "bc03deb9d3b214f083258785f2cac52a399aaf3381b1913dea221a21fd4e69ec",
+      "build_receipt": "builds/caller/component.build.json",
+      "build_receipt_sha256": "18d900c56e25e2a5ab9d746a00f06066ebbae32cba8f0a681e6009826224f477",
+      "compiler_executable_sha256": "ba5ce27a1109faeaf80d0f1fe3491f1863a3bb67db08c11845151e55cd483987",
+      "input_records": 1537,
+      "producer_trial_receipt_sha256": "8b0275c76933234f94ba950ec83a217927b5d1bdf2a3a24966ed4aaaaabdd8c3",
+      "source_manifest_sha256": "47e0ab2a526e81f192e6fdcde6ac083d28a8f561fd54585091d06ededb657761"
+    },
+    "finalizer": {
+      "artifact_bytes": 17907206,
+      "artifact_sha256": "9f1dac995a4254f6e3c160d61ccdced2e86a0e80b7e92f2564597f3549628f5b",
+      "build_plan_sha256": "4dc41979980fa297a73983c2947defda66cf32674434b9b3e452ca8f797992d5",
+      "build_receipt": "builds/finalizer/component.build.json",
+      "build_receipt_sha256": "3e029ab3960d24589896ad2d1f69f8058cef3deabad7cd86961bb09ce2e4153b",
+      "compiler_executable_sha256": "ba5ce27a1109faeaf80d0f1fe3491f1863a3bb67db08c11845151e55cd483987",
+      "input_records": 1546,
+      "producer_trial_receipt_sha256": "8b0275c76933234f94ba950ec83a217927b5d1bdf2a3a24966ed4aaaaabdd8c3",
+      "source_manifest_sha256": "2ce3a912ceb0674fc3e54446781671784e56ad5de888d05585348620b2ff9080"
+    },
+    "stream-normalizer": {
+      "artifact_bytes": 17898872,
+      "artifact_sha256": "6cd50d3e2569c627b47a4cfa6087a4616c65d69b49b15066ea200dbafe2b7bcb",
+      "build_plan_sha256": "99d9c6b864bb5ca66f3ac93b2f32408c2d8f1c9946fe19c1b7098001053813a6",
+      "build_receipt": "builds/stream-normalizer/component.build.json",
+      "build_receipt_sha256": "fc228bb094e899aa98f397012098d7064968de1a3adb9f5ee85e2fccca5ea96d",
+      "compiler_executable_sha256": "ba5ce27a1109faeaf80d0f1fe3491f1863a3bb67db08c11845151e55cd483987",
+      "input_records": 1538,
+      "producer_trial_receipt_sha256": "8b0275c76933234f94ba950ec83a217927b5d1bdf2a3a24966ed4aaaaabdd8c3",
+      "source_manifest_sha256": "6d1930da85b850de2c4fa93f1400c2f991e32c268e235015f46493ef1ea1a8f4"
+    },
+    "usage-cost": {
+      "artifact_bytes": 17909002,
+      "artifact_sha256": "fbbd85ab37975c33bcee87eb8d3f874e693838ec39189e7a6dbc05e1b9977f90",
+      "build_plan_sha256": "ec95b29b55324381aadcd5906832072b5f1da112ad604db6b39da6b6064cbf63",
+      "build_receipt": "builds/usage-cost/component.build.json",
+      "build_receipt_sha256": "f3add80b1f71e3c3d5c336d6f8c89d63a914c6b726eb5186dba763df8c76bdc7",
+      "compiler_executable_sha256": "ba5ce27a1109faeaf80d0f1fe3491f1863a3bb67db08c11845151e55cd483987",
+      "input_records": 1538,
+      "producer_trial_receipt_sha256": "8b0275c76933234f94ba950ec83a217927b5d1bdf2a3a24966ed4aaaaabdd8c3",
+      "source_manifest_sha256": "ac7de109a66c1cc42777a7e1031641f9f1dc8d47519c7923736a75c0d0291f4a"
+    }
+  },
+  "composition": {
+    "bytes": 89516870,
+    "pins_document_sha256": "c6d2b98def2bb07c95b29ec0e0f845a47c73c747884e297b60f26bc61d0d727b",
+    "sha256": "e79b9419a9ac665f53399f4946d17b2e4330d43b5f7e5df4feb9739174d5f58e",
+    "source_observations_sha256": "5fbeda134b803617425be0befefee9be2ad6b4422dd339464353b5102f58d16f",
+    "wac_sha256": "b75d7b088261fa7aeff21451854e9c4a4d83db4ce28f6f31a2dad32612b7cdef",
+    "wac_tool_sha256": "7cd490edbd452221ef89e6750fc43eacc9b71b1242095eb577cb9a3bf0d3beda"
+  },
+  "date": "2026-10-20",
+  "failed_attempt": {
+    "build_receipt_produced": false,
+    "fix": "escape the identifier as %stream; external operation name remains stream",
+    "outcome": "bindings generation failed because stream is a reserved WIT keyword",
+    "path": "failed-attempts/finalizer-stream-keyword"
+  },
+  "files": [
+    {
+      "bytes": 4846,
+      "origin": {
+        "kind": "archive-documentation"
+      },
+      "path": "README.md",
+      "sha256": "c6f07d332a5989af242c373a67aa81ace1e62068b3250aae52049b0714c78145"
+    },
+    {
+      "bytes": 7912,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v1-work/component.build.json"
+      },
+      "path": "builds/bridge-v1/component.build.json",
+      "sha256": "496d94b8a3ed9b53e97a58c8f58a17f42ea3d5d1837bb1466b039a82ae6d867a"
+    },
+    {
+      "bytes": 5176,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v1-componentize.py"
+      },
+      "path": "builds/bridge-v1/componentize.py",
+      "sha256": "929a6f1f55674c74efe736d8bd255cf4abc8c6c3cee799d8e29117f19eac7cfa"
+    },
+    {
+      "bytes": 315447,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v1-input-inventory.json"
+      },
+      "path": "builds/bridge-v1/input-inventory.json",
+      "sha256": "2e88e69732aacc852190682c813f5850096b810bf010e12465b5cdc11a420926"
+    },
+    {
+      "bytes": 49,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v1-inputs-unchanged.json"
+      },
+      "path": "builds/bridge-v1/inputs-unchanged.json",
+      "sha256": "0f083faaade2f85533dad43c389fddb41973a84c16808e7fb3fd2f4ec73a505a"
+    },
+    {
+      "bytes": 215,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v1-work/stage/outer.wac"
+      },
+      "path": "builds/bridge-v1/outer.wac",
+      "sha256": "1a4f603a1ff80d321f45ffe86ef8857aae1d0d25591c7f4a6ee492c933380d22"
+    },
+    {
+      "bytes": 1989,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v1-inputs/plan.json"
+      },
+      "path": "builds/bridge-v1/plan.json",
+      "sha256": "2cbcea74445575d81e3595f5f7011d598adef457367edffccc733fbf72af7c19"
+    },
+    {
+      "bytes": 561,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v1-supervision.json"
+      },
+      "path": "builds/bridge-v1/supervision.json",
+      "sha256": "b6340849cfc21fb9147bc27b551ba2a5415610bc79bc1f5264fdc60843f9da18"
+    },
+    {
+      "bytes": 8535,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v2-work/component.build.json"
+      },
+      "path": "builds/bridge-v2/component.build.json",
+      "sha256": "01f8d3b20b5bcd46d16d1fae1265b16155237fef3ce2163c0cfa47e32c23a14d"
+    },
+    {
+      "bytes": 5176,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v2-componentize.py"
+      },
+      "path": "builds/bridge-v2/componentize.py",
+      "sha256": "7e3bad9e40d6786b368159cff762f7ebffc4656abf3e65306da02096f2ae09c2"
+    },
+    {
+      "bytes": 316021,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v2-input-inventory.json"
+      },
+      "path": "builds/bridge-v2/input-inventory.json",
+      "sha256": "affa23a98d24dda6908f622f8d9dd7bbc1a9cec062702e7462188b8ba69aefc8"
+    },
+    {
+      "bytes": 49,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v2-inputs-unchanged.json"
+      },
+      "path": "builds/bridge-v2/inputs-unchanged.json",
+      "sha256": "65ac17f2134d1828333526c5c31522f3494cbf50fdaeaef8a1ae49c62b39db20"
+    },
+    {
+      "bytes": 215,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v2-work/stage/outer.wac"
+      },
+      "path": "builds/bridge-v2/outer.wac",
+      "sha256": "8e73db546a94219f68debaaf5d02a767b333ddae3cabc1aed99f253d5f3595fb"
+    },
+    {
+      "bytes": 2552,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v2-inputs/plan.json"
+      },
+      "path": "builds/bridge-v2/plan.json",
+      "sha256": "4028c00dd67e63c49137440f338fe1995247f9fdbb267a8d0dab7d5cb47b347e"
+    },
+    {
+      "bytes": 562,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v2-supervision.json"
+      },
+      "path": "builds/bridge-v2/supervision.json",
+      "sha256": "b55b9072e912c6ae2caf961d9e9b5d4ffb37c95ed3806e3f2eacffc4cdb7cde0"
+    },
+    {
+      "bytes": 8451,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "caller-work/component.build.json"
+      },
+      "path": "builds/caller/component.build.json",
+      "sha256": "18d900c56e25e2a5ab9d746a00f06066ebbae32cba8f0a681e6009826224f477"
+    },
+    {
+      "bytes": 5176,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "caller-componentize.py"
+      },
+      "path": "builds/caller/componentize.py",
+      "sha256": "4ccc37b4f7da981f7ead402ce88b5f899160a5970603a2167eba001e0dd11e1f"
+    },
+    {
+      "bytes": 315848,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "caller-input-inventory.json"
+      },
+      "path": "builds/caller/input-inventory.json",
+      "sha256": "25b0095ccf866a4195943fb66ae0767864dcd51eea2d458281b78294e6d2a46f"
+    },
+    {
+      "bytes": 49,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "caller-inputs-unchanged.json"
+      },
+      "path": "builds/caller/inputs-unchanged.json",
+      "sha256": "1613337b941dca1cf50a53165298e52770f3f8fc3c6f521c4f13954bb5f67ade"
+    },
+    {
+      "bytes": 215,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "caller-work/stage/outer.wac"
+      },
+      "path": "builds/caller/outer.wac",
+      "sha256": "387f8984ba44229d6e18d8a33cbd237b234aa1cc8d7f0a0455fd6f76eaaec1c4"
+    },
+    {
+      "bytes": 2278,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "caller-inputs/plan.json"
+      },
+      "path": "builds/caller/plan.json",
+      "sha256": "bc03deb9d3b214f083258785f2cac52a399aaf3381b1913dea221a21fd4e69ec"
+    },
+    {
+      "bytes": 562,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "caller-supervision.json"
+      },
+      "path": "builds/caller/supervision.json",
+      "sha256": "d0c2c4270549c7b140d77594436432edad131e2a3a40568a41d3f067f25f784b"
+    },
+    {
+      "bytes": 9913,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "finalizer2-work/component.build.json"
+      },
+      "path": "builds/finalizer/component.build.json",
+      "sha256": "3e029ab3960d24589896ad2d1f69f8058cef3deabad7cd86961bb09ce2e4153b"
+    },
+    {
+      "bytes": 5176,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "finalizer2-componentize.py"
+      },
+      "path": "builds/finalizer/componentize.py",
+      "sha256": "5998acf68729a69b9d747d821ae0a02235e4ffd761deefa3c0c387f4fedfe57c"
+    },
+    {
+      "bytes": 317174,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "finalizer2-input-inventory.json"
+      },
+      "path": "builds/finalizer/input-inventory.json",
+      "sha256": "d8bbc499091aad52382544d8531ff4230a3abe22d8363b1148c1fa724e0c208d"
+    },
+    {
+      "bytes": 49,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "finalizer2-inputs-unchanged.json"
+      },
+      "path": "builds/finalizer/inputs-unchanged.json",
+      "sha256": "a53af12b123560828016b3fedfc1ba90cc036099c01d3e6e24ee690de6ca3a47"
+    },
+    {
+      "bytes": 216,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "finalizer2-work/stage/outer.wac"
+      },
+      "path": "builds/finalizer/outer.wac",
+      "sha256": "4b4e7a224c15e0f4fe179aff99bbb51c6de281882a888cd017f31be713b46746"
+    },
+    {
+      "bytes": 929,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "finalizer2-inputs/wit/pack.wit"
+      },
+      "path": "builds/finalizer/pack.wit",
+      "sha256": "b260bfcf0822d4bcd4006ff041625a6cca472d89cb5232c6188deff7a51ff952"
+    },
+    {
+      "bytes": 3195,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "finalizer2-inputs/plan.json"
+      },
+      "path": "builds/finalizer/plan.json",
+      "sha256": "4dc41979980fa297a73983c2947defda66cf32674434b9b3e452ca8f797992d5"
+    },
+    {
+      "bytes": 561,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "finalizer2-supervision.json"
+      },
+      "path": "builds/finalizer/supervision.json",
+      "sha256": "c9730e6d2e417c89f5af9081535c34cd745174176a63d059b4fa5177c823d02f"
+    },
+    {
+      "bytes": 8066,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "stream-work/component.build.json"
+      },
+      "path": "builds/stream-normalizer/component.build.json",
+      "sha256": "fc228bb094e899aa98f397012098d7064968de1a3adb9f5ee85e2fccca5ea96d"
+    },
+    {
+      "bytes": 5176,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "stream-componentize.py"
+      },
+      "path": "builds/stream-normalizer/componentize.py",
+      "sha256": "73745f29709323438646934e15a4aced739a8657bd360ea5a050d881b59eed1d"
+    },
+    {
+      "bytes": 315889,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "stream-input-inventory.json"
+      },
+      "path": "builds/stream-normalizer/input-inventory.json",
+      "sha256": "74b0585a25851734756bdf5ad6de94c47fcbe4b57df26d08def22e2f5b988059"
+    },
+    {
+      "bytes": 49,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "stream-inputs-unchanged.json"
+      },
+      "path": "builds/stream-normalizer/inputs-unchanged.json",
+      "sha256": "65ac17f2134d1828333526c5c31522f3494cbf50fdaeaef8a1ae49c62b39db20"
+    },
+    {
+      "bytes": 224,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "stream-work/stage/outer.wac"
+      },
+      "path": "builds/stream-normalizer/outer.wac",
+      "sha256": "172a0b09e685a445a18651086a26f23af049f5ffb30ec8c6313bc91e449679cd"
+    },
+    {
+      "bytes": 2113,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "stream-inputs/plan.json"
+      },
+      "path": "builds/stream-normalizer/plan.json",
+      "sha256": "99d9c6b864bb5ca66f3ac93b2f32408c2d8f1c9946fe19c1b7098001053813a6"
+    },
+    {
+      "bytes": 562,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "stream-supervision.json"
+      },
+      "path": "builds/stream-normalizer/supervision.json",
+      "sha256": "26ed27e64b1eb5ba7cacebaf3e18b38ec7f86f61332a621ac9699a3bc58fb95a"
+    },
+    {
+      "bytes": 7989,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "usage-work/component.build.json"
+      },
+      "path": "builds/usage-cost/component.build.json",
+      "sha256": "f3add80b1f71e3c3d5c336d6f8c89d63a914c6b726eb5186dba763df8c76bdc7"
+    },
+    {
+      "bytes": 5176,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "usage-componentize.py"
+      },
+      "path": "builds/usage-cost/componentize.py",
+      "sha256": "cfea9c83d8a224a5a8bcc9f617e65141f913e94314556e941f03b7c102f299d1"
+    },
+    {
+      "bytes": 315875,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "usage-input-inventory.json"
+      },
+      "path": "builds/usage-cost/input-inventory.json",
+      "sha256": "b2b831e2f98bba8a271ebf038fd3c1aff1d8f5a992234b9d458cbe521ddc0503"
+    },
+    {
+      "bytes": 49,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "usage-inputs-unchanged.json"
+      },
+      "path": "builds/usage-cost/inputs-unchanged.json",
+      "sha256": "65ac17f2134d1828333526c5c31522f3494cbf50fdaeaef8a1ae49c62b39db20"
+    },
+    {
+      "bytes": 210,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "usage-work/stage/outer.wac"
+      },
+      "path": "builds/usage-cost/outer.wac",
+      "sha256": "68123def56848824155e36da8f41c910fd3a35ee1ac79c756a378157bda9f86b"
+    },
+    {
+      "bytes": 2071,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "usage-inputs/plan.json"
+      },
+      "path": "builds/usage-cost/plan.json",
+      "sha256": "ec95b29b55324381aadcd5906832072b5f1da112ad604db6b39da6b6064cbf63"
+    },
+    {
+      "bytes": 562,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "usage-supervision.json"
+      },
+      "path": "builds/usage-cost/supervision.json",
+      "sha256": "8dacbc433c691d31e31538851da1b82225cbf65fe408eaba1a044edcefaecfe0"
+    },
+    {
+      "bytes": 882,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "finalizer.log"
+      },
+      "path": "failed-attempts/finalizer-stream-keyword/build.log",
+      "sha256": "436bee275033010f7ff52e51736a9035bbd7d1f03ef8c967a78f29c535052f70"
+    },
+    {
+      "bytes": 5176,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "finalizer-componentize.py"
+      },
+      "path": "failed-attempts/finalizer-stream-keyword/componentize.py",
+      "sha256": "b40f8dd8192e87f8aa34f7d08dae204ed7c9bc39755560316e11aad7abf7eac8"
+    },
+    {
+      "bytes": 317174,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "finalizer-input-inventory.json"
+      },
+      "path": "failed-attempts/finalizer-stream-keyword/input-inventory.json",
+      "sha256": "380192d8889d4e2320e766937f660262651cb74762bb385f965e9eeef36c4f19"
+    },
+    {
+      "bytes": 49,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "finalizer-inputs-unchanged.json"
+      },
+      "path": "failed-attempts/finalizer-stream-keyword/inputs-unchanged.json",
+      "sha256": "a53af12b123560828016b3fedfc1ba90cc036099c01d3e6e24ee690de6ca3a47"
+    },
+    {
+      "bytes": 928,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "finalizer-inputs/wit/pack.wit"
+      },
+      "path": "failed-attempts/finalizer-stream-keyword/pack.wit",
+      "sha256": "80e75878e1952b54723f9b324436f9a659ebea55364ddd3d26173f4e7bb325f3"
+    },
+    {
+      "bytes": 3195,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "finalizer-inputs/plan.json"
+      },
+      "path": "failed-attempts/finalizer-stream-keyword/plan.json",
+      "sha256": "6daad46142035d03fcbbfe63103090ed9d03bba270c12870b792ab48d229fd0f"
+    },
+    {
+      "bytes": 585,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "finalizer-supervision.json"
+      },
+      "path": "failed-attempts/finalizer-stream-keyword/supervision.json",
+      "sha256": "20fac3c87ee8c735941bdf1203084d58e79ba5408bd79d5d7d2eb84fe3c5c048"
+    },
+    {
+      "bytes": 454,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v1-replay.py"
+      },
+      "path": "replays/bridge-v1/driver.py",
+      "sha256": "729ec941c87168294f740f40407c7fd05fdbfd379f8ea5e2f66a1a1267725c98"
+    },
+    {
+      "bytes": 326176,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v1-replay-input-inventory.json"
+      },
+      "path": "replays/bridge-v1/input-inventory.json",
+      "sha256": "cb1983616f69952bed0591121f1c57878d67918d5c273758d87efaf0dddb0db6"
+    },
+    {
+      "bytes": 49,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v1-replay-inputs-unchanged.json"
+      },
+      "path": "replays/bridge-v1/inputs-unchanged.json",
+      "sha256": "70605290e7564118612e7f365b39c687c07f2527726481c0a10bc7d9462f590d"
+    },
+    {
+      "bytes": 13472,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v1-replay-work/replay.json"
+      },
+      "path": "replays/bridge-v1/replay.json",
+      "sha256": "c3ccfbbb66c12bc9dfe4163264e71a5739530f613ada9e6a843664de0c0280b9"
+    },
+    {
+      "bytes": 10226,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-replay-source/scripts/wasm/replay_ordered_tool_bridge.py"
+      },
+      "path": "replays/bridge-v1/runner.py",
+      "sha256": "f82c67afb9c9ce38068f5187d5ebf1697cfd0ee3b1bdf5d0830f9e3fd2e8b525"
+    },
+    {
+      "bytes": 562,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v1-replay-supervision.json"
+      },
+      "path": "replays/bridge-v1/supervision.json",
+      "sha256": "108f8138263353cc775af7b8fd042943b0b571fc6affae3f4683b7fffb8eb973"
+    },
+    {
+      "bytes": 477,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v2-replay.py"
+      },
+      "path": "replays/bridge-v2/driver.py",
+      "sha256": "63652cedd87db01d5e221ecf009e163d525a6c0db1be2dfa74b770da5b30cc07"
+    },
+    {
+      "bytes": 326750,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v2-replay-input-inventory.json"
+      },
+      "path": "replays/bridge-v2/input-inventory.json",
+      "sha256": "6765373e7274bb5c54ec6822bcc00a065b6eaf3e37e5b8479ce637c19a0e4b9d"
+    },
+    {
+      "bytes": 49,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v2-replay-inputs-unchanged.json"
+      },
+      "path": "replays/bridge-v2/inputs-unchanged.json",
+      "sha256": "1c77cdda05b76bbbeab1771e5dda14bf088c1d16b21674ca0c235c86b89555d9"
+    },
+    {
+      "bytes": 32443,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v2-replay-work/replay.json"
+      },
+      "path": "replays/bridge-v2/replay.json",
+      "sha256": "aed32357697dbb9c060057bf228d45a3b93695f91df3c8482c173afd5d6893bb"
+    },
+    {
+      "bytes": 23211,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-replay-source/scripts/wasm/replay_ordered_tool_bridge_v2.py"
+      },
+      "path": "replays/bridge-v2/runner.py",
+      "sha256": "6e1998f03ba74b5939ae57fcf6ab54e31d7aee381ae22ed007979c4ab551d4fe"
+    },
+    {
+      "bytes": 562,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-v2-replay-supervision.json"
+      },
+      "path": "replays/bridge-v2/supervision.json",
+      "sha256": "70de90ac54669e84ce9645a7f36c64598e96683ad4c814436867cfe0171cefef"
+    },
+    {
+      "bytes": 1457,
+      "origin": {
+        "kind": "exact-bytes-literal-extraction",
+        "name": "WAC_SOURCE",
+        "path": "composed-source/scripts/wasm/replay_gateway_finalizer.py",
+        "source_sha256": "ef3f90ecdb0b636f86322d62550e688b6cd5c83e044d9e923f520892a9774063"
+      },
+      "path": "replays/five-component/composition.wac",
+      "sha256": "b75d7b088261fa7aeff21451854e9c4a4d83db4ce28f6f31a2dad32612b7cdef"
+    },
+    {
+      "bytes": 748,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "composed-replay.py"
+      },
+      "path": "replays/five-component/driver.py",
+      "sha256": "35fdc7804eb1c40f8af51d987482f1c039ca17857aa41deda4ae54981742f77d"
+    },
+    {
+      "bytes": 339349,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "composed-replay-input-inventory.json"
+      },
+      "path": "replays/five-component/input-inventory.json",
+      "sha256": "0f9f9897cf1dd3ff5dc355e99e26c4c0a13d36de07ba420a185e7195ed22e4f8"
+    },
+    {
+      "bytes": 49,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "composed-replay-inputs-unchanged.json"
+      },
+      "path": "replays/five-component/inputs-unchanged.json",
+      "sha256": "97e1d875cba90e8edaf855581ba9166a4c571ff1bfb677cf067d59d161510b31"
+    },
+    {
+      "bytes": 1399,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "composed-inputs/pins.json"
+      },
+      "path": "replays/five-component/pins.json",
+      "sha256": "c6d2b98def2bb07c95b29ec0e0f845a47c73c747884e297b60f26bc61d0d727b"
+    },
+    {
+      "bytes": 95343,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "composed-replay-work/replay.json"
+      },
+      "path": "replays/five-component/replay.json",
+      "sha256": "2ae90047153df0061051f28be819e978a8c819c1b0d3ffdf4490798d9e67dd58"
+    },
+    {
+      "bytes": 34631,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "composed-source/scripts/wasm/replay_gateway_finalizer.py"
+      },
+      "path": "replays/five-component/runner.py",
+      "sha256": "ef3f90ecdb0b636f86322d62550e688b6cd5c83e044d9e923f520892a9774063"
+    },
+    {
+      "bytes": 562,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "composed-replay-supervision.json"
+      },
+      "path": "replays/five-component/supervision.json",
+      "sha256": "19c0ee6b87630f6f3b013e5f3131297add3a5b922146a00010b0a99d62c4ed48"
+    },
+    {
+      "bytes": 1746,
+      "origin": {
+        "kind": "retained-existing-repository-evidence"
+      },
+      "path": "source-rebinding.json",
+      "sha256": "672524b687f0c566f7d0c3e4eeed9e0c201985912dc28dc44979f60a63f068e9"
+    },
+    {
+      "bytes": 6199,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-replay-source-capture.json"
+      },
+      "path": "source/bridge-replay-capture.json",
+      "sha256": "3e73d79c32245d4cb1d3a1a4b6578bb70534f0b33826167c2a65ef78416f8387"
+    },
+    {
+      "bytes": 580,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-replay-source/packs/local.ai-tool-bridge-ordered-python/oracle.freeze.json"
+      },
+      "path": "source/bridge-v1.oracle.freeze.json",
+      "sha256": "be98b1b5cc6a20dda6b098c8d7e2f378497f80bcaae8ad96a6f18b18d8e40553"
+    },
+    {
+      "bytes": 20051,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-replay-source/packs/local.ai-tool-bridge-ordered-python/oracle.json"
+      },
+      "path": "source/bridge-v1.oracle.json",
+      "sha256": "9aae37387a6b0758451abe3cb6070d8a3d8106b744de053a5bc16e8715f3481d"
+    },
+    {
+      "bytes": 60331,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "bridge-replay-source/packs/local.ai-tool-bridge-ordered-python/integer-v2.observations.json"
+      },
+      "path": "source/bridge-v2.observations.json",
+      "sha256": "438dd64bc9ec1f849739556e2ab25336751022afa24a59fa19ff7e539c22daa8"
+    },
+    {
+      "bytes": 86139,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "composed-inputs/oracle.json"
+      },
+      "path": "source/finalizer.oracle.json",
+      "sha256": "5fbeda134b803617425be0befefee9be2ad6b4422dd339464353b5102f58d16f"
+    },
+    {
+      "bytes": 1583,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "composed-capture.json"
+      },
+      "path": "source/five-component-capture-summary.json",
+      "sha256": "470c5fd9ee71cb332b21362a1159e51b306c46010eceb9ba0580ef56a4c77610"
+    },
+    {
+      "bytes": 14927,
+      "origin": {
+        "kind": "exact-local-trial-copy",
+        "path": "composed-source-capture.json"
+      },
+      "path": "source/five-component-capture.json",
+      "sha256": "969853ab973238598718b847d01ea3bf7d0b08a2d11a420d8aa416e74d15d8da"
+    }
+  ],
+  "format": "tobkiri.finalization-trial-archive/1",
+  "hash_index_scope": "all archived files except this index itself; README and existing source-rebinding.json included",
+  "historical_passing_checkpoint": "92f38e3241b802605a4af59ba35aae72ee73cdbd",
+  "limitations": {
+    "all_typed_error_arms_executed": false,
+    "billing_authority_claimed": false,
+    "core_runtime_acceptance": false,
+    "full_gateway_migration_claimed": false,
+    "full_host_replay_performed": false,
+    "gate_runtime_acceptance": false,
+    "guest_import_call_counts_observed": false,
+    "live_provider_generation_acceptance": false,
+    "native_core_acceptance": false,
+    "partial_stream_mutations_observed": false,
+    "production_enabled": false,
+    "retry_parity_claimed": false
+  },
+  "replays": {
+    "bridge-v1": {
+      "case_count": 33,
+      "input_records": 1593,
+      "observed_peak_sampled_rss": 378810368,
+      "remaining_known_processes": [],
+      "report": "replays/bridge-v1/replay.json",
+      "supervised_seconds": 15.256751594999514
+    },
+    "bridge-v2": {
+      "case_count": 33,
+      "input_records": 1596,
+      "observed_peak_sampled_rss": 379228160,
+      "remaining_known_processes": [],
+      "report": "replays/bridge-v2/replay.json",
+      "supervised_seconds": 15.456310173998645
+    },
+    "five-component": {
+      "case_count": 10,
+      "input_records": 1656,
+      "observed_peak_sampled_rss": 1936957440,
+      "remaining_known_processes": [],
+      "report": "replays/five-component/replay.json",
+      "supervised_seconds": 93.66782980700009
+    }
+  },
+  "scope": "hash-verified archive of actual isolated build and development replay evidence; not new execution or native acceptance",
+  "source_rebinding_sha256": "672524b687f0c566f7d0c3e4eeed9e0c201985912dc28dc44979f60a63f068e9"
+}

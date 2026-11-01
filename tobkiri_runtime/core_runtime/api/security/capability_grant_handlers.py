@@ -60,7 +60,7 @@ class CapabilityGrantHandlersMixin:
             _log_internal_error("capability_grants_revoke", e)
             return {"success": False, "error": _SAFE_ERROR_MSG}
 
-    def _capability_grants_list(self, principal_id: str = None) -> dict:
+    def _capability_grants_list(self, principal_id: str | None = None) -> dict:
         try:
             from ...capability_grant_manager import get_capability_grant_manager
             gm = get_capability_grant_manager()

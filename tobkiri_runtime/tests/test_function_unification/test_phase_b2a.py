@@ -1,264 +1,69 @@
-"""
-test_phase_b2a.py - Phase B-2a tests
-
-Tests for _KERNEL_HANDLER_MANIFESTS dict and startup flow changes.
-"""
+"""Exact v4 ProfileLock/ResolvedPlan checks replacing handler manifests."""
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Set
 
-import pytest
-import yaml
-
-
-# ---------------------------------------------------------------------------
-# Helpers — import kernel module artefacts without booting the full Kernel
-# ---------------------------------------------------------------------------
-
-def _get_expected_handler_keys() -> frozenset:
-    """Import _EXPECTED_HANDLER_KEYS from kernel.py."""
-    from core_runtime.kernel import _EXPECTED_HANDLER_KEYS
-    return _EXPECTED_HANDLER_KEYS
+from ecosystem.defaultspack.domain.runtime_v4 import resolve_default_profile
+from tobkiri_protocol.canonical import canonical_digest
+from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
+from tests.conformance_support.packaged_profile import load_packaged_profile_catalog
+from tests.v4_batch_support import authority_bindings_for_profile
 
 
-def _get_kernel_handler_manifests() -> Dict[str, Dict[str, Any]]:
-    """Import _KERNEL_HANDLER_MANIFESTS from kernel.py."""
-    from core_runtime.kernel import _KERNEL_HANDLER_MANIFESTS
-    return _KERNEL_HANDLER_MANIFESTS
+ROOT = Path(__file__).resolve().parents[2]
+BUNDLE = ROOT / "ecosystem" / "defaultspack" / "v4"
+SNAPSHOT = "sha256:" + "9" * 64
+def _resolved():
+    catalog = load_packaged_profile_catalog()
+    approved = {str(item["pack"]["artifact_digest"]) for item in catalog.packs.values()}
+    bindings = authority_bindings_for_profile(catalog.profiles["defaults"])
+    return resolve_default_profile(
+        catalog,
+        "defaults",
+        approved_artifact_digests=approved,
+        authority_snapshot_digest=SNAPSHOT,
+        authority_bindings=bindings,
+        security_epoch=1,
+    )
 
 
-# Handler key sets — hard-coded because importing the mixin classes would
-# pull in heavy dependencies.  These sets are cross-checked with the
-# _EXPECTED_HANDLER_KEYS frozenset via test_kernel_handler_manifests_keys_match_expected.
-
-_SYSTEM_HANDLER_KEYS: Set[str] = {
-    "kernel:mounts.init",
-    "kernel:registry.load",
-    "kernel:active_ecosystem.load",
-    "kernel:interfaces.publish",
-    "kernel:ir.get",
-    "kernel:ir.call",
-    "kernel:ir.register",
-    "kernel:exec_python",
-    "kernel:ctx.set",
-    "kernel:ctx.get",
-    "kernel:ctx.copy",
-    "kernel:profile.load_all",
-    "kernel:profile.list",
-    "kernel:profile.get",
-    "kernel:profile.node_state",
-    "kernel:graph.load_all",
-    "kernel:graph.get",
-    "kernel:graph.validate",
-    "kernel:graph.compile",
-    "kernel:execute_flow",
-    "kernel:save_flow",
-    "kernel:load_flows",
-    "kernel:flow.compose",
-    "kernel:security.init",
-    "kernel:docker.check",
-    "kernel:approval.init",
-    "kernel:approval.scan",
-    "kernel:container.init",
-    "kernel:privilege.init",
-    "kernel:api.init",
-    "kernel:container.start_approved",
-    "kernel:component.discover",
-    "kernel:component.load",
-    "kernel:emit",
-    "kernel:startup.failed",
-    "kernel:vocab.load",
-    "kernel:noop",
-}
-
-_RUNTIME_HANDLER_KEYS: Set[str] = {
-    "kernel:flow.load_all",
-    "kernel:flow.execute_by_id",
-    "kernel:python_file_call",
-    "kernel:modifier.load_all",
-    "kernel:modifier.apply",
-    "kernel:network.grant",
-    "kernel:network.revoke",
-    "kernel:network.check",
-    "kernel:network.list",
-    "kernel:egress_proxy.start",
-    "kernel:egress_proxy.stop",
-    "kernel:egress_proxy.status",
-    "kernel:lib.process_all",
-    "kernel:lib.check",
-    "kernel:lib.execute",
-    "kernel:lib.clear_record",
-    "kernel:lib.list_records",
-    "kernel:audit.query",
-    "kernel:audit.summary",
-    "kernel:audit.flush",
-    "kernel:vocab.list_groups",
-    "kernel:vocab.list_converters",
-    "kernel:vocab.summary",
-    "kernel:vocab.convert",
-    "kernel:shared_dict.resolve",
-    "kernel:shared_dict.propose",
-    "kernel:shared_dict.explain",
-    "kernel:shared_dict.list",
-    "kernel:shared_dict.remove",
-    "kernel:uds_proxy.init",
-    "kernel:uds_proxy.ensure_socket",
-    "kernel:uds_proxy.stop",
-    "kernel:uds_proxy.stop_all",
-    "kernel:uds_proxy.status",
-    "kernel:capability_proxy.init",
-    "kernel:capability_proxy.status",
-    "kernel:capability_proxy.stop_all",
-    "kernel:capability.grant",
-    "kernel:capability.revoke",
-    "kernel:capability.list",
-    "kernel:pending.export",
-}
+def test_resolved_plan_has_exact_profile_and_lock_digests() -> None:
+    resolved = _resolved()
+    assert resolved.profile["state"] == "resolved"
+    assert resolved.lock["profile_revision"] == canonical_digest(resolved.profile)
+    assert resolved.lock["plan_digest"] == resolved.plan["plan_digest"]
 
 
-def _load_startup_flow() -> Dict[str, Any]:
-    """Load 00_startup.flow.yaml and return parsed dict."""
-    candidates = [
-        Path(__file__).resolve().parent.parent.parent / "flows" / "00_startup.flow.yaml",
-        Path("tobkiri_runtime/flows/00_startup.flow.yaml"),
-        Path("flows/00_startup.flow.yaml"),
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            with open(candidate, "r", encoding="utf-8") as f:
-                return yaml.safe_load(f)
-    pytest.skip("00_startup.flow.yaml not found")
+def test_resolved_plan_has_one_binding_per_selected_function() -> None:
+    resolved = _resolved()
+    assert len(resolved.plan["bindings"]) == len(resolved.profile["requested_edges"])
+    expected_function_ids = {
+        str(edge["target_provider_id"])
+        for edge in resolved.profile["requested_edges"]
+    }
+    assert {
+        item["function_principal"]["function_id"]
+        for item in resolved.plan["bindings"]
+    } == expected_function_ids
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
+def test_resolved_plan_binds_exact_authority_references() -> None:
+    resolved = _resolved()
+    bindings = authority_bindings_for_profile(
+        load_packaged_profile_catalog().profiles["defaults"]
+    )
+    assert set(resolved.profile["authority_references"]) == set(bindings.values())
+    assert {edge["authority_reference"] for edge in resolved.profile["requested_edges"]} == set(
+        bindings.values()
+    )
 
 
-class TestKernelHandlerManifests:
-    """Phase B-2a: _KERNEL_HANDLER_MANIFESTS tests."""
-
-    def test_kernel_handler_manifests_keys_match_expected(self) -> None:
-        """_KERNEL_HANDLER_MANIFESTS のキーセットが _EXPECTED_HANDLER_KEYS と完全一致すること"""
-        expected = _get_expected_handler_keys()
-        manifests = _get_kernel_handler_manifests()
-        manifest_keys = set(manifests.keys())
-
-        missing_from_manifests = expected - manifest_keys
-        extra_in_manifests = manifest_keys - expected
-
-        assert not missing_from_manifests, (
-            f"Keys in _EXPECTED_HANDLER_KEYS but missing from "
-            f"_KERNEL_HANDLER_MANIFESTS: {sorted(missing_from_manifests)}"
-        )
-        assert not extra_in_manifests, (
-            f"Keys in _KERNEL_HANDLER_MANIFESTS but not in "
-            f"_EXPECTED_HANDLER_KEYS: {sorted(extra_in_manifests)}"
-        )
-
-    def test_kernel_handler_manifests_all_have_description(self) -> None:
-        """全エントリに非空の description があること"""
-        manifests = _get_kernel_handler_manifests()
-        for key, manifest in manifests.items():
-            assert "description" in manifest, (
-                f"Manifest for '{key}' is missing 'description' field"
-            )
-            assert isinstance(manifest["description"], str), (
-                f"Manifest for '{key}' has non-string description: "
-                f"{type(manifest['description'])}"
-            )
-            assert manifest["description"].strip(), (
-                f"Manifest for '{key}' has empty description"
-            )
-
-    def test_kernel_handler_manifests_all_have_tags(self) -> None:
-        """全エントリに非空の tags リストがあること"""
-        manifests = _get_kernel_handler_manifests()
-        for key, manifest in manifests.items():
-            assert "tags" in manifest, (
-                f"Manifest for '{key}' is missing 'tags' field"
-            )
-            assert isinstance(manifest["tags"], list), (
-                f"Manifest for '{key}' has non-list tags: "
-                f"{type(manifest['tags'])}"
-            )
-            assert len(manifest["tags"]) > 0, (
-                f"Manifest for '{key}' has empty tags list"
-            )
-
-    def test_kernel_handler_manifests_tags_include_kernel(self) -> None:
-        """全エントリの tags に 'kernel' が含まれること"""
-        manifests = _get_kernel_handler_manifests()
-        for key, manifest in manifests.items():
-            assert "kernel" in manifest["tags"], (
-                f"Manifest for '{key}' does not have 'kernel' tag. "
-                f"Tags: {manifest['tags']}"
-            )
-
-    def test_kernel_handler_manifests_count(self) -> None:
-        """エントリ数が 85 であること"""
-        manifests = _get_kernel_handler_manifests()
-        assert len(manifests) == 85, (
-            f"Expected 85 manifests, got {len(manifests)}"
-        )
-
-    def test_kernel_handler_manifests_system_tags(self) -> None:
-        """system ハンドラの tags に 'system' が含まれること"""
-        manifests = _get_kernel_handler_manifests()
-        for key in _SYSTEM_HANDLER_KEYS:
-            assert key in manifests, (
-                f"System handler '{key}' not found in manifests"
-            )
-            assert "system" in manifests[key]["tags"], (
-                f"System handler '{key}' does not have 'system' tag. "
-                f"Tags: {manifests[key]['tags']}"
-            )
-
-    def test_kernel_handler_manifests_runtime_tags(self) -> None:
-        """runtime ハンドラの tags に 'runtime' が含まれること"""
-        manifests = _get_kernel_handler_manifests()
-        for key in _RUNTIME_HANDLER_KEYS:
-            assert key in manifests, (
-                f"Runtime handler '{key}' not found in manifests"
-            )
-            assert "runtime" in manifests[key]["tags"], (
-                f"Runtime handler '{key}' does not have 'runtime' tag. "
-                f"Tags: {manifests[key]['tags']}"
-            )
+def test_profile_resolver_denies_missing_authority_reference() -> None:
+    assert_profile_resolver_requires_authority_snapshot()
 
 
-class TestStartupFlowFunctionRegistryStep:
-    """Phase B-2a: 00_startup.flow.yaml kernel_functions_register step tests."""
-
-    def test_startup_flow_has_function_registry_load_step(self) -> None:
-        """00_startup.flow.yaml に kernel_functions_register step が存在すること"""
-        flow = _load_startup_flow()
-        steps = flow.get("steps", [])
-        step_ids = [s.get("id") for s in steps]
-        assert "kernel_functions_register" in step_ids, (
-            f"Step 'kernel_functions_register' not found in startup flow. "
-            f"Found steps: {step_ids}"
-        )
-
-    def test_startup_flow_function_registry_load_priority(self) -> None:
-        """function_registry_load step の priority が 15 であること"""
-        flow = _load_startup_flow()
-        steps = flow.get("steps", [])
-        target_step = None
-        for step in steps:
-            if step.get("id") == "kernel_functions_register":
-                target_step = step
-                break
-        assert target_step is not None, (
-            "Step 'kernel_functions_register' not found in startup flow"
-        )
-        assert target_step.get("priority") == 15, (
-            f"Expected priority 15 for kernel_functions_register, "
-            f"got {target_step.get('priority')}"
-        )
-        assert target_step.get("phase") == "ecosystem", (
-            f"Expected phase 'ecosystem' for function_registry_load, "
-            f"got {target_step.get('phase')}"
-        )
+def test_profile_and_lock_are_immutable_snapshots() -> None:
+    resolved = _resolved()
+    assert resolved.profile["profile_authority_snapshot_digest"] == SNAPSHOT
+    assert resolved.lock["security_epoch"] == 1

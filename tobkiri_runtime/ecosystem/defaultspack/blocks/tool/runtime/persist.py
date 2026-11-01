@@ -7,10 +7,6 @@ input_data:
   nameまたはnamesのどちらかが必須。
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from blocks._common import ok, error
 
@@ -32,7 +28,6 @@ def run(input_data, context):
     if not isinstance(names, list) or len(names) == 0:
         return error("names must be a non-empty list", "INVALID_PARAM")
 
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
     from domain.tool.runtime_creator import RuntimeToolCreator
 
     creator = RuntimeToolCreator()

@@ -1,0 +1,528 @@
+//! Physical authority domains and permanent allocation-owner locks.
+//!
+//! `flock` follows an open file description: cloning a lease retains the same
+//! lock, and closing an unrelated open descriptor does not release it. We never
+//! use a mutable slot pathname or explicitly unlock the directory inode. The final strong lease drop is
+//! the cleanup boundary; it must occur only after all charged storage is gone.
+use crate::{DataRoot, StoreError};
+use std::{cmp::Ordering, fmt, sync::Arc};
+use tobkiri_canon::Digest;
+use tobkiri_canon::ids::{PackId, ProfileId};
+#[cfg(unix)]
+use tobkiri_gate::ControlKind;
+use tobkiri_gate::{AllocationOwnerLease, CapacityOwner, ControlReservation, CoreControl};
+
+#[cfg(test)]
+#[path = "native_setup_owner_tests.rs"]
+mod native_setup_owner_tests;
+
+/// Opaque physical root identity. Its directory descriptor stays open while any
+/// registry key or owner lease retains it, including after a directory rename.
+#[derive(Clone)]
+pub struct DataRootIdentity {
+    device: u64,
+    inode: u64,
+    #[cfg(unix)]
+    directory: Arc<std::fs::File>,
+}
+impl fmt::Debug for DataRootIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DataRootIdentity")
+            .field("device", &self.device)
+            .field("inode", &self.inode)
+            .finish()
+    }
+}
+impl PartialEq for DataRootIdentity {
+    fn eq(&self, other: &Self) -> bool {
+        (self.device, self.inode) == (other.device, other.inode)
+    }
+}
+impl Eq for DataRootIdentity {}
+impl PartialOrd for DataRootIdentity {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for DataRootIdentity {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (self.device, self.inode).cmp(&(other.device, other.inode))
+    }
+}
+
+struct HeldOwner {
+    identity: DataRootIdentity,
+    owner: CapacityOwner,
+    domain: Digest,
+    process: u32,
+    #[cfg(unix)]
+    _root_lock: Arc<unix::HeldRoot>,
+}
+/// Strong proof of a real exclusive OS lock, with no public constructor. Retain
+/// it through allocations, outputs, asynchronous I/O and unknown cleanup.
+#[derive(Clone)]
+pub struct OwnerLease(Arc<HeldOwner>);
+
+struct HeldNativeSetupOwner {
+    identity: DataRootIdentity,
+    domain: Digest,
+    process: u32,
+    #[cfg(unix)]
+    _root_lock: Arc<unix::HeldRoot>,
+    _control: ControlReservation,
+}
+
+/// Physical root custody for native Setup DATA before a Profile exists.
+/// This carries no Profile, principal, storage permission or Gate authority.
+/// The real root lock and its original metadata funding survive all clones.
+#[derive(Clone)]
+pub struct NativeSetupOwnerLease(Arc<HeldNativeSetupOwner>);
+impl fmt::Debug for NativeSetupOwnerLease {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NativeSetupOwnerLease")
+            .field("identity", self.identity())
+            .finish()
+    }
+}
+impl NativeSetupOwnerLease {
+    #[cfg(target_os = "macos")]
+    pub(crate) fn directory(&self) -> &std::fs::File {
+        &self.0.identity.directory
+    }
+
+    /// The descriptor-pinned identity, including after a root rename.
+    pub fn identity(&self) -> &DataRootIdentity {
+        &self.0.identity
+    }
+    /// Physical domain identity only; this never grants execution permission.
+    pub fn allocation_domain(&self) -> &Digest {
+        &self.0.domain
+    }
+    /// Reject an inherited proof before touching a process-local mutex.
+    pub fn check_live(&self) -> Result<(), StoreError> {
+        if self.0.process != std::process::id() {
+            return Err(StoreError::Unavailable(
+                "inherited native Setup allocation proof".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+impl tobkiri_gate::NativeSetupLease for NativeSetupOwnerLease {
+    fn validate(&self) -> Result<(), tobkiri_gate::GateError> {
+        self.check_live()
+            .map_err(|_| tobkiri_gate::GateError::Unavailable)
+    }
+    fn allocation_domain(&self) -> Digest {
+        NativeSetupOwnerLease::allocation_domain(self).clone()
+    }
+}
+impl fmt::Debug for OwnerLease {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OwnerLease")
+            .field("identity", self.identity())
+            .field("profile", self.profile())
+            .field("pack", &self.pack())
+            .finish()
+    }
+}
+impl OwnerLease {
+    pub fn identity(&self) -> &DataRootIdentity {
+        &self.0.identity
+    }
+    pub fn profile(&self) -> &ProfileId {
+        self.0.owner.profile()
+    }
+    pub fn pack(&self) -> Option<&PackId> {
+        self.0.owner.pack()
+    }
+    pub fn check_live(&self) -> Result<(), StoreError> {
+        if self.0.process != std::process::id() {
+            return Err(StoreError::Unavailable(
+                "inherited allocation owner proof".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+impl AllocationOwnerLease for OwnerLease {
+    fn validate(&self) -> Result<(), tobkiri_gate::GateError> {
+        if self.0.process != std::process::id() {
+            return Err(tobkiri_gate::GateError::Unavailable);
+        }
+        Ok(())
+    }
+    fn owner(&self) -> &CapacityOwner {
+        &self.0.owner
+    }
+    fn allocation_domain(&self) -> Digest {
+        self.0.domain.clone()
+    }
+}
+
+impl DataRoot {
+    /// Share the existing exclusive physical root lock for native Setup DATA.
+    /// This is a custody prerequisite, not a payload account or a Pack grant.
+    /// It does not open an approval, create a Profile, or run a component.
+    pub fn native_setup_owner_lease(
+        &self,
+        control: &CoreControl,
+    ) -> Result<NativeSetupOwnerLease, StoreError> {
+        #[cfg(unix)]
+        {
+            unix::acquire_native_setup(self.identity()?, control)
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = control;
+            Err(StoreError::Unavailable(
+                "native Setup owner locks unsupported".into(),
+            ))
+        }
+    }
+
+    /// Validate the actual pinned native storage root without acquiring an
+    /// allocation-owner lock or granting any storage authority.
+    pub(crate) fn validate_native_data_root(&self) -> Result<(), StoreError> {
+        #[cfg(unix)]
+        {
+            unix::validate_root(&self.identity()?)
+        }
+        #[cfg(not(unix))]
+        {
+            Err(StoreError::Unavailable(
+                "native storage root proof unsupported".into(),
+            ))
+        }
+    }
+
+    pub fn identity(&self) -> Result<DataRootIdentity, StoreError> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let directory = self.directory_capability();
+            let metadata = directory.metadata()?;
+            if !metadata.is_dir() {
+                return Err(StoreError::Denied(
+                    "root capability is not a directory".into(),
+                ));
+            }
+            Ok(DataRootIdentity {
+                device: metadata.dev(),
+                inode: metadata.ino(),
+                directory,
+            })
+        }
+        #[cfg(not(unix))]
+        {
+            Err(StoreError::Unavailable(
+                "physical root identity unsupported".into(),
+            ))
+        }
+    }
+
+    /// Acquire/share a stable owner's exclusive allocation domain. This is
+    /// separate from short metadata/CAS locks and never uses expiry or PID takeover.
+    pub fn owner_lease(
+        &self,
+        profile: &ProfileId,
+        pack: &PackId,
+    ) -> Result<OwnerLease, StoreError> {
+        #[cfg(unix)]
+        {
+            unix::acquire(
+                self.identity()?,
+                CapacityOwner::Pack {
+                    profile: profile.clone(),
+                    pack: pack.clone(),
+                },
+            )
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (profile, pack);
+            Err(StoreError::Unavailable(
+                "allocation owner locks unsupported".into(),
+            ))
+        }
+    }
+    /// Established User account: one stable domain per Profile. This is only an
+    /// OS lease; Gate must independently verify explicit current User funding.
+    pub fn user_owner_lease(&self, profile: &ProfileId) -> Result<OwnerLease, StoreError> {
+        #[cfg(unix)]
+        {
+            unix::acquire(
+                self.identity()?,
+                CapacityOwner::User {
+                    profile: profile.clone(),
+                },
+            )
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = profile;
+            Err(StoreError::Unavailable(
+                "allocation owner locks unsupported".into(),
+            ))
+        }
+    }
+}
+
+#[cfg(unix)]
+mod unix {
+    use super::*;
+    use std::{
+        collections::BTreeMap,
+        fs::File,
+        os::{
+            fd::{AsRawFd, FromRawFd},
+            unix::fs::MetadataExt,
+        },
+        sync::{Mutex, OnceLock, Weak},
+    };
+    const MAX_LIVE_OWNERS: usize = 4096;
+    type RootKey = (u32, u64, u64);
+    type OwnerKey = (RootKey, CapacityOwner);
+    pub(super) struct HeldRoot {
+        _file: File,
+    }
+    #[derive(Default)]
+    struct Registry {
+        roots: BTreeMap<RootKey, Weak<HeldRoot>>,
+        owners: BTreeMap<OwnerKey, Weak<HeldOwner>>,
+        native_setup: BTreeMap<RootKey, Weak<HeldNativeSetupOwner>>,
+        // Weak blocks and map nodes outlive a strong owner. Their bounded
+        // broker storage stays prepaid for the registry's actual lifetime.
+        _native_setup_metadata: Option<ControlReservation>,
+    }
+    static REGISTRY: OnceLock<Mutex<Registry>> = OnceLock::new();
+    static PROCESS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    fn private_directory(metadata: &std::fs::Metadata) -> Result<(), StoreError> {
+        if metadata.uid() != unsafe { libc::geteuid() }
+            || metadata.mode() & 0o077 != 0
+            || !metadata.is_dir()
+        {
+            return Err(StoreError::Denied(
+                "allocation root inode is not private".into(),
+            ));
+        }
+        Ok(())
+    }
+    /// Restrict the broker to the APFS/Darwin combination under verification.
+    /// Other combinations remain unavailable pending their platform proofs.
+    fn supported_filesystem(file: &File) -> Result<(), StoreError> {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            let mut filesystem = std::mem::MaybeUninit::<libc::statfs>::uninit();
+            if unsafe { libc::fstatfs(file.as_raw_fd(), filesystem.as_mut_ptr()) } != 0 {
+                return Err(std::io::Error::last_os_error().into());
+            }
+            let filesystem = unsafe { filesystem.assume_init() };
+            let name = unsafe { std::ffi::CStr::from_ptr(filesystem.f_fstypename.as_ptr()) };
+            let mut system = std::mem::MaybeUninit::<libc::utsname>::uninit();
+            if unsafe { libc::uname(system.as_mut_ptr()) } != 0 {
+                return Err(std::io::Error::last_os_error().into());
+            }
+            let system = unsafe { system.assume_init() };
+            let release = unsafe { std::ffi::CStr::from_ptr(system.release.as_ptr()) };
+            if name.to_bytes() != b"apfs"
+                || filesystem.f_flags & libc::MNT_LOCAL as u32 == 0
+                || release.to_bytes() != b"24.6.0"
+            {
+                return Err(StoreError::Unavailable(
+                    "allocation owner OS/filesystem proof unavailable".into(),
+                ));
+            }
+            Ok(())
+        }
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        {
+            let _ = file;
+            Err(StoreError::Unavailable(
+                "allocation owner OS/filesystem proof unavailable".into(),
+            ))
+        }
+    }
+    pub(super) fn validate_root(identity: &DataRootIdentity) -> Result<(), StoreError> {
+        private_directory(&identity.directory.metadata()?)?;
+        supported_filesystem(&identity.directory)
+    }
+    fn acquire_root(
+        identity: &DataRootIdentity,
+        registry: &mut Registry,
+        root_key: RootKey,
+    ) -> Result<Arc<HeldRoot>, StoreError> {
+        let root_lock = if let Some(held) = registry.roots.get(&root_key).and_then(Weak::upgrade) {
+            held
+        } else {
+            // One conservative collision slot is the physical directory inode
+            // itself. Mutable slot files cannot provide this replacement proof.
+            // Different owners in this process share the lock; every other
+            // process's allocation admission for this root is denied while any
+            // owner has charged storage. Metadata/CAS operations remain allowed.
+            let fd = unsafe {
+                libc::openat(
+                    identity.directory.as_raw_fd(),
+                    c".".as_ptr(),
+                    libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                )
+            };
+            if fd < 0 {
+                return Err(std::io::Error::last_os_error().into());
+            }
+            let file = unsafe { File::from_raw_fd(fd) };
+            let metadata = file.metadata()?;
+            private_directory(&metadata)?;
+            if metadata.dev() != identity.device || metadata.ino() != identity.inode {
+                return Err(StoreError::Conflict("allocation root inode changed".into()));
+            }
+            if unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+                let error = std::io::Error::last_os_error();
+                return if error.kind() == std::io::ErrorKind::WouldBlock {
+                    Err(StoreError::Conflict(
+                        "allocation root is already held".into(),
+                    ))
+                } else {
+                    Err(StoreError::Unavailable(format!(
+                        "physical directory locking unsupported: {error}"
+                    )))
+                };
+            }
+            let held = Arc::new(HeldRoot { _file: file });
+            registry.roots.insert(root_key, Arc::downgrade(&held));
+            held
+        };
+        Ok(root_lock)
+    }
+
+    pub(super) fn acquire_native_setup(
+        identity: DataRootIdentity,
+        control: &CoreControl,
+    ) -> Result<NativeSetupOwnerLease, StoreError> {
+        let process = std::process::id();
+        match PROCESS.compare_exchange(
+            0,
+            process,
+            std::sync::atomic::Ordering::AcqRel,
+            std::sync::atomic::Ordering::Acquire,
+        ) {
+            Ok(_) => (),
+            Err(original) if original == process => (),
+            Err(_) => {
+                return Err(StoreError::Unavailable(
+                    "inherited allocation broker requires exec".into(),
+                ));
+            }
+        }
+        validate_root(&identity)?;
+        let root_key = (process, identity.device, identity.inode);
+        let mut registry = REGISTRY
+            .get_or_init(Default::default)
+            .lock()
+            .map_err(|_| StoreError::Unavailable("allocation owner registry poisoned".into()))?;
+        registry.owners.retain(|_, lease| lease.strong_count() != 0);
+        registry
+            .native_setup
+            .retain(|_, lease| lease.strong_count() != 0);
+        registry.roots.retain(|_, lease| lease.strong_count() != 0);
+        if let Some(held) = registry.native_setup.get(&root_key).and_then(Weak::upgrade) {
+            return Ok(NativeSetupOwnerLease(held));
+        }
+        if registry.owners.len() + registry.native_setup.len() >= MAX_LIVE_OWNERS
+            || registry.roots.len() >= MAX_LIVE_OWNERS
+        {
+            return Err(StoreError::Quota);
+        }
+        // Prepay every possible native slot, weak allocation and root-map slack
+        // before construction. The permanent registry owns this permit: a last
+        // strong lease drop does NOT free its retained Weak/map storage. Reuse
+        // and pruning never create another pool or refund live bookkeeping.
+        let metadata = if registry._native_setup_metadata.is_none() {
+            Some(
+                control
+                    .reserve(ControlKind::Registration, MAX_LIVE_OWNERS as u64 * 4096)
+                    .map_err(|_| StoreError::Quota)?,
+            )
+        } else {
+            None
+        };
+        // A separately funded live owner slot remains in its original account.
+        // Large guest/payload bytes are NOT paid from either control permit;
+        // their separate native account is still needed.
+        let reservation = control
+            .reserve(ControlKind::Registration, 4096)
+            .map_err(|_| StoreError::Quota)?;
+        let root_lock = acquire_root(&identity, &mut registry, root_key)?;
+        let mut domain = Vec::from(b"tobkiri.physical-root/1".as_slice());
+        domain.extend(identity.device.to_be_bytes());
+        domain.extend(identity.inode.to_be_bytes());
+        let held = Arc::new(HeldNativeSetupOwner {
+            identity,
+            domain: Digest::hash(&domain),
+            process,
+            _root_lock: root_lock,
+            _control: reservation,
+        });
+        registry
+            .native_setup
+            .insert(root_key, Arc::downgrade(&held));
+        if let Some(metadata) = metadata {
+            registry._native_setup_metadata = Some(metadata);
+        }
+        Ok(NativeSetupOwnerLease(held))
+    }
+
+    pub(super) fn acquire(
+        identity: DataRootIdentity,
+        owner: CapacityOwner,
+    ) -> Result<OwnerLease, StoreError> {
+        let process = std::process::id();
+        match PROCESS.compare_exchange(
+            0,
+            process,
+            std::sync::atomic::Ordering::AcqRel,
+            std::sync::atomic::Ordering::Acquire,
+        ) {
+            Ok(_) => (),
+            Err(original) if original == process => (),
+            Err(_) => {
+                return Err(StoreError::Unavailable(
+                    "inherited allocation broker requires exec".into(),
+                ));
+            }
+        }
+        validate_root(&identity)?;
+        let root_key = (std::process::id(), identity.device, identity.inode);
+        let key = (root_key, owner.clone());
+        let mut registry = REGISTRY
+            .get_or_init(Default::default)
+            .lock()
+            .map_err(|_| StoreError::Unavailable("allocation owner registry poisoned".into()))?;
+        registry.owners.retain(|_, lease| lease.strong_count() != 0);
+        registry
+            .native_setup
+            .retain(|_, lease| lease.strong_count() != 0);
+        registry.roots.retain(|_, lease| lease.strong_count() != 0);
+        if let Some(held) = registry.owners.get(&key).and_then(Weak::upgrade) {
+            return Ok(OwnerLease(held));
+        }
+        if registry.owners.len() + registry.native_setup.len() >= MAX_LIVE_OWNERS
+            || registry.roots.len() >= MAX_LIVE_OWNERS
+        {
+            return Err(StoreError::Quota);
+        }
+        let root_lock = acquire_root(&identity, &mut registry, root_key)?;
+        let mut domain = Vec::from(b"tobkiri.physical-root/1".as_slice());
+        domain.extend(identity.device.to_be_bytes());
+        domain.extend(identity.inode.to_be_bytes());
+        let held = Arc::new(HeldOwner {
+            domain: Digest::hash(&domain),
+            identity,
+            owner,
+            process,
+            _root_lock: root_lock,
+        });
+        registry.owners.insert(key, Arc::downgrade(&held));
+        Ok(OwnerLease(held))
+    }
+}

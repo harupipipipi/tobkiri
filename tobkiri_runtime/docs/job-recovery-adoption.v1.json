@@ -1,0 +1,42 @@
+{
+  "schema": "tobkiri.job-recovery-adoption.v1",
+  "baseline": "2f9e4f015",
+  "source_only": true,
+  "wire_changes": [],
+  "source_artifact_additions": [
+    {
+      "pack_id": "rumi_job_action_broker_pack",
+      "path": "runtime/dispatch_envelope.py",
+      "kind": "runtime",
+      "implementation_entrypoint": "runtime/broker.py",
+      "reason": "Finite immutable dispatch envelope validation; no new function or authority"
+    }
+  ],
+  "source_refresh": [
+    "rumi_job_action_broker_pack/runtime/broker.py",
+    "rumi_scheduler_runtime_pack/runtime/scheduler.py",
+    "tobkiri_agent_control_pack/runtime/service.py",
+    "tobkiri_agent_control_pack/runtime/workflow.py",
+    "tobkiri_agent_control_pack/runtime/schedules.py"
+  ],
+  "preserve": [
+    "tobkiri.action.job.v1 1.0.0",
+    "tobkiri.action.job.adapter.v2 2.0.0",
+    "Existing functions, operation schemas, declared capabilities and exact Profile edges",
+    "Legacy adapter v1 compatibility mode",
+    "Canonical saved-input acceptance before Inbox acknowledgement",
+    "Historical migration evidence and real UserData"
+  ],
+  "generation_recipe": [
+    "Regenerate tobkiri_agent_control_pack/pack-source.v1.json with its source_record.py",
+    "Adopt the helper as a runtime artifact in the job owner source catalog and compatibility artifact manifest",
+    "Run the current canonical executable source registry and executable catalog generators",
+    "Run the current v4 bundle/profile generators and pack artifact migration generators",
+    "Keep generated/manifest refresh in a separate commit from source changes"
+  ],
+  "acceptance_limits": [
+    "Injected clock tests do not prove an actual 600-second native wake",
+    "Workflow test Authority/model substitutes do not prove production Workflow admission",
+    "Native saved_complete PackVM execution and GUI remain unverified"
+  ]
+}

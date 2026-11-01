@@ -1,8 +1,5 @@
 """ContextManager — manages context window size via compression."""
 
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 
 class ContextManager:

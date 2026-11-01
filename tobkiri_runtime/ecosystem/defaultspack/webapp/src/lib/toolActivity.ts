@@ -311,6 +311,10 @@ function summarizeToolResult(toolName: string, result: unknown): string {
   const record = result as Record<string, unknown>;
   const data = normalizedToolResultData(record);
   const lowerName = toolName.toLowerCase();
+  if (data.status === "error" && data.error) {
+    const error = isRecord(data.error) ? pickString(data.error, ["message", "code"]) : compact(data.error, 120);
+    if (error) return error;
+  }
   if (lowerName.startsWith("sandbox_")) {
     const diffSummary = pickString(data, ["diff_summary"]);
     if (diffSummary) return diffSummary;
@@ -430,6 +434,15 @@ function collectArtifacts(value: unknown, conversationId?: string, artifacts: To
     if (isRecord(item) || Array.isArray(item)) collectArtifacts(item, conversationId, artifacts, seen);
   }
   return artifacts;
+}
+
+/** Decodes canonical saved-tool JSON for display without changing the stored log. */
+function savedToolLogForDisplay(log: ToolLogEntry): ToolLogEntry {
+  if (typeof log.result !== "string") return log;
+  const result = parseJsonRecord(log.result);
+  return result && ["success", "error"].includes(String(result.status))
+    && Object.prototype.hasOwnProperty.call(result, "result") && Object.prototype.hasOwnProperty.call(result, "error")
+    ? { ...log, result } : log;
 }
 
 function statusForLog(log: ToolLogEntry): ToolActivityStatus {
@@ -957,7 +970,8 @@ export function buildToolActivityItems(
     calls.set(key, existing);
   });
 
-  toolLogs.forEach((log, index) => {
+  toolLogs.forEach((storedLog, index) => {
+    const log = savedToolLogForDisplay(storedLog);
     if (typeof log.tool_name !== "string" || !log.tool_name.trim()) return;
     const key = logKey(log);
     const existing = calls.get(key) ?? { key, orderIndex: events.length + index };

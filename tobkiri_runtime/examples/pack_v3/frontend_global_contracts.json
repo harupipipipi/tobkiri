@@ -1,0 +1,67 @@
+[
+  {
+    "id": "rumi.ui.route.module.v1",
+    "version": "1.0.0",
+    "cardinality": "many",
+    "security": "public",
+    "failure": "isolate",
+    "lifecycle": {"introduced": "1.0.0", "deprecated": false}
+  },
+  {
+    "id": "rumi.ui.renderer.module.v1",
+    "version": "1.0.0",
+    "cardinality": "many",
+    "security": "public",
+    "failure": "isolate",
+    "lifecycle": {"introduced": "1.0.0", "deprecated": false}
+  },
+  {
+    "id": "rumi.ui.shell.region.v1",
+    "version": "1.0.0",
+    "cardinality": "many",
+    "security": "public",
+    "failure": "isolate",
+    "lifecycle": {"introduced": "1.0.0", "deprecated": false}
+  },
+  {
+    "id": "rumi.ui.action.binding.v1",
+    "version": "1.0.0",
+    "cardinality": "many",
+    "security": "internal",
+    "failure": "fail_closed",
+    "lifecycle": {"introduced": "1.0.0", "deprecated": false}
+  },
+  {
+    "id": "rumi.ui.data_source.binding.v1",
+    "version": "1.0.0",
+    "cardinality": "many",
+    "security": "internal",
+    "failure": "isolate",
+    "lifecycle": {"introduced": "1.0.0", "deprecated": false}
+  },
+  {
+    "id": "rumi.ui.settings.section.v1",
+    "version": "1.0.0",
+    "cardinality": "many",
+    "security": "internal",
+    "failure": "isolate",
+    "lifecycle": {"introduced": "1.0.0", "deprecated": false}
+  },
+  {
+    "id": "rumi.ui.command.v1",
+    "version": "1.0.0",
+    "cardinality": "many",
+    "security": "internal",
+    "failure": "isolate",
+    "lifecycle": {"introduced": "1.0.0", "deprecated": false}
+  },
+  {
+    "id": "rumi.ui.design_tokens.v1",
+    "version": "1.0.0",
+    "cardinality": "chain",
+    "security": "public",
+    "failure": "continue_chain",
+    "lifecycle": {"introduced": "1.0.0", "deprecated": false}
+  }
+]
+

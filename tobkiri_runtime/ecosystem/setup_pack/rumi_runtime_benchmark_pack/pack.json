@@ -21,7 +21,7 @@
     "release_gate_reporting": "handoff_to_rumi_devops_release_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Runtime benchmarking is an optional measurement overlay; defaultspack remains the runtime and execution owner.",
     "promotion_blockers": [

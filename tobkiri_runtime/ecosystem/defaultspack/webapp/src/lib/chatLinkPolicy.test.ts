@@ -1,15 +1,35 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { defaultspackCanonicalRouteKey } from "./api";
 import { classifyChatLink, openChatLink } from "./chatLinkPolicy";
 
-const ORIGIN = "http://127.0.0.1:38766";
+const ORIGIN = "http://127.0.0.1:38766/p/profile-a/chat";
 
-test("internal Rumi routes are normalized and allowed", () => {
+test("internal screen routes retain the active Runtime Profile identity", () => {
   assert.deepEqual(classifyChatLink("/settings?tab=tools#top", "Settings", ORIGIN), {
     kind: "internal", allowed: true, requiresStrongConfirmation: false,
-    normalizedUrl: "/settings?tab=tools#top", host: "127.0.0.1", textMismatch: false,
+    normalizedUrl: "/p/profile-a/settings?tab=tools#top", host: "127.0.0.1", textMismatch: false,
   });
+  assert.equal(
+    classifyChatLink("/p/profile-a/coding", "Coding", ORIGIN).normalizedUrl,
+    "/p/profile-a/coding",
+  );
+});
+
+test("internal links cannot select another Runtime Profile", () => {
+  const decision = classifyChatLink("/p/profile-b/chat", "Other", ORIGIN);
+  assert.equal(decision.kind, "internal");
+  assert.equal(decision.allowed, false);
+  assert.match(decision.reason ?? "", /different or unavailable Runtime Profile/);
+});
+
+test("API paths remain API paths rather than becoming screen routes", () => {
+  const turnRoute = defaultspackCanonicalRouteKey("api/chat/turn");
+  assert.equal(
+    classifyChatLink(turnRoute, "API", ORIGIN).normalizedUrl,
+    turnRoute,
+  );
 });
 
 test("HTTPS destinations expose normalized host and mismatched visible target", () => {

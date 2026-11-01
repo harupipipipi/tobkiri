@@ -1,0 +1,1 @@
+{"case_id":"malformed-store-shape-and-profile","purpose":"Observe the source version check before providers are accepted.","profile_id":"defaults","initial_store_text":"{\"version\":\"future.store.v9\",\"profile_id\":\"defaults\",\"revision\":1,\"providers\":{},\"migration\":null}","actions":[{"action_id":"snapshot-invalid-version","operation":"registry.snapshot","payload":{}}]}

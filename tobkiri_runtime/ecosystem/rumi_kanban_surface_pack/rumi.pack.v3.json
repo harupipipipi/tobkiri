@@ -1,0 +1,137 @@
+{
+  "contracts": {
+    "provides": [],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.kanban.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [],
+  "extensions": {
+    "rumi.kanban_surface.boundary": {
+      "agent_owner": false,
+      "authority_receipts": false,
+      "conversation_owner": false,
+      "isolated": true,
+      "mutations": false,
+      "profile_scoped": true,
+      "state_owner": false
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_kanban_state_store_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [],
+          "requires": [
+            "rumi.resource.kanban.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_kanban_state_store_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Removable read-only Kanban content projection.",
+        "display_name": "Rumi Kanban Surface",
+        "host_execution": false,
+        "metadata": {
+          "authoritative_owner": false,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:6776cec2583ef3ffe10c2258b9a5c33c4283642f6495c9846761f3e37a1ccae3",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:74e0ccd856ee27de9d8544dcb7303656b4dcecbf88c6406eb8a090afd7215741"
+          },
+          "executable_code": true,
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "isolated_ui": true,
+          "owner_surfaces": [
+            "kanban_route",
+            "kanban_content"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_kanban_surface_pack",
+        "pack_identity": "rumi:ecosystem/rumi_kanban_surface_pack",
+        "provenance": {
+          "build_identity": "rumi_kanban_surface_pack:1.0.0",
+          "content_hash": "sha256:c51f2cb992b2406d2ecee2eb51d21ef55d8541e8d4381c82d1a6caf043b490c9",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "kanban.state.read"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [
+          "frontend/contributions/kanban.json"
+        ],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_kanban_surface_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_kanban_surface_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:74e0ccd856ee27de9d8544dcb7303656b4dcecbf88c6406eb8a090afd7215741"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.webapp.components.kanban",
+      "defaultspack.webapp.features.kanban"
+    ],
+    "removal_wave": 10,
+    "rollback": "Remove the Kanban UI pack; Kanban state and adapters remain independently available.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Removable read-only Kanban content projection.",
+    "display_name": "Rumi Kanban Surface",
+    "id": "rumi.kanban_surface",
+    "kind": "content",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "kanban.state.read"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_kanban_surface_pack:1.0.0",
+    "content_hash": "sha256:c51f2cb992b2406d2ecee2eb51d21ef55d8541e8d4381c82d1a6caf043b490c9",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [
+    {
+      "content_hash": "sha256:fc808ce0032c0a18b1059031a77d95f8691d428304642bea138897b096ebfb57",
+      "id": "frontend/contributions/kanban.json",
+      "kind": "ui.contribution"
+    }
+  ],
+  "storage": []
+}

@@ -1,0 +1,713 @@
+{
+  "schema": "io.tobkiri.gateway-finalizer-source-cases.v1",
+  "evidence_level": "deterministic-source-cases-not-guest-receipts",
+  "notes": [
+    "Expected successes are independently compared with original Gateway source by source tests.",
+    "Failure cases exercise actual source adapters, not injected dependency failures.",
+    "No retry, generation, billing, authority or production activation is represented."
+  ],
+  "cases": [
+    {
+      "id": "generate-tools-usage",
+      "operation": "generate",
+      "payload": {
+        "value": {
+          "output": "answer",
+          "usage": {
+            "input_tokens": 2,
+            "output_tokens": 3
+          },
+          "tool_intents": [
+            {
+              "name": "echo",
+              "arguments": {
+                "z": 1,
+                "a": 2
+              }
+            }
+          ],
+          "finish_reason": "stop"
+        },
+        "request_id": " request-id ",
+        "candidate": {
+          "model_id": "model-recorded",
+          "provider_instance_id": "provider-recorded",
+          "catalog_provider_instance_id": "catalog-recorded",
+          "catalog_revision": "r7",
+          "capabilities": [
+            "text",
+            "tools"
+          ],
+          "modalities": [
+            "text"
+          ],
+          "context_length": 16000,
+          "input_cost": 0.1,
+          "output_cost": 0.2,
+          "priority": 3,
+          "available": true,
+          "health": "healthy",
+          "health_observed_at": 12.5,
+          "raw": {
+            "currency": "EUR",
+            "approved": true
+          }
+        },
+        "attempts": [
+          {
+            "attempt": 1,
+            "error_code": "provider_unavailable"
+          }
+        ],
+        "packvm_response": false
+      },
+      "expected_kind": "finalized",
+      "expected_dependency_call_count": 2
+    },
+    {
+      "id": "stream-ordered-tools-usage",
+      "operation": "stream",
+      "payload": {
+        "value": {
+          "output": "answer",
+          "usage": {
+            "input_tokens": 2,
+            "output_tokens": 3
+          },
+          "tool_intents": [
+            {
+              "name": "echo",
+              "arguments": {
+                "z": 1,
+                "a": 2
+              }
+            }
+          ],
+          "finish_reason": "stop",
+          "events": [
+            {
+              "type": "tool_intent_delta",
+              "tool_intent": {
+                "name": "first"
+              }
+            },
+            {
+              "type": "usage",
+              "usage": {
+                "input_tokens": 2,
+                "output_tokens": 3
+              }
+            },
+            {
+              "type": "text_delta",
+              "delta": "delta"
+            },
+            {
+              "type": "tool_intent_delta",
+              "tool_intent": {
+                "name": "second"
+              }
+            },
+            {
+              "type": "usage",
+              "usage": {
+                "prompt_tokens": 4,
+                "completion_tokens": 5
+              }
+            },
+            {
+              "type": "finish",
+              "finish_reason": "stop"
+            }
+          ]
+        },
+        "request_id": " request-id ",
+        "candidate": {
+          "model_id": "model-recorded",
+          "provider_instance_id": "provider-recorded",
+          "catalog_provider_instance_id": "catalog-recorded",
+          "catalog_revision": "r7",
+          "capabilities": [
+            "text",
+            "tools"
+          ],
+          "modalities": [
+            "text"
+          ],
+          "context_length": 16000,
+          "input_cost": 0.1,
+          "output_cost": 0.2,
+          "priority": 3,
+          "available": true,
+          "health": "healthy",
+          "health_observed_at": 12.5,
+          "raw": {
+            "currency": "EUR",
+            "approved": true
+          }
+        },
+        "attempts": [
+          {
+            "attempt": 1,
+            "error_code": "provider_unavailable"
+          }
+        ],
+        "packvm_response": false,
+        "attempt_number": 2
+      },
+      "expected_kind": "finalized",
+      "expected_dependency_call_count": 6
+    },
+    {
+      "id": "generate-domain-invalid",
+      "operation": "generate",
+      "payload": {
+        "value": {
+          "status": "error",
+          "error_code": "invalid",
+          "message": "original domain invalid"
+        },
+        "request_id": " request-id ",
+        "candidate": {
+          "model_id": "model-recorded",
+          "provider_instance_id": "provider-recorded",
+          "catalog_provider_instance_id": "catalog-recorded",
+          "catalog_revision": "r7",
+          "capabilities": [
+            "text",
+            "tools"
+          ],
+          "modalities": [
+            "text"
+          ],
+          "context_length": 16000,
+          "input_cost": 0.1,
+          "output_cost": 0.2,
+          "priority": 3,
+          "available": true,
+          "health": "healthy",
+          "health_observed_at": 12.5,
+          "raw": {
+            "currency": "EUR",
+            "approved": true
+          }
+        },
+        "attempts": [
+          {
+            "attempt": 1,
+            "error_code": "provider_unavailable"
+          }
+        ],
+        "packvm_response": false
+      },
+      "expected_kind": "domain-rejected",
+      "expected_error": {
+        "code": "invalid",
+        "message": "original domain invalid"
+      },
+      "expected_dependency_call_count": 0
+    },
+    {
+      "id": "generate-domain-unavailable",
+      "operation": "generate",
+      "payload": {
+        "value": {
+          "status": "error",
+          "error_code": "unavailable",
+          "message": "original domain unavailable"
+        },
+        "request_id": " request-id ",
+        "candidate": {
+          "model_id": "model-recorded",
+          "provider_instance_id": "provider-recorded",
+          "catalog_provider_instance_id": "catalog-recorded",
+          "catalog_revision": "r7",
+          "capabilities": [
+            "text",
+            "tools"
+          ],
+          "modalities": [
+            "text"
+          ],
+          "context_length": 16000,
+          "input_cost": 0.1,
+          "output_cost": 0.2,
+          "priority": 3,
+          "available": true,
+          "health": "healthy",
+          "health_observed_at": 12.5,
+          "raw": {
+            "currency": "EUR",
+            "approved": true
+          }
+        },
+        "attempts": [
+          {
+            "attempt": 1,
+            "error_code": "provider_unavailable"
+          }
+        ],
+        "packvm_response": false
+      },
+      "expected_kind": "domain-rejected",
+      "expected_error": {
+        "code": "unavailable",
+        "message": "original domain unavailable"
+      },
+      "expected_dependency_call_count": 0
+    },
+    {
+      "id": "stream-later-usage-overflow",
+      "operation": "stream",
+      "payload": {
+        "value": {
+          "output": "answer",
+          "usage": {
+            "input_tokens": 2,
+            "output_tokens": 3
+          },
+          "tool_intents": [
+            {
+              "name": "echo",
+              "arguments": {
+                "z": 1,
+                "a": 2
+              }
+            }
+          ],
+          "finish_reason": "stop",
+          "events": [
+            {
+              "type": "tool_intent_delta",
+              "tool_intent": {
+                "name": "first"
+              }
+            },
+            {
+              "type": "usage",
+              "usage": {
+                "input_tokens": 0,
+                "output_tokens": 0
+              }
+            },
+            {
+              "type": "text_delta",
+              "delta": "delta"
+            },
+            {
+              "type": "tool_intent_delta",
+              "tool_intent": {
+                "name": "second"
+              }
+            },
+            {
+              "type": "usage",
+              "usage": {
+                "input_tokens": "1e308",
+                "output_tokens": 0
+              }
+            },
+            {
+              "type": "finish",
+              "finish_reason": "stop"
+            }
+          ]
+        },
+        "request_id": " request-id ",
+        "candidate": {
+          "model_id": "model-recorded",
+          "provider_instance_id": "provider-recorded",
+          "catalog_provider_instance_id": "catalog-recorded",
+          "catalog_revision": "r7",
+          "capabilities": [
+            "text",
+            "tools"
+          ],
+          "modalities": [
+            "text"
+          ],
+          "context_length": 16000,
+          "input_cost": 1e+308,
+          "output_cost": 0.2,
+          "priority": 3,
+          "available": true,
+          "health": "healthy",
+          "health_observed_at": 12.5,
+          "raw": {
+            "currency": "EUR",
+            "approved": true
+          }
+        },
+        "attempts": [
+          {
+            "attempt": 1,
+            "error_code": "provider_unavailable"
+          }
+        ],
+        "packvm_response": false,
+        "attempt_number": 2
+      },
+      "expected_kind": "core-error",
+      "expected_error": {
+        "code": "internal",
+        "message": "usage cost provider arithmetic failed"
+      },
+      "expected_dependency_call_count": 3
+    },
+    {
+      "id": "stream-later-tool-invalid",
+      "operation": "stream",
+      "payload": {
+        "value": {
+          "output": "answer",
+          "usage": {
+            "input_tokens": 2,
+            "output_tokens": 3
+          },
+          "tool_intents": [
+            {
+              "name": "echo",
+              "arguments": {
+                "z": 1,
+                "a": 2
+              }
+            }
+          ],
+          "finish_reason": "stop",
+          "events": [
+            {
+              "type": "tool_intent_delta",
+              "tool_intent": {
+                "name": "first"
+              }
+            },
+            {
+              "type": "usage",
+              "usage": {
+                "input_tokens": 2,
+                "output_tokens": 3
+              }
+            },
+            {
+              "type": "text_delta",
+              "delta": "delta"
+            },
+            {
+              "type": "tool_intent_delta",
+              "tool_intent": {
+                "name": ""
+              }
+            },
+            {
+              "type": "usage",
+              "usage": {
+                "prompt_tokens": 4,
+                "completion_tokens": 5
+              }
+            },
+            {
+              "type": "finish",
+              "finish_reason": "stop"
+            }
+          ]
+        },
+        "request_id": " request-id ",
+        "candidate": {
+          "model_id": "model-recorded",
+          "provider_instance_id": "provider-recorded",
+          "catalog_provider_instance_id": "catalog-recorded",
+          "catalog_revision": "r7",
+          "capabilities": [
+            "text",
+            "tools"
+          ],
+          "modalities": [
+            "text"
+          ],
+          "context_length": 16000,
+          "input_cost": 0.1,
+          "output_cost": 0.2,
+          "priority": 3,
+          "available": true,
+          "health": "healthy",
+          "health_observed_at": 12.5,
+          "raw": {
+            "currency": "EUR",
+            "approved": true
+          }
+        },
+        "attempts": [
+          {
+            "attempt": 1,
+            "error_code": "provider_unavailable"
+          }
+        ],
+        "packvm_response": false,
+        "attempt_number": 2
+      },
+      "expected_kind": "core-error",
+      "expected_error": {
+        "code": "invalid",
+        "message": "outside ordered-finite-json-v2 domain"
+      },
+      "expected_dependency_call_count": 5
+    },
+    {
+      "id": "generate-nonfinite-cost",
+      "operation": "generate",
+      "payload": {
+        "value": {
+          "output": "answer",
+          "usage": {
+            "input_tokens": 1e+308,
+            "output_tokens": 1e+308
+          },
+          "tool_intents": [
+            {
+              "name": "echo",
+              "arguments": {
+                "z": 1,
+                "a": 2
+              }
+            }
+          ],
+          "finish_reason": "stop"
+        },
+        "request_id": " request-id ",
+        "candidate": {
+          "model_id": "model-recorded",
+          "provider_instance_id": "provider-recorded",
+          "catalog_provider_instance_id": "catalog-recorded",
+          "catalog_revision": "r7",
+          "capabilities": [
+            "text",
+            "tools"
+          ],
+          "modalities": [
+            "text"
+          ],
+          "context_length": 16000,
+          "input_cost": 1e+308,
+          "output_cost": 0.2,
+          "priority": 3,
+          "available": true,
+          "health": "healthy",
+          "health_observed_at": 12.5,
+          "raw": {
+            "currency": "EUR",
+            "approved": true
+          }
+        },
+        "attempts": [
+          {
+            "attempt": 1,
+            "error_code": "provider_unavailable"
+          }
+        ],
+        "packvm_response": false
+      },
+      "expected_kind": "core-error",
+      "expected_error": {
+        "code": "internal",
+        "message": "usage cost provider arithmetic failed"
+      },
+      "expected_dependency_call_count": 2
+    },
+    {
+      "id": "generate-absent-usage",
+      "operation": "generate",
+      "payload": {
+        "value": {
+          "output": "answer",
+          "tool_intents": [
+            {
+              "name": "echo",
+              "arguments": {
+                "z": 1,
+                "a": 2
+              }
+            }
+          ],
+          "finish_reason": "stop"
+        },
+        "request_id": " request-id ",
+        "candidate": {
+          "model_id": "model-recorded",
+          "provider_instance_id": "provider-recorded",
+          "catalog_provider_instance_id": "catalog-recorded",
+          "catalog_revision": "r7",
+          "capabilities": [
+            "text",
+            "tools"
+          ],
+          "modalities": [
+            "text"
+          ],
+          "context_length": 16000,
+          "input_cost": 0.1,
+          "output_cost": 0.2,
+          "priority": 3,
+          "available": true,
+          "health": "healthy",
+          "health_observed_at": 12.5,
+          "raw": {
+            "currency": "EUR",
+            "approved": true
+          }
+        },
+        "attempts": [
+          {
+            "attempt": 1,
+            "error_code": "provider_unavailable"
+          }
+        ],
+        "packvm_response": false
+      },
+      "expected_kind": "finalized",
+      "expected_dependency_call_count": 2
+    },
+    {
+      "id": "generate-string-nonfinite-usage",
+      "operation": "generate",
+      "payload": {
+        "value": {
+          "output": "answer",
+          "usage": {
+            "input_tokens": "Infinity",
+            "output_tokens": 2
+          },
+          "tool_intents": [
+            {
+              "name": "echo",
+              "arguments": {
+                "z": 1,
+                "a": 2
+              }
+            }
+          ],
+          "finish_reason": "stop"
+        },
+        "request_id": " request-id ",
+        "candidate": {
+          "model_id": "model-recorded",
+          "provider_instance_id": "provider-recorded",
+          "catalog_provider_instance_id": "catalog-recorded",
+          "catalog_revision": "r7",
+          "capabilities": [
+            "text",
+            "tools"
+          ],
+          "modalities": [
+            "text"
+          ],
+          "context_length": 16000,
+          "input_cost": 0.1,
+          "output_cost": 0.2,
+          "priority": 3,
+          "available": true,
+          "health": "healthy",
+          "health_observed_at": 12.5,
+          "raw": {
+            "currency": "EUR",
+            "approved": true
+          }
+        },
+        "attempts": [
+          {
+            "attempt": 1,
+            "error_code": "provider_unavailable"
+          }
+        ],
+        "packvm_response": false
+      },
+      "expected_kind": "finalized",
+      "expected_dependency_call_count": 2
+    },
+    {
+      "id": "stream-null-top-level-tools",
+      "operation": "stream",
+      "payload": {
+        "value": {
+          "output": "answer",
+          "usage": {
+            "input_tokens": 2,
+            "output_tokens": 3
+          },
+          "tool_intents": null,
+          "finish_reason": "stop",
+          "events": [
+            {
+              "type": "tool_intent_delta",
+              "tool_intent": {
+                "name": "first"
+              }
+            },
+            {
+              "type": "usage",
+              "usage": {
+                "input_tokens": 2,
+                "output_tokens": 3
+              }
+            },
+            {
+              "type": "text_delta",
+              "delta": "delta"
+            },
+            {
+              "type": "tool_intent_delta",
+              "tool_intent": {
+                "name": "second"
+              }
+            },
+            {
+              "type": "usage",
+              "usage": {
+                "prompt_tokens": 4,
+                "completion_tokens": 5
+              }
+            },
+            {
+              "type": "finish",
+              "finish_reason": "stop"
+            }
+          ]
+        },
+        "request_id": " request-id ",
+        "candidate": {
+          "model_id": "model-recorded",
+          "provider_instance_id": "provider-recorded",
+          "catalog_provider_instance_id": "catalog-recorded",
+          "catalog_revision": "r7",
+          "capabilities": [
+            "text",
+            "tools"
+          ],
+          "modalities": [
+            "text"
+          ],
+          "context_length": 16000,
+          "input_cost": 0.1,
+          "output_cost": 0.2,
+          "priority": 3,
+          "available": true,
+          "health": "healthy",
+          "health_observed_at": 12.5,
+          "raw": {
+            "currency": "EUR",
+            "approved": true
+          }
+        },
+        "attempts": [
+          {
+            "attempt": 1,
+            "error_code": "provider_unavailable"
+          }
+        ],
+        "packvm_response": false,
+        "attempt_number": 2
+      },
+      "expected_kind": "finalized",
+      "expected_dependency_call_count": 6
+    }
+  ]
+}

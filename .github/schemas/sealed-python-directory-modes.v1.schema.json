@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "io.tobkiri.sealed-python-directory-modes.v1",
+  "title": "Tobkiri sealed Python exact directory modes",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "directories"],
+  "properties": {
+    "schema": {
+      "const": "io.tobkiri.sealed-python-directory-modes.v1"
+    },
+    "directories": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "mode"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^(?:\\.|(?!/)(?!.*\\\\)(?!.*(^|/)\\.{1,2}(/|$)).+)$"
+          },
+          "mode": {
+            "const": "0555"
+          }
+        }
+      }
+    }
+  },
+  "$comment": "The first entry is the root path '.'; remaining entries are the sorted exact transitive directory-parent closure of sealed-environment.v1.json files. This document is itself a required regular file in that manifest, preserving the v1 manifest wire shape while binding exact directory modes into its signed raw digest."
+}

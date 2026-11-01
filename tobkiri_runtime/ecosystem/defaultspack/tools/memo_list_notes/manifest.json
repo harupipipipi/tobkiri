@@ -1,0 +1,42 @@
+{
+  "id": "memo_list_notes",
+  "category": "tool",
+  "description": "List durable local memo notes.",
+  "source_pack_id": "defaultspack",
+  "config": {
+    "tool_id": "memo_list_notes",
+    "name": "memo_list_notes",
+    "summary": "List Memory2 memo notes.",
+    "tool_category": "memory",
+    "action_type": "read",
+    "tags": [
+      "memory",
+      "memo"
+    ],
+    "execution": {
+      "type": "handler",
+      "handler": "blocks.memory.memo_notes:tool_list_notes"
+    },
+    "schema": {
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "folder_id": {
+            "type": "string",
+            "description": "Memo folder id or slug. Defaults to personalization."
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Optional non-sensitive memo metadata."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "required": []
+      }
+    }
+  }
+}

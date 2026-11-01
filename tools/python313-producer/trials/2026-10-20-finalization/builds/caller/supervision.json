@@ -1,0 +1,18 @@
+{
+  "outcome": "success",
+  "error": null,
+  "exit_code": 0,
+  "seconds": 29.683544239000184,
+  "observed_peak_sampled_rss": 406634496,
+  "observed_max_processes": 4,
+  "remaining_known_processes": [],
+  "address_space_limit_per_process": 8589934592,
+  "sampled_rss_limit": 3221225472,
+  "sampled_process_limit": 64,
+  "timeout_seconds": 1200,
+  "sample_interval_seconds": 0.1,
+  "rss_and_process_sampling_are_not_hard_caps": true,
+  "disk_free_floor": 8589934592,
+  "initial_available_memory_floor": 4294967296,
+  "running_available_memory_floor": 1073741824
+}

@@ -1,0 +1,121 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:29b55d7f3a9418dfea988820ff32d547c8192a776d8bfdfad7ecb40234945f88",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:8e4ffd7d83e78a528f233fd8a36b40392e58b5d9456c563996f9baf211c4b7c1",
+      "kind": "executable",
+      "path": "runtime/gateway.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.mcp.tool.call.v1",
+      "operations": [
+        "rumi_mcp_gateway_pack.mcp-tool-call"
+      ],
+      "revision_digest": "sha256:d1117f854fadb21187afcade4c13675587b2b129f71237c2a689bf6a791e333e"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:d1117f854fadb21187afcade4c13675587b2b129f71237c2a689bf6a791e333e",
+      "id": "rumi_mcp_gateway_pack.mcp-gateway.call",
+      "implementation_digest": "sha256:8e4ffd7d83e78a528f233fd8a36b40392e58b5d9456c563996f9baf211c4b7c1",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_mcp_gateway_pack.mcp-tool-call"
+      ],
+      "role": "brokered"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:c40504befcc685174c4085d5458887d20ece0bdac74a4b216c662b99b3a479e8",
+    "contract_catalog_digest": "sha256:9973c78f8eee53104ae48978e76653ff87b2e9e9353b1ee46af7db0a8ebf3224",
+    "source_identity": "sha256:3af5e73a9fdd3afdaec7ee7ccfe4e2e6bf2a26e71665684fa7330a9f1a5b985d"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.mcp.tool.call.v1",
+      "rumi:ecosystem/rumi_mcp_gateway_pack",
+      "rumi_mcp_gateway_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.service.mcp.tool.call.v1",
+      "effect_ceiling": [
+        "capability:mcp.tool.call"
+      ],
+      "operation_id": "rumi_mcp_gateway_pack.mcp-tool-call",
+      "owner": "rumi_mcp_gateway_pack",
+      "provider_id": "rumi_mcp_gateway_pack.mcp-gateway.call",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:c40504befcc685174c4085d5458887d20ece0bdac74a4b216c662b99b3a479e8",
+    "display_name": "Tobkiri MCP Gateway",
+    "id": "rumi_mcp_gateway_pack",
+    "kind": "normal_sandbox",
+    "version": "1.1.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:3af5e73a9fdd3afdaec7ee7ccfe4e2e6bf2a26e71665684fa7330a9f1a5b985d",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:3af5e73a9fdd3afdaec7ee7ccfe4e2e6bf2a26e71665684fa7330a9f1a5b985d",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_mcp_gateway_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.service.mcp.tool.call.v1",
+      "operations": [
+        "rumi_mcp_gateway_pack.mcp-tool-call"
+      ],
+      "owner": "rumi_mcp_gateway_pack",
+      "provider_id": "rumi_mcp_gateway_pack.mcp-gateway.call"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "mcp.invoke",
+      "mcp.tool.call"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.mcp.connection.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      }
+    ],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

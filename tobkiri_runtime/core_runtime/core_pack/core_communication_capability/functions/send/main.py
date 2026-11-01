@@ -20,14 +20,26 @@ from __future__ import annotations
 
 import fnmatch
 import json
-import os
 import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional, Protocol, runtime_checkable
 
 _SAFE_ID_RE = re.compile("^[a-zA-Z0-9_.-]+$")
+
+
+class _ReceiverComponent(Protocol):
+    manifest: Dict[str, Any]
+
+
+@runtime_checkable
+class _ReceiverRegistry(Protocol):
+    def get_pack(self, pack_id: str) -> object | None: ...
+
+    def get_component(
+        self, pack_id: str, component_type: str, component_id: str
+    ) -> _ReceiverComponent | None: ...
 
 
 def execute(context: Dict[str, Any], args: Dict[str, Any]) -> Dict[str, Any]:
@@ -249,6 +261,9 @@ def _check_receiver_policy(
         registry = get_registry()
     except Exception:
         return {"allowed": False, "reason": "Cannot access component registry"}
+
+    if not isinstance(registry, _ReceiverRegistry):
+        return {"allowed": False, "reason": "Component registry is incompatible"}
 
     pack = registry.get_pack(to_pack_id)
     if pack is None:

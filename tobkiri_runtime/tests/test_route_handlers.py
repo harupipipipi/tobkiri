@@ -9,6 +9,11 @@ RouteHandlersMixin のユニットテスト (Wave4-B 改善推奨3)
   - RouteHandlersMixin._handle_pack_route_request
   - RouteHandlersMixin._get_registered_routes
   - RouteHandlersMixin._reload_pack_routes
+
+Pack v4 production no longer authorizes routes through this legacy mixin;
+registry, matching, listing, and reload assertions therefore verify the
+fail-closed boundary.  The retained path-safety and request-handling tests
+continue to exercise defensive behavior directly.
 """
 from __future__ import annotations
 
@@ -56,7 +61,6 @@ from tobkiri_runtime.core_runtime.api.route_handlers import (  # noqa: E402
     _compile_template_path,
     _is_safe_path_param,
 )
-from tobkiri_runtime.core_runtime.api._helpers import _SAFE_ERROR_MSG  # noqa: E402
 
 
 # ======================================================================
@@ -207,7 +211,13 @@ class TestCompileTemplatePath:
 # ======================================================================
 
 class TestLoadPackRoutes:
-    """load_pack_routes のテスト"""
+    """Legacy registry boundary tests for the Pack v4 runtime.
+
+    Pack v4 obtains routes from its captured OperationCatalog dispatch
+    session.  The legacy registry authority therefore remains empty and
+    fail-closed; the helper and request-shape tests below still cover the
+    retained defensive code paths.
+    """
 
     def test_empty_registry(self):
         reg = _make_registry({})
@@ -231,8 +241,8 @@ class TestLoadPackRoutes:
             ]
         })
         count = RouteHandlersMixin.load_pack_routes(reg)
-        assert count == 1
-        assert ("GET", "/api/pack1/status") in RouteHandlersMixin._exact_routes
+        assert count == 0
+        assert RouteHandlersMixin._exact_routes == {}
 
     def test_template_route_registered(self):
         reg = _make_registry({
@@ -241,8 +251,8 @@ class TestLoadPackRoutes:
             ]
         })
         count = RouteHandlersMixin.load_pack_routes(reg)
-        assert count == 1
-        assert len(RouteHandlersMixin._template_routes) == 1
+        assert count == 0
+        assert RouteHandlersMixin._template_routes == []
 
     def test_mixed_routes(self):
         reg = _make_registry({
@@ -253,9 +263,9 @@ class TestLoadPackRoutes:
             ]
         })
         count = RouteHandlersMixin.load_pack_routes(reg)
-        assert count == 3
-        assert len(RouteHandlersMixin._exact_routes) == 2
-        assert len(RouteHandlersMixin._template_routes) == 1
+        assert count == 0
+        assert RouteHandlersMixin._exact_routes == {}
+        assert RouteHandlersMixin._template_routes == []
 
     def test_missing_flow_id_skipped(self):
         reg = _make_registry({
@@ -283,7 +293,7 @@ class TestLoadPackRoutes:
             ]
         })
         RouteHandlersMixin.load_pack_routes(reg1)
-        assert ("GET", "/api/old") in RouteHandlersMixin._exact_routes
+        assert RouteHandlersMixin._exact_routes == {}
 
         reg2 = _make_registry({
             "pack2": [
@@ -291,8 +301,7 @@ class TestLoadPackRoutes:
             ]
         })
         RouteHandlersMixin.load_pack_routes(reg2)
-        assert ("GET", "/api/old") not in RouteHandlersMixin._exact_routes
-        assert ("POST", "/api/new") in RouteHandlersMixin._exact_routes
+        assert RouteHandlersMixin._exact_routes == {}
 
 
 # ======================================================================
@@ -317,21 +326,15 @@ class TestMatchPackRoute:
 
     def test_exact_match(self):
         result = self.handler._match_pack_route("/api/pack1/status", "GET")
-        assert result is not None
-        route_info, path_params = result
-        assert route_info["flow_id"] == "pack1.status"
-        assert path_params == {}
+        assert result is None
 
     def test_exact_match_case_insensitive_method(self):
         result = self.handler._match_pack_route("/api/pack1/status", "get")
-        assert result is not None
+        assert result is None
 
     def test_template_match(self):
         result = self.handler._match_pack_route("/api/pack1/my-item-123", "GET")
-        assert result is not None
-        route_info, path_params = result
-        assert route_info["flow_id"] == "pack1.get_item"
-        assert path_params["item_id"] == "my-item-123"
+        assert result is None
 
     def test_no_match_wrong_method(self):
         """GET ルートに POST でアクセスすると不一致"""
@@ -362,34 +365,22 @@ class TestMatchPackRoute:
     def test_consecutive_placeholders_match(self):
         """連続プレースホルダのマッチとパラメータ抽出"""
         result = self.handler._match_pack_route("/foo/bar", "GET")
-        assert result is not None
-        route_info, path_params = result
-        assert route_info["flow_id"] == "pack1.ab"
-        assert path_params["a"] == "foo"
-        assert path_params["b"] == "bar"
+        assert result is None
 
     def test_single_placeholder_match(self):
         """プレースホルダのみのパス /{id} のマッチ"""
         result = self.handler._match_pack_route("/some-id", "GET")
-        assert result is not None
-        route_info, path_params = result
-        assert route_info["flow_id"] == "pack1.single"
-        assert path_params["id"] == "some-id"
+        assert result is None
 
     def test_trailing_slash_normalized(self):
         """末尾スラッシュが正規化されてテンプレートにマッチすること"""
         result = self.handler._match_pack_route("/api/pack1/my-item/", "GET")
-        assert result is not None
-        route_info, path_params = result
-        assert path_params["item_id"] == "my-item"
+        assert result is None
 
     def test_exact_match_priority_over_template(self):
         """完全一致がテンプレートより優先されること"""
         result = self.handler._match_pack_route("/api/pack1/status", "GET")
-        assert result is not None
-        route_info, path_params = result
-        assert route_info["flow_id"] == "pack1.status"
-        assert path_params == {}
+        assert result is None
 
 
 # ======================================================================
@@ -544,11 +535,7 @@ class TestGetRegisteredRoutes:
         RouteHandlersMixin.load_pack_routes(reg)
         handler = StubRouteHandler()
         result = handler._get_registered_routes()
-        assert result["count"] == 2
-        assert len(result["routes"]) == 2
-        paths = {r["path"] for r in result["routes"]}
-        assert "/api/p1/list" in paths
-        assert "/api/p1/create" in paths
+        assert result == {"routes": [], "count": 0}
 
     def test_route_info_fields(self):
         """各ルート情報に必要なフィールドが含まれること"""
@@ -561,12 +548,7 @@ class TestGetRegisteredRoutes:
         RouteHandlersMixin.load_pack_routes(reg)
         handler = StubRouteHandler()
         result = handler._get_registered_routes()
-        route = result["routes"][0]
-        assert "method" in route
-        assert "path" in route
-        assert "pack_id" in route
-        assert "flow_id" in route
-        assert "description" in route
+        assert result == {"routes": [], "count": 0}
 
 
 # ======================================================================
@@ -594,8 +576,10 @@ class TestReloadPackRoutes:
         ):
             result = handler._reload_pack_routes()
 
-        assert result["reloaded"] is True
-        assert result["route_count"] == 5
+        assert result == {
+            "reloaded": False,
+            "error": "Legacy Pack route reload is disabled",
+        }
 
     def test_reload_failure(self):
         handler = StubRouteHandler()
@@ -607,7 +591,7 @@ class TestReloadPackRoutes:
         }):
             result = handler._reload_pack_routes()
         assert result["reloaded"] is False
-        assert result["error"] == _SAFE_ERROR_MSG
+        assert result["error"] == "Legacy Pack route reload is disabled"
 
 
 # ======================================================================
@@ -655,12 +639,7 @@ class TestEdgeCases:
         RouteHandlersMixin.load_pack_routes(reg)
         handler = StubRouteHandler()
         result = handler._match_pack_route("/api/acme/proj1/items/42", "GET")
-        assert result is not None
-        route_info, params = result
-        assert params["org"] == "acme"
-        assert params["project"] == "proj1"
-        assert params["resource"] == "items"
-        assert params["id"] == "42"
+        assert result is None
 
     def test_special_chars_in_param_value(self):
         """特殊文字を含むパラメータ値（.. と \\x00 以外は許可）"""
@@ -673,9 +652,7 @@ class TestEdgeCases:
         handler = StubRouteHandler()
         # ハイフン、アンダースコア、ドット、チルダなどは許可される
         result = handler._match_pack_route("/items/my-item_v2.0~draft", "GET")
-        assert result is not None
-        _, params = result
-        assert params["name"] == "my-item_v2.0~draft"
+        assert result is None
 
     def test_method_default_uppercase(self):
         """route 登録時にメソッドが大文字化されること"""
@@ -685,10 +662,10 @@ class TestEdgeCases:
             ]
         })
         count = RouteHandlersMixin.load_pack_routes(reg)
-        assert count == 1
+        assert count == 0
         handler = StubRouteHandler()
         result = handler._match_pack_route("/api/test", "POST")
-        assert result is not None
+        assert result is None
 
     def test_mixed_traversal_in_middle(self):
         """パス途中の .. を含むパラメータが拒否されること"""

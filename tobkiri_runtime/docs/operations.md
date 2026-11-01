@@ -3,7 +3,7 @@
 
 運用者向けのガイドです。設計の全体像は [architecture.md](architecture.md)、Pack 開発は [pack-development.md](pack-development.md) を参照してください。
 
-> 互換性のため、このブランチ内の runtime ディレクトリ名は `rumi_ai_1_10/`、
+> 正規 runtime ディレクトリは `tobkiri_runtime/` です。互換性のため、
 > CLI は `rumi_ai` のままです。これは内部互換名であり、公開製品名は Tobkiri です。
 
 ---
@@ -100,13 +100,13 @@ python app.py --permissive
 python app.py --headless
 
 # ヘルスチェック実行
-python app.py --health
+python -m app --health
 
 # Pack バリデーション実行
 python app.py --validate
 ```
 
-`--health` はヘルスチェックを実行し、結果を JSON で stdout に出力して終了します。status が `"UP"` なら exit code 0、それ以外は exit code 1 です。組み込みプローブとして disk（ディスク空き容量）と writable_tmp（`/tmp` 書き込み可能性）が含まれます。CI/CD やコンテナオーケストレーションのヘルスチェックに利用できます。
+`--health` は起動中の Host の `http://127.0.0.1:8765/health`（ポートは `RUMI_PORT` に従う）を probe し、結果を JSON で stdout に出力して終了します。listen socket は取らないため、別インスタンスが起動中でも安全に実行できます。Host が `status: "ok"` を返せば exit code 0、未起動（`"down"`）や `"error"`、予期しない応答の場合は exit code 1 です。CI/CD やコンテナオーケストレーションのヘルスチェックに利用できます。
 
 `--validate` は Pack のバリデーションを実行し、結果を出力して終了します。
 
@@ -1137,10 +1137,10 @@ python app.py --headless
 ### CLI でのチェック
 
 ```bash
-python app.py --health
+python -m app --health
 ```
 
-status が `"UP"` なら exit code 0、それ以外は exit code 1 を返します。
+起動中の Host の `/health` を probe し、status が `"ok"` なら exit code 0、それ以外（未起動の `"down"` を含む）は exit code 1 を返します。
 
 ### プログラムからの利用
 

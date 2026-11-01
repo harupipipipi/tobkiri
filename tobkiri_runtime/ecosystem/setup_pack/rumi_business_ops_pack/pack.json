@@ -17,7 +17,7 @@
     "approval_risk_matrix": "owned_by_rumi_business_ops_pack",
     "handoff_ledger": "owned_by_rumi_business_ops_pack"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Business Ops is a declarative planning, approval, and handoff pack; it must not replace defaultspack runtime startup or connector execution ownership.",
     "criteria": [

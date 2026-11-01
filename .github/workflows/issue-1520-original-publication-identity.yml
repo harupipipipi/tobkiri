@@ -1,0 +1,57 @@
+name: Issue 1520 original publication identity boundary
+
+'on':
+  push:
+    branches: [codex/issue-1520-native-shared-state]
+    paths:
+      - tools/original_publication_identity_reference.py
+      - .github/workflows/issue-1520-original-publication-identity.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-1520-original-publication-identity-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  original-publication-identity:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 1cf025f1eeab31a3daa2861b1f26a025c6954b6e
+          path: original-publication-identity-source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Install only original-lock-pinned reference dependencies
+        run: |
+          python3 -B tools/original_setup_review_reference.py requirements \
+            --original-root "$GITHUB_WORKSPACE/original-publication-identity-source" \
+            --output "$RUNNER_TEMP/original-publication-identity-requirements.txt"
+          python3 -m pip install --disable-pip-version-check --ignore-installed \
+            --only-binary=:all: --require-hashes \
+            -r "$RUNNER_TEMP/original-publication-identity-requirements.txt"
+      - name: Observe the unchanged original through catalog entry
+        run: >-
+          python3 -B tools/original_publication_identity_reference.py
+          --original-root "$GITHUB_WORKSPACE/original-publication-identity-source"
+          --output "$RUNNER_TEMP/original-publication-identity-reference"
+      - name: Retain bounded reference observations only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-publication-identity-reference-${{ matrix.os }}
+          path: ${{ runner.temp }}/original-publication-identity-reference/summary.json
+          if-no-files-found: warn

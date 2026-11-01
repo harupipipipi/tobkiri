@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pack-ui-stream-cancel"
+description = "Enables the pack_ui_stream_cancel command without any pre-configured scope."
+commands.allow = ["pack_ui_stream_cancel"]
+
+[[permission]]
+identifier = "deny-pack-ui-stream-cancel"
+description = "Denies the pack_ui_stream_cancel command without any pre-configured scope."
+commands.deny = ["pack_ui_stream_cancel"]

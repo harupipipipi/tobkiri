@@ -1,0 +1,101 @@
+{
+  "files": [
+    {
+      "path": "component.build.json",
+      "sha256": "sha256:87dee379eac06509a2a4aa612612de479f9bb39ac5ec439b5c8337ce2dc9a365",
+      "size": 1483
+    },
+    {
+      "path": "component.wasm",
+      "sha256": "sha256:5f3f4d818ccc654b909a67084a1414400803285097dd94fbd9739a40f08a9be7",
+      "size": 340674
+    },
+    {
+      "path": "config.json",
+      "sha256": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "size": 3
+    },
+    {
+      "path": "wit/deps/core.wit",
+      "sha256": "sha256:f2c69f18f82e6fcea6ab47aa477fc53a81259bac00e3b47aff66b3a58d9d5acb",
+      "size": 5732
+    },
+    {
+      "path": "wit/deps/shape.wit",
+      "sha256": "sha256:f674b3ebac6e1c90cab218203d2ee810c5abf8097adeed1ff0481600426d0f9c",
+      "size": 1900
+    },
+    {
+      "path": "wit/pack.wit",
+      "sha256": "sha256:a6356def790b1d6e1bb66f5446a87fdefce3dc293ea723de694c337b2ca371f3",
+      "size": 198
+    }
+  ],
+  "flows": [],
+  "format": "tobkiri.pack/1",
+  "id": "local.harness-conversation-store",
+  "overlays": [],
+  "permissions": {
+    "audit_append": true,
+    "audit_read": false,
+    "cross_profile_storage": false,
+    "fs": [],
+    "host_io": [],
+    "loops": {
+      "max_cost_units": 100000,
+      "max_iterations": 16,
+      "max_wall_ms": 300000
+    },
+    "mediator": false,
+    "native": false,
+    "network": {
+      "origins": []
+    },
+    "ports": [],
+    "proc": [],
+    "pty": false,
+    "secrets": [],
+    "storage": {
+      "private": true,
+      "public_read": false,
+      "public_write": false
+    },
+    "wasm": {
+      "fuel_per_call": 2000000000,
+      "memory_mib": 128,
+      "output_bytes": 4194304,
+      "table_elements": 65536,
+      "wall_ms": 300000
+    }
+  },
+  "ports": {
+    "consumes": [],
+    "provides": [
+      {
+        "optional": false,
+        "shape": "local.harness-chat.conversation-store",
+        "version": "1.0"
+      }
+    ],
+    "untyped": []
+  },
+  "publisher_key": null,
+  "runtime": {
+    "component": "component.wasm",
+    "config": {
+      "path": "config.json"
+    },
+    "kind": "wasm",
+    "toolchain": "rust/1.94.0;wit-bindgen/0.62.0"
+  },
+  "shapes": [],
+  "stores": [
+    {
+      "data_shape": "local.harness-chat.messages@1.0",
+      "name": "conversations",
+      "tier": "private"
+    }
+  ],
+  "ui": null,
+  "version": "0.1.0"
+}

@@ -25,7 +25,7 @@
     "migration_planning_contract": "owned_by_rumi_code_migration_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Code migration plans should prove real migrations before becoming default behavior.",
     "promotion_blockers": [

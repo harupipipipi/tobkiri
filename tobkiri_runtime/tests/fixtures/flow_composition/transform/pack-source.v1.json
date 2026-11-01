@@ -1,0 +1,91 @@
+{
+  "source_api_version": "io.tobkiri.pack-source.v1",
+  "pack_id": "qa.flow.transform",
+  "version": "1.0.0",
+  "display_name": "Flow QA transform",
+  "contracts": [
+    {
+      "contract_id": "qa.flow.transform.v1",
+      "version": "1.0.0",
+      "provider_id": "qa.flow.transform.provide",
+      "operations": [
+        {
+          "operation_id": "map",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "text",
+              "count",
+              "items",
+              "flag",
+              "empty"
+            ],
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "flag": {
+                "type": "boolean"
+              },
+              "empty": {
+                "type": "null"
+              }
+            },
+            "additionalProperties": false
+          },
+          "output_schema": {
+            "type": "object",
+            "required": [
+              "text",
+              "count",
+              "items",
+              "flag",
+              "empty"
+            ],
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "flag": {
+                "type": "boolean"
+              },
+              "empty": {
+                "type": "null"
+              }
+            },
+            "additionalProperties": false
+          },
+          "effect_class": "pure",
+          "scope_semantics": "declarative"
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "function_id": "qa.flow.transform.provide",
+      "implementation_path": "runtime/invoke.py",
+      "operations": [
+        "map"
+      ]
+    }
+  ]
+}

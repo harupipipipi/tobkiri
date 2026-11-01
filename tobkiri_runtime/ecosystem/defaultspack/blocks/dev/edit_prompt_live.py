@@ -10,9 +10,6 @@
     {"status": "ok", "data": {"prompt_name": str, "updated": true, "content": str}}
 """
 
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from blocks._common import ok, error
 
 from domain.prompt.manager import get_manager

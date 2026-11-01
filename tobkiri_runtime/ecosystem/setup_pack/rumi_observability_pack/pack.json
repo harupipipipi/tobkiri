@@ -20,7 +20,7 @@
     "release_incidents": "handoff_to_rumi_devops_release_pack",
     "service_run_summaries": "handoff_to_rumi_agent_services_pack"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Observability belongs as an optional advanced pack because run ledgers, cost traces, and incident review contracts add operational weight beyond defaultspack's basic grants.",
     "criteria": [

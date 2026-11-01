@@ -1,0 +1,22 @@
+{
+  "contract_revision_digest": "sha256:8b622eeb9699df17c604afb89728ea106e09ab043a2bf5b48e07c02af04a9d34",
+  "failure_log": "named-profile-provider-binding-failure.log",
+  "full_author_tests": {
+    "errors": 2,
+    "passed": 20,
+    "total": 22
+  },
+  "historical_stage": true,
+  "last_successful_release_is_current": false,
+  "last_successful_release_receipt": "named-profile-verification.json",
+  "named_profile_build": "failed",
+  "named_profile_error": "Profile edge must resolve to one executable Provider: acceptance.temporal.context.provider / timing.project.owner",
+  "pack_artifact_digest": "sha256:fecc8d703c657e2e8b83a026dd424d855dad098f3fb6fead7ecdb896ad75b403",
+  "prior_run_selected_failure_log": "named-profile-build-failure.log",
+  "public_owner_sdk_parity_tests_passed": 4,
+  "public_pack_compiler": "passed",
+  "resolution": "public run.selected publication and documented executable Function edge identity",
+  "runtime_execution_verified_by_author": false,
+  "scoped_ruff": "passed",
+  "superseded_by": "named-profile-verification.json"
+}

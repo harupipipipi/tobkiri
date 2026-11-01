@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schemas.tobkiri.dev/activity/v1.json",
+  "schema_version": "tobkiri.activity/v1",
+  "kind": "activity",
+  "id": "browser",
+  "version": "1.0.0",
+  "display_name": {"ja": "Browser", "en": "Browser"},
+  "description": {
+    "ja": "Webページを閲覧し、必要なブラウザ操作を行います。",
+    "en": "Browse web pages and perform required browser actions."
+  },
+  "aliases": ["web", "browse", "browser-use", "ブラウザ", "ウェブ"],
+  "members": {
+    "tool_ids": [
+      "browser_use",
+      "browser_companion",
+      "browser_computer",
+      "browser_extract_table",
+      "browser_save_page",
+      "browser_download_collect",
+      "browser_upload_file"
+    ],
+    "tool_tags": ["activity:browser"],
+    "skills": {
+      "required": [],
+      "optional": ["desktop_operator"],
+      "safety": ["computer_safety"]
+    }
+  },
+  "selection": {
+    "explicit_intent_required": false,
+    "schema_policy": "progressive",
+    "max_candidate_tools": 12,
+    "max_attached_tools": 6
+  },
+  "permissions": {
+    "default_action_class": "computer",
+    "minimum": "confirm"
+  },
+  "ui": {
+    "mentionable": true,
+    "pinnable": true,
+    "default_pinned": true,
+    "widget": "browser-status"
+  }
+}

@@ -29,6 +29,11 @@ class SubagentToolBackend:
                 model=str(task.metadata.get("model") or ""),
                 context=context,
                 call_handler=context.get("call_handler"),
+                **(
+                    {"settings_owner": context.get("_settings_owner_port")}
+                    if context.get("_settings_owner_port") is not None
+                    else {}
+                ),
             )
         except Exception as exc:
             return UIAgentResult(

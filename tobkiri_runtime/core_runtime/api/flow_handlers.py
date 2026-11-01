@@ -7,13 +7,31 @@ import os
 import re
 import threading
 import time
-from typing import Any
+from typing import Any, TYPE_CHECKING
 from urllib.parse import unquote
 
 from ._helpers import _log_internal_error, _SAFE_ERROR_MSG
+from .api_response import APIResponse
 from ..flow_context_security import reserved_flow_context_keys
 
 logger = logging.getLogger(__name__)
+
+
+if TYPE_CHECKING:
+    class _FlowInterfaceRegistry:
+        def get(self, key: str, strategy: str = "last") -> object: ...
+        def list(self) -> dict[str, object]: ...
+
+    class _FlowKernel:
+        interface_registry: _FlowInterfaceRegistry
+
+        def execute_flow_sync(
+            self,
+            flow_id: str,
+            inputs: dict[str, object],
+            *,
+            timeout: float,
+        ) -> object: ...
 
 # ---------------------------------------------------------------------------
 # flow_id バリデーション: 英数字・アンダースコア・ドット・ハイフン、1〜128文字
@@ -109,6 +127,15 @@ def _sanitize_error(error_str: Any) -> str:
 
 
 class FlowHandlersMixin:
+    kernel: _FlowKernel | None
+
+    if TYPE_CHECKING:
+        def _send_response(
+            self,
+            response: APIResponse,
+            status: int = 200,
+            extra_headers: list[tuple[str, str]] | None = None,
+        ) -> None: ...
     """Flow 実行 API のハンドラ"""
 
     _flow_semaphore = None  # 同時実行制御用Semaphore

@@ -1,4 +1,4 @@
-import type { ChatContentBlock } from "./api";
+import { defaultspackCanonicalRouteKey, type ChatContentBlock } from "./api";
 
 export const MAX_UNTRUSTED_IMAGE_URL_LENGTH = 4096;
 
@@ -67,9 +67,9 @@ function trustedAttachmentPath(url: URL, attachmentId: string): boolean {
   if (!/^[A-Za-z0-9_-]{8,200}$/.test(attachmentId)) return false;
   const encodedId = encodeURIComponent(attachmentId);
   return [
-    `/api/attachments/${encodedId}`,
-    `/api/media/attachments/${encodedId}`,
-    `/api/blobs/${encodedId}`,
+    `${defaultspackCanonicalRouteKey("api/attachments")}/${encodedId}`,
+    `${defaultspackCanonicalRouteKey("api/media/attachments")}/${encodedId}`,
+    `${defaultspackCanonicalRouteKey("api/blobs")}/${encodedId}`,
   ].some((prefix) => url.pathname === prefix || url.pathname.startsWith(`${prefix}/`));
 }
 

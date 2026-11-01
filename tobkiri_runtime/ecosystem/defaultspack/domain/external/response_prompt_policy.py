@@ -110,7 +110,16 @@ class ResponsePromptPolicy:
         self.allowed_outputs = self._parse_allowed_outputs(self.config.get("allowed_outputs"))
         fallback_action = str(self.config.get("fallback_action") or "reply_text").strip()
         self.fallback_action = fallback_action if fallback_action in self.allowed_actions else sorted(self.allowed_actions)[0]
-        self.tools = self.config.get("tools") if isinstance(self.config.get("tools"), dict) else {}
+        tools_value = self.config.get("tools")
+        self.tools: dict[str, dict[str, object]] = (
+            {
+                str(key): {str(item_key): item_value for item_key, item_value in value.items()}
+                for key, value in tools_value.items()
+                if isinstance(value, dict)
+            }
+            if isinstance(tools_value, dict)
+            else {}
+        )
 
     @classmethod
     def from_profile(cls, profile: InputProfile | dict[str, Any] | None) -> "ResponsePromptPolicy":
@@ -310,7 +319,12 @@ class ResponsePromptPolicy:
         return TOOL_ACTIONS.get(action, "")
 
     def _tool_enabled(self, tool_name: str) -> bool:
-        config = self.tools.get(tool_name) if isinstance(self.tools.get(tool_name), dict) else {}
+        config_value = self.tools.get(tool_name)
+        config: dict[str, object] = (
+            {str(key): item for key, item in config_value.items()}
+            if isinstance(config_value, dict)
+            else {}
+        )
         if not config:
             return False
         return bool(config.get("enabled"))
@@ -321,7 +335,12 @@ class ResponsePromptPolicy:
         tool_name = tool_name or TOOL_ACTIONS.get(action, "")
         if not tool_name:
             return False
-        config = self.tools.get(tool_name) if isinstance(self.tools.get(tool_name), dict) else {}
+        config_value = self.tools.get(tool_name)
+        config: dict[str, object] = (
+            {str(key): item for key, item in config_value.items()}
+            if isinstance(config_value, dict)
+            else {}
+        )
         if tool_name in {"computer_use", "tool"}:
             return bool(config.get("requires_approval", True))
         return bool(config.get("requires_approval", False))
@@ -390,7 +409,12 @@ class ResponsePromptPolicy:
         choices = raw.get("choices")
         if isinstance(choices, list) and choices:
             first = choices[0] if isinstance(choices[0], dict) else {}
-            message = first.get("message") if isinstance(first.get("message"), dict) else {}
+            message_value = first.get("message")
+            message: dict[str, object] = (
+                {str(key): item for key, item in message_value.items()}
+                if isinstance(message_value, dict)
+                else {}
+            )
             return str(message.get("content") or first.get("text") or "").strip()
         return ""
 

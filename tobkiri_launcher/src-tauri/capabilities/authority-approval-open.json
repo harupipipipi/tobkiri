@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "authority-approval-open",
+  "description": "Opens the dedicated one-shot approval window from Tobkiri-owned Defaultspack surfaces",
+  "local": false,
+  "windows": ["defaultspack-main", "ambient-trigger", "finger-recording"],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:*/*"
+    ]
+  },
+  "permissions": ["allow-open-authority-approval-window"]
+}

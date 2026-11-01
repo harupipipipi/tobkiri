@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pack-ui-ack"
+description = "Enables the pack_ui_ack command without any pre-configured scope."
+commands.allow = ["pack_ui_ack"]
+
+[[permission]]
+identifier = "deny-pack-ui-ack"
+description = "Denies the pack_ui_ack command without any pre-configured scope."
+commands.deny = ["pack_ui_ack"]

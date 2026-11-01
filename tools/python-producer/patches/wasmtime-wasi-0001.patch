@@ -1,0 +1,12 @@
+--- a/src/p2/filesystem.rs
++++ b/src/p2/filesystem.rs
+@@ -397,7 +397,8 @@
+ );
+ 
+ impl ReaddirIterator {
+-    pub(crate) fn new(
++    /// Producer patch: accept bounded captured entries, keeping this nominal type.
++    pub fn new(
+         i: impl Iterator<Item = FsResult<types::DirectoryEntry>> + Send + 'static,
+     ) -> Self {
+         ReaddirIterator(std::sync::Mutex::new(Box::new(i)))

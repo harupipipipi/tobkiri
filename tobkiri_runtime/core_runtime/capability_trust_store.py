@@ -61,7 +61,7 @@ class CapabilityTrustStore:
     DEFAULT_TRUST_DIR = "user_data/capabilities/trust"
     TRUST_FILE_NAME = "trusted_handlers.json"
     
-    def __init__(self, trust_dir: str = None):
+    def __init__(self, trust_dir: Optional[str] = None) -> None:
         self._trust_dir = Path(trust_dir) if trust_dir else Path(self.DEFAULT_TRUST_DIR)
         self._trust_file = self._trust_dir / self.TRUST_FILE_NAME
         self._lock = threading.RLock()
@@ -379,7 +379,9 @@ def get_capability_trust_store() -> CapabilityTrustStore:
     return get_container().get("capability_trust_store")
 
 
-def reset_capability_trust_store(trust_dir: str = None) -> CapabilityTrustStore:
+def reset_capability_trust_store(
+    trust_dir: Optional[str] = None,
+) -> CapabilityTrustStore:
     """リセット（テスト用）"""
     from .di_container import get_container
     store = CapabilityTrustStore(trust_dir)

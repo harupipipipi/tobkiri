@@ -24,6 +24,15 @@ Non-core code does not run directly on the host. Capability execution classifies
 
 Profile runtime names are derived from a stable hash such as `rumi-profile-<sha256(profile_id)[:16]>`, never from raw profile IDs. The implemented managed sandbox slice stages regular function files into a temporary `/workspace`, rejects symlinks, hardlinks, devices, fifos, sockets, oversized trees, and oversized files before Bubblewrap starts, clears inherited environment variables, disables nested user namespaces, runs with network off, and applies systemd cgroup limits. The immutable root must be configured explicitly with `RUMI_SANDBOX_IMMUTABLE_ROOT` or a server-side request root, must not be `/`, must not be group/other writable, and must contain a non group/other writable `.rumi-sandbox-root` marker.
 
+Sandbox-internal child processes are not ambient authority. A child executable
+must be an exact verified ArtifactVariant selected and started by the Host-owned
+runner. Python Pack functions cannot dynamically invoke guest system binaries
+through `subprocess`, `os.system`, `exec`, `spawn`, `fork`, or equivalent native
+syscalls. The capability runner installs a fail-closed Linux syscall filter after
+its own controlled start; missing filter support denies the invocation. Explicit
+coding-terminal operations remain separate Host-routed capabilities with their
+own approval, resource, timeout, cleanup, and audit boundaries.
+
 This PR provides the managed sandbox runner core, not durable rootfs provisioning. Developer or operator environments must prepare a minimal immutable rootfs before third-party pack execution is enabled. A minimal Linux setup looks like:
 
 ```bash

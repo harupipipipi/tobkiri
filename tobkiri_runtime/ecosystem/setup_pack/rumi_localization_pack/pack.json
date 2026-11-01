@@ -39,7 +39,7 @@
     "localization_issue_triage": "owned_by_rumi_localization_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Rumi Localization Pack is a declarative domain contract pack; promotion is blocked until runtime owners prove the adjacent execution and audit evidence outside this pack.",
     "criteria": [

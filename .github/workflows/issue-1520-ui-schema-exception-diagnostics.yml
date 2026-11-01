@@ -1,0 +1,229 @@
+name: Issue 1520 inactive poll candidate schema exception diagnostics
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-ui-schema-exception-diagnostics.yml'
+      - 'tools/python313-producer/build_schema.py'
+      - 'tools/python313-producer/build_native.py'
+      - 'tools/python313-producer/build_rpds.py'
+      - 'tools/python313-producer/build_wasi.py'
+      - 'tools/python313-producer/fetch_sdk.py'
+      - 'tools/python313-producer/fetch_validation_tools.py'
+      - 'tools/python313-producer/runtime_inputs.py'
+      - 'tools/python313-producer/schema_probe/**'
+      - 'sdk/python/composition.py'
+      - 'tools/python313-producer/empty-poll-comparison-inputs.json'
+      - 'tools/python313-producer/schema-poll-reference-inputs.json'
+      - 'tools/python313-producer/poll_comparison_inputs.py'
+      - 'tools/python313-producer/poll_producer_pair.py'
+      - 'tools/python313-producer/poll_reference_results.py'
+      - 'tools/python313-producer/ci_link_trace_source.py'
+      - 'tools/python313-producer/ui_empty_poll_assets.py'
+      - 'tools/python313-producer/fetch_schema.py'
+      - 'tools/python313-producer/fetch_schema_stdlib.py'
+      - 'tools/python313-producer/tests/test_schema_*.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: issue-1520-ui-schema-exception-diagnostics-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  actual-inactive-poll-schema-diagnostics:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      RPDS_RUN: '40182231971'
+      RPDS_HEAD: 53163ed815c62c4853bbed3d8a082c0764e3084f
+      RPDS_ARTIFACT: 'ui-rpds-inactive-component'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Check offline schema and inactive-consumer invariants
+        run: python3 -B -m unittest discover -s tools/python313-producer/tests -p 'test_schema_*.py'
+      - name: Load pinned actual supplier and raw-C predecessor identities
+        id: inputs
+        run: |
+          python3 -B - <<'PY'
+          import os, sys
+          sys.path.insert(0, 'tools/python313-producer')
+          import build_schema
+          import poll_comparison_inputs
+          supplier = poll_comparison_inputs.read_json(build_schema.POLL_PIN_PATH)
+          reference = poll_comparison_inputs.read_json(build_schema.POLL_REFERENCE_PIN_PATH)
+          poll_comparison_inputs.validate_pins(supplier)
+          build_schema._validate_poll_reference_pins(reference)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              for key, name in (('poll_run', 'run'), ('poll_job', 'job'), ('poll_artifact', 'artifact'),
+                                ('reference_run', 'run'), ('reference_job', 'job'),
+                                ('reference_artifact', 'artifact')):
+                  value = supplier[name] if key.startswith('poll_') else reference[name]
+                  print(f'{key}={value}', file=output)
+          PY
+      - name: Authenticate actual producer, C reference, and RPDS runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          POLL_RUN: ${{ steps.inputs.outputs.poll_run }}
+          POLL_JOB: ${{ steps.inputs.outputs.poll_job }}
+          POLL_ARTIFACT: ${{ steps.inputs.outputs.poll_artifact }}
+          REFERENCE_RUN: ${{ steps.inputs.outputs.reference_run }}
+          REFERENCE_JOB: ${{ steps.inputs.outputs.reference_job }}
+          REFERENCE_ARTIFACT: ${{ steps.inputs.outputs.reference_artifact }}
+        run: |
+          mkdir -m 700 -p "$RUNNER_TEMP/schema-poll-auth" "$RUNNER_TEMP/schema-reference-auth"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$POLL_RUN" > "$RUNNER_TEMP/schema-poll-auth/run.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$POLL_JOB" > "$RUNNER_TEMP/schema-poll-auth/job.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$POLL_ARTIFACT" > "$RUNNER_TEMP/schema-poll-auth/artifact.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$REFERENCE_RUN" > "$RUNNER_TEMP/schema-reference-auth/run.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$REFERENCE_JOB" > "$RUNNER_TEMP/schema-reference-auth/job.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$REFERENCE_ARTIFACT" > "$RUNNER_TEMP/schema-reference-auth/artifact.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RPDS_RUN" > "$RUNNER_TEMP/schema-rpds-run.json"
+          python3 -B - "$RUNNER_TEMP" "$RPDS_HEAD" <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'tools/python313-producer')
+          import build_schema
+          import poll_comparison_inputs
+          root = Path(sys.argv[1])
+          supplier = poll_comparison_inputs.read_json(build_schema.POLL_PIN_PATH)
+          poll_comparison_inputs.authenticate(
+              supplier,
+              *(poll_comparison_inputs.read_json(root / 'schema-poll-auth' / name)
+                for name in ('run.json', 'job.json', 'artifact.json')),
+          )
+          reference = poll_comparison_inputs.read_json(build_schema.POLL_REFERENCE_PIN_PATH)
+          build_schema._authenticate_poll_reference(
+              reference,
+              *(poll_comparison_inputs.read_json(root / 'schema-reference-auth' / name)
+                for name in ('run.json', 'job.json', 'artifact.json')),
+          )
+          rpds = poll_comparison_inputs.read_json(root / 'schema-rpds-run.json')
+          if (rpds.get('head_sha') != sys.argv[2] or rpds.get('id') != 40182231971
+                  or rpds.get('status') != 'completed' or rpds.get('conclusion') != 'success'):
+              raise SystemExit('actual RPDS predecessor source/run/outcome differs')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ steps.inputs.outputs.poll_artifact }}
+          merge-multiple: true
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.inputs.outputs.poll_run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/schema-poll-supplier
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ steps.inputs.outputs.reference_artifact }}
+          merge-multiple: true
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.inputs.outputs.reference_run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/schema-poll-reference
+      - name: Locate the unique raw-C comparison report from its evidence artifact
+        id: reference-report
+        run: |
+          python3 -B - "$RUNNER_TEMP/schema-poll-reference" "$GITHUB_OUTPUT" <<'PY'
+          import json, sys
+          from pathlib import Path
+          sys.path.insert(0, 'tools/python313-producer')
+          import build_schema
+          root = Path(sys.argv[1]).resolve(strict=True)
+          pins = json.loads(build_schema.POLL_REFERENCE_PIN_PATH.read_bytes())
+          matches = [path for path in root.rglob('comparison.json')
+                     if path.is_file() and not path.is_symlink()]
+          if len(matches) != 1 or matches[0].stat().st_size != pins['comparison_bytes']:
+              raise SystemExit('raw-C evidence artifact lacks its unique pinned report')
+          with open(sys.argv[2], 'a') as output:
+              print(f'report={matches[0]}', file=output)
+          PY
+      - name: Rehash all nine decoded producer files and authenticate the C predecessor
+        env:
+          POLL_REFERENCE_REPORT: ${{ steps.reference-report.outputs.report }}
+        run: |
+          python3 -B - "$RUNNER_TEMP" <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          sys.path.insert(0, 'tools/python313-producer')
+          import build_schema
+          import poll_comparison_inputs
+          root = Path(sys.argv[1])
+          bundle = root / 'schema-poll-supplier'
+          producer = bundle / poll_comparison_inputs.PREFIXES['candidate']
+          reference_report = Path(os.environ['POLL_REFERENCE_REPORT'])
+          cli = poll_comparison_inputs.read_json(producer / 'cli-build.json')
+          source = poll_comparison_inputs.read_json(producer / 'cli-source.json')
+          build_schema.verify_inactive_poll_predecessors(
+              bundle,
+              root / 'schema-poll-auth',
+              reference_report,
+              root / 'schema-reference-auth',
+              producer,
+              cli,
+              source,
+          )
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.RPDS_ARTIFACT }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.RPDS_RUN }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/schema-rpds
+      - name: Restore locked package, source, and validation inputs
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          chmod 755 "$RUNNER_TEMP/schema-poll-supplier/poll-candidate-producer/work/target/release/componentize-py"
+          python3 -B tools/python313-producer/fetch_schema.py --destination "$RUNNER_TEMP/schema-inputs"
+          python3 -B tools/python313-producer/fetch_schema_stdlib.py --destination "$RUNNER_TEMP/schema-stdlib"
+          python3 -B tools/python313-producer/fetch_validation_tools.py --destination "$RUNNER_TEMP/schema-validation"
+      - name: Run the actual original schema corpus with the inactive candidate CLI
+        env:
+          POLL_REFERENCE_REPORT: ${{ steps.reference-report.outputs.report }}
+        run: >-
+          python3 -B tools/python313-producer/build_schema.py
+          --inputs "$RUNNER_TEMP/schema-inputs"
+          --producer "$RUNNER_TEMP/schema-poll-supplier/poll-candidate-producer"
+          --rpds "$RUNNER_TEMP/schema-rpds"
+          --validation "$RUNNER_TEMP/schema-validation"
+          --stdlib "$RUNNER_TEMP/schema-stdlib"
+          --destination "$RUNNER_TEMP/schema-poll-candidate"
+          --allow-ui-wall-clock
+          --allow-ui-monotonic-clock
+          --allow-inactive-ui-libc
+          --allow-ci-link-trace
+          --schema-exception-diagnostics
+          --poll-bundle "$RUNNER_TEMP/schema-poll-supplier"
+          --poll-authentication "$RUNNER_TEMP/schema-poll-auth"
+          --poll-reference-report "$POLL_REFERENCE_REPORT"
+          --poll-reference-authentication "$RUNNER_TEMP/schema-reference-auth"
+      - name: Retain bounded actual schema observations and supervision
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-schema-exception-diagnostics-evidence
+          path: |
+            ${{ runner.temp }}/schema-inputs/schema-inputs.json
+            ${{ runner.temp }}/schema-stdlib/stdlib-inputs.json
+            ${{ runner.temp }}/schema-poll-candidate/schema-build.json
+            ${{ runner.temp }}/schema-poll-candidate/native/
+            ${{ runner.temp }}/schema-poll-candidate/wasm/
+            ${{ runner.temp }}/schema-poll-candidate/work/native.json
+            ${{ runner.temp }}/schema-poll-candidate/work/wasm-observation.json
+            ${{ runner.temp }}/schema-poll-candidate/work/schema.json
+            ${{ runner.temp }}/schema-poll-candidate/work/stage-inputs.json
+            ${{ runner.temp }}/schema-poll-candidate/work/schema-exception-diagnostics.json
+            ${{ runner.temp }}/schema-poll-candidate/work/ui-clock-probes.json
+            ${{ runner.temp }}/schema-poll-candidate/work/link-trace/libraries.tsv
+            ${{ runner.temp }}/schema-poll-candidate/work/link-trace/complete.tsv
+          if-no-files-found: warn
+          retention-days: 14

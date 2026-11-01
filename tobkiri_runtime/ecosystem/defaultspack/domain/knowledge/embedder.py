@@ -5,9 +5,7 @@ embedding API が利用できない環境では文字列マッチにフォール
 
 import math
 import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 def _default_model():

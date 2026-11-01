@@ -13,10 +13,23 @@
     .loader { width: min(72vw, 760px); aspect-ratio: 2 / 1; margin-bottom: 1.25rem; opacity: 1; transform: translateY(0); transition: opacity .3s ease, transform .3s ease; }
     .loader.visible { opacity: 1; transform: translateY(0); }
     .loader object { display: block; width: 100%; height: 100%; }
-    .progress { font-size: 1rem; color: #666666; text-align: center; min-height: 1.5em; padding: 0 2rem; transition: color .3s, opacity .3s ease; opacity: 1; }
+    .progress-row { display: flex; align-items: flex-start; gap: .5rem; width: min(88vw, 760px); padding: 0 1rem; }
+    .progress { flex: 1; font-size: 1rem; color: #666666; text-align: center; min-height: 1.5em; padding: 0 1rem; transition: color .3s, opacity .3s ease; opacity: 1; }
     .progress.visible { opacity: 1; }
-    .progress.error { color: #c52626; }
+    .progress.error { color: #c52626; user-select: text; }
     .progress.ready { color: #167a3d; }
+    .startup-error-icon { display: inline-flex; flex: 0 0 auto; width: 1.9rem; height: 1.9rem; align-items: center; justify-content: center; color: #c52626; }
+    .startup-error-icon[hidden], .copy-error[hidden] { display: none; }
+    .startup-error-icon svg { width: 1rem; height: 1rem; stroke: currentColor; stroke-width: 1.8; fill: none; }
+    .copy-error { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 1.9rem; height: 1.9rem; border: 1px solid #d1d1d1; border-radius: .375rem; background: #ffffff; color: #555555; cursor: pointer; }
+    .copy-error svg { width: 1rem; height: 1rem; stroke: currentColor; stroke-width: 1.7; fill: none; }
+    .copy-error:hover { background: #f4f4f4; color: #171717; }
+    .copy-error:focus-visible { outline: 2px solid #2167d1; outline-offset: 2px; }
+    .copy-error.copied { border-color: #167a3d; color: #167a3d; }
+    .copy-error.failed { border-color: #c52626; color: #c52626; }
+    .copy-feedback { width: min(88vw, 760px); min-height: 1.25rem; padding: .35rem 2rem 0; color: #555555; font-size: .8rem; text-align: center; }
+    .copy-feedback.copied { color: #167a3d; }
+    .copy-feedback.failed { color: #c52626; }
     @media (prefers-reduced-motion: reduce) { .loader, .progress { transition: none; } }
   </style>
 </head>
@@ -24,22 +37,80 @@
   <div class="loader visible" id="loader">
     <object id="startup-animation" data="./tobkiri_launcher_startup_blade_cut.svg" type="image/svg+xml" aria-label="Tobkiri startup animation"></object>
   </div>
-  <div class="progress visible" id="progress" role="status" aria-live="polite">Initializing...</div>
+  <div class="progress-row">
+    <span class="startup-error-icon" id="startup-error-icon" hidden aria-hidden="true"><svg focusable="false" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6"></path><path d="M12 16.5h.01"></path></svg></span>
+    <div class="progress visible" id="progress" role="status" aria-live="polite">Initializing...</div>
+    <button class="copy-error" id="copy-error" type="button" hidden aria-label="Copy startup error" title="Copy startup error" aria-describedby="copy-feedback"><svg aria-hidden="true" class="copy-icon" focusable="false" viewBox="0 0 24 24"><rect height="14" rx="2" ry="2" width="14" x="8" y="8"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg></button>
+  </div>
+  <div class="copy-feedback" id="copy-feedback" role="status" aria-live="polite" aria-atomic="true"></div>
   <script>
     document.addEventListener('DOMContentLoaded', function () {
       var el = document.getElementById('progress');
       var loader = document.getElementById('loader');
       var animation = document.getElementById('startup-animation');
+      var errorIcon = document.getElementById('startup-error-icon');
+      var copyButton = document.getElementById('copy-error');
+      var copyFeedback = document.getElementById('copy-feedback');
+      var errorMessage = '';
       var shown = true;
       var finished = false;
       function showUi() { if (shown || finished) return; shown = true; loader.classList.add('visible'); el.classList.add('visible'); }
       function hideLoader() { loader.classList.remove('visible'); }
-      function setMessage(msg, type) { loader.classList.add('visible'); el.textContent = msg; el.className = 'progress visible'; if (type === 'error') el.classList.add('error'); else if (type === 'ready') el.classList.add('ready'); }
+      function setMessage(msg, type) {
+        loader.classList.add('visible');
+        el.textContent = msg;
+        el.className = 'progress visible';
+        el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+        el.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+        errorMessage = type === 'error' ? msg : '';
+        errorIcon.hidden = type !== 'error';
+        copyButton.hidden = type !== 'error';
+        copyButton.className = 'copy-error';
+        copyButton.setAttribute('aria-label', 'Copy startup error');
+        copyButton.setAttribute('title', 'Copy startup error');
+        copyFeedback.textContent = '';
+        copyFeedback.className = 'copy-feedback';
+        if (type === 'error') el.classList.add('error'); else if (type === 'ready') el.classList.add('ready');
+      }
+      function fallbackCopy(text) {
+        if (!document.body || typeof document.execCommand !== 'function') return false;
+        var selection = document.createElement('textarea');
+        selection.value = text;
+        selection.setAttribute('readonly', '');
+        selection.setAttribute('aria-hidden', 'true');
+        selection.style.position = 'fixed';
+        selection.style.opacity = '0';
+        selection.style.pointerEvents = 'none';
+        document.body.appendChild(selection);
+        selection.select();
+        try { return document.execCommand('copy'); }
+        catch (_) { return false; }
+        finally { selection.remove(); }
+      }
+      function copyStartupError() {
+        if (!errorMessage) return;
+        function report(copied) {
+          copyButton.className = copied ? 'copy-error copied' : 'copy-error failed';
+          var feedback = copied
+            ? 'Startup error copied to the clipboard.'
+            : 'Could not copy the startup error. Select the message and copy it manually.';
+          copyButton.setAttribute('aria-label', feedback);
+          copyButton.setAttribute('title', feedback);
+          copyFeedback.textContent = feedback;
+          copyFeedback.className = copied ? 'copy-feedback copied' : 'copy-feedback failed';
+        }
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          navigator.clipboard.writeText(errorMessage).then(function () { report(true); }).catch(function () { report(fallbackCopy(errorMessage)); });
+          return;
+        }
+        report(fallbackCopy(errorMessage));
+      }
+      copyButton.addEventListener('click', copyStartupError);
       function onProgress(msg) {
         if (finished) return;
         if (msg.indexOf('Error') === 0) { finished = true; setMessage(msg, 'error'); }
         else if (msg === 'Ready') { finished = true; setMessage(msg, 'ready'); }
-        else { el.textContent = msg; el.className = 'progress visible'; }
+        else { setMessage(msg, 'progress'); }
       }
       function forceStartupAnimation() {
         var svg = animation.contentDocument && animation.contentDocument.documentElement;
@@ -54,8 +125,9 @@
         }
       }
       animation.addEventListener('load', forceStartupAnimation);
-      function listenProgress() { if (!window.__TAURI__ || !window.__TAURI__.event) { setTimeout(listenProgress, 100); return; } window.__TAURI__.event.listen('setup-progress', function (event) { onProgress(event.payload); }); }
-      function poll() { if (!window.__TAURI__ || !window.__TAURI__.core) { setTimeout(poll, 300); return; } window.__TAURI__.core.invoke('get_setup_progress').then(function (msg) { onProgress(msg); }).catch(function () {}); if (!finished) setTimeout(poll, 500); }
+      function progressUnavailable() { if (!finished) setMessage('Launcher progress unavailable. Retrying…', 'error'); }
+      function listenProgress() { if (!window.__TAURI__ || !window.__TAURI__.event) { setTimeout(listenProgress, 100); return; } window.__TAURI__.event.listen('setup-progress', function (event) { onProgress(event.payload); }).catch(progressUnavailable); }
+      function poll() { if (!window.__TAURI__ || !window.__TAURI__.core) { setTimeout(poll, 300); return; } window.__TAURI__.core.invoke('get_setup_progress').then(function (msg) { onProgress(msg); }).catch(progressUnavailable); if (!finished) setTimeout(poll, 500); }
       listenProgress(); poll();
     });
   </script>

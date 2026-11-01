@@ -2,11 +2,18 @@ from __future__ import annotations
 
 from typing import Any
 
+from .normalizers import list_or_empty, mapping_or_empty
+
 
 TRUSTED_TOOL_PACK_IDS = {"defaultspack", "rumi_default_tools_pack"}
-SUPPORTED_AUTHORABLE_EXECUTION_TYPES = {"rumi_function", "capability", "mcp"}
+SUPPORTED_AUTHORABLE_EXECUTION_TYPES = {
+    "rumi_function",
+    "capability",
+    "mcp",
+    "global_contract",
+}
 TRUSTED_LEGACY_EXECUTION_TYPES = {"local", "handler", "dynamic"}
-VALID_RISKS = {"low", "medium", "high"}
+VALID_RISKS = {"low", "medium", "high", "critical"}
 SANDBOX_CAPABILITY_PREFIX = "sandbox."
 SANDBOX_TOOL_IDS = {
     "sandbox_terminal_exec",
@@ -72,7 +79,9 @@ _UNSAFE_TEXT_MARKERS = (
 )
 
 
-def source_pack_id_from_tool(tool_def: dict[str, Any]) -> str:
+def source_pack_id_from_tool(tool_def: dict[str, Any] | None) -> str:
+    if not isinstance(tool_def, dict):
+        return ""
     metadata = tool_def.get("metadata")
     if isinstance(metadata, dict):
         value = metadata.get("source_pack_id")
@@ -96,15 +105,27 @@ def source_pack_id_from_manifest(manifest: dict[str, Any], fallback: str = "") -
     return str(fallback or "").strip()
 
 
-def is_trusted_tool(tool_def: dict[str, Any]) -> bool:
+def is_trusted_tool(tool_def: dict[str, Any] | None) -> bool:
     return source_pack_id_from_tool(tool_def) in TRUSTED_TOOL_PACK_IDS
 
 
 def is_trusted_pack_id(pack_id: str) -> bool:
-    return str(pack_id or "").strip() in TRUSTED_TOOL_PACK_IDS
+    normalized = str(pack_id or "").strip()
+    if normalized in TRUSTED_TOOL_PACK_IDS:
+        return True
+    if not normalized:
+        return False
+    try:
+        from core_runtime.pack_trust import is_pack_trusted
+
+        return bool(is_pack_trusted(normalized)[0])
+    except Exception:
+        return False
 
 
-def execution_type(tool_def: dict[str, Any]) -> str:
+def execution_type(tool_def: dict[str, Any] | None) -> str:
+    if not isinstance(tool_def, dict):
+        return ""
     execution = tool_def.get("execution")
     if not isinstance(execution, dict):
         return ""
@@ -115,9 +136,11 @@ def legacy_execution_requires_trust(exec_type: str) -> bool:
     return str(exec_type or "").strip().lower() in TRUSTED_LEGACY_EXECUTION_TYPES
 
 
-def unsupported_execution_reason(tool_def: dict[str, Any]) -> str | None:
+def unsupported_execution_reason(tool_def: dict[str, Any] | None) -> str | None:
+    if not isinstance(tool_def, dict):
+        return "tool definition must be an object"
     exec_type = execution_type(tool_def) or "local"
-    execution = tool_def.get("execution") if isinstance(tool_def.get("execution"), dict) else {}
+    execution = mapping_or_empty(tool_def.get("execution"))
     if exec_type in SUPPORTED_AUTHORABLE_EXECUTION_TYPES:
         if exec_type == "rumi_function" and not str(execution.get("qualified_name") or "").strip():
             return "rumi_function tools must declare execution.qualified_name"
@@ -126,6 +149,11 @@ def unsupported_execution_reason(tool_def: dict[str, Any]) -> str | None:
         if exec_type == "mcp":
             if not str(execution.get("server_name") or "").strip():
                 return "mcp tools must declare execution.server_name"
+        if exec_type == "global_contract":
+            if not str(execution.get("contract_id") or "").strip():
+                return "global_contract tools must declare execution.contract_id"
+            if not str(execution.get("operation") or "").strip():
+                return "global_contract tools must declare execution.operation"
         return None
     if legacy_execution_requires_trust(exec_type) and is_trusted_tool(tool_def):
         return None
@@ -139,7 +167,7 @@ def untrusted_tool_security_rejection(tool_def: dict[str, Any]) -> str | None:
     if is_sandbox_capability_tool(tool_def):
         return None
 
-    execution = tool_def.get("execution") if isinstance(tool_def.get("execution"), dict) else {}
+    execution = mapping_or_empty(tool_def.get("execution"))
     exec_type = str(execution.get("type") or "").strip().lower()
     grants = capability_grants(tool_def)
     if any(_is_host_capability_grant(grant) for grant in grants):
@@ -196,7 +224,7 @@ def is_sandbox_capability_tool(tool_def: dict[str, Any]) -> bool:
     grants = capability_grants(tool_def)
     if not grants or any(not grant.startswith(SANDBOX_CAPABILITY_PREFIX) for grant in grants):
         return False
-    execution = tool_def.get("execution") if isinstance(tool_def.get("execution"), dict) else {}
+    execution = mapping_or_empty(tool_def.get("execution"))
     exec_type = str(execution.get("type") or "").strip().lower()
     if exec_type == "rumi_function":
         qualified_name = str(execution.get("qualified_name") or "").strip()
@@ -245,13 +273,15 @@ def normalize_risk(raw_risk: Any, tool_def: dict[str, Any], trusted: bool) -> tu
     return "high", True
 
 
-def requires_approval_for_security(tool_def: dict[str, Any]) -> bool:
+def requires_approval_for_security(tool_def: dict[str, Any] | None) -> bool:
+    if not isinstance(tool_def, dict):
+        return True
     if is_safe_first_party_memo_tool(tool_def):
         return False
     risk = str(_tool_value(tool_def, "risk") or "").strip().lower()
     return (
         bool(_tool_value(tool_def, "requires_approval"))
-        or risk == "high"
+        or risk in {"high", "critical"}
         or appears_write_or_execute_capable(tool_def)
     )
 
@@ -274,12 +304,14 @@ def is_safe_first_party_memo_tool(tool_def: dict[str, Any]) -> bool:
             tool_def.get("summary"),
         )
     )
-    tags = tool_def.get("tags") if isinstance(tool_def.get("tags"), list) else []
+    tags = list_or_empty(tool_def.get("tags"))
     tag_text = " ".join(str(tag or "").strip().lower() for tag in tags)
     return category == "memory" and ("memo" in name or "memo" in tag_text)
 
 
-def appears_write_or_execute_capable(tool_def: dict[str, Any]) -> bool:
+def appears_write_or_execute_capable(tool_def: dict[str, Any] | None) -> bool:
+    if not isinstance(tool_def, dict):
+        return True
     if bool(_tool_value(tool_def, "write_action")):
         return True
     action_type = str(_tool_value(tool_def, "action_type") or "").strip().lower()
@@ -303,7 +335,9 @@ def appears_write_or_execute_capable(tool_def: dict[str, Any]) -> bool:
     )
 
 
-def _tool_value(tool_def: dict[str, Any], key: str) -> Any:
+def _tool_value(tool_def: dict[str, Any] | None, key: str) -> Any:
+    if not isinstance(tool_def, dict):
+        return None
     if key in tool_def:
         return tool_def.get(key)
     metadata = tool_def.get("metadata")

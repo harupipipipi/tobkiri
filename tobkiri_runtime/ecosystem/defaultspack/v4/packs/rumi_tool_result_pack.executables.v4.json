@@ -1,0 +1,130 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "rumi_tool_result_pack",
+  "source_identity": "sha256:207dcf8ab9943cfc8febc92a4eae400c5b1ab237f4760c0c95c566842c8d1f3a",
+  "variants": [
+    {
+      "variant_id": "rumi_tool_result_pack.tool-result.normalize.python",
+      "function_id": "rumi_tool_result_pack.tool-result.normalize",
+      "implementation_path": "runtime/normalizer.py",
+      "implementation_digest": "sha256:7e775a9fe3ccf67c44b375c95e057d2e7fb8e5a6c3bd6347979042979f6af6a0",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.tool.result.normalize.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:4d956505f690274cb444551fc9b9b1fdc89712dbb18ebbe918581c9102e9d053",
+          "operation_id": "rumi_tool_result_pack.tool-result-normalize",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "executor_content_hash": {
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "executor_provider_instance_id": {
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "tool_call_id": {
+                "x-tobkiri-flow-role": "configuration"
+              },
+              "tool_id": {
+                "x-tobkiri-flow-role": "configuration"
+              },
+              "value": {
+                "title": "元の結果"
+              }
+            },
+            "required": [
+              "tool_id",
+              "tool_call_id",
+              "executor_provider_instance_id",
+              "executor_content_hash",
+              "value"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "error": {
+                "title": "エラー"
+              },
+              "executor": {
+                "additionalProperties": false,
+                "properties": {
+                  "content_hash": {
+                    "type": "string"
+                  },
+                  "provider_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "provider_instance_id",
+                  "content_hash"
+                ],
+                "type": "object",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "is_error": {
+                "type": "boolean"
+              },
+              "result": {
+                "title": "結果"
+              },
+              "status": {
+                "enum": [
+                  "success",
+                  "error"
+                ],
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "tool_call_id": {
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "tool_id": {
+                "type": "string",
+                "x-tobkiri-flow-role": "metadata"
+              },
+              "widget": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "x-tobkiri-flow-role": "metadata"
+              }
+            },
+            "required": [
+              "tool_call_id",
+              "tool_id",
+              "status",
+              "is_error",
+              "result",
+              "error",
+              "widget",
+              "executor"
+            ],
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    }
+  ],
+  "materialization_catalog_digest": "sha256:50bc5dcc7fd97e234e414152a267803f99ec47def8ba0e4c656f2149a7f9c97f",
+  "catalog_digest": "sha256:46ea4933aa98567da959722717206b27916437e3e46fc1deb97e3ba346555bea"
+}

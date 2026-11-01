@@ -1,0 +1,31 @@
+{
+  "id": "python_sandbox_execute",
+  "category": "tools",
+  "kind": "tool",
+  "version": "1",
+  "status": "stable",
+  "display_name": "Saved Python Sandbox Tool",
+  "entrypoints": {
+    "tool_manifest": "../../../tools/python_sandbox_execute/manifest.json"
+  },
+  "security": {
+    "approval_required": true,
+    "shell_execution": false,
+    "python_execution": true
+  },
+  "policy": {
+    "risk": "high",
+    "requires_approval": true,
+    "action_type": "execute"
+  },
+  "aliases": {
+    "tool_ids": [
+      "python_sandbox_execute"
+    ]
+  },
+  "compatibility": {
+    "legacy_ids": []
+  },
+  "source_pack_id": "rumi_default_tools_pack",
+  "description": "Run a Python script or unittest target using a snapshot of the approved workspace, with execution time and output limits."
+}

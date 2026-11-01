@@ -43,6 +43,19 @@ class _StubProviderChatContext:
         return {"agent_id": "agent-1", "planning_model": "stub/default"}.get(name)
 
 
+def _assert_removed_legacy_flow(flow_name: str) -> None:
+    """Require the removed defaults flow to fail closed at the Pack v4 boundary."""
+    from tempfile import TemporaryDirectory
+
+    from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
+    from tests.v4_batch_support import assert_payload_mutations_denied, harness
+
+    assert not (LEGACY_DEFAULTS_ROOT / "flows" / flow_name / "handler.py").exists()
+    assert_profile_resolver_requires_authority_snapshot()
+    with TemporaryDirectory() as root:
+        assert_payload_mutations_denied(harness(Path(root)))
+
+
 def _load_legacy_handler(flow_name):
     original_sys_path = list(sys.path)
     for module_name in list(sys.modules):
@@ -67,83 +80,25 @@ def _load_legacy_handler(flow_name):
 
 
 def test_agent_chat_fails_closed_without_chat_send():
-    handler = _load_legacy_handler("agent_chat")
-
-    result = handler.run(
-        {"conversation_id": "conv-1", "message": {"role": "user", "content": "hello"}},
-        _NoChatContext(),
-    )
-
-    assert result["status"] == "error"
-    assert result["error"]["code"] == "CHAT_SEND_UNAVAILABLE"
+    _assert_removed_legacy_flow("agent_chat")
 
 
 def test_agent_chat_fails_closed_when_chat_send_raises():
-    handler = _load_legacy_handler("agent_chat")
-
-    result = handler.run(
-        {"conversation_id": "conv-1", "message": {"role": "user", "content": "hello"}},
-        _RaisingChatContext(),
-    )
-
-    assert result["status"] == "error"
-    assert result["error"]["code"] == "CHAT_SEND_FAILED"
-    assert "chat backend down" in result["error"]["message"]
+    _assert_removed_legacy_flow("agent_chat")
 
 
 def test_legacy_flows_treat_empty_stub_response_as_unavailable():
-    payload = {
-        "conversation_id": "conv-1",
-        "message": {"role": "user", "content": "hello"},
-    }
-
     for flow_name in ("agent_chat", "planning_agent"):
-        handler = _load_legacy_handler(flow_name)
-        result = handler.run(payload, _UnavailableStubContext())
-
-        assert result["status"] == "error"
-        assert result["error"]["code"] == "CHAT_SEND_UNAVAILABLE"
+        _assert_removed_legacy_flow(flow_name)
 
 
 def test_agent_chat_preserves_actual_stub_provider_response():
-    handler = _load_legacy_handler("agent_chat")
-
-    result = handler.run(
-        {"conversation_id": "conv-1", "message": {"role": "user", "content": "hello"}},
-        _StubProviderChatContext(),
-    )
-
-    assert result["status"] == "ok"
-    assert result["data"]["result"]["_stub"] is True
-    assert result["data"]["result"]["data"]["message"]["content"] == (
-        "1. inspect legacy flow\n2. ship the fix"
-    )
+    _assert_removed_legacy_flow("agent_chat")
 
 
 def test_planning_agent_derives_plan_from_chat_send_response():
-    handler = _load_legacy_handler("planning_agent")
-
-    result = handler.run(
-        {
-            "conversation_id": "conv-1",
-            "message": {"role": "user", "content": "make a plan"},
-        },
-        _StubProviderChatContext(),
-    )
-
-    assert result["status"] == "ok"
-    assert result["data"]["planning_model"] == "stub/default"
-    assert result["data"]["plan"] == ["1. inspect legacy flow", "2. ship the fix"]
-    assert not any(step.startswith("Step 1: Analyze") for step in result["data"]["plan"])
+    _assert_removed_legacy_flow("planning_agent")
 
 
 def test_planning_agent_fails_closed_without_chat_send():
-    handler = _load_legacy_handler("planning_agent")
-
-    result = handler.run(
-        {"conversation_id": "conv-1", "message": {"role": "user", "content": "hello"}},
-        _NoChatContext(),
-    )
-
-    assert result["status"] == "error"
-    assert result["error"]["code"] == "CHAT_SEND_UNAVAILABLE"
+    _assert_removed_legacy_flow("planning_agent")

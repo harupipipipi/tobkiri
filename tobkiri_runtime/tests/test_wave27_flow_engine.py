@@ -311,8 +311,8 @@ class TestFunctionStep:
             new_ctx, result = asyncio.run(run())
             assert result["_error"] == "capability_executor not available"
 
-    # 16. 正常実行 → 明示 output に格納
-    def test_success_explicit_output(self, engine):
+    # 16. capability_executor は退役済み → 明示 output にフェイルクローズエラー
+    def test_retired_executor_explicit_output(self, engine):
         step = {
             "id": "fn3",
             "type": "function",
@@ -322,36 +322,16 @@ class TestFunctionStep:
         }
         ctx = {"_flow_execution_id": "e1", "_flow_run_principal_id": "test_pack"}
 
-        mock_executor = MagicMock()
-        mock_executor.execute.return_value = _FakeResp(
-            success=True, output={"score": 95}
-        )
+        async def run():
+            return await engine._execute_function_step_async(step, ctx)
 
-        with patch.dict(_sys.modules, {"core_runtime.di_container": MagicMock()}):
-            mock_di = _sys.modules["core_runtime.di_container"]
-            mock_container = MagicMock()
-            mock_container.get_or_none.return_value = mock_executor
-            mock_di.get_container.return_value = mock_container
+        new_ctx, result = asyncio.run(run())
+        assert result == {"_error": "capability_executor not available"}
+        assert new_ctx["_step_out.analyze_result"] == result
+        assert "_step_out.fn3" not in new_ctx
 
-            async def run():
-                loop = asyncio.get_running_loop()
-                original_rie = loop.run_in_executor
-
-                async def fake_rie(executor, fn):
-                    return fn()
-
-                loop.run_in_executor = fake_rie
-                try:
-                    return await engine._execute_function_step_async(step, ctx)
-                finally:
-                    loop.run_in_executor = original_rie
-
-            new_ctx, result = asyncio.run(run())
-            assert new_ctx["analyze_result"] == {"score": 95}
-            assert "_step_out.fn3" not in new_ctx
-
-    # 17. 正常実行 → 自動格納（_step_out. プレフィックス）
-    def test_success_auto_output(self, engine):
+    # 17. capability_executor は退役済み → 自動格納にもフェイルクローズエラー
+    def test_retired_executor_auto_output(self, engine):
         step = {
             "id": "fn4",
             "type": "function",
@@ -360,32 +340,15 @@ class TestFunctionStep:
         }
         ctx = {"_flow_execution_id": "e1", "_flow_run_principal_id": "test_pack"}
 
-        mock_executor = MagicMock()
-        mock_executor.execute.return_value = _FakeResp(
-            success=True, output={"score": 50}
-        )
+        async def run():
+            return await engine._execute_function_step_async(step, ctx)
 
-        with patch.dict(_sys.modules, {"core_runtime.di_container": MagicMock()}):
-            mock_di = _sys.modules["core_runtime.di_container"]
-            mock_container = MagicMock()
-            mock_container.get_or_none.return_value = mock_executor
-            mock_di.get_container.return_value = mock_container
+        new_ctx, result = asyncio.run(run())
+        assert result == {"_error": "capability_executor not available"}
+        assert new_ctx["_step_out.fn4"] == result
 
-            async def run():
-                loop = asyncio.get_running_loop()
-
-                async def fake_rie(executor, fn):
-                    return fn()
-
-                loop.run_in_executor = fake_rie
-                return await engine._execute_function_step_async(step, ctx)
-
-            new_ctx, result = asyncio.run(run())
-            assert "_step_out.fn4" in new_ctx
-            assert new_ctx["_step_out.fn4"] == {"score": 50}
-
-    # 18. 実行失敗 → _error キー付き結果
-    def test_failure_returns_error(self, engine):
+    # 18. capability_executor は退役済み → DI 注入不可能でフェイルクローズ
+    def test_retired_executor_cannot_be_injected(self, engine):
         step = {
             "id": "fn5",
             "type": "function",
@@ -397,7 +360,7 @@ class TestFunctionStep:
 
         mock_executor = MagicMock()
         mock_executor.execute.return_value = _FakeResp(
-            success=False, output=None, error="something went wrong"
+            success=True, output={"score": 1}
         )
 
         with patch.dict(_sys.modules, {"core_runtime.di_container": MagicMock()}):
@@ -407,15 +370,10 @@ class TestFunctionStep:
             mock_di.get_container.return_value = mock_container
 
             async def run():
-                loop = asyncio.get_running_loop()
-
-                async def fake_rie(executor, fn):
-                    return fn()
-
-                loop.run_in_executor = fake_rie
                 return await engine._execute_function_step_async(step, ctx)
 
             new_ctx, result = asyncio.run(run())
-            assert "_error" in result
-            assert result["_error"] == "something went wrong"
-            assert new_ctx["bad_result"] == {"_error": "something went wrong"}
+            # DI 経由の注入は廃止: tombstone が常にフェイルクローズさせる。
+            assert result == {"_error": "capability_executor not available"}
+            assert new_ctx["_step_out.bad_result"] == result
+            mock_executor.execute.assert_not_called()

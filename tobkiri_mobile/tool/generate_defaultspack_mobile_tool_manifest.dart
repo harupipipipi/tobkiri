@@ -1,11 +1,17 @@
 import 'dart:convert';
 import 'dart:io';
 
-void main() {
-  final functionsDir =
-      Directory('../tobkiri_runtime/ecosystem/defaultspack/functions').absolute;
-  final toolsDir =
-      Directory('../tobkiri_runtime/ecosystem/defaultspack/tools').absolute;
+void main(List<String> arguments) {
+  if (arguments.length != 3) {
+    stderr.writeln(
+      'usage: dart run tool/generate_defaultspack_mobile_tool_manifest.dart '
+      '<functions-dir> <tools-dir> <output-file>',
+    );
+    exitCode = 64;
+    return;
+  }
+  final functionsDir = Directory(arguments[0]).absolute;
+  final toolsDir = Directory(arguments[1]).absolute;
   if (!functionsDir.existsSync()) {
     stderr.writeln('defaultspack functions directory not found: $functionsDir');
     exitCode = 1;
@@ -82,8 +88,7 @@ void main() {
 
   final entries = entriesById.values.toList()
     ..sort((a, b) => a.id.compareTo(b.id));
-  final outFile =
-      File('lib/src/data/local/defaultspack_tool_agent_manifest.g.dart');
+  final outFile = File(arguments[2]).absolute;
   outFile.writeAsStringSync(_render(entries));
   final format = Process.runSync(Platform.resolvedExecutable, [
     'format',

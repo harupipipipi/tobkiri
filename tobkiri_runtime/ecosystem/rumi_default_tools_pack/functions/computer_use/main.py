@@ -113,6 +113,12 @@ def run(context, args):
         "title_contains",
         "url",
         "url_contains",
+        "browser",
+        "browser_app",
+        "profile_id",
+        "session_id",
+        "persistent",
+        "target_app",
         "window",
         "window_index",
         "tab_index",
@@ -156,12 +162,12 @@ def run(context, args):
         "action_type",
         "key_combo",
         "dry_run",
-        "approval_token",
         "computer_use_haze_sequence_id",
         "computer_use_sequence_id",
         "run_id",
         "request_id",
         "conversation_turn_id",
+        "approval_token",
     ):
         if key in raw:
             payload[key] = raw.get(key)

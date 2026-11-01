@@ -1,0 +1,57 @@
+{
+  "schema_version": "tobkiri.skill/v2",
+  "kind": "skill",
+  "id": "tobkiri.repository-context-preparation",
+  "version": "1.0.0",
+  "enabled": true,
+  "priority": 180,
+  "display_name": {
+    "en": "Repository context preparation",
+    "ja": "リポジトリ文脈の事前選別"
+  },
+  "description": {
+    "en": "Prepare concise repository evidence with a low-cost Subagent before expensive investigation.",
+    "ja": "高価な原因調査前に安価なSubagentで簡潔なリポジトリ証拠を準備します。"
+  },
+  "instructions": {
+    "path": "SKILL.md",
+    "format": "agent-skills",
+    "max_tokens": 4000
+  },
+  "activation": {
+    "mode": "auto_or_explicit",
+    "aliases": [
+      "repository context",
+      "context scout",
+      "cheap file triage"
+    ],
+    "positive_examples": [
+      "Find the cause of this bug in a large repository.",
+      "Investigate which files are related before using the expensive model.",
+      "大量のファイルから関係ありそうなものだけ選んで原因を調べて"
+    ],
+    "negative_examples": [
+      "Read this one exact file.",
+      "Apply this already-known one-line patch."
+    ]
+  },
+  "scope": {
+    "activity_ids": ["coding.repository-context"],
+    "tool_ids": ["repository_context_prepare"]
+  },
+  "composition": {
+    "class": "optional",
+    "priority": 180,
+    "requires": [],
+    "conflicts_with": []
+  },
+  "tool_policy": {
+    "allowed_tool_ids": ["repository_context_prepare"],
+    "denied_tool_ids": []
+  },
+  "security": {
+    "minimum_trust": "verified",
+    "may_grant_permissions": false
+  },
+  "ui": {"mentionable": true, "developer_visible": true}
+}

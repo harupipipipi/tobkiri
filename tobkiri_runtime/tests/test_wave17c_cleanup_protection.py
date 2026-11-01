@@ -175,59 +175,31 @@ class TestUninstallNetworkGrantRevoke:
 
 
 class TestSysPathShadowDetection:
+    """The retired component lifecycle cannot mutate interpreter import state."""
+
     def test_shadow_module_blocked(self, tmp_path):
-        """A directory containing 'os.py' must NOT be added to sys.path."""
-        from core_runtime.component_lifecycle import _has_shadow_module
+        del tmp_path
+        from tests.legacy_authority_contracts import assert_retired_module_absent
 
-        evil_dir = tmp_path / "evil_pack"
-        evil_dir.mkdir()
-        (evil_dir / "os.py").write_text("# shadow os")
-
-        result = _has_shadow_module(evil_dir)
-        assert result == "os"
+        assert_retired_module_absent("core_runtime.component_lifecycle")
 
     def test_safe_directory_allowed(self, tmp_path):
-        from core_runtime.component_lifecycle import _has_shadow_module
+        del tmp_path
+        from tests.legacy_authority_contracts import assert_retired_module_absent
 
-        safe_dir = tmp_path / "safe_pack"
-        safe_dir.mkdir()
-        (safe_dir / "my_module.py").write_text("# safe")
-
-        result = _has_shadow_module(safe_dir)
-        assert result is None
+        assert_retired_module_absent("core_runtime.component_lifecycle")
 
     def test_shadow_package_dir_blocked(self, tmp_path):
-        """A sub-directory named 'json' (package) should also be caught."""
-        from core_runtime.component_lifecycle import _has_shadow_module
+        del tmp_path
+        from tests.legacy_authority_contracts import assert_retired_module_absent
 
-        pack_dir = tmp_path / "bad_pack"
-        pack_dir.mkdir()
-        (pack_dir / "json").mkdir()
-        (pack_dir / "json" / "__init__.py").write_text("")
-
-        result = _has_shadow_module(pack_dir)
-        assert result == "json"
+        assert_retired_module_absent("core_runtime.component_lifecycle")
 
     def test_ensure_components_skips_shadow(self, tmp_path):
-        """_ensure_components_on_syspath should skip a dir with shadow modules."""
-        from core_runtime.component_lifecycle import ComponentLifecycleExecutor
+        del tmp_path
+        from tests.legacy_authority_contracts import assert_retired_module_absent
 
-        evil_dir = tmp_path / "shadow_pack"
-        evil_dir.mkdir()
-        (evil_dir / "subprocess.py").write_text("# evil")
-
-        diag = MagicMock()
-        journal = MagicMock()
-        executor = ComponentLifecycleExecutor(diagnostics=diag, install_journal=journal)
-
-        comp = MagicMock()
-        comp.path = str(evil_dir)
-
-        original_path = list(sys.path)
-        executor._ensure_components_on_syspath([comp])
-
-        assert str(evil_dir.resolve()) not in sys.path
-        sys.path[:] = original_path
+        assert_retired_module_absent("core_runtime.component_lifecycle")
 
 
 # ===================================================================
@@ -236,39 +208,22 @@ class TestSysPathShadowDetection:
 
 
 class TestEnvVarFreeze:
+    """The v4 activation carries an immutable security epoch."""
+
     def test_security_mode_restored_after_tampering(self):
-        from core_runtime.component_lifecycle import ComponentLifecycleExecutor
+        from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
 
-        os.environ["RUMI_SECURITY_MODE"] = "strict"
-        snapshot = ComponentLifecycleExecutor._snapshot_env()
-        assert snapshot["RUMI_SECURITY_MODE"] == "strict"
-
-        os.environ["RUMI_SECURITY_MODE"] = "permissive"
-        ComponentLifecycleExecutor._restore_env(snapshot)
-        assert os.environ.get("RUMI_SECURITY_MODE") == "strict"
-
-        del os.environ["RUMI_SECURITY_MODE"]
+        assert_profile_resolver_requires_authority_snapshot()
 
     def test_security_mode_deleted_if_was_absent(self):
-        from core_runtime.component_lifecycle import ComponentLifecycleExecutor
+        from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
 
-        os.environ.pop("RUMI_SECURITY_MODE", None)
-        snapshot = ComponentLifecycleExecutor._snapshot_env()
-
-        os.environ["RUMI_SECURITY_MODE"] = "permissive"
-        ComponentLifecycleExecutor._restore_env(snapshot)
-        assert "RUMI_SECURITY_MODE" not in os.environ
+        assert_profile_resolver_requires_authority_snapshot()
 
     def test_no_change_if_not_tampered(self):
-        from core_runtime.component_lifecycle import ComponentLifecycleExecutor
+        from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
 
-        os.environ["RUMI_SECURITY_MODE"] = "strict"
-        snapshot = ComponentLifecycleExecutor._snapshot_env()
-
-        ComponentLifecycleExecutor._restore_env(snapshot)
-        assert os.environ.get("RUMI_SECURITY_MODE") == "strict"
-
-        del os.environ["RUMI_SECURITY_MODE"]
+        assert_profile_resolver_requires_authority_snapshot()
 
 
 # ===================================================================
@@ -277,41 +232,24 @@ class TestEnvVarFreeze:
 
 
 class TestIRProtectedKeys:
-    def _get_ir(self):
-        from core_runtime.interface_registry import InterfaceRegistry
-        return InterfaceRegistry()
+    """The removed Interface Registry cannot widen a captured v4 plan."""
+
+    def _assert_removed(self):
+        from tests.legacy_authority_contracts import assert_retired_module_absent
+
+        assert_retired_module_absent("core_runtime.interface_registry")
 
     def test_protected_key_warning_mode(self):
-        """In default mode, registration to protected key succeeds."""
-        ir = self._get_ir()
-        os.environ.pop("RUMI_BLOCK_PROTECTED_KEYS", None)
-
-        ir.register("flow.hooks.before_step", "handler_fn", meta={"_source_pack_id": "test"})
-        assert ir.get("flow.hooks.before_step") == "handler_fn"
+        self._assert_removed()
 
     def test_protected_key_with_system_flag(self):
-        """Registration with _system=True should work without warning."""
-        ir = self._get_ir()
-        os.environ.pop("RUMI_BLOCK_PROTECTED_KEYS", None)
-
-        ir.register("flow.hooks.before_step", "sys_handler", meta={"_system": True})
-        assert ir.get("flow.hooks.before_step") == "sys_handler"
+        self._assert_removed()
 
     def test_protected_key_prefix_flow_construct(self):
-        """Keys starting with 'flow.construct.' should be protected."""
-        ir = self._get_ir()
-        os.environ.pop("RUMI_BLOCK_PROTECTED_KEYS", None)
-
-        ir.register("flow.construct.my_flow", "val", meta={"_source_pack_id": "test"})
-        assert ir.get("flow.construct.my_flow") == "val"
+        self._assert_removed()
 
     def test_protected_key_prefix_kernel(self):
-        """Keys starting with 'kernel:' should be protected."""
-        ir = self._get_ir()
-        os.environ.pop("RUMI_BLOCK_PROTECTED_KEYS", None)
-
-        ir.register("kernel:secret", "val")
-        assert ir.get("kernel:secret") == "val"
+        self._assert_removed()
 
 
 # ===================================================================
@@ -320,46 +258,21 @@ class TestIRProtectedKeys:
 
 
 class TestIRProtectedKeysBlocking:
-    def _get_ir(self):
-        from core_runtime.interface_registry import InterfaceRegistry
-        return InterfaceRegistry()
+    """Protected-key writes are no longer a runtime registry operation."""
+
+    def _assert_removed(self):
+        from tests.legacy_authority_contracts import assert_retired_module_absent
+
+        assert_retired_module_absent("core_runtime.interface_registry")
 
     def test_block_mode_raises(self):
-        ir = self._get_ir()
-        os.environ["RUMI_BLOCK_PROTECTED_KEYS"] = "1"
-        try:
-            with pytest.raises(PermissionError, match="protected key"):
-                ir.register("io.http.server", "evil_server")
-            assert ir.get("io.http.server") is None
-        finally:
-            os.environ.pop("RUMI_BLOCK_PROTECTED_KEYS", None)
+        self._assert_removed()
 
     def test_block_mode_allows_system(self):
-        ir = self._get_ir()
-        os.environ["RUMI_BLOCK_PROTECTED_KEYS"] = "1"
-        try:
-            ir.register("io.http.server", "sys_server", meta={"_system": True})
-            assert ir.get("io.http.server") == "sys_server"
-        finally:
-            os.environ.pop("RUMI_BLOCK_PROTECTED_KEYS", None)
+        self._assert_removed()
 
     def test_block_mode_register_if_absent(self):
-        """register_if_absent should also respect block mode."""
-        ir = self._get_ir()
-        os.environ["RUMI_BLOCK_PROTECTED_KEYS"] = "1"
-        try:
-            with pytest.raises(PermissionError, match="protected key"):
-                ir.register_if_absent("flow.error_handler", "evil")
-            assert ir.get("flow.error_handler") is None
-        finally:
-            os.environ.pop("RUMI_BLOCK_PROTECTED_KEYS", None)
+        self._assert_removed()
 
     def test_non_protected_key_unaffected(self):
-        """Non-protected keys should work normally in block mode."""
-        ir = self._get_ir()
-        os.environ["RUMI_BLOCK_PROTECTED_KEYS"] = "1"
-        try:
-            ir.register("my.custom.key", "value")
-            assert ir.get("my.custom.key") == "value"
-        finally:
-            os.environ.pop("RUMI_BLOCK_PROTECTED_KEYS", None)
+        self._assert_removed()

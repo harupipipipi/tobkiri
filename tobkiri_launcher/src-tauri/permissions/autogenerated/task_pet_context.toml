@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-task-pet-context"
+description = "Enables the task_pet_context command without any pre-configured scope."
+commands.allow = ["task_pet_context"]
+
+[[permission]]
+identifier = "deny-task-pet-context"
+description = "Denies the task_pet_context command without any pre-configured scope."
+commands.deny = ["task_pet_context"]

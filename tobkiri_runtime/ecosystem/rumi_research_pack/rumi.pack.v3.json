@@ -1,0 +1,155 @@
+{
+  "contracts": {
+    "provides": [],
+    "requires": []
+  },
+  "entrypoints": [],
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": false,
+      "manifest": {
+        "components": {
+          "research_catalog": {
+            "connectivity": {
+              "provides": [
+                "rumi.research.capabilities",
+                "rumi.research.evidence_schema",
+                "rumi.research.source_quality",
+                "rumi.research.workflow_recipes",
+                "rumi.research.citation_styles"
+              ],
+              "requires": []
+            },
+            "id": "research_catalog",
+            "path": "catalog",
+            "type": "research_capability_catalog"
+          },
+          "research_profiles": {
+            "connectivity": {
+              "provides": [
+                "rumi.research.profiles"
+              ],
+              "requires": [
+                "rumi.research.capabilities"
+              ]
+            },
+            "id": "research_profiles",
+            "path": "profiles",
+            "type": "research_profile"
+          }
+        },
+        "connectivity": {
+          "provides": [],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Research workflow and UI content without host authority.",
+        "display_name": "Rumi Research Content",
+        "host_execution": false,
+        "load_order": [
+          "research_capability_catalog:research_catalog",
+          "research_profile:research_profiles"
+        ],
+        "metadata": {
+          "author": "Rumi AI Team",
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:91d06a5215a4c108246bf7723728c0801f5ccc0835a9ee3d8daaa1b149e1ccd3",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:e2d83995d747960bba97f667015dac30d433110afe19a3b2cda0818220f38e53"
+          },
+          "declarative_only": true,
+          "description": "Declarative local-first deep research, evidence, source quality, and citation workflow pack for Rumi-native research agents.",
+          "inspired_by": [
+            "ChatGPT Deep Research-style synthesis",
+            "Genspark-style research reports",
+            "Gemini and Claude citation workflows"
+          ],
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "license": "MIT",
+          "name": "Rumi Research Pack",
+          "network_policy": "none_by_default",
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "required_secrets": []
+        },
+        "pack_id": "rumi_research_pack",
+        "pack_identity": "rumi:ecosystem/rumi_research_pack",
+        "provenance": {
+          "build_identity": "rumi_research_pack:1.0.0",
+          "content_hash": "sha256:7b2e4d34be67be1ce03296fe07ffdc68f3bb8fd0c8236124646a5e9afd1610a8",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [
+          "frontend/contributions/research.json"
+        ],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "research_capability_catalog",
+            "research_evidence_model",
+            "research_profile",
+            "research_preset",
+            "research_workflow_recipe"
+          ]
+        }
+      },
+      "pack_id": "rumi_research_pack"
+    },
+    "rumi.product_content.boundary": {
+      "host_authority": false,
+      "host_imports": false,
+      "product": "research",
+      "profile_scoped": true
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_research_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:e2d83995d747960bba97f667015dac30d433110afe19a3b2cda0818220f38e53"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.webapp.research"
+    ],
+    "removal_wave": 10,
+    "rollback": "Remove the selected product pack projection; no host state is owned.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Research workflow and UI content without host authority.",
+    "display_name": "Rumi Research Content",
+    "id": "rumi.research",
+    "kind": "content",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [],
+  "provenance": {
+    "build_identity": "rumi_research_pack:1.0.0",
+    "content_hash": "sha256:7b2e4d34be67be1ce03296fe07ffdc68f3bb8fd0c8236124646a5e9afd1610a8",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [
+    {
+      "content_hash": "sha256:e8f6c5315bd2285240a9d293cddbdbb060e3da1ed41d8cc462eb586c470fe9c0",
+      "id": "frontend/contributions/research.json",
+      "kind": "ui.contribution"
+    }
+  ],
+  "storage": []
+}

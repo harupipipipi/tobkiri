@@ -1,0 +1,55 @@
+;; Producer fixture: one nominal resource shared by two interface exports.
+;; The private initializer is deliberately part of the inner component only.
+(component
+  (core module $state
+    (global $drops (mut i32) (i32.const 0))
+    (func (export "destroy") (param i32)
+      global.get $drops i32.const 1 i32.add global.set $drops)
+    (func (export "drops") (result i32) global.get $drops)
+    (func (export "private-init")))
+  (core instance $state-instance (instantiate $state))
+  (alias core export $state-instance "destroy" (core func $destroy))
+  (alias core export $state-instance "drops" (core func $drops))
+  (alias core export $state-instance "private-init" (core func $private-init))
+  (type $object (resource (rep i32) (dtor (func $destroy))))
+  (core func $new (canon resource.new $object))
+  (core func $rep (canon resource.rep $object))
+  (core func $drop (canon resource.drop $object))
+  (core module $operations
+    (import "resource" "new" (func $new (param i32) (result i32)))
+    (import "resource" "rep" (func $rep (param i32) (result i32)))
+    (import "resource" "drop" (func $drop (param i32)))
+    (func (export "make") (param i32) (result i32) local.get 0 call $new)
+    ;; A borrow of this locally defined resource lowers to its representation.
+    (func (export "inspect") (param i32) (result i32) local.get 0)
+    (func (export "consume") (param i32) (result i32)
+      local.get 0 call $rep local.get 0 call $drop))
+  (core instance $resource
+    (export "new" (func $new)) (export "rep" (func $rep))
+    (export "drop" (func $drop)))
+  (core instance $operations-instance
+    (instantiate $operations (with "resource" (instance $resource))))
+  (alias core export $operations-instance "make" (core func $make))
+  (alias core export $operations-instance "inspect" (core func $inspect))
+  (alias core export $operations-instance "consume" (core func $consume))
+  (func $make (param "value" u32) (result (own $object))
+    (canon lift (core func $make)))
+  (func $inspect (param "value" (borrow $object)) (result u32)
+    (canon lift (core func $inspect)))
+  (func $consume (param "value" (own $object)) (result u32)
+    (canon lift (core func $consume)))
+  (func $drops (result u32) (canon lift (core func $drops)))
+  (func $private-init (canon lift (core func $private-init)))
+  (instance $objects
+    (export "object" (type $object))
+    (export "make" (func $make))
+    (export "inspect" (func $inspect))
+    (export "consume" (func $consume))
+    (export "drops" (func $drops)))
+  (instance $observer
+    (export "object" (type $object))
+    (export "inspect" (func $inspect)))
+  (instance $initializer (export "init" (func $private-init)))
+  (export "local:outer-resource-proof/objects@1.0.0" (instance $objects))
+  (export "local:outer-resource-proof/observer@1.0.0" (instance $observer))
+  (export "exports" (instance $initializer)))

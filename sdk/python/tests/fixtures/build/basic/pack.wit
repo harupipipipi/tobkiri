@@ -1,0 +1,5 @@
+package local:basic-python-pack@1.0.0;
+
+world python-pack {
+  export ping: func() -> string;
+}

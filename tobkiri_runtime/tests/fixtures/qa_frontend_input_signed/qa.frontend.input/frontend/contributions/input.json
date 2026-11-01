@@ -1,0 +1,21 @@
+{
+  "version": "rumi.ui.contribution.v1",
+  "id": "qa.frontend.input.route",
+  "kind": "route",
+  "mode": "declarative",
+  "label": "QA Input Pack",
+  "priority": 0,
+  "route": "/qa-frontend-input",
+  "view": {
+    "title": "QA Pack Input",
+    "body": "This route belongs to an installed Pack. The note stays on this page.",
+    "input": {
+      "label": "QA note",
+      "placeholder": "Type a note here"
+    }
+  },
+  "accessibility": {
+    "name": "QA Input Pack",
+    "keyboard": true
+  }
+}

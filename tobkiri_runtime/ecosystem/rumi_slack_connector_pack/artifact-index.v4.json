@@ -1,0 +1,32 @@
+{
+  "artifact_set_digest": "sha256:0d6e072eb0074717084a84a469e4ec9bd5e38763121340fd6ca3670adc39f150",
+  "artifacts": [
+    {
+      "digest": "sha256:2793ade1813855ed40e80d93e995ed8ff94b5e00d8a3f22891b5c9d7502692a7",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:67af74c1a2810f757bacbe81efb41801f7655664adcaaad9a2d70ad081cf0735",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:d0e3b603a11433ec5354ae91ba28ed8bbd010c7d6c2fa1d3af8813582d85b900",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:b9e67d4e981adc16de2e398fe6f0c9fe3e6ce2568a9a57fffb3c4384afdc41c6",
+      "path": "runtime/adapter.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:5af48e9e5e5461fbe7676b67c07eb6ebc9f762a7c05e9c09ee8cbc45cf98410d"
+  },
+  "pack_id": "rumi_slack_connector_pack",
+  "source_identity": "sha256:bdfff37abee7af7cad6c1a51a7d3fcf236b78d81efbb7e56169a0de7a0257e44"
+}

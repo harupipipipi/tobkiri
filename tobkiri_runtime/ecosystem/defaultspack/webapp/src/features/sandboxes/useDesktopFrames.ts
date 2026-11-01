@@ -107,6 +107,7 @@ function cadenceFor(options: { selected: boolean; hasLease: boolean }): number {
 
 export function useDesktopFrame({
   seatId,
+  enabled = true,
   status,
   selected,
   hasControlLease,
@@ -114,6 +115,7 @@ export function useDesktopFrame({
   fetcher = sandboxesApi.fetchDesktopFrame,
 }: {
   seatId: string;
+  enabled?: boolean;
   status?: DesktopFrameRuntimeStatus;
   selected: boolean;
   hasControlLease: boolean;
@@ -153,7 +155,7 @@ export function useDesktopFrame({
   }, [releaseObjectUrl]);
 
   const pollNow = useCallback(async () => {
-    if (!isRunningStatus(status) || isDocumentHidden()) return;
+    if (!enabled || !isRunningStatus(status) || isDocumentHidden()) return;
     if (!pollerRef.current) {
       pollerRef.current = new DesktopFramePoller({
         seatId,
@@ -175,15 +177,15 @@ export function useDesktopFrame({
       setError(null);
     }
     setIsPolling(false);
-  }, [accessKey, fetcher, frame?.frame_seq, handleFrame, quality, seatId, status]);
+  }, [enabled, accessKey, fetcher, frame?.frame_seq, handleFrame, quality, seatId, status]);
 
   useEffect(() => {
     pollerRef.current?.abort();
     pollerRef.current = null;
-  }, [accessKey, fetcher, quality, seatId]);
+  }, [enabled, accessKey, fetcher, quality, seatId]);
 
   useEffect(() => {
-    if (!isRunningStatus(status)) return;
+    if (!enabled || !isRunningStatus(status)) return;
     let cancelled = false;
     let timer: number | null = null;
     const schedule = (delay: number) => {
@@ -215,7 +217,7 @@ export function useDesktopFrame({
       document.removeEventListener("visibilitychange", handleVisibility);
       pollerRef.current?.abort();
     };
-  }, [error, hasControlLease, pollNow, selected, status]);
+  }, [enabled, error, hasControlLease, pollNow, selected, status]);
 
   useEffect(() => {
     return () => {

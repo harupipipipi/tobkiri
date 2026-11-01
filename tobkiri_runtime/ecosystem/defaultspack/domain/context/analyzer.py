@@ -4,11 +4,8 @@ ChatStore, Inspector, PromptManager, ToolRegistry, KnowledgeStore, MemoryStore
 を読み取り専用で使用し、会話別・システム全体のコンテキスト情報を算出する。
 """
 
-import sys
-import os
 import time
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from domain.chat.store import ChatStore
 from domain.dev.inspector import Inspector
@@ -342,7 +339,9 @@ def analyze_system():
     # ツール数
     registered_tools_count = 0
     try:
-        from domain.tool.registry import ToolRegistry
+        from domain.tool.catalog_contract_client import (
+            ContractToolCatalog as ToolRegistry,
+        )
         tool_registry = ToolRegistry()
         tools = tool_registry.list_tools()
         registered_tools_count = len(tools)

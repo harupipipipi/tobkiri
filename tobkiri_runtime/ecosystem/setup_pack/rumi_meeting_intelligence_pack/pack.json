@@ -35,7 +35,7 @@
     "evidence_linked_recap_bundle": "owned_by_rumi_meeting_intelligence_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Rumi Meeting Intelligence Pack is a declarative domain contract pack; promotion is blocked until runtime owners prove the adjacent execution and audit evidence outside this pack.",
     "criteria": [

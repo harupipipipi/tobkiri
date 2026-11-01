@@ -164,6 +164,19 @@ class ComputerDriver(ABC):
             notes=[f"{self.name} does not support move"],
         )
 
+    def set_text_control(
+        self,
+        target: ComputerTarget,
+        text: str = "",
+        selector: dict[str, Any] | None = None,
+    ) -> ActionResult:
+        """Replace a verified semantic text control without foreground input."""
+        return ActionResult(
+            action="set_text_control", driver=self.name, executed=False,
+            confidence="not_supported",
+            notes=[f"{self.name} does not support set_text_control"],
+        )
+
     def drag(
         self,
         target: ComputerTarget,

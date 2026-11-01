@@ -1,0 +1,82 @@
+{
+  "artifacts": [],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.ai.generate.v1",
+      "operations": ["fixture_ai_pack.generate"],
+      "revision_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "id": "fixture_ai_pack.provider",
+      "implementation_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "isolation": "dedicated_process",
+      "operations": ["fixture_ai_pack.generate"],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "contract_catalog_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "source_identity": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "migration": {
+    "compatibility": "none",
+    "legacy_ids": [],
+    "removal_wave": 0,
+    "sunset_at": "2099-01-01"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.service.ai.generate.v1",
+      "effect_ceiling": [
+        "capability:ai.generate",
+        "host:brokered-execution"
+      ],
+      "operation_id": "fixture_ai_pack.generate",
+      "owner": "fixture_ai_pack",
+      "provider_id": "fixture_ai_pack.provider",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "display_name": "Fixture AI",
+    "id": "fixture_ai_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [],
+    "generator": "fixture",
+    "generator_version": "1.0.0",
+    "normative": false,
+    "repository_commit": "working-tree",
+    "repository_tree": "0000000000000000000000000000000000000000000000000000000000000000",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "source_kind": "repository",
+    "source_path": "fixture"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.service.ai.generate.v1",
+      "operations": ["fixture_ai_pack.generate"],
+      "owner": "fixture_ai_pack",
+      "provider_id": "fixture_ai_pack.provider"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": ["ai.generate"],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {"allowed_domains": [], "allowed_ports": []},
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

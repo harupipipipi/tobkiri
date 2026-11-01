@@ -240,6 +240,185 @@ def test_type_into_inactive_selected_window_still_refuses_same_app_dialog(tmp_pa
     assert result["recovery"]["kind"] == "focus_required"
 
 
+def test_app_only_key_allows_same_app_untitled_browser_chrome_surface(tmp_path, monkeypatch) -> None:
+    from ecosystem.rumi_default_tools_pack.domain.tool import browser_computer
+    from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import BrowserComputerController
+
+    controller = BrowserComputerController(artifact_root=tmp_path)
+    active_chrome_surface = {
+        "app": "Vivaldi",
+        "pid": 4242,
+        "title": "",
+        "window_id": 139,
+        "x": 0,
+        "y": 37,
+        "width": 1470,
+        "height": 44,
+    }
+    selected_page = {
+        "app": "Vivaldi",
+        "pid": 4242,
+        "title": "Me at the zoo - YouTube - Vivaldi",
+        "window_id": 134,
+        "x": 0,
+        "y": 37,
+        "width": 1470,
+        "height": 919,
+    }
+
+    monkeypatch.setattr(controller, "_capture_target", lambda payload: selected_page)
+    monkeypatch.setattr(controller, "_active_window", lambda: active_chrome_surface)
+    monkeypatch.setattr(controller, "_focus_window", lambda target: None)
+    monkeypatch.setattr(browser_computer.time, "sleep", lambda seconds: None)
+
+    assert controller._foreground_action_focus_error(
+        "computer.key",
+        {"app": "Vivaldi", "key": "k"},
+    ) is None
+
+    result = controller._foreground_action_focus_error(
+        "computer.key",
+        {"app": "Vivaldi", "title": "Me at the zoo", "key": "k"},
+    )
+    assert result is not None
+    assert result["recovery"]["kind"] == "focus_required"
+
+
+def test_app_only_physical_click_allows_same_app_untitled_browser_chrome_surface(tmp_path, monkeypatch) -> None:
+    from ecosystem.rumi_default_tools_pack.domain.tool import browser_computer
+    from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import BrowserComputerController
+
+    controller = BrowserComputerController(artifact_root=tmp_path)
+    active_chrome_surface = {
+        "app": "Vivaldi",
+        "pid": 4242,
+        "title": "",
+        "window_id": 139,
+        "x": 0,
+        "y": 37,
+        "width": 1470,
+        "height": 44,
+    }
+    selected_page = {
+        "app": "Vivaldi",
+        "pid": 4242,
+        "title": "Me at the zoo - YouTube - Vivaldi",
+        "window_id": 134,
+        "x": 0,
+        "y": 37,
+        "width": 1470,
+        "height": 919,
+    }
+
+    monkeypatch.setattr(controller, "_capture_target", lambda payload: selected_page)
+    monkeypatch.setattr(controller, "_active_window", lambda: active_chrome_surface)
+    monkeypatch.setattr(controller, "_focus_window", lambda target: None)
+    monkeypatch.setattr(browser_computer.time, "sleep", lambda seconds: None)
+
+    assert controller._foreground_action_focus_error(
+        "computer.click",
+        {"app": "Vivaldi", "physical": True, "x": 724, "y": 661},
+    ) is None
+
+    result = controller._foreground_action_focus_error(
+        "computer.click",
+        {"app": "Vivaldi", "title": "Me at the zoo", "physical": True, "x": 724, "y": 661},
+    )
+    assert result is not None
+    assert result["recovery"]["kind"] == "focus_required"
+
+
+def test_app_only_type_accepts_same_pid_atlas_translation_chrome_without_refocus(tmp_path, monkeypatch) -> None:
+    from ecosystem.rumi_default_tools_pack.domain.tool import browser_computer
+    from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import BrowserComputerController
+
+    controller = BrowserComputerController(artifact_root=tmp_path)
+    active_popover = {
+        "app": "ChatGPT Atlas",
+        "pid": 3300,
+        "title": "",
+        "window_id": 4216,
+        "x": 1124,
+        "y": 118,
+        "width": 346,
+        "height": 113,
+    }
+    selected_page = {
+        "app": "ChatGPT Atlas",
+        "pid": 3300,
+        "title": "Example Domain",
+        "window_id": 76,
+        "x": 0,
+        "y": 38,
+        "width": 1470,
+        "height": 845,
+    }
+    focused = []
+
+    monkeypatch.setattr(controller, "_capture_target", lambda payload: selected_page)
+    monkeypatch.setattr(controller, "_active_window", lambda: active_popover)
+    monkeypatch.setattr(controller, "_focus_window", lambda target: focused.append(target))
+    monkeypatch.setattr(browser_computer.time, "sleep", lambda seconds: None)
+
+    payload = {"app": "ChatGPT Atlas", "fallback": "foreground", "text": "youtube"}
+    assert controller._focus_action_target(payload) is True
+    assert focused == []
+    assert controller._foreground_action_focus_error("computer.type", payload) is None
+
+
+def test_atlas_translation_chrome_requires_same_pid(tmp_path, monkeypatch) -> None:
+    from ecosystem.rumi_default_tools_pack.domain.tool import browser_computer
+    from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import BrowserComputerController
+
+    controller = BrowserComputerController(artifact_root=tmp_path)
+    selected_page = {
+        "app": "ChatGPT Atlas", "pid": 3300, "title": "Example Domain", "window_id": 76,
+        "x": 0, "y": 38, "width": 1470, "height": 845,
+    }
+    active_popover = {
+        "app": "ChatGPT Atlas", "pid": 3399, "title": "", "window_id": 4216,
+        "x": 1124, "y": 118, "width": 346, "height": 113,
+    }
+    monkeypatch.setattr(controller, "_capture_target", lambda payload: selected_page)
+    monkeypatch.setattr(controller, "_active_window", lambda: active_popover)
+    monkeypatch.setattr(controller, "_focus_window", lambda target: None)
+    monkeypatch.setattr(browser_computer.time, "sleep", lambda seconds: None)
+
+    result = controller._foreground_action_focus_error(
+        "computer.type", {"app": "ChatGPT Atlas", "fallback": "foreground", "text": "youtube"},
+    )
+
+    assert result is not None
+    assert result["diagnostics"]["failure_stage"] == "foreground_target_verification"
+    assert result["diagnostics"]["input_dispatched"] is False
+
+
+def test_app_only_type_rejects_substantial_same_pid_atlas_content_window(tmp_path, monkeypatch) -> None:
+    from ecosystem.rumi_default_tools_pack.domain.tool import browser_computer
+    from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import BrowserComputerController
+
+    controller = BrowserComputerController(artifact_root=tmp_path)
+    selected_page = {
+        "app": "ChatGPT Atlas", "pid": 3300, "title": "Example Domain", "window_id": 76,
+        "x": 0, "y": 38, "width": 1470, "height": 845,
+    }
+    other_content = {
+        "app": "ChatGPT Atlas", "pid": 3300, "title": "Other tab", "window_id": 88,
+        "x": 20, "y": 58, "width": 1200, "height": 700,
+    }
+    monkeypatch.setattr(controller, "_capture_target", lambda payload: selected_page)
+    monkeypatch.setattr(controller, "_active_window", lambda: other_content)
+    monkeypatch.setattr(controller, "_focus_window", lambda target: None)
+    monkeypatch.setattr(browser_computer.time, "sleep", lambda seconds: None)
+
+    result = controller._foreground_action_focus_error(
+        "computer.type", {"app": "ChatGPT Atlas", "fallback": "foreground", "text": "youtube"},
+    )
+
+    assert result is not None
+    assert result["recovery"]["kind"] == "focus_required"
+
+
 def test_controller_capabilities_include_linux_and_mac_swift(monkeypatch) -> None:
     from ecosystem.rumi_default_tools_pack.domain.tool import browser_computer
     from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import BrowserComputerController

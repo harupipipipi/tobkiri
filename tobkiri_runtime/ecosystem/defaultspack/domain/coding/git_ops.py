@@ -20,6 +20,8 @@ class GitOps:
             ["git"] + self._safe_git_args(args),
             cwd=self._root,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             timeout=timeout,
         )
@@ -54,6 +56,8 @@ class GitOps:
             ["git"] + list(args),
             cwd=self._root,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             timeout=timeout,
         )

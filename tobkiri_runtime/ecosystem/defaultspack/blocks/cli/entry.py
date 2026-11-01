@@ -11,11 +11,9 @@ The HTTP method is determined by the ``_http_method`` field injected by
 the route registration in blocks/dev/setup.py, or defaults to GET.
 """
 
-import sys
 import os
 import json
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import ok, error, timestamp
 

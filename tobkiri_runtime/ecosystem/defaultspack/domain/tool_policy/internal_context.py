@@ -21,9 +21,16 @@ SENSITIVE_TOOL_CONTEXT_KEYS = {
 }
 
 UNTRUSTED_TOOL_CONTEXT_KEYS = SENSITIVE_TOOL_CONTEXT_KEYS | {
+    "_source_pack_id",
+    "_tool_authority_token",
     "active_startup_profile_id",
+    "approval_request_id",
+    "approval_token",
     "artifact_root",
+    "authority_one_shot_token",
     "effective_tool_allowlist",
+    "owner_pack",
+    "pack_id",
     "profile_id",
     "profile_policy",
     "rootPath",

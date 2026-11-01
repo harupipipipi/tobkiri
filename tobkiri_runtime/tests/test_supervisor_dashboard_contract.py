@@ -16,7 +16,9 @@ sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
 
 def test_runtime_router_keeps_computer_use_as_last_operation_layer() -> None:
-    from core_runtime.supervisor_dashboard import build_runtime_router_contract
+    from ecosystem.defaultspack.domain.agent_runtime.supervisor_dashboard import (
+        build_runtime_router_contract,
+    )
 
     router = build_runtime_router_contract()
 
@@ -28,7 +30,9 @@ def test_runtime_router_keeps_computer_use_as_last_operation_layer() -> None:
 
 
 def test_supervisor_catalog_is_cloud_first_without_docker_desktop_requirement() -> None:
-    from core_runtime.supervisor_dashboard import build_supervisor_dashboard_snapshot
+    from ecosystem.defaultspack.domain.agent_runtime.supervisor_dashboard import (
+        build_supervisor_dashboard_snapshot,
+    )
 
     snapshot = build_supervisor_dashboard_snapshot(run_store=None)
     providers = {provider["id"]: provider for provider in snapshot["sandbox_providers"]}
@@ -48,7 +52,9 @@ def test_supervisor_catalog_is_cloud_first_without_docker_desktop_requirement() 
 
 
 def test_supervisor_snapshot_summarizes_agent_runtime_store(tmp_path) -> None:
-    from core_runtime.supervisor_dashboard import build_supervisor_dashboard_snapshot
+    from ecosystem.defaultspack.domain.agent_runtime.supervisor_dashboard import (
+        build_supervisor_dashboard_snapshot,
+    )
     from domain.agent_runtime.models import AgentRun
     from domain.agent_runtime.run_store import AgentRunStore
 
@@ -108,7 +114,9 @@ def test_supervisor_snapshot_summarizes_agent_runtime_store(tmp_path) -> None:
 
 
 def test_supervisor_snapshot_redacts_poisoned_event_payload(tmp_path) -> None:
-    from core_runtime.supervisor_dashboard import build_supervisor_dashboard_snapshot
+    from ecosystem.defaultspack.domain.agent_runtime.supervisor_dashboard import (
+        build_supervisor_dashboard_snapshot,
+    )
     from domain.agent_runtime.models import AgentRun
     from domain.agent_runtime.run_store import AgentRunStore
 
@@ -152,7 +160,9 @@ def test_supervisor_snapshot_redacts_poisoned_event_payload(tmp_path) -> None:
 
 
 def test_supervisor_snapshot_does_not_advertise_live_controls() -> None:
-    from core_runtime.supervisor_dashboard import build_supervisor_dashboard_snapshot
+    from ecosystem.defaultspack.domain.agent_runtime.supervisor_dashboard import (
+        build_supervisor_dashboard_snapshot,
+    )
 
     snapshot = build_supervisor_dashboard_snapshot(run_store=None)
     live_actions = {"pause", "resume", "take_over", "open_live_screen", "open_replay"}
@@ -163,30 +173,3 @@ def test_supervisor_snapshot_does_not_advertise_live_controls() -> None:
     assert snapshot["capabilities"]["replay"] is False
     assert live_actions.isdisjoint(snapshot["action_buttons"])
     assert "replay_evidence_is_recorded" not in snapshot["security_guardrails"]
-
-
-def test_panel_dashboard_includes_supervisor_snapshot(monkeypatch) -> None:
-    from core_runtime.api.control_panel_handlers import ControlPanelHandlersMixin
-    from core_runtime import supervisor_dashboard
-
-    monkeypatch.setattr(
-        supervisor_dashboard,
-        "build_supervisor_dashboard_snapshot",
-        lambda: {"router": {"policy": "structured_first_computer_last"}, "metrics": {"active_runs": 0}},
-    )
-
-    class FakePanel(ControlPanelHandlersMixin):
-        def _panel_list_packs_internal(self):
-            return [{"enabled": True}, {"enabled": False}]
-
-        def _panel_list_flows_internal(self):
-            return [{"flow_id": "flow_1"}]
-
-        def _panel_read_profile(self):
-            return {"username": "haru", "language": "ja", "icon": None}
-
-    dashboard = FakePanel()._panel_get_dashboard()
-
-    assert dashboard["packs"] == {"total": 2, "enabled": 1, "disabled": 1}
-    assert dashboard["flows"] == {"total": 1}
-    assert dashboard["supervisor"]["router"]["policy"] == "structured_first_computer_last"

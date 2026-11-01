@@ -1,0 +1,110 @@
+name: Issue 1520 actual native IPC isolation
+
+on:
+  push:
+    branches: [codex/issue-1520-rust-core]
+    paths:
+      - '.github/workflows/issue-1520-native-ui.yml'
+      - 'tools/native-ipc-probe/**'
+      - 'crates/tobkiri-e2e/examples/native_ipc_fixture.rs'
+      - 'tobkiri_launcher/core-host/**'
+      - 'tobkiri_launcher/frontend/src/core-host/**'
+      - 'tobkiri_launcher/frontend/core-host/**'
+      - 'tobkiri_launcher/frontend/vite.core-host.config.ts'
+      - 'tobkiri_launcher/frontend/package*.json'
+      - 'tobkiri_launcher/src-tauri/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'crates/**'
+      # This exact module is compiled only under cfg(test). The complete native
+      # workspace job still executes it; it changes no app or fixture program.
+      - '!crates/tobkiri-core/src/core_tests.rs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-ipc:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: never
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-native-ipc
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify the actual native platform
+        shell: bash
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          proof_device="$(df -P "$RUNNER_TEMP" | awk 'NR == 2 {print $1}')"
+          test -n "$proof_device"
+          diskutil info "$proof_device" | grep -E 'Type \(Bundle\):[[:space:]]+apfs'
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          components: rustfmt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+      - name: Verify bounded controller regressions
+        run: |
+          python3 -B tools/native-ipc-probe/test_run.py
+          node --check tools/native-ipc-probe/root.js
+          node --check tools/native-ipc-probe/attack.js
+          node --test tools/native-ipc-probe/root.test.cjs
+      - name: Prepare private data-only fixture with ordinary Core save
+        run: |
+          cargo run --locked -p tobkiri-e2e --example native_ipc_fixture -- \
+            --output "$RUNNER_TEMP/native-ipc-fixture"
+      - name: Release fixture compiles without debug data-root APIs
+        run: cargo check --locked -p tobkiri-e2e --example native_ipc_fixture --release
+      - name: Install locked frontend build inputs
+        working-directory: tobkiri_launcher/frontend
+        run: npm ci --ignore-scripts
+      - name: Build the actual scoped-debug native app
+        working-directory: tobkiri_launcher
+        env:
+          TAURI_FRONTEND_PATH: ${{ github.workspace }}/tobkiri_launcher/frontend
+          TAURI_APP_PATH: ${{ github.workspace }}/tobkiri_launcher/src-tauri
+        # No synthetic Tauri shim or capability/CSP override. The existing
+        # macOS debug signing policy and full native composition are used.
+        run: >-
+          npm exec --prefix frontend -- tauri build --debug --features core-host
+          --config src-tauri/tauri.core-host.macos.dev.conf.json --bundles app -- --locked
+      - name: Native observer unit regressions
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-ipc-scope-tests.log" --expected-passed 1 --
+          cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml
+          --features core-host --lib native_ipc_probe::tests
+      - name: Native report coverage regression
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-ipc-report-tests.log" --expected-passed 1 --
+          cargo test --locked --manifest-path tobkiri_launcher/src-tauri/Cargo.toml
+          --features core-host --lib native_ipc_probe::enabled::tests
+      - name: Execute the actual native root and opaque Pack iframe
+        # Never tee, inherit or upload the app's stdout/stderr. Tauri's
+        # invalid-key diagnostic includes the real key.
+        run: >-
+          python3 -B tools/native-ipc-probe/run.py
+          --app "$CARGO_TARGET_DIR/debug/bundle/macos/Tobkiri Launcher.app"
+          --fixture "$RUNNER_TEMP/native-ipc-fixture" --head "$(git rev-parse HEAD)"
+          --receipt "$RUNNER_TEMP/native-ipc-receipt.json"
+      - name: Retain only closed IPC observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-ipc-observation-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-ipc-receipt.json
+          if-no-files-found: warn
+          retention-days: 14

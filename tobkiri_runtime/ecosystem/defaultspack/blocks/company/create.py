@@ -1,5 +1,5 @@
 from blocks._common import ok, error
-from domain.company.service import CompanyService
+from domain.company.contract_facade import CompanyContractFacade, CompanyFacadeError
 
 from ._helpers import invalid, require_dict
 
@@ -8,7 +8,9 @@ def run(input_data, context):
     if require_dict(input_data) is None:
         return invalid("input_data must be a dict")
     try:
-        return ok(CompanyService().create_company(input_data))
+        return ok(CompanyContractFacade(input_data, context).run("create"))
+    except CompanyFacadeError as exc:
+        return error(str(exc), exc.code)
     except ValueError as exc:
         return invalid(str(exc))
     except Exception as exc:

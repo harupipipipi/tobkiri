@@ -1,0 +1,14 @@
+{
+  "name": "tobkiri-pack-build-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@bytecodealliance/componentize-js": "0.23.0",
+    "@bytecodealliance/preview2-shim": "0.28.0",
+    "@sinclair/typebox": "0.34.52",
+    "esbuild": "0.28.2"
+  }
+}

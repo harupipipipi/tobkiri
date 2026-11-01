@@ -1,0 +1,118 @@
+{
+  "id": "xiaomi-mimo-cn",
+  "provider_id": "xiaomi-mimo-cn",
+  "category": "providers",
+  "kind": "llm_provider",
+  "version": "1",
+  "status": "experimental",
+  "display_name": "Xiaomi MiMo China Mainland",
+  "description": "Experimental catalog entry for the Xiaomi MiMo China Mainland API. Runtime is disabled until official base URL and auth behavior are confirmed.",
+  "entrypoints": {
+    "models": "models.json"
+  },
+  "security": {
+    "credential_required": true,
+    "region_explicit_selection_required": true
+  },
+  "provider_metadata": {
+    "display_name": "Xiaomi MiMo China Mainland",
+    "kind": "cloud",
+    "env_vars": [
+      "XIAOMI_MIMO_CN_API_KEY"
+    ],
+    "base_url_envs": [
+      "XIAOMI_MIMO_CN_BASE_URL"
+    ],
+    "catalog_only": true,
+    "supports_invoke": false,
+    "default_model": "mimo-v2.5-pro",
+    "default_model_for": {
+      "chat": "mimo-v2.5-pro",
+      "reasoning": "mimo-v2.5-pro",
+      "fast": "mimo-v2-flash"
+    },
+    "subscription_plans": [
+      {
+        "id": "mimo_orbit_100t_grant_if_available",
+        "display_name": "MiMo Orbit 100T token grant",
+        "type": "token_grant",
+        "status": "available_if_confirmed",
+        "region": "cn",
+        "region_scoped": true,
+        "requires_manual_signup": true,
+        "do_not_auto_enable": true,
+        "token_quota_label": "100T tokens",
+        "applies_to_models": [
+          "mimo-v2.5-pro",
+          "mimo-v2-flash"
+        ],
+        "notes": "Catalog metadata only until official API base URL, auth behavior, and eligibility are confirmed."
+      }
+    ],
+    "catalog_features": [
+      "chat",
+      "streaming",
+      "reasoning",
+      "openai_compatible_if_confirmed"
+    ]
+  },
+  "provider_manifest": {
+    "id": "xiaomi-mimo-cn",
+    "category": "llm_provider",
+    "version": "1",
+    "display_name": "Xiaomi MiMo China Mainland",
+    "enabled": true,
+    "priority": 72,
+    "adapter": "catalog_only",
+    "api_key_env": "XIAOMI_MIMO_CN_API_KEY",
+    "base_url_env": "XIAOMI_MIMO_CN_BASE_URL",
+    "credential_required": true,
+    "catalog_only": true,
+    "supports_invoke": false,
+    "default_model": "mimo-v2.5-pro",
+    "default_model_for": {
+      "chat": "mimo-v2.5-pro",
+      "reasoning": "mimo-v2.5-pro",
+      "fast": "mimo-v2-flash"
+    },
+    "config": {
+      "api_compatibility": "openai_if_confirmed",
+      "region": "cn",
+      "data_region": "china_mainland_or_unspecified",
+      "requires_region_explicit_selection": true,
+      "token_plan": "mimo_orbit_100t_grant_if_available",
+      "token_plan_region_scoped": true,
+      "token_plan_requires_manual_signup": true,
+      "token_plan_do_not_auto_enable": true,
+      "subscription_plans": [
+        {
+          "id": "mimo_orbit_100t_grant_if_available",
+          "display_name": "MiMo Orbit 100T token grant",
+          "type": "token_grant",
+          "status": "available_if_confirmed",
+          "region": "cn",
+          "region_scoped": true,
+          "requires_manual_signup": true,
+          "do_not_auto_enable": true,
+          "token_quota_label": "100T tokens",
+          "applies_to_models": [
+            "mimo-v2.5-pro",
+            "mimo-v2-flash"
+          ],
+          "notes": "Catalog metadata only until official API base URL, auth behavior, and eligibility are confirmed."
+        }
+      ],
+      "do_not_fallback_to_other_region": true,
+      "do_not_reuse_credentials_across_regions": true,
+      "model_sync": "fixed_allowlist",
+      "runtime_enablement": "manual_base_url_and_docs_required"
+    }
+  },
+  "source_pack_id": "rumi_model_catalog_pack",
+  "catalog_features": [
+    "chat",
+    "streaming",
+    "reasoning",
+    "openai_compatible_if_confirmed"
+  ]
+}

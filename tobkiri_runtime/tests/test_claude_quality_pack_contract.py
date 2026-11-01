@@ -72,7 +72,7 @@ def test_ci_workflows_keep_required_quality_gates():
             "tobkiri-package-pytest",
             "rust-test",
             "pytest tests/ -v",
-            "pytest -m contract -v",
+            "Run active contract cluster pytest",
             "Run Ruff/mypy non-regression guard",
             "cd pack-shell && cargo test",
         ],
@@ -84,7 +84,7 @@ def test_ci_workflows_keep_required_quality_gates():
         [
             "tags:",
             '- "v*"',
-            "cargo tauri build --target",
+            "python -B scripts/run_tauri_build.py build --target",
         ],
         ".github/workflows/release.yml",
     )

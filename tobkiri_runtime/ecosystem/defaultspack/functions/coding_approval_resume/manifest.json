@@ -1,0 +1,43 @@
+{
+  "function_id": "coding_approval_resume",
+  "description": "Resume one exact delegated coding approval.",
+  "tags": [
+    "coding"
+  ],
+  "risk": "high",
+  "requires": [
+    "coding.approval.resume"
+  ],
+  "caller_requires": [
+    "user.approved.high_risk"
+  ],
+  "host_execution": false,
+  "calling_convention": "subprocess",
+  "entrypoint": "main.py:run",
+  "vocab_aliases": [
+    "defaultspack.coding.approval_resume",
+    "defaultspack.coding.approval.resume"
+  ],
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": true
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "status": {
+        "type": "string"
+      },
+      "data": {},
+      "error": {
+        "type": "object"
+      }
+    }
+  },
+  "extensions": {
+    "defaultspack": {
+      "block_module": "blocks.coding.approval_resume",
+      "default_args": {}
+    }
+  }
+}

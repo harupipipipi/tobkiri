@@ -1,0 +1,2418 @@
+--- upstream/wasmtime/src/runtime/component/func/host.rs
++++ vendor/wasmtime/src/runtime/component/func/host.rs
+@@ -10,3 +10,6 @@
+ use crate::component::types::ComponentFunc;
+-use crate::component::{ComponentNamedList, Instance, Lift, Lower, Val};
++use crate::component::{
++    BudgetedVec, BudgetedVecBuilder, ComponentNamedList, HostAllocationError, HostAllocationKind,
++    HostAllocationLease, HostAllocationOwner, HostAllocationShared, Instance, Lift, Lower, Val,
++};
+ use crate::prelude::*;
+@@ -18,6 +21,6 @@
+ use crate::{AsContextMut, StoreContextMut, ValRaw};
+-use alloc::sync::Arc;
++
+ use core::any::Any;
+ use core::mem::{self, MaybeUninit};
+-#[cfg(feature = "async")]
++#[cfg(feature = "component-model-async")]
+ use core::pin::Pin;
+@@ -57,2 +60,16 @@
+ 
++#[derive(Clone)]
++pub(crate) struct HostFuncHandle(HostAllocationShared<HostFunc>);
++impl core::ops::Deref for HostFuncHandle {
++    type Target = HostFunc;
++    fn deref(&self) -> &HostFunc {
++        self.0.value()
++    }
++}
++impl core::fmt::Debug for HostFuncHandle {
++    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
++        f.write_str("HostFuncHandle(owned immutable closure)")
++    }
++}
++
+ impl core::fmt::Debug for HostFunc {
+@@ -78,3 +95,7 @@
+     /// in Wasmtime, but not memory unsafety.
+-    fn new<T, F, P, R>(asyncness: Asyncness, func: F) -> Result<Arc<HostFunc>>
++    fn new<T, F, P, R>(
++        asyncness: Asyncness,
++        func: F,
++        owner: &HostAllocationOwner,
++    ) -> Result<HostFuncHandle>
+     where
+@@ -84,8 +105,16 @@
+     {
+-        Ok(try_new::<Arc<_>>(HostFunc {
++        let mut lease = HostAllocationLease::new(owner);
++        if let Err(error) = lease.charge(HostAllocationKind::Metadata, size_of::<F>(), 1, 0, 1) {
++            drop(func);
++            drop(lease);
++            return Err(error.into());
++        }
++        let body = try_new::<Box<_>>(func)?;
++        let value = HostFunc {
+             entrypoint: F::cabi_entrypoint,
+             typecheck: F::typecheck,
+-            func: try_new::<Box<_>>(func)?,
++            func: body,
+             asyncness,
+-        })?)
++        };
++        Ok(HostFuncHandle(HostAllocationShared::new(value, lease)?))
+     }
+@@ -93,3 +122,3 @@
+     /// Equivalent for `Linker::func_wrap`
+-    pub(crate) fn func_wrap<T, F, P, R>(func: F) -> Result<Arc<HostFunc>>
++    pub(crate) fn func_wrap<T, F, P, R>(func: F) -> Result<HostFuncHandle>
+     where
+@@ -100,8 +129,4 @@
+     {
+-        Self::new(
+-            Asyncness::No,
+-            StaticHostFn::<_, false>::new(move |store, params| {
+-                HostResult::Done(func(store, params))
+-            }),
+-        )
++        let _ = func;
++        Err(HostAllocationError::Unavailable.into())
+     }
+@@ -110,3 +135,3 @@
+     #[cfg(feature = "async")]
+-    pub(crate) fn func_wrap_async<T, F, P, R>(func: F) -> Result<Arc<HostFunc>>
++    pub(crate) fn func_wrap_async<T, F, P, R>(func: F) -> Result<HostFuncHandle>
+     where
+@@ -120,12 +145,4 @@
+     {
+-        Self::new(
+-            Asyncness::Yes,
+-            StaticHostFn::<_, false>::new(move |store, params| {
+-                HostResult::Done(
+-                    store
+-                        .block_on(|store| Pin::from(func(store, params)))
+-                        .and_then(|r| r),
+-                )
+-            }),
+-        )
++        let _ = func;
++        Err(HostAllocationError::Unavailable.into())
+     }
+@@ -134,3 +151,3 @@
+     #[cfg(feature = "component-model-async")]
+-    pub(crate) fn func_wrap_concurrent<T, F, P, R>(func: F) -> Result<Arc<HostFunc>>
++    pub(crate) fn func_wrap_concurrent<T, F, P, R>(func: F) -> Result<HostFuncHandle>
+     where
+@@ -144,12 +161,4 @@
+     {
+-        let func = Arc::new(func);
+-        Self::new(
+-            Asyncness::Yes,
+-            StaticHostFn::<_, true>::new(move |store, params| {
+-                let func = func.clone();
+-                HostResult::Future(Box::pin(
+-                    store.wrap_call(move |accessor| func(accessor, params)),
+-                ))
+-            }),
+-        )
++        let _ = func;
++        Err(HostAllocationError::Unavailable.into())
+     }
+@@ -157,3 +166,3 @@
+     /// Equivalent of `Linker::func_new`
+-    pub(crate) fn func_new<T, F>(func: F) -> Result<Arc<HostFunc>>
++    pub(crate) fn func_new<T, F>(func: F) -> Result<HostFuncHandle>
+     where
+@@ -165,11 +174,66 @@
+     {
++        let _ = func;
++        Err(HostAllocationError::Unavailable.into())
++    }
++
++    pub(crate) fn func_new_owned<T, F>(
++        func: F,
++        owner: &HostAllocationOwner,
++    ) -> Result<HostFuncHandle>
++    where
++        T: 'static,
++        F: Fn(StoreContextMut<'_, T>, ComponentFunc, &[Val], &mut [Val]) -> Result<()>
++            + Send
++            + Sync
++            + 'static,
++    {
+         Self::new(
+             Asyncness::No,
+-            DynamicHostFn::<_, false>::new(
+-                move |store, ty, mut params_and_results, result_start| {
+-                    let (params, results) = params_and_results.split_at_mut(result_start);
+-                    let result = func(store, ty, params, results).map(move |()| params_and_results);
+-                    HostResult::Done(result)
+-                },
+-            ),
++            DynamicHostFn::<_, false>::new(move |store, ty, mut values, start| {
++                let slots = match values.scratch_mut() {
++                    Ok(slots) => slots,
++                    Err(error) => return HostResult::Done(Err(error.into())),
++                };
++                let (args, results) = slots.split_at_mut(start);
++                HostResult::Done(func(store, ty, args, results).map(move |()| values))
++            }),
++            owner,
++        )
++    }
++
++    #[cfg(feature = "async")]
++    pub(crate) fn func_new_async_owned<T, F>(
++        func: F,
++        owner: &HostAllocationOwner,
++    ) -> Result<HostFuncHandle>
++    where
++        T: 'static,
++        F: for<'a> Fn(
++                StoreContextMut<'a, T>,
++                ComponentFunc,
++                &'a [Val],
++                &'a mut [Val],
++            ) -> core::result::Result<
++                crate::component::BudgetedFuture<'a, Result<()>>,
++                HostAllocationError,
++            > + Send
++            + Sync
++            + 'static,
++    {
++        Self::new(
++            Asyncness::Yes,
++            DynamicHostFn::<_, false>::new(move |store, ty, mut values, start| {
++                let slots = match values.scratch_mut() {
++                    Ok(slots) => slots,
++                    Err(error) => return HostResult::Done(Err(error.into())),
++                };
++                let (args, results) = slots.split_at_mut(start);
++                let result =
++                    store.with_blocking(|store, cx| match func(store, ty, args, results) {
++                        Ok(future) => cx.block_on(future).and_then(|result| result),
++                        Err(error) => Err(error.into()),
++                    });
++                HostResult::Done(result.map(move |()| values))
++            }),
++            owner,
+         )
+@@ -179,3 +243,3 @@
+     #[cfg(feature = "async")]
+-    pub(crate) fn func_new_async<T, F>(func: F) -> Result<Arc<HostFunc>>
++    pub(crate) fn func_new_async<T, F>(func: F) -> Result<HostFuncHandle>
+     where
+@@ -192,17 +256,4 @@
+     {
+-        Self::new(
+-            Asyncness::Yes,
+-            DynamicHostFn::<_, false>::new(
+-                move |store, ty, mut params_and_results, result_start| {
+-                    let (params, results) = params_and_results.split_at_mut(result_start);
+-                    let result = store
+-                        .with_blocking(|store, cx| {
+-                            cx.block_on(Pin::from(func(store, ty, params, results)))
+-                        })
+-                        .and_then(|r| r);
+-                    let result = result.map(move |()| params_and_results);
+-                    HostResult::Done(result)
+-                },
+-            ),
+-        )
++        let _ = func;
++        Err(HostAllocationError::Unavailable.into())
+     }
+@@ -211,3 +262,3 @@
+     #[cfg(feature = "component-model-async")]
+-    pub(crate) fn func_new_concurrent<T, F>(func: F) -> Result<Arc<HostFunc>>
++    pub(crate) fn func_new_concurrent<T, F>(func: F) -> Result<HostFuncHandle>
+     where
+@@ -224,18 +275,4 @@
+     {
+-        let func = Arc::new(func);
+-        Self::new(
+-            Asyncness::Yes,
+-            DynamicHostFn::<_, true>::new(
+-                move |store, ty, mut params_and_results, result_start| {
+-                    let func = func.clone();
+-                    HostResult::Future(Box::pin(store.wrap_call(move |accessor| {
+-                        Box::pin(async move {
+-                            let (params, results) = params_and_results.split_at_mut(result_start);
+-                            func(accessor, ty, params, results).await?;
+-                            Ok(params_and_results)
+-                        })
+-                    })))
+-                },
+-            ),
+-        )
++        let _ = func;
++        Err(HostAllocationError::Unavailable.into())
+     }
+@@ -685,3 +722,8 @@
+         T: 'static,
+-        F: Fn(StoreContextMut<'_, T>, ComponentFunc, Vec<Val>, usize) -> HostResult<Vec<Val>>,
++        F: Fn(
++            StoreContextMut<'_, T>,
++            ComponentFunc,
++            BudgetedVec<Val>,
++            usize,
++        ) -> HostResult<BudgetedVec<Val>>,
+     {
+@@ -691,3 +733,3 @@
+ 
+-impl<T, F, const ASYNC: bool> HostFn<T, (ComponentFunc, Vec<Val>), Vec<Val>>
++impl<T, F, const ASYNC: bool> HostFn<T, (ComponentFunc, BudgetedVec<Val>), BudgetedVec<Val>>
+     for DynamicHostFn<F, ASYNC>
+@@ -695,3 +737,8 @@
+     T: 'static,
+-    F: Fn(StoreContextMut<'_, T>, ComponentFunc, Vec<Val>, usize) -> HostResult<Vec<Val>>,
++    F: Fn(
++        StoreContextMut<'_, T>,
++        ComponentFunc,
++        BudgetedVec<Val>,
++        usize,
++    ) -> HostResult<BudgetedVec<Val>>,
+ {
+@@ -714,7 +761,9 @@
+         store: StoreContextMut<'_, T>,
+-        (ty, mut params): (ComponentFunc, Vec<Val>),
+-    ) -> HostResult<Vec<Val>> {
++        (ty, mut params): (ComponentFunc, BudgetedVec<Val>),
++    ) -> HostResult<BudgetedVec<Val>> {
+         let offset = params.len();
+         for _ in 0..ty.results().len() {
+-            params.push(Val::Bool(false));
++            if let Err(error) = params.scratch_push(Val::Bool(false)) {
++                return HostResult::Done(Err(error.into()));
++            }
+         }
+@@ -727,5 +776,11 @@
+         src: Source<'_>,
+-    ) -> Result<(ComponentFunc, Vec<Val>)> {
++    ) -> Result<(ComponentFunc, BudgetedVec<Val>)> {
+         let param_tys = &cx.types[cx.types[ty].params];
+-        let mut params = Vec::new();
++        let capacity = param_tys
++            .types
++            .len()
++            .checked_add(cx.types[cx.types[ty].results].types.len())
++            .ok_or(HostAllocationError::Overflow)?;
++        let mut params =
++            BudgetedVecBuilder::new(capacity, cx.allocation_owner(), cx.allocation_depth())?;
+         match src {
+@@ -734,3 +789,3 @@
+                 for ty in param_tys.types.iter() {
+-                    params.push(Val::lift(cx, *ty, &mut iter)?);
++                    params.push(Val::lift(cx, *ty, &mut iter)?)?;
+                 }
+@@ -743,3 +798,3 @@
+                     let memory = &cx.memory()[abi.next_field32_size(&mut offset)..][..size];
+-                    params.push(Val::load(cx, *ty, memory)?);
++                    params.push(Val::load(cx, *ty, memory)?)?;
+                 }
+@@ -748,3 +803,6 @@
+ 
+-        Ok((ComponentFunc::from(ty, &cx.instance_type()), params))
++        Ok((
++            ComponentFunc::from(ty, &cx.instance_type()),
++            params.finish()?,
++        ))
+     }
+@@ -754,3 +812,3 @@
+         ty: TypeFuncIndex,
+-        result_vals: Vec<Val>,
++        result_vals: BudgetedVec<Val>,
+         dst: Destination<'_>,
+--- upstream/wasmtime/src/runtime/component/func/options.rs
++++ vendor/wasmtime/src/runtime/component/func/options.rs
+@@ -6,2 +6,5 @@
+ use crate::component::store::ComponentTaskState;
++use crate::component::{
++    HostAllocationError, HostAllocationKind, HostAllocationOwner, HostAllocationRequest,
++};
+ use crate::component::{Instance, ResourceType, RuntimeInstance};
+@@ -52,2 +55,3 @@
+     allow_realloc: bool,
++    allocation_depth: usize,
+ }
+@@ -75,2 +79,3 @@
+             allow_realloc: true,
++            allocation_depth: 0,
+         }
+@@ -99,2 +104,3 @@
+             allow_realloc: false,
++            allocation_depth: 0,
+         }
+@@ -147,2 +153,17 @@
+         assert!(self.allow_realloc);
++
++        // Source payload ownership remains live across lowering. Linear-memory
++        // storage is funded by the Store ResourceLimiter before allocation or
++        // growth; this additionally bounds canonical allocation work/peak size.
++        let peak = old_size
++            .checked_add(new_size)
++            .ok_or(HostAllocationError::Overflow)?;
++        self.allocation_owner()?.reserve(HostAllocationRequest {
++            kind: HostAllocationKind::Realloc,
++            bytes: 0,
++            elements: u64::try_from(new_size).map_err(|_| HostAllocationError::Overflow)?,
++            depth: u32::try_from(self.allocation_depth)
++                .map_err(|_| HostAllocationError::Overflow)?,
++            work: u64::try_from(peak).map_err(|_| HostAllocationError::Overflow)?,
++        })?;
+ 
+@@ -285,2 +306,30 @@
+ 
++    pub(crate) fn allocation_owner(&self) -> Result<HostAllocationOwner> {
++        self.store.host_allocation_owner()
++    }
++    pub(crate) fn allocation_depth(&self) -> usize {
++        self.allocation_depth
++    }
++    pub(crate) fn allocation_enter(&mut self) -> Result<()> {
++        let depth = self
++            .allocation_depth
++            .checked_add(1)
++            .ok_or(HostAllocationError::Overflow)?;
++        if depth > 64 {
++            return Err(HostAllocationError::Depth.into());
++        }
++        self.allocation_owner()?.reserve(HostAllocationRequest {
++            kind: HostAllocationKind::Temporary,
++            bytes: 0,
++            elements: 1,
++            depth: depth as u32,
++            work: 1,
++        })?;
++        self.allocation_depth = depth;
++        Ok(())
++    }
++    pub(crate) fn allocation_exit(&mut self) {
++        self.allocation_depth -= 1;
++    }
++
+     fn resource_tables(&mut self) -> Result<HostResourceTables<'_>> {
+@@ -307,2 +356,4 @@
+ pub struct LiftContext<'a> {
++    allocation_owner: HostAllocationOwner,
++    allocation_depth: usize,
+     store_id: StoreId,
+@@ -341,2 +392,3 @@
+     ) -> Result<LiftContext<'a>> {
++        let allocation_owner = store.host_allocation_owner()?;
+         let store_id = store.id();
+@@ -357,2 +409,4 @@
+         Ok(LiftContext {
++            allocation_owner,
++            allocation_depth: 0,
+             store_id,
+@@ -376,2 +430,30 @@
+ 
++    pub(crate) fn allocation_owner(&self) -> &HostAllocationOwner {
++        &self.allocation_owner
++    }
++    pub(crate) fn allocation_depth(&self) -> usize {
++        self.allocation_depth
++    }
++    pub(crate) fn allocation_enter(&mut self) -> Result<()> {
++        let depth = self
++            .allocation_depth
++            .checked_add(1)
++            .ok_or(HostAllocationError::Overflow)?;
++        if depth > 64 {
++            return Err(HostAllocationError::Depth.into());
++        }
++        self.allocation_owner.reserve(HostAllocationRequest {
++            kind: HostAllocationKind::Temporary,
++            bytes: 0,
++            elements: 1,
++            depth: depth as u32,
++            work: 1,
++        })?;
++        self.allocation_depth = depth;
++        Ok(())
++    }
++    pub(crate) fn allocation_exit(&mut self) {
++        self.allocation_depth -= 1;
++    }
++
+     /// Returns the `OptionsIndex` being used during lifting.
+@@ -473,2 +555,3 @@
+             ResourceTables {
++                allocation_owner: self.allocation_owner.clone(),
+                 host_table: self.host_table,
+--- upstream/wasmtime/src/runtime/component/func/typed.rs
++++ vendor/wasmtime/src/runtime/component/func/typed.rs
+@@ -1,2 +1 @@
+-use crate::component::Instance;
+ use crate::component::func::{Func, LiftContext, LowerContext};
+@@ -4,2 +3,3 @@
+ use crate::component::storage::{storage_as_slice, storage_as_slice_mut};
++use crate::component::{BudgetedString, HostAllocationError, Instance};
+ use crate::hash_map::HashMap;
+@@ -147,5 +147,4 @@
+     pub fn call(&self, mut store: impl AsContextMut, params: Params) -> Result<Return> {
+-        let mut store = store.as_context_mut();
+-        store.0.validate_sync_call()?;
+-        self.call_impl(store.as_context_mut(), params)
++        let _ = (&mut store, params);
++        Err(HostAllocationError::Unavailable.into())
+     }
+@@ -173,12 +172,4 @@
+     {
+-        let mut store = store.as_context_mut();
+-
+-        #[cfg(feature = "component-model-async")]
+-        if store.0.concurrency_support() {
+-            return self.call_async_concurrent(store, params).await;
+-        }
+-
+-        store
+-            .on_fiber(|store| self.call_impl(store, params))
+-            .await?
++        let _ = (&mut store, params);
++        Err(HostAllocationError::Unavailable.into())
+     }
+@@ -773,2 +764,3 @@
+     () String => str,
++    () BudgetedString => str,
+     (T: ComponentType) Vec<T> => [T],
+@@ -813,2 +805,3 @@
+     () String => str,
++    () BudgetedString => str,
+     (T: Lower) Vec<T> => [T],
+@@ -823,14 +816,7 @@
+         unsafe impl Lift for $a {
+-            #[inline]
+-            fn linear_lift_from_flat(cx: &mut LiftContext<'_>, ty: InterfaceType, src: &Self::Lower) -> Result<Self> {
+-                let s = <WasmStr as Lift>::linear_lift_from_flat(cx, ty, src)?;
+-                let encoding = cx.options().string_encoding;
+-                Ok(s.to_str_from_memory(encoding, cx.memory())?.into())
+-            }
+-
+-            #[inline]
+-            fn linear_lift_from_memory(cx: &mut LiftContext<'_>, ty: InterfaceType, bytes: &[u8]) -> Result<Self> {
+-                let s = <WasmStr as Lift>::linear_lift_from_memory(cx, ty, bytes)?;
+-                let encoding = cx.options().string_encoding;
+-                Ok(s.to_str_from_memory(encoding, cx.memory())?.into())
++            fn linear_lift_from_flat(_cx: &mut LiftContext<'_>, _ty: InterfaceType, _src: &Self::Lower) -> Result<Self> {
++                Err(HostAllocationError::Unavailable.into())
++            }
++            fn linear_lift_from_memory(_cx: &mut LiftContext<'_>, _ty: InterfaceType, _bytes: &[u8]) -> Result<Self> {
++                Err(HostAllocationError::Unavailable.into())
+             }
+@@ -839,7 +825,20 @@
+ }
+-
+-forward_string_lifts! {
+-    Box<str>,
+-    alloc::sync::Arc<str>,
+-    String,
++forward_string_lifts! { Box<str>, alloc::sync::Arc<str>, String, }
++unsafe impl Lift for BudgetedString {
++    fn linear_lift_from_flat(
++        cx: &mut LiftContext<'_>,
++        ty: InterfaceType,
++        src: &Self::Lower,
++    ) -> Result<Self> {
++        let s = <WasmStr as Lift>::linear_lift_from_flat(cx, ty, src)?;
++        s.to_budgeted(cx)
++    }
++    fn linear_lift_from_memory(
++        cx: &mut LiftContext<'_>,
++        ty: InterfaceType,
++        bytes: &[u8],
++    ) -> Result<Self> {
++        let s = <WasmStr as Lift>::linear_lift_from_memory(cx, ty, bytes)?;
++        s.to_budgeted(cx)
++    }
+ }
+@@ -847,20 +846,10 @@
+ macro_rules! forward_list_lifts {
+-    ($(
+-        $(#[$attr:meta])*
+-        ($($generics:tt)*) $a:ty => WasmList<$b:ty> $(( $via:ident $c:ty ))?,
+-    )*) => ($(
++    ($($(#[$attr:meta])* ($($generics:tt)*) $a:ty => WasmList<$b:ty> $(( $via:ident $c:ty ))?,)*) => ($(
+         $(#[$attr])*
+         unsafe impl <$($generics)*> Lift for $a {
+-            fn linear_lift_from_flat(cx: &mut LiftContext<'_>, ty: InterfaceType, src: &Self::Lower) -> Result<Self> {
+-                let list = <WasmList::<$b> as Lift>::linear_lift_from_flat(cx, ty, src)?;
+-                let vec = <$b>::linear_lift_list_from_memory(cx, &list)?;
+-                $(let vec = <$c>::from(vec);)?
+-                Ok(Self::from(vec))
+-            }
+-
+-            fn linear_lift_from_memory(cx: &mut LiftContext<'_>, ty: InterfaceType, bytes: &[u8]) -> Result<Self> {
+-                let list = <WasmList::<$b> as Lift>::linear_lift_from_memory(cx, ty, bytes)?;
+-                let vec = <$b>::linear_lift_list_from_memory(cx, &list)?;
+-                $(let vec = <$c>::from(vec);)?
+-                Ok(Self::from(vec))
++            fn linear_lift_from_flat(_cx: &mut LiftContext<'_>, _ty: InterfaceType, _src: &Self::Lower) -> Result<Self> {
++                Err(HostAllocationError::Unavailable.into())
++            }
++            fn linear_lift_from_memory(_cx: &mut LiftContext<'_>, _ty: InterfaceType, _bytes: &[u8]) -> Result<Self> {
++                Err(HostAllocationError::Unavailable.into())
+             }
+@@ -1568,2 +1557,38 @@
+ 
++    fn to_budgeted(&self, cx: &LiftContext<'_>) -> Result<BudgetedString> {
++        let memory = cx.memory();
++        let owner = cx.allocation_owner();
++        let depth = cx.allocation_depth();
++        owner.reserve(crate::component::HostAllocationRequest {
++            kind: crate::component::HostAllocationKind::String,
++            bytes: 0,
++            elements: self.len as u64,
++            depth: depth as u32,
++            work: self.len as u64,
++        })?;
++        Ok(match cx.options().string_encoding {
++            StringEncoding::Utf8 => BudgetedString::copy_from(
++                str::from_utf8(&memory[self.ptr..][..self.len])?,
++                owner,
++                depth,
++            )?,
++            StringEncoding::Utf16 => {
++                let len = self
++                    .len
++                    .checked_mul(2)
++                    .ok_or(HostAllocationError::Overflow)?;
++                BudgetedString::copy_utf16(&memory[self.ptr..][..len], owner, depth)?
++            }
++            StringEncoding::CompactUtf16 if self.len & UTF16_TAG == 0 => {
++                BudgetedString::copy_latin1(&memory[self.ptr..][..self.len], owner, depth)?
++            }
++            StringEncoding::CompactUtf16 => {
++                let len = (self.len ^ UTF16_TAG)
++                    .checked_mul(2)
++                    .ok_or(HostAllocationError::Overflow)?;
++                BudgetedString::copy_utf16(&memory[self.ptr..][..len], owner, depth)?
++            }
++        })
++    }
++
+     pub(crate) fn to_str_from_memory<'a>(
+@@ -1575,8 +1600,8 @@
+             StringEncoding::Utf8 => self.decode_utf8(memory),
+-            StringEncoding::Utf16 => self.decode_utf16(memory, self.len),
++            StringEncoding::Utf16 => Err(HostAllocationError::Unavailable.into()),
+             StringEncoding::CompactUtf16 => {
+                 if self.len & UTF16_TAG == 0 {
+-                    self.decode_latin1(memory)
++                    Err(HostAllocationError::Unavailable.into())
+                 } else {
+-                    self.decode_utf16(memory, self.len ^ UTF16_TAG)
++                    Err(HostAllocationError::Unavailable.into())
+                 }
+@@ -1591,20 +1616,2 @@
+         Ok(str::from_utf8(&memory[self.ptr..][..self.len])?.into())
+-    }
+-
+-    fn decode_utf16<'a>(&self, memory: &'a [u8], len: usize) -> Result<Cow<'a, str>> {
+-        // See notes in `decode_utf8` for why this is panicking indexing.
+-        let (chunks, rest) = &memory[self.ptr..][..len * 2].as_chunks::<2>();
+-        debug_assert!(rest.is_empty());
+-        Ok(
+-            core::char::decode_utf16(chunks.iter().map(|chunk| u16::from_le_bytes(*chunk)))
+-                .collect::<Result<String, _>>()?
+-                .into(),
+-        )
+-    }
+-
+-    fn decode_latin1<'a>(&self, memory: &'a [u8]) -> Result<Cow<'a, str>> {
+-        // See notes in `decode_utf8` for why this is panicking indexing.
+-        Ok(encoding_rs::mem::decode_latin1(
+-            &memory[self.ptr..][..self.len],
+-        ))
+     }
+--- upstream/wasmtime/src/runtime/component/func.rs
++++ vendor/wasmtime/src/runtime/component/func.rs
+@@ -5,2 +5,3 @@
+ use crate::component::values::Val;
++use crate::component::{BudgetedVec, HostAllocationError};
+ use crate::prelude::*;
+@@ -155,4 +156,4 @@
+     {
+-        self.typecheck::<Params, Return>(store, instance)?;
+-        unsafe { Ok(TypedFunc::new_unchecked(*self)) }
++        let _ = (store, instance);
++        Err(HostAllocationError::Unavailable.into())
+     }
+@@ -266,8 +267,3 @@
+         if store.0.concurrency_support() {
+-            let call = self.start_call_concurrent(&mut store, params, results)?;
+-            return store
+-                .run_concurrent_trap_on_idle(async |store| {
+-                    self.finish_call_concurrent(store, call).await
+-                })
+-                .await?;
++            return Err(HostAllocationError::Unavailable.into());
+         }
+@@ -277,2 +273,40 @@
+             .await?
++    }
++
++    /// Calls dynamically with runtime-funded immutable result storage.
++    pub fn call_owned(
++        &self,
++        mut store: impl AsContextMut,
++        params: &[Val],
++    ) -> Result<BudgetedVec<Val>> {
++        let mut store = store.as_context_mut();
++        let owner = store.host_allocation_owner()?;
++        let count = self.ty(&store).results().len();
++        let mut results = BudgetedVec::from_iter((0..count).map(|_| Val::Bool(false)), &owner, 0)?;
++        store.0.validate_sync_call()?;
++        self.call_impl(store.as_context_mut(), params, results.scratch_mut()?)?;
++        Ok(results)
++    }
++
++    /// Async-store counterpart of `call_owned`; result ownership outlives Store.
++    /// Component-model concurrency remains unavailable until its task and
++    /// resource allocations carry the same owner-lifetime proof.
++    #[cfg(feature = "async")]
++    pub async fn call_async_owned(
++        &self,
++        mut store: impl AsContextMut<Data: Send>,
++        params: &[Val],
++    ) -> Result<BudgetedVec<Val>> {
++        let mut store = store.as_context_mut();
++        let owner = store.host_allocation_owner()?;
++        #[cfg(feature = "component-model-async")]
++        if store.0.concurrency_support() {
++            return Err(HostAllocationError::Unavailable.into());
++        }
++        let count = self.ty(&store).results().len();
++        let mut results = BudgetedVec::from_iter((0..count).map(|_| Val::Bool(false)), &owner, 0)?;
++        store
++            .on_fiber(|store| self.call_impl(store, params, results.scratch_mut()?))
++            .await??;
++        Ok(results)
+     }
+@@ -612,44 +646,28 @@
+         max_flat: usize,
+-    ) -> Result<Box<dyn Iterator<Item = Result<Val>> + 'a>> {
++    ) -> Result<LiftResults<'a, 'b>> {
++        let types = cx.types;
+         let results_ty = match results_ty {
+-            InterfaceType::Tuple(i) => &cx.types[i],
++            InterfaceType::Tuple(i) => &types[i],
+             _ => unreachable!(),
+         };
+-        if results_ty.abi.flat_count(max_flat).is_some() {
+-            let mut flat = src.iter();
+-            Ok(try_new::<Box<_>>(
+-                results_ty
+-                    .types
+-                    .iter()
+-                    .map(move |ty| Val::lift(cx, *ty, &mut flat)),
+-            )?)
++        let source = if results_ty.abi.flat_count(max_flat).is_some() {
++            LiftResultSource::Flat(src.iter())
+         } else {
+-            let iter = Self::load_results(cx, results_ty, &mut src.iter())?;
+-            Ok(try_new::<Box<_>>(iter)?)
+-        }
+-    }
+-
+-    fn load_results<'a, 'b>(
+-        cx: &'a mut LiftContext<'b>,
+-        results_ty: &'a TypeTuple,
+-        src: &mut core::slice::Iter<'_, ValRaw>,
+-    ) -> Result<impl Iterator<Item = Result<Val>> + use<'a, 'b>> {
+-        // FIXME(#4311): needs to read an i64 for memory64
+-        let ptr = usize::try_from(src.next().unwrap().get_u32())?;
+-        if ptr % usize::try_from(results_ty.abi.align32)? != 0 {
+-            bail!("return pointer not aligned");
+-        }
+-
+-        let bytes = cx
+-            .memory()
+-            .get(ptr..)
+-            .and_then(|b| b.get(..usize::try_from(results_ty.abi.size32).unwrap()))
+-            .ok_or_else(|| crate::format_err!("pointer out of bounds of memory"))?;
+-
+-        let mut offset = 0;
+-        Ok(results_ty.types.iter().map(move |ty| {
+-            let abi = cx.types.canonical_abi(ty);
+-            let offset = abi.next_field32_size(&mut offset);
+-            Val::load(cx, *ty, &bytes[offset..][..abi.size32 as usize])
+-        }))
++            let ptr = usize::try_from(src.first().ok_or(HostAllocationError::Invalid)?.get_u32())?;
++            if ptr % usize::try_from(results_ty.abi.align32)? != 0 {
++                return Err(HostAllocationError::Invalid.into());
++            }
++            let bytes = cx
++                .memory()
++                .get(ptr..)
++                .and_then(|b| b.get(..results_ty.abi.size32 as usize))
++                .ok_or(HostAllocationError::Invalid)?;
++            LiftResultSource::Memory { bytes, offset: 0 }
++        };
++        Ok(LiftResults {
++            cx,
++            types: &results_ty.types,
++            index: 0,
++            source,
++        })
+     }
+@@ -733 +751,29 @@
+ }
++
++// Inline iterator replaces upstream's boxed dynamic result iterators. Its
++// control metadata is stack-resident, not an uncharged host heap temporary.
++enum LiftResultSource<'a> {
++    Flat(core::slice::Iter<'a, ValRaw>),
++    Memory { bytes: &'a [u8], offset: usize },
++}
++pub(crate) struct LiftResults<'a, 'b> {
++    cx: &'a mut LiftContext<'b>,
++    types: &'b [InterfaceType],
++    index: usize,
++    source: LiftResultSource<'a>,
++}
++impl Iterator for LiftResults<'_, '_> {
++    type Item = Result<Val>;
++    fn next(&mut self) -> Option<Self::Item> {
++        let ty = *self.types.get(self.index)?;
++        self.index += 1;
++        Some(match &mut self.source {
++            LiftResultSource::Flat(src) => Val::lift(self.cx, ty, src),
++            LiftResultSource::Memory { bytes, offset } => {
++                let abi = self.cx.types.canonical_abi(&ty);
++                let at = abi.next_field32_size(offset);
++                Val::load(self.cx, ty, &bytes[at..][..abi.size32 as usize])
++            }
++        })
++    }
++}
+--- upstream/wasmtime/src/runtime/component/instance.rs
++++ vendor/wasmtime/src/runtime/component/instance.rs
+@@ -1,2 +1,2 @@
+-use crate::component::func::HostFunc;
++use crate::component::func::{HostFunc, HostFuncHandle};
+ use crate::component::matching::InstanceType;
+@@ -660,3 +660,3 @@
+ pub(crate) enum RuntimeImport {
+-    Func(Arc<HostFunc>),
++    Func(HostFuncHandle),
+     Module(Module),
+--- upstream/wasmtime/src/runtime/component/linker.rs
++++ vendor/wasmtime/src/runtime/component/linker.rs
+@@ -2,3 +2,3 @@
+ use crate::component::concurrent::Accessor;
+-use crate::component::func::HostFunc;
++use crate::component::func::{HostFunc, HostFuncHandle};
+ use crate::component::instance::RuntimeImport;
+@@ -99,3 +99,3 @@
+     Instance(NameMap<Atom, Definition>),
+-    Func(Arc<HostFunc>),
++    Func(HostFuncHandle),
+     Module(Module),
+@@ -741,2 +741,50 @@
+ 
++    /// Registers a dynamic synchronous callback with a prepaid closure owner.
++    pub fn func_new_owned<F>(
++        &mut self,
++        name: &str,
++        owner: &crate::component::HostAllocationOwner,
++        func: F,
++    ) -> Result<()>
++    where
++        F: Fn(StoreContextMut<'_, T>, types::ComponentFunc, &[Val], &mut [Val]) -> Result<()>
++            + Send
++            + Sync
++            + 'static,
++    {
++        self.insert(
++            name,
++            Definition::Func(HostFunc::func_new_owned(func, owner)?),
++        )?;
++        Ok(())
++    }
++    /// Registers a dynamic async callback whose state and closure retain funding.
++    /// The callback returns an outer reservation error before physical allocation.
++    #[cfg(feature = "async")]
++    pub fn func_new_async_owned<F>(
++        &mut self,
++        name: &str,
++        owner: &crate::component::HostAllocationOwner,
++        func: F,
++    ) -> Result<()>
++    where
++        F: for<'a> Fn(
++                StoreContextMut<'a, T>,
++                types::ComponentFunc,
++                &'a [Val],
++                &'a mut [Val],
++            ) -> core::result::Result<
++                crate::component::BudgetedFuture<'a, Result<()>>,
++                crate::component::HostAllocationError,
++            > + Send
++            + Sync
++            + 'static,
++    {
++        self.insert(
++            name,
++            Definition::Func(HostFunc::func_new_async_owned(func, owner)?),
++        )?;
++        Ok(())
++    }
++
+     /// Define a new host-provided async function using dynamic types.
+@@ -817,8 +865,6 @@
+     ) -> Result<()> {
+-        let dtor = try_new::<Arc<_>>(crate::func::HostFunc::wrap(
+-            &self.engine,
+-            move |mut cx: crate::Caller<'_, T>, (param,): (u32,)| dtor(cx.as_context_mut(), param),
+-        )?)?;
+-        self.insert(name, Definition::Resource(ty, dtor))?;
+-        Ok(())
++        let _ = (name, ty, dtor);
++        // Core Wasm destructor closure/control storage still lacks the required
++        // budgeted lifetime wrapper. Deny before allocating its Arc/Box.
++        Err(crate::component::HostAllocationError::Unavailable.into())
+     }
+@@ -835,8 +881,4 @@
+     {
+-        let dtor = try_new::<Arc<_>>(crate::func::HostFunc::wrap_async(
+-            &self.engine,
+-            move |cx: crate::Caller<'_, T>, (param,): (u32,)| dtor(cx.into(), param),
+-        )?)?;
+-        self.insert(name, Definition::Resource(ty, dtor))?;
+-        Ok(())
++        let _ = (name, ty, dtor);
++        Err(crate::component::HostAllocationError::Unavailable.into())
+     }
+@@ -853,29 +895,4 @@
+     {
+-        if !self.engine.tunables().concurrency_support {
+-            bail!("concurrent host functions require `Config::concurrency_support`");
+-        }
+-        // TODO: This isn't really concurrent -- it requires exclusive access to
+-        // the store for the duration of the call, preventing guest code from
+-        // running until it completes.  We should make it concurrent and clean
+-        // up the implementation to avoid using e.g. `Accessor::new` and
+-        // `tls::set` directly.
+-        let dtor = Arc::new(dtor);
+-        let dtor = Arc::new(crate::func::HostFunc::wrap_async(
+-            &self.engine,
+-            move |mut cx: crate::Caller<'_, T>, (param,): (u32,)| {
+-                let dtor = dtor.clone();
+-                Box::new(async move {
+-                    let mut store = cx.as_context_mut();
+-                    let accessor =
+-                        &Accessor::new(crate::store::StoreToken::new(store.as_context_mut()));
+-                    let mut future = core::pin::pin!(dtor(accessor, param));
+-                    core::future::poll_fn(|cx| {
+-                        crate::component::concurrent::tls::set(store.0, || future.as_mut().poll(cx))
+-                    })
+-                    .await
+-                })
+-            },
+-        )?);
+-        self.insert(name, Definition::Resource(ty, dtor))?;
+-        Ok(())
++        let _ = (name, ty, dtor);
++        Err(crate::component::HostAllocationError::Unavailable.into())
+     }
+--- upstream/wasmtime/src/runtime/component/mod.rs
++++ vendor/wasmtime/src/runtime/component/mod.rs
+@@ -104,3 +104,14 @@
+ 
++mod allocation;
++#[cfg(feature = "async")]
++pub use allocation::BudgetedFuture;
+ mod component;
++pub use allocation::{
++    BudgetedBox, BudgetedElement, BudgetedString, BudgetedVec, BudgetedVecBuilder,
++    HostAllocationBudget, HostAllocationError, HostAllocationKind, HostAllocationOwner,
++    HostAllocationRequest,
++};
++pub(crate) use allocation::{
++    FundedVec, Lease as HostAllocationLease, Shared as HostAllocationShared,
++};
+ #[cfg(feature = "component-model-async")]
+--- upstream/wasmtime/src/runtime/component/resource_table.rs
++++ vendor/wasmtime/src/runtime/component/resource_table.rs
+@@ -1,4 +1,7 @@
+ use super::Resource;
++use crate::component::{
++    FundedVec, HostAllocationError, HostAllocationKind, HostAllocationLease, HostAllocationOwner,
++};
+ use crate::prelude::*;
+-use alloc::collections::{BTreeMap, BTreeSet};
++use alloc::collections::BTreeMap;
+ use core::any::Any;
+@@ -12,2 +15,4 @@
+     Full,
++    /// This table has no supported allocation owner or reservation failed.
++    Allocation(HostAllocationError),
+     /// Resource not present in table
+@@ -25,2 +30,3 @@
+             Self::Full => write!(f, "resource table has no free keys"),
++            Self::Allocation(error) => fmt::Display::fmt(error, f),
+             Self::NotPresent => write!(f, "resource not present"),
+@@ -36,3 +42,4 @@
+ pub struct ResourceTable {
+-    entries: Vec<Entry>,
++    entries: FundedVec<Entry>,
++    allocation_owner: Option<HostAllocationOwner>,
+     free_head: Option<usize>,
+@@ -89,3 +96,4 @@
+     /// The indices of any children of this entry.
+-    children: BTreeSet<u32>,
++    children: FundedVec<u32>,
++    _lease: HostAllocationLease,
+ }
+@@ -93,16 +101,40 @@
+ impl TableEntry {
+-    fn new(entry: Box<dyn Any + Send>, parent: Option<u32>) -> Self {
+-        Self {
++    fn new<T: Send + 'static>(
++        entry: T,
++        parent: Option<u32>,
++        owner: &HostAllocationOwner,
++    ) -> Result<Self, ResourceTableError> {
++        let mut lease = HostAllocationLease::new(owner);
++        lease
++            .charge(HostAllocationKind::Resource, size_of::<T>(), 1, 0, 1)
++            .map_err(ResourceTableError::Allocation)?;
++        let entry = try_new::<Box<_>>(entry)
++            .map_err(|_| ResourceTableError::Allocation(HostAllocationError::Allocator))?;
++        Ok(Self {
+             entry,
+             parent,
+-            children: BTreeSet::new(),
+-        }
+-    }
+-    fn add_child(&mut self, child: u32) {
+-        debug_assert!(!self.children.contains(&child));
+-        self.children.insert(child);
++            children: FundedVec::default(),
++            _lease: lease,
++        })
++    }
++    fn add_child(
++        &mut self,
++        child: u32,
++        owner: &HostAllocationOwner,
++    ) -> Result<(), ResourceTableError> {
++        let at = self
++            .children
++            .binary_search(&child)
++            .err()
++            .ok_or(ResourceTableError::Allocation(HostAllocationError::Invalid))?;
++        self.children
++            .insert(at, child, owner)
++            .map_err(ResourceTableError::Allocation)
+     }
+     fn remove_child(&mut self, child: u32) {
+-        let was_removed = self.children.remove(&child);
+-        debug_assert!(was_removed);
++        let at = self
++            .children
++            .binary_search(&child)
++            .expect("existing resource child");
++        self.children.remove(at);
+     }
+@@ -111,2 +143,13 @@
+ impl ResourceTable {
++    /// Creates a table whose boxed data, entries and child metadata are funded.
++    /// Host payload inside T must independently retain its production ownership.
++    pub fn new_owned(owner: &HostAllocationOwner) -> Self {
++        Self {
++            entries: FundedVec::default(),
++            allocation_owner: Some(owner.clone()),
++            free_head: None,
++            max_capacity: DEFAULT_MAX_CAPACITY,
++        }
++    }
++
+     /// Create an empty table
+@@ -145,4 +188,8 @@
+     pub fn with_capacity(capacity: usize) -> Self {
++        // Unowned legacy capacity allocation is unsupported. Such a table will
++        // return Allocation(Unavailable) before allocating a boxed resource.
++        let _ = capacity;
+         ResourceTable {
+-            entries: Vec::with_capacity(capacity),
++            entries: FundedVec::default(),
++            allocation_owner: None,
+             free_head: None,
+@@ -158,3 +205,10 @@
+     {
+-        let idx = self.push_(TableEntry::new(Box::new(entry), None))?;
++        let owner = self
++            .allocation_owner
++            .as_ref()
++            .ok_or(ResourceTableError::Allocation(
++                HostAllocationError::Unavailable,
++            ))?;
++        let data = TableEntry::new(entry, None, owner)?;
++        let idx = self.push_(data)?;
+         Ok(Resource::new_own(idx))
+@@ -179,18 +233,3 @@
+         if debug {
+-            // Instead of making this entry available for reuse, we leave a
+-            // tombstone in debug mode.  This helps detect use-after-delete and
+-            // double-delete bugs.
+-            match mem::replace(
+-                &mut self.entries[ix],
+-                Entry::Occupied {
+-                    entry: TableEntry {
+-                        entry: Box::new(Tombstone),
+-                        parent: None,
+-                        children: BTreeSet::new(),
+-                    },
+-                },
+-            ) {
+-                Entry::Occupied { entry } => entry,
+-                Entry::Free { .. } => unreachable!(),
+-            }
++            unreachable!("resource debug tombstone path is unsupported")
+         } else {
+@@ -227,3 +266,11 @@
+                 .map_err(|_| ResourceTableError::Full)?;
+-            self.entries.push(Entry::Occupied { entry: e });
++            let owner = self
++                .allocation_owner
++                .as_ref()
++                .ok_or(ResourceTableError::Allocation(
++                    HostAllocationError::Unavailable,
++                ))?;
++            self.entries
++                .push(Entry::Occupied { entry: e }, owner)
++                .map_err(ResourceTableError::Allocation)?;
+             Ok(ix)
+@@ -272,4 +319,15 @@
+         self.occupied(parent)?;
+-        let child = self.push_(TableEntry::new(Box::new(entry), Some(parent)))?;
+-        self.occupied_mut(parent)?.add_child(child);
++        let owner = self
++            .allocation_owner
++            .as_ref()
++            .ok_or(ResourceTableError::Allocation(
++                HostAllocationError::Unavailable,
++            ))?
++            .clone();
++        let data = TableEntry::new(entry, Some(parent), &owner)?;
++        let child = self.push_(data)?;
++        if let Err(error) = self.occupied_mut(parent)?.add_child(child, &owner) {
++            drop(self.free_entry(child as usize, false));
++            return Err(error);
++        }
+         Ok(Resource::new_own(child))
+@@ -283,6 +341,15 @@
+     ) -> Result<(), ResourceTableError> {
+-        let entry = self.occupied_mut(child.rep())?;
+-        assert!(entry.parent.is_none());
+-        entry.parent = Some(parent.rep());
+-        self.occupied_mut(parent.rep())?.add_child(child.rep());
++        if self.occupied(child.rep())?.parent.is_some() {
++            return Err(ResourceTableError::Allocation(HostAllocationError::Invalid));
++        }
++        let owner = self
++            .allocation_owner
++            .as_ref()
++            .ok_or(ResourceTableError::Allocation(
++                HostAllocationError::Unavailable,
++            ))?
++            .clone();
++        self.occupied_mut(parent.rep())?
++            .add_child(child.rep(), &owner)?;
++        self.occupied_mut(child.rep())?.parent = Some(parent.rep());
+         Ok(())
+--- upstream/wasmtime/src/runtime/component/resources/host_tables.rs
++++ vendor/wasmtime/src/runtime/component/resources/host_tables.rs
+@@ -22,2 +22,3 @@
+ 
++use crate::component::FundedVec;
+ use crate::prelude::*;
+@@ -64,3 +65,3 @@
+     cur_generation: u32,
+-    table_slot_metadata: TryVec<TableSlot>,
++    table_slot_metadata: FundedVec<TableSlot>,
+ }
+@@ -217,10 +218,13 @@
+                     assert_eq!(idx, 1);
+-                    list.push(TableSlot {
+-                        generation: 0,
+-                        instance: None,
+-                        dtor: None,
+-                    })?;
++                    list.push(
++                        TableSlot {
++                            generation: 0,
++                            instance: None,
++                            dtor: None,
++                        },
++                        &self.tables.allocation_owner,
++                    )?;
+                 }
+                 assert_eq!(idx as usize, list.len());
+-                list.push(info)?;
++                list.push(info, &self.tables.allocation_owner)?;
+             }
+--- upstream/wasmtime/src/runtime/component/store.rs
++++ vendor/wasmtime/src/runtime/component/store.rs
+@@ -1 +1,2 @@
++use crate::component::FundedVec;
+ use crate::prelude::*;
+@@ -397,2 +398,3 @@
+     )> {
++        let allocation_owner = self.host_allocation_owner()?;
+         let current_scope_id = self.current_scope_id()?;
+@@ -413,2 +415,3 @@
+             vm::component::ResourceTables {
++                allocation_owner,
+                 host_table: &mut data.component_host_table,
+@@ -423,2 +426,3 @@
+     pub(crate) fn enter_call_not_concurrent(&mut self) -> Result<()> {
++        let allocation_owner = self.host_allocation_owner()?;
+         let state = match &mut self.component_data_mut().task_state {
+@@ -428,3 +432,5 @@
+         };
+-        state.scopes.push(CallContext::default())?;
++        state
++            .scopes
++            .push(CallContext::default(), &allocation_owner)?;
+         Ok(())
+@@ -544,3 +550,3 @@
+ pub struct ComponentTasksNotConcurrent {
+-    scopes: TryVec<CallContext>,
++    scopes: FundedVec<CallContext>,
+ }
+--- upstream/wasmtime/src/runtime/component/values.rs
++++ vendor/wasmtime/src/runtime/component/values.rs
+@@ -2,4 +2,7 @@
+ use crate::component::ResourceAny;
+-use crate::component::concurrent::{self, ErrorContext, FutureAny, StreamAny};
++use crate::component::concurrent::{FutureAny, StreamAny};
+ use crate::component::func::{Lift, LiftContext, Lower, LowerContext, desc};
++use crate::component::{
++    BudgetedBox, BudgetedString, BudgetedVec, BudgetedVecBuilder, HostAllocationError,
++};
+ use crate::prelude::*;
+@@ -79,14 +82,14 @@
+     Char(char),
+-    String(String),
+-    List(Vec<Val>),
++    String(BudgetedString),
++    List(BudgetedVec<Val>),
+     /// A map type represented as a list of key-value pairs.
+     /// Duplicate keys are allowed and follow "last value wins" semantics.
+-    Map(Vec<(Val, Val)>),
+-    Record(Vec<(String, Val)>),
+-    Tuple(Vec<Val>),
+-    Variant(String, Option<Box<Val>>),
+-    Enum(String),
+-    Option(Option<Box<Val>>),
+-    Result(Result<Option<Box<Val>>, Option<Box<Val>>>),
+-    Flags(Vec<String>),
++    Map(BudgetedVec<(Val, Val)>),
++    Record(BudgetedVec<(BudgetedString, Val)>),
++    Tuple(BudgetedVec<Val>),
++    Variant(BudgetedString, Option<BudgetedBox<Val>>),
++    Enum(BudgetedString),
++    Option(Option<BudgetedBox<Val>>),
++    Result(Result<Option<BudgetedBox<Val>>, Option<BudgetedBox<Val>>>),
++    Flags(BudgetedVec<BudgetedString>),
+     Resource(ResourceAny),
+@@ -100,2 +103,13 @@
+     pub(crate) fn lift(
++        cx: &mut LiftContext<'_>,
++        ty: InterfaceType,
++        src: &mut Iter<'_, ValRaw>,
++    ) -> Result<Val> {
++        cx.allocation_enter()?;
++        let result = Self::lift_inner(cx, ty, src);
++        cx.allocation_exit();
++        result
++    }
++
++    fn lift_inner(
+         cx: &mut LiftContext<'_>,
+@@ -118,3 +132,3 @@
+             InterfaceType::Own(_) | InterfaceType::Borrow(_) => {
+-                Val::Resource(ResourceAny::linear_lift_from_flat(cx, ty, next(src))?)
++                return Err(HostAllocationError::Unavailable.into());
+             }
+@@ -133,19 +147,32 @@
+             }
+-            InterfaceType::Record(i) => Val::Record(
+-                cx.types[i]
+-                    .fields
+-                    .iter()
+-                    .map(|field| {
+-                        let val = Self::lift(cx, field.ty, src)?;
+-                        Ok((field.name.to_string(), val))
+-                    })
+-                    .collect::<Result<_>>()?,
+-            ),
+-            InterfaceType::Tuple(i) => Val::Tuple(
+-                cx.types[i]
+-                    .types
+-                    .iter()
+-                    .map(|ty| Self::lift(cx, *ty, src))
+-                    .collect::<Result<_>>()?,
+-            ),
++            InterfaceType::Record(i) => {
++                let fields = &cx.types[i].fields;
++                let mut values = BudgetedVecBuilder::new(
++                    fields.len(),
++                    cx.allocation_owner(),
++                    cx.allocation_depth(),
++                )?;
++                for field in fields.iter() {
++                    let name = BudgetedString::copy_from(
++                        &field.name,
++                        cx.allocation_owner(),
++                        cx.allocation_depth(),
++                    )?;
++                    let value = Self::lift(cx, field.ty, src)?;
++                    values.push((name, value))?;
++                }
++                Val::Record(values.finish()?)
++            }
++            InterfaceType::Tuple(i) => {
++                let types = &cx.types[i].types;
++                let mut values = BudgetedVecBuilder::new(
++                    types.len(),
++                    cx.allocation_owner(),
++                    cx.allocation_depth(),
++                )?;
++                for ty in types.iter() {
++                    values.push(Self::lift(cx, *ty, src)?)?;
++                }
++                Val::Tuple(values.finish()?)
++            }
+             InterfaceType::Variant(i) => {
+@@ -160,3 +187,6 @@
+                 let (k, _) = vty.cases.get_index(discriminant as usize).unwrap();
+-                Val::Variant(k.clone(), value)
++                Val::Variant(
++                    BudgetedString::copy_from(k, cx.allocation_owner(), cx.allocation_depth())?,
++                    value,
++                )
+             }
+@@ -171,3 +201,7 @@
+ 
+-                Val::Enum(ety.names[discriminant as usize].clone())
++                Val::Enum(BudgetedString::copy_from(
++                    &ety.names[discriminant as usize],
++                    cx.allocation_owner(),
++                    cx.allocation_depth(),
++                )?)
+             }
+@@ -201,3 +235,7 @@
+                 let ty = &cx.types[i];
+-                let mut flags = Vec::new();
++                let mut flags = BudgetedVecBuilder::new(
++                    ty.names.len(),
++                    cx.allocation_owner(),
++                    cx.allocation_depth(),
++                )?;
+                 for i in 0..u32::try_from(u32_count).unwrap() {
+@@ -208,17 +246,15 @@
+                         u32::linear_lift_from_flat(cx, InterfaceType::U32, next(src))?,
+-                    );
+-                }
+-
+-                Val::Flags(flags)
+-            }
+-            InterfaceType::Future(_) => {
+-                Val::Future(FutureAny::linear_lift_from_flat(cx, ty, next(src))?)
+-            }
+-            InterfaceType::Stream(_) => {
+-                Val::Stream(StreamAny::linear_lift_from_flat(cx, ty, next(src))?)
+-            }
+-            InterfaceType::ErrorContext(_) => {
+-                ErrorContext::linear_lift_from_flat(cx, ty, next(src))?.into_val()
+-            }
+-            InterfaceType::FixedLengthList(_) => todo!(), // FIXME(#12279)
++                        cx.allocation_owner(),
++                        cx.allocation_depth(),
++                    )?;
++                }
++
++                Val::Flags(flags.finish()?)
++            }
++            InterfaceType::Future(_)
++            | InterfaceType::Stream(_)
++            | InterfaceType::ErrorContext(_)
++            | InterfaceType::FixedLengthList(_) => {
++                return Err(HostAllocationError::Unavailable.into());
++            }
+         })
+@@ -228,2 +264,8 @@
+     pub(crate) fn load(cx: &mut LiftContext<'_>, ty: InterfaceType, bytes: &[u8]) -> Result<Val> {
++        cx.allocation_enter()?;
++        let result = Self::load_inner(cx, ty, bytes);
++        cx.allocation_exit();
++        result
++    }
++    fn load_inner(cx: &mut LiftContext<'_>, ty: InterfaceType, bytes: &[u8]) -> Result<Val> {
+         Ok(match ty {
+@@ -243,3 +285,3 @@
+             InterfaceType::Own(_) | InterfaceType::Borrow(_) => {
+-                Val::Resource(ResourceAny::linear_lift_from_memory(cx, ty, bytes)?)
++                return Err(HostAllocationError::Unavailable.into());
+             }
+@@ -255,33 +297,38 @@
+             InterfaceType::Record(i) => {
++                let fields = &cx.types[i].fields;
++                let mut values = BudgetedVecBuilder::new(
++                    fields.len(),
++                    cx.allocation_owner(),
++                    cx.allocation_depth(),
++                )?;
+                 let mut offset = 0;
+-                let fields = cx.types[i].fields.iter();
+-                Val::Record(
+-                    fields
+-                        .map(|field| -> Result<(String, Val)> {
+-                            let abi = cx.types.canonical_abi(&field.ty);
+-                            let offset = abi.next_field32(&mut offset);
+-                            let offset = usize::try_from(offset).unwrap();
+-                            let size = usize::try_from(abi.size32).unwrap();
+-                            Ok((
+-                                field.name.to_string(),
+-                                Val::load(cx, field.ty, &bytes[offset..][..size])?,
+-                            ))
+-                        })
+-                        .collect::<Result<_>>()?,
+-                )
++                for field in fields.iter() {
++                    let abi = cx.types.canonical_abi(&field.ty);
++                    let offset = usize::try_from(abi.next_field32(&mut offset))?;
++                    let size = usize::try_from(abi.size32)?;
++                    let name = BudgetedString::copy_from(
++                        &field.name,
++                        cx.allocation_owner(),
++                        cx.allocation_depth(),
++                    )?;
++                    let value = Self::load(cx, field.ty, &bytes[offset..][..size])?;
++                    values.push((name, value))?;
++                }
++                Val::Record(values.finish()?)
+             }
+             InterfaceType::Tuple(i) => {
+-                let types = cx.types[i].types.iter().copied();
++                let types = &cx.types[i].types;
++                let mut values = BudgetedVecBuilder::new(
++                    types.len(),
++                    cx.allocation_owner(),
++                    cx.allocation_depth(),
++                )?;
+                 let mut offset = 0;
+-                Val::Tuple(
+-                    types
+-                        .map(|ty| {
+-                            let abi = cx.types.canonical_abi(&ty);
+-                            let offset = abi.next_field32(&mut offset);
+-                            let offset = usize::try_from(offset).unwrap();
+-                            let size = usize::try_from(abi.size32).unwrap();
+-                            Val::load(cx, ty, &bytes[offset..][..size])
+-                        })
+-                        .collect::<Result<_>>()?,
+-                )
++                for ty in types.iter().copied() {
++                    let abi = cx.types.canonical_abi(&ty);
++                    let offset = usize::try_from(abi.next_field32(&mut offset))?;
++                    let size = usize::try_from(abi.size32)?;
++                    values.push(Self::load(cx, ty, &bytes[offset..][..size])?)?;
++                }
++                Val::Tuple(values.finish()?)
+             }
+@@ -293,3 +340,6 @@
+                 let (k, _) = ty.cases.get_index(discriminant as usize).unwrap();
+-                Val::Variant(k.clone(), value)
++                Val::Variant(
++                    BudgetedString::copy_from(k, cx.allocation_owner(), cx.allocation_depth())?,
++                    value,
++                )
+             }
+@@ -300,3 +350,7 @@
+ 
+-                Val::Enum(ty.names[discriminant as usize].clone())
++                Val::Enum(BudgetedString::copy_from(
++                    &ty.names[discriminant as usize],
++                    cx.allocation_owner(),
++                    cx.allocation_depth(),
++                )?)
+             }
+@@ -322,3 +376,7 @@
+                 let ty = &cx.types[i];
+-                let mut flags = Vec::new();
++                let mut flags = BudgetedVecBuilder::new(
++                    ty.names.len(),
++                    cx.allocation_owner(),
++                    cx.allocation_depth(),
++                )?;
+                 match FlagsSize::from_count(ty.names.len()) {
+@@ -327,3 +385,10 @@
+                         let bits = u8::linear_lift_from_memory(cx, InterfaceType::U8, bytes)?;
+-                        push_flags(ty, &mut flags, 0, u32::from(bits));
++                        push_flags(
++                            ty,
++                            &mut flags,
++                            0,
++                            u32::from(bits),
++                            cx.allocation_owner(),
++                            cx.allocation_depth(),
++                        )?;
+                     }
+@@ -331,3 +396,10 @@
+                         let bits = u16::linear_lift_from_memory(cx, InterfaceType::U16, bytes)?;
+-                        push_flags(ty, &mut flags, 0, u32::from(bits));
++                        push_flags(
++                            ty,
++                            &mut flags,
++                            0,
++                            u32::from(bits),
++                            cx.allocation_owner(),
++                            cx.allocation_depth(),
++                        )?;
+                     }
+@@ -340,3 +412,10 @@
+                             )?;
+-                            push_flags(ty, &mut flags, u32::from(i) * 32, bits);
++                            push_flags(
++                                ty,
++                                &mut flags,
++                                u32::from(i) * 32,
++                                bits,
++                                cx.allocation_owner(),
++                                cx.allocation_depth(),
++                            )?;
+                         }
+@@ -344,10 +423,10 @@
+                 }
+-                Val::Flags(flags)
+-            }
+-            InterfaceType::Future(_) => FutureAny::linear_lift_from_memory(cx, ty, bytes)?.into(),
+-            InterfaceType::Stream(_) => StreamAny::linear_lift_from_memory(cx, ty, bytes)?.into(),
+-            InterfaceType::ErrorContext(_) => {
+-                ErrorContext::linear_lift_from_memory(cx, ty, bytes)?.into_val()
+-            }
+-            InterfaceType::FixedLengthList(_) => todo!(), // FIXME(#12279)
++                Val::Flags(flags.finish()?)
++            }
++            InterfaceType::Future(_)
++            | InterfaceType::Stream(_)
++            | InterfaceType::ErrorContext(_)
++            | InterfaceType::FixedLengthList(_) => {
++                return Err(HostAllocationError::Unavailable.into());
++            }
+         })
+@@ -357,2 +436,14 @@
+     pub(crate) fn lower<T>(
++        &self,
++        cx: &mut LowerContext<'_, T>,
++        ty: InterfaceType,
++        dst: &mut IterMut<'_, MaybeUninit<ValRaw>>,
++    ) -> Result<()> {
++        cx.allocation_enter()?;
++        let result = self.lower_inner(cx, ty, dst);
++        cx.allocation_exit();
++        result
++    }
++
++    fn lower_inner<T>(
+         &self,
+@@ -413,4 +504,4 @@
+             // looking at it here.
+-            (InterfaceType::Borrow(_) | InterfaceType::Own(_), Val::Resource(value)) => {
+-                value.linear_lower_to_flat(cx, ty, next_mut(dst))
++            (InterfaceType::Borrow(_) | InterfaceType::Own(_), Val::Resource(_)) => {
++                Err(HostAllocationError::Unavailable.into())
+             }
+@@ -448,3 +539,3 @@
+                 for ((name, value), field) in values.iter().zip(ty.fields.iter()) {
+-                    if *name != field.name {
++                    if name.as_str() != field.name.as_str() {
+                         bail!("expected field `{}`, got `{name}`", field.name);
+@@ -487,4 +578,5 @@
+                 let ty = &cx.types[ty];
+-                let storage = flags_to_storage(ty, value)?;
+-                for value in storage {
++                let storage =
++                    flags_to_storage(ty, value, &cx.allocation_owner()?, cx.allocation_depth())?;
++                for &value in storage.iter() {
+                     next_mut(dst).write(ValRaw::u32(value));
+@@ -494,19 +586,8 @@
+             (InterfaceType::Flags(_), _) => unexpected(ty, self),
+-            (InterfaceType::Future(_), Val::Future(f)) => {
+-                f.linear_lower_to_flat(cx, ty, next_mut(dst))
+-            }
+-            (InterfaceType::Future(_), _) => unexpected(ty, self),
+-            (InterfaceType::Stream(_), Val::Stream(s)) => {
+-                s.linear_lower_to_flat(cx, ty, next_mut(dst))
+-            }
+-            (InterfaceType::Stream(_), _) => unexpected(ty, self),
+-            (InterfaceType::ErrorContext(_), Val::ErrorContext(ErrorContextAny(rep))) => {
+-                concurrent::lower_error_context_to_index(*rep, cx, ty)?.linear_lower_to_flat(
+-                    cx,
+-                    InterfaceType::U32,
+-                    next_mut(dst),
+-                )
+-            }
+-            (InterfaceType::ErrorContext(_), _) => unexpected(ty, self),
+-            (InterfaceType::FixedLengthList(_), _) => todo!(), // FIXME(#12279)
++            (InterfaceType::Future(_), _)
++            | (InterfaceType::Stream(_), _)
++            | (InterfaceType::ErrorContext(_), _)
++            | (InterfaceType::FixedLengthList(_), _) => {
++                Err(HostAllocationError::Unavailable.into())
++            }
+         }
+@@ -516,2 +597,14 @@
+     pub(crate) fn store<T>(
++        &self,
++        cx: &mut LowerContext<'_, T>,
++        ty: InterfaceType,
++        offset: usize,
++    ) -> Result<()> {
++        cx.allocation_enter()?;
++        let result = self.store_inner(cx, ty, offset);
++        cx.allocation_exit();
++        result
++    }
++
++    fn store_inner<T>(
+         &self,
+@@ -558,4 +651,4 @@
+             // NB: resources do type-checking when they lower.
+-            (InterfaceType::Borrow(_) | InterfaceType::Own(_), Val::Resource(value)) => {
+-                value.linear_lower_to_memory(cx, ty, offset)
++            (InterfaceType::Borrow(_) | InterfaceType::Own(_), Val::Resource(_)) => {
++                Err(HostAllocationError::Unavailable.into())
+             }
+@@ -587,3 +680,3 @@
+                 for ((name, value), field) in values.iter().zip(ty.fields.iter()) {
+-                    if *name != field.name {
++                    if name.as_str() != field.name.as_str() {
+                         bail!("expected field `{}`, got `{name}`", field.name);
+@@ -637,3 +730,4 @@
+                 let ty = &cx.types[ty];
+-                let storage = flags_to_storage(ty, flags)?;
++                let storage =
++                    flags_to_storage(ty, flags, &cx.allocation_owner()?, cx.allocation_depth())?;
+                 match FlagsSize::from_count(ty.names.len()) {
+@@ -652,3 +746,3 @@
+                         let mut offset = offset;
+-                        for value in storage {
++                        for &value in storage.iter() {
+                             value.linear_lower_to_memory(cx, InterfaceType::U32, offset)?;
+@@ -661,15 +755,8 @@
+             (InterfaceType::Flags(_), _) => unexpected(ty, self),
+-            (InterfaceType::Future(_), Val::Future(f)) => f.linear_lower_to_memory(cx, ty, offset),
+-            (InterfaceType::Future(_), _) => unexpected(ty, self),
+-            (InterfaceType::Stream(_), Val::Stream(s)) => s.linear_lower_to_memory(cx, ty, offset),
+-            (InterfaceType::Stream(_), _) => unexpected(ty, self),
+-            (InterfaceType::ErrorContext(_), Val::ErrorContext(ErrorContextAny(rep))) => {
+-                concurrent::lower_error_context_to_index(*rep, cx, ty)?.linear_lower_to_memory(
+-                    cx,
+-                    InterfaceType::U32,
+-                    offset,
+-                )
+-            }
+-            (InterfaceType::ErrorContext(_), _) => unexpected(ty, self),
+-            (InterfaceType::FixedLengthList(_), _) => todo!(), // FIXME(#12279)
++            (InterfaceType::Future(_), _)
++            | (InterfaceType::Stream(_), _)
++            | (InterfaceType::ErrorContext(_), _)
++            | (InterfaceType::FixedLengthList(_), _) => {
++                Err(HostAllocationError::Unavailable.into())
++            }
+         }
+@@ -807,3 +894,3 @@
+         ty: &'a TypeResult,
+-        r: &'a Result<Option<Box<Val>>, Option<Box<Val>>>,
++        r: &'a Result<Option<BudgetedBox<Val>>, Option<BudgetedBox<Val>>>,
+     ) -> Result<GenericVariant<'a>> {
+@@ -845,3 +932,3 @@
+ 
+-    fn option<'a>(ty: &'a TypeOption, r: &'a Option<Box<Val>>) -> GenericVariant<'a> {
++    fn option<'a>(ty: &'a TypeOption, r: &'a Option<BudgetedBox<Val>>) -> GenericVariant<'a> {
+         let (discriminant, payload) = match r {
+@@ -872,3 +959,3 @@
+         discriminant_name: &str,
+-        payload: &'a Option<Box<Val>>,
++        payload: &'a Option<BudgetedBox<Val>>,
+     ) -> Result<GenericVariant<'a>> {
+@@ -971,13 +1058,11 @@
+ 
+-    Ok(Val::List(
+-        (0..len)
+-            .map(|index| {
+-                Val::load(
+-                    cx,
+-                    elem,
+-                    &cx.memory()[ptr + (index * element_size)..][..element_size],
+-                )
+-            })
+-            .collect::<Result<_>>()?,
+-    ))
++    let mut values = BudgetedVecBuilder::new(len, cx.allocation_owner(), cx.allocation_depth())?;
++    for index in 0..len {
++        values.push(Val::load(
++            cx,
++            elem,
++            &cx.memory()[ptr + index * element_size..][..element_size],
++        )?)?;
++    }
++    Ok(Val::List(values.finish()?))
+ }
+@@ -1011,3 +1096,3 @@
+     // Load each tuple (key, value) into a Vec
+-    let mut map = Vec::with_capacity(len);
++    let mut map = BudgetedVecBuilder::new(len, cx.allocation_owner(), cx.allocation_depth())?;
+     for index in 0..len {
+@@ -1020,6 +1105,6 @@
+         )?;
+-        map.push((key, value));
+-    }
+-
+-    Ok(Val::Map(map))
++        map.push((key, value))?;
++    }
++
++    Ok(Val::Map(map.finish()?))
+ }
+@@ -1031,3 +1116,3 @@
+     bytes: &[u8],
+-) -> Result<(u32, Option<Box<Val>>)> {
++) -> Result<(u32, Option<BudgetedBox<Val>>)> {
+     let discriminant = match info.size {
+@@ -1056,7 +1141,7 @@
+             let case_size = usize::try_from(case_abi.size32).unwrap();
+-            Some(Box::new(Val::load(
+-                cx,
+-                case_ty,
+-                &bytes[payload_offset..][..case_size],
+-            )?))
++            Some(BudgetedBox::new(
++                Val::load(cx, case_ty, &bytes[payload_offset..][..case_size])?,
++                cx.allocation_owner(),
++                cx.allocation_depth(),
++            )?)
+         }
+@@ -1072,3 +1157,3 @@
+     src: &mut Iter<'_, ValRaw>,
+-) -> Result<(u32, Option<Box<Val>>)> {
++) -> Result<(u32, Option<BudgetedBox<Val>>)> {
+     let len = types.len();
+@@ -1080,3 +1165,7 @@
+         Some(ty) => (
+-            Some(Box::new(Val::lift(cx, ty, src)?)),
++            Some(BudgetedBox::new(
++                Val::lift(cx, ty, src)?,
++                cx.allocation_owner(),
++                cx.allocation_depth(),
++            )?),
+             cx.types.canonical_abi(&ty).flat_count(usize::MAX).unwrap(),
+@@ -1143,6 +1232,17 @@
+ 
+-fn push_flags(ty: &TypeFlags, flags: &mut Vec<String>, mut offset: u32, mut bits: u32) {
+-    while bits > 0 && usize::try_from(offset).unwrap() < ty.names.len() {
++fn push_flags(
++    ty: &TypeFlags,
++    flags: &mut BudgetedVecBuilder<BudgetedString>,
++    mut offset: u32,
++    mut bits: u32,
++    owner: &crate::component::HostAllocationOwner,
++    depth: usize,
++) -> Result<()> {
++    while bits > 0 && usize::try_from(offset)? < ty.names.len() {
+         if bits & 1 != 0 {
+-            flags.push(ty.names[offset as usize].clone());
++            flags.push(BudgetedString::copy_from(
++                &ty.names[offset as usize],
++                owner,
++                depth,
++            )?)?;
+         }
+@@ -1151,11 +1251,17 @@
+     }
+-}
+-
+-fn flags_to_storage(ty: &TypeFlags, flags: &[String]) -> Result<Vec<u32>> {
+-    let mut storage = match FlagsSize::from_count(ty.names.len()) {
+-        FlagsSize::Size0 => Vec::new(),
+-        FlagsSize::Size1 | FlagsSize::Size2 => vec![0],
+-        FlagsSize::Size4Plus(n) => vec![0; n.into()],
++    Ok(())
++}
++
++fn flags_to_storage(
++    ty: &TypeFlags,
++    flags: &[BudgetedString],
++    owner: &crate::component::HostAllocationOwner,
++    depth: usize,
++) -> Result<BudgetedVec<u32>> {
++    let count = match FlagsSize::from_count(ty.names.len()) {
++        FlagsSize::Size0 => 0,
++        FlagsSize::Size1 | FlagsSize::Size2 => 1,
++        FlagsSize::Size4Plus(n) => usize::from(n),
+     };
+-
++    let mut storage = BudgetedVec::from_iter((0..count).map(|_| 0u32), owner, depth)?;
+     for flag in flags {
+@@ -1163,5 +1269,5 @@
+             .names
+-            .get_index_of(flag)
+-            .ok_or_else(|| crate::format_err!("unknown flag: `{flag}`"))?;
+-        storage[bit / 32] |= 1 << (bit % 32);
++            .get_index_of(flag.as_str())
++            .ok_or(HostAllocationError::Invalid)?;
++        storage.scratch_mut()?[bit / 32] |= 1 << (bit % 32);
+     }
+@@ -1275,4 +1381,4 @@
+ 
+-impl From<String> for Val {
+-    fn from(i: String) -> Self {
++impl From<BudgetedString> for Val {
++    fn from(i: BudgetedString) -> Self {
+         Val::String(i)
+--- upstream/wasmtime/src/runtime/fiber.rs
++++ vendor/wasmtime/src/runtime/fiber.rs
+@@ -1 +1,2 @@
++use crate::component::{HostAllocationError, HostAllocationLease};
+ use crate::prelude::*;
+@@ -5,3 +6,3 @@
+ use crate::{Engine, StoreContextMut};
+-use core::mem;
++use core::mem::{self, ManuallyDrop};
+ use core::ops::Range;
+@@ -92,3 +93,3 @@
+     // stack at a time and making the number tunable via `Config`.
+-    last_fiber_stack: Option<wasmtime_fiber::FiberStack>,
++    last_fiber_stack: Option<FundedFiberStack>,
+ 
+@@ -123,3 +124,3 @@
+ impl AsyncState {
+-    pub(crate) fn last_fiber_stack(&mut self) -> &mut Option<wasmtime_fiber::FiberStack> {
++    pub(crate) fn last_fiber_stack(&mut self) -> &mut Option<FundedFiberStack> {
+         &mut self.last_fiber_stack
+@@ -414,2 +415,43 @@
+ 
++// On-demand native stacks physically unmap on drop. Metadata is inline; custom
++// and pooling allocators are rejected before entering this supported path.
++pub(crate) struct FundedFiberStack {
++    stack: ManuallyDrop<FiberStack>,
++    lease: ManuallyDrop<HostAllocationLease>,
++}
++
++impl FundedFiberStack {
++    pub(crate) fn new(stack: FiberStack, lease: HostAllocationLease) -> Self {
++        Self {
++            stack: ManuallyDrop::new(stack),
++            lease: ManuallyDrop::new(lease),
++        }
++    }
++    fn into_parts(mut self) -> (FiberStack, HostAllocationLease) {
++        let stack = unsafe { ManuallyDrop::take(&mut self.stack) };
++        let lease = unsafe { ManuallyDrop::take(&mut self.lease) };
++        mem::forget(self);
++        (stack, lease)
++    }
++}
++impl Drop for FundedFiberStack {
++    fn drop(&mut self) {
++        let stack = unsafe { ManuallyDrop::take(&mut self.stack) };
++        #[cfg(unix)]
++        match stack.try_release() {
++            Ok(()) => drop(unsafe { ManuallyDrop::take(&mut self.lease) }),
++            Err((_error, unreleased)) => {
++                // No destructor/timeout can turn uncertain cleanup into credit.
++                // The adapter remains strongly held and its OS owner lock and
++                // stable-account charge stay occupied until process cleanup.
++                mem::forget(unreleased);
++            }
++        }
++        #[cfg(not(unix))]
++        {
++            mem::forget(stack);
++        }
++    }
++}
++
+ pub(crate) struct StoreFiber<'a> {
+@@ -428,2 +470,3 @@
+     fiber: Option<AlwaysMut<RawFiber<'a>>>,
++    fiber_lease: Option<HostAllocationLease>,
+     /// See `FiberResumeState`
+@@ -450,4 +493,10 @@
+     /// original stack.
+-    fn take_fiber_stack(&mut self) -> Option<FiberStack> {
+-        self.fiber.take().map(|f| f.into_inner().0.into_stack())
++    fn take_fiber_stack(&mut self) -> Option<FundedFiberStack> {
++        let stack = self.fiber.take()?.into_inner().0.into_stack();
++        Some(FundedFiberStack::new(
++            stack,
++            self.fiber_lease
++                .take()
++                .expect("live fiber allocation lease"),
++        ))
+     }
+@@ -497,6 +546,3 @@
+ 
+-        unsafe {
+-            let stack = self.take_fiber_stack().unwrap();
+-            self.engine.allocator().deallocate_fiber_stack(stack);
+-        }
++        drop(self.take_fiber_stack().unwrap());
+     }
+@@ -807,8 +853,11 @@
+     let engine = opaque.engine().clone();
++    if engine.target().is_pulley() {
++        return Err(HostAllocationError::Unavailable.into());
++    }
+     let executor = Executor::new(&engine)?;
+     let id = opaque.id();
+-    let stack = opaque.allocate_fiber_stack()?;
++    let (stack, mut lease) = opaque.allocate_fiber_stack()?.into_parts();
+     let track_pkey_context_switch = opaque.has_pkey();
+     let store = &raw mut *store;
+-    let fiber = Fiber::new(stack, move |result: WasmtimeResume, suspend| {
++    let trampoline = move |result: WasmtimeResume, suspend: &WasmtimeSuspend| {
+         let future_cx = match result {
+@@ -860,3 +909,15 @@
+         fun(reset.0)
+-    });
++    };
++    if let Err(error) = lease.charge(
++        crate::component::HostAllocationKind::Metadata,
++        size_of_val(&trampoline),
++        1,
++        0,
++        1,
++    ) {
++        drop(trampoline);
++        drop(FundedFiberStack::new(stack, lease));
++        return Err(error.into());
++    }
++    let fiber = Fiber::new(stack, trampoline);
+     let fiber = match fiber {
+@@ -864,5 +925,3 @@
+         Err((e, stack)) => {
+-            unsafe {
+-                engine.allocator().deallocate_fiber_stack(stack);
+-            }
++            drop(FundedFiberStack::new(stack, lease));
+             return Err(e);
+@@ -887,2 +946,3 @@
+         fiber: Some(RawFiber(fiber).into()),
++        fiber_lease: Some(lease),
+     })
+--- upstream/wasmtime/src/runtime/store/async_.rs
++++ vendor/wasmtime/src/runtime/store/async_.rs
+@@ -183,10 +183,68 @@
+ impl StoreOpaque {
+-    pub(crate) fn allocate_fiber_stack(&mut self) -> Result<wasmtime_fiber::FiberStack> {
+-        if let Some(stack) = self.async_state.last_fiber_stack().take() {
+-            return Ok(stack);
++    pub(crate) fn allocate_fiber_stack(
++        &mut self,
++    ) -> Result<crate::runtime::fiber::FundedFiberStack> {
++        use crate::component::{
++            HostAllocationError, HostAllocationKind, HostAllocationLease, HostAllocationRequest,
++        };
++        let owner = self.host_allocation_owner()?;
++        owner.reserve(HostAllocationRequest {
++            kind: HostAllocationKind::Temporary,
++            bytes: 0,
++            elements: 1,
++            depth: 0,
++            work: 1,
++        })?;
++        let config = self.engine().config();
++        if !matches!(
++            config.allocation_strategy,
++            crate::InstanceAllocationStrategy::OnDemand
++        ) || config.stack_creator.is_some()
++        {
++            return Err(HostAllocationError::Unavailable.into());
+         }
+-        self.engine().allocator().allocate_fiber_stack()
+-    }
+-
+-    pub(crate) fn deallocate_fiber_stack(&mut self, stack: wasmtime_fiber::FiberStack) {
++        let stack_size = config.async_stack_size;
++        #[cfg(not(unix))]
++        return Err(HostAllocationError::Unavailable.into());
++        #[cfg(unix)]
++        {
++            if let Some(stack) = self.async_state.last_fiber_stack().take() {
++                return Ok(stack);
++            }
++            let page = crate::runtime::vm::host_page_size();
++            if !page.is_power_of_two() {
++                return Err(HostAllocationError::Unavailable.into());
++            }
++            let requested = stack_size.max(page);
++            let rounded = requested
++                .checked_add(page - 1)
++                .ok_or(HostAllocationError::Overflow)?
++                & !(page - 1);
++            let physical = rounded
++                .checked_add(page)
++                .ok_or(HostAllocationError::Overflow)?;
++            let mut lease = HostAllocationLease::new(&owner);
++            lease.charge(HostAllocationKind::Temporary, physical, 1, 0, physical)?;
++            match wasmtime_fiber::FiberStack::new_checked(stack_size, false) {
++                Ok(stack) => Ok(crate::runtime::fiber::FundedFiberStack::new(stack, lease)),
++                Err(failure) => {
++                    if let Some(mapping) = failure.unreleased {
++                        // Kernel cleanup uncertainty retains the stable-account
++                        // reservation/OS owner, never refunds an unfreed region.
++                        core::mem::forget(crate::runtime::fiber::FundedFiberStack::new(
++                            mapping, lease,
++                        ));
++                    } else {
++                        drop(lease);
++                    }
++                    Err(failure.error)
++                }
++            }
++        }
++    }
++
++    pub(crate) fn deallocate_fiber_stack(
++        &mut self,
++        stack: crate::runtime::fiber::FundedFiberStack,
++    ) {
+         self.flush_fiber_stack();
+@@ -195,9 +253,6 @@
+ 
+-    /// Releases the last fiber stack to the underlying instance allocator, if
+-    /// present.
++    /// Releases cached physical stack storage before returning its byte credit.
+     pub fn flush_fiber_stack(&mut self) {
+         if let Some(stack) = self.async_state.last_fiber_stack().take() {
+-            unsafe {
+-                self.engine.allocator().deallocate_fiber_stack(stack);
+-            }
++            drop(stack);
+         }
+--- upstream/wasmtime/src/runtime/store.rs
++++ vendor/wasmtime/src/runtime/store.rs
+@@ -463,2 +463,4 @@
+     engine: Engine,
++    #[cfg(feature = "component-model")]
++    host_allocation_owner: Option<crate::component::HostAllocationOwner>,
+     vm_store_context: VMStoreContext,
+@@ -698,2 +700,8 @@
+ impl<T> Store<T> {
++    /// Attach a trusted stable owner before any dynamic canonical ABI execution.
++    /// Existing owned values retain their previous owner across replacement.
++    #[cfg(feature = "component-model")]
++    pub fn host_allocation_budget(&mut self, owner: crate::component::HostAllocationOwner) {
++        self.inner.inner.host_allocation_owner = Some(owner);
++    }
+     /// Creates a new [`Store`] to be associated with the given [`Engine`] and
+@@ -727,2 +735,4 @@
+         let inner = StoreOpaque {
++            #[cfg(feature = "component-model")]
++            host_allocation_owner: None,
+             _marker: marker::PhantomPinned,
+@@ -1262,2 +1272,7 @@
+ impl<'a, T> StoreContext<'a, T> {
++    /// Borrow the configured trusted canonical allocation owner without allocation.
++    #[cfg(feature = "component-model")]
++    pub fn host_allocation_owner(&self) -> Result<crate::component::HostAllocationOwner> {
++        self.0.host_allocation_owner()
++    }
+     /// Returns the underlying [`Engine`] this store is connected to.
+@@ -1283,2 +1298,7 @@
+ impl<'a, T> StoreContextMut<'a, T> {
++    /// Borrow the configured trusted canonical allocation owner without allocation.
++    #[cfg(feature = "component-model")]
++    pub fn host_allocation_owner(&self) -> Result<crate::component::HostAllocationOwner> {
++        self.0.host_allocation_owner()
++    }
+     /// Access the underlying data owned by this `Store`.
+@@ -1514,2 +1534,8 @@
+ impl StoreOpaque {
++    #[cfg(feature = "component-model")]
++    pub(crate) fn host_allocation_owner(&self) -> Result<crate::component::HostAllocationOwner> {
++        self.host_allocation_owner
++            .clone()
++            .ok_or_else(|| crate::Error::from(crate::component::HostAllocationError::Unavailable))
++    }
+     pub fn id(&self) -> StoreId {
+--- upstream/wasmtime/src/runtime/vm/component/handle_table.rs
++++ vendor/wasmtime/src/runtime/vm/component/handle_table.rs
+@@ -1,3 +1,3 @@
+ use super::{TypedResource, TypedResourceIndex};
+-use crate::prelude::TryVec;
++use crate::component::{FundedVec, HostAllocationError, HostAllocationOwner};
+ use crate::{Result, bail};
+@@ -116,3 +116,4 @@
+     next: u32,
+-    slots: TryVec<Slot>,
++    slots: FundedVec<Slot>,
++    allocation_owner: Option<HostAllocationOwner>,
+ }
+@@ -123,3 +124,4 @@
+             next: 0,
+-            slots: TryVec::new(),
++            slots: FundedVec::default(),
++            allocation_owner: None,
+         }
+@@ -129,2 +131,5 @@
+ impl HandleTable {
++    pub(crate) fn set_allocation_owner(&mut self, owner: &HostAllocationOwner) {
++        self.allocation_owner = Some(owner.clone());
++    }
+     /// Returns whether or not this table is empty.
+@@ -151,5 +156,12 @@
+         if next as usize == self.slots.len() {
+-            self.slots.push(Slot::Free {
+-                next: next.checked_add(1).unwrap(),
+-            })?;
++            let owner = self
++                .allocation_owner
++                .as_ref()
++                .ok_or(HostAllocationError::Unavailable)?;
++            self.slots.push(
++                Slot::Free {
++                    next: next.checked_add(1).ok_or(HostAllocationError::Overflow)?,
++                },
++                owner,
++            )?;
+         }
+--- upstream/wasmtime/src/runtime/vm/component/resources.rs
++++ vendor/wasmtime/src/runtime/vm/component/resources.rs
+@@ -25,2 +25,3 @@
+ use crate::component::store::ComponentTaskState;
++use crate::component::{FundedVec, HostAllocationOwner};
+ use crate::prelude::*;
+@@ -50,2 +51,3 @@
+ pub struct ResourceTables<'a> {
++    pub(crate) allocation_owner: HostAllocationOwner,
+     /// Runtime state for all resources defined in a component.
+@@ -176,3 +178,3 @@
+ pub struct CallContext {
+-    lenders: Vec<TypedResourceIndex>,
++    lenders: FundedVec<TypedResourceIndex>,
+     borrow_count: u32,
+@@ -182,4 +184,5 @@
+     fn table_for_resource(&mut self, resource: &TypedResource) -> &mut HandleTable {
+-        match resource {
+-            TypedResource::Host(_) => self.host_table,
++        let owner = self.allocation_owner.clone();
++        let table = match resource {
++            TypedResource::Host(_) => &mut *self.host_table,
+             TypedResource::Component { ty, .. } => {
+@@ -188,3 +191,5 @@
+             }
+-        }
++        };
++        table.set_allocation_owner(&owner);
++        table
+     }
+@@ -192,4 +197,5 @@
+     fn table_for_index(&mut self, index: &TypedResourceIndex) -> &mut HandleTable {
+-        match index {
+-            TypedResourceIndex::Host(_) => self.host_table,
++        let owner = self.allocation_owner.clone();
++        let table = match index {
++            TypedResourceIndex::Host(_) => &mut *self.host_table,
+             TypedResourceIndex::Component { ty, .. } => {
+@@ -198,3 +204,5 @@
+             }
+-        }
++        };
++        table.set_allocation_owner(&owner);
++        table
+     }
+@@ -288,3 +296,6 @@
+             let current = self.current_scope_id()?;
+-            self.task_state.call_context(current)?.lenders.push(index);
++            self.task_state
++                .call_context(current)?
++                .lenders
++                .push(index, &self.allocation_owner)?;
+         }
+--- upstream/wasmtime-internal-fiber/src/lib.rs
++++ vendor/wasmtime-internal-fiber/src/lib.rs
+@@ -45,2 +45,11 @@
+ 
++/// Failed construction with any mapping whose release could not be confirmed.
++#[cfg(unix)]
++pub struct StackAllocationError {
++    /// Original construction error.
++    pub error: Error,
++    /// Retained mapping; callers must keep its byte reservation until release.
++    pub unreleased: Option<FiberStack>,
++}
++
+ impl core::fmt::Debug for FiberStack {
+@@ -61,3 +70,25 @@
+ 
++/// Count of explicit cleanup failures; uncertain regions must remain funded.
++#[cfg(unix)]
++pub fn unconfirmed_cleanup_count() -> usize {
++    imp::unconfirmed_cleanup_count()
++}
++
+ impl FiberStack {
++    /// Constructs the original Unix mmap stack with checked failure cleanup.
++    /// An uncertain munmap returns ownership instead of silently losing memory.
++    #[cfg(unix)]
++    pub fn new_checked(
++        size: usize,
++        zeroed: bool,
++    ) -> core::result::Result<Self, StackAllocationError> {
++        imp::FiberStack::new_checked(size, zeroed).map(Self)
++    }
++    /// Confirms physical release or returns the complete still-owned mapping.
++    #[cfg(unix)]
++    pub fn try_release(self) -> core::result::Result<(), (Error, Self)> {
++        self.0
++            .try_release()
++            .map_err(|(error, stack)| (error, Self(stack)))
++    }
+     /// Creates a new fiber stack of the given size.
+--- upstream/wasmtime-internal-fiber/src/unix.rs
++++ vendor/wasmtime-internal-fiber/src/unix.rs
+@@ -42,2 +42,6 @@
+ pub type Error = wasmtime_environ::error::Error;
++static UNCONFIRMED_CLEANUPS: AtomicUsize = AtomicUsize::new(0);
++pub(crate) fn unconfirmed_cleanup_count() -> usize {
++    UNCONFIRMED_CLEANUPS.load(Ordering::SeqCst)
++}
+ 
+@@ -81,2 +85,36 @@
+ impl FiberStack {
++    pub fn new_checked(
++        size: usize,
++        zeroed: bool,
++    ) -> core::result::Result<Self, crate::StackAllocationError> {
++        let _ = zeroed;
++        if cfg!(asan) {
++            return Err(crate::StackAllocationError {
++                error: format_err!("checked mmap stack unavailable under asan"),
++                unreleased: None,
++            });
++        }
++        MmapFiberStack::new_checked(size).map(Self::from_mmap)
++    }
++    fn from_mmap(stack: MmapFiberStack) -> Self {
++        let page_size = host_page_size();
++        Self {
++            base: BasePtr(stack.mapping_base.wrapping_byte_add(page_size)),
++            len: stack.mapping_len - page_size,
++            storage: FiberStackStorage::Mmap(stack),
++        }
++    }
++    pub fn try_release(mut self) -> core::result::Result<(), (Error, Self)> {
++        match &mut self.storage {
++            FiberStackStorage::Mmap(stack) => match stack.unmap() {
++                Ok(()) => Ok(()),
++                Err(error) => Err((error, self)),
++            },
++            // This checked path has no alternate allocator/custom-stack fallback.
++            _ => Err((
++                format_err!("checked release only supports mmap stacks"),
++                self,
++            )),
++        }
++    }
+     pub fn new(size: usize, zeroed: bool) -> Result<Self> {
+@@ -171,36 +209,96 @@
+ impl MmapFiberStack {
+-    fn new(size: usize) -> Result<Self> {
+-        // Round up our stack size request to the nearest multiple of the
+-        // page size.
+-        let page_size = host_page_size();
++    fn new_checked(size: usize) -> core::result::Result<Self, crate::StackAllocationError> {
++        Self::new_with(
++            size,
++            |ptr, len| unsafe {
++                rustix::mm::mprotect(
++                    ptr,
++                    len,
++                    rustix::mm::MprotectFlags::READ | rustix::mm::MprotectFlags::WRITE,
++                )
++                .map_err(Into::into)
++            },
++            |ptr, len| unsafe { rustix::mm::munmap(ptr, len).map_err(Into::into) },
++        )
++    }
++    fn new_with(
++        size: usize,
++        protect: impl FnOnce(*mut core::ffi::c_void, usize) -> Result<()>,
++        unmap: impl FnOnce(*mut core::ffi::c_void, usize) -> Result<()>,
++    ) -> core::result::Result<Self, crate::StackAllocationError> {
++        let page = host_page_size();
+         let size = if size == 0 {
+-            page_size
++            page
+         } else {
+-            let with_extra = size
+-                .checked_add(page_size - 1)
+-                .ok_or_else(|| OutOfMemory::new(usize::MAX))?;
+-            with_extra & (!(page_size - 1))
++            size.checked_add(page - 1)
++                .ok_or_else(|| crate::StackAllocationError {
++                    error: OutOfMemory::new(usize::MAX).into(),
++                    unreleased: None,
++                })?
++                & !(page - 1)
+         };
+-
+-        unsafe {
+-            // Add in one page for a guard page and then ask for some memory.
+-            let mmap_len = size + page_size;
+-            let mmap = rustix::mm::mmap_anonymous(
++        let length = size
++            .checked_add(page)
++            .ok_or_else(|| crate::StackAllocationError {
++                error: OutOfMemory::new(usize::MAX).into(),
++                unreleased: None,
++            })?;
++        let ptr = unsafe {
++            rustix::mm::mmap_anonymous(
+                 ptr::null_mut(),
+-                mmap_len,
++                length,
+                 rustix::mm::ProtFlags::empty(),
+                 rustix::mm::MapFlags::PRIVATE,
+-            )?;
+-
+-            rustix::mm::mprotect(
+-                mmap.byte_add(page_size),
+-                size,
+-                rustix::mm::MprotectFlags::READ | rustix::mm::MprotectFlags::WRITE,
+-            )?;
+-
+-            Ok(MmapFiberStack {
+-                mapping_base: mmap.cast(),
+-                mapping_len: mmap_len,
+-            })
+-        }
++            )
++        }
++        .map_err(|error| crate::StackAllocationError {
++            error: error.into(),
++            unreleased: None,
++        })?;
++        // Own the mapping immediately, before the fallible mprotect operation.
++        let mut stack = Self {
++            mapping_base: ptr.cast(),
++            mapping_len: length,
++        };
++        if let Err(error) = protect(unsafe { ptr.byte_add(page) }, size) {
++            return match unmap(ptr, length) {
++                Ok(()) => {
++                    stack.mapping_len = 0;
++                    Err(crate::StackAllocationError {
++                        error,
++                        unreleased: None,
++                    })
++                }
++                Err(_) => {
++                    UNCONFIRMED_CLEANUPS.fetch_add(1, Ordering::SeqCst);
++                    Err(crate::StackAllocationError {
++                        error,
++                        unreleased: Some(crate::FiberStack(FiberStack::from_mmap(stack))),
++                    })
++                }
++            };
++        }
++        Ok(stack)
++    }
++    fn unmap(&mut self) -> Result<()> {
++        if self.mapping_len != 0 {
++            if let Err(error) =
++                unsafe { rustix::mm::munmap(self.mapping_base.cast(), self.mapping_len) }
++            {
++                UNCONFIRMED_CLEANUPS.fetch_add(1, Ordering::SeqCst);
++                return Err(error.into());
++            }
++            self.mapping_len = 0;
++        }
++        Ok(())
++    }
++    fn new(size: usize) -> Result<Self> {
++        Self::new_checked(size).map_err(|failure| {
++            // Legacy unbudgeted constructors cannot return retained mapping
++            // ownership. Do not destroy or pretend to free an uncertain region.
++            if let Some(mapping) = failure.unreleased {
++                core::mem::forget(mapping);
++            }
++            failure.error
++        })
+     }
+@@ -210,6 +308,5 @@
+     fn drop(&mut self) {
+-        unsafe {
+-            let ret = rustix::mm::munmap(self.mapping_base.cast(), self.mapping_len);
+-            debug_assert!(ret.is_ok());
+-        }
++        // Budgeted callers use try_release and retain ownership on uncertainty.
++        let ret = self.unmap();
++        debug_assert!(ret.is_ok());
+     }
+@@ -534 +631,55 @@
+ use asan_disabled as asan;
++
++#[cfg(test)]
++mod checked_cleanup_tests {
++    use super::*;
++    use core::cell::Cell;
++    #[test]
++    fn failed_protection_physically_unmaps_the_owned_kib_region() {
++        let calls = Cell::new(0);
++        let result = MmapFiberStack::new_with(
++            4096,
++            |_, _| Err(format_err!("injected mprotect failure")),
++            |ptr, len| {
++                calls.set(calls.get() + 1);
++                unsafe { rustix::mm::munmap(ptr, len) }?;
++                Ok(())
++            },
++        );
++        match result {
++            Err(error) => assert!(error.unreleased.is_none()),
++            Ok(_) => panic!("injected protect unexpectedly succeeded"),
++        }
++        assert_eq!(calls.get(), 1);
++    }
++    #[test]
++    fn uncertain_cleanup_returns_mapping_without_double_unmap_or_false_success() {
++        let before = unconfirmed_cleanup_count();
++        let failure = match MmapFiberStack::new_with(
++            4096,
++            |_, _| Err(format_err!("injected mprotect failure")),
++            |_, _| Err(format_err!("injected munmap failure")),
++        ) {
++            Err(error) => error,
++            Ok(_) => panic!("injected protect unexpectedly succeeded"),
++        };
++        assert!(unconfirmed_cleanup_count() >= before + 1);
++        let mapping = failure
++            .unreleased
++            .expect("unconfirmed mapping must stay owned");
++        assert!(mapping.range().is_some());
++        // Explicit successful cleanup, not a timeout or destructor assumption.
++        assert!(mapping.try_release().is_ok());
++    }
++    #[test]
++    fn checked_stack_rounds_small_regions_and_rejects_overflow_before_mmap() {
++        assert!(FiberStack::new_checked(usize::MAX, false).is_err());
++        let stack = match FiberStack::new_checked(4096, false) {
++            Ok(stack) => stack,
++            Err(_) => panic!("small checked stack allocation failed"),
++        };
++        let length = stack.len;
++        assert!(length >= 4096 && length % host_page_size() == 0);
++        assert!(stack.try_release().is_ok());
++    }
++}

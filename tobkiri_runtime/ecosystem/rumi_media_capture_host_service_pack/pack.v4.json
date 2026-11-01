@@ -1,0 +1,160 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:3ef1cfad7aa4798d6273b373ed6727ff7b085498bdcb94432766dcf5d7f1a18b",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:2350f27970a4283e492bacd40cc95b5a4e21048758e0594f0db74e59c2ed6e01",
+      "kind": "executable",
+      "path": "runtime/service.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.media.capture.v1",
+      "operations": [
+        "rumi_media_capture_host_service_pack.media-capture"
+      ],
+      "revision_digest": "sha256:b989a98365e21f20ab9d8720c0f5579cde4a5dc5b489b4c00a7e7b508f9be587"
+    },
+    {
+      "contract_id": "tobkiri.action.media.output.v1",
+      "operations": [
+        "rumi_media_capture_host_service_pack.media-output"
+      ],
+      "revision_digest": "sha256:f87344f1d1760b340c18630686daf561b39fe55e4ed7bed80d919c2bd604d82d"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:b989a98365e21f20ab9d8720c0f5579cde4a5dc5b489b4c00a7e7b508f9be587",
+      "id": "rumi_media_capture_host_service_pack.media.capture",
+      "implementation_digest": "sha256:2350f27970a4283e492bacd40cc95b5a4e21048758e0594f0db74e59c2ed6e01",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_media_capture_host_service_pack.media-capture"
+      ],
+      "role": "brokered"
+    },
+    {
+      "contract_revision_digest": "sha256:f87344f1d1760b340c18630686daf561b39fe55e4ed7bed80d919c2bd604d82d",
+      "id": "rumi_media_capture_host_service_pack.media.output",
+      "implementation_digest": "sha256:2350f27970a4283e492bacd40cc95b5a4e21048758e0594f0db74e59c2ed6e01",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_media_capture_host_service_pack.media-output"
+      ],
+      "role": "brokered"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:39fa29b151ee0a15d1cfa796503c5126821da1b448c462734da71c5d53f9ebb3",
+    "contract_catalog_digest": "sha256:580fc9df04cd452dac979d9cdeadbfc3d24c40324113cb1581d76b11c2a001d7",
+    "source_identity": "sha256:4331551bed04acdcffdb1a5a5469acc55bbcbc04fb8105567e4d3006c11d0571"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.media.capture.v1",
+      "rumi.action.media.output.v1",
+      "rumi:ecosystem/rumi_media_capture_host_service_pack",
+      "rumi_media_capture_host_service_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.action.media.capture.v1",
+      "effect_ceiling": [
+        "capability:media.capture"
+      ],
+      "operation_id": "rumi_media_capture_host_service_pack.media-capture",
+      "owner": "rumi_media_capture_host_service_pack",
+      "provider_id": "rumi_media_capture_host_service_pack.media.capture",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.action.media.output.v1",
+      "effect_ceiling": [
+        "capability:media.output"
+      ],
+      "operation_id": "rumi_media_capture_host_service_pack.media-output",
+      "owner": "rumi_media_capture_host_service_pack",
+      "provider_id": "rumi_media_capture_host_service_pack.media.output",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:39fa29b151ee0a15d1cfa796503c5126821da1b448c462734da71c5d53f9ebb3",
+    "display_name": "Rumi Media Capture Host Service",
+    "id": "rumi_media_capture_host_service_pack",
+    "kind": "normal_sandbox",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:4331551bed04acdcffdb1a5a5469acc55bbcbc04fb8105567e4d3006c11d0571",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:4331551bed04acdcffdb1a5a5469acc55bbcbc04fb8105567e4d3006c11d0571",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_media_capture_host_service_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.action.media.capture.v1",
+      "operations": [
+        "rumi_media_capture_host_service_pack.media-capture"
+      ],
+      "owner": "rumi_media_capture_host_service_pack",
+      "provider_id": "rumi_media_capture_host_service_pack.media.capture"
+    },
+    {
+      "contract_reference": "tobkiri.action.media.output.v1",
+      "operations": [
+        "rumi_media_capture_host_service_pack.media-output"
+      ],
+      "owner": "rumi_media_capture_host_service_pack",
+      "provider_id": "rumi_media_capture_host_service_pack.media.output"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "host.authority.consume",
+      "media.capture",
+      "media.output"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

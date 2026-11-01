@@ -1,0 +1,109 @@
+{
+  "authority": "none",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "acceptance.cli.application.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "pure"
+          ],
+          "error_schema_digest": "sha256:776804b9ce30130df4f8b4cdef802002e4d9d81df6a5e4a641fc5da7b5a55ac7",
+          "idempotency": {
+            "mode": "replayable"
+          },
+          "input_schema_digest": "sha256:99334726611ccf58a148b0814696bfa6fe08c1b2d027e946beccf5a74331c9aa",
+          "operation_id": "launch",
+          "output_schema_digest": "sha256:70b25186b375e1b6912d546ee549a92336d34745a23f2215334d0d55cbf72c52",
+          "scope_semantics": "declarative"
+        }
+      ],
+      "owner": "acceptance.cli.application",
+      "provenance": {
+        "evidence": [],
+        "generator": "acceptance.cli.application.author",
+        "generator_version": "1.0.0",
+        "normative": false,
+        "repository_commit": "working-tree",
+        "repository_tree": "d3fbc18af71f7e6285560faa8ef82e93172d07ac8f117549706521efa0c32aaf",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:d3fbc18af71f7e6285560faa8ef82e93172d07ac8f117549706521efa0c32aaf",
+        "source_kind": "repository",
+        "source_path": "source/application.py"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "sandbox",
+        "lifecycle": {},
+        "provider_id": "acceptance.cli.application",
+        "required_capabilities": [],
+        "security": "public"
+      },
+      "revision_digest": "sha256:e6f3cadc3ebb8f238e77b5e488892b5377717c6ecc0152124189b225a9e13da0",
+      "schema_catalog": {
+        "sha256:70b25186b375e1b6912d546ee549a92336d34745a23f2215334d0d55cbf72c52": {
+          "additionalProperties": false,
+          "properties": {
+            "command_id": {
+              "const": "transcript.render"
+            },
+            "presentation": {
+              "const": "terminal_stdio"
+            }
+          },
+          "required": [
+            "presentation",
+            "command_id"
+          ],
+          "type": "object"
+        },
+        "sha256:776804b9ce30130df4f8b4cdef802002e4d9d81df6a5e4a641fc5da7b5a55ac7": {
+          "additionalProperties": false,
+          "properties": {
+            "error": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "error"
+          ],
+          "type": "object"
+        },
+        "sha256:99334726611ccf58a148b0814696bfa6fe08c1b2d027e946beccf5a74331c9aa": {
+          "additionalProperties": false,
+          "properties": {},
+          "type": "object"
+        }
+      },
+      "status": "draft",
+      "version": "1.0.0"
+    }
+  ],
+  "display_name": "Tobkiri independent CLI Application source",
+  "files": {
+    "frontend/__main__.py": "sha256:94108bcd85fee0d7ad20f91dd4b36785708355b341effca926007a66caa48a75",
+    "frontend/cli_frontend/__init__.py": "sha256:36ba96bea5984695d559f60ff00836bd759e324331b4b69f9e90aeafe02c01c1",
+    "frontend/cli_frontend/commands.json": "sha256:763b4a29b1590ecfefb3f214609e0151141a15d6e91790ddf3343fde60f147b9",
+    "frontend/cli_frontend/frontend.py": "sha256:c579ae8dc069cb4477a1c88efd15eb773deabf96198dbf3589c75c2e89f17669",
+    "frontend_contract_map.v4.json": "sha256:61ca5a636ec3b4ef6f8bc48adab74cabc8819aa0ef781be5175634ccd017c933",
+    "runtime/application.py": "sha256:d3fbc18af71f7e6285560faa8ef82e93172d07ac8f117549706521efa0c32aaf"
+  },
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:e6f3cadc3ebb8f238e77b5e488892b5377717c6ecc0152124189b225a9e13da0",
+      "id": "acceptance.cli.application",
+      "implementation_digest": "sha256:d3fbc18af71f7e6285560faa8ef82e93172d07ac8f117549706521efa0c32aaf",
+      "isolation": "pack_vm",
+      "operations": [
+        "launch"
+      ],
+      "role": "pure"
+    }
+  ],
+  "kind": "application",
+  "pack_id": "acceptance.cli.application",
+  "source_api_version": "io.tobkiri.python-pack-source.v1",
+  "version": "1.0.0"
+}

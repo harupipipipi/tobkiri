@@ -22,6 +22,9 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+sys.path.insert(0, str(ROOT / "tests"))
+
+from _coding_contract_fixture import bind_verified_coding_contracts  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -63,8 +66,14 @@ def _changed_files(path: Path, ref: str = "HEAD") -> set[str]:
     return {line for line in output.splitlines() if line.strip()}
 
 
+def _approved_context() -> dict[str, object]:
+    from domain.tool_policy.internal_context import mark_tool_server_approval_context
+
+    return mark_tool_server_approval_context({})
+
+
 def test_git_ops_commit_with_paths_commits_only_selected_files(tmp_path, monkeypatch):
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path / "audit.jsonl"))
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path.parent / f"{tmp_path.name}-audit.jsonl"))
     from domain.coding.git_ops import GitOps
 
     _init_git_repo(tmp_path)
@@ -91,7 +100,7 @@ def test_git_ops_commit_with_paths_commits_only_selected_files(tmp_path, monkeyp
 
 
 def test_git_ops_commit_with_paths_can_add_new_untracked_file(tmp_path, monkeypatch):
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path / "audit.jsonl"))
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path.parent / f"{tmp_path.name}-audit.jsonl"))
     from domain.coding.git_ops import GitOps
 
     _init_git_repo(tmp_path)
@@ -111,7 +120,7 @@ def test_git_ops_commit_with_paths_can_add_new_untracked_file(tmp_path, monkeypa
 
 
 def test_git_ops_commit_with_paths_rejects_path_traversal(tmp_path, monkeypatch):
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path / "audit.jsonl"))
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path.parent / f"{tmp_path.name}-audit.jsonl"))
     from domain.coding.git_ops import GitOps
     from domain.coding.workspace_jail import WorkspacePathViolation
 
@@ -129,7 +138,7 @@ def test_git_ops_commit_with_paths_rejects_path_traversal(tmp_path, monkeypatch)
 
 
 def test_git_ops_commit_with_paths_rejects_restricted_paths(tmp_path, monkeypatch):
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path / "audit.jsonl"))
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path.parent / f"{tmp_path.name}-audit.jsonl"))
     from domain.coding.git_ops import GitOps
     from domain.coding.workspace_jail import WorkspaceRestrictedPath
 
@@ -170,7 +179,7 @@ def test_git_ops_commit_paths_requires_non_empty_string_list(tmp_path):
 
 
 def test_block_git_commit_with_paths_commits_only_selected_files(tmp_path, monkeypatch):
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path / "audit.jsonl"))
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path.parent / f"{tmp_path.name}-audit.jsonl"))
     from blocks.coding.git_commit import run as git_commit_run
 
     _init_git_repo(tmp_path)
@@ -179,14 +188,15 @@ def test_block_git_commit_with_paths_commits_only_selected_files(tmp_path, monke
     _commit_all(tmp_path, "initial")
     (tmp_path / "a.txt").write_text("a-dirty\n", encoding="utf-8")
     (tmp_path / "b.txt").write_text("b-dirty\n", encoding="utf-8")
+    bind_verified_coding_contracts(monkeypatch, tmp_path)
 
     result = git_commit_run(
         {
-            "workspace_root": str(tmp_path),
+            "workspace_id": "trusted",
             "message": "partial via block",
             "paths": ["a.txt"],
         },
-        {"_tool_server_approved": True},
+        _approved_context(),
     )
 
     assert result["status"] == "ok", result
@@ -198,7 +208,7 @@ def test_block_git_commit_with_paths_commits_only_selected_files(tmp_path, monke
 
 
 def test_block_git_commit_files_alias_is_accepted(tmp_path, monkeypatch):
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path / "audit.jsonl"))
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path.parent / f"{tmp_path.name}-audit.jsonl"))
     from blocks.coding.git_commit import run as git_commit_run
 
     _init_git_repo(tmp_path)
@@ -207,14 +217,15 @@ def test_block_git_commit_files_alias_is_accepted(tmp_path, monkeypatch):
     _commit_all(tmp_path, "initial")
     (tmp_path / "x.txt").write_text("x-dirty\n", encoding="utf-8")
     (tmp_path / "y.txt").write_text("y-dirty\n", encoding="utf-8")
+    bind_verified_coding_contracts(monkeypatch, tmp_path)
 
     result = git_commit_run(
         {
-            "workspace_root": str(tmp_path),
+            "workspace_id": "trusted",
             "message": "via files alias",
             "files": ["y.txt"],
         },
-        {"_tool_server_approved": True},
+        _approved_context(),
     )
 
     assert result["status"] == "ok", result
@@ -223,7 +234,7 @@ def test_block_git_commit_files_alias_is_accepted(tmp_path, monkeypatch):
 
 
 def test_block_git_commit_rejects_paths_with_all_tracked(tmp_path, monkeypatch):
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path / "audit.jsonl"))
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path.parent / f"{tmp_path.name}-audit.jsonl"))
     from blocks.coding.git_commit import run as git_commit_run
 
     _init_git_repo(tmp_path)
@@ -246,29 +257,31 @@ def test_block_git_commit_rejects_paths_with_all_tracked(tmp_path, monkeypatch):
 
 
 def test_block_git_commit_rejects_traversal_path(tmp_path, monkeypatch):
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path / "audit.jsonl"))
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path.parent / f"{tmp_path.name}-audit.jsonl"))
     from blocks.coding.git_commit import run as git_commit_run
 
     _init_git_repo(tmp_path)
     (tmp_path / "a.txt").write_text("clean\n", encoding="utf-8")
     _commit_all(tmp_path, "initial")
     (tmp_path / "a.txt").write_text("dirty\n", encoding="utf-8")
+    bind_verified_coding_contracts(monkeypatch, tmp_path)
 
     result = git_commit_run(
         {
-            "workspace_root": str(tmp_path),
+            "workspace_id": "trusted",
             "message": "escape attempt",
             "paths": ["../escape.txt"],
         },
-        {"_tool_server_approved": True},
+        _approved_context(),
     )
 
     assert result["status"] == "error"
-    assert result["error"]["code"] == "INVALID_INPUT"
+    assert result["error"]["code"] == "GIT_ERROR"
+    assert _changed_files(tmp_path) == {"a.txt"}
 
 
 def test_block_git_commit_rejects_restricted_path(tmp_path, monkeypatch):
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path / "audit.jsonl"))
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path.parent / f"{tmp_path.name}-audit.jsonl"))
     from blocks.coding.git_commit import run as git_commit_run
 
     _init_git_repo(tmp_path)
@@ -276,18 +289,20 @@ def test_block_git_commit_rejects_restricted_path(tmp_path, monkeypatch):
     (tmp_path / ".env").write_text("TOKEN=clean\n", encoding="utf-8")
     _commit_all(tmp_path, "initial")
     (tmp_path / ".env").write_text("TOKEN=dirty\n", encoding="utf-8")
+    bind_verified_coding_contracts(monkeypatch, tmp_path)
 
     result = git_commit_run(
         {
-            "workspace_root": str(tmp_path),
+            "workspace_id": "trusted",
             "message": "leak",
             "paths": [".env"],
         },
-        {"_tool_server_approved": True},
+        _approved_context(),
     )
 
     assert result["status"] == "error"
-    assert result["error"]["code"] == "WORKSPACE_PATH_RESTRICTED"
+    assert result["error"]["code"] == "GIT_ERROR"
+    assert _changed_files(tmp_path) == {"ok.txt", ".env"}
 
 
 def test_live_provider_tool_definition_exposes_paths_and_files_alias():

@@ -1,0 +1,10 @@
+{
+  "contract_revision_digest": "sha256:d5a9cc040a591e09527f2901e4226215ac03a9ba466c0e5223d3205d0815b0c9",
+  "id": "acceptance.cli.presentation.render",
+  "implementation_digest": "sha256:fe01b7f47a4db3fd22a19656642ad2ead80ef895656207c71b5fcb075fb5f8c7",
+  "isolation": "pack_vm",
+  "operations": [
+    "acceptance.presentation.render"
+  ],
+  "role": "pure"
+}

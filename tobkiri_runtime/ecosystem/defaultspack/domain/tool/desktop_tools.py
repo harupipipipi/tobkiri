@@ -5,6 +5,7 @@ from typing import Any
 
 from ._agent_os_common import err, now_slug
 from .sandbox_tools import _require_server_side_approval
+from .schema_adapter import list_or_empty, mapping_or_empty
 
 
 def desktop_list(arguments: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -45,8 +46,8 @@ def desktop_frame(arguments: dict[str, Any], context: dict[str, Any] | None = No
     body = result.get("body") or b""
     if not isinstance(body, (bytes, bytearray)):
         return err("desktop frame returned an invalid binary payload", "DESKTOP_FRAME_INVALID")
-    headers = result.get("headers") if isinstance(result.get("headers"), dict) else {}
-    artifacts = result.get("artifacts") if isinstance(result.get("artifacts"), list) else []
+    headers = mapping_or_empty(result.get("headers"))
+    artifacts = list_or_empty(result.get("artifacts"))
     artifact_paths = [
         artifact.get("path")
         for artifact in artifacts

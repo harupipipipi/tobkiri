@@ -1,0 +1,132 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:61cbc0ad4c04d102abb6cf0fedd45803eebd19238d83c2712aa5cf055db9bfc3",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:738c06d2712518cd7a32769eb9a2eaf967eecdf5607a907d1a397f5ff131c100",
+      "kind": "executable",
+      "path": "runtime/mutate.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.file.mutate.v1",
+      "operations": [
+        "rumi_file_mutation_pack.file-mutation"
+      ],
+      "revision_digest": "sha256:fe5328a3ca7d3300b88ef5b58963e0db2a854b414388dd957ff7b5ffe466101c"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:fe5328a3ca7d3300b88ef5b58963e0db2a854b414388dd957ff7b5ffe466101c",
+      "id": "rumi_file_mutation_pack.file-mutation.service",
+      "implementation_digest": "sha256:738c06d2712518cd7a32769eb9a2eaf967eecdf5607a907d1a397f5ff131c100",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_file_mutation_pack.file-mutation"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:3631adb05772eebedc69cd7bf697a20da88c6d4a5d739b3553e6a8cd1015c4dc",
+    "contract_catalog_digest": "sha256:ea28c17910ab4bcb200601b86126686bf8779882c822e946ef78142014d7583f",
+    "source_identity": "sha256:b93e5b05bcbf92ec7c3c1bbac385b1d8a0f150579a3616898d9847c681b625df"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.file.mutate.v1",
+      "rumi:ecosystem/rumi_file_mutation_pack",
+      "rumi_file_mutation_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.service.file.mutate.v1",
+      "effect_ceiling": [
+        "capability:file.mutate",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_file_mutation_pack.file-mutation",
+      "owner": "rumi_file_mutation_pack",
+      "provider_id": "rumi_file_mutation_pack.file-mutation.service",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:3631adb05772eebedc69cd7bf697a20da88c6d4a5d739b3553e6a8cd1015c4dc",
+    "display_name": "Rumi File Mutation",
+    "id": "rumi_file_mutation_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:b93e5b05bcbf92ec7c3c1bbac385b1d8a0f150579a3616898d9847c681b625df",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:b93e5b05bcbf92ec7c3c1bbac385b1d8a0f150579a3616898d9847c681b625df",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_file_mutation_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.service.file.mutate.v1",
+      "operations": [
+        "rumi_file_mutation_pack.file-mutation"
+      ],
+      "owner": "rumi_file_mutation_pack",
+      "provider_id": "rumi_file_mutation_pack.file-mutation.service"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "file.mutate",
+      "host.authority.consume",
+      "workspace.metadata.read"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.workspace.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+      "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

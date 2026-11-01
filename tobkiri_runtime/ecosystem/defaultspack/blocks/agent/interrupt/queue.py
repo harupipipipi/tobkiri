@@ -17,10 +17,7 @@ input_data for PUT (modify):
       change_priority  : dict       (optional) — {"instruction_id": "new_priority"}
 """
 
-import sys
-import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from blocks._common import ok, error
 from blocks.agent._state import get_engine

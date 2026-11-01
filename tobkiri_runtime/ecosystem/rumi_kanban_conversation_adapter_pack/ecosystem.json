@@ -1,0 +1,74 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.kanban.conversation_import.v1"
+    ],
+    "requires": [
+      "rumi.action.kanban.v1",
+      "rumi.resource.conversation.v1",
+      "rumi.resource.kanban.v1",
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_conversation_store_pack": ">=1.0.0,<2.0.0",
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+    "rumi_kanban_state_store_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Conversation task extraction through global contracts.",
+  "display_name": "Rumi Kanban Conversation Adapter",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:a7d9809777a75d9b99ac09638b0bb90eb735e8964b03126a5d1c60954af57bd1",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:436cd3064556cb4d77fd7328e24bce4e4e6f6d4a8057b0c23d0603a0a7dd1d32"
+    },
+    "chat_imports": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:436cd3064556cb4d77fd7328e24bce4e4e6f6d4a8057b0c23d0603a0a7dd1d32"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "kanban_imports": false,
+    "manifest_authority": "v4-authoritative",
+    "projection": "conversation_to_kanban",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_kanban_conversation_adapter_pack",
+  "pack_identity": "rumi:ecosystem/rumi_kanban_conversation_adapter_pack",
+  "provenance": {
+    "build_identity": "rumi_kanban_conversation_adapter_pack:1.0.0",
+    "content_hash": "sha256:2bea88f8c1c64e3bc8fb45a3bc70a326fda7dbecbb31ea9e8f3860391a33dd2c",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "conversation.read",
+    "host.authority.consume",
+    "kanban.conversation.import",
+    "kanban.state.manage",
+    "kanban.state.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

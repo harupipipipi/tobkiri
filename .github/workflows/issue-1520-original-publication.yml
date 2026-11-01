@@ -1,0 +1,122 @@
+name: Issue 1520 original publication recovery comparison
+
+'on':
+  push:
+    branches: [codex/issue-1520-native-shared-state]
+    paths:
+      - tools/original_publication_reference.py
+      - tools/original_active_profile_fixtures.py
+      - tobkiri_launcher/harness-native/src/original_active_profile*.rs
+      - tobkiri_launcher/harness-native/src/original_profile_publication*.rs
+      - tobkiri_launcher/harness-native/src/bootstrap_review.rs
+      - tobkiri_launcher/harness-native/src/bootstrap_runtime.rs
+      - tobkiri_launcher/harness-native/src/original_authority*.rs
+      - tobkiri_launcher/harness-native/src/lib.rs
+      - .github/workflows/issue-1520-original-publication.yml
+  workflow_dispatch:
+    inputs:
+      verification:
+        description: Fresh native comparison or independent original reference only
+        type: choice
+        options: [native, reference]
+        default: native
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-1520-original-publication-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  original-prelude:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    env:
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 1cf025f1eeab31a3daa2861b1f26a025c6954b6e
+          path: original-publication-source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Install only original-lock-pinned reference dependencies
+        run: |
+          python3 -B tools/original_setup_review_reference.py requirements \
+            --original-root "$GITHUB_WORKSPACE/original-publication-source" \
+            --output "$RUNNER_TEMP/original-publication-requirements.txt"
+          python3 -m pip install --disable-pip-version-check --ignore-installed \
+            --only-binary=:all: --require-hashes \
+            -r "$RUNNER_TEMP/original-publication-requirements.txt"
+      - name: Execute real original journal/pointer/snapshot/stale recovery against fresh fixtures
+        run: >-
+          python3 -B tools/original_publication_reference.py
+          --original-root "$GITHUB_WORKSPACE/original-publication-source"
+          --output "$RUNNER_TEMP/original-publication-reference"
+      - uses: dtolnay/rust-toolchain@1.94.0
+        id: rust
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.verification != 'reference' }}
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.verification != 'reference' }}
+        with:
+          cache-on-failure: true
+      - name: Verify both existing locked dependency graphs
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.verification != 'reference' }}
+        run: |
+          cargo metadata --locked --format-version 1 \
+            > "$RUNNER_TEMP/publication-dependency-metadata.json"
+          cargo metadata --locked --format-version 1 \
+            --manifest-path tobkiri_launcher/src-tauri/Cargo.toml \
+            --filter-platform aarch64-apple-darwin \
+            --features native-source-inspection,native-harness-bootstrap \
+            > "$RUNNER_TEMP/launcher-publication-dependency-metadata.json"
+          git diff --exit-code -- Cargo.lock tobkiri_launcher/src-tauri/Cargo.lock
+      - name: Execute every fresh original fixture through finite native publication recovery
+        id: native_driver
+        # Actual native allocation-owner proof currently supports macOS only.
+        # Linux reference success is not a native journal parity receipt.
+        if: ${{ runner.os == 'macOS' && (github.event_name != 'workflow_dispatch' || inputs.verification != 'reference') }}
+        env:
+          TOBKIRI_ORIGINAL_PUBLICATION_FIXTURES: ${{ runner.temp }}/original-publication-reference/fixtures.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/original-publication-native-driver.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          original_authority::publication_tests::original_reference_driver
+          -- --ignored --exact --test-threads=1 --nocapture
+      - name: Compare typed observations and independently inspected state and key retention
+        if: ${{ !cancelled() && runner.os == 'macOS' && (github.event_name != 'workflow_dispatch' || inputs.verification != 'reference') && steps.native_driver.outcome != 'skipped' }}
+        run: >-
+          python3 -B tools/original_publication_reference.py compare
+          --original-root "$GITHUB_WORKSPACE/original-publication-source"
+          --fixtures "$RUNNER_TEMP/original-publication-reference/fixtures.json"
+          --observations "$RUNNER_TEMP/original-publication-reference/native-observations.json"
+          --output "$RUNNER_TEMP/original-publication-reference/comparison.json"
+      - name: Strict native library validation
+        if: ${{ !cancelled() && steps.rust.outcome == 'success' && (github.event_name != 'workflow_dispatch' || inputs.verification != 'reference') }}
+        run: cargo clippy --locked -p tobkiri-harness-native --lib -- -D warnings
+      - name: Retain bounded observations only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-publication-reference-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/original-publication-reference/summary.json
+            ${{ runner.temp }}/original-publication-reference/native-observations.json
+            ${{ runner.temp }}/original-publication-reference/comparison.json
+          if-no-files-found: warn

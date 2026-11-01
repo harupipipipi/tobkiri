@@ -172,7 +172,7 @@ class UnitRegistry:
             self._index_root = None
 
     def list_units(self, store_root: Path) -> List[UnitMeta]:
-        results = []
+        results: List[UnitMeta] = []
         if not store_root.is_dir():
             return results
         for ns_dir in sorted(store_root.iterdir()):

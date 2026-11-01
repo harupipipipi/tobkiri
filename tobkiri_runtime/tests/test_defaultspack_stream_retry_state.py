@@ -13,6 +13,8 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
+pytestmark = pytest.mark.usefixtures("defaultspack_conversation_owner")
+
 
 class ScriptedGateway:
     """Serve deterministic provider stream attempts for retry tests."""
@@ -347,6 +349,77 @@ def test_tool_call_accumulator_drops_incomplete_or_malformed_calls() -> None:
             "input": {"path": "README.md"},
         }
     ]
+
+
+def test_tool_call_accumulator_parses_openai_complete_argument_string() -> None:
+    from domain.chat.tool_call_accumulator import ToolCallAccumulator
+
+    accumulator = ToolCallAccumulator()
+    accumulator.ingest(
+        {
+            "type": "tool_use",
+            "id": "openai-call",
+            "name": "repository_context_prepare",
+            "input": '{"workspace_root":"/workspace","objective":"find contract"}',
+        }
+    )
+
+    assert accumulator.tool_uses() == [
+        {
+            "type": "tool_use",
+            "id": "openai-call",
+            "name": "repository_context_prepare",
+            "input": {
+                "workspace_root": "/workspace",
+                "objective": "find contract",
+            },
+        }
+    ]
+
+
+def test_must_use_requires_exact_selected_tool_not_assistant_progress() -> None:
+    from domain.chat.stream_engine import _missing_required_tool_ids
+
+    required = {"repository_context_prepare"}
+    progress_only = [
+        {"tool_name": "assistant_progress", "is_error": False},
+        {
+            "tool_name": "repository_context_prepare",
+            "internal": True,
+            "is_error": False,
+        },
+    ]
+
+    assert _missing_required_tool_ids(required, progress_only) == [
+        "repository_context_prepare"
+    ]
+    assert _missing_required_tool_ids(
+        required,
+        [
+            *progress_only,
+            {
+                "tool_name": "repository_context_prepare",
+                "is_error": False,
+            },
+        ],
+    ) == []
+    for failed in (
+        {"is_error": True},
+        {"status": "failed"},
+        {"cancelled": True},
+        {"rejected_by_policy": True},
+        {"approval_required": True},
+        {"result": {"status": "error", "is_error": True}},
+    ):
+        assert _missing_required_tool_ids(
+            required,
+            [
+                {
+                    "tool_name": "repository_context_prepare",
+                    **failed,
+                }
+            ],
+        ) == ["repository_context_prepare"]
 
 
 @pytest.mark.parametrize(

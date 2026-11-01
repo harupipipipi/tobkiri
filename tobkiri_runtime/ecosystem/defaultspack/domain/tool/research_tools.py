@@ -5,6 +5,7 @@ from typing import Any
 
 from ._agent_os_common import err, ok, read_text_file, write_text_file, workspace
 from .export_tools import artifact_export
+from .schema_adapter import list_or_empty
 
 
 def source_extract(arguments: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -47,7 +48,7 @@ def wide_research(arguments: dict[str, Any], context: dict[str, Any] | None = No
         return err("'query' is required", "INVALID_INPUT")
     depth = str(arguments.get("depth") or "standard")
     output_path = str(arguments.get("output_path") or "research/report.md")
-    local_sources = arguments.get("local_sources") if isinstance(arguments.get("local_sources"), list) else []
+    local_sources = list_or_empty(arguments.get("local_sources"))
     try:
         ws = workspace(context)
         extracted = []

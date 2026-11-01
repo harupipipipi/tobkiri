@@ -1,0 +1,12 @@
+{
+  "artifact_root": "profile_projections/pack-suite",
+  "compatibility_release": "v1.10.3",
+  "content_digest": "sha256:641574ac3774880a26bfaf39996f02f3dc59046f8c4e2765af86a6b9d33db472",
+  "legacy_pack_id": "rumi_pack_suite_pack",
+  "projection_id": "tobkiri.profile-content.pack-suite.v1",
+  "read_only": true,
+  "remove_no_earlier_than_release": "v1.10.4",
+  "runtime_authority": false,
+  "schema": "io.tobkiri.profile-projection-compatibility-alias.v1",
+  "sunset_at": "2026-10-31"
+}

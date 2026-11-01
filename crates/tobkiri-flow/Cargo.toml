@@ -1,0 +1,21 @@
+[package]
+name = "tobkiri-flow"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+futures.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tobkiri-canon = { path = "../tobkiri-canon" }
+tobkiri-gate = { path = "../tobkiri-gate" }
+tobkiri-profile = { path = "../tobkiri-profile" }
+
+[dev-dependencies]
+tobkiri-manifest.workspace = true

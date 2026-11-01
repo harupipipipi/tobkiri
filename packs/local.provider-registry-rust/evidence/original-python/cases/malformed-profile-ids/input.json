@@ -1,0 +1,1 @@
+{"case_id":"malformed-profile-ids","purpose":"Observe profile path validation before any registry storage is created.","profile_id":"../foreign","initial_store_text":null,"actions":[{"action_id":"unreachable-snapshot","operation":"registry.snapshot","payload":{}}]}

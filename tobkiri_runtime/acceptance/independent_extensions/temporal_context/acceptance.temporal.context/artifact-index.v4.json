@@ -1,0 +1,57 @@
+{
+  "artifact_set_digest": "sha256:fecc8d703c657e2e8b83a026dd424d855dad098f3fb6fead7ecdb896ad75b403",
+  "artifacts": [
+    {
+      "digest": "sha256:6e5420f6e4de0859353e51923cc65f0950da991d371c6ac5c52443290c0cf4df",
+      "path": "authoring-source.v1.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:fc08e913120cfc15e1a84aeac45423e2f37dae25938b6742f35ca355fa9afb00",
+      "path": "content/contexts/acceptance.temporal.rules.conversation-context.v1.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:4b5c27b5076d338552ec377845232b27e8ba9523e968cd993e30f32ae70ecad5",
+      "path": "content/flows/acceptance.temporal.turn.flow.yaml",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:c464b3795c745769b5eb93a1d7e9c1e0fedfc0f0d97ef45558932371a1275f69",
+      "path": "content/prompts/acceptance.temporal.rules.system.md",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:d41bd0216e7246c96d69f9f80ba596247cebb6b9b40b148878ba49d308e99536",
+      "path": "content/workflows/acceptance.temporal.context.workflow.intent.v1.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:7456f281c10741c5f2d0f42ed6fdc59bdcec7a35ec7e2719d3cf6c1d4e8bb970",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:62532b94950ecab70dfd385296667f83d35854de6d1d0929036cdbe472d8fa2d",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:9462eca932dfca276722c3e8cd671866de0822a5809e6db9b1cd75d570eff2b0",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:11799f15a71027f04c76fb6128080c2ef87a12807b0621a8743e8d641b4bb869",
+      "path": "runtime/temporal.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:e193f204d6602281d0aba20ca7edfbebc990c1fb5fc4db169a264cc0b7eb534c"
+  },
+  "pack_id": "acceptance.temporal.context",
+  "source_identity": "sha256:e8e9495320e1241e29a37bf0a945e1a1a0ce846445232d1792069626cba89f0d"
+}

@@ -1,0 +1,42 @@
+{
+  "schema": "tobkiri.focused-validation/v1",
+  "date": "2026-10-21",
+  "scope": "Preauthorization snapshot custody and private catalog-key verification only. No Gate authorization or consumption, native launch or Proc/Pty availability.",
+  "command": [
+    "cargo",
+    "+1.94.0",
+    "test",
+    "--offline",
+    "--locked",
+    "-j",
+    "1",
+    "-p",
+    "tobkiri-core",
+    "--lib",
+    "process_catalog::tests::",
+    "--",
+    "--test-threads=1"
+  ],
+  "exit": 0,
+  "guard_stop": null,
+  "seconds": 16.258,
+  "source_unchanged": true,
+  "source_head": "af013d71c73069d2472a5d8a6d7eb52d912f622b",
+  "source_diff_sha256": "08f97f7987e0526240911879934aa1d57abaeac67c1c0add101b38c678a628ea",
+  "source_files": {
+    "Cargo.lock": "b415ba48826a73d59ceb6f0d63712c122203ff82c0e36d554c09fb05a027a27a",
+    "crates/tobkiri-core/Cargo.toml": "af0ac838e8d6441a8a16c6cdcfbbe6ec1ef0056e04c44fcaa2405d2e7f55f24e",
+    "crates/tobkiri-core/src/process_catalog.rs": "1a24b90302c5d51dc21599cc44fdfc54be8d3c64240f8962df6f1ff1073743b1",
+    "crates/tobkiri-core/src/process_catalog_tests.rs": "bbfd061260256fd749838040a00bb26d48a2c574b187c4e53f011db9f4ae6bbd",
+    "crates/tobkiri-core/tests/provider_proxy.rs": "35bedff190132891483503da9940f5a3f8f585772e4287f29dd2f93c67e2d099",
+    "crates/tobkiri-wasm/src/effects.rs": "546a752068c38166f4c25836e97e9b3703883930ba388a40584e8bc6c11c8bcc",
+    "crates/tobkiri-wasm/src/host.rs": "53a82512b5e05ce7dc1da3c63ca210e8e8743092bd0e12b13e420c1c71bf84aa",
+    "crates/tobkiri-wasm/src/host_io_imports.rs": "93bfba194c526b32e1253c2ce1b1684f1d9042f7c59d69fcd94d4ddd759e9a79"
+  },
+  "log_sha256": "d9b0491d3f7623d7dbb41f01a189735dd86afff909e061c5d46ebc030aff42a5",
+  "test_result": {
+    "passed": 21,
+    "failed": 0
+  },
+  "lock_update": "Only the existing tobkiri-core dependency row gains existing workspace zeroize; package identities, versions and checksums are unchanged."
+}

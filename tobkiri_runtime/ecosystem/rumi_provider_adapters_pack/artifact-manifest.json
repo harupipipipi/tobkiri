@@ -1,0 +1,25 @@
+{
+  "artifacts": [
+    {
+      "path": "domain/ai_client/provider_compiler/openai_chat.py",
+      "role": "support",
+      "sha256": "sha256:57f3e864959c2078db46517a3c86a99adcf7d801a260be48b3dc31e463b0c585"
+    },
+    {
+      "path": "runtime/__init__.py",
+      "role": "runtime",
+      "sha256": "sha256:99779c627cd7a1ee6667657a0b88d7abfdae2eb07007c017cbf30ad6306ca724"
+    },
+    {
+      "path": "runtime/adapter.py",
+      "role": "runtime",
+      "sha256": "sha256:abcad2cf3a70a414a9d889ecba4f1dc711fe90c3739f6bdf2a782ca72f190ab8"
+    },
+    {
+      "path": "runtime/local_endpoint.py",
+      "role": "support",
+      "sha256": "sha256:2b29e398a0e8bbaf15d4966dac5bca4c936d8e8ea52a74fd141620be0eba2815"
+    }
+  ],
+  "schema_version": "rumi.artifact-manifest.v1"
+}

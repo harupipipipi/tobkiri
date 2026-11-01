@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Companies</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main aria-label="Companies">
+      <header>
+        <div><p id="profile"></p><h1>Companies</h1></div>
+        <button id="reload" type="button">Reload</button>
+      </header>
+      <p class="notice">Changes and dispatch require an approved action flow.</p>
+      <section class="summary" aria-label="Company summary">
+        <article><span>Companies</span><strong id="company-count">—</strong></article>
+        <article><span>Active tasks</span><strong id="task-count">—</strong></article>
+        <article><span>Coordinator tasks</span><strong id="runtime-count">—</strong></article>
+      </section>
+      <p id="error" role="alert"></p>
+      <section aria-labelledby="companies-title">
+        <h2 id="companies-title">Company state</h2>
+        <div id="companies" class="cards"></div>
+        <p id="empty" hidden>No companies in this profile.</p>
+      </section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>
+

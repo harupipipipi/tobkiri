@@ -1,0 +1,37 @@
+package local:proxy-test@1.0.0;
+
+interface arithmetic {
+  use tobkiri:core/types@1.0.0.{stream-handle, callback-handle, error};
+  increment: func(value: u32) -> u32;
+  floats: func(single: f32, double: f64) -> tuple<f32, f64>;
+  nan: func() -> f64;
+  spin: func();
+  memory-bomb: func() -> u32;
+  trap: func();
+  wait: func() -> result<_, error>;
+  request-ui: func(slot: string) -> result<_, error>;
+  count-stream: func(count: u32) -> result<stream-handle, error>;
+  with-callback: func(callback: callback-handle, value: u32) -> result<u32, error>;
+}
+
+interface entry {
+  use tobkiri:core/types@1.0.0.{stream-handle, callback-handle, error};
+  run: func(value: u32) -> u32;
+  run-flow: func(implements: string, input: string) -> result<stream-handle, error>;
+  run-callback: func(value: u32) -> result<u32, error>;
+  open-callback: func() -> result<callback-handle, error>;
+}
+
+world provider {
+  include tobkiri:core/pack-minimal@1.0.0;
+  export arithmetic;
+  export tobkiri:core/stream-source@1.0.0;
+  import tobkiri:core/host-io@1.0.0;
+}
+
+world consumer {
+  include tobkiri:core/pack-minimal@1.0.0;
+  import arithmetic;
+  export entry;
+  export tobkiri:core/callback-sink@1.0.0;
+}

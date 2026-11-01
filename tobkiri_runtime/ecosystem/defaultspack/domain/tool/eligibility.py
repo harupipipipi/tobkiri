@@ -5,6 +5,7 @@ from typing import Any
 from domain.capabilities.runtime_snapshot import RuntimeCapabilitySnapshot
 from domain.tool.schema_adapter import (
     is_tool_rejected_by_policy,
+    mapping_or_empty,
     tool_name_from_definition,
     tool_requires_approval_by_policy,
 )
@@ -62,14 +63,15 @@ def evaluate_tool_eligibility(
     required = _tool_requirements(tool)
     actual = snapshot_obj.as_dict()
 
-    if tool.get("enabled") is False or (isinstance(tool.get("metadata"), dict) and tool["metadata"].get("enabled") is False):
+    metadata = mapping_or_empty(tool.get("metadata"))
+    if tool.get("enabled") is False or metadata.get("enabled") is False:
         return _entry(tool_name, "blocked", "disabled_by_user", required, actual)
     if is_tool_rejected_by_policy(tool, policy):
         return _entry(tool_name, "blocked", "disabled_by_policy", required, actual)
     if connected_tool_names is not None and connected_tool_names and tool_name not in connected_tool_names:
         return _entry(tool_name, "blocked", "not_connected_to_profile", required, actual)
 
-    attachment_policy = str(tool.get("attachment_policy") or (tool.get("metadata", {}) if isinstance(tool.get("metadata"), dict) else {}).get("attachment_policy") or "").strip().lower()
+    attachment_policy = str(tool.get("attachment_policy") or metadata.get("attachment_policy") or "").strip().lower()
     supports_attachments = tool.get("supports_attachments")
     has_non_text_input = any(token in snapshot_obj.input_traits for token in ("input.image", "input.file"))
     if has_non_text_input and (supports_attachments is False or attachment_policy in {"none", "forbid", "forbidden"}):
@@ -97,7 +99,11 @@ def evaluate_tool_eligibility(
     if any(token in tags for token in forbidden):
         return _entry(tool_name, "blocked", "risk_blocked", required, actual, missing=[token for token in forbidden if token in tags])
 
-    availability = tool.get("availability") if isinstance(tool.get("availability"), dict) else (tool.get("metadata", {}).get("availability") if isinstance(tool.get("metadata"), dict) and isinstance(tool.get("metadata").get("availability"), dict) else {})
+    raw_availability = tool.get("availability")
+    if isinstance(raw_availability, dict):
+        availability = raw_availability
+    else:
+        availability = mapping_or_empty(metadata.get("availability"))
     if availability and str(availability.get("status") or "") == "missing_api_key":
         return _entry(tool_name, "blocked", "missing_api_key", required, actual)
 
@@ -126,18 +132,23 @@ def _coerce_snapshot(snapshot: RuntimeCapabilitySnapshot | dict[str, Any]) -> Ru
         return snapshot
     value = snapshot if isinstance(snapshot, dict) else {}
     return RuntimeCapabilitySnapshot(
-        input_traits=[str(item).strip() for item in (value.get("input_traits") if isinstance(value.get("input_traits"), list) else []) if str(item or "").strip()],
-        model_capabilities=[str(item).strip() for item in (value.get("model_capabilities") if isinstance(value.get("model_capabilities"), list) else []) if str(item or "").strip()],
-        runtime_capabilities=[str(item).strip() for item in (value.get("runtime_capabilities") if isinstance(value.get("runtime_capabilities"), list) else []) if str(item or "").strip()],
-        policy_capabilities=[str(item).strip() for item in (value.get("policy_capabilities") if isinstance(value.get("policy_capabilities"), list) else []) if str(item or "").strip()],
-        tags=[str(item).strip() for item in (value.get("tags") if isinstance(value.get("tags"), list) else []) if str(item or "").strip()],
+        input_traits=_string_list(value.get("input_traits")),
+        model_capabilities=_string_list(value.get("model_capabilities")),
+        runtime_capabilities=_string_list(value.get("runtime_capabilities")),
+        policy_capabilities=_string_list(value.get("policy_capabilities")),
+        tags=_string_list(value.get("tags")),
     )
 
 
 def _tool_requirements(tool: dict[str, Any]) -> dict[str, Any]:
     tool = tool if isinstance(tool, dict) else {}
-    metadata = tool.get("metadata") if isinstance(tool.get("metadata"), dict) else {}
-    capability_requirements = tool.get("capability_requirements") if isinstance(tool.get("capability_requirements"), dict) else (metadata.get("capability_requirements") if isinstance(metadata.get("capability_requirements"), dict) else {})
+    metadata = mapping_or_empty(tool.get("metadata"))
+    raw_capability_requirements = tool.get("capability_requirements")
+    capability_requirements = (
+        raw_capability_requirements
+        if isinstance(raw_capability_requirements, dict)
+        else mapping_or_empty(metadata.get("capability_requirements"))
+    )
     return {
         "capability_requirements": {
             "requires_all": _string_list(capability_requirements.get("requires_all")),

@@ -1,123 +1,45 @@
-"""
-test_vocab_lazy_load.py - [F] vocab lazy load tests
+"""Pack v4 has no runtime ComponentLifecycle vocabulary discovery path."""
 
-Tests for ComponentLifecycleExecutor._should_load_vocab():
-  1. uses_vocab=True  -> returns True (load vocab)
-  2. uses_vocab=False -> returns False (skip vocab)
-  3. uses_vocab unset + vocab.txt exists -> returns True
-  4. uses_vocab unset + no vocab files  -> returns False
-  5. _read_ecosystem_data raises -> returns True (safe-side fallback)
-  6. uses_vocab unset + converters dir exists -> returns True
-"""
+from __future__ import annotations
 
-import shutil
-import tempfile
-import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+
+from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
+from tests.legacy_authority_contracts import assert_retired_module_absent
+from tests.v4_bundle_support import assert_verified_pack_inventory
 
 
-class TestShouldLoadVocab(unittest.TestCase):
-    """_should_load_vocab method unit tests."""
-
-    def setUp(self):
-        self.tmp_dir = tempfile.mkdtemp()
-        self.pack_subdir = Path(self.tmp_dir) / "my_pack"
-        self.pack_subdir.mkdir(parents=True, exist_ok=True)
-
-    def tearDown(self):
-        shutil.rmtree(self.tmp_dir, ignore_errors=True)
-
-    def _make_executor(self):
-        """Create a ComponentLifecycleExecutor for testing."""
-        from core_runtime.component_lifecycle import ComponentLifecycleExecutor
-
-        diag = MagicMock()
-        journal = MagicMock()
-        return ComponentLifecycleExecutor(diagnostics=diag, install_journal=journal)
-
-    # ------------------------------------------------------------------
-    # Test 1: uses_vocab=True -> load
-    # ------------------------------------------------------------------
-    @patch("core_runtime.approval_manager.get_approval_manager")
-    def test_uses_vocab_true(self, mock_get_am):
-        am = MagicMock()
-        am._read_ecosystem_data.return_value = {"uses_vocab": True}
-        mock_get_am.return_value = am
-
-        executor = self._make_executor()
-        result = executor._should_load_vocab("test_pack", self.pack_subdir)
-        self.assertTrue(result)
-
-    # ------------------------------------------------------------------
-    # Test 2: uses_vocab=False -> skip
-    # ------------------------------------------------------------------
-    @patch("core_runtime.approval_manager.get_approval_manager")
-    def test_uses_vocab_false(self, mock_get_am):
-        am = MagicMock()
-        am._read_ecosystem_data.return_value = {"uses_vocab": False}
-        mock_get_am.return_value = am
-
-        executor = self._make_executor()
-        result = executor._should_load_vocab("test_pack", self.pack_subdir)
-        self.assertFalse(result)
-
-    # ------------------------------------------------------------------
-    # Test 3: uses_vocab unset + vocab.txt exists -> load
-    # ------------------------------------------------------------------
-    @patch("core_runtime.approval_manager.get_approval_manager")
-    def test_uses_vocab_unset_with_vocab_file(self, mock_get_am):
-        am = MagicMock()
-        am._read_ecosystem_data.return_value = {}
-        mock_get_am.return_value = am
-
-        (self.pack_subdir / "vocab.txt").touch()
-
-        executor = self._make_executor()
-        result = executor._should_load_vocab("test_pack", self.pack_subdir)
-        self.assertTrue(result)
-
-    # ------------------------------------------------------------------
-    # Test 4: uses_vocab unset + no vocab files -> skip
-    # ------------------------------------------------------------------
-    @patch("core_runtime.approval_manager.get_approval_manager")
-    def test_uses_vocab_unset_no_files(self, mock_get_am):
-        am = MagicMock()
-        am._read_ecosystem_data.return_value = {}
-        mock_get_am.return_value = am
-
-        executor = self._make_executor()
-        result = executor._should_load_vocab("test_pack", self.pack_subdir)
-        self.assertFalse(result)
-
-    # ------------------------------------------------------------------
-    # Test 5: _read_ecosystem_data raises -> safe-side fallback (load)
-    # ------------------------------------------------------------------
-    @patch("core_runtime.approval_manager.get_approval_manager")
-    def test_ecosystem_read_exception(self, mock_get_am):
-        am = MagicMock()
-        am._read_ecosystem_data.side_effect = RuntimeError("read failed")
-        mock_get_am.return_value = am
-
-        executor = self._make_executor()
-        result = executor._should_load_vocab("test_pack", self.pack_subdir)
-        self.assertTrue(result)
-
-    # ------------------------------------------------------------------
-    # Test 6: uses_vocab unset + converters dir exists -> load
-    # ------------------------------------------------------------------
-    @patch("core_runtime.approval_manager.get_approval_manager")
-    def test_uses_vocab_unset_with_converters_dir(self, mock_get_am):
-        am = MagicMock()
-        am._read_ecosystem_data.return_value = {}
-        mock_get_am.return_value = am
-
-        (self.pack_subdir / "converters").mkdir()
-
-        executor = self._make_executor()
-        result = executor._should_load_vocab("test_pack", self.pack_subdir)
-        self.assertTrue(result)
+ROOT = Path(__file__).resolve().parents[1]
+BUNDLE = ROOT / "ecosystem" / "defaultspack" / "v4"
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_component_lifecycle_authority_is_physically_absent() -> None:
+    assert_retired_module_absent("core_runtime.component_lifecycle")
+
+
+def test_v4_catalog_is_loaded_from_verified_artifacts() -> None:
+    catalog = BundledCatalog.load(BUNDLE)
+    assert_verified_pack_inventory(BUNDLE, catalog.packs)
+
+
+def test_v4_pack_functions_have_explicit_contracts() -> None:
+    for manifest in BundledCatalog.load(BUNDLE).packs.values():
+        for function in manifest["functions"]:
+            assert function["contract_revision_digest"]
+            assert function["operations"]
+
+
+def test_v4_catalog_does_not_scan_unlisted_vocab_files(tmp_path: Path) -> None:
+    (tmp_path / "vocab.txt").write_text("untrusted", encoding="utf-8")
+    catalog = BundledCatalog.load(BUNDLE)
+    assert all("untrusted" not in str(item) for item in catalog.packs.values())
+
+
+def test_v4_catalog_rejects_runtime_ecosystem_projection() -> None:
+    assert not (ROOT / "ecosystem" / "defaultspack" / "ecosystem.json").exists()
+
+
+def test_v4_inventory_is_deterministic_across_loads() -> None:
+    first = BundledCatalog.load(BUNDLE)
+    second = BundledCatalog.load(BUNDLE)
+    assert first.packs == second.packs

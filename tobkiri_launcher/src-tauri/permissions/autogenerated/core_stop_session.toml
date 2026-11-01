@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-core-stop-session"
+description = "Enables the core_stop_session command without any pre-configured scope."
+commands.allow = ["core_stop_session"]
+
+[[permission]]
+identifier = "deny-core-stop-session"
+description = "Denies the core_stop_session command without any pre-configured scope."
+commands.deny = ["core_stop_session"]

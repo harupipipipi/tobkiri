@@ -1,3 +1,5 @@
+> **旧仕様・移行用の参照資料**: この文書は Python runtime / Capability Graph / StartupProfile を前提にした旧アーキテクチャの記録です。現行の正の要件は [issue #1520](https://github.com/harupipipipi/tobkiri/issues/1520) です。新しい実装には [Rust 移行契約](../../docs/migration/1520/rust-contract.md) と [資源境界の修正](../../docs/migration/1520/resource-boundaries.md) を参照してください。この表示は移行の完了を意味しません。
+
 # Capability Profile Spec
 
 Capability Profiles are runtime or workspace presets for Capability Graph compile. They describe which nodes are available and how a selected graph should run in a particular environment.
@@ -142,3 +144,42 @@ Loaded profiles are registered as:
 ```text
 profile.<profile_id>
 ```
+
+
+### Selecting an admitted Pack revision
+
+A signed Normal Sandbox or declarative Application release may retain the same
+Pack ID while advancing its version. Native onboarding verifies the separately
+selected publisher key and the exact preview, including the predecessor and
+catalog revision. Admission retains old signed CAS artifacts; it does not switch
+a running Profile. Host Extension, Base and Shell artifacts retain their own
+Host trust and update boundaries.
+
+The Launcher Profile view lists retained versions for Packs explicitly declared
+in the selected Profile definition. Saving a choice appends an immutable
+definition successor using the definition revision, store generation, selected
+digest and admission catalog revision as CAS preconditions. The ordinary
+resolve, review, approval and activation ceremony remains required. The old
+active Profile, Plan and CAS roots remain available for rollback. Unknown pins,
+conflicting versions, modified signed content and stale selections fail closed.
+
+Packs enabled through the existing optional `pack.enable` path are not promoted
+to mandatory definition rows by this selector. Optional revision pin persistence
+and Host-to-Host development-state handover are separate, unfinished work.
+Development Launchers still isolate state by executable digest; building a new
+Launcher does not migrate a running VM or authorize reuse of its credentials.
+
+### Model output limits
+
+The public model configuration route accepts a positive integer
+`max_output_tokens` (1–131072). The model registry stores it as `max_tokens` and
+the Gateway applies the smaller of the saved limit and explicit caller limits
+before Provider dispatch. Caller output-limit aliases cannot raise the ceiling;
+multiple completions are rejected on saved-model routes. Revisioned updates
+preserve existing model requirements and private metadata. The UI displays the
+finite ceiling without exposing those private fields.
+
+This is a per-response output limit. It is not an aggregate monetary budget:
+tool continuations can produce further responses, and input tokens also cost
+money. Strategy reservations remain conservative upper bounds when a saved
+limit is narrower than their explicit requested ceiling.

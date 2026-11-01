@@ -1,5 +1,7 @@
 import * as React from "react"
+import {AlertCircle} from 'lucide-react'
 import { cn } from "@/src/lib/utils"
+import {CopyErrorButton} from './CopyErrorButton'
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -39,7 +41,11 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         )}
         {input}
         {error && (
-          <p id={`${inputId}-error`} className="text-xs text-destructive">{error}</p>
+          <div className="flex items-start gap-2" id={`${inputId}-error`} role="alert">
+            <AlertCircle aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+            <p className="min-w-0 flex-1 break-words text-xs text-destructive">{error}</p>
+            <CopyErrorButton label={`Copy ${label ?? 'input'} error`} text={error} />
+          </div>
         )}
         {!error && helperText && (
           <p id={`${inputId}-helper`} className="text-xs text-text-muted">{helperText}</p>

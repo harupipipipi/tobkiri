@@ -1,0 +1,2247 @@
+{
+  "additional_cases": "reviewed classification/tokenization edge corpus",
+  "cases": [
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "ddf7080283e9b98d65578e8e8839eba5cc9d98b748ae4dfd0ec091331ee6c2f1",
+          "executed": false,
+          "normalized_command": "pwd",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "pwd",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "93e0147ade4ce8a676f6c4a8b5a8506569e8c531885b34a4885412484c4d13d3",
+          "executed": false,
+          "normalized_command": "ls -la",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "ls -la",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "f2fffde564e23acd1dc8a7ea3891b072de9ad30d4763dc7a78ffbdef4523711d",
+          "executed": false,
+          "normalized_command": "git status --short",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "git status --short",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "89619c15ec990db766d60f41e37d6d61479302ac60735caaba5dcac8f4bf3366",
+          "executed": false,
+          "normalized_command": "git diff",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "git diff",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "2c86a4f35c0c78333451f17c3ada67277f537f417c1022bee42dd99927948c27",
+          "executed": false,
+          "normalized_command": "git log -3",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "git log -3",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "ecb12882f7c8c85ed8609a568e625233e79f84f6aa5c0722918f2933a40f9b2a",
+          "executed": false,
+          "normalized_command": "git show HEAD",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "git show HEAD",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "91fd60d701ad6b74d47e5484a1f62a5a584bfb4ee2df7dab6fcf5fde797df14f",
+          "executed": false,
+          "normalized_command": "git grep needle",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "git grep needle",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "54ed3eadc28f6041fc9a85ba083899bb7412f1f2ad80f875475ec1e11a98c20e",
+          "executed": false,
+          "normalized_command": "git ls-files",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "git ls-files",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "79caa2cd5c7b5815505dfa68e226c32f37b571c18ae16e0b033b66a3aad25647",
+          "executed": false,
+          "normalized_command": "git rev-parse HEAD",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "git rev-parse HEAD",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "59a722a7d0fdccbeaaedda6df0c9b569a165039c540130c8fc60e01e0153ca08",
+          "executed": false,
+          "normalized_command": "git blame src.rs",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "git blame src.rs",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "6fc1816ba93df4bc79d547d919fc74fdf2b3d3039758fcdb106a2f02330e27a8",
+          "executed": false,
+          "normalized_command": "cat README.md",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "cat README.md",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "7feb4b5dbf3aa7f7e9bb55db9804a51facba8cfeabf7d231bbc34f0802db88e8",
+          "executed": false,
+          "normalized_command": "head -n 5 file.txt",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "head -n 5 file.txt",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "f1b574f03d3a27b88d3f71f38444172698235a2395a6d8ae6e0dd5e771bf261e",
+          "executed": false,
+          "normalized_command": "tail log.txt",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "tail log.txt",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "402aa2db71fa03baa7a82d6e171b6481f4a2430b8d48baf34d872d34de0c555f",
+          "executed": false,
+          "normalized_command": "rg test .",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "rg test .",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "297df8fc88e55878754a21f405a2e5030b724c7f4cad4dbfa14ae6a8504fae8f",
+          "executed": false,
+          "normalized_command": "grep name x",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "grep name x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "7cc535c3515e34c6945d786cf4909a441b4f2d9f030e9dd57aec580897b13955",
+          "executed": false,
+          "normalized_command": "find . -type f",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "find . -type f",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "32c690b7af1c36ac2f853c604c5630b7c2e615809ae78d8db11a28120fb92a16",
+          "executed": false,
+          "normalized_command": "dir",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "dir",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "4541e63f36da25b6431ce9d1af58b563a4beba81a04177c751ffd15c570b32fb",
+          "executed": false,
+          "normalized_command": "curl https://example.com",
+          "read_only": false,
+          "reason": "network",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "network"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "curl https://example.com",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "f15bd3d9a7bf93544ae24d0c1d8f901c8cb64568a63f847d9a02dc62aac8778e",
+          "executed": false,
+          "normalized_command": "wget https://example.com",
+          "read_only": false,
+          "reason": "network",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "network"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "wget https://example.com",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "4760a57ebd610c038fb2deb7cf7df0dbf0e8eac368fc615d6f05595c47d7c974",
+          "executed": false,
+          "normalized_command": "ssh example.com",
+          "read_only": false,
+          "reason": "network",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "network"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "ssh example.com",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "ac58d1dff10adcc5597801e6f421c1dd9eaa0b7c27130f8b0f816be3fbfd3f6c",
+          "executed": false,
+          "normalized_command": "scp file example.com:/tmp",
+          "read_only": false,
+          "reason": "network",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "network"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "scp file example.com:/tmp",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "eacddc4808f890899d933d87a8acc4259351f87aecee29f7134b842df8fdd92f",
+          "executed": false,
+          "normalized_command": "rsync -a src dst",
+          "read_only": false,
+          "reason": "network",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "network"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "rsync -a src dst",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "1b767937b6a05aec92b17f915c557cb072143a76e78bf5cdb5ff0e53f2830b0a",
+          "executed": false,
+          "normalized_command": "git clone repo",
+          "read_only": false,
+          "reason": "network",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "network"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "git clone repo",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "1e8c593514d3fa8644f0eb84b50a52199e89446892e5e0924abd5cab66770832",
+          "executed": false,
+          "normalized_command": "git fetch origin",
+          "read_only": false,
+          "reason": "network",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "network"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "git fetch origin",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "71648eba16979c47246aebe8c6363320319142d65e06f174b2db86dd655b12a7",
+          "executed": false,
+          "normalized_command": "git pull",
+          "read_only": false,
+          "reason": "network",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "network"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "git pull",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "2cf196bca6d04252f2a52c1f879c91d2eed52efdfd66664463ddfa56a6afe26a",
+          "executed": false,
+          "normalized_command": "git push",
+          "read_only": false,
+          "reason": "network",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "network"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "git push",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "9d4bd08edc00576427191c347d522398f12cbd4f6fab777905b054fe143e5867",
+          "executed": false,
+          "normalized_command": "gh issue list",
+          "read_only": false,
+          "reason": "network",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "network"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "gh issue list",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "9e5024b64facd79f4d63ea35ee5add8c3fcb37ab7db0c5a675d1898776b31ed1",
+          "executed": false,
+          "normalized_command": "npm publish",
+          "read_only": false,
+          "reason": "network",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "network"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "npm publish",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "fd5cc755ec0809159a2b161001f62afa38f10e15f5253b9da1eb99306f43f5b5",
+          "executed": false,
+          "normalized_command": "cargo publish",
+          "read_only": false,
+          "reason": "network",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "network"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "cargo publish",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "df2402781d0c7e533818f420ec9560a0398043d6b55c3b5ab78cfa455c02e253",
+          "executed": false,
+          "normalized_command": "npm install x",
+          "read_only": false,
+          "reason": "install",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "install"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "npm install x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "5c4ccfdbedb7135e9c628357bb148ff843b24ce13212ab8e9f7c92a6c59b4fbf",
+          "executed": false,
+          "normalized_command": "npm i",
+          "read_only": false,
+          "reason": "install",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "install"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "npm i",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "ed09cdb6a03b0cb92ad2b9d16cbc0ba74be76116cdaa85dd19bb577c33074153",
+          "executed": false,
+          "normalized_command": "pnpm install",
+          "read_only": false,
+          "reason": "install",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "install"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "pnpm install",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "a27d0e349e90bf91120e429c99816d4a84ee8dfbc2b2857259045b746c0e7e07",
+          "executed": false,
+          "normalized_command": "yarn add x",
+          "read_only": false,
+          "reason": "install",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "install"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "yarn add x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "db2e1473c752d47ac275684dbc872795e8eb1cdc28d63f2e7b7d7ddbaa298869",
+          "executed": false,
+          "normalized_command": "pip install x",
+          "read_only": false,
+          "reason": "install",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "install"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "pip install x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "e1f531f66981ab79691430430348cbfbba9af708189fa6f10dd5da2eab74f322",
+          "executed": false,
+          "normalized_command": "pip3 install x",
+          "read_only": false,
+          "reason": "install",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "install"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "pip3 install x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "b304b767d0ca242fe7153ff40a22ce9bf17c6430b62cf9ffccf083ab5905a710",
+          "executed": false,
+          "normalized_command": "uv pip install x",
+          "read_only": false,
+          "reason": "install",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "install"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "uv pip install x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "0f4d6732e7ce2ebfbe13c788724042387e354a6c74e9fce9a485ad42efaf3b1a",
+          "executed": false,
+          "normalized_command": "cargo install x",
+          "read_only": false,
+          "reason": "install",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "install"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "cargo install x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "fbacc4b8e342768a3be89b840d3232a7deaffec88cebebb3e8d4e3e6fc9d7491",
+          "executed": false,
+          "normalized_command": "brew install x",
+          "read_only": false,
+          "reason": "install",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "install"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "brew install x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "c48dc317c172ec87534b62f73dadade007f46e036d22dea9e3206c8d933d92c2",
+          "executed": false,
+          "normalized_command": "rm -rf tmp",
+          "read_only": false,
+          "reason": "destructive",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "destructive"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "rm -rf tmp",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "cd577c047c410d8076ba043d33e5e58ed3f51b43666e1fcb3a1c9613cb42b28f",
+          "executed": false,
+          "normalized_command": "rmdir tmp",
+          "read_only": false,
+          "reason": "destructive",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "destructive"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "rmdir tmp",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "12b97d926b62097c6ede6ee19b951ccb12d358908bc3076b420b48627f1f8a38",
+          "executed": false,
+          "normalized_command": "del x",
+          "read_only": false,
+          "reason": "destructive",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "destructive"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "del x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "7f2ad4f135658ff1c8923578ca99b8340a68492cc97c9a88ab579f6b689de001",
+          "executed": false,
+          "normalized_command": "erase x",
+          "read_only": false,
+          "reason": "destructive",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "destructive"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "erase x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "4c85a9af28f4c6cdacca313c5cc5a60fd57fd3db213b5ffa198db4a9c809c82b",
+          "executed": false,
+          "normalized_command": "git reset --hard",
+          "read_only": false,
+          "reason": "destructive",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "destructive"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "git reset --hard",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "da4901e84874d61c5d47e490dbdece00c45b72cce7283d209b6b8d7b4da0beaa",
+          "executed": false,
+          "normalized_command": "git clean -fd",
+          "read_only": false,
+          "reason": "destructive",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "destructive"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "git clean -fd",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "3fb6d4272795d697bda1f4463122100c24136fc6d7a267c233805d4df274b335",
+          "executed": false,
+          "normalized_command": "git checkout main",
+          "read_only": false,
+          "reason": "destructive",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "destructive"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "git checkout main",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "6aea548613da002e4c2a8b872c8db0cc999a4975189680e022ea0b5e39889176",
+          "executed": false,
+          "normalized_command": "git switch main",
+          "read_only": false,
+          "reason": "destructive",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "destructive"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "git switch main",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "eacc384d22d1861a3a29ba6b2c4bd0ec33f3bab1b6425f9c7c05e55d11b1cb33",
+          "executed": false,
+          "normalized_command": "chmod 755 x",
+          "read_only": false,
+          "reason": "destructive",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "destructive"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "chmod 755 x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "c72d618e19ed27ca19015c4f1bde6796969a9215aa5d62a253d806a6a23ac60f",
+          "executed": false,
+          "normalized_command": "chown root x",
+          "read_only": false,
+          "reason": "destructive",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "destructive"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "chown root x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "c3df94e7561a0e78b859a86fc6ffb01228b48269c4a0f8dcf5ae090e8c9bca94",
+          "executed": false,
+          "normalized_command": "sudo cat x",
+          "read_only": false,
+          "reason": "destructive",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "destructive"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "sudo cat x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "e5ac02cca00aac1c728ea4816aa866f0420d9d9ac54b453f2bd2ce734bc71a66",
+          "executed": false,
+          "normalized_command": "gh auth status",
+          "read_only": false,
+          "reason": "network",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "network",
+            "credential"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "gh auth status",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "f6deee541d26786a34feb72c6673941dfaf21ef9a0e31fb2021052119756d953",
+          "executed": false,
+          "normalized_command": "git credential fill",
+          "read_only": false,
+          "reason": "credential",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "credential"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "git credential fill",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "59faa56abc44c048522ff497890664d164ac2176fd4c58a940603c9963800def",
+          "executed": false,
+          "normalized_command": "security find-generic-password x",
+          "read_only": false,
+          "reason": "credential",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "credential"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "security find-generic-password x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "186dc5c9018aacf42701d28417b65e20d2e44b04626b94a0be43b3155ca23dc0",
+          "executed": false,
+          "normalized_command": "pass show x",
+          "read_only": false,
+          "reason": "credential",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "credential"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "pass show x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "92efab1d56f25d702d0b5976ccef5f11a3f8c6f4cc5d400c0424dca7a678a588",
+          "executed": false,
+          "normalized_command": "op read x",
+          "read_only": false,
+          "reason": "credential",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "credential"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "op read x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "e80aa574b3c6548d7769d8804aff686f04c39842726adcb9697e815daa2d6734",
+          "executed": false,
+          "normalized_command": "aws configure",
+          "read_only": false,
+          "reason": "credential",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "credential"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "aws configure",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "medium",
+          "command_hash": "56307e7e14ee4fcdf8adda5563f9f8f9f43d62856ed6ee7baa01ededd199876c",
+          "executed": false,
+          "normalized_command": "echo hello",
+          "read_only": false,
+          "reason": "command_execution",
+          "risk_level": "medium",
+          "risk_reasons": [
+            "command_execution"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "echo hello",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "9f43db14938959e4b51e5ac9fe7ac24dd85766529db4bfc67dc5390dcb6f4c32",
+          "executed": false,
+          "normalized_command": "cat x; rm y",
+          "read_only": false,
+          "reason": "shell_syntax",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "shell_syntax"
+          ],
+          "shell_syntax": true
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "cat x; rm y",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "4c15cbd09f117044af465ac3b6e2bb54e8c95c87d336f67b43c9085b5ee943ea",
+          "executed": false,
+          "normalized_command": "ls && echo x",
+          "read_only": false,
+          "reason": "shell_syntax",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "shell_syntax"
+          ],
+          "shell_syntax": true
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "ls && echo x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "1ecca26437e0e86766bf0aa5a46bf0e94ed1053236e6eb5a8a984fa735a22580",
+          "executed": false,
+          "normalized_command": "ls || echo x",
+          "read_only": false,
+          "reason": "shell_syntax",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "shell_syntax"
+          ],
+          "shell_syntax": true
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "ls || echo x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "7dacba633cc7fa28aa3b082085b2345b1e73d7500af8a054c6eeaa1f885d690d",
+          "executed": false,
+          "normalized_command": "echo x | cat",
+          "read_only": false,
+          "reason": "shell_syntax",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "shell_syntax"
+          ],
+          "shell_syntax": true
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "echo x | cat",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "ae2221142d412ca2f00ff84f2049cc8f45aa9f47d7564a10bbd19201f40f7e42",
+          "executed": false,
+          "normalized_command": "echo x > y",
+          "read_only": false,
+          "reason": "shell_syntax",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "shell_syntax"
+          ],
+          "shell_syntax": true
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "echo x > y",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "645c2318362860ccce10cf4907e87926636ce88133995564f46734d6499835c7",
+          "executed": false,
+          "normalized_command": "cat < x",
+          "read_only": false,
+          "reason": "shell_syntax",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "shell_syntax"
+          ],
+          "shell_syntax": true
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "cat < x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "c5a268418e1fd493a23dc95546acf2ff1a11d1470fe1a6102285405929f4ad99",
+          "executed": false,
+          "normalized_command": "echo `pwd`",
+          "read_only": false,
+          "reason": "shell_syntax",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "shell_syntax"
+          ],
+          "shell_syntax": true
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "echo `pwd`",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "e1d9bf6619bb268ffebb1a8afab29a0a6505eb1e86e0984ac0477ac9b5b6c758",
+          "executed": false,
+          "normalized_command": "echo $(pwd)",
+          "read_only": false,
+          "reason": "shell_syntax",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "shell_syntax"
+          ],
+          "shell_syntax": true
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "echo $(pwd)",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "80745a0a44dc1e13ac0189b6d54b17057d154e79029cd0ce319c9a6ad452c54d",
+          "executed": false,
+          "normalized_command": "echo ${HOME}",
+          "read_only": false,
+          "reason": "shell_syntax",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "shell_syntax"
+          ],
+          "shell_syntax": true
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "echo ${HOME}",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "ae8b33c1570a06b46ed26d967add77f9f3a28d4409d8acd11f5074589f4fee97",
+          "executed": false,
+          "normalized_command": "cat /etc/passwd",
+          "read_only": false,
+          "reason": "outside_workspace_path",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "outside_workspace_path"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "cat /etc/passwd",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "ac7bc83b4ca66728214f407484bffbb722260f3a148ba13505b588e442dde9a0",
+          "executed": false,
+          "normalized_command": "cat ~/secrets",
+          "read_only": false,
+          "reason": "outside_workspace_path",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "outside_workspace_path"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "cat ~/secrets",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "570ad663ea7de1d32841c58fed9be1449a5843ed7217d7a84e884655dd1cf39c",
+          "executed": false,
+          "normalized_command": "cat C:\\Users\\x",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "cat C:\\Users\\x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "45e276d9858a4d3103df02d2c2894905cd02867b680204a8a13d15e2d86025b7",
+          "executed": false,
+          "normalized_command": "rg --fix x",
+          "read_only": false,
+          "reason": "write_option",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "write_option"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "rg --fix x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "4036f45e1f78ab22612872133f427a4e4e009e10a0ebefbf76322763d945afd8",
+          "executed": false,
+          "normalized_command": "tool --write x",
+          "read_only": false,
+          "reason": "write_option",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "write_option"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "tool --write x",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "e98e396a531e6b13f3c64b7f1e211fe306f425310e1dae46c368892e5488437e",
+          "executed": false,
+          "normalized_command": "cargo test --bless",
+          "read_only": false,
+          "reason": "write_option",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "write_option"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "cargo test --bless",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "b1e01af4aee89cd52abbe2e3532e2d1d42f5e3f690eafaee8ed6c7c3b9ffaea0",
+          "executed": false,
+          "normalized_command": "git diff -- ./safe",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "git diff -- ./safe",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "medium",
+          "command_hash": "99598d69f01ec8ab2c17572e359855666bfb8ce32b44cee89daad3fcef67bf3e",
+          "executed": false,
+          "normalized_command": "python script.py",
+          "read_only": false,
+          "reason": "command_execution",
+          "risk_level": "medium",
+          "risk_reasons": [
+            "command_execution"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "python script.py",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "error_class": "ValueError"
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": "",
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "error_class": "ValueError"
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": null,
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "error_class": "ValueError"
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": [],
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": false,
+          "classification": "low",
+          "command_hash": "6faafc3e507f18bafdf46b4182293eea0a0f9db8db02c5229ec2b8e4ff5da26c",
+          "executed": false,
+          "normalized_command": "git status",
+          "read_only": true,
+          "reason": "read_only",
+          "risk_level": "low",
+          "risk_reasons": [
+            "read_only"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": [
+            "git",
+            "status"
+          ],
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "medium",
+          "command_hash": "90722653b7b45528a96b451f2f437f0fb5943d320318dda8de962cdc1d7a8b56",
+          "executed": false,
+          "normalized_command": "{'unexpected': True}",
+          "read_only": false,
+          "reason": "command_execution",
+          "risk_level": "medium",
+          "risk_reasons": [
+            "command_execution"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": {
+            "unexpected": true
+          },
+          "workspace_root": "/workspace"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "argv": [
+            "echo",
+            "hello world"
+          ],
+          "executed": false
+        }
+      },
+      "input": {
+        "operation": "tokenize",
+        "payload": {
+          "command": "echo \"hello world\""
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "argv": [
+            "ls"
+          ],
+          "executed": false
+        }
+      },
+      "input": {
+        "operation": "tokenize",
+        "payload": {
+          "command": "ls"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "argv": [],
+          "executed": false
+        }
+      },
+      "input": {
+        "operation": "tokenize",
+        "payload": {
+          "command": null
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "argv": [
+            "git",
+            "status"
+          ],
+          "executed": false
+        }
+      },
+      "input": {
+        "operation": "tokenize",
+        "payload": {
+          "command": [
+            "git",
+            "status"
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "4a97b546c47896a6d514bd59cefd247e22ab8807dfea99334147a8f7faa9fe5f",
+          "executed": false,
+          "normalized_command": "cat ~/notes.txt",
+          "read_only": false,
+          "reason": "outside_workspace_path",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "outside_workspace_path"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": [
+            "cat",
+            "~/notes.txt"
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "24d85e990f690f882b75a0613dcd38c3594df27414d48ddb8f054e65cbd37e21",
+          "executed": false,
+          "normalized_command": "cat ~root/notes.txt",
+          "read_only": false,
+          "reason": "outside_workspace_path",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "outside_workspace_path"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": [
+            "cat",
+            "~root/notes.txt"
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "3b5fdd51bb3865ccb64f2ee9d9bdd81047080ee56af0266925a70fa5293c7d7b",
+          "executed": false,
+          "normalized_command": "cat ~unknown",
+          "read_only": false,
+          "reason": "outside_workspace_path",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "outside_workspace_path"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": [
+            "cat",
+            "~unknown"
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "ce6d7a609563bdd5aa657c8582c46cd37d809f9f9c15379c57626d02f30d9664",
+          "executed": false,
+          "normalized_command": "cat /etc/passwd",
+          "read_only": false,
+          "reason": "outside_workspace_path",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "outside_workspace_path"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": [
+            "cat",
+            "/etc/passwd"
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "26573e679b3fe56ffd6508aa9892c69bfa21f62a3416285a13efcbdd54c1adce",
+          "executed": false,
+          "normalized_command": "cat //server/share/file",
+          "read_only": false,
+          "reason": "outside_workspace_path",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "outside_workspace_path"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": [
+            "cat",
+            "//server/share/file"
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "0be724be140e16046c1e1b6ccedaec9c1a4da0f5e27c95b6747a60f2b8124ef5",
+          "executed": false,
+          "normalized_command": "cat C:/Users/notes.txt",
+          "read_only": false,
+          "reason": "outside_workspace_path",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "outside_workspace_path"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": [
+            "cat",
+            "C:/Users/notes.txt"
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "77a83156a0d65b8e1d5c35d9ceef666cdabd5cbd4f7fc543ffb234b24168cc2a",
+          "executed": false,
+          "normalized_command": "cat C:\\Users\\notes.txt",
+          "read_only": false,
+          "reason": "outside_workspace_path",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "outside_workspace_path"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": [
+            "cat",
+            "C:\\Users\\notes.txt"
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "d05b34ed52a0107ae3ba3509ab6fd346163533adf63e5ff6406bf1a511151781",
+          "executed": false,
+          "normalized_command": "cat \\Windows\\notes.txt",
+          "read_only": false,
+          "reason": "outside_workspace_path",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "outside_workspace_path"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": [
+            "cat",
+            "\\Windows\\notes.txt"
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": {
+          "approval_required": true,
+          "classification": "critical",
+          "command_hash": "35739bb2ed19b90f570f3d8f3855471105c29ca2e2f35146b86db0c17b56c060",
+          "executed": false,
+          "normalized_command": "cat \\\\server\\share\\file",
+          "read_only": false,
+          "reason": "outside_workspace_path",
+          "risk_level": "critical",
+          "risk_reasons": [
+            "outside_workspace_path"
+          ],
+          "shell_syntax": false
+        }
+      },
+      "input": {
+        "operation": "classify",
+        "payload": {
+          "command": [
+            "cat",
+            "\\\\server\\share\\file"
+          ]
+        }
+      }
+    }
+  ],
+  "error_mapping": {
+    "TypeError": "invalid",
+    "ValueError": "invalid"
+  },
+  "format": "tobkiri.parity-fixtures/1",
+  "handler": "rumi_shell_policy_pack.create_shell_policy_operation",
+  "source_sha256": "4474513154ced3474da4db2d6bf90ece67c0da9406ee3ac392660d7bd9ddcf51",
+  "source_tests": [
+    {
+      "cases": 9,
+      "path": "tobkiri_runtime/tests/test_shell_policy_packvm_abi.py",
+      "sha256": "2bed890ad721fb13323774a0590d2233731131d4d51bdcfcca62b4aa7e335555",
+      "test": "test_outside_paths_are_classified_without_host_user_lookup"
+    }
+  ]
+}

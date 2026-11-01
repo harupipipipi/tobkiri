@@ -8,6 +8,8 @@ import uuid
 from dataclasses import replace
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from domain.chat.store import ChatStore
 from domain.input.audio_runtime import model_input_capability
 from domain.input.envelope import RumiInputEnvelope
@@ -139,7 +141,13 @@ class AmbientTriggerRouter:
         state["pending_approval"] = self._latest_pending_summary()
         return state
 
-    def approve_pending(self, request_id: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
+    def approve_pending(
+        self,
+        request_id: str,
+        context: dict[str, Any] | None = None,
+        *,
+        settings_owner: SettingsOwnerPort | None = None,
+    ) -> dict[str, Any]:
         del context
         pending = self._pop_pending(request_id)
         if pending is None:
@@ -166,6 +174,11 @@ class AmbientTriggerRouter:
                 attachments=_rehydrate_pending_audio_media(pending),
                 require_approval=False,
                 approval_request_id=pending["request_id"],
+                settings_owner=(
+                    settings_owner
+                    if settings_owner is not None
+                    else pending.get("settings_owner")
+                ),
             )
         finally:
             _delete_pending_audio_blobs(pending)
@@ -192,7 +205,13 @@ class AmbientTriggerRouter:
         finally:
             _delete_pending_audio_blobs(pending)
 
-    def submit_event(self, payload: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:
+    def submit_event(
+        self,
+        payload: dict[str, Any],
+        context: dict[str, Any] | None = None,
+        *,
+        settings_owner: SettingsOwnerPort | None = None,
+    ) -> dict[str, Any]:
         event = AmbientTriggerEvent.from_payload(payload)
         state = self.store.read()
         if not bool(state.get("ambient_monitor", {}).get("enabled")) and not self._event_can_run_without_monitor(event):
@@ -261,7 +280,14 @@ class AmbientTriggerRouter:
                 focus_composer=True,
             )
 
-        return self._dispatch(event, action_id, context or {}, state=state, attachments=attachments)
+        return self._dispatch(
+            event,
+            action_id,
+            context or {},
+            state=state,
+            attachments=attachments,
+            settings_owner=settings_owner,
+        )
 
     def _handle_transcription_test(self, event: AmbientTriggerEvent, state: dict[str, Any]) -> dict[str, Any]:
         attachments = self._attachments_for_event(event)
@@ -341,6 +367,7 @@ class AmbientTriggerRouter:
         attachments: list[dict[str, Any]] | None = None,
         require_approval: bool = True,
         approval_request_id: str | None = None,
+        settings_owner: SettingsOwnerPort | None = None,
     ) -> dict[str, Any]:
         if action_id not in ALLOWED_ACTIONS:
             return self._record(event, "denied", "ambient.action_not_allowed", action_id=action_id)
@@ -354,6 +381,7 @@ class AmbientTriggerRouter:
                 state=state,
                 attachments=attachments,
                 input_text=input_text,
+                settings_owner=settings_owner,
             )
         routing = state.get("routing") if isinstance(state.get("routing"), dict) else {}
         route_model = str(routing.get("model") or "").strip()
@@ -463,7 +491,11 @@ class AmbientTriggerRouter:
             attachments=attachments,
             tools=_tools_for_event(event, params),
         )
-        result = submit_input(envelope, context)
+        result = submit_input(
+            envelope,
+            context,
+            **({"settings_owner": settings_owner} if settings_owner is not None else {}),
+        )
         status = str(result.get("status") if isinstance(result, dict) else "ok")
         logger.info(
             "ambient dispatch submitted",
@@ -517,6 +549,7 @@ class AmbientTriggerRouter:
         state: dict[str, Any],
         attachments: list[dict[str, Any]],
         input_text: str,
+        settings_owner: SettingsOwnerPort | None = None,
     ) -> dict[str, Any]:
         now = time.time()
         request_id = f"ambient_ai_send_{uuid.uuid4().hex}"
@@ -536,6 +569,7 @@ class AmbientTriggerRouter:
             "action_id": action_id,
             "context": copy.deepcopy(context if isinstance(context, dict) else {}),
             "state": copy.deepcopy(state if isinstance(state, dict) else {}),
+            "settings_owner": settings_owner,
             "attachments": pending_attachments,
             "audio_blob_ids": audio_blob_ids,
             "input_text": str(input_text or ""),

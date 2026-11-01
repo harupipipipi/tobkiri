@@ -161,3 +161,52 @@ test("diagnosticsText redacts secret-like diagnostic values", () => {
   assert.doesNotMatch(text, /runtime-token/);
   assert.doesNotMatch(text, /credential-secret/);
 });
+
+test("explicit unprobed registration overrides forged ready and remains visible", () => {
+  const provider = { provider_id: "mac_lima", status: "available", ready: true,
+    host_platform_supported: true, diagnostics: { probe_status: "not_run" },
+    capabilities: ["sandbox.desktop", "sandbox.desktop_input", "sandbox.snapshot"] } as const;
+  const result = runtimeAvailability({ providers: [{ ...provider, capabilities: [...provider.capabilities] }],
+    diagnostics: { probe_status: "not_run" } }, { status: "ready", diagnostics: { probe_status: "not_run" } }, null);
+  assert.equal(result.status, "registered");
+  assert.equal(result.providers.length, 1);
+  assert.match(result.message, /未診断/);
+});
+
+test("unsupported operations reject before executing any request; legacy supported calls work", async () => {
+  const { runSupportedRuntimeOperation, runtimeOperationAllowed } = await import("./runtimeStatus");
+  const operations = ["create", "setup", "lifecycle", "delete", "access", "control", "frame", "doctor"] as const;
+  let requests = 0;
+  for (const operation of operations) {
+    await assert.rejects(runSupportedRuntimeOperation({ [operation]: false }, operation, async () => {
+      requests += 1;
+    }), /まだ接続されていません/);
+  }
+  assert.equal(requests, 0);
+  assert.equal(runtimeOperationAllowed(undefined, "create"), true);
+  assert.equal(await runSupportedRuntimeOperation(undefined, "create", async () => { requests += 1; return "real-result"; }), "real-result");
+  assert.equal(requests, 1);
+});
+
+test("unprobed metadata never masks a failed diagnostic request", () => {
+  const result = runtimeAvailability({ providers: [{ provider_id: "mac_lima", status: "available", diagnostics: { probe_status: "not_run" } }], diagnostics: { probe_status: "not_run" } }, null, "HTTP 401");
+  assert.equal(result.status, "error");
+  assert.match(result.message, /HTTP 401/);
+  assert.equal(result.providers.length, 1);
+});
+
+test("saved seats cannot trigger operations after metadata lookup fails, while known legacy metadata remains supported", async () => {
+  const { runtimeOperationSupportForMetadata, runSupportedRuntimeOperation } = await import("./runtimeStatus");
+  const savedSeat = { seat_id: "persisted-running-seat", status: "running" };
+  let requests = 0;
+  const unavailable = runtimeOperationSupportForMetadata(null, null);
+  for (const operation of ["access", "frame", "control", "lifecycle", "delete"] as const) {
+    await assert.rejects(runSupportedRuntimeOperation(unavailable, operation, async () => {
+      requests += 1;
+      return savedSeat;
+    }));
+  }
+  assert.equal(requests, 0);
+  const legacy = runtimeOperationSupportForMetadata({ providers: [] }, null);
+  assert.deepEqual(await runSupportedRuntimeOperation(legacy, "frame", async () => savedSeat), savedSeat);
+});

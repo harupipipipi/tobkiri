@@ -18,6 +18,7 @@ pytestmark = pytest.mark.contract
 ROOT = Path(__file__).resolve().parent.parent
 PACK_ID = "rumi_business_ops_pack"
 PACK_DIR = ROOT / "ecosystem" / PACK_ID
+V4_AUTHORITY_ARTIFACTS = {"pack.v4.json", "contracts.v4.json", "artifact-index.v4.json"}
 SETUP_PACK_JSON = ROOT / "ecosystem" / "setup_pack" / PACK_ID / "pack.json"
 
 
@@ -53,7 +54,8 @@ def test_pack_required_assets_and_metadata() -> None:
     assert "depends_on" not in ecosystem
     assert "optional_integrations" not in ecosystem
     assert "runtime" not in ecosystem
-    assert ecosystem["dependencies"] == {"defaultspack": ">=2.0.0"}
+    assert ecosystem["dependencies"] == {}
+    assert all((PACK_DIR / name).is_file() for name in V4_AUTHORITY_ARTIFACTS)
     assert set(ecosystem["vocabulary"]["types"]) >= {
         "business_ops",
         "catalog",
@@ -93,8 +95,9 @@ def test_pack_required_assets_and_metadata() -> None:
     actual_assets = {
         path.relative_to(PACK_DIR).as_posix()
         for path in PACK_DIR.rglob("*")
-        if path.is_file()
+        if path.is_file() and path.name != "executables.v4.json"
     }
+    actual_assets -= V4_AUTHORITY_ARTIFACTS
     assert indexed_assets == actual_assets
 
 
@@ -122,18 +125,18 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     assert candidate.overlap_policy["workflow_taxonomy"] == "owned_by_rumi_business_ops_pack"
     assert candidate.overlap_policy["approval_risk_matrix"] == "owned_by_rumi_business_ops_pack"
     assert candidate.overlap_policy["handoff_ledger"] == "owned_by_rumi_business_ops_pack"
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert "declarative planning, approval, and handoff pack" in candidate.defaultspack_promotion["reason"]
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert "declarative planning, approval, and handoff pack" in candidate.base_pack_promotion["reason"]
     assert {
         "no_executable_runtime",
         "business_contract_only",
         "requires_connector_pack_for_external_actions",
         "requires_scheduler_pack_for_followups",
-    } <= set(candidate.defaultspack_promotion["promotion_blockers"])
+    } <= set(candidate.base_pack_promotion["promotion_blockers"])
     assert {
         "successful_approval_gated_business_workflows",
         "connector_handoff_audit_evidence",
-    } <= set(candidate.defaultspack_promotion["promotion_evidence_required"])
+    } <= set(candidate.base_pack_promotion["promotion_evidence_required"])
     assert candidate.marketplace["registry"] == "bundled"
     assert candidate.marketplace["publisher"] == "rumi-ai"
     assert candidate.marketplace["status"] == "verified"

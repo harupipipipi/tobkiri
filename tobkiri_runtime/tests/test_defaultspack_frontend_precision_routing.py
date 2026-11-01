@@ -1,14 +1,18 @@
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+
+pytestmark = pytest.mark.usefixtures(
+    "defaultspack_conversation_owner", "defaultspack_v4_tool_dispatch"
+)
 
 
 def test_frontend_request_detector_uses_prompt_and_path_hints() -> None:
@@ -167,14 +171,17 @@ def test_prepare_chat_run_forces_ui_compiler_even_when_tools_are_none(tmp_path, 
 
     ChatStore._instance = None
     store = ChatStore()
-    conversation = store.create_conversation(model="stub/default")
+    conversation = store.create_conversation(model="openai/gpt-5.5")
     prepared = prepare_chat_run(
         {
             "conversation_id": conversation["id"],
             "message": {"role": "user", "content": "dashboard frontend を実装して"},
             "params": {"tool_selection": {"mode": "none"}},
         },
-        {"workspace_root": str(tmp_path)},
+        {
+            "workspace_root": str(tmp_path),
+            "principal_capabilities": ["developer"],
+        },
     )
 
     assert prepared.tool_context["frontend_precision"]["enabled"] is True
@@ -192,7 +199,7 @@ def test_stream_engine_executes_frontend_precision_before_model_turn(tmp_path, m
 
     ChatStore._instance = None
     store = ChatStore()
-    conversation = store.create_conversation(model="stub/default")
+    conversation = store.create_conversation(model="openai/gpt-5.5")
     captured: dict[str, object] = {}
 
     def fake_execute_tool(self, prepared, tool_name, tool_call_id, arguments):
@@ -227,7 +234,11 @@ def test_stream_engine_executes_frontend_precision_before_model_turn(tmp_path, m
                 "message": {"role": "user", "content": "AI chat app frontend を作って"},
                 "params": {"tool_selection": {"mode": "none"}},
             },
-            {"workspace_root": str(tmp_path), "profile_policy": {"yolo_mode": True}},
+            {
+                "workspace_root": str(tmp_path),
+                "profile_policy": {"yolo_mode": True},
+                "principal_capabilities": ["developer"],
+            },
         )
     )
 
