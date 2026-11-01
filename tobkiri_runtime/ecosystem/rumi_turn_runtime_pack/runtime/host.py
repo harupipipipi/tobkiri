@@ -5,6 +5,7 @@ from __future__ import annotations
 from tobkiri_protocol.saved_conversation import saved_guidance_context
 
 import re
+from contextlib import nullcontext
 import time
 from typing import Any, Mapping
 
@@ -312,20 +313,24 @@ class TurnHostFactoryV4:
                 values = {
                     key: value for key, value in payload.items() if key != "_session_id"
                 }
-                validate_saved_turn_start(
-                    store, values, client=client, guard=invocation.assert_current,
-                )
-                return execute_with_input_context(
-                    values,
-                    client=client, guard=invocation.assert_current,
-                    recover_input=store.saved_input,
-                    bind_input=store.bind_saved_input,
-                    execute=lambda initial: execute_saved_turn(
-                        store, initial, client=client,
-                        guard=invocation.assert_current,
-                        track_execution=invocation.cancellation.track,
-                    ),
-                )
+                borrow = getattr(context, "borrow_saved_context", None)
+                with (borrow(invocation) if borrow is not None else nullcontext(None)) as resolver:
+                    validate_saved_turn_start(
+                        store, values, client=client, guard=invocation.assert_current,
+                        context_resolver=resolver, context_owner=invocation,
+                    )
+                    return execute_with_input_context(
+                        values,
+                        client=client, guard=invocation.assert_current,
+                        recover_input=store.saved_input,
+                        bind_input=store.bind_saved_input,
+                        execute=lambda initial: execute_saved_turn(
+                            store, initial, client=client,
+                            guard=invocation.assert_current,
+                            track_execution=invocation.cancellation.track,
+                            context_resolver=resolver, context_owner=invocation,
+                        ),
+                    )
             if operation_id != self.operation_id or payload.get("profile_id") != store.profile_id:
                 raise PermissionError("turn request does not match capture")
             action = payload.get("operation")

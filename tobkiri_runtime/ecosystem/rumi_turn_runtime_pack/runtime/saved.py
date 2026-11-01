@@ -10,9 +10,6 @@ from __future__ import annotations
 from tobkiri_host.saved_workspace_context import (
     WORKSPACE_TARGET, resolve_saved_workspace, workspace_resolution,
 )
-from ecosystem.tobkiri_ui_settings_pack.runtime.saved_project_context import (
-    PROJECT_TARGET, resolve_saved_project,
-)
 
 from ecosystem.rumi_turn_runtime_pack.runtime.input_context import execute_with_input_context
 from tobkiri_protocol.saved_conversation import saved_guidance_context
@@ -60,7 +57,7 @@ SAVED_CONTRACTS = frozenset(
         COMPLETION_CONTRACT,
         "tobkiri.resource.chat.reference.v1",
         WORKSPACE_TARGET[0],
-        PROJECT_TARGET[0],
+        "tobkiri.resource.project.state.v1",
     }
 )
 
@@ -100,6 +97,8 @@ def validate_saved_turn_start(
     *,
     client: GlobalContractClient,
     guard: Callable[[], None],
+    context_resolver: Any | None = None,
+    context_owner: object | None = None,
 ) -> dict[str, Any]:
     """Check owner prerequisites before retaining a new accepted input.
 
@@ -152,15 +151,8 @@ def validate_saved_turn_start(
         conversation = resolve_request_context(
             conversation, initial["request"], store.profile_id, read_parent,
         )
-        conversation = resolve_saved_project(
-            conversation, profile_id=store.profile_id,
-            presentation_owner=(
-                getattr(client.session, "presentation_owner_principal_id", ""),
-                getattr(client.session, "presentation_owner_session_id", ""),
-            ),
-            read_owner=lambda payload: client.invoke(*PROJECT_TARGET, payload),
-            guard=guard,
-        )
+        if context_resolver is not None:
+            conversation = context_resolver.resolve(context_owner, conversation)
         conversation = resolve_saved_workspace(
             conversation, profile_id=store.profile_id, guard=guard,
             read_binding=lambda payload: client.invoke(*WORKSPACE_TARGET, payload),
@@ -194,6 +186,8 @@ def execute_saved_turn(
     guard: Callable[[], None],
     track_execution: Callable[[str], AbstractContextManager[None]] = lambda _: nullcontext(),
     _guidance_depth: int = 0,
+    context_resolver: Any | None = None,
+    context_owner: object | None = None,
 ) -> dict[str, Any]:
     """Dispatch only a claim winner through a captured, restricted client.
 
@@ -203,7 +197,7 @@ def execute_saved_turn(
     not permission to bypass the client's Authority/Broker checks.
     """
     initial = validate_saved_turn_start(
-        store, payload, client=client, guard=guard,
+        store, payload, client=client, guard=guard, context_resolver=context_resolver, context_owner=context_owner,
     )
     guard()
     begun = client.invoke(
@@ -239,6 +233,7 @@ def execute_saved_turn(
         if result["turn"].get("status") == "completed":
             return _drain_guidance(
                 store, result, client, guard, track_execution, _guidance_depth,
+                context_resolver=context_resolver, context_owner=context_owner,
                 completion_confirmed=completion_confirmed,
                 captured_request=initial["request"],
             )
@@ -321,6 +316,7 @@ def execute_saved_turn(
         track_execution,
         _guidance_depth,
         completion_confirmed=completion_confirmed,
+        context_resolver=context_resolver, context_owner=context_owner,
         captured_request=initial["request"],
     )
 
@@ -335,6 +331,8 @@ def _drain_guidance(
     *,
     completion_confirmed: bool,
     captured_request: Mapping[str, Any] | None = None,
+    context_resolver: Any | None = None,
+    context_owner: object | None = None,
 ) -> dict[str, Any]:
     """Run bounded, durable guidance children after an acknowledged turn."""
 
@@ -415,9 +413,10 @@ def _drain_guidance(
             return execute_saved_turn(
                 store, accepted, client=client, guard=guard,
                 track_execution=track_execution, _guidance_depth=depth + 1,
+                context_resolver=context_resolver, context_owner=context_owner,
             )
 
-        validate_saved_turn_start(store, source, client=client, guard=guard)
+        validate_saved_turn_start(store, source, client=client, guard=guard, context_resolver=context_resolver, context_owner=context_owner)
         child_result = execute_with_input_context(
             source, client=client, guard=guard,
             recover_input=lambda lean: store.saved_input(lean) or (

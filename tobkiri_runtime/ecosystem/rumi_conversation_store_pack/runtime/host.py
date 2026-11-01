@@ -23,6 +23,15 @@ class ConversationReadHostFactoryV4:
 
     function_id = FUNCTION_ID
 
+    def borrow_saved_context(self, *, operation, profile_id, presentation_owner, read_owner, guard, validator):
+        """Construct App policy from this exact capture's same-owner helpers."""
+        from .saved_project_context import BorrowedSavedContext
+
+        return BorrowedSavedContext(
+            operation=operation, profile_id=profile_id, presentation_owner=presentation_owner,
+            read_owner=read_owner, guard=guard, validator=validator,
+        )
+
     def capture(
         self,
         context: HostProviderCaptureContextV4,

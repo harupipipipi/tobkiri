@@ -9,13 +9,11 @@ module neither reads a path nor accepts reference snapshots, approval flags or n
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
 from typing import Any
 
 from ecosystem.rumi_conversation_store_pack.runtime.chat_reference import (
     _membership, identifier,
 )
-from ecosystem.tobkiri_ui_settings_pack.runtime.projects import _projects
 from tobkiri_protocol.saved_conversation import (
     ResolvedSavedConversation, SavedOwnedContextResolution, owned_context_digest,
     owned_context_resolution,
@@ -32,29 +30,29 @@ _PROJECT_METADATA = (
 )
 
 
-@dataclass(frozen=True)
-class SavedProjectContext:
-    """Private facts from one accepted owner read, never a send capability."""
-
-    profile_id: str
-    owner_principal_id: str
-    namespace: str
-    project_revision: int
-    conversation_id: str
-    conversation_revision: int
-    group_id: str
-    project_title: str
-    project_primary_workspace_id: str | None
-    project_bindings: tuple[tuple[str, str | None, str | None], ...]
-    conversation_workspace_id: str | None
-    conversation_bindings: tuple[tuple[str, str, str], ...]
-
-
-def project_context(conversation: Mapping[str, Any]) -> SavedProjectContext | None:
+def project_context(conversation: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Return builtin facts only, never a captured module's class instance."""
     if type(conversation) is not ResolvedSavedConversation:
         return None
     owner = conversation.owned_context_owner
-    return owner if type(owner) is SavedProjectContext else None
+    return owner if type(owner) is dict else None
+
+
+def _builtin_data(value: Any, depth: int = 0) -> None:
+    """Reject code-bearing values without copying owner message history."""
+    if depth > 64:
+        raise ValueError("saved context DATA nesting is invalid")
+    if value is None or type(value) in (str, bool, int, float):
+        return
+    if type(value) in (list, tuple):
+        for item in value:
+            _builtin_data(item, depth + 1)
+        return
+    if type(value) is dict and all(type(key) is str for key in value):
+        for item in value.values():
+            _builtin_data(item, depth + 1)
+        return
+    raise ValueError("saved context contains non-builtin DATA")
 
 
 def needs_project_context(conversation: Mapping[str, Any]) -> bool:
@@ -107,6 +105,8 @@ def _conversation_bindings(metadata: Mapping[str, Any], workspace: str | None) -
 
 
 def _resolved(conversation, metadata, profile_id, owner=None):
+    if type(profile_id) is not str:
+        raise ValueError("saved context Profile DATA is invalid")
     result = {**conversation, "metadata": metadata}
     conversation_id = identifier(conversation.get("id"))
     revision = conversation.get("conversation_revision")
@@ -134,6 +134,10 @@ def retain_saved_project_effect_snapshot(
     if resolution is None and not needs_project_context(conversation):
         return conversation
     owner = project_context(accepted)
+    _builtin_data(owner)
+    if type(resolution) is SavedOwnedContextResolution:
+        _builtin_data((resolution.profile_id, resolution.conversation_id,
+                       resolution.conversation_revision, resolution.context_digest))
     metadata = dict(conversation.get("metadata") or {})
     workspace = _conversation_workspace(metadata)
     if owner is not None and "workspace_id" not in metadata and workspace is not None:
@@ -157,6 +161,7 @@ def resolve_saved_project(
     presentation_owner: tuple[str, str],
     read_owner: Callable[[Mapping[str, Any]], Mapping[str, Any]],
     guard: Callable[[], None],
+    validate_projects: Callable[[Any], list[dict[str, Any]]] | None = None,
 ) -> Mapping[str, Any]:
     """Resolve actual persisted membership with the captured Project owner.
 
@@ -200,7 +205,10 @@ def resolve_saved_project(
             or type(snapshot.get("revision")) is not int
             or snapshot["revision"] < 0):
         raise ValueError("saved Project owner snapshot is invalid")
-    records = _projects(snapshot["projects"])
+    if validate_projects is None:
+        raise PermissionError("saved Project captured validator is unavailable")
+    records = validate_projects(snapshot["projects"])
+    _builtin_data(records)
     projects = {item["id"]: item for item in records}
     # Reuse the original owner membership rules, including alias conflicts.
     group_id = _membership(conversation, projects)
@@ -226,11 +234,65 @@ def resolve_saved_project(
     # workspace explicitly through the existing conversation CAS operation.
     if "workspace_id" not in metadata and conversation_workspace is not None:
         metadata["workspace_id"] = conversation_workspace
-    owner = SavedProjectContext(
-        profile_id, presentation_owner[0], NAMESPACE, snapshot["revision"],
-        conversation_id, revision, group_id, project["title"], project_primary,
-        tuple((item["workspace_id"], item["workspace_label"], item["workspace_root"])
-              for item in bindings),
-        conversation_workspace, conversation_bindings,
-    )
+    owner = {
+        "profile_id": profile_id, "owner_principal_id": presentation_owner[0],
+        "namespace": NAMESPACE, "project_revision": snapshot["revision"],
+        "conversation_id": conversation_id, "conversation_revision": revision,
+        "group_id": group_id, "project_title": project["title"],
+        "project_primary_workspace_id": project_primary,
+        "project_bindings": tuple((item["workspace_id"], item["workspace_label"], item["workspace_root"])
+                                  for item in bindings),
+        "conversation_workspace_id": conversation_workspace,
+        "conversation_bindings": conversation_bindings,
+    }
+    _builtin_data(owner)
     return _resolved(conversation, metadata, profile_id, owner)
+
+
+class BorrowedSavedContext:
+    """Operation-local App code. Only detached builtin facts may escape."""
+
+    def __init__(self, *, operation, profile_id, presentation_owner, read_owner, guard, validator):
+        self._operation = operation
+        self._profile_id = profile_id
+        self._presentation_owner = presentation_owner
+        self._read_owner = read_owner
+        self._guard = guard
+        self._validator = validator
+        self._closed = False
+
+    def _current(self, operation):
+        if self._closed:
+            raise PermissionError("saved context borrow is closed")
+        if operation is not self._operation:
+            raise PermissionError("saved context operation changed")
+        self._guard()
+
+    def resolve(self, operation, conversation):
+        self._current(operation)
+        _builtin_data(conversation)
+        project = requires_project_owner(conversation)
+        validator = self._validator() if project else None
+        result = resolve_saved_project(
+            conversation, profile_id=self._profile_id,
+            presentation_owner=self._presentation_owner() if project else ("", ""), read_owner=self._read_owner,
+            guard=self._guard, validate_projects=validator,
+        )
+        self._current(operation)
+        return result
+
+    def retain_effect(self, operation, conversation, accepted):
+        self._current(operation)
+        _builtin_data(conversation)
+        result = retain_saved_project_effect_snapshot(
+            conversation, accepted, profile_id=self._profile_id,
+        )
+        self._current(operation)
+        return result
+
+    def close(self):
+        self._closed = True
+        self._operation = None
+        self._read_owner = self._guard = self._validator = None
+        self._presentation_owner = None
+        self._profile_id = ""

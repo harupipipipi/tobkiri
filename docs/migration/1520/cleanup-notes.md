@@ -2104,7 +2104,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 020: Project所属を一律拒否する保存送信と所属変更の待機漏れ
 
-- 状態: **修正eb5dabff0、CIのfrontend59件・生成/整合確認成功。backend回帰は未確認**。
+- 状態: **修正7cdb66411でfrontend59件、Linux/macOS各backend341件成功。capture強化は未実行Source**。
 - 場所: `saved_bridge.py`、`rumi_turn_runtime_pack/runtime/saved.py`、
   `tobkiri_protocol/saved_conversation.py`、`saved_project_context.py`、
   defaultspackの`App.tsx`/`historyMembership.ts`/`savedCodingContext.ts`。
@@ -2142,3 +2142,32 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   既存fixtureの拒否で停止した（両OS各341 setup errors）。製品動作成功には数えない。
   CIはgenerateとverifyを分け、生成物をcommit後にverify modeで同じclean sourceの
   owner回帰を実行する。source/clean検証の無効化やテスト内再生成は行わない。
+  5ae2b0265のfresh build/generation CI41277582684は変更パス0/patch0Bで再現性も確認。
+  clean snapshot 7cdb66411のCI41279045948はfrontend59/0skip、Linux341/0fail、macOS341/0fail。
+  workspace差替えの元PermissionErrorと保存前拒否を維持し、旧テストは変更していない。
+  この結果は以下021のcaptured code所有・retire・包括的会計の達成とは別の資格。
+
+## 021: foreign Pack helperのambient importとcaptured classのDATA残留
+
+- 状態: **Source修正あり、real-loader受入未実行。legacy capture解放/包括的会計は未完**。
+- 場所: `captured_provider_modules_v4.py`/`artifact_materialization.py`、production composition、
+  conversation-storeの`runtime/saved_project_context.py`、Turn host/saved、Project read factory。
+- 問題: 自Pack importはprivate namespaceへ入るが、foreign Pack importはambient
+  sys.modules/sys.pathへ抜ける。sidecar digestやpack_dependencies追加だけでは呼出元の
+  code captureを固定できない。App dataclassもinstance→class→method globals→loaderで
+  fields以外にSourceを保持し得る。
+- 整理: resolverとmembership/identifierをconversation-resource ownerの同captureへ置く。
+  App compositionが既存selected ConversationRead/ProjectRead factoriesをoperation内で借り、
+  captured validatorを固定依存にする。Core/Turnのambient App importを除去し、known saved
+  consumerのprivate portだけを結線。新Provider/Function/grant/loader/global registryは不要。
+- 維持: signed readと現在のoperation/profile/consumerを検証。NoProjectではProject capture/
+  validator/identity getter/bindingを必須化しない。旧ownerのhookなしは従来validatorへ進み、
+  plain chat/canonical codingを保持、Group/aliases/bindings/rootのproof不足は明示拒否。
+  返却factsはnestedもexact builtins/Host-static DTOだけ、port参照はfinallyで解放する。
+- 受入Source: real loaderでpoison、disk差替え、選択Pack更新、Project不在、別scope/consumer、
+  wire copy、DATA graph、port weakref、旧ABI互換を確認する。実行はまだである。
+- 削除前提: accepted captureはglobal _CAPTURES/sys.meta_path/sys.modulesに残り、production
+  retireへrelease/refcountがない。raw512MiB上限はcompiled code/globals/copiesの同invocation
+  会計ではない。port参照解放をSource最終解放と読まず、汎用Python lease/frameworkを新設しない。
+  実Rust Host owner/funding/retireとWasm App policyの同等性を閉じてから撤去する。
+  今回はcode closureとDATA分離だけで、64MiB達成/Native採用/製品Python廃止を認定しない。

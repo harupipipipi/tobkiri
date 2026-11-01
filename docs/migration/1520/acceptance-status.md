@@ -136,9 +136,15 @@ workspace and inert bindings. Frontend59 tests, type/boundary checks and actual 
 build passed in [CI41277008561](https://github.com/harupipipipi/tobkiri/actions/runs/41277008561).
 Its generation job also verified canonical Pack/executable/Profile/bundle artifacts
 and strict integrity. The38 generated text files were imported with source/hash/path
-checks. Backend attempts stopped in fixture setup on stale then dirty source; no
-backend behavioral pass is claimed. Verification of the committed clean snapshot
-remains required, along with full GUI and Rust/Wasm adoption.
+checks. Initial backend attempts stopped on stale then dirty source. After preserving
+the original workspace-replacement PermissionError, clean snapshot `7cdb66411`
+passed frontend59 and backend341 on each OS in
+[CI41279045948](https://github.com/harupipipipi/tobkiri/actions/runs/41279045948).
+The generated source also reproduced with zero differences in
+[CI41277582684](https://github.com/harupipipipi/tobkiri/actions/runs/41277582684).
+Foreign-helper captured-code ownership and detached DATA are a subsequent source
+fix awaiting real-loader regressions. Legacy global capture retire and comprehensive
+funding remain open; these results do not establish full GUI or native adoption.
 
 Historical focused checks from the 2026-10-18 slice: foundation gate **0 failures**; complete gate
 **1,044 failures**. Gate regressions **13**, CI-helper regressions **7**, and

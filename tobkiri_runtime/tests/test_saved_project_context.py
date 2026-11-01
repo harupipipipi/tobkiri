@@ -19,13 +19,14 @@ from ecosystem.rumi_workspace_mount_pack.runtime.mounts import (
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
 from ecosystem.rumi_turn_runtime_pack.runtime.saved import SAVED_CONTRACTS, validate_saved_turn_start
 from ecosystem.tobkiri_ui_settings_pack.runtime.projects import (
-    ProjectStateHostFactoryV4, ProjectStateStore, READ_FUNCTION_ID, READ_OPERATION_ID,
+    ProjectStateStore, READ_OPERATION_ID, _projects,
 )
-from ecosystem.tobkiri_ui_settings_pack.runtime.saved_project_context import (
+from ecosystem.rumi_conversation_store_pack.runtime.saved_project_context import (
     PROJECT_TARGET, project_context, resolve_saved_project,
     retain_saved_project_effect_snapshot,
 )
-from tests.test_project_state_owner import _capture, _Invocation
+from tests.test_project_state_owner import _Invocation
+from tests.saved_context_capture_support import owners, borrow, context
 from tests.test_saved_host_exchange import _Exchange
 from tests.test_saved_bridge_callbacks import saved
 from tobkiri_host.saved_workspace_context import (
@@ -77,7 +78,11 @@ def setup(tmp_path, *, execution_workspace=None, project_primary=None):
     )["conversation"]
     exchange.outer.payload["request"]["conversation_revision"] = updated["conversation_revision"]
     exchange.intent = saved.start(exchange.outer.payload["request"])
-    reader = ProjectStateHostFactoryV4(READ_FUNCTION_ID).capture(_capture(tmp_path, write=False)).contributions[0]
+    selected = owners()
+    exchange.outer.target_principal = selected[2].principal_ref
+    exchange.outer.contract_id = selected[2].operation.contract_id
+    exchange.outer.operation_id = selected[2].operation.operation_id
+    reader = selected[3][1][2].capture(context(selected[1], tmp_path)).contributions[0]
     invocation = _Invocation()
     observed = {"workspaces": [], "projects": 0}
     hooks = {}
@@ -115,9 +120,8 @@ def setup(tmp_path, *, execution_workspace=None, project_primary=None):
 
     callbacks = SavedBridgeCallbacks(
         dispatch, lambda outer, targets: None,
-        presentation_owner=lambda outer: (
-            invocation.presentation_owner_principal_id, invocation.presentation_owner_session_id,
-        ),
+        borrow_saved_context=lambda outer: borrow(selected, operation=outer, read_project=read_project,
+            owner=lambda: (invocation.presentation_owner_principal_id, invocation.presentation_owner_session_id)),
     )
 
     def callback(outer, _wire_frame):
@@ -128,7 +132,7 @@ def setup(tmp_path, *, execution_workspace=None, project_primary=None):
     exchange.callback = callback
     return SimpleNamespace(exchange=exchange, callbacks=callbacks, projects=projects,
                            mounts=mounts, roots=roots, invocation=invocation,
-                           read_project=read_project, observed=observed, hooks=hooks)
+                           read_project=read_project, observed=observed, hooks=hooks, selected=selected)
 
 
 def finish(fixture):
@@ -140,12 +144,10 @@ def finish(fixture):
 
 def resolve(fixture, value=None):
     conversation = value or fixture.exchange.store.get("conversation-1")
-    return resolve_saved_project(
-        conversation, profile_id="defaults",
-        presentation_owner=(fixture.invocation.presentation_owner_principal_id,
-                            fixture.invocation.presentation_owner_session_id),
-        read_owner=fixture.read_project, guard=lambda: None,
-    )
+    with borrow(fixture.selected, operation=fixture.exchange.outer, read_project=fixture.read_project,
+                owner=lambda: (fixture.invocation.presentation_owner_principal_id,
+                               fixture.invocation.presentation_owner_session_id)) as resolver:
+        return resolver.resolve(fixture.exchange.outer, conversation)
 
 
 def test_group_chat_saves_in_the_same_conversation_and_membership(tmp_path):
@@ -182,10 +184,13 @@ def test_turn_owner_resolves_group_before_claim_without_requiring_project_for_no
     turns = DurableTurnRuntime("defaults", user_data_root=tmp_path)
     if context == "group-unbound":
         with pytest.raises(GlobalContractUnavailable, match="unbound"):
-            validate_saved_turn_start(turns, fixture.exchange.outer.payload, client=client, guard=lambda: None)
+            with borrow(fixture.selected, operation=fixture.exchange.outer, read_project=lambda payload: invoke(*PROJECT_TARGET, payload)) as resolver:
+                validate_saved_turn_start(turns, fixture.exchange.outer.payload, client=client,
+                                          guard=lambda: None, context_resolver=resolver, context_owner=fixture.exchange.outer)
     else:
-        assert validate_saved_turn_start(turns, fixture.exchange.outer.payload,
-                                        client=client, guard=lambda: None) == fixture.exchange.outer.payload
+        with borrow(fixture.selected, operation=fixture.exchange.outer, read_project=lambda payload: invoke(*PROJECT_TARGET, payload)) as resolver:
+            assert validate_saved_turn_start(turns, fixture.exchange.outer.payload, client=client,
+                guard=lambda: None, context_resolver=resolver, context_owner=fixture.exchange.outer) == fixture.exchange.outer.payload
     assert not turns.path.exists()
     assert fixture.exchange.store.get("conversation-1")["messages"] == []
     assert fixture.observed["projects"] == (1 if context == "group-bound" else 0)
@@ -196,10 +201,10 @@ def test_project_preserves_all_ordered_bindings_and_the_conversation_execution_p
     fixture = setup(tmp_path, execution_workspace=execution, project_primary="workspace-one")
     before = fixture.exchange.store.get("conversation-1")["metadata"]
     facts = project_context(resolve(fixture))
-    assert facts.project_primary_workspace_id == "workspace-one"
-    assert facts.conversation_workspace_id == execution
-    assert [item[0] for item in facts.project_bindings] == ["workspace-one", "workspace-two"]
-    assert [item[0] for item in facts.conversation_bindings] == ["workspace-one", "workspace-two"]
+    assert facts["project_primary_workspace_id"] == "workspace-one"
+    assert facts["conversation_workspace_id"] == execution
+    assert [item[0] for item in facts["project_bindings"]] == ["workspace-one", "workspace-two"]
+    assert [item[0] for item in facts["conversation_bindings"]] == ["workspace-one", "workspace-two"]
     result = finish(fixture)
     assert result["metadata"] == before
     assert set(fixture.observed["workspaces"]) == {execution}
@@ -228,9 +233,9 @@ def test_history_move_to_another_project_keeps_execution_workspace_and_binding_o
     fixture.exchange.outer.payload["request"]["conversation_revision"] = moved["conversation_revision"]
     fixture.exchange.intent = saved.start(fixture.exchange.outer.payload["request"])
     facts = project_context(resolve(fixture))
-    assert facts.project_primary_workspace_id == "workspace-two"
-    assert facts.conversation_workspace_id == "workspace-one"
-    assert [item[0] for item in facts.project_bindings] == ["workspace-two", "workspace-one"]
+    assert facts["project_primary_workspace_id"] == "workspace-two"
+    assert facts["conversation_workspace_id"] == "workspace-one"
+    assert [item[0] for item in facts["project_bindings"]] == ["workspace-two", "workspace-one"]
     result = finish(fixture)
     assert result["id"] == current["id"] and result["group_id"] == "group-two"
     assert result["metadata"] == metadata
@@ -289,9 +294,9 @@ def test_rename_before_the_next_read_adopts_new_owner_facts_without_changing_exe
     fixture.projects.replace(projects=[project("workspace-one", fixture.roots, "Renamed")],
                              expected_revision=1, mutation_id="rename", migration_digest=None)
     after = resolve(fixture)
-    assert project_context(before).group_id == project_context(after).group_id
-    assert project_context(after).project_title == "Renamed"
-    assert project_context(after).project_revision == 2
+    assert project_context(before)["group_id"] == project_context(after)["group_id"]
+    assert project_context(after)["project_title"] == "Renamed"
+    assert project_context(after)["project_revision"] == 2
     assert after["metadata"] == before["metadata"]
 
 
@@ -361,13 +366,13 @@ def test_linked_child_inherits_complete_context_but_resolves_its_own_scope(tmp_p
     owner = ProjectStateStore(tmp_path, "defaults", "shell.tauri.default")
     owner.replace(projects=[project()], expected_revision=0, mutation_id="create", migration_digest=None)
     checked = resolve_saved_project(effective, profile_id="defaults",
-        presentation_owner=("shell.tauri.default", "session-one"), read_owner=lambda _: owner.read(), guard=lambda: None)
+        presentation_owner=("shell.tauri.default", "session-one"), read_owner=lambda _: owner.read(), guard=lambda: None, validate_projects=_projects)
     checked = resolve_saved_workspace(checked, profile_id="defaults", guard=lambda: None,
         read_binding=lambda _: {"mount": {"id": "workspace-two", "mount_revision": 1},
                                "binding": {"workspace_id": "workspace-two", "mount_revision": 1,
                                            "root_st_dev": 1, "root_st_ino": 2}})
     assert workspace_resolution(checked).conversation_id == child["id"]
-    assert project_context(checked).conversation_id == child["id"]
+    assert project_context(checked)["conversation_id"] == child["id"]
     original_binding = context_binding(parent, "defaults")
     reordered = deepcopy(parent)
     reordered["metadata"]["workspace_bindings"].reverse()

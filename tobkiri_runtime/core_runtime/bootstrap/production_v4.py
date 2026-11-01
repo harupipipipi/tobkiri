@@ -960,6 +960,70 @@ def _load_verified_host_provider_factory(
     return load_host_provider_factory(pack_root, provider_bindings[0]), backend_id
 
 
+@contextmanager
+def _borrow_selected_saved_context(
+    *, operation: object, consumer: ResolvedOperationBinding, conversation_owner: ResolvedOperationBinding,
+    project_owner: ResolvedOperationBinding | None, factories: Any, profile_id: str,
+    presentation_owner: Callable[[], tuple[str, str]],
+    read_project: Callable[[Mapping[str, Any]], Mapping[str, Any]], guard: Callable[[], None],
+) -> Iterator[Any]:
+    """Lend fixed existing selected factories; never load or discover a module."""
+    def current():
+        guard()
+        envelope = getattr(operation, "envelope", operation)
+        if (getattr(getattr(envelope, "context", None), "profile_id", None) != profile_id
+                or getattr(envelope, "target_principal", None) != consumer.principal_ref
+                or (getattr(envelope, "contract_id", None), getattr(envelope, "operation_id", None))
+                != (consumer.operation.contract_id, consumer.operation.operation_id)):
+            raise AuthorityDenied("saved context invocation owner changed")
+
+    current()
+    if (consumer.function.function_id, consumer.operation.contract_id,
+            consumer.operation.operation_id) not in {
+        ("rumi_turn_runtime_pack.turn-runtime.saved", "tobkiri.action.turn.saved.v1", "rumi_turn_runtime_pack.turn-saved"),
+        ("tobkiri_conversation_orchestration_pack.saved", "conversation.saved-turn.v1", "saved_complete"),
+    }:
+        raise AuthorityDenied("saved context consumer is unavailable")
+
+    def selected(binding, function, contract, operation):
+        if binding is None or (binding.function.function_id, binding.operation.contract_id,
+                               binding.operation.operation_id) != (function, contract, operation):
+            raise AuthorityDenied("saved context selected owner is unavailable")
+        matches = [factory for function_id, bindings, factory, _backend in factories
+                   if function_id == function and binding in bindings]
+        if len(matches) != 1 or matches[0].function_id != function:
+            raise AuthorityDenied("saved context captured owner is unavailable")
+        return matches[0]
+
+    owner = selected(conversation_owner, "rumi_conversation_store_pack.conversation-store.resource",
+                     "tobkiri.resource.conversation.v1", "rumi_conversation_store_pack.conversation-resource")
+
+    def validator():
+        # Project absence is harmless for ordinary NoProject and clear. Group
+        # resolution calls this fixed supplier and fails explicitly if unbound.
+        current()
+        factory = selected(project_owner, "tobkiri.project.state.read",
+                           "tobkiri.resource.project.state.v1", "tobkiri_ui_settings_pack.projects-read")
+        supply = getattr(factory, "saved_snapshot_validator", None)
+        if not callable(supply):
+            raise AuthorityDenied("saved Project captured validator is unavailable")
+        return supply()
+
+    borrow = getattr(owner, "borrow_saved_context", None)
+    if not callable(borrow):
+        # An older selected conversation owner can still serve ordinary saved
+        # chat/coding. No App proof is minted: the existing Host-static full
+        # validator below the caller still rejects unresolved owned context.
+        yield None
+        return
+    port = borrow(operation=operation, profile_id=profile_id, presentation_owner=presentation_owner,
+                  read_owner=read_project, guard=current, validator=validator)
+    try:
+        yield port
+    finally:
+        port.close()
+
+
 def _validate_host_provider_contributions(
     provider_bindings: tuple[ResolvedOperationBinding, ...],
     contributions: tuple[HostProviderContributionV4, ...],
@@ -2780,13 +2844,43 @@ def capture_production_dispatch(
             str(profile["profile_id"]), user_data_root=authority_user_data,
         )
 
+    def borrow_bridge_saved_context(outer: object) -> AbstractContextManager[Any]:
+        consumer = resolve_bridge_outer(outer)
+        conversation = saved_target(outer, (
+            "tobkiri.resource.conversation.v1", "rumi_conversation_store_pack.conversation-resource",
+        ))
+        project_targets = tuple(edge for edge in bridge_targets[consumer.key]
+            if (edge.resolved_binding.operation.contract_id, edge.resolved_binding.operation.operation_id)
+            == ("tobkiri.resource.project.state.v1", "tobkiri_ui_settings_pack.projects-read"))
+        if len(project_targets) > 1:
+            raise AuthorityDenied("saved Project selected owner is ambiguous")
+
+        def read_project(payload):
+            if payload != {"profile_id": str(profile["profile_id"])}:
+                raise AuthorityDenied("saved Project Profile changed")
+            outcome = saved_dispatch(outer, ("tobkiri.resource.project.state.v1",
+                "tobkiri_ui_settings_pack.projects-read"), {})
+            value = outcome.get("value")
+            if outcome.get("status") != "ok" or not isinstance(value, Mapping):
+                raise AuthorityDenied("saved Project owner is unavailable")
+            return value
+
+        return _borrow_selected_saved_context(
+            operation=outer, consumer=consumer.resolved_binding, conversation_owner=conversation.resolved_binding,
+            project_owner=project_targets[0].resolved_binding if project_targets else None,
+            factories=loaded_host_factories, profile_id=str(profile["profile_id"]),
+            presentation_owner=lambda: presentation_owner_for(outer), read_project=read_project,
+            guard=lambda: saved_target(outer, ("tobkiri.resource.conversation.v1",
+                "rumi_conversation_store_pack.conversation-resource")),
+        )
+
     saved_callbacks = SavedBridgeCallbacks(
         saved_dispatch,
         require_saved_targets,
         saved_stream_available,
         saved_workspace_execution_registry,
         saved_selected_workspace,
-        presentation_owner=lambda outer: presentation_owner_for(outer),
+        borrow_saved_context=borrow_bridge_saved_context,
     )
 
     def saved_capability_bridge(
@@ -3519,6 +3613,39 @@ def capture_production_dispatch(
             raise PermissionError("approval policy capabilities are not captured")
         return approval_policy_capabilities_holder[0](invocation, applicability)
 
+    def borrow_turn_saved_context(invocation: Any) -> AbstractContextManager[Any]:
+        invocation.assert_current()
+        envelope = invocation.envelope
+        matches = []
+        for binding in catalog_bindings:
+            if (binding.principal_ref.value == envelope.target_principal.value
+                    and binding.operation.contract_id == envelope.contract_id
+                    and binding.operation.operation_id == envelope.operation_id
+                    and binding not in matches):
+                matches.append(binding)
+        if len(matches) != 1 or envelope.context.profile_id != str(profile["profile_id"]):
+            raise AuthorityDenied("saved context invocation owner changed")
+        consumer = matches[0]
+        caller = consumer.function.function_id
+        conversation_owner = resolved_binding_by_edge.get((caller,
+            "tobkiri.resource.conversation.v1", "rumi_conversation_store_pack.conversation-resource"))
+        project_owner = resolved_binding_by_edge.get((caller,
+            "tobkiri.resource.project.state.v1", "tobkiri_ui_settings_pack.projects-read"))
+
+        def read_project(payload):
+            invocation.assert_current()
+            return _InvocationSession(envelope, presentation_owner=(
+                invocation.presentation_owner_principal_id, invocation.presentation_owner_session_id,
+            )).invoke("tobkiri.resource.project.state.v1", "tobkiri_ui_settings_pack.projects-read", payload)
+
+        return _borrow_selected_saved_context(
+            operation=invocation, consumer=consumer, conversation_owner=conversation_owner, project_owner=project_owner,
+            factories=loaded_host_factories, profile_id=str(profile["profile_id"]),
+            presentation_owner=lambda: (invocation.presentation_owner_principal_id,
+                                        invocation.presentation_owner_session_id),
+            read_project=read_project, guard=invocation.assert_current,
+        )
+
     def host_provider_capture_context(
         provider_bindings: tuple[ResolvedOperationBinding, ...],
         *,
@@ -3576,6 +3703,9 @@ def capture_production_dispatch(
                 binding for key, binding in resolved_binding_by_edge.items()
                 if key[0] in {item.function.function_id for item in provider_bindings}
             ),
+            borrow_saved_context=(borrow_turn_saved_context
+                if len(provider_bindings) == 1 and provider_bindings[0].function.function_id
+                == "rumi_turn_runtime_pack.turn-runtime.saved" else None),
         )
 
     loaded_host_factories: list[tuple[str, tuple[ResolvedOperationBinding, ...], Any, str]] = []

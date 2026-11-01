@@ -8,14 +8,11 @@ Route readiness is not a credential/network probe or a promise of AI success.
 from __future__ import annotations
 
 from contextvars import ContextVar
+from contextlib import AbstractContextManager
 from tobkiri_host.saved_workspace_context import (
     WORKSPACE_TARGET, SavedWorkspaceExecutionBinding,
     SavedWorkspaceExecutionRegistry, SavedWorkspacePins, resolve_saved_workspace,
     workspace_resolution, recheck_saved_workspace,
-)
-from ecosystem.tobkiri_ui_settings_pack.runtime.saved_project_context import (
-    PROJECT_TARGET, requires_project_owner, project_context, resolve_saved_project,
-    retain_saved_project_effect_snapshot,
 )
 
 import json
@@ -28,6 +25,7 @@ from tobkiri_host.saved_turn_plan import TARGETS, TOOL, SavedToolFrame
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
 from tobkiri_protocol.saved_conversation import (
     MAX_SAVED_INPUT_BYTES,
+    owned_context_resolution,
     saved_user_text,
     validate_saved_conversation_context,
     validate_saved_conversation_input,
@@ -97,7 +95,8 @@ ALLOWED_TARGETS = (
     STRATEGY,
     STRATEGY_CATALOG,
     *TOOL_TARGETS,
-    PROMPT_TARGET, WORKSPACE_TARGET, PROJECT_TARGET,
+    PROMPT_TARGET, WORKSPACE_TARGET,
+    ("tobkiri.resource.project.state.v1", "tobkiri_ui_settings_pack.projects-read"),
     AI_STREAM, (ACTION, ACTION_OPERATION), (RESOURCE, RESOURCE_OPERATION),
     WORKFLOW_TARGET,
 )
@@ -266,14 +265,14 @@ class SavedBridgeCallbacks:
         stream_available: Callable[[object, Mapping[str, Any], Mapping[str, Any]], bool] | None = None,
         workspace_execution_registry: SavedWorkspaceExecutionRegistry | None = None,
         selected_workspace: Callable[[], Mapping[str, Any]] | None = None,
-        presentation_owner: Callable[[object], tuple[str, str]] | None = None,
+        borrow_saved_context: Callable[[object], AbstractContextManager[Any]] | None = None,
     ) -> None:
         self._dispatch = dispatch
         self._require_targets = require_targets
         self._stream_available = stream_available
         self._workspace_execution_registry = workspace_execution_registry
         self._selected_workspace = selected_workspace
-        self._presentation_owner = presentation_owner
+        self._borrow_saved_context = borrow_saved_context
 
     def _stream_ready(
         self, outer: object, request: Mapping[str, Any], conversation: Mapping[str, Any],
@@ -316,34 +315,16 @@ class SavedBridgeCallbacks:
                 getattr(getattr(outer, "context", None), "profile_id", ""),
                 lambda parent_id: self._read_conversation(outer, parent_id),
             )
-            def read_project(payload: Mapping[str, Any]) -> Mapping[str, Any]:
-                self._require_targets(outer, (PROJECT_TARGET,))
-                outcome = self._dispatch(
-                    outer, PROJECT_TARGET,
-                    {key: value for key, value in payload.items() if key != "profile_id"},
-                )
-                value = outcome.get("value")
-                if outcome.get("status") != "ok" or not isinstance(value, Mapping):
-                    raise AuthorityDenied("saved Project owner is unavailable")
-                return value
-
-            profile_id = getattr(getattr(outer, "context", None), "profile_id", "")
-            try:
-                if effect_snapshot is None:
-                    conversation = resolve_saved_project(
-                        conversation, profile_id=profile_id,
-                        presentation_owner=(self._presentation_owner(outer)
-                                            if requires_project_owner(conversation)
-                                            and self._presentation_owner is not None else ("", "")),
-                        read_owner=read_project,
-                        guard=lambda: self._require_targets(outer, (PROJECT_TARGET,)),
-                    )
-                else:
-                    conversation = retain_saved_project_effect_snapshot(
-                        conversation, effect_snapshot, profile_id=profile_id,
-                    )
-            except PermissionError as error:
-                raise AuthorityDenied(str(error)) from error
+            if self._borrow_saved_context is not None:
+                # The fixed private composition borrows already selected owner
+                # code for this operation. Only detached DATA leaves the block.
+                with self._borrow_saved_context(outer) as resolver:
+                    if resolver is not None:
+                        try:
+                            conversation = (resolver.resolve(outer, conversation) if effect_snapshot is None
+                                            else resolver.retain_effect(outer, conversation, effect_snapshot))
+                        except PermissionError as error:
+                            raise AuthorityDenied(str(error)) from error
             def read_binding(payload: Mapping[str, Any]) -> Mapping[str, Any]:
                 self._require_targets(outer, (WORKSPACE_TARGET,))
                 outcome = self._dispatch(
@@ -397,7 +378,7 @@ class SavedBridgeCallbacks:
         """Adopt the last owner snapshot immediately before effect admission."""
         if (context_link(conversation) is None
                 and workspace_resolution(conversation) is None
-                and project_context(conversation) is None):
+                and owned_context_resolution(conversation) is None):
             return conversation
         fresh = self._conversation(outer, request)
         try:

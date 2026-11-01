@@ -18,7 +18,11 @@ on:
       - tobkiri_runtime/tobkiri_host/saved_workspace_context.py
       - tobkiri_runtime/tobkiri_protocol/saved_conversation.py
       - tobkiri_runtime/tobkiri_protocol/conversation_context.py
-      - tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/runtime/saved_project_context.py
+      - tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/saved_project_context.py
+      - tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py
+      - tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/runtime/projects.py
+      - tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py
+      - tobkiri_runtime/core_runtime/host_provider_backend_v4.py
       - tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/saved.py
       - tobkiri_runtime/ecosystem/tobkiri_side_chat_pack/runtime/side_chat.py
       - tobkiri_runtime/ecosystem/defaultspack/webapp/src/App.tsx
@@ -26,6 +30,8 @@ on:
       - tobkiri_runtime/ecosystem/defaultspack/webapp/src/lib/savedCodingContext*
       - tobkiri_runtime/ecosystem/defaultspack/webapp/src/lib/savedProjectSendPreflight.ts
       - tobkiri_runtime/tests/test_saved_project_context.py
+      - tobkiri_runtime/tests/test_saved_context_capture.py
+      - tobkiri_runtime/tests/saved_context_capture_support.py
       - tobkiri_runtime/tests/test_side_chat_pack.py
       - tobkiri_runtime/schemas/pack_v4_catalog.v1.json
       - tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json
@@ -74,6 +80,9 @@ jobs:
         run: |
           python -m pytest -q \
             tests/test_saved_project_context.py \
+            tests/test_saved_context_capture.py \
+            tests/test_captured_provider_modules_v4.py \
+            tests/test_turn_host.py \
             tests/test_side_chat_pack.py \
             tests/test_saved_workspace_context.py \
             tests/test_saved_workspace_owner_identity.py \

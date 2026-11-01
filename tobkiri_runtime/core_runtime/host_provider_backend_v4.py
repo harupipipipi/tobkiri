@@ -8,6 +8,7 @@ from core_runtime.project_directory_port import ProjectDirectoryPort
 from core_runtime.workspace_mount_effect import ProjectMountPersistenceUncertain
 
 from dataclasses import dataclass
+from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Mapping, Protocol
 
@@ -130,6 +131,18 @@ class HostProviderInvocationContextV4(Protocol):
         """Reject cancelled, expired or stale captured invocations."""
 
 
+class SavedConversationContextPortV4(Protocol):
+    """Fixed operation-local DATA resolver; no module/target selection API."""
+
+    def resolve(
+        self, operation: object, conversation: Mapping[str, Any],
+    ) -> Mapping[str, Any]: ...
+
+    def retain_effect(
+        self, operation: object, conversation: Mapping[str, Any], accepted: Mapping[str, Any],
+    ) -> Mapping[str, Any]: ...
+
+
 @dataclass(frozen=True)
 class HostProviderContributionV4:
     """One callable bound to an exact resolved Function operation."""
@@ -216,6 +229,10 @@ class HostProviderCaptureContextV4:
     # This is read-only capture evidence, not a new grant or caller override.
     outbound_catalog_bindings: tuple[ResolvedOperationBinding, ...] | None = None
     workflow_attempt_port: WorkflowAttemptPortV4 | None = None
+    borrow_saved_context: (
+        Callable[[HostProviderInvocationContextV4], AbstractContextManager[SavedConversationContextPortV4 | None]]
+        | None
+    ) = None
 
 
 @dataclass(frozen=True)

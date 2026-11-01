@@ -262,6 +262,12 @@ class ProjectStateHostFactoryV4:
     def __init__(self, function_id: str) -> None:
         self.function_id = function_id
 
+    def saved_snapshot_validator(self):
+        """Lend this selected read owner's pure parser to private composition."""
+        if self.function_id != READ_FUNCTION_ID:
+            raise PermissionError("saved Project validator requires the read owner")
+        return _projects
+
     def capture(self, context: HostProviderCaptureContextV4) -> CapturedHostProviderV4:
         """Capture Profile/root while leaving caller identity Host-authenticated."""
         expected = {
