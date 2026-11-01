@@ -377,6 +377,34 @@ jobs:
           --fixtures "$RUNNER_TEMP/original-catalog-prefix/summary.json"
           --observations "$RUNNER_TEMP/original-catalog-prefix/actual-catalog-observations.json"
           --output "$RUNNER_TEMP/original-catalog-prefix/actual-catalog-comparison.json"
+      - name: Prepare fresh independent original nine-case catalog fixtures
+        id: catalog_nine_reference
+        if: ${{ !cancelled() && inputs.verification == 'catalog-prefix' && steps.original_reference_dependencies.conclusion == 'success' }}
+        # The one-case operation already mutated its own native fixture tree.
+        # All nine operations need fresh, independently prepared originals.
+        run: >-
+          python3 -B tools/original_catalog_prefix_reference.py prepare
+          --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
+          --output "$RUNNER_TEMP/original-catalog-nine-prefix"
+      - name: Execute all nine actual same-guard catalog operations
+        id: catalog_nine_native
+        if: ${{ !cancelled() && steps.catalog_nine_reference.conclusion == 'success' }}
+        env:
+          TOBKIRI_ORIGINAL_CATALOG_PREFIX_FIXTURES: ${{ runner.temp }}/original-catalog-nine-prefix/summary.json
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/harness-native-catalog-nine-prefix.log" --expected-passed 1 --
+          cargo test --locked -p tobkiri-harness-native --features bootstrap-ci --lib
+          bootstrap_runtime::catalog_parity_actual_ci::original_catalog_nine_driver
+          -- --ignored --exact --test-threads=1 --nocapture
+      - name: Independently compare all nine catalog outcomes and effects
+        if: ${{ !cancelled() && steps.catalog_nine_native.outcome != 'skipped' && steps.catalog_nine_reference.conclusion == 'success' }}
+        run: >-
+          python3 -B tools/original_catalog_prefix_reference.py compare-nine-actual
+          --original-root "$GITHUB_WORKSPACE/original-denied-factory-source"
+          --fixtures "$RUNNER_TEMP/original-catalog-nine-prefix/summary.json"
+          --observations "$RUNNER_TEMP/original-catalog-nine-prefix/actual-catalog-nine-observations.json"
+          --output "$RUNNER_TEMP/original-catalog-nine-prefix/actual-catalog-nine-comparison.json"
       - name: Retain resolved and actually compiled runtime features
         # Each compared operation compiles and initializes under its own
         # original clock, one account and one actual Store.
@@ -435,4 +463,8 @@ jobs:
             ${{ runner.temp }}/original-catalog-prefix/summary.json
             ${{ runner.temp }}/original-catalog-prefix/actual-catalog-observations.json
             ${{ runner.temp }}/original-catalog-prefix/actual-catalog-comparison.json
+            ${{ runner.temp }}/harness-native-catalog-nine-prefix.log*
+            ${{ runner.temp }}/original-catalog-nine-prefix/summary.json
+            ${{ runner.temp }}/original-catalog-nine-prefix/actual-catalog-nine-observations.json
+            ${{ runner.temp }}/original-catalog-nine-prefix/actual-catalog-nine-comparison.json
           if-no-files-found: warn

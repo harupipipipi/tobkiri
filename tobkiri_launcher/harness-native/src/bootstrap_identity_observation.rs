@@ -713,9 +713,20 @@ fn validate_view(
     }
     if unicode_fields {
         let fields = field(&exception, "unicode_fields")?;
-        exact(&fields, &["encoding", "object", "start", "end", "reason"])?;
+        exact(
+            &fields,
+            &[
+                "encoding",
+                "object",
+                "start",
+                "end",
+                "reason",
+                "formatted_message",
+            ],
+        )?;
         string(&field(&fields, "encoding")?, 4096, false)?;
         string(&field(&fields, "reason")?, 4096, false)?;
+        string(&field(&fields, "formatted_message")?, 4096, false)?;
         finite_bytes(&field(&fields, "object")?)?;
         let start = field(&fields, "start")?
             .as_i64()

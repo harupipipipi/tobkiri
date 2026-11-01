@@ -92,6 +92,27 @@ pub(super) fn lock_is_free(root: &Path) -> Result<bool> {
     Ok(false)
 }
 
+/// Only these actual review carriers own Read-funded native diagnostics.
+/// Unknown/context/Guest carriers retain their existing post-finish custody.
+pub(super) fn original_diagnostic_in_outer(mut error: &anyhow::Error) -> bool {
+    loop {
+        let current: &(dyn std::error::Error + Send + Sync + 'static) = error.as_ref();
+        if current.is::<OriginalAuthorityError>() {
+            return true;
+        }
+        let Some(failure) = current.downcast_ref::<BootstrapCleanupFailure>() else {
+            return false;
+        };
+        // The actual review retire_failure adds only this Copy IO cleanup
+        // error. Do not early-drop a wrapper with unknown/Guest cleanup DATA.
+        let cleanup: &(dyn std::error::Error + Send + Sync + 'static) = failure.cleanup.as_ref();
+        if !cleanup.is::<NativeDataIoError>() {
+            return false;
+        }
+        error = &failure.original;
+    }
+}
+
 fn diagnostic_text(value: &CoreBuffer) -> Value {
     let text = String::from_utf8_lossy(value.as_bytes());
     json!({"text":text.chars().take(4096).collect::<String>(),
@@ -332,6 +353,20 @@ async fn original_catalog_component_driver() -> Result<()> {
         Ok(())
     }
     .await;
+    let (execution, native_outer_diagnostic_dropped_before_finish) = match execution {
+        Err(error) if original_diagnostic_in_outer(&error) => {
+            // Preserve failure without cloning Read-funded native strings or
+            // retaining their carrier after finish releases that Read.
+            drop(error);
+            (
+                Err(anyhow::anyhow!(
+                    "known native outer diagnostic released before Read finish; CI branch remains unqualified"
+                )),
+                true,
+            )
+        }
+        other => (other, false),
+    };
     let before = invocation.capacity_snapshot();
     let cleanup = runtime.finish().await;
     let after_finish = invocation.capacity_snapshot();
@@ -349,6 +384,7 @@ async fn original_catalog_component_driver() -> Result<()> {
     let output = json!({"format":"io.tobkiri.actual-catalog-prefix-observations.v1",
         "name":"packaged-valid","observation":observed,"execution_matched_branch":execution.is_ok(),
         "post_review_copy_only":post_review_copy,
+        "native_outer_diagnostic_dropped_before_finish":native_outer_diagnostic_dropped_before_finish,
         "execution_error":execution.as_ref().err().map(ToString::to_string),
         "finish_ok":cleanup.is_ok(),"cleanup_probe_present":probe_present,
         "cleanup_probe_verified_after_finish":verified,
@@ -368,7 +404,7 @@ async fn original_catalog_component_driver() -> Result<()> {
     cleanup?;
     execution?;
     ensure!(
-        verified
+        verified == Some(true)
             && lock_released
             && dropped.load(Ordering::Acquire)
             && after_reap.charged_bytes == 0

@@ -423,12 +423,29 @@ class Registry:
                         "pos": value.pos, "lineno": value.lineno, "colno": value.colno,
                     }
                 if unicode_error:
+                    encoding = UnicodeDecodeError.encoding.__get__(value)
+                    decoded_object = UnicodeDecodeError.object.__get__(value)
+                    start = UnicodeDecodeError.start.__get__(value)
+                    end = UnicodeDecodeError.end.__get__(value)
+                    reason = UnicodeDecodeError.reason.__get__(value)
+                    if (type(encoding) is not str or len(encoding) > 4096
+                            or type(decoded_object) is not bytes
+                            or type(start) is not int or type(end) is not int
+                            or start < 0 or end < start
+                            or type(reason) is not str or len(reason) > 4096):
+                        raise UnsupportedValue("actual manifest decoder fields exceed the finite ABI")
+                    # Only the exact builtin from this actual parser call may
+                    # use its fixed descriptor. No arbitrary __str__, subclass
+                    # dispatch or message reconstruction is admitted here.
+                    formatted = UnicodeDecodeError.__str__(value)
+                    if type(formatted) is not str or len(formatted) > 4096:
+                        raise UnsupportedValue("actual manifest decoder message exceeds the finite ABI")
                     exception["unicode_fields"] = {
-                        "encoding": self._identity_string(UnicodeDecodeError.encoding.__get__(value), 4096),
-                        "object": argument(UnicodeDecodeError.object.__get__(value)),
-                        "start": UnicodeDecodeError.start.__get__(value),
-                        "end": UnicodeDecodeError.end.__get__(value),
-                        "reason": self._identity_string(UnicodeDecodeError.reason.__get__(value), 4096),
+                        "encoding": self._identity_string(encoding, 4096),
+                        "object": argument(decoded_object),
+                        "start": start, "end": end,
+                        "reason": self._identity_string(reason, 4096),
+                        "formatted_message": self._identity_string(formatted, 4096),
                     }
             return wire.dumps({
                 "format": _IDENTITY_VIEW, "scope": self.scope.wire(),

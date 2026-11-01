@@ -17,7 +17,7 @@ import shutil
 import subprocess
 import sys
 
-from original_authority_reference import ORIGINAL_HEAD, error_graph, write_json
+from original_authority_reference import ORIGINAL_HEAD, error_graph, first_difference, write_json
 from original_publication_reference import filesystem, seed
 from original_setup_review_reference import check_original
 
@@ -304,9 +304,106 @@ def compare_actual(original: Path, fixtures: Path, observations: Path, output: P
         raise AssertionError("actual catalog comparison differs; see bounded receipt")
 
 
+def compare_nine_actual(
+    original: Path, fixtures: Path, observations: Path, output: Path,
+) -> None:
+    """Check each actual operation against fresh original outcomes and files."""
+    check_original(original)
+    for path in (fixtures, observations):
+        if path.stat().st_size > 2 * 1024 * 1024:
+            raise ValueError("nine-case catalog input exceeds observation bound")
+    reference = json.loads(fixtures.read_bytes())
+    native = json.loads(observations.read_bytes())
+    if (reference.get("format") != FORMAT or reference.get("original_head") != ORIGINAL_HEAD
+            or reference.get("case_count") != 9
+            or native.get("format") != "io.tobkiri.actual-catalog-prefix-nine-observations.v1"
+            or native.get("case_count") != 9):
+        raise ValueError("fresh nine-case catalog reference and actual observations required")
+    originals = {row["name"]: row for row in reference["cases"]}
+    actuals = {row["name"]: row for row in native["cases"]}
+    if (len(reference["cases"]) != 9 or len(native["cases"]) != 9
+            or set(originals) != set(CASES) or set(actuals) != set(CASES)):
+        raise ValueError("nine-case catalog inventory differs")
+    def journal_is_free(user_data):
+        import fcntl
+
+        try:
+            with (user_data / "profiles/.bootstrap-publication.lock").open("r+b") as stream:
+                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(stream, fcntl.LOCK_UN)
+                return True
+        except OSError:
+            # Missing/unavailable locks cannot qualify a failed preparation.
+            return False
+
+    results = []
+    for name in CASES:
+        original_case, actual = originals[name], actuals[name]
+        path = fixtures.parent / name / "native/input.json"
+        if Path(original_case["native_input"]) != path:
+            raise ValueError("catalog native fixture directory was substituted")
+        user_data = path.parent / "user-data"
+        key = user_data / "profiles/.publication-key"
+        seed_key = fixtures.parent / name / "seed-user-data/profiles/.publication-key"
+        key_matches = key.read_bytes() == seed_key.read_bytes()
+        files_match = filesystem(user_data) == original_case["user_data_after"]
+        difference = first_difference(original_case["expected"], actual.get("observation"))
+        boundary = original_case["expected"]["outcome"] == "integration-boundary"
+        original_scope = (original_case["constructor_body_executed"] is False
+                          and original_case["constructor_entries"] == int(boundary))
+        flags = (
+            "execution_matched_branch", "cleanup_verified", "source_destructor_reached",
+            "physical_owner_reopened", "journal_lock_held_before_finish",
+            "journal_lock_released_after_finish",
+        )
+        capacities = actual.get("capacity")
+        capacities = capacities if isinstance(capacities, dict) else {}
+        measured = actual.get("measurement")
+        measured = measured if isinstance(measured, dict) else {}
+        independent_lock_free = journal_is_free(user_data)
+        cleanup = (all(actual.get(key) is True for key in flags)
+                   and independent_lock_free
+                   and first_difference({"bytes": 0, "reservations": 0},
+                                        capacities.get("after_reap")) is None)
+        budget = (measured.get("same_original_deadline") is True
+                  and type(measured.get("budget_resets")) is int
+                  and measured["budget_resets"] == 0
+                  and type(measured.get("fuel_before")) is int
+                  and type(measured.get("fuel_after")) is int
+                  and 0 <= measured["fuel_after"] < measured["fuel_before"] <= 2_000_000_000
+                  and capacities.get("limit_bytes") == 64 * 1024 * 1024
+                  and type(capacities.get("peak_bytes")) is int
+                  and 0 < capacities["peak_bytes"] <= capacities["limit_bytes"])
+        roots = True
+        if boundary:
+            roots = (measured.get("actual_host_root_retained") is True
+                     and measured.get("actual_catalog_retained") is True
+                     and measured.get("actual_bundle_root_retained")
+                     is (name != "development-bundled"))
+        matched = (difference is None and files_match and key_matches
+                   and original_scope and cleanup and budget and roots)
+        results.append({"name": name, "matched": matched, "difference": difference,
+                        "independent_files_match": files_match, "existing_key_unchanged": key_matches,
+                        "original_scope_matches": original_scope, "cleanup_verified": cleanup,
+                        "independent_journal_lock_free": independent_lock_free,
+                        "original_budget_preserved": budget, "actual_roots_match": roots})
+    passed = sum(row["matched"] for row in results)
+    report = {"format": "io.tobkiri.actual-catalog-prefix-nine-comparison.v1",
+              "original_head": ORIGINAL_HEAD, "cases": results, "passed": passed,
+              "failed": len(results) - passed, "native_comparison": True,
+              "qualification": False, "production_enabled": False,
+              "scope": "nine actual same-guard catalog operations against controlled original "
+                       "resource fixtures, including leaf manifest errors; no constructor body, "
+                       "migration, Authority, arbitrary deep exception, installed executable or GUI"}
+    write_json(output, report)
+    if passed != 9:
+        raise AssertionError([row for row in results if not row["matched"]])
+    print(json.dumps({"actual_catalog_cases": passed, "qualification": False}))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("prepare", "probe", "compare-actual"))
+    parser.add_argument("command", choices=("prepare", "probe", "compare-actual", "compare-nine-actual"))
     parser.add_argument("--original-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--runtime", type=Path)
@@ -323,8 +420,9 @@ def main() -> None:
         probe(original, args.runtime.resolve(strict=True), args.user_data.resolve(strict=True), args.output)
     else:
         if args.fixtures is None or args.observations is None:
-            parser.error("compare-actual requires --fixtures and --observations")
-        compare_actual(original, args.fixtures.resolve(strict=True), args.observations.resolve(strict=True), args.output)
+            parser.error("actual comparison requires --fixtures and --observations")
+        comparator = compare_actual if args.command == "compare-actual" else compare_nine_actual
+        comparator(original, args.fixtures.resolve(strict=True), args.observations.resolve(strict=True), args.output)
 
 
 if __name__ == "__main__":

@@ -32,6 +32,7 @@ from harness_native.value_graph import (  # noqa: E402
     InvalidFrame,
     InvalidReference,
     RecordType,
+    Registry,
     Scope,
     UnsupportedValue,
 )
@@ -113,7 +114,62 @@ class FixedManifestParseTests(unittest.TestCase):
         self.assertEqual((fields["start"], fields["end"]), (actual.start, actual.end))
         self.assertEqual(fields["encoding"]["codepoints"], list(map(ord, actual.encoding)))
         self.assertEqual(fields["reason"]["codepoints"], list(map(ord, actual.reason)))
+        formatted = UnicodeDecodeError.__str__(actual)
+        self.assertEqual(fields["formatted_message"], {
+            "length": len(formatted), "codepoints": list(map(ord, formatted))})
         self.assertEqual(view["exception"]["recovery_catch"], "value-error")
+
+    def test_decoder_formatting_is_limited_to_exact_manifest_origin_and_fields(self):
+        _, actual, _ = self.observed_error(b'\xff')
+        registry = self.dispatcher._current().registry
+        reference = registry.retain(actual)
+        registry._bootstrap_identity[reference.object_id] = "getter-raised"
+        # The existing getter observer cannot expose decoder-specific bytes or
+        # formatter DATA merely because the value is the same builtin class.
+        with self.assertRaises(UnsupportedValue):
+            registry.describe_bootstrap_identity(reference)
+        registry._bootstrap_identity[reference.object_id] = "manifest-raised"
+        actual.start = -1
+        with self.assertRaisesRegex(UnsupportedValue, "decoder fields"):
+            registry.describe_bootstrap_call(reference)
+        long_message = UnicodeDecodeError("utf-8", b"\xff", 0, 1, "x" * 4096)
+        long_reference = registry.retain(long_message)
+        registry._bootstrap_identity[long_reference.object_id] = "manifest-raised"
+        with self.assertRaisesRegex(UnsupportedValue, "decoder message"):
+            registry.describe_bootstrap_call(long_reference)
+
+        class DecoderSubclass(UnicodeDecodeError):
+            def __str__(self):
+                raise AssertionError("subclass formatter must not run")
+
+        subclass = DecoderSubclass("utf-8", b"\xff", 0, 1, "invalid start byte")
+        with self.assertRaises(UnsupportedValue):
+            registry.retain(subclass)
+
+    def test_decoder_message_allocation_failure_is_fatal_and_rolls_back_edges(self):
+        with self.assertRaises(MethodRaised) as caught:
+            self.parse(b'\xff')
+        packet = json.loads(caught.exception.details)
+        registry = self.dispatcher._current().registry
+        reference = registry.reference(packet["root"])
+        actual = registry.borrow(reference)
+        actual.__context__ = StopIteration(0)
+        before = set(registry._objects)
+        formatted = UnicodeDecodeError.__str__(actual)
+        original = Registry._identity_string
+        fatal = MemoryError("controlled observer allocation failure")
+
+        def exhausted(value, limit):
+            if value == formatted:
+                raise fatal
+            return original(value, limit)
+
+        with patch.object(Registry, "_identity_string", staticmethod(exhausted)):
+            with self.assertRaises(MemoryError) as failure:
+                registry.describe_bootstrap_call(reference)
+        self.assertIs(failure.exception, fatal)
+        self.assertEqual(set(registry._objects), before)
+        self.assertIs(registry.borrow(reference), actual)
 
 
 class CatalogDiagnosticTests(unittest.TestCase):

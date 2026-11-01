@@ -2266,6 +2266,27 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   追加予算は使わず、Copyは既存Workの予約へ含める。既存policy6件のうち1件で、実失敗後の
   Store不可読とCopy保持、journal未開始時probe不在を確認する。Source/rustfmtのみ確認済みで、
   実test/compileとcatalog診断の結果はCI待ち。
+  実ba8257d13/CI41346336348ではproducer169件・frozen16・現component構築は成功したが、
+  old driver末尾のensureにOption<bool>をboolとして使う取り残しがありE0308でcompile停止。
+  このrunではNative catalog/policyは未実行。`verified == Some(true)`へ修正し、未取得を
+  成功と扱わない。実Host progressとtrap cleanupの認定は修正後のCIまで保留する。
+  原本9ケースのNative比較も追加する。各ケースは新しい独立fixtureと別の元operationを使い、
+  そのoperation内ではcompile前から同じ30秒・Store・2B/64MiBを維持する。実factoryの
+  kind/argsと実parser例外ref・cause/context同一性・固有fieldを観測する。UTF8のmessageは
+  manifest由来かつexact builtinの検証済みfieldだけを固定UnicodeDecodeError.__str__で観測し、
+  4096 codepoint超過は拒否、MemoryErrorはfatalを維持する。一般formatterのRust二重実装や
+  期待値からの例外再生成はしない。独立comparerが原本graph・filesystem・既存key・実FD lock・
+  cleanup・reap0/0・予算を比較する。Sourceのみ確認済みで全9一致は未証明。深い任意例外、
+  constructor以降のmigration/Authority、GUI/実モデルの資格へ広げない。
+  小さい整理候補として、old1/new9 CI driverに重複するCatalogSourceの実owner借用を、
+  environment/app_dirを明示したfixture helperへまとめられる。実source identity/FD借用・
+  fixture入力と期待値の分離・operationごとの元予算を維持し、両driverの実比較後に着手する。
+  現時点は未対応で、製品controllerや一般例外frameworkの共通化へ広げない。
+  Source監査では、typed failure以外にouter anyhowにもRead予約で賄うOriginalAuthorityErrorが
+  残り得ると判明。old1/new9の双方で、実型が既知Native診断、またはcleanupが実Copy
+  NativeDataIoErrorだけの既存wrapperの場合に限りfinish前に破棄する。未知・Context・Guest
+  carrierは元のfinish後まで保持し、診断破棄でも実失敗・未資格を維持する。多重wrapperも
+  同じ固定型だけを辿る。文字列再構築や期待値を使う一般例外frameworkは追加しない。
   将来の整理は未接続HostコードをGuest closureから外して実Rustへ移すことだが、今回の
   依存置換の成功だけでSource削除や後続activation機能の達成を認定しない。
 

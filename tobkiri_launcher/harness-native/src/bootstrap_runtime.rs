@@ -1219,6 +1219,14 @@ mod catalog_actual_ci;
     target_os = "macos",
     target_arch = "aarch64"
 ))]
+#[path = "bootstrap_catalog_parity_actual_ci.rs"]
+mod catalog_parity_actual_ci;
+#[cfg(all(
+    test,
+    feature = "bootstrap-ci",
+    target_os = "macos",
+    target_arch = "aarch64"
+))]
 #[path = "bootstrap_denied_actual_ci.rs"]
 mod denied_actual_ci;
 #[cfg(all(test, target_os = "macos"))]
