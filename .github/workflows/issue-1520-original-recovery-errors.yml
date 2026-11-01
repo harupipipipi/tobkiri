@@ -7,6 +7,9 @@ name: Issue 1520 original recovery error semantics
     paths:
       - tools/original_recovery_error_reference.py
       - .github/workflows/issue-1520-original-recovery-errors.yml
+      - tobkiri_launcher/harness-native/src/bootstrap_recovery_error*.rs
+      - tobkiri_launcher/harness-native/src/exception_graph.rs
+      - tobkiri_launcher/harness-native/src/exception_graph/tests.rs
 
 permissions:
   contents: read
@@ -22,9 +25,12 @@ jobs:
       matrix:
         os: [ubuntu-22.04, macos-15]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 40
     env:
       PYTHONDONTWRITEBYTECODE: "1"
+      CARGO_BUILD_JOBS: "1"
+      CARGO_INCREMENTAL: "0"
+      CARGO_TERM_COLOR: never
     steps:
       - uses: actions/checkout@v4
         with:
@@ -56,11 +62,33 @@ jobs:
           --original-root "$GITHUB_WORKSPACE/original-recovery-source"
           --catalog-fixtures "$RUNNER_TEMP/original-catalog-prefix/summary.json"
           --output "$RUNNER_TEMP/original-recovery-errors"
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          components: clippy
+      - name: Verify portable native causes and actual unsafe-lock mechanics
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-recovery-causes.log" --expected-passed 6 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          bootstrap_runtime::catalog::recovery_cause::tests::
+          -- --test-threads=1 --nocapture
+      - name: Preserve all existing exception graph and private policy cases
+        run: >-
+          python3 -B tools/quality/issue_1520_ci.py cargo-test
+          --log "$RUNNER_TEMP/native-recovery-graphs.log" --expected-passed 11 --
+          cargo test --locked -p tobkiri-harness-native --lib
+          exception_graph::tests:: -- --test-threads=1 --nocapture
+      - name: Strict native recovery library validation
+        if: ${{ !cancelled() }}
+        run: cargo clippy --locked -p tobkiri-harness-native --lib -- -D warnings
       - name: Retain bounded original observations only
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: original-recovery-errors-${{ matrix.os }}
-          path: ${{ runner.temp }}/original-recovery-errors/summary.json
+          path: |
+            ${{ runner.temp }}/original-recovery-errors/summary.json
+            ${{ runner.temp }}/native-recovery-causes.log*
+            ${{ runner.temp }}/native-recovery-graphs.log*
           if-no-files-found: warn
           retention-days: 7

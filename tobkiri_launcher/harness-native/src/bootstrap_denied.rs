@@ -239,10 +239,7 @@ impl<S: BootstrapInputOwner> ReviewPackBorrow<'_, S> {
         {
             BootstrapDeniedRaise::Plain => None,
             BootstrapDeniedRaise::ExplicitFrom(error) => {
-                let code = error.code().try_copy_to(self.input_budget)?;
-                let message = error.message().try_copy_to(self.input_budget)?;
-                let details = error.details().try_copy_to(self.input_budget)?;
-                let bound = NativeErrorGraph::decode(code, message, details, self.input_budget)?;
+                let bound = error.try_copy_to(self.input_budget)?;
                 Some(BootstrapDeniedRaise::ExplicitFrom(bound))
             }
             BootstrapDeniedRaise::OpaqueGetter(error) => {

@@ -4,6 +4,8 @@
 //! This decoder cannot establish confidentiality by guessing from strings.
 //! Host paths, arbitrary native classes, panics and allocation failures are not
 //! converted into portable domain errors. Unknown representations are gaps.
+//! The private recovery policy retains fixed native APP causes on the Host;
+//! those tags remain unsupported by the public/Guest decoder.
 use std::{fmt, sync::Arc};
 use tobkiri_canon::{
     AllocationBudget, AllocationError, AllocationKind, AllocationRequest, CoreBuffer, CoreRef,
@@ -44,6 +46,12 @@ pub enum NativeErrorKind {
     ConnectionResetError,
     ProcessLookupError,
     ChildProcessError,
+    // Source-backed APP meanings for native Host explicit-from edges only.
+    // These do not register or manufacture classes in the Guest interpreter.
+    SecurePersistenceError,
+    ActiveProfileStoreError,
+    ActiveProfileStoreIntegrityError,
+    ActiveProfileStoreLockTimeout,
 }
 
 impl NativeErrorKind {
@@ -80,6 +88,10 @@ impl NativeErrorKind {
             ConnectionResetError => "connection-reset-error",
             ProcessLookupError => "process-lookup-error",
             ChildProcessError => "child-process-error",
+            SecurePersistenceError => "secure-persistence-error",
+            ActiveProfileStoreError => "active-profile-store-error",
+            ActiveProfileStoreIntegrityError => "active-profile-store-integrity-error",
+            ActiveProfileStoreLockTimeout => "active-profile-store-lock-timeout",
         }
     }
     fn parse(tag: &str) -> Result<Self> {
@@ -114,6 +126,10 @@ impl NativeErrorKind {
             ConnectionResetError,
             ProcessLookupError,
             ChildProcessError,
+            SecurePersistenceError,
+            ActiveProfileStoreError,
+            ActiveProfileStoreIntegrityError,
+            ActiveProfileStoreLockTimeout,
         ];
         all.into_iter()
             .find(|kind| kind.tag() == tag)
@@ -138,8 +154,25 @@ impl NativeErrorKind {
                 | Self::ConnectionResetError
                 | Self::ProcessLookupError
                 | Self::ChildProcessError
+                | Self::SecurePersistenceError
         )
     }
+    fn native_recovery_only(self) -> bool {
+        matches!(
+            self,
+            Self::SecurePersistenceError
+                | Self::ActiveProfileStoreError
+                | Self::ActiveProfileStoreIntegrityError
+                | Self::ActiveProfileStoreLockTimeout
+        )
+    }
+}
+
+#[derive(Clone, Copy)]
+enum GraphPolicy {
+    Portable,
+    CatalogIo,
+    HostRecovery,
 }
 
 /// Unsupported ABI DATA is not an original domain denial or native IO result.
@@ -177,6 +210,7 @@ pub struct NativeErrorGraph {
     graph: CoreValue,
     id: u32,
     root: u32,
+    policy: GraphPolicy,
 }
 impl NativeErrorGraph {
     /// Decode under the SAME original invocation budget as the outer buffers.
@@ -187,7 +221,7 @@ impl NativeErrorGraph {
         details: CoreBuffer,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<Self> {
-        Self::decode_inner(code, message, details, budget, false)
+        Self::decode_inner(code, message, details, budget, GraphPolicy::Portable)
     }
     pub(crate) fn decode_catalog_io(
         code: CoreBuffer,
@@ -195,14 +229,34 @@ impl NativeErrorGraph {
         details: CoreBuffer,
         budget: &Arc<dyn AllocationBudget>,
     ) -> Result<Self> {
-        Self::decode_inner(code, message, details, budget, true)
+        Self::decode_inner(code, message, details, budget, GraphPolicy::CatalogIo)
+    }
+    /// Fixed native-origin APP causes. No Guest class materialization is implied.
+    pub(crate) fn decode_host_recovery(
+        code: CoreBuffer,
+        message: CoreBuffer,
+        details: CoreBuffer,
+        budget: &Arc<dyn AllocationBudget>,
+    ) -> Result<Self> {
+        Self::decode_inner(code, message, details, budget, GraphPolicy::HostRecovery)
+    }
+    /// Keep the original private producer policy while moving funded DATA to
+    /// the existing Store owner. A serialized tag cannot select this policy.
+    pub(crate) fn try_copy_to(&self, budget: &Arc<dyn AllocationBudget>) -> Result<Self> {
+        Self::decode_inner(
+            self.code.try_copy_to(budget)?,
+            self.message.try_copy_to(budget)?,
+            self.details.try_copy_to(budget)?,
+            budget,
+            self.policy,
+        )
     }
     fn decode_inner(
         code: CoreBuffer,
         message: CoreBuffer,
         details: CoreBuffer,
         budget: &Arc<dyn AllocationBudget>,
-        catalog_paths: bool,
+        policy: GraphPolicy,
     ) -> Result<Self> {
         let bytes = code
             .len()
@@ -236,7 +290,7 @@ impl NativeErrorGraph {
             return Err(NativeErrorGraphError::Invalid);
         }
         for node in array.iter() {
-            validate_node(&node, array.len(), catalog_paths)?;
+            validate_node(&node, array.len(), policy)?;
         }
         let node = array
             .get(root as usize)
@@ -262,6 +316,7 @@ impl NativeErrorGraph {
             graph,
             id,
             root,
+            policy,
         })
     }
     pub fn graph_id(&self) -> u32 {
@@ -354,7 +409,7 @@ fn kind(node: &CoreValue) -> Result<NativeErrorKind> {
             .ok_or(NativeErrorGraphError::Invalid)?,
     )
 }
-fn validate_node(node: &CoreValue, length: usize, catalog_paths: bool) -> Result<()> {
+fn validate_node(node: &CoreValue, length: usize, policy: GraphPolicy) -> Result<()> {
     exact(
         node,
         &[
@@ -372,11 +427,30 @@ fn validate_node(node: &CoreValue, length: usize, catalog_paths: bool) -> Result
         .as_bool()
         .ok_or(NativeErrorGraphError::Invalid)?;
     let kind = kind(node)?;
+    let host_recovery = matches!(policy, GraphPolicy::HostRecovery);
+    if kind.native_recovery_only() && !host_recovery {
+        return Err(NativeErrorGraphError::Unsupported);
+    }
     let args = field(node, "args")?;
     let array = args.array().ok_or(NativeErrorGraphError::Invalid)?;
     let fields = field(node, "fields")?;
     if kind.os() {
         exact(&fields, &["errno", "strerror", "filename", "filename2"])?;
+        if host_recovery && array.len() == 1 {
+            if array.get(0).and_then(|v| v.as_str().map(|_| ())).is_none()
+                || ["errno", "strerror", "filename", "filename2"]
+                    .into_iter()
+                    .any(|name| {
+                        !field(&fields, name).is_ok_and(|v| matches!(v.inspect(), CoreRef::Null))
+                    })
+            {
+                return Err(NativeErrorGraphError::Unsupported);
+            }
+            return Ok(());
+        }
+        if kind == NativeErrorKind::SecurePersistenceError {
+            return Err(NativeErrorGraphError::Unsupported);
+        }
         if array.len() != 2 {
             return Err(NativeErrorGraphError::Unsupported);
         }
@@ -388,7 +462,7 @@ fn validate_node(node: &CoreValue, length: usize, catalog_paths: bool) -> Result
             || field(&fields, "strerror")?.as_str() != Some(text)
             || !nullable_path(&field(&fields, "filename")?)
             || !nullable_path(&field(&fields, "filename2")?)
-            || (!catalog_paths
+            || (matches!(policy, GraphPolicy::Portable)
                 && (!matches!(field(&fields, "filename")?.inspect(), CoreRef::Null)
                     || !matches!(field(&fields, "filename2")?.inspect(), CoreRef::Null)))
         {
@@ -468,7 +542,8 @@ fn validate_json(fields: &CoreValue, argument: &CoreValue) -> Result<()> {
 fn validate_message(node: &CoreValue, kind: NativeErrorKind, message: &str) -> Result<()> {
     let args = field(node, "args")?;
     let first = args.get_index(0).ok_or(NativeErrorGraphError::Invalid)?;
-    let valid = if kind.os() {
+    let message_only_os = kind.os() && args.array().is_some_and(|v| v.len() == 1);
+    let valid = if kind.os() && !message_only_os {
         let errno = Decimal::new(first.as_i64().ok_or(NativeErrorGraphError::Invalid)?);
         let text = args.get_index(1).ok_or(NativeErrorGraphError::Invalid)?;
         let mut rest = message;

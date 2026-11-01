@@ -40,6 +40,153 @@ fn decode(
 }
 
 #[test]
+fn native_app_causes_require_private_host_policy_and_keep_it_on_rebind() {
+    let budget = Arc::new(Budget::default());
+    let b: Arc<dyn AllocationBudget> = budget.clone();
+    for kind in [
+        NativeErrorKind::SecurePersistenceError,
+        NativeErrorKind::ActiveProfileStoreError,
+        NativeErrorKind::ActiveProfileStoreIntegrityError,
+        NativeErrorKind::ActiveProfileStoreLockTimeout,
+    ] {
+        let fields = if kind == NativeErrorKind::SecurePersistenceError {
+            json!({"errno":null,"strerror":null,"filename":null,"filename2":null})
+        } else {
+            json!({})
+        };
+        let value = frame(json!([node(kind.tag(), json!(["source failure"]), fields)]));
+        assert!(matches!(
+            decode(&value, kind.tag(), "source failure", &b),
+            Err(NativeErrorGraphError::Unsupported)
+        ));
+        let graph = NativeErrorGraph::decode_host_recovery(
+            CoreBuffer::copy_from(kind.tag().as_bytes(), &b).unwrap(),
+            CoreBuffer::copy_from(b"source failure", &b).unwrap(),
+            CoreBuffer::copy_from(&serde_json::to_vec(&value).unwrap(), &b).unwrap(),
+            &b,
+        )
+        .unwrap();
+        assert!(matches!(
+            NativeErrorGraph::decode_catalog_io(
+                graph.code().clone(),
+                graph.message().clone(),
+                graph.details().clone(),
+                &b
+            ),
+            Err(NativeErrorGraphError::Unsupported)
+        ));
+        let rebound = graph.try_copy_to(&b).unwrap();
+        assert_eq!(rebound.root().kind(), kind);
+        assert_eq!(
+            rebound.root().args().get_index(0).unwrap().as_str(),
+            Some("source failure")
+        );
+        assert!(
+            NativeErrorGraph::decode(
+                rebound.code().clone(),
+                rebound.message().clone(),
+                rebound.details().clone(),
+                &b
+            )
+            .is_err()
+        );
+        budget.refused.store(true, Ordering::SeqCst);
+        assert!(graph.try_copy_to(&b).is_err());
+        assert_eq!(graph.root().kind(), kind);
+        budget.refused.store(false, Ordering::SeqCst);
+        drop((rebound, graph));
+        assert_eq!(budget.bytes.load(Ordering::SeqCst), 0);
+    }
+}
+
+#[test]
+fn message_only_os_args_remain_one_argument_with_unset_descriptors() {
+    let b: Arc<dyn AllocationBudget> = Arc::new(Budget::default());
+    for kind in ["secure-persistence-error", "os-error", "timeout-error"] {
+        let fields = json!({"errno":null,"strerror":null,"filename":null,"filename2":null});
+        let value = frame(json!([node(kind, json!(["one message"]), fields)]));
+        assert!(decode(&value, kind, "one message", &b).is_err());
+        let host = |value: &Value| {
+            NativeErrorGraph::decode_host_recovery(
+                CoreBuffer::copy_from(kind.as_bytes(), &b).unwrap(),
+                CoreBuffer::copy_from(b"one message", &b).unwrap(),
+                CoreBuffer::copy_from(&serde_json::to_vec(value).unwrap(), &b).unwrap(),
+                &b,
+            )
+        };
+        let graph = host(&value).unwrap();
+        assert_eq!(graph.root().args().array().unwrap().len(), 1);
+        assert!(matches!(
+            graph.root().fields().get_key("errno").unwrap().inspect(),
+            CoreRef::Null
+        ));
+        for field in ["errno", "strerror", "filename", "filename2"] {
+            let mut invalid = value.clone();
+            invalid["nodes"][0]["fields"][field] = json!(0);
+            assert!(host(&invalid).is_err());
+        }
+    }
+}
+
+#[test]
+fn portable_graph_rebind_does_not_widen_decoder_or_change_host_edges() {
+    let b: Arc<dyn AllocationBudget> = Arc::new(Budget::default());
+    let mut root = node("value-error", json!(["original"]), json!({}));
+    root["cause"] = json!(1);
+    root["context"] = json!(1);
+    root["suppress_context"] = json!(true);
+    let value = frame(json!([
+        root,
+        node("runtime-error", json!(["context"]), json!({}))
+    ]));
+    let graph = decode(&value, "value-error", "original", &b).unwrap();
+    let rebound = graph.try_copy_to(&b).unwrap();
+    assert_eq!(graph.details().as_bytes(), rebound.details().as_bytes());
+    assert_eq!(rebound.root().cause(), Some(1));
+    assert_eq!(rebound.root().context(), Some(1));
+    assert!(rebound.root().suppress_context());
+    assert!(
+        NativeErrorGraph::decode(
+            rebound.code().clone(),
+            rebound.message().clone(),
+            rebound.details().clone(),
+            &b
+        )
+        .is_ok()
+    );
+}
+
+#[test]
+fn existing_catalog_path_policy_survives_rebind_without_becoming_public() {
+    let b: Arc<dyn AllocationBudget> = Arc::new(Budget::default());
+    let value = frame(json!([node(
+        "file-not-found-error",
+        json!([2, "No such file or directory"]),
+        json!({"errno":2,"strerror":"No such file or directory","filename":"catalog/item","filename2":null})
+    )]));
+    let message = "[Errno 2] No such file or directory: 'catalog/item'";
+    assert!(decode(&value, "file-not-found-error", message, &b).is_err());
+    let graph = NativeErrorGraph::decode_catalog_io(
+        CoreBuffer::copy_from(b"file-not-found-error", &b).unwrap(),
+        CoreBuffer::copy_from(message.as_bytes(), &b).unwrap(),
+        CoreBuffer::copy_from(&serde_json::to_vec(&value).unwrap(), &b).unwrap(),
+        &b,
+    )
+    .unwrap();
+    let rebound = graph.try_copy_to(&b).unwrap();
+    assert_eq!(rebound.details().as_bytes(), graph.details().as_bytes());
+    assert!(
+        NativeErrorGraph::decode(
+            rebound.code().clone(),
+            rebound.message().clone(),
+            rebound.details().clone(),
+            &b
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn original_formatted_schema_args_and_diagnostics_are_preserved_without_reformatting() {
     let budget = Arc::new(Budget::default());
     let b: Arc<dyn AllocationBudget> = budget.clone();

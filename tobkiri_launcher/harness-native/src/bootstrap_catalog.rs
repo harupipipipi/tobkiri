@@ -7,6 +7,9 @@ use crate::original_authority::catalog::{BindingFailure, CatalogIo};
 use crate::{BootstrapReviewFailure, BootstrapReviewReachpoint};
 use std::path::PathBuf;
 
+#[path = "bootstrap_recovery_error.rs"]
+mod recovery_cause;
+
 pub(super) struct RootResolution {
     pub resolved: CoreBuffer,
     pub binding: CoreBuffer,
@@ -375,7 +378,23 @@ pub(super) async fn run<S: BootstrapInputOwner + crate::BootstrapReviewOwner>(
             crate::original_authority::definitions::DefinitionPrefix::MigrateLegacySuccessorsNotBound =>
                 BootstrapReviewReachpoint::MigrateLegacySuccessorsNotBound,
         }))),
-        Err(error) => Ok(Err(original_failure(error))),
+        Err(error) => {
+            match recovery_cause::project(&error, &pack.work.get().invocation, pack.input_budget)? {
+                Some(cause) => {
+                    // No borrowed native String diagnostic may survive its
+                    // prepaid Read through retirement/factory awaits. The
+                    // fixed source raise text was checked by this projector.
+                    drop(error);
+                    review_continuation::denied(
+                        review, pack, recovery_cause::MESSAGE,
+                        BootstrapDeniedRaise::ExplicitFrom(cause),
+                    ).await
+                }
+                // Still an explicitly UNQUALIFIED typed factory request (or
+                // an uncaught raw registry error), never a fallback factory.
+                None => Ok(Err(original_failure(error))),
+            }
+        }
     }
 }
 

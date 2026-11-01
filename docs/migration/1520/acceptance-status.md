@@ -157,7 +157,7 @@ The actual catalog call still failed with the bounded tag `outside_builtin=unkno
 its exact underlying failure remains under investigation. Cleanup, state/key,
 Source destruction and zero-capacity reap passed independently. The source fix
 does not establish catalog success or whole-closure compatibility.
-Constructor/migration bodies and outer Authority remain unqualified.
+Actual-component constructor/migration bodies and outer Authority remain unqualified.
 
 The independent original constructor/list reference subsequently passed13 controlled
 cases on each OS in [CI41323891367](https://github.com/harupipipipi/tobkiri/actions/runs/41323891367):
@@ -172,13 +172,24 @@ allocation reservation exceeds87MB for a real approximately190KB Profile index.
 All13 cleanup, zero-capacity reap and physical-owner reopen checks passed, but this
 does not qualify the failed cases. A private allocation-bound correction now covers
 partial parsing, actual Vec growth, fixed model insertions and diagnostic scratch,
-with four new focused cases and strengthened existing model checks awaiting CI.
+with four new focused cases and strengthened existing model checks.
 Old strict decoder/catalog reservations and original expectations are unchanged.
+At `4e5fb0bb2`, [CI41332712410](https://github.com/harupipipipi/tobkiri/actions/runs/41332712410)
+passed original13, focused4, normal6 and strict Clippy on both OSes. Native macOS
+matched all13 cases and the independent comparison passed13/13. All cleanup,
+zero-byte/zero-reservation reap and physical-owner reopen checks passed, with
+48,532,334-byte maximum peak below64MiB. Selected JSON277,315 bytes was retained
+from verified RAM-only archives. The previous failure remains historical evidence.
 Actual AppHandle/Wasm, exception-factory and async-Join parity remain separate.
 Fresh Authority93, publication77 and cancellation/same-invocation regressions at the
 same source passed in [Authority CI41329148085](https://github.com/harupipipipi/tobkiri/actions/runs/41329148085),
 [publication CI41329148081](https://github.com/harupipipipi/tobkiri/actions/runs/41329148081) and
 [handoff CI41329148083](https://github.com/harupipipipi/tobkiri/actions/runs/41329148083).
+The next [original recovery-error reference CI41333706776](https://github.com/harupipipipi/tobkiri/actions/runs/41333706776)
+passed10 cases on both OSes at `257a45d40`: controlled actual original cause classes,
+unchanged recovery catch, actual denied factory and journal finally. Native-origin
+class projection plus actual same-Store Guest denied/Host-edge comparison is being
+implemented separately; native custom causes do not require Guest class regeneration.
 
 Saved Project parity source at `eb5dabff0` restores existing owner-based membership
 and exact mutation acknowledgements while preserving the conversation execution

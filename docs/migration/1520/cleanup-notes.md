@@ -2275,7 +2275,7 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
 
 ## 025: registryのdeepcopyを重複したnative保持へ移さない
 
-- 状態: **89e20ab26で接続。両OSの機構6件成功、実Native13件は7一致・6容量拒否で未達**。
+- 状態: **4e5fb0bb2で容量修正、実Native13件すべて一致。実Wasm/移行本体は未完**。
 - 場所: `original_profile_definitions{,_model,_tests}.rs`、既存publication IO/JSON、
   `tools/original_profile_definition_prefix_reference.py`。
 - 整理: 元snapshotの厳密JSON/digest/全state・履歴・ID検証とnormal postyield検証を保ち、
@@ -2297,7 +2297,10 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   全raw bytesの計数で未完/invalidの途中Text・frame・各Vec成長と同居を含め、後段の
   bootstrap/tombstone/fallback object・digest文字列とduplicate error scratchも予約する。
   旧decode/decode_strict/catalog予約・厳密解析順は変更しない。新focused4件と既存2件の
-  model実容量assert強化はSource確定、CI未検証。旧normal6件/原本13件の期待値は保つ。
+  model実容量assert強化はCI41332712410で両OS成功。旧normal6件/原本13件の期待値は保つ。
+  strict Clippyも両OS成功。macOSの実Native13件は全一致し、独立比較も13/13成功。
+  最大peak48,532,334Bで64MiB内、実close/reap0/0/physical owner再openも全件成功した。
+  277,315Bの選択JSONを検証済みRAM ZIPから保存し、archiveは保存しない。
   13件全てで既存1account/1Store、journal保持/definition解放、元state/key、実close、
   DATA解放/reap0/0、physical owner再openは確認した。失敗6件を成功へ数えない。
   実AppHandle/Wasm全catalog/Guest factory/非同期Joinの資格はこの同期mechanics driverへ含めない。
@@ -2309,6 +2312,11 @@ Python-on-Wasm へ移す作業で見つけた、古い処理・重複・コー�
   raw Guest例外は実refを保つ。既存typed-request投影を成功へ読み替えず、未知型は未資格、
   registry別RuntimeError familyは元どおりraw。実factory失敗からのfallbackも行わない。
   独立参照tool `original_recovery_error_reference.py` は実原本class10入力をcatalog入口で
-  制御注入し、元recover/catch・実factory・journal finallyを変更せず観測するSource。
-  args/MRO/OS fields/同nodeのcause-context/suppression、raw registry2枝を確認予定で、
-  native IO原因・Guest class実生成・実factory failure・GUIの証拠には数えない。
+  制御注入し、元recover/catch・実factory・journal finallyを変更せず観測する。
+  CI41333706776は両OS10件成功。args/MRO/OS fields/同nodeのcause-context/suppressionと
+  raw registry2枝を確認した。後続のNative比較用chain入力は任意文言でなく実os.strerrorを使い、
+  初回257a45d40の証拠は保持する。Native projection/同policy rebindはSol6.1 xhighが実装し、
+  portable6件と既存graph7＋新4件、独立8ケースの実component driverは次CIで検証する。
+  同じJSON文字列/整数の出力処理がcatalog/recoveryに分かれる点は将来の整理候補だが、
+  App mappingとprivate policyをCoreへ広げず、同資金・エラー順の一致を示してから共通化する。
+  native IO原因・Guest class実生成・実factory failure・GUIの証拠へ範囲を拡大しない。
